@@ -8,4 +8,10 @@ publish = false
 workspace = true
 
 [dependencies]
+arrow.workspace = true
+oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-rowset = { path = "../oxhaven-rowset" }
+
+[dev-dependencies]
+oxhaven-testkit = { path = "../oxhaven-testkit" }
