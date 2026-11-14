@@ -4,8 +4,16 @@
 //! Java resolves each operator to an overload of a static method in
 //! `io.deephaven.engine.table.impl.lang.QueryLanguageFunctionUtils`, one per pair of operand
 //! types. The overloads follow a few rules, and those rules are stated here once.
+//!
+//! What is not built is refused at one place each: an unknown function in [`Checker::call`]
+//! (the function library registers names in [`crate::functions`]), row variables and column
+//! arrays in [`Checker::check`] and [`Checker::column`].
+
+mod methods;
 
 use crate::functions::{self, Function};
+use methods::Parameter;
+pub(crate) use methods::StringMethod;
 use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, UnaryOp};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 
@@ -22,8 +30,8 @@ impl Numeric {
     /// The type a numeric operand is computed in: `byte`, `short` and `char` widen to `int`.
     /// `None` for a type that is not numeric.
     ///
-    /// Behavior: `QueryLanguageFunctionUtils#negate(byte)`, `#negate(short)`, `#negate(char)`
-    /// (all return `int`), and the casts in `#plus(byte,byte)` and `#plus(char,char)`.
+    /// Behavior: `QueryLanguageParser#binaryNumericPromotionType`, and the casts in
+    /// `QueryLanguageFunctionUtils#plus(byte,byte)` and `#plus(char,char)`.
     pub(crate) fn of(column_type: &ColumnType) -> Option<Numeric> {
         match column_type {
             ColumnType::Byte | ColumnType::Char | ColumnType::Short | ColumnType::Int => {
@@ -47,12 +55,21 @@ impl Numeric {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum BitwiseOp {
+    And,
+    Or,
+    Xor,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum ArithmeticOp {
     Add,
     Subtract,
     Multiply,
     Divide,
     Remainder,
+    /// Only on `int` and `long`.
+    Bitwise(BitwiseOp),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -84,15 +101,16 @@ pub(crate) enum CompareDomain {
     Integral,
     /// At least one side is floating point. With `through_float` both sides are first
     /// converted to `float`, which loses precision for a large `int` or `long`, as in Java.
-    Floating {
-        through_float: bool,
-    },
+    Floating { through_float: bool },
     /// An ordering comparison of a `long` with a `float` or `double`: exact, with no
     /// conversion of the `long`.
     LongWithFloating,
+    /// `Boolean` values, with false before true as `Boolean#compareTo` has it.
     Boolean,
     /// Strings, ordered by UTF-16 code unit as `String#compareTo` does.
     String,
+    /// `==` or `!=` of values of unrelated classes, which are equal only when both are null.
+    Unrelated,
 }
 
 /// The type an arithmetic operator computes in and returns.
@@ -102,6 +120,8 @@ pub(crate) enum CompareDomain {
 /// `QueryLanguageParser#binaryNumericPromotionType`) and `#divide`, which is always floating
 /// point: `float` when the divisor is a `float` and the dividend is not a `double`, and
 /// `double` otherwise, so `int / float` is `float` and `float / int` is `double`.
+/// `#binaryAnd`, `#binaryOr` and `#xor` exist for `int` and `long` operands and for pairs of
+/// one narrower type, and all return `int` or `long`.
 pub(crate) fn arithmetic_type(op: ArithmeticOp, left: Numeric, right: Numeric) -> Numeric {
     match op {
         ArithmeticOp::Divide if right == Numeric::Float && left != Numeric::Double => {
@@ -138,6 +158,23 @@ pub(crate) fn numeric_compare_domain(
     }
 }
 
+/// The type of `condition ? a : b` for two numeric branch types, or `None` when Java
+/// refuses the pair.
+///
+/// Behavior: `QueryLanguageParser#visit(ConditionalExpr)` and `#dhqlIsAssignableFrom`: two
+/// branches of one type keep it; otherwise one branch must already have the type that
+/// binary numeric promotion gives the pair. So `byte : int` is `int`, and `byte : short` is
+/// refused, because their promoted type is `int` and neither branch is one.
+pub(crate) fn ternary_type(if_true: &ColumnType, if_false: &ColumnType) -> Option<ColumnType> {
+    if if_true == if_false {
+        return Some(if_true.clone());
+    }
+    let promoted = Numeric::of(if_true)?
+        .max(Numeric::of(if_false)?)
+        .column_type();
+    (*if_true == promoted || *if_false == promoted).then_some(promoted)
+}
+
 /// An expression with its type.
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) struct Typed {
@@ -151,12 +188,20 @@ pub(crate) enum Node {
     Column(usize),
     /// Never `Literal::Null`.
     Literal(Literal),
+    /// Null of the node's type.
+    Null,
     /// Computed in the node's own type.
     Negate(Box<Typed>),
     Not(Box<Typed>),
     /// Computed in the node's own type.
     Arithmetic {
         op: ArithmeticOp,
+        left: Box<Typed>,
+        right: Box<Typed>,
+    },
+    /// `&`, `|` or `^` of two `Boolean` values.
+    BooleanBitwise {
+        op: BitwiseOp,
         left: Box<Typed>,
         right: Box<Typed>,
     },
@@ -172,6 +217,29 @@ pub(crate) enum Node {
         right: Box<Typed>,
     },
     IsNull(Box<Typed>),
+    /// A conversion between two different primitive types that keeps null: the node's type
+    /// is the target.
+    Cast(Box<Typed>),
+    /// Java's implicit widening to the node's type, which converts the value that stands
+    /// for null like any other value.
+    Widen(Box<Typed>),
+    /// Both branches have the node's type.
+    Ternary {
+        condition: Box<Typed>,
+        if_true: Box<Typed>,
+        if_false: Box<Typed>,
+    },
+    /// String concatenation; the operands have any type.
+    Concat {
+        left: Box<Typed>,
+        right: Box<Typed>,
+    },
+    /// `int` arguments are of type `Int`.
+    StringMethod {
+        method: StringMethod,
+        receiver: Box<Typed>,
+        arguments: Vec<Typed>,
+    },
 }
 
 /// A type-checked formula.
@@ -224,8 +292,58 @@ fn symbol(op: BinaryOp) -> &'static str {
     }
 }
 
-fn boxed(column_type: ColumnType, node: Node) -> Typed {
+/// The Java name of a column type, for messages.
+fn java_name(column_type: &ColumnType) -> String {
+    match column_type {
+        ColumnType::Boolean => "Boolean".into(),
+        ColumnType::Byte => "byte".into(),
+        ColumnType::Char => "char".into(),
+        ColumnType::Short => "short".into(),
+        ColumnType::Int => "int".into(),
+        ColumnType::Long => "long".into(),
+        ColumnType::Float => "float".into(),
+        ColumnType::Double => "double".into(),
+        ColumnType::String => "String".into(),
+        ColumnType::Instant => "Instant".into(),
+        other => format!("{other:?}"),
+    }
+}
+
+fn typed(column_type: ColumnType, node: Node) -> Typed {
     Typed { column_type, node }
+}
+
+fn is_null_literal(expr: &Expr) -> bool {
+    matches!(expr, Expr::Literal(Literal::Null))
+}
+
+/// What a binary operator does, once `&&` and `||` are set aside.
+enum Family {
+    Arithmetic(ArithmeticOp),
+    Bitwise(BitwiseOp),
+    Compare(CompareOp),
+    Logical(LogicalOp),
+}
+
+fn family(op: BinaryOp) -> Family {
+    match op {
+        BinaryOp::Add => Family::Arithmetic(ArithmeticOp::Add),
+        BinaryOp::Subtract => Family::Arithmetic(ArithmeticOp::Subtract),
+        BinaryOp::Multiply => Family::Arithmetic(ArithmeticOp::Multiply),
+        BinaryOp::Divide => Family::Arithmetic(ArithmeticOp::Divide),
+        BinaryOp::Remainder => Family::Arithmetic(ArithmeticOp::Remainder),
+        BinaryOp::Equal => Family::Compare(CompareOp::Equal),
+        BinaryOp::NotEqual => Family::Compare(CompareOp::NotEqual),
+        BinaryOp::Less => Family::Compare(CompareOp::Less),
+        BinaryOp::LessOrEqual => Family::Compare(CompareOp::LessOrEqual),
+        BinaryOp::Greater => Family::Compare(CompareOp::Greater),
+        BinaryOp::GreaterOrEqual => Family::Compare(CompareOp::GreaterOrEqual),
+        BinaryOp::And => Family::Logical(LogicalOp::And),
+        BinaryOp::Or => Family::Logical(LogicalOp::Or),
+        BinaryOp::BitAnd => Family::Bitwise(BitwiseOp::And),
+        BinaryOp::BitOr => Family::Bitwise(BitwiseOp::Or),
+        BinaryOp::BitXor => Family::Bitwise(BitwiseOp::Xor),
+    }
 }
 
 struct Checker<'a> {
@@ -238,7 +356,7 @@ impl Checker<'_> {
         match expr {
             Expr::Column(name) => self.column(name),
             Expr::Literal(literal) => literal_type(literal)
-                .map(|column_type| boxed(column_type, Node::Literal(literal.clone()))),
+                .map(|column_type| typed(column_type, Node::Literal(literal.clone()))),
             Expr::RowVariable(variable) => Err(unsupported(format!("row variable {variable:?}"))),
             Expr::Unary { op, operand } => self.unary(*op, operand),
             Expr::Binary { op, left, right } => self.binary(*op, left, right),
@@ -246,9 +364,17 @@ impl Checker<'_> {
                 function,
                 arguments,
             } => self.call(function, arguments),
-            Expr::Ternary { .. } => Err(unsupported("ternary operator (?:)")),
-            Expr::Cast { .. } => Err(unsupported("cast")),
-            Expr::MethodCall { method, .. } => Err(unsupported(format!("method call .{method}()"))),
+            Expr::Ternary {
+                condition,
+                if_true,
+                if_false,
+            } => self.ternary(condition, if_true, if_false),
+            Expr::Cast { to, operand } => self.cast(to, operand),
+            Expr::MethodCall {
+                receiver,
+                method,
+                arguments,
+            } => self.method_call(receiver, method, arguments),
             Expr::ColumnVector(name) => Err(unsupported(format!("column array {name}_"))),
             Expr::ColumnArrayAccess { column, .. } => {
                 Err(unsupported(format!("column array access {column}_[...]")))
@@ -293,29 +419,38 @@ impl Checker<'_> {
                 self.columns.len() - 1
             }
         };
-        Ok(boxed(column_type, Node::Column(slot)))
+        Ok(typed(column_type, Node::Column(slot)))
     }
 
     /// Behavior: `QueryLanguageParser#visit(UnaryExpr)`: `-` resolves to
-    /// `QueryLanguageFunctionUtils#negate`, which exists for the numeric types, and `!` to
-    /// `#not(Boolean)` or Java's own `!`.
+    /// `QueryLanguageFunctionUtils#negate`, and `!` to `#not(Boolean)` or Java's own `!`.
+    /// The visitor then asserts that the method returns the operand's type. `#negate(byte)`,
+    /// `#negate(short)` and `#negate(char)` return `int`, so Java refuses to negate a
+    /// `byte`, `short` or `char` with an assertion failure.
     fn unary(&mut self, op: UnaryOp, operand: &Expr) -> Result<Typed, FormulaError> {
         let operand = self.check(operand)?;
         match op {
-            UnaryOp::Negate => match Numeric::of(&operand.column_type) {
-                Some(numeric) => Ok(boxed(
-                    numeric.column_type(),
-                    Node::Negate(Box::new(operand)),
-                )),
-                None => Err(type_error(format!(
-                    "cannot negate a value of type {:?}",
-                    operand.column_type
+            UnaryOp::Negate => match operand.column_type {
+                ColumnType::Int | ColumnType::Long | ColumnType::Float | ColumnType::Double => Ok(
+                    typed(operand.column_type.clone(), Node::Negate(Box::new(operand))),
+                ),
+                ColumnType::Byte | ColumnType::Short | ColumnType::Char => {
+                    Err(type_error(format!(
+                        "cannot negate a value of type {}: negate returns int, and Java's \
+                         formula parser asserts that it returns the operand's type",
+                        java_name(&operand.column_type)
+                    )))
+                }
+                ref other => Err(type_error(format!(
+                    "cannot negate a value of type {}",
+                    java_name(other)
                 ))),
             },
             UnaryOp::Not => match operand.column_type {
-                ColumnType::Boolean => Ok(boxed(ColumnType::Boolean, Node::Not(Box::new(operand)))),
-                other => Err(type_error(format!(
-                    "cannot apply ! to a value of type {other:?}"
+                ColumnType::Boolean => Ok(typed(ColumnType::Boolean, Node::Not(Box::new(operand)))),
+                ref other => Err(type_error(format!(
+                    "cannot apply ! to a value of type {}",
+                    java_name(other)
                 ))),
             },
             UnaryOp::BitNot => Err(type_error(
@@ -324,86 +459,86 @@ impl Checker<'_> {
         }
     }
 
+    /// Behavior: `QueryLanguageParser#visit(BinaryExpr)`, in its order: `+` with a `String`
+    /// on either side is concatenation; `&&` and `||` are Java's own operators; `x == null`
+    /// is `isNull(x)`; everything else is a method of `QueryLanguageFunctionUtils` named
+    /// after the operator.
     fn binary(&mut self, op: BinaryOp, left: &Expr, right: &Expr) -> Result<Typed, FormulaError> {
-        let (arithmetic, compare) = match op {
-            BinaryOp::Add => (Some(ArithmeticOp::Add), None),
-            BinaryOp::Subtract => (Some(ArithmeticOp::Subtract), None),
-            BinaryOp::Multiply => (Some(ArithmeticOp::Multiply), None),
-            BinaryOp::Divide => (Some(ArithmeticOp::Divide), None),
-            BinaryOp::Remainder => (Some(ArithmeticOp::Remainder), None),
-            BinaryOp::Equal => (None, Some(CompareOp::Equal)),
-            BinaryOp::NotEqual => (None, Some(CompareOp::NotEqual)),
-            BinaryOp::Less => (None, Some(CompareOp::Less)),
-            BinaryOp::LessOrEqual => (None, Some(CompareOp::LessOrEqual)),
-            BinaryOp::Greater => (None, Some(CompareOp::Greater)),
-            BinaryOp::GreaterOrEqual => (None, Some(CompareOp::GreaterOrEqual)),
-            BinaryOp::And => return self.logical(LogicalOp::And, left, right),
-            BinaryOp::Or => return self.logical(LogicalOp::Or, left, right),
-            BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitXor => {
-                return Err(unsupported(format!("bitwise operator {}", symbol(op))))
-            }
-        };
+        let family = family(op);
+        if let Family::Logical(op) = family {
+            return self.logical(op, left, right);
+        }
 
-        let null_literal = |expr: &Expr| matches!(expr, Expr::Literal(Literal::Null));
-        if null_literal(left) || null_literal(right) {
-            return self.null_comparison(op, left, right);
+        let null_left = is_null_literal(left);
+        let null_right = is_null_literal(right);
+        if null_left || null_right {
+            if matches!(op, BinaryOp::Equal | BinaryOp::NotEqual) {
+                return self.null_comparison(op, left, right);
+            }
+            if op == BinaryOp::Add && !(null_left && null_right) {
+                // Java prints `s + null` as it is, and its string conversion of null is
+                // "null".
+                let other = self.check(if null_left { right } else { left })?;
+                if other.column_type == ColumnType::String {
+                    let null = typed(ColumnType::String, Node::Null);
+                    let (left, right) = if null_left {
+                        (null, other)
+                    } else {
+                        (other, null)
+                    };
+                    return Ok(concat(left, right));
+                }
+            }
+            // No method of `QueryLanguageFunctionUtils` takes null for a primitive, and
+            // `plus(null, null)` matches none either. Java does accept null beside a
+            // `Boolean`, `String` or `Instant` operand, as an `Object` or `Comparable`.
+            let rejected = match (null_left, null_right) {
+                (true, true) => op == BinaryOp::Add,
+                (true, false) => Numeric::of(&self.check(right)?.column_type).is_some(),
+                _ => Numeric::of(&self.check(left)?.column_type).is_some(),
+            };
+            return Err(if rejected {
+                type_error(format!("cannot apply {} to null", symbol(op)))
+            } else {
+                unsupported(format!("null literal as an operand of {}", symbol(op)))
+            });
         }
 
         let left = self.check(left)?;
         let right = self.check(right)?;
-        let numeric = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type));
-        let either = |wanted: ColumnType| left.column_type == wanted || right.column_type == wanted;
-
-        if let Some(op) = arithmetic {
-            let Some((l, r)) = numeric else {
-                return Err(if op == ArithmeticOp::Add && either(ColumnType::String) {
-                    unsupported("string concatenation with +")
-                } else if either(ColumnType::Instant) {
-                    unsupported("arithmetic on Instant values")
-                } else {
-                    type_error(format!(
-                        "cannot apply {} to {:?} and {:?}",
-                        symbol(self::binary_op(op)),
-                        left.column_type,
-                        right.column_type
-                    ))
-                });
-            };
-            let result = arithmetic_type(op, l, r);
-            return Ok(boxed(
-                result.column_type(),
-                Node::Arithmetic {
-                    op,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-            ));
+        match family {
+            Family::Arithmetic(arithmetic) => self.arithmetic(op, arithmetic, left, right),
+            Family::Bitwise(bitwise) => bitwise_operator(op, bitwise, left, right),
+            Family::Compare(compare) => comparison(compare, left, right),
+            Family::Logical(_) => unreachable!("handled above"),
         }
+    }
 
-        let Some(op) = compare else {
-            unreachable!("every binary operator is arithmetic, a comparison or logical");
+    fn arithmetic(
+        &mut self,
+        spelled: BinaryOp,
+        op: ArithmeticOp,
+        left: Typed,
+        right: Typed,
+    ) -> Result<Typed, FormulaError> {
+        let either = |wanted: ColumnType| left.column_type == wanted || right.column_type == wanted;
+        if op == ArithmeticOp::Add && either(ColumnType::String) {
+            return Ok(concat(left, right));
+        }
+        let Some((l, r)) = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type))
+        else {
+            return Err(if either(ColumnType::Instant) {
+                // `plus(Instant, long)` and its relatives are functions of the library.
+                unsupported("arithmetic on Instant values")
+            } else {
+                operands_error(spelled, &left, &right)
+            });
         };
-        let domain = match (numeric, &left.column_type, &right.column_type) {
-            (Some((l, r)), _, _) => numeric_compare_domain(op, l, r),
-            // `eq(Object,Object)` is `equals`; `compareTo(Comparable,Comparable)` is
-            // `String#compareTo` and `Instant#compareTo`.
-            (None, ColumnType::String, ColumnType::String) => CompareDomain::String,
-            (None, ColumnType::Instant, ColumnType::Instant) => CompareDomain::Integral,
-            (None, ColumnType::Boolean, ColumnType::Boolean) if op.is_equality() => {
-                CompareDomain::Boolean
-            }
-            (None, ColumnType::Boolean, ColumnType::Boolean) => {
-                return Err(unsupported("ordering comparison of Boolean values"))
-            }
-            (None, l, r) => {
-                return Err(unsupported(format!("comparison of {l:?} with {r:?}")));
-            }
-        };
-        Ok(boxed(
-            ColumnType::Boolean,
-            Node::Compare {
+        let result = arithmetic_type(op, l, r);
+        Ok(typed(
+            result.column_type(),
+            Node::Arithmetic {
                 op,
-                domain,
                 left: Box::new(left),
                 right: Box::new(right),
             },
@@ -424,46 +559,224 @@ impl Checker<'_> {
             }
             (Expr::Literal(Literal::Null), operand) | (operand, _) => operand,
         };
-        let is_null = |checker: &mut Self| -> Result<Typed, FormulaError> {
-            let operand = checker.check(operand)?;
-            Ok(boxed(ColumnType::Boolean, Node::IsNull(Box::new(operand))))
-        };
-        match op {
-            BinaryOp::Equal => is_null(self),
-            BinaryOp::NotEqual => Ok(boxed(
-                ColumnType::Boolean,
-                Node::Not(Box::new(is_null(self)?)),
-            )),
-            _ => Err(unsupported(format!(
-                "null literal as an operand of {}",
-                symbol(op)
-            ))),
-        }
+        let operand = self.check(operand)?;
+        let is_null = typed(ColumnType::Boolean, Node::IsNull(Box::new(operand)));
+        Ok(match op {
+            BinaryOp::Equal => is_null,
+            _ => typed(ColumnType::Boolean, Node::Not(Box::new(is_null))),
+        })
     }
 
     /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` emits `&&` and `||` as Java's own
     /// operators, which javac accepts only for `boolean` and `Boolean` operands.
     fn logical(&mut self, op: LogicalOp, left: &Expr, right: &Expr) -> Result<Typed, FormulaError> {
-        let left = self.check(left)?;
-        let right = self.check(right)?;
-        for operand in [&left, &right] {
+        let spelled = match op {
+            LogicalOp::And => "&&",
+            LogicalOp::Or => "||",
+        };
+        let mut operand = |expr: &Expr| -> Result<Box<Typed>, FormulaError> {
+            if is_null_literal(expr) {
+                return Err(type_error(format!("cannot apply {spelled} to null")));
+            }
+            let operand = self.check(expr)?;
             if operand.column_type != ColumnType::Boolean {
-                let spelled = match op {
-                    LogicalOp::And => "&&",
-                    LogicalOp::Or => "||",
-                };
                 return Err(type_error(format!(
-                    "cannot apply {spelled} to a value of type {:?}",
-                    operand.column_type
+                    "cannot apply {spelled} to a value of type {}",
+                    java_name(&operand.column_type)
                 )));
             }
-        }
-        Ok(boxed(
+            Ok(Box::new(operand))
+        };
+        let left = operand(left)?;
+        let right = operand(right)?;
+        Ok(typed(
             ColumnType::Boolean,
-            Node::Logical {
-                op,
-                left: Box::new(left),
-                right: Box::new(right),
+            Node::Logical { op, left, right },
+        ))
+    }
+
+    /// Behavior: `QueryLanguageParser#visit(ConditionalExpr)`. A `null` branch takes the
+    /// type of the other branch (`NULL_INT` and its relatives for a primitive). The branch
+    /// types must then agree as [`ternary_type`] says, and Java converts the narrower
+    /// numeric branch by plain widening, which does not keep null: `c ? IntCol : LongCol` is
+    /// -2147483648 where `IntCol` is null.
+    fn ternary(
+        &mut self,
+        condition: &Expr,
+        if_true: &Expr,
+        if_false: &Expr,
+    ) -> Result<Typed, FormulaError> {
+        if is_null_literal(condition) {
+            return Err(type_error("the condition of ?: cannot be null"));
+        }
+        let condition = self.check(condition)?;
+        if condition.column_type != ColumnType::Boolean {
+            return Err(type_error(format!(
+                "the condition of ?: has type {}, not boolean",
+                java_name(&condition.column_type)
+            )));
+        }
+        let null_of = |branch: &Typed| typed(branch.column_type.clone(), Node::Null);
+        let (if_true, if_false) = match (is_null_literal(if_true), is_null_literal(if_false)) {
+            (true, true) => return Err(unsupported("null in both branches of ?:")),
+            (true, false) => {
+                let if_false = self.check(if_false)?;
+                (null_of(&if_false), if_false)
+            }
+            (false, true) => {
+                let if_true = self.check(if_true)?;
+                let null = null_of(&if_true);
+                (if_true, null)
+            }
+            (false, false) => (self.check(if_true)?, self.check(if_false)?),
+        };
+        let Some(result) = ternary_type(&if_true.column_type, &if_false.column_type) else {
+            return Err(type_error(format!(
+                "Incompatible types in condition operation not supported : {} {}",
+                java_name(&if_true.column_type),
+                java_name(&if_false.column_type)
+            )));
+        };
+        let widen = |branch: Typed| {
+            if branch.column_type == result {
+                branch
+            } else {
+                typed(result.clone(), Node::Widen(Box::new(branch)))
+            }
+        };
+        Ok(typed(
+            result.clone(),
+            Node::Ternary {
+                condition: Box::new(condition),
+                if_true: Box::new(widen(if_true)),
+                if_false: Box::new(widen(if_false)),
+            },
+        ))
+    }
+
+    /// Behavior: `QueryLanguageParser#visit(CastExpr)`. A cast between two different
+    /// primitive types becomes `intCast` and its relatives in
+    /// `QueryLanguageFunctionUtils`, which keep null. A cast to the operand's own type does
+    /// nothing. `Boolean` converts to and from nothing else. A cast to `Boolean`, `String`
+    /// or `Instant` is Java's own cast, which javac accepts for the type itself and for
+    /// `null`. A cast of `null` to a primitive is `intCast(Object)` or one of its relatives,
+    /// which return the type's null value for null.
+    fn cast(&mut self, to: &ColumnType, operand: &Expr) -> Result<Typed, FormulaError> {
+        let primitive = |column_type: &ColumnType| Numeric::of(column_type).is_some();
+        if is_null_literal(operand) {
+            return Ok(typed(to.clone(), Node::Null));
+        }
+        let operand = self.check(operand)?;
+        let from = operand.column_type.clone();
+        if from == *to {
+            return Ok(operand);
+        }
+        if primitive(to) && primitive(&from) {
+            return Ok(typed(to.clone(), Node::Cast(Box::new(operand))));
+        }
+        if primitive(to) && matches!(from, ColumnType::String | ColumnType::Instant) {
+            // `intCast(Object)`: null for null, and otherwise a ClassCastException.
+            return Err(unsupported(format!(
+                "cast of {} to {}",
+                java_name(&from),
+                java_name(to)
+            )));
+        }
+        Err(type_error(format!(
+            "Incompatible types; {} cannot be converted to {}",
+            java_name(&from),
+            java_name(to)
+        )))
+    }
+
+    /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` prints an instance method call
+    /// as it is, after `#convertParameters` has wrapped each `byte`, `short` or `char`
+    /// argument of an `int` parameter in `intCast`.
+    fn method_call(
+        &mut self,
+        receiver: &Expr,
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        if let Expr::Column(name) = receiver {
+            let column = self.definition.index_of(name).is_some()
+                || name
+                    .strip_suffix('_')
+                    .is_some_and(|base| self.definition.index_of(base).is_some());
+            if !column {
+                return Err(unsupported(format!("static method call {name}.{method}()")));
+            }
+        }
+        let receiver = self.check(receiver)?;
+        if Numeric::of(&receiver.column_type).is_some() {
+            return Err(type_error(format!(
+                "cannot call .{method}() on a value of the primitive type {}",
+                java_name(&receiver.column_type)
+            )));
+        }
+        if receiver.column_type != ColumnType::String {
+            return Err(unsupported(format!(
+                "method call .{method}() on a value of type {}",
+                java_name(&receiver.column_type)
+            )));
+        }
+        let Some(string_method) = StringMethod::named(method) else {
+            return Err(if methods::is_string_method(method) {
+                unsupported(format!("method call String.{method}()"))
+            } else {
+                type_error(format!("java.lang.String has no method {method}"))
+            });
+        };
+        let Some(parameters) = string_method
+            .signatures()
+            .iter()
+            .find(|parameters| parameters.len() == arguments.len())
+        else {
+            let count = arguments.len();
+            return Err(if string_method.other_arities().contains(&count) {
+                unsupported(format!(
+                    "method call String.{method}() with {count} arguments"
+                ))
+            } else {
+                type_error(format!("String.{method}() does not take {count} arguments"))
+            });
+        };
+        let mut checked = Vec::with_capacity(arguments.len());
+        for (argument, parameter) in arguments.iter().zip(parameters.iter()) {
+            if is_null_literal(argument) {
+                return Err(unsupported(format!(
+                    "null literal as an argument of String.{method}()"
+                )));
+            }
+            let argument = self.check(argument)?;
+            let accepted = match (parameter, &argument.column_type) {
+                (Parameter::Int, ColumnType::Int) | (Parameter::String, ColumnType::String) => {
+                    argument
+                }
+                (Parameter::Int, ColumnType::Byte | ColumnType::Short | ColumnType::Char) => {
+                    typed(ColumnType::Int, Node::Cast(Box::new(argument)))
+                }
+                (_, other) if string_method.has_other_overloads() => {
+                    return Err(unsupported(format!(
+                        "method call String.{method}() with an argument of type {}",
+                        java_name(other)
+                    )))
+                }
+                (_, other) => {
+                    return Err(type_error(format!(
+                        "String.{method}() does not take an argument of type {}",
+                        java_name(other)
+                    )))
+                }
+            };
+            checked.push(accepted);
+        }
+        Ok(typed(
+            string_method.result_type(),
+            Node::StringMethod {
+                method: string_method,
+                receiver: Box::new(receiver),
+                arguments: checked,
             },
         ))
     }
@@ -479,27 +792,115 @@ impl Checker<'_> {
                     )));
                 };
                 let argument = self.check(argument)?;
-                Ok(boxed(ColumnType::Boolean, Node::IsNull(Box::new(argument))))
+                Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))))
             }
         }
     }
 }
 
-fn binary_op(op: ArithmeticOp) -> BinaryOp {
-    match op {
-        ArithmeticOp::Add => BinaryOp::Add,
-        ArithmeticOp::Subtract => BinaryOp::Subtract,
-        ArithmeticOp::Multiply => BinaryOp::Multiply,
-        ArithmeticOp::Divide => BinaryOp::Divide,
-        ArithmeticOp::Remainder => BinaryOp::Remainder,
-    }
+fn operands_error(op: BinaryOp, left: &Typed, right: &Typed) -> FormulaError {
+    type_error(format!(
+        "cannot apply {} to {} and {}",
+        symbol(op),
+        java_name(&left.column_type),
+        java_name(&right.column_type)
+    ))
+}
+
+fn concat(left: Typed, right: Typed) -> Typed {
+    typed(
+        ColumnType::String,
+        Node::Concat {
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+    )
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#binaryAnd`, `#binaryOr` and `#xor`. The overloads
+/// take `(int, int)`, `(long, long)`, two operands of one narrower integer type, or
+/// `(Boolean, Boolean)`; `QueryLanguageParser#getMethod` lets a narrower integer stand in for
+/// an `int` or `long` parameter, and nothing stand in for a `float` or `double`, which have no
+/// overload.
+fn bitwise_operator(
+    spelled: BinaryOp,
+    op: BitwiseOp,
+    left: Typed,
+    right: Typed,
+) -> Result<Typed, FormulaError> {
+    let (node_type, node) = match (&left.column_type, &right.column_type) {
+        (ColumnType::Boolean, ColumnType::Boolean) => (
+            ColumnType::Boolean,
+            Node::BooleanBitwise {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        ),
+        (l, r) => {
+            let integral = Numeric::of(l)
+                .zip(Numeric::of(r))
+                .map(|(l, r)| l.max(r))
+                .filter(|widest| *widest <= Numeric::Long);
+            let Some(widest) = integral else {
+                return Err(operands_error(spelled, &left, &right));
+            };
+            (
+                widest.column_type(),
+                Node::Arithmetic {
+                    op: ArithmeticOp::Bitwise(op),
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+            )
+        }
+    };
+    Ok(typed(node_type, node))
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#eq`, `#less` and their relatives, as
+/// `QueryLanguageParser#getMethod` resolves them. Numbers and chars compare as
+/// [`numeric_compare_domain`] says. Two values of one other type go to `eq(Object, Object)`,
+/// which is `equals`, and to `compareTo(Comparable, Comparable)`. Two values of unrelated
+/// types also go to `eq(Object, Object)`: a primitive is boxed and never equals a value of
+/// another class, so they are equal only when both are null. An ordering comparison of
+/// unrelated types compiles in Java and throws `ClassCastException` when it runs.
+fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
+    let numeric = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type));
+    let domain = match (numeric, &left.column_type, &right.column_type) {
+        (Some((l, r)), _, _) => numeric_compare_domain(op, l, r),
+        (None, ColumnType::String, ColumnType::String) => CompareDomain::String,
+        (None, ColumnType::Instant, ColumnType::Instant) => CompareDomain::Integral,
+        (None, ColumnType::Boolean, ColumnType::Boolean) => CompareDomain::Boolean,
+        (None, _, _) if op.is_equality() => CompareDomain::Unrelated,
+        (None, l, r) => {
+            return Err(unsupported(format!(
+                "ordering comparison of {} with {}",
+                java_name(l),
+                java_name(r)
+            )));
+        }
+    };
+    Ok(typed(
+        ColumnType::Boolean,
+        Node::Compare {
+            op,
+            domain,
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+    ))
 }
 
 /// Behavior: the literal visitors of `QueryLanguageParser`. A `null` literal has no type of
-/// its own and is accepted only where `null_comparison` handles it.
+/// its own; the operators that give it one handle it before they reach here.
 fn literal_type(literal: &Literal) -> Result<ColumnType, FormulaError> {
     Ok(match literal {
-        Literal::Null => return Err(unsupported("null literal outside == and !=")),
+        Literal::Null => {
+            return Err(unsupported(
+                "null literal outside ==, !=, ?:, a cast and string concatenation",
+            ))
+        }
         Literal::Boolean(_) => ColumnType::Boolean,
         Literal::Char(_) => ColumnType::Char,
         Literal::Int(_) => ColumnType::Int,
@@ -656,5 +1057,59 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The type `QueryLanguageParser#visit(ConditionalExpr)` returns for `c ? a : b`, for all
+    /// 49 pairs of primitive numeric types, by `#dhqlIsAssignableFrom`: the first letter of
+    /// the type, or `-` where it throws "Incompatible types in condition operation".
+    #[test]
+    fn a_ternary_takes_the_promoted_type_only_when_one_branch_has_it() {
+        let types = [
+            ColumnType::Byte,
+            ColumnType::Short,
+            ColumnType::Char,
+            ColumnType::Int,
+            ColumnType::Long,
+            ColumnType::Float,
+            ColumnType::Double,
+        ];
+        let expected = [
+            // byte short char int long float double
+            "b--ilfd", // byte
+            "-s-ilfd", // short
+            "--cilfd", // char
+            "iiiilfd", // int
+            "lllllfd", // long
+            "ffffffd", // float
+            "ddddddd", // double
+        ];
+        let actual: Vec<String> = types
+            .iter()
+            .map(|if_true| {
+                types
+                    .iter()
+                    .map(|if_false| match ternary_type(if_true, if_false) {
+                        Some(ColumnType::Byte) => 'b',
+                        Some(ColumnType::Short) => 's',
+                        Some(ColumnType::Char) => 'c',
+                        Some(ColumnType::Int) => 'i',
+                        Some(ColumnType::Long) => 'l',
+                        Some(ColumnType::Float) => 'f',
+                        Some(ColumnType::Double) => 'd',
+                        _ => '-',
+                    })
+                    .collect()
+            })
+            .collect();
+        assert_eq!(actual, expected);
+        for other in [ColumnType::Boolean, ColumnType::String, ColumnType::Instant] {
+            assert_eq!(ternary_type(&other, &other), Some(other.clone()));
+            assert_eq!(ternary_type(&other, &ColumnType::Int), None);
+            assert_eq!(ternary_type(&ColumnType::Double, &other), None);
+        }
+        assert_eq!(
+            ternary_type(&ColumnType::String, &ColumnType::Instant),
+            None
+        );
     }
 }

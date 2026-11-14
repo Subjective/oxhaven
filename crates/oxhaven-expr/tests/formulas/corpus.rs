@@ -223,8 +223,7 @@ fn update_and_view_formulas_match_the_recorded_java_results() {
     let checked = [
         assert_formulas("update_float_special", "u", &[]),
         assert_formulas("update_int_overflow", "u", &[]),
-        // String concatenation is outside the subset.
-        assert_formulas("update_null_propagation", "u", &["M = S + `x`"]),
+        assert_formulas("update_null_propagation", "u", &[]),
         assert_formulas("view_arithmetic", "ints", &[]),
         assert_formulas("view_arithmetic", "floats", &[]),
         assert_formulas("view_arithmetic", "small", &[]),
@@ -232,7 +231,7 @@ fn update_and_view_formulas_match_the_recorded_java_results() {
         assert_formulas("null_sentinel_inputs", "plus", &[]),
     ];
     // Guards against a scenario file that silently lists no formulas.
-    assert_eq!(checked, [8, 8, 7, 6, 6, 4, 4, 4]);
+    assert_eq!(checked, [8, 8, 8, 6, 6, 4, 4, 4]);
 }
 
 /// These filters are formulas in Java too: `ConditionFilter` compiles them through

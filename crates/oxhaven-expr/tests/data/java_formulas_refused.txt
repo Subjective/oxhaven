@@ -1,0 +1,127 @@
+java-fails	update	(int) S	cast of String to int
+java-fails	update	(int) SN	cast of String to int
+java-fails	update	(long) T	cast of Instant to long
+java-accepts	update	(Integer) I	cast to Integer
+java-accepts	update	(Object) I	cast to Object
+java-accepts	update	(Double) D	cast to Double
+java-rejects	update	(int[]) I	cast to int[]
+java-fails	update	(char) S	cast of String to char
+java-accepts	update	BN ? null : null	null in both branches of ?:
+java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
+java-accepts	update	B & null	null literal as an operand of &
+java-fails	update	I < S	ordering comparison of int with String
+java-fails	update	S < I	ordering comparison of String with int
+java-fails	update	S < T	ordering comparison of String with Instant
+java-fails	update	T < S	ordering comparison of Instant with String
+java-fails	update	B < I	ordering comparison of Boolean with int
+java-fails	update	B < S	ordering comparison of Boolean with String
+java-fails	update	T < L	ordering comparison of Instant with long
+java-fails	update	T > I	ordering comparison of Instant with int
+java-accepts	update	S < null	null literal as an operand of <
+java-accepts	update	null == null	comparison of null with null
+java-accepts	update	null != null	comparison of null with null
+java-accepts	update	T + 1	arithmetic on Instant values
+java-accepts	update	T - T	arithmetic on Instant values
+java-rejects	update	T + T	arithmetic on Instant values
+java-accepts	update	1.5F	float literal with an uppercase F suffix 1.5F
+java-accepts	update	1F	float literal with an uppercase F suffix 1F
+java-accepts	update	1e3F	float literal with an uppercase F suffix 1e3F
+java-rejects	update	'ab'	time literal 'ab'
+java-accepts	update	`\ud83d`	unpaired surrogate in a string literal
+java-rejects	update	`\u0022`	unicode escape of a quote, backslash or line break
+java-rejects	update	`\u005c`	unicode escape of a quote, backslash or line break
+java-rejects	update	`\u000a`	unicode escape of a quote, backslash or line break
+java-accepts	update	`a\sb`	\s escape in a string literal
+java-accepts	update	`a\sb`.length()	\s escape in a string literal
+java-accepts	update	null	null literal outside ==, !=, ?:, a cast and string concatenation
+java-rejects	update	'2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
+java-rejects	update	'2262-04-11T23:47:16.854775808 UTC'	time literal '2262-04-11T23:47:16.854775808 UTC' outside the range of a 64-bit nanosecond timestamp
+java-accepts	update	'1677-09-21T00:12:43.145224192 UTC'	time literal '1677-09-21T00:12:43.145224192 UTC' outside the range of a 64-bit nanosecond timestamp
+java-rejects	update	'9999-01-01 UTC'	time literal '9999-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
+java-accepts	update	'0001-01-01 UTC'	time literal '0001-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
+java-accepts	update	'2023-02-30T00:00:00 UTC'	time literal '2023-02-30T00:00:00 UTC'
+java-rejects	update	'2023-02-30T00:00:00Z'	time literal '2023-02-30T00:00:00Z'
+java-accepts	update	'2023-11-14T24:00:00 UTC'	time literal '2023-11-14T24:00:00 UTC'
+java-rejects	update	'2023-11-14T22:13:20 NY'	time literal '2023-11-14T22:13:20 NY'
+java-accepts	update	'2023-11-14T22:13:20+01:00'	time literal '2023-11-14T22:13:20+01:00'
+java-accepts	update	'2023-11-14'	time literal '2023-11-14'
+java-rejects	update	'2023-11-14T22:13:20'	time literal '2023-11-14T22:13:20'
+java-accepts	update	'2023-1-4T22:13:20 UTC'	time literal '2023-1-4T22:13:20 UTC'
+java-accepts	update	'2023-11-14T2:13:20 UTC'	time literal '2023-11-14T2:13:20 UTC'
+java-accepts	update	'2023-11-14T22:13:20. UTC'	time literal '2023-11-14T22:13:20. UTC'
+java-accepts	update	'2023-11-14t22:13:20 UTC'	time literal '2023-11-14t22:13:20 UTC'
+java-rejects	update	'2023-11-14T22:13:20 utc'	time literal '2023-11-14T22:13:20 utc'
+java-accepts	update	'1700000000'	time literal '1700000000'
+java-accepts	update	'PT1H'	time literal 'PT1H'
+java-accepts	update	'P1D'	time literal 'P1D'
+java-accepts	update	'12:30'	time literal '12:30'
+java-accepts	update	'UTC'	time literal 'UTC'
+java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
+java-accepts	update	`'PT1H'`	time literal inside a string literal
+java-rejects	update	`'x y'`	time literal inside a string literal
+java-rejects	update	'\'' + SN + 'a'	time literal ' + SN + '
+java-accepts	update	T + 'PT1H'	time literal 'PT1H'
+java-accepts	update	T - 'PT1H'	time literal 'PT1H'
+java-accepts	update	T - T2	arithmetic on Instant values
+java-accepts	update	T + 1000000000L	arithmetic on Instant values
+java-accepts	update	SN.startsWith(`a`, 1)	method call String.startsWith() with 2 arguments
+java-accepts	update	SN.indexOf(C)	method call String.indexOf() with an argument of type char
+java-accepts	update	SN.indexOf(I)	method call String.indexOf() with an argument of type int
+java-accepts	update	SN.indexOf('l')	method call String.indexOf() with an argument of type char
+java-accepts	update	SN.indexOf(`l`, 3)	method call String.indexOf() with 2 arguments
+java-accepts	update	SN.equals(I)	method call String.equals() with an argument of type int
+java-accepts	update	SN.equals(B)	method call String.equals() with an argument of type Boolean
+java-accepts	update	SN.equalsIgnoreCase(SM)	method call String.equalsIgnoreCase()
+java-accepts	update	SN.replace(`a`, `b`)	method call String.replace()
+java-accepts	update	SN.replace('a', 'b')	method call String.replace()
+java-accepts	update	SN.hashCode()	method call String.hashCode()
+java-accepts	update	SN.toString()	method call String.toString()
+java-accepts	update	SN.isBlank()	method call String.isBlank()
+java-accepts	update	SN.strip()	method call String.strip()
+java-accepts	update	SN.lastIndexOf(`l`)	method call String.lastIndexOf()
+java-accepts	update	SN.matches(`a.*`)	method call String.matches()
+java-accepts	update	SN.split(`l`)	method call String.split()
+java-rejects	update	SN.length	field access .length
+java-accepts	update	SN.equals(null)	null literal as an argument of String.equals()
+java-fails	update	SN.contains(null)	null literal as an argument of String.contains()
+java-fails	update	SN.codePointAt(0)	method call String.codePointAt()
+java-accepts	update	SN.repeat(2)	method call String.repeat()
+java-accepts	update	SN.intern()	method call String.intern()
+java-accepts	update	SN.chars()	method call String.chars()
+java-accepts	update	SN.getBytes()	method call String.getBytes()
+java-accepts	update	`a😀b`.substring(2)	the result holds an unpaired UTF-16 surrogate, which a UTF-8 string cannot
+java-fails	update	B.booleanValue()	method call .booleanValue() on a value of type Boolean
+java-fails	update	T.toString()	method call .toString() on a value of type Instant
+java-fails	update	T.getNano()	method call .getNano() on a value of type Instant
+java-rejects	update	Math.abs(I)	static method call Math.abs()
+java-accepts	update	String.valueOf(I)	static method call String.valueOf()
+java-accepts	update	Integer.toString(I)	static method call Integer.toString()
+java-accepts	update	Math.PI	field access .PI
+java-accepts	update	abs(I)	function abs()
+java-accepts	update	isNull(null)	null literal outside ==, !=, ?:, a cast and string concatenation
+java-accepts	update	i	row variable I
+java-accepts	update	ii	row variable Ii
+java-accepts	update	k	row variable K
+java-accepts	update	I_[i - 1]	column array access I_[...]
+java-accepts	update	I_	column array I_
+java-accepts	update	I_[0]	column array access I_[...]
+java-accepts	update	I_.size()	column array I_
+java-accepts	update	new String(`a`)	object creation (new)
+java-rejects	where	null	null literal outside ==, !=, ?:, a cast and string concatenation
+java-accepts	update	0x1p-1023	hexadecimal floating point literal 0x1p-1023
+java-accepts	update	0x1p-1074	hexadecimal floating point literal 0x1p-1074
+java-rejects	update	0x1p-1075	hexadecimal floating point literal 0x1p-1075
+java-accepts	update	0x1p-127f	hexadecimal floating point literal 0x1p-127f
+java-accepts	update	0x1.00000000000000001p0	hexadecimal floating point literal 0x1.00000000000000001p0
+java-accepts	update	0x1.8p1F	float literal with an uppercase F suffix 0x1.8p1F
+java-accepts	update	0.1F	float literal with an uppercase F suffix 0.1F
+java-accepts	update	S.valueOf(I)	method call String.valueOf()
+java-fails	update	S.join(S, S)	method call String.join()
+java-fails	update	S.startsWith(S, 1)	method call String.startsWith() with 2 arguments
+java-rejects	update	S.toUpperCase(S)	method call String.toUpperCase() with 1 arguments
+java-fails	update	S.indexOf(S, 1)	method call String.indexOf() with 2 arguments
+java-fails	update	S.hashCode()	method call String.hashCode()
+java-rejects	update	null - null	null literal as an operand of -
+java-accepts	update	BN & null	null literal as an operand of &
+java-accepts	update	SN < null	null literal as an operand of <
+java-rejects	update	null < null	null literal as an operand of <

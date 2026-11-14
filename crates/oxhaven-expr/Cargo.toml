@@ -12,4 +12,5 @@ arrow.workspace = true
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 
 [dev-dependencies]
-serde_json.workspace = true
+# Exact float parsing: the recorded Java results are compared bit for bit.
+serde_json = { workspace = true, features = ["float_roundtrip"] }

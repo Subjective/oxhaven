@@ -4,14 +4,18 @@
 //! `io.deephaven.engine.table.impl.lang.QueryLanguageParser` hands to JavaParser. Constructs
 //! of that grammar that are not built yet are recognized and reported by name, so adding one
 //! means replacing its error with the tree node.
+//!
+//! The parser knows no table and no function library: every call, method call and
+//! `Column_[...]` access becomes a tree node, and the type checker decides what it means.
 
+pub(crate) mod instant;
 mod lexer;
 
-use crate::functions;
 use lexer::{Spanned, Token};
 use oxhaven_contracts::expr::{
     BinaryOp, ColumnAssignment, Expr, FormulaError, Literal, RowVariable, UnaryOp,
 };
+use oxhaven_contracts::schema::ColumnType;
 
 fn syntax(message: impl Into<String>) -> FormulaError {
     FormulaError::Syntax(message.into())
@@ -183,12 +187,21 @@ impl Parser {
         }
     }
 
+    /// An expression, which is a conditional expression: `a ? b : c` groups to the right
+    /// and binds more weakly than every binary operator.
     fn expression(&mut self) -> Result<Expr, FormulaError> {
         let condition = self.binary(0)?;
-        if self.peek_symbol() == Some("?") {
-            return Err(unsupported("ternary operator (?:)"));
+        if !self.eat("?") {
+            return Ok(condition);
         }
-        Ok(condition)
+        let if_true = self.expression()?;
+        self.expect(":")?;
+        let if_false = self.expression()?;
+        Ok(Expr::Ternary {
+            condition: Box::new(condition),
+            if_true: Box::new(if_true),
+            if_false: Box::new(if_false),
+        })
     }
 
     /// Parses binary operators that bind more strongly than `floor`. All of them associate
@@ -196,8 +209,9 @@ impl Parser {
     fn binary(&mut self, floor: u8) -> Result<Expr, FormulaError> {
         let mut left = self.unary()?;
         loop {
+            // `QueryLanguageParser#visit(InstanceOfExpr)` throws.
             if matches!(self.peek(), Some(Token::Identifier(name)) if name == "instanceof") {
-                return Err(unsupported("instanceof"));
+                return Err(syntax("InstanceOfExpr Operation not supported!"));
             }
             let Some((strength, meaning)) = self.peek_symbol().and_then(infix) else {
                 return Ok(left);
@@ -229,7 +243,7 @@ impl Parser {
             Some("++") | Some("--") => {
                 return Err(syntax("increment and decrement are not supported"))
             }
-            Some("(") if self.at_cast() => return Err(unsupported("cast")),
+            Some("(") if self.at_cast() => return self.cast(),
             _ => return self.postfix(),
         };
         self.position += 1;
@@ -274,31 +288,104 @@ impl Parser {
         }
     }
 
+    /// Parses `(type) operand` from its opening parenthesis.
+    ///
+    /// The tree has one node for a cast to a column type, and `boolean` and `Boolean` are
+    /// the same column type while the two casts differ: `(Boolean) x` leaves `x` as it is,
+    /// and `(boolean) x` unboxes it, which throws for null. The second is exactly
+    /// `x ? true : false`, and that is the tree it becomes.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(CastExpr)`.
+    fn cast(&mut self) -> Result<Expr, FormulaError> {
+        self.position += 1;
+        let mut name = String::new();
+        loop {
+            match self.advance() {
+                Some(Token::Identifier(part)) => name.push_str(&part),
+                _ => return Err(syntax("expected a type name in a cast")),
+            }
+            if !self.eat(".") {
+                break;
+            }
+            name.push('.');
+        }
+        while self.eat("[") {
+            self.expect("]")?;
+            name.push_str("[]");
+        }
+        self.expect(")")?;
+        let operand = Box::new(self.unary()?);
+        let to = match name.as_str() {
+            "boolean" => {
+                return Ok(Expr::Ternary {
+                    condition: operand,
+                    if_true: Box::new(Expr::Literal(Literal::Boolean(true))),
+                    if_false: Box::new(Expr::Literal(Literal::Boolean(false))),
+                })
+            }
+            "byte" => ColumnType::Byte,
+            "char" => ColumnType::Char,
+            "short" => ColumnType::Short,
+            "int" => ColumnType::Int,
+            "long" => ColumnType::Long,
+            "float" => ColumnType::Float,
+            "double" => ColumnType::Double,
+            "Boolean" | "java.lang.Boolean" => ColumnType::Boolean,
+            "String" | "java.lang.String" => ColumnType::String,
+            "Instant" | "java.time.Instant" => ColumnType::Instant,
+            other => return Err(unsupported(format!("cast to {other}"))),
+        };
+        Ok(Expr::Cast { to, operand })
+    }
+
     fn postfix(&mut self) -> Result<Expr, FormulaError> {
-        let primary = self.primary()?;
-        match self.peek_symbol() {
-            Some(".") => match (self.peek_at(1), self.peek_at(2)) {
-                (Some(Token::Identifier(name)), Some(Token::Symbol("("))) => {
-                    Err(unsupported(format!("method call .{name}()")))
-                }
-                (Some(Token::Identifier(name)), _) => {
-                    Err(unsupported(format!("field access .{name}")))
-                }
-                _ => {
+        let mut expr = self.primary()?;
+        loop {
+            match self.peek_symbol() {
+                Some(".") => match (self.peek_at(1), self.peek_at(2)) {
+                    (Some(Token::Identifier(name)), Some(Token::Symbol("("))) => {
+                        let method = name.clone();
+                        self.position += 2;
+                        expr = Expr::MethodCall {
+                            receiver: Box::new(expr),
+                            method,
+                            arguments: self.arguments()?,
+                        };
+                    }
+                    (Some(Token::Identifier(name)), _) => {
+                        return Err(unsupported(format!("field access .{name}")))
+                    }
+                    _ => {
+                        self.position += 1;
+                        return Err(self.unexpected());
+                    }
+                },
+                Some("[") => {
+                    // `Column_` is the column as an array, and indexing it reads another row.
+                    let column = match &expr {
+                        Expr::Column(name) => name.strip_suffix('_').filter(|c| !c.is_empty()),
+                        _ => None,
+                    };
+                    let Some(column) = column.map(str::to_string) else {
+                        return Err(unsupported("array access [...]"));
+                    };
                     self.position += 1;
-                    Err(self.unexpected())
+                    let position = self.expression()?;
+                    self.expect("]")?;
+                    expr = Expr::ColumnArrayAccess {
+                        column,
+                        position: Box::new(position),
+                    };
                 }
-            },
-            Some("[") => Err(match &primary {
-                Expr::Column(name) if name.ends_with('_') => {
-                    unsupported(format!("column array access {name}[...]"))
+                Some("++") | Some("--") => {
+                    return Err(syntax("increment and decrement are not supported"))
                 }
-                _ => unsupported("array access [...]"),
-            }),
-            Some("++") | Some("--") => Err(syntax("increment and decrement are not supported")),
-            Some("::") => Err(unsupported("method reference (::)")),
-            Some("->") => Err(unsupported("lambda (->)")),
-            _ => Ok(primary),
+                // `QueryLanguageParser#visit(MethodReferenceExpr)` and `#visit(LambdaExpr)`
+                // throw.
+                Some("::") => return Err(syntax("MethodReferenceExpr Operation not supported")),
+                Some("->") => return Err(syntax("LambdaExpr Operation not supported!")),
+                _ => return Ok(expr),
+            }
         }
     }
 
@@ -319,7 +406,10 @@ impl Parser {
                     return Err(self.unexpected());
                 };
                 if self.peek_symbol() == Some("(") {
-                    return self.call(name);
+                    return Ok(Expr::Call {
+                        function: name,
+                        arguments: self.arguments()?,
+                    });
                 }
                 Ok(match name.as_str() {
                     "true" => Expr::Literal(Literal::Boolean(true)),
@@ -336,11 +426,8 @@ impl Parser {
         }
     }
 
-    /// Parses the argument list of a call to `function`, whose name has been consumed.
-    fn call(&mut self, function: String) -> Result<Expr, FormulaError> {
-        if functions::lookup(&function).is_none() {
-            return Err(unsupported(format!("function {function}()")));
-        }
+    /// Parses a parenthesized argument list.
+    fn arguments(&mut self) -> Result<Vec<Expr>, FormulaError> {
         self.expect("(")?;
         let mut arguments = Vec::new();
         if !self.eat(")") {
@@ -352,10 +439,7 @@ impl Parser {
                 self.expect(",")?;
             }
         }
-        Ok(Expr::Call {
-            function,
-            arguments,
-        })
+        Ok(arguments)
     }
 }
 
@@ -549,7 +633,7 @@ mod tests {
     }
 
     #[test]
-    fn is_null_is_a_call() {
+    fn a_call_keeps_its_name_and_arguments() {
         assert_eq!(
             parse_expression("isNull(A + 1)"),
             Ok(Expr::Call {
@@ -574,25 +658,252 @@ mod tests {
     }
 
     #[test]
+    fn any_function_name_is_a_call() {
+        assert_eq!(
+            parse_expression("abs(A) + f()"),
+            Ok(binary(
+                BinaryOp::Add,
+                Expr::Call {
+                    function: "abs".into(),
+                    arguments: vec![column("A")],
+                },
+                Expr::Call {
+                    function: "f".into(),
+                    arguments: vec![],
+                }
+            ))
+        );
+    }
+
+    fn ternary(condition: Expr, if_true: Expr, if_false: Expr) -> Expr {
+        Expr::Ternary {
+            condition: Box::new(condition),
+            if_true: Box::new(if_true),
+            if_false: Box::new(if_false),
+        }
+    }
+
+    /// The Java Language Specification section 15.25: the conditional operator groups to
+    /// the right and binds more weakly than `||`.
+    #[test]
+    fn the_ternary_operator_groups_to_the_right_below_every_binary_operator() {
+        use BinaryOp::*;
+        assert_eq!(
+            parse_expression("A > 1 || B ? C + 1 : D"),
+            Ok(ternary(
+                binary(Or, binary(Greater, column("A"), int(1)), column("B")),
+                binary(Add, column("C"), int(1)),
+                column("D")
+            ))
+        );
+        assert_eq!(
+            parse_expression("A ? B : C ? D : E"),
+            Ok(ternary(
+                column("A"),
+                column("B"),
+                ternary(column("C"), column("D"), column("E"))
+            ))
+        );
+        assert_eq!(
+            parse_expression("A ? B ? C : D : E"),
+            Ok(ternary(
+                column("A"),
+                ternary(column("B"), column("C"), column("D")),
+                column("E")
+            ))
+        );
+        assert_eq!(
+            parse_expression("(A ? B : C) + 1"),
+            Ok(binary(
+                Add,
+                ternary(column("A"), column("B"), column("C")),
+                int(1)
+            ))
+        );
+        for text in ["A ? B", "A ? : C", "A ? B :", "A ? B : C : D", "? B : C"] {
+            assert!(
+                matches!(parse_expression(text), Err(FormulaError::Syntax(_))),
+                "{text}"
+            );
+        }
+    }
+
+    fn cast(to: ColumnType, operand: Expr) -> Expr {
+        Expr::Cast {
+            to,
+            operand: Box::new(operand),
+        }
+    }
+
+    /// The Java Language Specification section 15.16: a cast binds like a unary operator.
+    #[test]
+    fn a_cast_applies_to_the_unary_expression_after_it() {
+        use BinaryOp::*;
+        assert_eq!(
+            parse_expression("(int) A + B"),
+            Ok(binary(Add, cast(ColumnType::Int, column("A")), column("B")))
+        );
+        assert_eq!(
+            parse_expression("(long)(A + B)"),
+            Ok(cast(
+                ColumnType::Long,
+                binary(Add, column("A"), column("B"))
+            ))
+        );
+        assert_eq!(
+            parse_expression("(double) -A"),
+            Ok(cast(
+                ColumnType::Double,
+                unary(UnaryOp::Negate, column("A"))
+            ))
+        );
+        assert_eq!(
+            parse_expression("(byte)(short) A"),
+            Ok(cast(ColumnType::Byte, cast(ColumnType::Short, column("A"))))
+        );
+        assert_eq!(
+            parse_expression("-(float) 'a'"),
+            Ok(unary(
+                UnaryOp::Negate,
+                cast(ColumnType::Float, Expr::Literal(Literal::Char(97)))
+            ))
+        );
+        assert_eq!(
+            parse_expression("(char) A.length()"),
+            Ok(cast(
+                ColumnType::Char,
+                Expr::MethodCall {
+                    receiver: Box::new(column("A")),
+                    method: "length".into(),
+                    arguments: vec![],
+                }
+            ))
+        );
+        for (name, to) in [
+            ("String", ColumnType::String),
+            ("java.lang.String", ColumnType::String),
+            ("Boolean", ColumnType::Boolean),
+            ("java.lang.Boolean", ColumnType::Boolean),
+            ("Instant", ColumnType::Instant),
+            ("java.time.Instant", ColumnType::Instant),
+        ] {
+            assert_eq!(
+                parse_expression(&format!("({name}) A")),
+                Ok(cast(to, column("A"))),
+                "{name}"
+            );
+        }
+        // A parenthesized name before a binary minus is not a cast.
+        assert_eq!(
+            parse_expression("(A) - B"),
+            Ok(binary(Subtract, column("A"), column("B")))
+        );
+        // A primitive type before a minus is.
+        assert_eq!(
+            parse_expression("(int) - B"),
+            Ok(cast(ColumnType::Int, unary(UnaryOp::Negate, column("B"))))
+        );
+    }
+
+    /// Behavior: `QueryLanguageParser#visit(CastExpr)` prints `(boolean) x` as Java's own
+    /// cast, which unboxes.
+    #[test]
+    fn a_cast_to_primitive_boolean_is_an_unboxing_ternary() {
+        assert_eq!(
+            parse_expression("(boolean) A"),
+            Ok(ternary(
+                column("A"),
+                Expr::Literal(Literal::Boolean(true)),
+                Expr::Literal(Literal::Boolean(false))
+            ))
+        );
+    }
+
+    #[test]
+    fn method_calls_chain_from_the_left() {
+        let call = |receiver: Expr, method: &str, arguments: Vec<Expr>| Expr::MethodCall {
+            receiver: Box::new(receiver),
+            method: method.into(),
+            arguments,
+        };
+        assert_eq!(
+            parse_expression("Sym.startsWith(`A`)"),
+            Ok(call(
+                column("Sym"),
+                "startsWith",
+                vec![Expr::Literal(Literal::String("A".into()))]
+            ))
+        );
+        assert_eq!(
+            parse_expression("Sym.trim().substring(1, N + 1).length()"),
+            Ok(call(
+                call(
+                    call(column("Sym"), "trim", vec![]),
+                    "substring",
+                    vec![int(1), binary(BinaryOp::Add, column("N"), int(1))]
+                ),
+                "length",
+                vec![]
+            ))
+        );
+        assert_eq!(
+            parse_expression("-`ab`.length()"),
+            Ok(unary(
+                UnaryOp::Negate,
+                call(
+                    Expr::Literal(Literal::String("ab".into())),
+                    "length",
+                    vec![]
+                )
+            ))
+        );
+        assert_eq!(
+            parse_expression("(A + B).equals(C)"),
+            Ok(call(
+                binary(BinaryOp::Add, column("A"), column("B")),
+                "equals",
+                vec![column("C")]
+            ))
+        );
+    }
+
+    #[test]
+    fn indexing_a_column_array_reads_another_row() {
+        assert_eq!(
+            parse_expression("A_[i - 1] + 1"),
+            Ok(binary(
+                BinaryOp::Add,
+                Expr::ColumnArrayAccess {
+                    column: "A".into(),
+                    position: Box::new(binary(
+                        BinaryOp::Subtract,
+                        Expr::RowVariable(RowVariable::I),
+                        int(1)
+                    )),
+                },
+                int(1)
+            ))
+        );
+        // Without an index the parser cannot tell `A_` from a column of that name.
+        assert_eq!(parse_expression("A_"), Ok(column("A_")));
+        assert!(matches!(
+            parse_expression("A_[1"),
+            Err(FormulaError::Syntax(_))
+        ));
+    }
+
+    #[test]
     fn constructs_outside_the_subset_are_named() {
         let cases = [
-            ("A > 1 ? B : C", "ternary operator (?:)"),
-            ("(int) A", "cast"),
-            ("(long)(A + B)", "cast"),
-            ("(String) A", "cast"),
-            ("(java.lang.String) A", "cast"),
-            ("(int[]) A", "cast"),
-            ("Sym.startsWith(`A`)", "method call .startsWith()"),
+            ("(Integer) A", "cast to Integer"),
+            ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
+            ("(int[]) A", "cast to int[]"),
             ("Math.PI", "field access .PI"),
-            ("abs(A)", "function abs()"),
-            ("A_[i - 1]", "column array access A_[...]"),
             ("A[0]", "array access [...]"),
+            ("f(A)[0]", "array access [...]"),
+            ("_[0]", "array access [...]"),
             ("new String(`a`)", "object creation (new)"),
-            ("A instanceof String", "instanceof"),
-            (
-                "A == '2024-01-01'",
-                "time literal or escaped char literal '2024-01-01'",
-            ),
+            ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];
         for (text, construct) in cases {
             assert_eq!(
@@ -607,7 +918,18 @@ mod tests {
     /// these, so they are errors in Java too.
     #[test]
     fn operators_java_refuses_are_syntax_errors() {
-        for text in ["A << 1", "A >> 1", "A >>> 1", "+A", "~A", "A++", "--A"] {
+        for text in [
+            "A << 1",
+            "A >> 1",
+            "A >>> 1",
+            "+A",
+            "~A",
+            "A++",
+            "--A",
+            "A instanceof String",
+            "A -> A",
+            "A::b",
+        ] {
             assert!(
                 matches!(parse_expression(text), Err(FormulaError::Syntax(_))),
                 "{text}"

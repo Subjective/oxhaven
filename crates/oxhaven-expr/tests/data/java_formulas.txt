@@ -1,0 +1,1391 @@
+# casts between primitive types
+update (byte) Y
+update (byte) H
+update (byte) C
+update (byte) I
+update (byte) L
+update (byte) F
+update (byte) D
+update (short) Y
+update (short) H
+update (short) C
+update (short) I
+update (short) L
+update (short) F
+update (short) D
+update (char) Y
+update (char) H
+update (char) C
+update (char) I
+update (char) L
+update (char) F
+update (char) D
+update (int) Y
+update (int) H
+update (int) C
+update (int) I
+update (int) L
+update (int) F
+update (int) D
+update (long) Y
+update (long) H
+update (long) C
+update (long) I
+update (long) L
+update (long) F
+update (long) D
+update (float) Y
+update (float) H
+update (float) C
+update (float) I
+update (float) L
+update (float) F
+update (float) D
+update (double) Y
+update (double) H
+update (double) C
+update (double) I
+update (double) L
+update (double) F
+update (double) D
+update (byte) 127
+update (byte) 128
+update (byte) 255
+update (byte) 256
+update (byte) -129
+update (byte) 300.7
+update (byte) 1e10
+update (byte) -1e10
+update (short) 32768
+update (short) 40000.5
+update (short) 1e10
+update (char) -1
+update (char) 65
+update (char) 65.9
+update (char) 65536
+update (char) 1e10
+update (char) -1.0
+update (int) 2147483648L
+update (int) 4294967295L
+update (int) 1.9
+update (int) -1.9
+update (int) 1e10
+update (int) -1e10
+update (int) (D - D)
+update (long) 1e19
+update (long) -1e19
+update (long) -0.5
+update (long) 2147483647
+update (float) 16777217
+update (float) 16777219
+update (float) 1e39
+update (float) -1e39
+update (float) 1e-46
+update (float) 0.1
+update (double) 0.1f
+update (double) 9007199254740993L
+update (float) 9223372036854775807L
+update (float) -3.4028234663852886E38
+update (double) -3.4028235e38f
+update (int) 'a'
+update (char) 'a'
+update (int) (I + L)
+update (long) (I * 2)
+update (double) I / 2
+update (int) D + 1
+update (byte)(short) I
+update (int)(char) I
+update (int) -D
+update (double) (float) D
+# casts that involve other types
+update (Boolean) B
+update (boolean) B
+update (boolean) BN
+update (Boolean) BN
+update (boolean) (I > 0)
+update (Boolean) (L > 0)
+update (String) S
+update (java.lang.String) S
+update (String) null
+update (Boolean) null
+update (Instant) null
+update (java.time.Instant) T
+update (Instant) T
+update (int) B
+update (int) BN
+update (boolean) I
+update (Boolean) I
+update (String) I
+update (String) B
+update (String) T
+update (Instant) S
+update (Boolean) S
+update (int) S
+update (int) SN
+update (long) T
+update (double) null
+update (int) null
+update (boolean) null
+update (Integer) I
+update (Object) I
+update (Double) D
+update (int[]) I
+update (String) (S + I)
+update (char) S
+# unary minus and not
+update -Y
+update -H
+update -C
+update -I
+update -L
+update -F
+update -D
+update -B
+update -S
+update -T
+update -(I + 1)
+update -1
+update -'a'
+update -(byte) 1
+update -(int) Y
+update - -I
+update -2147483648
+update -9223372036854775807L
+update !B
+update !BN
+update !(I > 0)
+update !I
+update !!B
+update !S
+update +I
+update ~I
+# ternary operator: all numeric pairs
+update BN ? Y : Y
+update BN ? Y : H
+update BN ? Y : C
+update BN ? Y : I
+update BN ? Y : L
+update BN ? Y : F
+update BN ? Y : D
+update BN ? H : Y
+update BN ? H : H
+update BN ? H : C
+update BN ? H : I
+update BN ? H : L
+update BN ? H : F
+update BN ? H : D
+update BN ? C : Y
+update BN ? C : H
+update BN ? C : C
+update BN ? C : I
+update BN ? C : L
+update BN ? C : F
+update BN ? C : D
+update BN ? I : Y
+update BN ? I : H
+update BN ? I : C
+update BN ? I : I
+update BN ? I : L
+update BN ? I : F
+update BN ? I : D
+update BN ? L : Y
+update BN ? L : H
+update BN ? L : C
+update BN ? L : I
+update BN ? L : L
+update BN ? L : F
+update BN ? L : D
+update BN ? F : Y
+update BN ? F : H
+update BN ? F : C
+update BN ? F : I
+update BN ? F : L
+update BN ? F : F
+update BN ? F : D
+update BN ? D : Y
+update BN ? D : H
+update BN ? D : C
+update BN ? D : I
+update BN ? D : L
+update BN ? D : F
+update BN ? D : D
+# ternary operator: other branches and conditions
+update BN ? null : Y
+update BN ? Y : null
+update BN ? null : H
+update BN ? H : null
+update BN ? null : C
+update BN ? C : null
+update BN ? null : I
+update BN ? I : null
+update BN ? null : L
+update BN ? L : null
+update BN ? null : F
+update BN ? F : null
+update BN ? null : D
+update BN ? D : null
+update BN ? null : S
+update BN ? S : null
+update BN ? null : B
+update BN ? B : null
+update BN ? null : T
+update BN ? T : null
+update B ? I : L
+update BN ? S : S2
+update BN ? B : B2
+update BN ? true : B
+update BN ? B : false
+update BN ? true : false
+update BN ? T : T2
+update BN ? I : S
+update BN ? S : I
+update BN ? B : I
+update BN ? T : S
+update BN ? T : L
+update BN ? null : null
+update I > 0 ? 1 : 0
+update I ? 1 : 2
+update S ? 1 : 2
+update null ? 1 : 2
+update BN ? 1 : 2.5
+update BN ? 'a' : 1
+update BN ? Y : 1
+update BN ? 1 : Y
+update BN ? Y : 1000
+update BN ? C : 65
+update BN ? 1L : 2
+update BN ? 1.5f : 2
+update BN ? 1.5f : 2L
+update R == 100 ? I % 0 : 1
+update BN ? I % 0 : 1
+update BN ? 1 : I % 0
+update I > 0 ? I : L > 0 ? L : D
+update (I > 0 ? I : L) + 1
+update BN ? I > 0 : L > 0
+update BN ? (I > 0) : B
+update isNull(BN ? I : L)
+update BN ? S : `x`
+update BN ? `x` : null
+update (BN ? I : L) == null
+update BN ? I + 1 : null
+update BN ? null : 1.5
+update BN ? null : true
+update BN ? 'a' : null
+update BN ? I : 1.5f
+update BN ? (byte) 1 : (short) 2
+update BN ? (byte) 1 : (byte) 2
+update BN ? (char) 1 : (short) 2
+update BN ? (short) 1 : 'a'
+update BN ? F : 1
+update BN ? L : 1.5f
+update B2 ? 1 : 2
+update (BN ? Y : I) + (BN ? F : D)
+update BN ? (B ? 1 : 2) : 3
+update BN ? 3 : (B ? 1 : 2)
+# string concatenation
+update S + Y
+update Y + S
+update `<` + Y + `>`
+update S + H
+update H + S
+update `<` + H + `>`
+update S + C
+update C + S
+update `<` + C + `>`
+update S + I
+update I + S
+update `<` + I + `>`
+update S + L
+update L + S
+update `<` + L + `>`
+update S + F
+update F + S
+update `<` + F + `>`
+update S + D
+update D + S
+update `<` + D + `>`
+update S + S
+update S + S
+update `<` + S + `>`
+update S + B
+update B + S
+update `<` + B + `>`
+update S + T
+update T + S
+update `<` + T + `>`
+update S + S2
+update S2 + S
+update `<` + S2 + `>`
+update S + SN
+update SN + S
+update `<` + SN + `>`
+update S + null
+update null + S
+update null + null
+update S + 1
+update S + 1L
+update S + 1.0
+update S + 1.0f
+update S + 'c'
+update S + true
+update S + false
+update 1 + 2 + SN
+update SN + 1 + 2
+update 'a' + 'b' + SN
+update SN + 'a' + 'b'
+update SN + (1 + 2)
+update SN + I * 2
+update SN + (I > 0)
+update SN + -I
+update SN + (D / 0)
+update SN + (I / 2)
+update SN + (I / 2.0f)
+update SN + (L + 0.0)
+update SN + (F + 0.0)
+update SN + (float) D
+update SN + (byte) I
+update SN + (short) I
+update SN + (char) I
+update SN + (long) I
+update SN + (BN ? I : L)
+update SN + isNull(I)
+update `` + D
+update `` + F
+update `` + T
+update `` + B
+update `` + C
+update `` + Y
+update `` + H
+update `` + L
+update `` + I
+update S + S
+update SN + SN.length()
+update `a` + `b`
+update (S + `x`).length()
+update S + '2023-11-14T22:13:20 UTC'
+update S + '2023-11-14T22:13:20.5 UTC'
+update S + '2023-11-14T22:13:20.123456 UTC'
+update S + '2023-11-14T22:13:20.123456789 UTC'
+update S + '2023-11-14T22:13 UTC'
+update S + '1969-12-31T23:59:59.999999999 UTC'
+update S + '2000-02-29 UTC'
+update S + '2262-04-11T23:47:16.854775807 UTC'
+update S + '1677-09-21T00:12:43.145224193 UTC'
+# string conversion of doubles and floats
+update `` + 1.0
+update `` + -1.0
+update `` + 0.0
+update `` + -0.0
+update `` + 100.0
+update `` + 1.5
+update `` + 0.1
+update `` + 123456.789
+update `` + 0.001
+update `` + 0.0012
+update `` + 1.0e-4
+update `` + 9.999e-4
+update `` + 9999999.0
+update `` + 1.0e7
+update `` + 1.2345e7
+update `` + 1.0e23
+update `` + 2.0e-3
+update `` + (1.0 / 3.0)
+update `` + (2.0 / 3.0)
+update `` + (100.0 / 3.0)
+update `` + 1.7976931348623157E308
+update `` + -1.7976931348623157E308
+update `` + 2.2250738585072014E-308
+update `` + 4.9e-324
+update `` + 9.9e-324
+update `` + 1.5e-323
+update `` + 2.0e-323
+update `` + (0.0 / 0.0)
+update `` + (1.0 / 0.0)
+update `` + (-1.0 / 0.0)
+update `` + 4.35
+update `` + 1e21
+update `` + 123456789012345680.0
+update `` + 1e22
+update `` + 1e-5
+update `` + 0.3
+update `` + (0.1 + 0.2)
+update `` + 5e-324
+update `` + 1e-323
+update `` + 2.5e-323
+update `` + 3e-323
+update `` + 1e-320
+update `` + 9.5
+update `` + 1e16
+update `` + 9007199254740993.0
+update `` + 1.0E-3
+update `` + 9.999999999999999E-4
+update `` + 1.0000000000000001E7
+update `` + 9999999.999999998
+update `` + 0.5
+update `` + 1e100
+update `` + 12345678.9
+update `` + 1e300 * 1e10
+update `` + 1.0f
+update `` + 0.1f
+update `` + 1.5f
+update `` + 16777216f
+update `` + 1.0e10f
+update `` + 3.4028235e38f
+update `` + -3.4028235e38f
+update `` + 1.17549435e-38f
+update `` + 1.4e-45f
+update `` + 2.8e-45f
+update `` + 4.2e-45f
+update `` + 5.6e-45f
+update `` + 7e-45f
+update `` + 1e-44f
+update `` + 0.001f
+update `` + 1.0e-4f
+update `` + -0.0f
+update `` + (1.0f / 3.0f)
+update `` + (0.0f / 0.0f)
+update `` + (1.0f / 0.0f)
+update `` + 9999999f
+update `` + 1.0e7f
+update `` + 0.3f
+update `` + 1.0e-3f
+update `` + 3.0e-45f
+update `` + 1e-40f
+update `` + 123456789f
+update `` + (float) 0.1
+update `` + 33.333332f
+update `` + 8.5e-3f
+# bitwise operators
+update Y & Y
+update Y & H
+update Y & C
+update Y & I
+update Y & L
+update H & Y
+update H & H
+update H & C
+update H & I
+update H & L
+update C & Y
+update C & H
+update C & C
+update C & I
+update C & L
+update I & Y
+update I & H
+update I & C
+update I & I
+update I & L
+update L & Y
+update L & H
+update L & C
+update L & I
+update L & L
+update I | L
+update I ^ L
+update Y | H
+update C ^ I
+update I & 1
+update L | 1
+update I ^ -1
+update I | 0
+update L ^ L
+update I & F
+update D | I
+update F ^ F
+update B & B2
+update B | B2
+update B ^ B2
+update BN & B
+update (I > 0) & B
+update B | (I > 0)
+update (I > 0) | (L > 0)
+update (I > 0) & (L > 0)
+update (I > 0) ^ (L > 0)
+update B & I
+update I | B
+update S & S
+update B & null
+update I & null
+update I & L | Y ^ H
+update I & 1 == 1
+update (I & 1) == 1
+update I << 1
+update I >> 1
+update I >>> 1
+update T & T
+update I & 2147483647 ^ -1
+update (I ^ I) | -2147483648
+update (L ^ L) | (-9223372036854775807L - 1)
+update (I % 0 > 0) & BN
+update BN & (I % 0 > 0)
+update BN | (I % 0 > 0)
+update B && (I % 0 > 0)
+# comparisons: all numeric pairs
+update Y < Y
+update Y == Y
+update Y < H
+update Y == H
+update Y < C
+update Y == C
+update Y < I
+update Y == I
+update Y < L
+update Y == L
+update Y < F
+update Y == F
+update Y < D
+update Y == D
+update H < Y
+update H == Y
+update H < H
+update H == H
+update H < C
+update H == C
+update H < I
+update H == I
+update H < L
+update H == L
+update H < F
+update H == F
+update H < D
+update H == D
+update C < Y
+update C == Y
+update C < H
+update C == H
+update C < C
+update C == C
+update C < I
+update C == I
+update C < L
+update C == L
+update C < F
+update C == F
+update C < D
+update C == D
+update I < Y
+update I == Y
+update I < H
+update I == H
+update I < C
+update I == C
+update I < I
+update I == I
+update I < L
+update I == L
+update I < F
+update I == F
+update I < D
+update I == D
+update L < Y
+update L == Y
+update L < H
+update L == H
+update L < C
+update L == C
+update L < I
+update L == I
+update L < L
+update L == L
+update L < F
+update L == F
+update L < D
+update L == D
+update F < Y
+update F == Y
+update F < H
+update F == H
+update F < C
+update F == C
+update F < I
+update F == I
+update F < L
+update F == L
+update F < F
+update F == F
+update F < D
+update F == D
+update D < Y
+update D == Y
+update D < H
+update D == H
+update D < C
+update D == C
+update D < I
+update D == I
+update D < L
+update D == L
+update D < F
+update D == F
+update D < D
+update D == D
+update Y >= I
+update Y != D
+update Y <= F
+update Y > L
+update H >= I
+update H != D
+update H <= F
+update H > L
+update C >= I
+update C != D
+update C <= F
+update C > L
+update I >= I
+update I != D
+update I <= F
+update I > L
+update L >= I
+update L != D
+update L <= F
+update L > L
+update F >= I
+update F != D
+update F <= F
+update F > L
+update D >= I
+update D != D
+update D <= F
+update D > L
+# comparisons of other types
+update B < B2
+update B <= B2
+update B > B2
+update B >= B2
+update B == B2
+update B != B2
+update BN == true
+update B == true
+update true == B
+update B != false
+update BN < true
+update (I > 0) == B
+update (I > 0) != B
+update (I > 0) == (L > 0)
+update (I > 0) < (L > 0)
+update (I > 0) < B
+update I == S
+update S == I
+update I != S
+update B == I
+update I == B
+update B != I
+update C == SN
+update C == `a`
+update `a` == C
+update S == B
+update B == S
+update B != S
+update T == S
+update S != T
+update T == B
+update B == T
+update T == I
+update L == T
+update T != L
+update D == S
+update I < S
+update S < I
+update S < T
+update T < S
+update B < I
+update B < S
+update T < L
+update T > I
+update T > '2023-11-14T22:13:20 UTC'
+update T >= '2023-11-14T22:13:20 UTC'
+update T == '2023-11-14T22:13:20 UTC'
+update T != '2023-11-14T22:13:20 UTC'
+update '2023-11-14T22:13:20 UTC' < T
+update T < '1970-01-01 UTC'
+update T >= T2
+update T < T2
+update T == T2
+update T != T2
+update T <= T2
+update T > T2
+update S < S2
+update S <= S2
+update S == S2
+update S != S2
+update S > S2
+update S >= S2
+update S == `a`
+update `a` == S
+update S == null
+update S != null
+update null == S
+update null != S
+update I == null
+update I != null
+update null == B
+update B != null
+update T == null
+update C == null
+update D != null
+update F == null
+update Y == null
+update H == null
+update L == null
+update I < null
+update null < I
+update S < null
+update null == null
+update null != null
+update (I + 1) == null
+update (S + `x`) == null
+update (BN ? null : I) == null
+update C == 'a'
+update C < 'b'
+update 'a' == 97
+update C == 97
+update C == 97.0
+update C > Y
+update S == S
+update T == T
+update B == B
+update D == D
+update D != D
+update F == F
+# arithmetic: all numeric pairs
+update Y + Y
+update Y / Y
+update Y + H
+update Y / H
+update Y + C
+update Y / C
+update Y + I
+update Y / I
+update Y + L
+update Y / L
+update Y + F
+update Y / F
+update Y + D
+update Y / D
+update H + Y
+update H / Y
+update H + H
+update H / H
+update H + C
+update H / C
+update H + I
+update H / I
+update H + L
+update H / L
+update H + F
+update H / F
+update H + D
+update H / D
+update C + Y
+update C / Y
+update C + H
+update C / H
+update C + C
+update C / C
+update C + I
+update C / I
+update C + L
+update C / L
+update C + F
+update C / F
+update C + D
+update C / D
+update I + Y
+update I / Y
+update I + H
+update I / H
+update I + C
+update I / C
+update I + I
+update I / I
+update I + L
+update I / L
+update I + F
+update I / F
+update I + D
+update I / D
+update L + Y
+update L / Y
+update L + H
+update L / H
+update L + C
+update L / C
+update L + I
+update L / I
+update L + L
+update L / L
+update L + F
+update L / F
+update L + D
+update L / D
+update F + Y
+update F / Y
+update F + H
+update F / H
+update F + C
+update F / C
+update F + I
+update F / I
+update F + L
+update F / L
+update F + F
+update F / F
+update F + D
+update F / D
+update D + Y
+update D / Y
+update D + H
+update D / H
+update D + C
+update D / C
+update D + I
+update D / I
+update D + L
+update D / L
+update D + F
+update D / F
+update D + D
+update D / D
+update I % 7
+update L % 7
+update D % 2
+update F % 2
+update I % 0
+update Y % H
+update Y - H
+update C * C
+update C - C
+update Y * Y
+update H * H
+update I * I
+update L * L
+update I - L
+update F * D
+update I + B
+update B + B
+update T + 1
+update T - T
+update T + T
+update I + null
+update null - I
+update I * S
+update S - S
+update S * 2
+update B + 1
+update C + 1
+update 'a' + 1
+update 'a' + 'b'
+update 1 / 0
+update 1 % 0
+update 1.0 / 0
+update 1 / 2
+update 7 / 2f
+update 7f / 2
+update 7L / 2f
+update 7.0 / 2f
+update I / 0
+update I % 2.0
+update 5 % -3
+update -5 % 3
+update 5.5 % -2
+update I + 2147483647
+update L + 9223372036854775807L
+update I * 65536 * 32768
+update 2147483647 + 1
+update -2147483647 - 1
+update 1 + 2 * 3 - 4 / 2 % 3
+update (1 + 2) * 3
+# literals
+update 017
+update 00
+update 0_7
+update 000000000017
+update 017L
+update 01777777777
+update 017777777777
+update 037777777777
+update 01777777777777777777777L
+update 01000000000000000000000L
+update 018
+update 09L
+update 02147483647
+update 09.5
+update 017f
+update 017 + I
+update 0x10
+update 0X10
+update 0b101
+update 0B1111_0000
+update 0xFFFFFFFF
+update 0x7fffffff
+update 0x80000000
+update 0xFFFFFFFFFFFFFFFFL
+update 0x8000000000000000L
+update 0xFFFFFFFFFFFFFFFF
+update 2147483647
+update 2147483648
+update 9223372036854775807
+update 9223372036854775808
+update 9223372036854775808L
+update 1_000_000
+update 1_
+update 7L
+update 7l
+update 1.5
+update 1.
+update .5
+update 1e3
+update 1E-3
+update 2.5e+2
+update 1d
+update 1D
+update 1.5f
+update 1f
+update 1.5F
+update 1F
+update 1e3F
+update 0x1.8p1
+update 0x1p-2
+update 0x1.8p1f
+update 1e400
+update 1e-400
+update 1e40f
+update 1e-50f
+update 1e39f
+update 3.4028235e38f
+update 3.4028236e38f
+update 4.9e-324
+update 2e-324
+update 1.4e-45f
+update 7e-46f
+update 'a'
+update '='
+update '`'
+update '"'
+update '\''
+update '\n'
+update '\\'
+update '\t'
+update '\u0041'
+update ''
+update 'ab'
+update 'é'
+update '😀'
+update (int) '￿'
+update isNull('￿')
+update `AAPL`
+update "AAPL"
+update `say "hi"`
+update "a`b"
+update `a\tb\\c\n`
+update "q\"q"
+update `\101\0\477`
+update ``
+update `a = b`
+update `a\qb`
+update `it's`
+update `'a'`
+update `''`
+update "it\'s"
+update `it's` + `it's`
+update `\u0041b`
+update `\uuu00e9`
+update `\ud83d\uDE00`
+update `\\u0041`
+update `\ud83d`
+update `\u0022`
+update `\u005c`
+update `\u000a`
+update `\u12`
+update `a\sb`
+update `a\sb`.length()
+update `é😀`
+update `é😀`.length()
+update true
+update false
+update null
+update TRUE
+update (String) null + `x`
+# time literals
+update '2023-11-14T22:13:20 UTC'
+update '2023-11-14T22:13:20 Z'
+update '2023-11-14T22:13:20Z'
+update '2023-11-14T22:13 UTC'
+update '2023-11-14T22:13Z'
+update '2023-11-14T22:13:20.5 UTC'
+update '2023-11-14T22:13:20.123456789 UTC'
+update '2023-11-14T22:13:20.000000001Z'
+update '2023-11-14 UTC'
+update '2023-11-14T UTC'
+update '2023-11-14T Z'
+update '2023-11-14 Z'
+update '1970-01-01T00:00:00 UTC'
+update '1969-12-31T23:59:59.999999999 UTC'
+update '2000-02-29T00:00:00 UTC'
+update '1900-03-01T00:00:00 UTC'
+update '2262-04-11T23:47:16.854775807 UTC'
+update '1677-09-21T00:12:43.145224193 UTC'
+update '2262-04-11T23:47:16.854775808 UTC'
+update '1677-09-21T00:12:43.145224192 UTC'
+update '9999-01-01 UTC'
+update '0001-01-01 UTC'
+update '2023-13-14T22:13:20 UTC'
+update '2023-11-32T22:13:20 UTC'
+update '2023-11-00 UTC'
+update '2023-11-14T25:13:20 UTC'
+update '2023-11-14T22:60:20 UTC'
+update '2023-11-14T22:13:60Z'
+update '2023-02-30T00:00:00 UTC'
+update '2023-02-30T00:00:00Z'
+update '2023-11-14T24:00:00 UTC'
+update '2023-11-14T22:13:20 NY'
+update '2023-11-14T22:13:20+01:00'
+update '2023-11-14'
+update '2023-11-14T22:13:20'
+update '2023-1-4T22:13:20 UTC'
+update '2023-11-14T2:13:20 UTC'
+update '2023-11-14T22:13:20. UTC'
+update '2023-11-14t22:13:20 UTC'
+update '2023-11-14T22:13:20 utc'
+update '1700000000'
+update 'PT1H'
+update 'P1D'
+update '12:30'
+update 'UTC'
+update `'2024-01-01 UTC'`
+update `'PT1H'`
+update `'x y'`
+update '\'' + SN + 'a'
+update T + 'PT1H'
+update T - 'PT1H'
+update T - T2
+update T + 1000000000L
+update isNull('2023-11-14 UTC')
+# String methods
+update SN.length()
+update SN.isEmpty()
+update SN.charAt(0)
+update SN.charAt(1)
+update SN.charAt(-1)
+update SN.charAt(Y)
+update SN.charAt(H)
+update SN.charAt(C)
+update SN.charAt(I)
+update SN.charAt(L)
+update SN.charAt(D)
+update SN.charAt(R)
+update SN.contains(SM)
+update SN.contains(`l`)
+update SN.contains(``)
+update SN.contains(S2)
+update SN.contains(C)
+update SN.contains(I)
+update SN.startsWith(SM)
+update SN.startsWith(`a`)
+update SN.startsWith(``)
+update SN.startsWith(S2)
+update SN.startsWith(`a`, 1)
+update SN.endsWith(SM)
+update SN.endsWith(`o`)
+update SN.endsWith(S2)
+update SN.indexOf(SM)
+update SN.indexOf(`l`)
+update SN.indexOf(``)
+update SN.indexOf(S2)
+update SN.indexOf(C)
+update SN.indexOf(I)
+update SN.indexOf('l')
+update SN.indexOf(`l`, 3)
+update SN.substring(0)
+update SN.substring(1)
+update SN.substring(R)
+update SN.substring(0, 1)
+update SN.substring(1, 3)
+update SN.substring(Y)
+update SN.substring(L)
+update SN.substring(0, R)
+update SN.substring(R, R)
+update SN.substring(6)
+update SN.substring(5, 7)
+update SN.toUpperCase()
+update SN.toLowerCase()
+update SN.trim()
+update SN.equals(SM)
+update SN.equals(S2)
+update SN.equals(I)
+update SN.equals(`a`)
+update SN.equals(B)
+update SN.compareTo(SM)
+update SN.compareTo(S2)
+update SN.compareTo(`a`)
+update SN.compareTo(I)
+update SN.concat(SM)
+update SN.concat(S2)
+update SN.concat(`!`)
+update SN.concat(I)
+update SN.equalsIgnoreCase(SM)
+update SN.replace(`a`, `b`)
+update SN.replace('a', 'b')
+update SN.hashCode()
+update SN.toString()
+update SN.isBlank()
+update SN.strip()
+update SN.lastIndexOf(`l`)
+update SN.matches(`a.*`)
+update SN.split(`l`)
+update SN.length
+update SN.foo()
+update SN.length(1)
+update SN.equals(null)
+update SN.contains(null)
+update SN.codePointAt(0)
+update SN.repeat(2)
+update SN.intern()
+update SN.chars()
+update SN.getBytes()
+update S.length()
+update S.isEmpty()
+update S.trim()
+update S.equals(S2)
+update S.toUpperCase()
+update S.concat(`x`)
+update S.contains(`a`)
+update S.charAt(0)
+update S.substring(0)
+update S.compareTo(`a`)
+update S.indexOf(`a`)
+update S.startsWith(`a`)
+update S.endsWith(`a`)
+update S.toLowerCase()
+update S != null && S.length() > 1
+update S == null || S.isEmpty()
+update isNull(S) ? -1 : S.length()
+update S == null ? null : S.toUpperCase()
+update (SN + `abc`).substring(1)
+update (SN + `abc`).substring(1, 3)
+update (SN + `abc`).charAt(2)
+update SN.trim().toUpperCase().length()
+update SN.toUpperCase().toLowerCase().equals(SN)
+update `abc`.length()
+update `abc`.charAt(1)
+update `abc`.substring(1).concat(`d`)
+update `Straße`.toUpperCase()
+update `İstanbul`.toLowerCase()
+update `ΣΑΣ`.toLowerCase()
+update `ﬁsh`.toUpperCase()
+update ` a `.trim()
+update ` \t a b \n`.trim()
+update `abc`.charAt(3)
+update `abc`.substring(4)
+update `abc`.substring(2, 1)
+update `abc`.substring(-1)
+update `a😀b`.length()
+update `a😀b`.substring(3)
+update `a😀b`.substring(2)
+update `a😀b`.charAt(1)
+update `a😀b`.indexOf(`b`)
+update `￿`.charAt(0)
+update `a`.compareTo(`b`)
+update `a`.compareTo(`abcd`)
+update `abc`.compareTo(`a`)
+update `😀`.compareTo(`～`)
+update `A`.compareTo(`a`)
+update SN.length() + 1
+update SN.length() * 2.5
+update SN.charAt(0) + 1
+update SN.isEmpty() ? `empty` : SN
+update SN.length() > 1 ? SN.substring(1) : SN
+update -SN.length()
+update (long) SN.length()
+update I.toString()
+update B.booleanValue()
+update T.toString()
+update T.getNano()
+update D.isNaN()
+update Math.abs(I)
+update String.valueOf(I)
+update Integer.toString(I)
+update Math.PI
+update abs(I)
+update SN.length().foo()
+update SN.substring(Y - Y)
+update SN.substring((short) 0)
+update SN.substring((char) 0)
+update SN.substring((byte) 0, (short) 0)
+update SN.charAt('\0')
+update (SN + `ab`).charAt(1) == 'b'
+update (SN + `ab`).substring(I - I, 1)
+update SN.substring(I)
+update SN.charAt(I)
+# logical operators and isNull
+update B && B2
+update B || B2
+update BN && B2
+update BN || B2
+update BN && (I > 0)
+update (I > 0) || BN
+update BN && SN.isEmpty()
+update I > 0 && L > 0
+update I && L
+update B && I
+update B && null
+update null || B
+update isNull(I)
+update isNull(S)
+update isNull(B)
+update isNull(T)
+update isNull(C)
+update isNull(I + 1)
+update isNull(null)
+update isNull(I, L)
+update isNull()
+update !isNull(S) && S.length() > 0
+update isNull(-2147483648)
+update isNull(-2147483647 - 1)
+update isNull(I * 0 - 2147483647 - 1)
+update isNull((byte) -128)
+update isNull((short) -32768)
+update isNull((char) 65535)
+update isNull(-3.4028235e38f)
+update isNull(-1.7976931348623157E308)
+update isNull(-9223372036854775807L - 1)
+update isNull(`a`)
+update isNull(true)
+update I instanceof Integer
+update S instanceof String
+update i
+update ii
+update k
+update I_[i - 1]
+update I_
+update I_[0]
+update I_.size()
+update new String(`a`)
+update I = 1
+update I == 1
+update I === 1
+update I += 1
+update a -> a
+update String::valueOf
+update I ?: L
+update (I)
+update ((I + 1))
+update Missing + 1
+update I +
+update (I
+# filters
+where B
+where BN
+where !BN
+where B2
+where I > 0
+where S.startsWith(`a`)
+where SN.startsWith(`a`)
+where SN.contains(`l`)
+where SN.length() > 1
+where BN ? I > 0 : L > 0
+where B ? I > 0 : L > 0
+where I & 1
+where (I & 1) == 1
+where I
+where S
+where null
+where true
+where false
+where BN & B2
+where BN | B2
+where BN ^ B2
+where BN & (I > 0)
+where (I > 0) & (L > 0)
+where (I > 0) | (L > 0)
+where B == B2
+where B != B2
+where B < B2
+where (Boolean) BN
+where (boolean) BN
+where (Boolean) B
+where (boolean) B
+where T > '2023-11-14T22:13:20 UTC'
+where T >= '2023-11-14T22:13:20 UTC' && T < '2023-11-15 UTC'
+where S == null
+where S != null && S.length() > 1
+where isNull(S) || S.isEmpty()
+where SN.equals(SM)
+where SN.compareTo(SM) > 0
+where I == S
+where I != S
+where B == S
+where B != S
+where C == 'a'
+where C > 'A' && C < 'z'
+where (BN ? I : L) > 5
+where S + `x` == `ax`
+where (S + I).length() > 3
+where (int) D > 0
+where (byte) I == I
+where I % 2 == 0 ? BN : !BN
+where SN.charAt(0) == 'a'
+where !SN.isEmpty() && SN.charAt(0) == 'a'
+where I in 1, 2, 3
+where S in `a`, `b`
+where S not in `a`
+where S icase in `A`
+where I = 1
+where S = `a`
+# hexadecimal floating literals, typed nulls and error labels
+update 0x1.8p1d
+update 0X.8P+1
+update 0x10p-4
+update 0x1.p0
+update 0x0p0
+update 0x1.fffffffffffffp1023
+update 0x1p-1022
+update 0x1.fffffep127f
+update 0x1p-126f
+update 0x20000000000001p0
+update 0x20000000000003p0
+update 0x1000001p0f
+update 0x1000003p0f
+update 0xffffffffffffffffp0
+update 0x1p1024
+update 0x1p128f
+update 0x1p-1023
+update 0x1p-1074
+update 0x1p-1075
+update 0x1p-127f
+update 0x1.00000000000000001p0
+update 0x1.8p1F
+update 0x1.8
+update 0x1p
+update 0x1p-1 + 1
+update 0x1e-1
+update `` + 0x1.8p1f
+update 0.1F
+update (byte) null
+update (char) null
+update (long) null
+update (float) null
+update (short) null
+update (int) null + 1
+update `` + (int) null
+update S.valueOf(I)
+update S.join(S, S)
+update S.length(1)
+update S.startsWith(S, 1)
+update S.startsWith(S, 1, 2)
+update S.toUpperCase(S)
+update S.indexOf(S, 1)
+update S.indexOf(S, 1, 2, 3)
+update S.hashCode()
+update S.notAMethod()
+update I.hashCode()
+update - -Y
+update -(Y + 0)
+update null - null
+update null + `a`
+update I == null ? null : I
+update BN < B2
+update BN & null
+update SN < null
+update null < null
