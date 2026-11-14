@@ -1,0 +1,186 @@
+{
+  "format": 1,
+  "name": "range_join_refusals",
+  "description": "What range_join refuses and what it lets through: right range values out of order in a bucket some left row has, in a bucket none has, with nulls between, with no left rows at all; range matches that do not parse; missing columns and columns of differing types in the exact and range matches; aggregations other than group, alone, with group, and together with other faults; group inputs that do not exist; group outputs named like left columns or like each other; a range join of a range join.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "Lo", "type": "int32"}, {"name": "Hi", "type": "int32"}, {"name": "F", "type": "float64"}],
+      "rows": [
+        [1, "a", 1, 5, 1.0],
+        [2, "a", 3, 3, 2.0],
+        [3, "b", 0, 9, 3.0]
+      ]
+    },
+    {
+      "name": "l_empty",
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "Lo", "type": "int32"}, {"name": "Hi", "type": "int32"}, {"name": "F", "type": "float64"}],
+      "rows": []
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["a", 1, 1, 1.0, 1, "1"],
+        ["a", 3, 2, 3.0, 3, "3"],
+        ["a", 5, 3, 5.0, 5, "5"],
+        ["b", 2, 4, 2.0, 2, "2"]
+      ]
+    },
+    {
+      "name": "r_desc",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["a", 5, 1, 5.0, 5, "5"],
+        ["a", 3, 2, 3.0, 3, "3"],
+        ["b", 2, 3, 2.0, 2, "2"]
+      ]
+    },
+    {
+      "name": "r_bad_other_bucket",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["a", 1, 1, 1.0, 1, "1"],
+        ["x", 9, 2, 9.0, 9, "9"],
+        ["x", 2, 3, 2.0, 2, "2"],
+        ["a", 3, 4, 3.0, 3, "3"]
+      ]
+    },
+    {
+      "name": "r_bad_nulls",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["a", 4, 1, 4.0, 4, "4"],
+        ["a", null, 2, null, null, "None"],
+        ["a", 5, 3, 5.0, 5, "5"],
+        ["b", null, 4, null, null, "None"],
+        ["b", 2, 5, 2.0, 2, "2"]
+      ]
+    },
+    {
+      "name": "r_bad_late",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["b", 1, 1, 1.0, 1, "1"],
+        ["a", 1, 2, 1.0, 1, "1"],
+        ["a", 3, 3, 3.0, 3, "3"],
+        ["a", 2, 4, 2.0, 2, "2"],
+        ["b", 2, 5, 2.0, 2, "2"]
+      ]
+    },
+    {
+      "name": "r_interleaved",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        ["a", 4, 1, 4.0, 4, "4"],
+        ["b", 1, 2, 1.0, 1, "1"],
+        ["a", 5, 3, 5.0, 5, "5"],
+        ["b", 2, 4, 2.0, 2, "2"],
+        ["a", 5, 5, 5.0, 5, "5"]
+      ]
+    },
+    {
+      "name": "r_empty",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "R", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "N", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "ok", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "descending_right", "op": "range_join", "left": "l", "right": "r_desc", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "disorder_in_unmatched_bucket", "op": "range_join", "left": "l", "right": "r_bad_other_bucket", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "disorder_without_exact", "op": "range_join", "left": "l", "right": "r_bad_other_bucket", "on": ["Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "nulls_between", "op": "range_join", "left": "l", "right": "r_bad_nulls", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "disorder_late", "op": "range_join", "left": "l", "right": "r_bad_late", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "interleaved_buckets", "op": "range_join", "left": "l", "right": "r_interleaved", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "empty_left", "op": "range_join", "left": "l_empty", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "empty_left_disorder", "op": "range_join", "left": "l_empty", "right": "r_desc", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "empty_left_no_exact_disorder", "op": "range_join", "left": "l_empty", "right": "r_desc", "on": ["Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "empty_both", "op": "range_join", "left": "l_empty", "right": "r_empty", "on": ["Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "empty_right_no_exact", "op": "range_join", "left": "l", "right": "r_empty", "on": ["<- Lo <= P <= Hi ->"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "same_bounds", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Lo"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "preceding_strict", "op": "range_join", "left": "l", "right": "r", "on": ["K", "<- Lo < P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "following_strict", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P < Hi ->"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "not_a_match", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "no_left_start", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Nope <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "no_left_end", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Nope"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "no_right_range", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= Nope <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "nothing_there", "op": "range_join", "left": "l", "right": "r", "on": ["K", "X <= Y <= Z"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "range_types_differ", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= N <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "range_end_type_differs", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= F"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "range_start_type_differs", "op": "range_join", "left": "l", "right": "r", "on": ["K", "F <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "float_bounds_int_range", "op": "range_join", "left": "l", "right": "r", "on": ["K", "F <= D <= F"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "no_left_exact", "op": "range_join", "left": "l", "right": "r", "on": ["Nope = K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "no_right_exact", "op": "range_join", "left": "l", "right": "r", "on": ["K = Nope", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "exact_types_differ", "op": "range_join", "left": "l", "right": "r", "on": ["Id = S", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "exact_same_arrow_other_type", "op": "range_join", "left": "l", "right": "r", "on": ["Lo = N", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "exact_is_range_column", "op": "range_join", "left": "l", "right": "r", "on": ["Lo = P", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "exact_twice", "op": "range_join", "left": "l", "right": "r", "on": ["K", "K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "agg_no_such_input", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Nope"]}]},
+    {"name": "agg_no_such_input_disorder", "op": "range_join", "left": "l", "right": "r_desc", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Nope"]}]},
+    {"name": "agg_left_column_as_input", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Id"]}]},
+    {"name": "agg_replaces_left_column", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Lo = R"]}]},
+    {"name": "agg_replaces_key", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["K", "P"]}]},
+    {"name": "agg_same_output_twice", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["X = R", "X = D"]}]},
+    {"name": "agg_same_output_two_aggs", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["X = R", "Y = S"]}, {"agg": "group", "columns": ["X = D"]}]},
+    {"name": "agg_every_type", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["K", "P", "R", "D", "N", "S"]}]},
+    {"name": "agg_group_and_sum", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["R"]}, {"agg": "sum", "columns": ["D"]}]},
+    {"name": "agg_first", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "first", "columns": ["R"]}]},
+    {"name": "agg_last", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "last", "columns": ["R"]}]},
+    {"name": "agg_min", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "min", "columns": ["R"]}]},
+    {"name": "agg_avg", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "avg", "columns": ["D"]}]},
+    {"name": "agg_count_only", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "count", "column": "C"}]},
+    {"name": "agg_unsupported_disorder", "op": "range_join", "left": "l", "right": "r_desc", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "sum", "columns": ["D"]}]},
+    {"name": "agg_unsupported_bad_range", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= Nope <= Hi"], "aggs": [{"agg": "sum", "columns": ["D"]}]},
+    {"name": "of_a_range_join", "op": "range_join", "left": "ok", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Ds = D"]}]}
+  ],
+  "results": [
+    {"table": "ok"},
+    {"table": "descending_right"},
+    {"table": "disorder_in_unmatched_bucket"},
+    {"table": "disorder_without_exact"},
+    {"table": "nulls_between"},
+    {"table": "disorder_late"},
+    {"table": "interleaved_buckets"},
+    {"table": "empty_left"},
+    {"table": "empty_left_disorder"},
+    {"table": "empty_left_no_exact_disorder"},
+    {"table": "empty_both"},
+    {"table": "empty_right_no_exact"},
+    {"table": "same_bounds"},
+    {"table": "preceding_strict"},
+    {"table": "following_strict"},
+    {"table": "not_a_match"},
+    {"table": "no_left_start"},
+    {"table": "no_left_end"},
+    {"table": "no_right_range"},
+    {"table": "nothing_there"},
+    {"table": "range_types_differ"},
+    {"table": "range_end_type_differs"},
+    {"table": "range_start_type_differs"},
+    {"table": "float_bounds_int_range"},
+    {"table": "no_left_exact"},
+    {"table": "no_right_exact"},
+    {"table": "exact_types_differ"},
+    {"table": "exact_same_arrow_other_type"},
+    {"table": "exact_is_range_column"},
+    {"table": "exact_twice"},
+    {"table": "agg_no_such_input"},
+    {"table": "agg_no_such_input_disorder"},
+    {"table": "agg_left_column_as_input"},
+    {"table": "agg_replaces_left_column"},
+    {"table": "agg_replaces_key"},
+    {"table": "agg_same_output_twice"},
+    {"table": "agg_same_output_two_aggs"},
+    {"table": "agg_every_type"},
+    {"table": "agg_group_and_sum"},
+    {"table": "agg_first"},
+    {"table": "agg_last"},
+    {"table": "agg_min"},
+    {"table": "agg_avg"},
+    {"table": "agg_count_only"},
+    {"table": "agg_unsupported_disorder"},
+    {"table": "agg_unsupported_bad_range"},
+    {"table": "of_a_range_join"}
+  ]
+}
