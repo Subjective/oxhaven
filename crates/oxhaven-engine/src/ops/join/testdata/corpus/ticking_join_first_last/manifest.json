@@ -1,0 +1,164 @@
+{
+  "format": 2,
+  "scenario": "ticking_join_first_last",
+  "scenario_sha256": "8968aa72bdf2ec6435b313d1e0e57f5f90e74e061986ff3b95c67ddcab50f15c",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "file": "step000.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "first",
+      "file": "step001.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "last",
+      "file": "step001.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "first",
+      "file": "step002.first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "last",
+      "file": "step002.last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "first",
+      "file": "step003.first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "last",
+      "file": "step003.last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "first",
+      "file": "step004.first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "last",
+      "file": "step004.last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "first",
+      "file": "step005.first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "last",
+      "file": "step005.last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "first",
+      "file": "step006.first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "last",
+      "file": "step006.last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "first",
+      "file": "step007.first.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "last",
+      "file": "step007.last.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "first",
+      "file": "step008.first.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "last",
+      "file": "step008.last.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "first",
+      "file": "step009.first.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "last",
+      "file": "step009.last.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "first",
+      "file": "step010.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 10,
+      "table": "last",
+      "file": "step010.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 11,
+      "table": "first",
+      "file": "step011.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 11,
+      "table": "last",
+      "file": "step011.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 12,
+      "table": "first",
+      "file": "step012.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 12,
+      "table": "last",
+      "file": "step012.last.arrow",
+      "rows": 3
+    }
+  ]
+}

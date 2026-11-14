@@ -2,6 +2,7 @@
 
 pub mod agg;
 pub mod filter;
+pub mod join;
 pub mod merge;
 pub mod select;
 pub mod sort;

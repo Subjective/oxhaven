@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "name": "join_zero_keys",
+  "description": "Static natural_join and exact_join without match columns, for right tables of no, one and two rows and for an empty left table.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "A", "type": "int32"}],
+      "rows": [[1], [2]]
+    },
+    {
+      "name": "l0",
+      "columns": [{"name": "A", "type": "int32"}],
+      "rows": []
+    },
+    {
+      "name": "r0",
+      "columns": [{"name": "V", "type": "int64"}],
+      "rows": []
+    },
+    {
+      "name": "r1",
+      "columns": [{"name": "V", "type": "int64"}],
+      "rows": [[10]]
+    },
+    {
+      "name": "r2",
+      "columns": [{"name": "V", "type": "int64"}],
+      "rows": [[10], [11]]
+    }
+  ],
+  "operations": [
+    {"name": "one_error", "op": "natural_join", "left": "l", "right": "r1", "on": []},
+    {"name": "one_first", "op": "natural_join", "left": "l", "right": "r1", "on": [], "type": "first_match"},
+    {"name": "one_last", "op": "natural_join", "left": "l", "right": "r1", "on": [], "type": "last_match"},
+    {"name": "one_exactly_one", "op": "natural_join", "left": "l", "right": "r1", "on": [], "type": "exactly_one_match"},
+    {"name": "one_exact", "op": "exact_join", "left": "l", "right": "r1", "on": []},
+    {"name": "none_error", "op": "natural_join", "left": "l", "right": "r0", "on": []},
+    {"name": "none_first", "op": "natural_join", "left": "l", "right": "r0", "on": [], "type": "first_match"},
+    {"name": "none_last", "op": "natural_join", "left": "l", "right": "r0", "on": [], "type": "last_match"},
+    {"name": "none_exactly_one", "op": "natural_join", "left": "l", "right": "r0", "on": [], "type": "exactly_one_match"},
+    {"name": "none_exact", "op": "exact_join", "left": "l", "right": "r0", "on": []},
+    {"name": "two_error", "op": "natural_join", "left": "l", "right": "r2", "on": []},
+    {"name": "two_first", "op": "natural_join", "left": "l", "right": "r2", "on": [], "type": "first_match"},
+    {"name": "two_last", "op": "natural_join", "left": "l", "right": "r2", "on": [], "type": "last_match"},
+    {"name": "two_exactly_one", "op": "natural_join", "left": "l", "right": "r2", "on": [], "type": "exactly_one_match"},
+    {"name": "two_exact", "op": "exact_join", "left": "l", "right": "r2", "on": []},
+    {"name": "empty_one_exact", "op": "exact_join", "left": "l0", "right": "r1", "on": []},
+    {"name": "empty_none_error", "op": "natural_join", "left": "l0", "right": "r0", "on": []},
+    {"name": "empty_none_exact", "op": "exact_join", "left": "l0", "right": "r0", "on": []},
+    {"name": "empty_two_error", "op": "natural_join", "left": "l0", "right": "r2", "on": []},
+    {"name": "empty_two_first", "op": "natural_join", "left": "l0", "right": "r2", "on": [], "type": "first_match"},
+    {"name": "empty_two_last", "op": "natural_join", "left": "l0", "right": "r2", "on": [], "type": "last_match"},
+    {"name": "empty_two_exact", "op": "exact_join", "left": "l0", "right": "r2", "on": []}
+  ],
+  "results": [
+    {"table": "one_error"},
+    {"table": "one_first"},
+    {"table": "one_last"},
+    {"table": "one_exactly_one"},
+    {"table": "one_exact"},
+    {"table": "none_error"},
+    {"table": "none_first"},
+    {"table": "none_last"},
+    {"table": "none_exactly_one"},
+    {"table": "none_exact"},
+    {"table": "two_error"},
+    {"table": "two_first"},
+    {"table": "two_last"},
+    {"table": "two_exactly_one"},
+    {"table": "two_exact"},
+    {"table": "empty_one_exact"},
+    {"table": "empty_none_error"},
+    {"table": "empty_none_exact"},
+    {"table": "empty_two_error"},
+    {"table": "empty_two_first"},
+    {"table": "empty_two_last"},
+    {"table": "empty_two_exact"}
+  ]
+}
