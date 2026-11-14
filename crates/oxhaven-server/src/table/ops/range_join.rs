@@ -61,9 +61,7 @@ fn exact_match(text: &str) -> Result<JoinMatch, String> {
     let Some((left, right)) = text.split_once('=') else {
         return Ok(JoinMatch::same(column_name(text)?));
     };
-    if right.is_empty() {
-        return Err(unparsable());
-    }
+    // Nothing after the one or two `=` is no match; a blank right name is a name.
     let right = right.strip_prefix('=').unwrap_or(right);
     if right.is_empty() {
         return Err(unparsable());
@@ -318,6 +316,8 @@ mod tests {
         assert_eq!(names("==K"), empty);
         assert_eq!(names(""), empty);
         assert_eq!(names(" "), empty);
+        assert_eq!(names("K= "), empty);
+        assert_eq!(names("K== "), empty);
         assert_eq!(names("K===K"), invalid("=K"));
         assert_eq!(names("A=B=C"), invalid("B=C"));
         assert_eq!(names("1K"), invalid("1K"));

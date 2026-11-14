@@ -53,17 +53,18 @@ fn by_parts(result: i32) -> RangeJoinTablesRequest {
     }
 }
 
-/// Export 1: `Id`, `K`, `Lo`, `Hi`. Export 2: `K`, `P` (ascending in each `K`), `V`.
+/// Export 1: `Id`, `K`, `Lo` (ascending in each `K`), `Hi`. Export 2: `K`, `P` (ascending in each `K`), `V`.
 async fn tables(c: &mut Connected) {
     table_of(
         c,
         1,
         &[
             &["Id = 1", "K = `a`", "Lo = 1", "Hi = 5"],
-            &["Id = 2", "K = `a`", "Lo = 4", "Hi = 4"],
-            &["Id = 3", "K = `a`", "Lo = 6", "Hi = 2"],
-            &["Id = 4", "K = `b`", "Lo = 0", "Hi = 9"],
-            &["Id = 5", "K = `c`", "Lo = 0", "Hi = 9"],
+            &["Id = 2", "K = `a`", "Lo = 2", "Hi = 4"],
+            &["Id = 3", "K = `a`", "Lo = 4", "Hi = 4"],
+            &["Id = 4", "K = `a`", "Lo = 6", "Hi = 2"],
+            &["Id = 5", "K = `b`", "Lo = 0", "Hi = 9"],
+            &["Id = 6", "K = `c`", "Lo = 0", "Hi = 9"],
         ],
     )
     .await;
@@ -112,7 +113,7 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     let response = call(&mut c, Op::RangeJoin(by_text(10))).await.unwrap();
     assert!(response.success);
     assert!(response.is_static);
-    assert_eq!(response.size, 5);
+    assert_eq!(response.size, 6);
     // The result is a table of its own: none of the left table's attributes, not flat.
     assert_eq!(schema_metadata(&response), pairs(&[]));
     let schema = schema_of(&response);
@@ -129,10 +130,11 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
         &ColumnType::vector(ColumnType::Int).arrow_type()
     );
     // An empty range is an empty vector; a row whose start is beyond its end has none.
-    let expected = texts(&["[10, 30, 50]", "[]", "", "[20]", "[]"]);
+    // These and the vectors below are what Java 42.9 answered for the same tables.
+    let expected = texts(&["[10, 30, 50]", "[30]", "[]", "", "[20]", "[]"]);
     let table = c.table(10);
     assert_eq!(values(table.as_ref(), "Vs"), expected);
-    assert_eq!(values(table.as_ref(), "Id"), ints(&[1, 2, 3, 4, 5]));
+    assert_eq!(values(table.as_ref(), "Id"), ints(&[1, 2, 3, 4, 5, 6]));
 
     // The same join by the parts of the match, with space around the names.
     let spaced = RangeJoinTablesRequest {
@@ -141,12 +143,13 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
         ..by_parts(11)
     };
     let response = call(&mut c, Op::RangeJoin(spaced)).await.unwrap();
-    assert_eq!(response.size, 5);
+    assert_eq!(response.size, 6);
     assert_eq!(values(c.table(11).as_ref(), "Vs"), expected);
 
     // The parts can name what the text cannot: the row before with a strict end, and
-    // the row after with a strict start. The rules are those of the request. A row whose
-    // bounds are equal has a range only when both rules allow equality.
+    // the row after with a strict start. The rules are those of the request: the second
+    // row, whose bounds lie between right values, shows the row before and the row after.
+    // A row whose bounds are equal has a range only when both rules allow equality.
     let preceding = RangeJoinTablesRequest {
         range_start_rule: RangeStartRule::LessThanOrEqualAllowPreceding as i32,
         range_end_rule: RangeEndRule::GreaterThan as i32,
@@ -155,7 +158,7 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     call(&mut c, Op::RangeJoin(preceding)).await.unwrap();
     assert_eq!(
         values(c.table(12).as_ref(), "Vs"),
-        texts(&["[10, 30]", "", "", "[20]", "[]"])
+        texts(&["[10, 30]", "[10, 30]", "", "", "[20]", "[]"])
     );
     let strict = RangeJoinTablesRequest {
         range_start_rule: RangeStartRule::LessThan as i32,
@@ -165,7 +168,7 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     call(&mut c, Op::RangeJoin(strict)).await.unwrap();
     assert_eq!(
         values(c.table(13).as_ref(), "Vs"),
-        texts(&["[30]", "", "", "[20]", "[]"])
+        texts(&["[30]", "[30]", "", "", "[20]", "[]"])
     );
     let following = RangeJoinTablesRequest {
         range_start_rule: RangeStartRule::LessThan as i32,
@@ -175,7 +178,7 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     call(&mut c, Op::RangeJoin(following)).await.unwrap();
     assert_eq!(
         values(c.table(14).as_ref(), "Vs"),
-        texts(&["[30, 50]", "", "", "[20]", "[]"])
+        texts(&["[30, 50]", "[30, 50]", "", "", "[20]", "[]"])
     );
     // And the text names its own rules.
     let text = RangeJoinTablesRequest {
@@ -185,7 +188,7 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     call(&mut c, Op::RangeJoin(text)).await.unwrap();
     assert_eq!(
         values(c.table(15).as_ref(), "Vs"),
-        texts(&["[10, 30]", "", "", "[20]", "[]"])
+        texts(&["[10, 30]", "[10, 30]", "", "", "[20]", "[]"])
     );
 
     // Without exact matches every right row is in the one bucket, which is then out of
@@ -215,11 +218,11 @@ async fn range_join_gives_each_left_row_a_vector_of_the_right_rows_in_its_range(
     );
     assert_eq!(
         values(c.table(17).as_ref(), "K"),
-        texts(&["[a, a, a]", "[]", "", "[b]", "[]"])
+        texts(&["[a, a, a]", "[a]", "[]", "", "[b]", "[]"])
     );
     assert_eq!(
         values(c.table(17).as_ref(), "Lo"),
-        texts(&["[10, 30, 50]", "[]", "", "[20]", "[]"])
+        texts(&["[10, 30, 50]", "[30]", "[]", "", "[20]", "[]"])
     );
 }
 
@@ -271,14 +274,15 @@ async fn range_join_runs_in_a_batch_on_tables_of_the_batch_and_on_its_own_result
     );
     assert_eq!(
         values(table.as_ref(), "Vs"),
-        texts(&["[10, 30, 50]", "[]", "", "[20]", "[]"])
+        texts(&["[10, 30, 50]", "[30]", "[]", "", "[20]", "[]"])
     );
     assert_eq!(
         values(table.as_ref(), "Ps"),
-        texts(&["[1, 3, 5]", "[]", "", "[2]", "[]"])
+        texts(&["[1, 3, 5]", "[3]", "[]", "", "[2]", "[]"])
     );
 
-    // Bucket a has the left rows with Lo 1, 4 and 6, of which the last has no vector.
+    // Bucket a has the left rows with Lo 1, 2, 4 and 6, of which the last has no vector
+    // and is therefore no element.
     let table = c.table(21);
     let nested = table.definition().index_of("Vss").unwrap();
     assert_eq!(
@@ -287,7 +291,14 @@ async fn range_join_runs_in_a_batch_on_tables_of_the_batch_and_on_its_own_result
     );
     assert_eq!(
         values(table.as_ref(), "Vss"),
-        texts(&["[[10, 30, 50], []]", "[[]]", "", "[[20]]", "[[]]"])
+        texts(&[
+            "[[10, 30, 50], [30], []]",
+            "[[30], []]",
+            "[[]]",
+            "",
+            "[[20]]",
+            "[[]]"
+        ])
     );
     let described = responses
         .iter()
@@ -552,7 +563,7 @@ async fn the_shape_of_a_range_join_request_is_checked_in_java_s_order() {
 
     // None of these consumed the result ticket.
     let response = call(&mut c, Op::RangeJoin(by_text(10))).await.unwrap();
-    assert_eq!(response.size, 5);
+    assert_eq!(response.size, 6);
 }
 
 #[tokio::test]
@@ -691,7 +702,7 @@ async fn the_matches_of_a_range_join_request_are_read_as_java_reads_them() {
             ..by_text(result)
         };
         let response = call(&mut c, Op::RangeJoin(request)).await.unwrap();
-        assert_eq!(response.size, 5, "{text:?}");
+        assert_eq!(response.size, 6, "{text:?}");
     }
 }
 
