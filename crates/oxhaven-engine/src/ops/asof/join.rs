@@ -756,13 +756,9 @@ impl MergedOperator for AsOfJoin {
             downstream.shifted = update.shifted.clone();
         }
 
-        // A row the left table added in this cycle is added, whatever the right table did.
-        let mut modified = RowSet::from_keys(modified);
-        modified.remove(&downstream.added);
-        if modified.is_empty() {
-            columns = ModifiedColumnSet::empty();
-        }
-        downstream.modified = modified;
+        // The rows the left table added are not among these: they were put into their
+        // buckets after the right table's change was applied.
+        downstream.modified = RowSet::from_keys(modified);
         downstream.modified_columns = columns;
         Ok(downstream)
     }

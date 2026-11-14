@@ -121,6 +121,11 @@ fn the_four_rules_and_the_added_columns_match_java() {
 }
 
 #[test]
+fn the_default_additions_leave_out_the_names_of_the_left_match_columns_as_in_java() {
+    assert_eq!(replay(&fixture("asof_default_additions"), &define), 3);
+}
+
+#[test]
 fn stamps_of_every_type_match_java() {
     assert_eq!(replay(&fixture("asof_stamp_types"), &define), 56);
 }
@@ -133,19 +138,28 @@ fn exact_match_columns_of_every_type_match_java() {
 #[test]
 fn a_ticking_right_table_matches_java() {
     // 11 results at 24 steps, and the updates of 10 of them during 23 steps.
-    assert_eq!(replay(&fixture("asof_ticking_right"), &define), 11 * 24 + 10 * 23);
+    assert_eq!(
+        replay(&fixture("asof_ticking_right"), &define),
+        11 * 24 + 10 * 23
+    );
 }
 
 #[test]
 fn a_ticking_left_table_matches_java() {
     // 15 results at 16 steps, and the updates of 6 of them during 15 steps.
-    assert_eq!(replay(&fixture("asof_ticking_left"), &define), 15 * 16 + 6 * 15);
+    assert_eq!(
+        replay(&fixture("asof_ticking_left"), &define),
+        15 * 16 + 6 * 15
+    );
 }
 
 #[test]
 fn two_ticking_tables_match_java() {
     // 15 results at 28 steps, and the updates of 5 of them during 27 steps.
-    assert_eq!(replay(&fixture("asof_ticking_both"), &define), 15 * 28 + 5 * 27);
+    assert_eq!(
+        replay(&fixture("asof_ticking_both"), &define),
+        15 * 28 + 5 * 27
+    );
 }
 
 #[test]

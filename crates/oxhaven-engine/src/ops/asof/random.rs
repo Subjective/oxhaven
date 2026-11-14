@@ -62,7 +62,13 @@ fn join(
         JoinAddition::renamed("RD", "D"),
         JoinAddition::renamed("RK", "K"),
     ];
-    match as_of_join(left, right, &exact, &AsOfMatch::new(stamp, rule, stamp), &add) {
+    match as_of_join(
+        left,
+        right,
+        &exact,
+        &AsOfMatch::new(stamp, rule, stamp),
+        &add,
+    ) {
         Ok(result) => result,
         Err(error) => panic!("{rule:?} on {exact:?} and {stamp}: {error}"),
     }

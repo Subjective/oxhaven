@@ -258,14 +258,7 @@ fn stamps_of_different_types_are_refused_but_for_the_types_java_reads_alike() {
         ("V", ColumnType::Long, longs([1, 2])),
     ]);
     assert_eq!(
-        as_of_join(
-            &left,
-            &int_right,
-            &[],
-            &x_y(GreaterThanEqual),
-            &add(&["V"])
-        )
-        .err(),
+        as_of_join(&left, &int_right, &[], &x_y(GreaterThanEqual), &add(&["V"])).err(),
         Some(AsOfJoinError::StampTypes {
             left: ColumnType::Long,
             right: ColumnType::Int
@@ -619,10 +612,7 @@ fn left_shifts_pass_through_and_matches_follow_the_rows() {
                 .add([50], left_row(1, 12, "e")),
         )
         .unwrap();
-    assert_eq!(
-        crate::ops::sort::testing::shifts(&update),
-        [(20, 30, -15)]
-    );
+    assert_eq!(crate::ops::sort::testing::shifts(&update), [(20, 30, -15)]);
     assert_eq!(keys(&pair.result.row_set()), [5, 15, 40, 50]);
     assert!(update.modified.is_empty());
     assert_eq!(pair.v(), ["200", "200", "300", "100"]);
@@ -953,11 +943,15 @@ fn a_static_left_table_follows_a_live_right_table() {
     assert_eq!(pair.v(), ["200", "null", "null", "null"]);
     // The left table's row keys are 0 to 3.
     let update = pair
-        .right(
-            TableChange::new()
-                .remove([6])
-                .add([9, 11], vec![ints([1, 2]), ints([31, 21]), longs([310, 210]), strings(["o", "o"])]),
-        )
+        .right(TableChange::new().remove([6]).add(
+            [9, 11],
+            vec![
+                ints([1, 2]),
+                ints([31, 21]),
+                longs([310, 210]),
+                strings(["o", "o"]),
+            ],
+        ))
         .unwrap();
     assert_eq!(keys(&update.modified), [0, 1, 2, 3]);
     assert_eq!(pair.v(), ["310", "310", "310", "210"]);
