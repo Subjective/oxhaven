@@ -244,7 +244,7 @@ def main(argv: list[str]) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
     if found:
-        print("The replay baseline may only get stricter (differs to clean, or fewer kinds). "
+        print("The replay baseline may only get stricter (differs to clean, fewer kinds, fewer tables). "
               "These changes are not that:")
         for line in found:
             print(f"  {line}")

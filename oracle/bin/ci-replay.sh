@@ -68,14 +68,14 @@ for _ in $(seq 300); do
   listening="$(grep -o 'Listening on 127\.0\.0\.1:[0-9]*' "$log" | head -n 1)"
   if [[ -n "$listening" ]]; then
     url="dh+psk://$psk@127.0.0.1:${listening##*:}"
-    if PYTHONPATH="$oracle" "$python" -m harness.health "$url" >/dev/null 2>&1; then
+    if PYTHONPATH="$oracle" timeout 20 "$python" -m harness.health "$url" >/dev/null 2>&1; then
       break
     fi
   fi
   url=
   sleep 0.2
 done
-[[ -n "$url" ]] || fail "the server did not answer a query within 60 seconds; see $log"
+[[ -n "$url" ]] || fail "the server did not answer a query after 300 attempts; see $log"
 echo "server $server at $url"
 
 echo "== replay and client smokes"
