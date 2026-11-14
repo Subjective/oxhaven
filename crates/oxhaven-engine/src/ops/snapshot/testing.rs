@@ -20,6 +20,7 @@ use arrow::array::{
 };
 use arrow::datatypes::{DataType, Field, Schema};
 use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_testkit::{definition, Recorder, TableSnapshot};
@@ -276,17 +277,36 @@ fn positions(rows: &Value) -> Vec<i64> {
     rows.map(|row| row.as_i64().expect("a position")).collect()
 }
 
-/// Compares the updates a table delivered during a step with the recorded ones. The table's
-/// row keys have to be its positions, as those of a sort's result are: the recording has
-/// positions, removed rows by their position before the update and the others after it.
-fn compare_updates(place: &str, expected: &Value, recorder: &Recorder, seen: &mut usize) {
+/// Compares the updates a table delivered during a step with the recorded ones. The
+/// recording has positions, removed rows by their position before the update and the
+/// others after it; `rows` are the table's rows before the first of the updates and
+/// become its rows after the last.
+fn compare_updates(
+    place: &str,
+    expected: &Value,
+    recorder: &Recorder,
+    seen: &mut usize,
+    rows: &mut RowSet,
+) {
     let events = recorder.events().split_off(*seen);
     *seen += events.len();
     let found: Vec<[Vec<i64>; 3]> = events
         .into_iter()
         .map(|event| {
             let update = event.unwrap_or_else(|failure| panic!("{place}: {}", failure.message));
-            [&update.added, &update.removed, &update.modified].map(|rows| rows.iter().collect())
+            let after = update.apply_to(rows).expect("a valid update");
+            let positions = |keys: &RowSet, within: &RowSet| -> Vec<i64> {
+                let keys = keys.iter();
+                keys.map(|key| within.find(key).expect("a row of the table") as i64)
+                    .collect()
+            };
+            let found = [
+                positions(&update.added, &after),
+                positions(&update.removed, rows),
+                positions(&update.modified, &after),
+            ];
+            *rows = after;
+            found
         })
         .collect();
     let recorded: Vec<[Vec<i64>; 3]> = list(expected)
@@ -345,16 +365,12 @@ pub(crate) fn replay(path: &Path, define: Define) -> usize {
         tables.insert(text(&operation["name"]), built);
     }
 
-    let mut recorders: Vec<(&str, Arc<Recorder>, usize)> = texts(&fixture["updates"])
+    let mut recorders: Vec<(&str, Arc<Recorder>, usize, RowSet)> = texts(&fixture["updates"])
         .into_iter()
         .map(|name| {
             let table = tables[name].clone().expect("a table to listen to");
-            let size = table.row_set().size();
-            assert!(
-                table.row_set().iter().eq(0..size as i64),
-                "{name}: row keys that are not positions"
-            );
-            (name, Recorder::attach(table), 0)
+            let rows = (*table.row_set()).clone();
+            (name, Recorder::attach(table), 0, rows)
         })
         .collect();
     let results = texts(&fixture["results"]);
@@ -400,10 +416,10 @@ pub(crate) fn replay(path: &Path, define: Define) -> usize {
             }
         }
         check(index + 1);
-        for (table, recorder, seen) in &mut recorders {
+        for (table, recorder, seen, rows) in &mut recorders {
             let place = format!("{name}/{table} during step {}", index + 1);
             let expected = &fixture["java"]["updates"][index][*table];
-            compare_updates(&place, expected, recorder, seen);
+            compare_updates(&place, expected, recorder, seen, rows);
             update_comparisons += 1;
         }
     }

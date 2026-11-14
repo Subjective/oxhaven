@@ -18,7 +18,7 @@ use std::sync::Arc;
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.OperatorAggregationStateManager, whose
 /// `outputPosition` is the slot.
-pub(super) struct KeyTable {
+pub(crate) struct KeyTable {
     converter: RowConverter,
     /// Looked up only, never iterated, so its order cannot reach a result.
     slots: HashMap<Box<[u8]>, usize>,
