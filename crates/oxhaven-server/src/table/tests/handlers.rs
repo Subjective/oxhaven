@@ -36,6 +36,8 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Flatten(r) => c.client.flatten(c.auth(r)).await,
         Op::UnstructuredFilter(r) => c.client.unstructured_filter(c.auth(r)).await,
         Op::Filter(r) => c.client.filter(c.auth(r)).await,
+        Op::Aggregate(r) => c.client.aggregate(c.auth(r)).await,
+        Op::AggregateAll(r) => c.client.aggregate_all(c.auth(r)).await,
         other => panic!("no call for {}", op_name(&other)),
     };
     response.map(Response::into_inner)
@@ -762,4 +764,182 @@ async fn a_condition_with_a_part_that_is_not_set_is_an_internal_error() {
         let refused = call(&mut c, Op::Filter(request)).await.unwrap_err();
         assert_internal(&refused);
     }
+}
+
+// ---------------------------------------------------------------- aggregation
+
+fn agg_spec(kind: proto::agg_spec::Type) -> proto::AggSpec {
+    proto::AggSpec { r#type: Some(kind) }
+}
+
+fn agg_columns(kind: proto::agg_spec::Type, pairs: &[&str]) -> proto::Aggregation {
+    proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::Columns(
+            proto::aggregation::AggregationColumns {
+                spec: Some(agg_spec(kind)),
+                match_pairs: texts(pairs),
+            },
+        )),
+    }
+}
+
+fn agg_count(column: &str) -> proto::Aggregation {
+    proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::Count(
+            proto::aggregation::AggregationCount {
+                column_name: column.to_string(),
+            },
+        )),
+    }
+}
+
+fn aggregated(result: i32, aggregations: Vec<proto::Aggregation>, group_by: &[&str]) -> Op {
+    Op::Aggregate(AggregateRequest {
+        result_id: ticket(result),
+        source_id: by_ticket(1),
+        initial_groups_id: None,
+        preserve_empty: false,
+        aggregations,
+        group_by_columns: texts(group_by),
+    })
+}
+
+#[tokio::test]
+async fn aggregate_groups_rows_and_aggregates_columns() {
+    use proto::agg_spec::Type;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(Type::Sum(Default::default()), &["Total = N", "I"]),
+            agg_count("Rows"),
+        ],
+        &["S"],
+    );
+    let response = call(&mut c, request).await.unwrap();
+    assert_eq!(response.size, 2);
+    assert!(response.is_static);
+    let table = c.table(2);
+    assert_eq!(column_names(table.as_ref()), ["S", "Total", "I", "Rows"]);
+    assert_eq!(values(table.as_ref(), "S"), texts(&["a", "b"]));
+    assert_eq!(values(table.as_ref(), "Total"), ints(&[3, 0]));
+    assert_eq!(values(table.as_ref(), "I"), ints(&[6, 9]));
+    assert_eq!(values(table.as_ref(), "Rows"), ints(&[3, 3]));
+
+    // every column that is not grouped by
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(3),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(Type::Max(Default::default()))),
+        group_by_columns: texts(&["S"]),
+    });
+    call(&mut c, all).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(column_names(table.as_ref()), ["S", "I", "N"]);
+    assert_eq!(values(table.as_ref(), "I"), ints(&[4, 5]));
+    assert_eq!(values(table.as_ref(), "N"), ints(&[3, 2]));
+}
+
+#[tokio::test]
+async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
+    use proto::agg_spec::Type;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let sum = || Type::Sum(Default::default());
+
+    // malformed requests, with Java's messages
+    let refused = call(&mut c, aggregated(2, vec![], &["S"]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument);
+    assert_eq!(
+        refused.message(),
+        "io.deephaven.proto.backplane.grpc.AggregateRequest must have at least one aggregations (5)"
+    );
+    let no_type = proto::Aggregation { r#type: None };
+    let refused = call(&mut c, aggregated(2, vec![no_type], &["S"]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument);
+    assert!(
+        refused
+            .message()
+            .starts_with("io.deephaven.proto.backplane.grpc.Aggregation must have oneof type. "),
+        "{refused:?}"
+    );
+    let refused = call(&mut c, aggregated(2, vec![agg_columns(sum(), &[])], &["S"]))
+        .await
+        .unwrap_err();
+    assert_eq!(
+        refused.message(),
+        "io.deephaven.proto.backplane.grpc.Aggregation.AggregationColumns must have at least one match_pairs (2)"
+    );
+    let no_spec = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(2),
+        source_id: by_ticket(1),
+        spec: None,
+        group_by_columns: Vec::new(),
+    });
+    let refused = call(&mut c, no_spec).await.unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument);
+    assert_eq!(
+        refused.message(),
+        "io.deephaven.proto.backplane.grpc.AggregateAllRequest must have field spec (3)"
+    );
+
+    // the engine's refusals
+    for (result, pairs, group_by) in [
+        (10, ["Missing"], "S"),
+        (11, ["N"], "Missing"),
+        (12, ["S"], "I"),
+        (13, ["bad name = N"], "S"),
+    ] {
+        let request = aggregated(result, vec![agg_columns(sum(), &pairs)], &[group_by]);
+        assert_internal(&call(&mut c, request).await.unwrap_err());
+    }
+
+    // an output with the name of a group-by column panics in the engine: refused before
+    for (result, aggregation) in [(20, agg_columns(sum(), &["S = N"])), (21, agg_count("S"))] {
+        let refused = call(&mut c, aggregated(result, vec![aggregation], &["S"]))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented);
+        assert_eq!(
+            refused.message(),
+            "not ported: io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns: aggregation output S has the name of a group-by column"
+        );
+    }
+    let all_by_itself = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(22),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(Type::Median(Default::default()))),
+        group_by_columns: texts(&["S"]),
+    });
+    let refused = call(&mut c, all_by_itself).await.unwrap_err();
+    assert_eq!(refused.code(), Code::Unimplemented);
+    assert_eq!(
+        refused.message(),
+        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation median"
+    );
+    let row_key = proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::FirstRowKey(Default::default())),
+    };
+    let refused = call(&mut c, aggregated(23, vec![row_key], &["S"]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::Unimplemented);
+    let mut with_groups = aggregated(24, vec![agg_count("Rows")], &["S"]);
+    if let Op::Aggregate(request) = &mut with_groups {
+        request.initial_groups_id = by_ticket(1);
+    }
+    let refused = call(&mut c, with_groups).await.unwrap_err();
+    assert_eq!(refused.code(), Code::Unimplemented);
+
+    // and the server goes on
+    let served = call(&mut c, aggregated(30, vec![agg_count("Rows")], &[]))
+        .await
+        .unwrap();
+    assert_eq!(values(c.table(30).as_ref(), "Rows"), ints(&[6]));
+    assert_eq!(served.size, 1);
 }
