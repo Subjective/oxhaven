@@ -131,3 +131,9 @@ the server takes a web root extracted from the reference wheel (licensing stays 
 
 Lesson for the retrospective: scouting the acceptance test against the reference first was cheap
 (101k tokens) and removed a wrong task (gRPC-web first) before anyone built it.
+
+## 10:40 Main verified after stacked merges
+
+PRs 20, 21 and 22 were each green against an older main and merged within two minutes of each
+other. Checked the combined main locally: fmt, clippy and all workspace tests pass. PR 23's CI ran
+on the combined tree as well. PR 23 (IDE acceptance test) merged.
