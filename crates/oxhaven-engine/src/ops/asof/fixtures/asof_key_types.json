@@ -1,0 +1,248 @@
+{
+ "name": "asof_key_types",
+ "description": "Exact-match columns of every type: null keys, NaN keys, the two zeros, a float beside the double of the same value, and columns of two types that Java reads as one primitive type (Boolean and byte, Instant and long).",
+ "inputs": [
+  {"name": "l", "columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}], "rows": [
+   [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10],
+   ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10],
+   [-0.0, -0.0, null, null, null, null, null, null, null, 10],
+   [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10],
+   [null, null, false, 30, "", 0, 0, 30, 0, 10],
+   ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10]
+  ]},
+  {"name": "r", "columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}], "rows": [
+   ["NaN", "NaN", null, null, null, null, null, null, null, 1],
+   [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 2],
+   [null, null, false, 20, "b", 2, 66, 20, 0, 3],
+   [-0.0, -0.0, false, 30, "", 0, 0, 30, 0, 4],
+   [1.5, 1.5, true, 10, "a", 3, 65534, 10, 1, 5],
+   ["Infinity", "Infinity", null, 10, "b", 1, 65, null, null, 6],
+   [1.5000000000000002, 2.5, true, 40, "A", 1, 97, 11, 2, 7]
+  ]}
+ ],
+ "operations": [
+  {"name": "aj_kd", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KD", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kd", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KD", "X"], "joins": ["RX = X"]},
+  {"name": "aj_kf", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KF", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kf", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KF", "X"], "joins": ["RX = X"]},
+  {"name": "aj_kb", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KB", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kb", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KB", "X"], "joins": ["RX = X"]},
+  {"name": "aj_kt", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KT", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kt", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KT", "X"], "joins": ["RX = X"]},
+  {"name": "aj_ks", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KS", "X"], "joins": ["RX = X"]},
+  {"name": "raj_ks", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KS", "X"], "joins": ["RX = X"]},
+  {"name": "aj_ki", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KI", "X"], "joins": ["RX = X"]},
+  {"name": "raj_ki", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KI", "X"], "joins": ["RX = X"]},
+  {"name": "aj_kc", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KC", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kc", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KC", "X"], "joins": ["RX = X"]},
+  {"name": "aj_kl", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KL", "X"], "joins": ["RX = X"]},
+  {"name": "raj_kl", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KL", "X"], "joins": ["RX = X"]},
+  {"name": "aj_ky", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KY", "X"], "joins": ["RX = X"]},
+  {"name": "raj_ky", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KY", "X"], "joins": ["RX = X"]},
+  {"name": "aj_two_keys", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KS", "KI", "X"], "joins": ["RX = X"]},
+  {"name": "raj_three_keys", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KB", "KD", "KC", "X"], "joins": ["RX = X"]},
+  {"name": "aj_time_long", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KT = KL", "X"], "joins": ["RX = X"]},
+  {"name": "aj_long_time", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KL = KT", "X"], "joins": ["RX = X"]},
+  {"name": "aj_bool_byte", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KB = KY", "X"], "joins": ["RX = X"]},
+  {"name": "raj_byte_bool", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["KY = KB", "X"], "joins": ["RX = X"]}
+ ],
+ "results": ["aj_kd", "raj_kd", "aj_kf", "raj_kf", "aj_kb", "raj_kb", "aj_kt", "raj_kt", "aj_ks", "raj_ks", "aj_ki", "raj_ki", "aj_kc", "raj_kc", "aj_kl", "raj_kl", "aj_ky", "raj_ky", "aj_two_keys", "raj_three_keys", "aj_time_long", "aj_long_time", "aj_bool_byte", "raj_byte_bool"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "aj_kd": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 1],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 4],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 4],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 3],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 6]
+   ]},
+   "raj_kd": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_kf": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 1],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 4],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 4],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 3],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 6]
+   ]},
+   "raj_kf": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_kb": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 7],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 4],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 6],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 7],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 7]
+   ]},
+   "raj_kb": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_kt": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 6]
+   ]},
+   "raj_kt": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_ks": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 6],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_ks": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_ki": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 7],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 7],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_ki": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_kc": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_kc": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_kl": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 6],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_kl": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_ky": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 4],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 6],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_ky": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_two_keys": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 2],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 2],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_three_keys": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]},
+   "aj_time_long": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 6],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "aj_long_time": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 3],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 1],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 6],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 6]
+   ]},
+   "aj_bool_byte": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, 4],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, 6],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, 5],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, 4],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, 5]
+   ]},
+   "raj_byte_bool": {"columns": [{"name": "KD", "type": "float64"}, {"name": "KF", "type": "float32"}, {"name": "KB", "type": "bool"}, {"name": "KT", "type": "timestamp"}, {"name": "KS", "type": "string"}, {"name": "KI", "type": "int32"}, {"name": "KC", "type": "char"}, {"name": "KL", "type": "int64"}, {"name": "KY", "type": "int8"}, {"name": "X", "type": "int32"}, {"name": "RX", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 1.5, true, 10, "a", 1, 65, 10, 1, 10, null],
+    ["NaN", "NaN", false, 20, "b", 2, 66, 20, 0, 10, null],
+    [-0.0, -0.0, null, null, null, null, null, null, null, 10, null],
+    [0.0, 0.0, true, 10, "a", 1, 65, 10, 1, 10, null],
+    [null, null, false, 30, "", 0, 0, 30, 0, 10, null],
+    ["Infinity", "Infinity", true, 10, "a", 3, 65534, 10, 1, 10, null]
+   ]}
+  }
+ ]}
+}
