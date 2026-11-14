@@ -1,0 +1,239 @@
+{
+ "name": "select_distinct_static",
+ "description": "select_distinct of static tables: every column type as a key, null, NaN and signed zero keys, several key columns in and out of the table's order, no key columns, an empty table, and the refused requests.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "Z", "type": "bool"}, {"name": "B", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "T", "type": "timestamp"}], "rows": [
+   [true, 1, 97, 100, 1000, 1000000000000, 1.5, 2.5, "a", 1700000000000000000],
+   [null, null, null, null, null, null, null, null, null, null],
+   [false, -127, 0, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", "", 0],
+   [true, 127, 65534, 32767, 2147483647, 9223372036854775807, "Infinity", "-Infinity", "\u00e9\ud83d\ude00", -1],
+   [false, 0, 65, 0, 0, 0, -0.0, -0.0, "a", 1],
+   [null, 1, 97, 100, 1000, 1000000000000, 0.0, 0.0, "A", 1700000000000000000],
+   [true, null, null, null, null, null, "NaN", "NaN", null, null],
+   [false, 0, 65, 0, 0, 0, 1.5, 2.5, "", 0],
+   [true, 2, 98, 101, 1001, 1000000000001, "-Infinity", "Infinity", "b", 2],
+   [null, null, null, null, null, null, null, null, null, null]
+  ]},
+  {"name": "empty", "columns": [{"name": "Z", "type": "bool"}, {"name": "B", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "T", "type": "timestamp"}], "rows": [
+  ]}
+ ],
+ "operations": [
+  {"name": "one_Z", "op": "select_distinct", "source": "t", "columns": ["Z"]},
+  {"name": "one_B", "op": "select_distinct", "source": "t", "columns": ["B"]},
+  {"name": "one_C", "op": "select_distinct", "source": "t", "columns": ["C"]},
+  {"name": "one_H", "op": "select_distinct", "source": "t", "columns": ["H"]},
+  {"name": "one_I", "op": "select_distinct", "source": "t", "columns": ["I"]},
+  {"name": "one_L", "op": "select_distinct", "source": "t", "columns": ["L"]},
+  {"name": "one_F", "op": "select_distinct", "source": "t", "columns": ["F"]},
+  {"name": "one_D", "op": "select_distinct", "source": "t", "columns": ["D"]},
+  {"name": "one_S", "op": "select_distinct", "source": "t", "columns": ["S"]},
+  {"name": "one_T", "op": "select_distinct", "source": "t", "columns": ["T"]},
+  {"name": "all", "op": "select_distinct", "source": "t", "columns": ["Z", "B", "C", "H", "I", "L", "F", "D", "S", "T"]},
+  {"name": "pair_Z_S", "op": "select_distinct", "source": "t", "columns": ["Z", "S"]},
+  {"name": "pair_S_Z", "op": "select_distinct", "source": "t", "columns": ["S", "Z"]},
+  {"name": "pair_D_I", "op": "select_distinct", "source": "t", "columns": ["D", "I"]},
+  {"name": "triple", "op": "select_distinct", "source": "t", "columns": ["B", "F", "T"]},
+  {"name": "no_columns", "op": "select_distinct", "source": "t", "columns": []},
+  {"name": "no_columns_empty", "op": "select_distinct", "source": "empty", "columns": []},
+  {"name": "empty", "op": "select_distinct", "source": "empty", "columns": ["I", "S"]},
+  {"name": "same_twice", "op": "select_distinct", "source": "t", "columns": ["I", "I"]},
+  {"name": "named_again_later", "op": "select_distinct", "source": "t", "columns": ["I", "S", "I"]},
+  {"name": "unknown", "op": "select_distinct", "source": "t", "columns": ["Nope"]},
+  {"name": "unknown_and_known", "op": "select_distinct", "source": "t", "columns": ["I", "Nope", "Other"]},
+  {"name": "expression", "op": "select_distinct", "source": "t", "columns": ["X=I"]},
+  {"name": "sorted", "op": "sort", "source": "t", "by": [{"column": "I", "direction": "descending"}]},
+  {"name": "of_sorted", "op": "select_distinct", "source": "sorted", "columns": ["D"]},
+  {"name": "tail4", "op": "tail", "source": "t", "rows": 4},
+  {"name": "of_tail", "op": "select_distinct", "source": "tail4", "columns": ["S", "Z"]},
+  {"name": "of_distinct", "op": "select_distinct", "source": "pair_Z_S", "columns": ["Z"]},
+  {"name": "head_of_distinct", "op": "head", "source": "one_S", "rows": 2}
+ ],
+ "results": ["one_Z", "one_B", "one_C", "one_H", "one_I", "one_L", "one_F", "one_D", "one_S", "one_T", "all", "pair_Z_S", "pair_S_Z", "pair_D_I", "triple", "no_columns", "no_columns_empty", "empty", "same_twice", "named_again_later", "unknown", "unknown_and_known", "expression", "of_sorted", "of_tail", "of_distinct", "head_of_distinct"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "one_Z": {"columns": [{"name": "Z", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [true],
+    [null],
+    [false]
+   ]},
+   "one_B": {"columns": [{"name": "B", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1],
+    [null],
+    [-127],
+    [127],
+    [0],
+    [2]
+   ]},
+   "one_C": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [97],
+    [null],
+    [0],
+    [65534],
+    [65],
+    [98]
+   ]},
+   "one_H": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [100],
+    [null],
+    [-32767],
+    [32767],
+    [0],
+    [101]
+   ]},
+   "one_I": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1000],
+    [null],
+    [-2147483647],
+    [2147483647],
+    [0],
+    [1001]
+   ]},
+   "one_L": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1000000000000],
+    [null],
+    [-9223372036854775807],
+    [9223372036854775807],
+    [0],
+    [1000000000001]
+   ]},
+   "one_F": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1.5],
+    [null],
+    ["NaN"],
+    ["Infinity"],
+    [-0.0],
+    ["-Infinity"]
+   ]},
+   "one_D": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2.5],
+    [null],
+    ["NaN"],
+    ["-Infinity"],
+    [-0.0],
+    ["Infinity"]
+   ]},
+   "one_S": {"columns": [{"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    ["a"],
+    [null],
+    [""],
+    ["\u00e9\ud83d\ude00"],
+    ["A"],
+    ["b"]
+   ]},
+   "one_T": {"columns": [{"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1700000000000000000],
+    [null],
+    [0],
+    [-1],
+    [1],
+    [2]
+   ]},
+   "all": {"columns": [{"name": "Z", "type": "bool"}, {"name": "B", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [true, 1, 97, 100, 1000, 1000000000000, 1.5, 2.5, "a", 1700000000000000000],
+    [null, null, null, null, null, null, null, null, null, null],
+    [false, -127, 0, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", "", 0],
+    [true, 127, 65534, 32767, 2147483647, 9223372036854775807, "Infinity", "-Infinity", "\u00e9\ud83d\ude00", -1],
+    [false, 0, 65, 0, 0, 0, -0.0, -0.0, "a", 1],
+    [null, 1, 97, 100, 1000, 1000000000000, 0.0, 0.0, "A", 1700000000000000000],
+    [true, null, null, null, null, null, "NaN", "NaN", null, null],
+    [false, 0, 65, 0, 0, 0, 1.5, 2.5, "", 0],
+    [true, 2, 98, 101, 1001, 1000000000001, "-Infinity", "Infinity", "b", 2]
+   ]},
+   "pair_Z_S": {"columns": [{"name": "Z", "type": "bool"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [true, "a"],
+    [null, null],
+    [false, ""],
+    [true, "\u00e9\ud83d\ude00"],
+    [false, "a"],
+    [null, "A"],
+    [true, null],
+    [true, "b"]
+   ]},
+   "pair_S_Z": {"columns": [{"name": "S", "type": "string"}, {"name": "Z", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    ["a", true],
+    [null, null],
+    ["", false],
+    ["\u00e9\ud83d\ude00", true],
+    ["a", false],
+    ["A", null],
+    [null, true],
+    ["b", true]
+   ]},
+   "pair_D_I": {"columns": [{"name": "D", "type": "float64"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2.5, 1000],
+    [null, null],
+    ["NaN", -2147483647],
+    ["-Infinity", 2147483647],
+    [-0.0, 0],
+    [0.0, 1000],
+    ["NaN", null],
+    [2.5, 0],
+    ["Infinity", 1001]
+   ]},
+   "triple": {"columns": [{"name": "B", "type": "int8"}, {"name": "F", "type": "float32"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, 1.5, 1700000000000000000],
+    [null, null, null],
+    [-127, "NaN", 0],
+    [127, "Infinity", -1],
+    [0, -0.0, 1],
+    [1, 0.0, 1700000000000000000],
+    [null, "NaN", null],
+    [0, 1.5, 0],
+    [2, "-Infinity", 2]
+   ]},
+   "no_columns": {"columns": [], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    []
+   ]},
+   "no_columns_empty": {"columns": [], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+   ]},
+   "empty": {"columns": [{"name": "I", "type": "int32"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+   ]},
+   "same_twice": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1000],
+    [null],
+    [-2147483647],
+    [2147483647],
+    [0],
+    [1001]
+   ]},
+   "named_again_later": {"columns": [{"name": "I", "type": "int32"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1000, "a"],
+    [null, null],
+    [-2147483647, ""],
+    [2147483647, "\u00e9\ud83d\ude00"],
+    [0, "a"],
+    [1000, "A"],
+    [0, ""],
+    [1001, "b"]
+   ]},
+   "unknown": {"failure": "FAILED_PRECONDITION"},
+   "unknown_and_known": {"failure": "FAILED_PRECONDITION"},
+   "expression": {"failure": "FAILED_PRECONDITION"},
+   "of_sorted": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    ["-Infinity"],
+    ["Infinity"],
+    [2.5],
+    [0.0],
+    ["NaN"],
+    [null]
+   ]},
+   "of_tail": {"columns": [{"name": "S", "type": "string"}, {"name": "Z", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [null, true],
+    ["", false],
+    ["b", true],
+    [null, null]
+   ]},
+   "of_distinct": {"columns": [{"name": "Z", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [true],
+    [null],
+    [false]
+   ]},
+   "head_of_distinct": {"columns": [{"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    ["a"],
+    [null]
+   ]}
+  }
+ ]}
+}
