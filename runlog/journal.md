@@ -206,7 +206,7 @@ join (4.3), as-of join (4.4), ungroup (4.7), shared-ticket resolver, second PARI
 For the retrospective: a second container, or a shared compile cache (sccache) set up in M0,
 would have roughly doubled throughput in this phase. Worth raising with Josh.
 
-## 11:50 A downstream operator found a divergence in merged sort
+## 11:38 A downstream operator found a divergence in merged sort
 
 The select_distinct agent recorded Java for select_distinct of a sorted ticking table and found
 that ops::sort emits "modified" where Java removes and re-adds a row whose new key sorts before its
