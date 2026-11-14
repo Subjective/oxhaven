@@ -1,0 +1,200 @@
+{
+  "format": 2,
+  "scenario": "ticking_raj",
+  "scenario_sha256": "c2746b3b347930936657a001be79ab432dc123cafe10ab6ad5f5fc0983f27d78",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "raj_ge",
+      "file": "step000.raj_ge.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "raj_gt",
+      "file": "step000.raj_gt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "aj_le",
+      "file": "step000.aj_le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "raj_no_key",
+      "file": "step000.raj_no_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "raj_ge",
+      "file": "step001.raj_ge.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "raj_gt",
+      "file": "step001.raj_gt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "aj_le",
+      "file": "step001.aj_le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "raj_no_key",
+      "file": "step001.raj_no_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "raj_ge",
+      "file": "step002.raj_ge.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "raj_gt",
+      "file": "step002.raj_gt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "aj_le",
+      "file": "step002.aj_le.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "raj_no_key",
+      "file": "step002.raj_no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "raj_ge",
+      "file": "step003.raj_ge.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "raj_gt",
+      "file": "step003.raj_gt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "aj_le",
+      "file": "step003.aj_le.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "raj_no_key",
+      "file": "step003.raj_no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "raj_ge",
+      "file": "step004.raj_ge.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "raj_gt",
+      "file": "step004.raj_gt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "aj_le",
+      "file": "step004.aj_le.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "raj_no_key",
+      "file": "step004.raj_no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "raj_ge",
+      "file": "step005.raj_ge.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "raj_gt",
+      "file": "step005.raj_gt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "aj_le",
+      "file": "step005.aj_le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "raj_no_key",
+      "file": "step005.raj_no_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "raj_ge",
+      "file": "step006.raj_ge.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "raj_gt",
+      "file": "step006.raj_gt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "aj_le",
+      "file": "step006.aj_le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "raj_no_key",
+      "file": "step006.raj_no_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "raj_ge",
+      "file": "step007.raj_ge.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "raj_gt",
+      "file": "step007.raj_gt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "aj_le",
+      "file": "step007.aj_le.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "raj_no_key",
+      "file": "step007.raj_no_key.arrow",
+      "rows": 5
+    }
+  ]
+}

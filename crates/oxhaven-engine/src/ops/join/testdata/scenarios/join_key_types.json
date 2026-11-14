@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "name": "join_key_types",
+  "description": "natural_join on a key column of every type the scenario format has, with null, NaN and both zeros on both sides, and on several columns at once.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [
+        {"name": "B", "type": "bool"},
+        {"name": "I8", "type": "int8"},
+        {"name": "I16", "type": "int16"},
+        {"name": "I32", "type": "int32"},
+        {"name": "I64", "type": "int64"},
+        {"name": "F", "type": "float32"},
+        {"name": "D", "type": "float64"},
+        {"name": "S", "type": "string"},
+        {"name": "T", "type": "timestamp"},
+        {"name": "Tag", "type": "string"}
+      ],
+      "rows": [
+        [true, 1, 300, 70000, 5000000000, 1.5, 0.1, "a", 1700000000000000000, "l0"],
+        [false, -1, -300, -70000, -5000000000, "NaN", "NaN", "", -1, "l1"],
+        [null, null, null, null, null, null, null, null, null, "l2"],
+        [true, 127, 32767, 2147483647, 9223372036854775807, -0.0, -0.0, "b", 0, "l3"],
+        [false, -127, -32767, -2147483647, -9223372036854775807, 0.0, 0.0, "A", 1700000000000000001, "l4"],
+        [true, 2, 2, 2, 2, "Infinity", "-Infinity", "zz", 5, "l5"],
+        [null, 1, 300, 70000, 5000000000, "NaN", "NaN", "a", 1700000000000000000, "l6"]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [
+        {"name": "B", "type": "bool"},
+        {"name": "I8", "type": "int8"},
+        {"name": "I16", "type": "int16"},
+        {"name": "I32", "type": "int32"},
+        {"name": "I64", "type": "int64"},
+        {"name": "F", "type": "float32"},
+        {"name": "D", "type": "float64"},
+        {"name": "S", "type": "string"},
+        {"name": "T", "type": "timestamp"},
+        {"name": "V", "type": "int32"}
+      ],
+      "rows": [
+        [null, null, null, null, null, null, null, null, null, 0],
+        [true, 1, 300, 70000, 5000000000, "NaN", "NaN", "a", 1700000000000000000, 1],
+        [false, 127, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "b", 0, 2],
+        [null, -1, -300, -70000, -5000000000, 1.5, 0.1, "", -1, 3],
+        [null, 3, 3, 3, 3, "-Infinity", "Infinity", "c", 7, 4]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "on_bool", "op": "natural_join", "left": "l", "right": "r", "on": ["B"], "joins": ["V"], "type": "first_match"},
+    {"name": "on_bool_last", "op": "natural_join", "left": "l", "right": "r", "on": ["B"], "joins": ["V"], "type": "last_match"},
+    {"name": "on_int8", "op": "natural_join", "left": "l", "right": "r", "on": ["I8"], "joins": ["V"]},
+    {"name": "on_int16", "op": "natural_join", "left": "l", "right": "r", "on": ["I16"], "joins": ["V"]},
+    {"name": "on_int32", "op": "natural_join", "left": "l", "right": "r", "on": ["I32"], "joins": ["V"]},
+    {"name": "on_int64", "op": "natural_join", "left": "l", "right": "r", "on": ["I64"], "joins": ["V"]},
+    {"name": "on_float32", "op": "natural_join", "left": "l", "right": "r", "on": ["F"], "joins": ["V", "RF=F"]},
+    {"name": "on_float64", "op": "natural_join", "left": "l", "right": "r", "on": ["D"], "joins": ["V", "RD=D"]},
+    {"name": "on_string", "op": "natural_join", "left": "l", "right": "r", "on": ["S"], "joins": ["V"]},
+    {"name": "on_timestamp", "op": "natural_join", "left": "l", "right": "r", "on": ["T"], "joins": ["V"]},
+    {"name": "on_string_float64", "op": "natural_join", "left": "l", "right": "r", "on": ["S", "D"], "joins": ["V"]},
+    {"name": "on_bool_int8_timestamp", "op": "natural_join", "left": "l", "right": "r", "on": ["B", "I8", "T"], "joins": ["V"]},
+    {"name": "on_every_column", "op": "natural_join", "left": "l", "right": "r", "on": ["B", "I8", "I16", "I32", "I64", "F", "D", "S", "T"], "joins": ["V"]}
+  ],
+  "results": [
+    {"table": "on_bool"},
+    {"table": "on_bool_last"},
+    {"table": "on_int8"},
+    {"table": "on_int16"},
+    {"table": "on_int32"},
+    {"table": "on_int64"},
+    {"table": "on_float32"},
+    {"table": "on_float64"},
+    {"table": "on_string"},
+    {"table": "on_timestamp"},
+    {"table": "on_string_float64"},
+    {"table": "on_bool_int8_timestamp"},
+    {"table": "on_every_column"}
+  ]
+}

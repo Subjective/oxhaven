@@ -1,6 +1,7 @@
 //! gRPC services, sessions, tickets, and Barrage.
 
 pub mod app;
+pub mod barrage;
 pub mod config;
 pub mod console;
 pub mod flight;

@@ -85,9 +85,30 @@ class Rules:
 DEFAULT_RULES = Rules()
 
 # A1: aggregations and update_by operators whose float and double results are computed.
-COMPUTED_AGGREGATIONS = frozenset({"sum", "avg"})
-PASS_THROUGH_AGGREGATIONS = frozenset({"min", "max", "first", "last"})
-COMPUTED_UPDATE_BY = frozenset({"cum_sum"})
+COMPUTED_AGGREGATIONS = frozenset({
+    "sum", "abs_sum", "avg", "weighted_avg", "weighted_sum", "var", "std", "median",
+})
+# Aggregations whose result cells are cells of the source column (or arrays of them).
+PASS_THROUGH_AGGREGATIONS = frozenset({
+    "min", "max", "first", "last", "sorted_first", "sorted_last", "group", "distinct", "unique",
+    "pct",
+})
+# A1: "update_by operators that accumulate (cumulative sum and product, EMA family, rolling
+# sum, avg, std, weighted avg)". An operator matches by the start of its name.
+COMPUTED_UPDATE_BY = ("cum_sum", "cum_prod", "ema_", "ems_", "emmin_", "emmax_", "emstd_",
+                      "rolling_sum_", "rolling_avg_", "rolling_std_", "rolling_wavg_")
+# update_by operators whose result cells are cells of the source column (or arrays of them).
+PASS_THROUGH_UPDATE_BY = ("cum_min", "cum_max", "forward_fill", "rolling_min_", "rolling_max_",
+                          "rolling_group_")
+# In a set of computed columns: every column is computed, except those listed as "!Name".
+# Used where the columns are not named by the operation (agg_all_by).
+EVERY_COLUMN = "*"
+
+
+def is_computed(computed: frozenset[str] | set[str], column: str) -> bool:
+    if column in computed:
+        return True
+    return EVERY_COLUMN in computed and f"!{column}" not in computed
 # A1: "library functions that are not correctly rounded (exp, log, pow, the trigonometric
 # functions, and anything built on them)".
 INEXACT_FUNCTIONS = frozenset({
@@ -113,10 +134,17 @@ TRUNCATED = "truncated"  # more cell mismatches than `max_value_mismatches_per_t
 
 EXACT = "exact"
 FLOAT = "float"
+# Array cells (Arrow lists): the elements are compared by the element class, in order.
+LIST_EXACT = "list_exact"
+LIST_FLOAT = "list_float"
 
 
 def comparison_class(arrow_type: pa.DataType) -> str | None:
-    """How cells of `arrow_type` are compared: EXACT, FLOAT, or None when unsupported."""
+    """How cells of `arrow_type` are compared: EXACT, FLOAT, a list of either, or None when
+    the rules do not know the type."""
+    if pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
+        inner = comparison_class(arrow_type.value_type)
+        return {EXACT: LIST_EXACT, FLOAT: LIST_FLOAT}.get(inner)
     if pat.is_floating(arrow_type):
         return FLOAT
     if (
@@ -176,6 +204,10 @@ def cells_equal(kind: str, expected: Any, actual: Any, tolerance: Tolerance | No
     """`tolerance` is None for a cell that must be exact."""
     if expected is None or actual is None:
         return expected is None and actual is None
+    if kind in (LIST_EXACT, LIST_FLOAT):
+        inner = EXACT if kind == LIST_EXACT else FLOAT
+        return len(expected) == len(actual) and all(
+            cells_equal(inner, e, a, tolerance) for e, a in zip(expected, actual))
     if kind == FLOAT:
         if tolerance is None:
             return floats_identical(expected, actual)
@@ -211,7 +243,8 @@ def _formula_outputs(formulas: Iterable[str], known: set[str], keep: bool) -> se
     for formula in formulas:
         out, expression = split_pair(formula)
         if _IDENTIFIER.match(expression):
-            computed = expression in current  # a plain column passes its cells through
+            # A plain column passes its cells through.
+            computed = is_computed(current, expression)
         else:
             computed = any(name in INEXACT_FUNCTIONS for name in _CALL.findall(expression))
         produced[out] = computed
@@ -235,35 +268,63 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
     def of(name: str) -> set[str]:
         return set(tables.get(name, frozenset()))  # inputs have no computed columns
 
+    def aggregated(source: set[str], aggs: Iterable[Mapping[str, Any]]) -> set[str]:
+        out: set[str] = set()
+        for agg in aggs:
+            for pair in agg.get("columns", ()):
+                name, column = split_pair(pair)
+                if agg["agg"] in COMPUTED_AGGREGATIONS:
+                    out.add(name)
+                elif agg["agg"] in PASS_THROUGH_AGGREGATIONS and is_computed(source, column):
+                    out.add(name)
+        return out
+
     for op in operations:
         kind = op["op"]
-        if kind in ("where", "sort", "head", "tail"):
+        if kind in ("where", "sort", "head", "tail", "slice", "flatten", "reverse", "filter",
+                    "head_by", "tail_by", "snapshot", "group_by", "ungroup"):
             out = of(op["source"])
+        elif kind == "where_in":
+            out = of(op["left"])
         elif kind == "drop_columns":
             out = of(op["source"]) - set(op["columns"])
+        elif kind == "select_distinct":
+            source = of(op["source"])
+            out = {c for c in op["columns"] if is_computed(source, c)} or (
+                source if not op["columns"] else set())
         elif kind == "merge":
             out = set().union(*(of(name) for name in op["sources"]))
-        elif kind in ("view", "select", "update"):
-            out = _formula_outputs(op["formulas"], of(op["source"]), keep=kind == "update")
+        elif kind == "multi_join":
+            out = set().union(*(of(item["table"]) for item in op["inputs"]))
+        elif kind in ("view", "select", "update", "lazy_update", "update_view"):
+            out = _formula_outputs(op["formulas"], of(op["source"]),
+                                   keep=kind in ("update", "lazy_update", "update_view"))
         elif kind == "agg_by":
             source = of(op["source"])
-            out = {key for key in op["by"] if key in source}
-            for agg in op["aggs"]:
-                for pair in agg.get("columns", ()):
-                    name, column = split_pair(pair)
-                    if agg["agg"] in COMPUTED_AGGREGATIONS:
-                        out.add(name)
-                    elif agg["agg"] in PASS_THROUGH_AGGREGATIONS and column in source:
-                        out.add(name)
+            out = {key for key in op["by"] if is_computed(source, key)}
+            out |= aggregated(source, op["aggs"])
+        elif kind == "agg_all_by":
+            source = of(op["source"])
+            if op["agg"]["agg"] in COMPUTED_AGGREGATIONS:
+                out = {EVERY_COLUMN} | {f"!{key}" for key in op["by"]
+                                        if not is_computed(source, key)}
+            elif op["agg"]["agg"] in PASS_THROUGH_AGGREGATIONS:
+                out = source
+            else:
+                out = {key for key in op["by"] if is_computed(source, key)}
         elif kind == "update_by":
-            out = of(op["source"])
+            source = of(op["source"])
+            out = set(source)
             for ub in op["ops"]:
                 for pair in ub["columns"]:
-                    name, _ = split_pair(pair)
+                    name, column = split_pair(pair)
                     out.discard(name)
-                    if ub["op"] in COMPUTED_UPDATE_BY:
+                    if ub["op"].startswith(COMPUTED_UPDATE_BY):
                         out.add(name)
-        elif kind in ("natural_join", "exact_join", "join", "aj"):
+                    elif ub["op"].startswith(PASS_THROUGH_UPDATE_BY) and is_computed(
+                            source, column):
+                        out.add(name)
+        elif kind in ("natural_join", "exact_join", "join", "aj", "raj", "left_join"):
             right = of(op["right"])
             out = of(op["left"])
             if op.get("joins") is None:
@@ -271,8 +332,22 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
             else:
                 for pair in op["joins"]:
                     name, column = split_pair(pair)
-                    if column in right:
+                    if is_computed(right, column):
                         out.add(name)
+        elif kind == "range_join":
+            out = of(op["left"]) | aggregated(of(op["right"]), op["aggs"])
+        elif kind == "snapshot_when":
+            trigger = of(op["trigger"])
+            out = of(op["source"])
+            for pair in op.get("stamp_columns", ()):
+                name, column = split_pair(pair)
+                if is_computed(trigger, column):
+                    out.add(name)
+        elif kind == "column_statistics":
+            # io.deephaven.server.table.stats: sums, averages and deviations of the column.
+            out = {"SUM", "SUM_ABS", "SUM_SQRD", "AVG", "AVG_ABS", "STD_DEV"}
+        elif kind in ("time_table", "empty_table", "meta_table"):
+            out = set()
         else:
             raise ValueError(f"rules.py does not know which columns {kind!r} computes")
         tables[op["name"]] = frozenset(out)
@@ -282,9 +357,13 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
 # ---------------------------------------------------------------- comparison
 
 def _cells(column: pa.ChunkedArray) -> list[Any]:
-    """The cells of a column as plain Python values; timestamps as their integer count."""
+    """The cells of a column as plain Python values; timestamps as their integer count,
+    also inside arrays."""
     if pat.is_timestamp(column.type):
         column = column.cast(pa.int64())
+    elif (pat.is_list(column.type) or pat.is_large_list(column.type)) and pat.is_timestamp(
+            column.type.value_type):
+        column = column.cast(pa.list_(pa.int64()))
     return column.to_pylist()
 
 
@@ -296,6 +375,9 @@ def _metadata(raw: Mapping[bytes, bytes] | None, keys: tuple[str, ...]) -> dict[
 def _sort_key(kind: str, cell: Any) -> tuple[int, Any]:
     if cell is None:
         return (0, 0)
+    if kind in (LIST_EXACT, LIST_FLOAT):
+        inner = EXACT if kind == LIST_EXACT else FLOAT
+        return (1, tuple(_sort_key(inner, item) for item in cell))
     if kind == FLOAT and math.isnan(cell):
         return (2, 0)
     return (1, cell)
@@ -311,8 +393,8 @@ def _canonical_order(kinds: list[str], columns: list[list[Any]], rows: int) -> l
     paired the wrong way round and reported. The comparison can therefore report a difference
     that a cleverer matching would not, but it can never accept two sides that differ.
     """
-    order = [i for i, k in enumerate(kinds) if k == EXACT] + [
-        i for i, k in enumerate(kinds) if k == FLOAT
+    order = [i for i, k in enumerate(kinds) if k in (EXACT, LIST_EXACT)] + [
+        i for i, k in enumerate(kinds) if k in (FLOAT, LIST_FLOAT)
     ]
     return sorted(
         range(rows),
@@ -377,7 +459,8 @@ def compare_tables(
         # Without matching names and types the cells cannot be lined up.
         return out
     tolerances = [
-        rules.tolerance(field.type) if kind == FLOAT and field.name in computed else None
+        rules.tolerance(field.type.value_type if kind == LIST_FLOAT else field.type)
+        if kind in (FLOAT, LIST_FLOAT) and is_computed(computed, field.name) else None
         for field, kind in zip(expected.schema, kinds)
     ]
 

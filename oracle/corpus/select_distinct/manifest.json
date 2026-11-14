@@ -1,0 +1,100 @@
+{
+  "format": 2,
+  "scenario": "select_distinct",
+  "scenario_sha256": "a660df0c0457427f5da67ebadd666079c4fd64f56ed2ac49546ab5ee102b358b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_string",
+      "file": "step000.by_string.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "by_int",
+      "file": "step000.by_int.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "by_double",
+      "file": "step000.by_double.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "by_float",
+      "file": "step000.by_float.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "by_bool",
+      "file": "step000.by_bool.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "by_time",
+      "file": "step000.by_time.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "by_two",
+      "file": "step000.by_two.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "by_two_swapped",
+      "file": "step000.by_two_swapped.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "all_columns",
+      "file": "step000.all_columns.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "without_key",
+      "file": "step000.without_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "all_but_key",
+      "file": "step000.all_but_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "by_formula",
+      "failure": {
+        "code": "FAILED_PRECONDITION"
+      }
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "unknown",
+      "failure": {
+        "code": "FAILED_PRECONDITION"
+      }
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "file": "step000.twice.arrow",
+      "rows": 4
+    }
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "format": 2,
+  "scenario": "slice_positions",
+  "scenario_sha256": "e09c0ad173daa6383f6e8762d700c5bcb6a0db54bd2a711223e95c50f621053b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "middle",
+      "file": "step000.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "none",
+      "file": "step000.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "same",
+      "file": "step000.same.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "all",
+      "file": "step000.all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "beyond",
+      "file": "step000.beyond.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "past_end",
+      "file": "step000.past_end.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "from_end",
+      "file": "step000.from_end.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "last_two",
+      "file": "step000.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "start_to_from_end",
+      "file": "step000.start_to_from_end.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "start_to_from_end_empty",
+      "file": "step000.start_to_from_end_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "before_start",
+      "file": "step000.before_start.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "backwards",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "end_then_start",
+      "file": "step000.end_then_start.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "of_empty_from_end",
+      "file": "step000.of_empty_from_end.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "of_filtered",
+      "file": "step000.of_filtered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "slice_of_slice",
+      "file": "step000.slice_of_slice.arrow",
+      "rows": 2
+    }
+  ]
+}

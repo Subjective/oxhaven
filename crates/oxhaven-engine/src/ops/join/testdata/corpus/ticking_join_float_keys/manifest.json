@@ -1,0 +1,170 @@
+{
+  "format": 2,
+  "scenario": "ticking_join_float_keys",
+  "scenario_sha256": "89d14cb275708ff747b7dd0a942b8f8cd44013b9b84509918db2f058fcbddcb8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "on_double",
+      "file": "step000.on_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "on_float",
+      "file": "step000.on_float.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "on_both",
+      "file": "step000.on_both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "on_double",
+      "file": "step001.on_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "on_float",
+      "file": "step001.on_float.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "on_both",
+      "file": "step001.on_both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "on_double",
+      "file": "step002.on_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "on_float",
+      "file": "step002.on_float.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "on_both",
+      "file": "step002.on_both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "on_double",
+      "file": "step003.on_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "on_float",
+      "file": "step003.on_float.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "on_both",
+      "file": "step003.on_both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "on_double",
+      "file": "step004.on_double.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "on_float",
+      "file": "step004.on_float.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "on_both",
+      "file": "step004.on_both.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "on_double",
+      "file": "step005.on_double.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "on_float",
+      "file": "step005.on_float.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "on_both",
+      "file": "step005.on_both.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "on_double",
+      "file": "step006.on_double.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "on_float",
+      "file": "step006.on_float.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "on_both",
+      "file": "step006.on_both.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "on_double",
+      "file": "step007.on_double.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "on_float",
+      "file": "step007.on_float.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "on_both",
+      "file": "step007.on_both.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "on_double",
+      "file": "step008.on_double.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "on_float",
+      "file": "step008.on_float.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "on_both",
+      "file": "step008.on_both.arrow",
+      "rows": 5
+    }
+  ]
+}

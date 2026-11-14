@@ -1,0 +1,1129 @@
+{
+ "format": 1,
+ "name": "agg_by_statistics",
+ "description": "abs_sum, std, var, median, pct, weighted_avg and weighted_sum of int, double and float columns with nulls, per key and over the whole table; over groups of one row and of nulls only; of an empty table; with NaN and infinities among the values; of a string column.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     2.5,
+     2.5,
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     100,
+     1000.5,
+     8.0,
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     -3.25,
+     -3.25,
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "special",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "by_key",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "no_key",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "by_two",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    }
+   ],
+   "by": [
+    "G",
+    "B"
+   ]
+  },
+  {
+   "name": "special_by_key",
+   "op": "agg_by",
+   "source": "special",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "special_no_key",
+   "op": "agg_by",
+   "source": "special",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_empty",
+   "op": "agg_by",
+   "source": "empty",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_empty_by_key",
+   "op": "agg_by",
+   "source": "empty",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I",
+      "AbsD = D",
+      "AbsF = F"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I",
+      "VarD = D",
+      "VarF = F"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedLowI = I"
+     ],
+     "args": {
+      "average_evenly_divided": false
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25I = I",
+      "P25D = D"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P50AvgI = I"
+     ],
+     "args": {
+      "percentile": 0.5,
+      "average_evenly_divided": true
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P100D = D"
+     ],
+     "args": {
+      "percentile": 1.0
+     }
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P0I = I"
+     ],
+     "args": {
+      "percentile": 0.0
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "WavgD = D",
+      "WavgI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "WsumD = D",
+      "WsumI = I"
+     ],
+     "args": {
+      "wcol": "K"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "time_median",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "median",
+     "columns": [
+      "T"
+     ]
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P = T"
+     ],
+     "args": {
+      "percentile": 0.9
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "string_median",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "median",
+     "columns": [
+      "G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_std",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "std",
+     "columns": [
+      "G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_abs_sum",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "bool_var",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "var",
+     "columns": [
+      "B"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "pct_out_of_range",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "pct",
+     "columns": [
+      "I"
+     ],
+     "args": {
+      "percentile": 1.5
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_weight",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "I"
+     ],
+     "args": {
+      "wcol": "G"
+     }
+    }
+   ],
+   "by": []
+  }
+ ],
+ "results": [
+  {
+   "table": "by_key"
+  },
+  {
+   "table": "no_key"
+  },
+  {
+   "table": "by_two"
+  },
+  {
+   "table": "special_by_key"
+  },
+  {
+   "table": "special_no_key"
+  },
+  {
+   "table": "of_empty"
+  },
+  {
+   "table": "of_empty_by_key"
+  },
+  {
+   "table": "time_median"
+  },
+  {
+   "table": "string_median"
+  },
+  {
+   "table": "string_std"
+  },
+  {
+   "table": "string_abs_sum"
+  },
+  {
+   "table": "bool_var"
+  },
+  {
+   "table": "pct_out_of_range"
+  },
+  {
+   "table": "string_weight"
+  }
+ ]
+}

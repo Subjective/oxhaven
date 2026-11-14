@@ -1,0 +1,227 @@
+{
+ "format": 1,
+ "name": "ticking_time_table",
+ "description": "time_table with a start time in the past: the first rows are fixed by the start time and the period, whatever the time of the run, so head, slice and a filter up to a fixed time are compared; a blink time table through its attributes; meta_table of a ticking table and of an input table.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN"
+    ],
+    [
+     4,
+     null,
+     2,
+     -0.0
+    ],
+    [
+     5,
+     "b",
+     7,
+     2.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "hours",
+   "op": "time_table",
+   "period": "PT1H",
+   "start_time": "2024-01-01T00:00:00Z"
+  },
+  {
+   "name": "first_hours",
+   "op": "head",
+   "source": "hours",
+   "rows": 4
+  },
+  {
+   "name": "some_hours",
+   "op": "slice",
+   "source": "hours",
+   "start": 100,
+   "stop": 103
+  },
+  {
+   "name": "first_day",
+   "op": "where",
+   "source": "hours",
+   "filters": [
+    "Timestamp < '2024-01-02T00:00:00Z'"
+   ]
+  },
+  {
+   "name": "first_day_count",
+   "op": "agg_by",
+   "source": "first_day",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "numbered",
+   "op": "update_view",
+   "source": "first_hours",
+   "formulas": [
+    "Row = ii"
+   ]
+  },
+  {
+   "name": "half_days",
+   "op": "time_table",
+   "period": "PT12H",
+   "start_time": "2024-03-01T06:30:00Z"
+  },
+  {
+   "name": "first_half_days",
+   "op": "head",
+   "source": "half_days",
+   "rows": 3
+  },
+  {
+   "name": "blinking",
+   "op": "time_table",
+   "period": "PT1H",
+   "start_time": "2024-01-01T00:00:00Z",
+   "blink": true
+  },
+  {
+   "name": "blinking_none",
+   "op": "head",
+   "source": "blinking",
+   "rows": 0
+  },
+  {
+   "name": "meta_hours",
+   "op": "meta_table",
+   "source": "hours"
+  },
+  {
+   "name": "meta_input",
+   "op": "meta_table",
+   "source": "t"
+  },
+  {
+   "name": "bad_period",
+   "op": "time_table",
+   "period": "soon",
+   "start_time": "2024-01-01T00:00:00Z"
+  },
+  {
+   "name": "bad_start",
+   "op": "time_table",
+   "period": "PT1H",
+   "start_time": "yesterday"
+  }
+ ],
+ "results": [
+  {
+   "table": "first_hours"
+  },
+  {
+   "table": "some_hours"
+  },
+  {
+   "table": "first_day"
+  },
+  {
+   "table": "first_day_count"
+  },
+  {
+   "table": "numbered"
+  },
+  {
+   "table": "first_half_days"
+  },
+  {
+   "table": "blinking_none"
+  },
+  {
+   "table": "meta_hours"
+  },
+  {
+   "table": "meta_input"
+  },
+  {
+   "table": "bad_period"
+  },
+  {
+   "table": "bad_start"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "a",
+       1,
+       0.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

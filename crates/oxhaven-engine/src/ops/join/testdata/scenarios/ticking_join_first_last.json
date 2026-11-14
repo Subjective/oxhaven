@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "name": "ticking_join_first_last",
+  "description": "First-match and last-match natural_join while right rows of one key arrive, leave, come back and change their key, and left rows arrive for a key that already has several right rows.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [
+        [1, "a", 10],
+        [2, "b", 20],
+        [3, "d", 30]
+      ]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "RV", "type": "int64"}],
+      "rows": [
+        [1, "a", 100],
+        [2, "b", 200],
+        [3, "c", 300],
+        [4, "c", 301]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "first", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV", "RId=Id"], "type": "first_match"},
+    {"name": "last", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV", "RId=Id"], "type": "last_match"}
+  ],
+  "results": [
+    {"table": "first"},
+    {"table": "last"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "r", "rows": [[5, "a", 101]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[4, "c", 40]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[1]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[1, "a", 102]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[5, "b", 500]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[2, "d", 201]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[5, null, 50]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[6, null, 600], [7, null, 601]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[4, "c", 302]]}]},
+    {"actions": [{"action": "delete", "table": "l", "rows": [[1], [2]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[3], [6]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[1], [2], [4], [5], [7]]}]}
+  ]
+}

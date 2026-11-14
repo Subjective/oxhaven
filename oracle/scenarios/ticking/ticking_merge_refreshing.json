@@ -1,0 +1,426 @@
+{
+ "format": 1,
+ "name": "ticking_merge_refreshing",
+ "description": "merge whose constituents refresh: two keyed input tables, an append-only one and a static table, in several orders, and merges of tables derived from them; rows are added, replaced and deleted in each constituent.",
+ "inputs": [
+  {
+   "name": "a",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a1",
+     1.0
+    ],
+    [
+     2,
+     "a2",
+     2.0
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  },
+  {
+   "name": "b",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "b1",
+     10.0
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  },
+  {
+   "name": "log",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [],
+   "ticking": {
+    "key_columns": []
+   }
+  },
+  {
+   "name": "fixed",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     100,
+     "fixed",
+     "NaN"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "ab",
+   "op": "merge",
+   "sources": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "name": "ba",
+   "op": "merge",
+   "sources": [
+    "b",
+    "a"
+   ]
+  },
+  {
+   "name": "all",
+   "op": "merge",
+   "sources": [
+    "a",
+    "fixed",
+    "log",
+    "b"
+   ]
+  },
+  {
+   "name": "twice",
+   "op": "merge",
+   "sources": [
+    "a",
+    "a"
+   ]
+  },
+  {
+   "name": "a_big",
+   "op": "where",
+   "source": "a",
+   "filters": [
+    "V >= 2"
+   ]
+  },
+  {
+   "name": "b_sorted",
+   "op": "sort",
+   "source": "b",
+   "by": [
+    {
+     "column": "V",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "derived",
+   "op": "merge",
+   "sources": [
+    "a_big",
+    "b_sorted",
+    "fixed"
+   ]
+  },
+  {
+   "name": "merged_sorted",
+   "op": "sort",
+   "source": "ab",
+   "by": [
+    {
+     "column": "S",
+     "direction": "ascending"
+    }
+   ]
+  },
+  {
+   "name": "merged_tail",
+   "op": "tail",
+   "source": "all",
+   "rows": 3
+  },
+  {
+   "name": "merge_of_merge",
+   "op": "merge",
+   "sources": [
+    "ab",
+    "log"
+   ]
+  },
+  {
+   "name": "merged_count",
+   "op": "agg_by",
+   "source": "all",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    }
+   ],
+   "by": []
+  }
+ ],
+ "results": [
+  {
+   "table": "ab"
+  },
+  {
+   "table": "ba"
+  },
+  {
+   "table": "all"
+  },
+  {
+   "table": "twice"
+  },
+  {
+   "table": "a_big"
+  },
+  {
+   "table": "b_sorted"
+  },
+  {
+   "table": "derived"
+  },
+  {
+   "table": "merged_sorted"
+  },
+  {
+   "table": "merged_tail"
+  },
+  {
+   "table": "merge_of_merge"
+  },
+  {
+   "table": "merged_count"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "a",
+     "rows": [
+      [
+       3,
+       "a3",
+       3.0
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       7,
+       "l1",
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "b",
+     "rows": [
+      [
+       2,
+       "b2",
+       20.0
+      ],
+      [
+       3,
+       "b3",
+       30.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "a",
+     "rows": [
+      [
+       1,
+       "a1x",
+       5.0
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "b",
+     "rows": [
+      [
+       1,
+       "b1x",
+       0.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "a",
+     "rows": [
+      [
+       2
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       8,
+       "l2",
+       8.0
+      ],
+      [
+       9,
+       "l3",
+       9.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "b",
+     "rows": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "a",
+     "rows": [
+      [
+       1
+      ],
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "a",
+     "rows": [
+      [
+       4,
+       "a4",
+       4.0
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "b",
+     "rows": [
+      [
+       4,
+       "b4",
+       40.0
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       10,
+       "l4",
+       "NaN"
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

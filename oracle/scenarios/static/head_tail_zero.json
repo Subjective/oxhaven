@@ -1,0 +1,182 @@
+{
+ "format": 1,
+ "name": "head_tail_zero",
+ "description": "head and tail with zero rows, with exactly and more than the size, of an empty table, and of each other.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null
+    ],
+    [
+     3,
+     null,
+     "NaN"
+    ],
+    [
+     4,
+     "d",
+     -0.0
+    ],
+    [
+     5,
+     "e",
+     "Infinity"
+    ],
+    [
+     6,
+     "f",
+     6.0
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "head_zero",
+   "op": "head",
+   "source": "t",
+   "rows": 0
+  },
+  {
+   "name": "tail_zero",
+   "op": "tail",
+   "source": "t",
+   "rows": 0
+  },
+  {
+   "name": "head_all",
+   "op": "head",
+   "source": "t",
+   "rows": 6
+  },
+  {
+   "name": "tail_all",
+   "op": "tail",
+   "source": "t",
+   "rows": 6
+  },
+  {
+   "name": "head_more",
+   "op": "head",
+   "source": "t",
+   "rows": 7
+  },
+  {
+   "name": "tail_more",
+   "op": "tail",
+   "source": "t",
+   "rows": 1000000
+  },
+  {
+   "name": "head_empty",
+   "op": "head",
+   "source": "empty",
+   "rows": 3
+  },
+  {
+   "name": "tail_empty_zero",
+   "op": "tail",
+   "source": "empty",
+   "rows": 0
+  },
+  {
+   "name": "head_of_tail",
+   "op": "head",
+   "source": "tail_all",
+   "rows": 2
+  },
+  {
+   "name": "tail_of_head_zero",
+   "op": "tail",
+   "source": "head_zero",
+   "rows": 2
+  },
+  {
+   "name": "sorted_head_zero",
+   "op": "sort",
+   "source": "head_zero",
+   "by": [
+    {
+     "column": "K",
+     "direction": "descending"
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "head_zero"
+  },
+  {
+   "table": "tail_zero"
+  },
+  {
+   "table": "head_all"
+  },
+  {
+   "table": "tail_all"
+  },
+  {
+   "table": "head_more"
+  },
+  {
+   "table": "tail_more"
+  },
+  {
+   "table": "head_empty"
+  },
+  {
+   "table": "tail_empty_zero"
+  },
+  {
+   "table": "head_of_tail"
+  },
+  {
+   "table": "tail_of_head_zero"
+  },
+  {
+   "table": "sorted_head_zero"
+  }
+ ]
+}

@@ -253,3 +253,10 @@ agent's context. The orchestrator finishes the join branch itself.
 For the retrospective: agents should commit work in progress at least every 30 minutes so a stop
 costs minutes, not a run; and the limit should have been anticipated when eight to ten agents
 were running at once.
+
+## 18:42 Acceptance criterion met on main
+
+Barrage merged as PR 30. On main at f8b121a, `oxhaven-server --demo-tables --web-root <dir>`
+with `node oracle/ide/ide-test.js` gave `PASSED: panels, iframe, jsapi`: the IDE loads from
+Oxhaven, logs in, opens `ide_static` with matching cells and `ide_ticking` advances. The console
+route is not run because there is no Python or Groovy console. Join engine work is PR 31.
