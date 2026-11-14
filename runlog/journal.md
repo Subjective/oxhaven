@@ -111,3 +111,145 @@ handlers. The Flight agent is resumed to bring its branch onto main and wire Cre
 
 Guard added to the handler task: an `unported!` reachable from a client must be rejected with a
 status before it reaches the engine (found in the aggregation report).
+
+## 10:35 IDE acceptance test exists; the IDE path is re-planned from its findings
+
+The scout's test passes against Java and its fault matrix replaces my guesses about the IDE path.
+Corrections to the plan:
+
+- Task 2.6 assumed gRPC-web. Over plain http the browser uses one multiplexed websocket for every
+  call, so the websocket transport is on the critical path and gRPC-web is not.
+- Login is GetConfigurationConstants with an authorization header; no Flight handshake.
+- ApplyPreviewColumns (4.10) is fatal for every route, not optional.
+- No console is needed: GetConsoleTypes may return an empty list.
+
+Three pieces now run in parallel toward the acceptance test: browser transport and static files
+(scout resumed, it holds the traces), application fields with startup tables plus the console,
+storage and preview calls (fresh agent, task 6.1), and Barrage DoExchange, which starts when the
+Flight branch is on main because it reuses the Flight encoder. Static web files are not checked in;
+the server takes a web root extracted from the reference wheel (licensing stays an owner question).
+
+Lesson for the retrospective: scouting the acceptance test against the reference first was cheap
+(101k tokens) and removed a wrong task (gRPC-web first) before anyone built it.
+
+## 10:40 Main verified after stacked merges
+
+PRs 20, 21 and 22 were each green against an older main and merged within two minutes of each
+other. Checked the combined main locally: fmt, clippy and all workspace tests pass. PR 23's CI ran
+on the combined tree as well. PR 23 (IDE acceptance test) merged.
+
+## 10:58 First end-to-end replay against Oxhaven
+
+With the handlers (PR 25), the recorded Java corpus replays against a running Oxhaven server for
+the first time. Of 26 scenarios that use only exposed operations, 17 are clean. 400 differential
+fuzz seeds against live Java found one new difference. Row data matched everywhere; every
+difference is an attribute or metadata rule, or a missing function:
+
+1. static where result lacks AddOnly/AppendOnly;
+2. input-table column metadata is lost on derived tables;
+3. isNaN/isInf missing from the function library;
+4. select of a non-flat static table is not marked flat.
+
+What this says about the gates: the engine corpus tests compared rows and the attributes each
+agent chose to compare, and three of four causes are attributes that those tests did not cover.
+The wire-level replay is the stronger gate and should have existed earlier; from now on an
+operator is not done until its handler exists and replay is clean for its scenarios. Putting
+replay into CI is the next infrastructure task (needs a Java-free replay of recorded results,
+which `harness replay` already is).
+
+Fixes 1, 2 and 4 go to the where agent (87k tokens, lowest context among operator agents), 3 and
+row variables to the expr agent already working on the function library. `fuzz` stops at the first
+difference, which hides later ones once a known difference exists: the oracle agent should add a
+keep-going mode with grouping of known causes (the handler agent wrote a driver for this).
+
+## 11:06 PR 25 merged; replay gate for CI started
+
+Operator handlers are on main. A fresh agent builds the CI gate: start Oxhaven, replay the whole
+corpus and the client smokes, compare with a checked-in baseline that ratchets in both directions
+(a clean scenario that breaks fails; a differing scenario that becomes clean must be promoted in
+the same pull request). Ten agents are running.
+
+## 11:12 Browser transport pushed (PR 26); disk watch
+
+The web IDE now loads from Oxhaven and logs in over the websocket. Remaining for the acceptance
+test: application fields and console stubs (6.1, running), ApplyPreviewColumns (6.1), Barrage
+(2.4, running).
+
+Disk: 11 GB free with ten agents building (each target directory 1 to 3 GB; each worktree is
+0.7 GB since the formula corpus was checked in). Removed four clean worktrees of retired agents.
+If free space drops below 5 GB, the next agent to finish is not replaced until space recovers.
+
+## 11:20 Corpus doubled; integration is its own task
+
+The oracle extension is pushed but cannot merge alone: engine corpus tests pin the scenario count
+and the lists of compared results, so new scenarios move pins in four operator test suites. A fresh
+agent merges main into the oracle branch, classifies every new recorded result per operator
+(matches, cannot run, differs) and reports the differences. Differences become a pinned list per
+test that fails when it changes in either direction, not a silent skip.
+
+Design note for the retrospective: pinned lists in every operator test make corpus growth cost an
+integration task each time. A single shared classification file read by all corpus tests would cut
+that; worth doing once the operator set settles.
+
+New Java facts from the recordings that PARITY.md does not state (left_join unimplemented, range
+join restrictions, head_by/tail_by refusals, sum of a single -0.0 is 0.0 which bears on A2) are
+collected for a second PARITY corrections pass after integration.
+
+## 11:36 Machine is the bottleneck: load 16 on 4 cores, 8.6 GB disk free
+
+Eight agents are building and testing at once. Load average is 16 to 18 on 4 cores and one agent
+hit "No space left on device". Agent tokens are not the limit; CPU and disk on this one container
+are. No new agent is started until load is under 8 and disk over 10 GB; the next freed slots are
+left empty. New agents get CARGO_INCREMENTAL=0. Queue, in order: full aggregations (4.1), cross
+join (4.3), as-of join (4.4), ungroup (4.7), shared-ticket resolver, second PARITY pass.
+
+For the retrospective: a second container, or a shared compile cache (sccache) set up in M0,
+would have roughly doubled throughput in this phase. Worth raising with Josh.
+
+## 11:38 A downstream operator found a divergence in merged sort
+
+The select_distinct agent recorded Java for select_distinct of a sorted ticking table and found
+that ops::sort emits "modified" where Java removes and re-adds a row whose new key sorts before its
+old one. Sorted rows are identical, so the sort corpus test (which compares contents) passed; only
+an order-sensitive consumer shows it. A sort unit test asserted the non-Java shape.
+
+Decision: the finding agent fixes sort on its branch with a sort-only fixture recorded from Java,
+corrects the unit test to the recorded behavior, and removes its ignored test. No ignored tests.
+
+For the retrospective: corpus tests compare table contents per step, not update shapes. Update
+shape errors surface only through downstream consumers or Barrage. A recorded update-shape check
+(Barrage deltas from Java are exactly that) would close this hole; the Barrage fixtures may give
+it for free.
+
+## 11:48 Merge order for the pieces that touch the replay baseline
+
+Four branches interact: the function library (PR 28, changes filter corpus pins), the attribute
+fixes (PR 29, changes filter corpus comparisons), the 83-scenario corpus integration, and the CI
+gate whose baseline lists every scenario. Order: 28, then 29 updated with main, then the corpus
+integration, then the gate with its baseline regenerated on the result. The gate lands last so its
+first baseline is the strictest true one; after that every pull request that changes replay
+outcomes must edit its baseline lines, and the rules job allows only stricter edits without the
+orchestrator's label.
+
+Started full aggregations (4.1) in a freed slot after load fell to 8 and disk recovered to 16 GB
+(removed worktrees of six finished agents).
+
+## 18:35 Usage limit stopped the run for about six and a half hours
+
+At about 11:50 the account hit its usage limit on the primary model. Five agents stopped mid-task
+(joins, update_by, the sort fix on the snapshot branch, corpus integration, full aggregations) and
+the orchestrator did not get another turn until 18:29, after a container restart. The stated reset
+is 17 November 08:00 UTC.
+
+State found on return: PR 29 was green and is merged. The Barrage branch is PR 30. Committed work
+survived in every worktree, and uncommitted edits survived in four of them. The full-aggregation
+agent had committed nothing and its worktree was gone, so that run is lost.
+
+Decision: continue on the next model down for agents, since resuming the stopped agents would send
+requests to the limited model. Three replacement agents were started in the existing worktrees
+(corpus integration, sort fix, update_by), each briefed from the branch state, not from the old
+agent's context. The orchestrator finishes the join branch itself.
+
+For the retrospective: agents should commit work in progress at least every 30 minutes so a stop
+costs minutes, not a run; and the limit should have been anticipated when eight to ten agents
+were running at once.

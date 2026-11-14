@@ -450,6 +450,7 @@ fn results_match_the_ones_recorded_from_java() {
             "error_formula.rem_view x1",
             "error_formula.syntax x1",
             "error_formula.type_error x1",
+            "error_formula.unknown_function x1",
             "error_types_and_matches.duplicate_output x1",
             "error_unknown_column.bad_drop x1",
             "error_unknown_column.bad_view x1",
@@ -475,13 +476,11 @@ fn results_match_the_ones_recorded_from_java() {
         "compared"
     );
     // Results of this module's operations that need an operation of another module, or a
-    // formula the compiler does not support yet. An unknown function is among the latter:
-    // Java refuses it, and the compiler cannot tell it from a function it has yet to learn.
+    // formula the compiler does not support yet.
     assert_eq!(
         outcome.not_run,
         [
             "error_formula.rem_ok: where",
-            "error_formula.unknown_function: unsupported formula X = noSuchFunction(I)",
             "error_unknown_column.after_bad_sort: sort",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",

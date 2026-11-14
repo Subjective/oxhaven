@@ -1,0 +1,1 @@
+java-fails	update	S.equalsIgnoreCase(null)	null literal as an argument of String.equalsIgnoreCase()

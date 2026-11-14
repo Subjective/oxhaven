@@ -10,7 +10,15 @@ workspace = true
 [dependencies]
 arrow.workspace = true
 base64.workspace = true
+bytes.workspace = true
+futures-util.workspace = true
+flatbuffers.workspace = true
 http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+httpdate.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-engine = { path = "../oxhaven-engine" }
@@ -19,8 +27,9 @@ oxhaven-proto = { path = "../oxhaven-proto" }
 prost.workspace = true
 tokio.workspace = true
 tokio-stream.workspace = true
+tokio-tungstenite.workspace = true
 tonic.workspace = true
-tower.workspace = true
+tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true

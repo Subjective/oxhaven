@@ -4,12 +4,12 @@
 //! `p` of some sequence of parent rows. Rows that keep their place in the sequence across an
 //! update are shifted; the others are removed and added.
 
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{RedirectedSource, RowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::shift::{RowSetShiftData, ShiftRange};
-use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use std::sync::Arc;
 
@@ -142,6 +142,9 @@ pub(crate) fn positional(
     attributes: TableAttributes,
     flat: bool,
 ) -> Result<Arc<QueryTable>, TableFailure> {
+    // Behavior: BaseTable#attributeToCopySet lists `INPUT_TABLE_ATTRIBUTE` for
+    // `CopyAttributeOperation.Flatten` and not for `.Reverse`.
+    let keeps_input_table = !reversed;
     QueryTable::derive(parent, || {
         let definition = parent.definition().clone();
         let redirection: Arc<dyn RowRedirection> = Arc::new(PositionRedirection {
@@ -150,16 +153,19 @@ pub(crate) fn positional(
         });
         let columns = (0..definition.columns().len())
             .map(|index| {
-                Arc::new(RedirectedSource::new(
+                reads_through(RedirectedSource::new(
                     redirection.clone(),
                     parent.column(index),
-                )) as Arc<dyn ColumnSource>
+                ))
             })
             .collect();
         let transformer = ModifiedColumnTransformer::identity(definition.columns().len());
         let mut spec = TableSpec::new(definition, RowSet::flat(parent.row_set().size()), columns)
             .with_attributes(attributes);
         spec.flat = flat;
+        if keeps_input_table {
+            spec = spec.with_input_table_of(&**parent);
+        }
 
         let parent = parent.clone();
         let operator = move |_result: &QueryTable, upstream: &TableUpdate| {

@@ -1,20 +1,14 @@
-//! The Flight `Handshake` call, which is the other way a client authenticates, and the
-//! Flight service that carries it until the rest of Flight is ported.
+//! The Flight `Handshake` call, which is the other way a client authenticates. The Flight
+//! service that carries it is `crate::flight::FlightGrpc`.
 
-use std::pin::Pin;
 use std::sync::Arc;
 
-use oxhaven_proto::flight::flight_service_server::FlightService;
-use oxhaven_proto::flight::{
-    Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightInfo,
-    HandshakeRequest, HandshakeResponse, PollInfo, PutResult, SchemaResult, Ticket,
-};
+use oxhaven_proto::flight::{HandshakeRequest, HandshakeResponse};
 use oxhaven_proto::grpc::WrappedAuthenticationRequest;
 use prost::Message;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_stream::Stream;
-use tonic::{Request, Response, Status, Streaming};
+use tonic::{Request, Status, Streaming};
 use uuid::Uuid;
 
 use super::auth::{authentication_details_invalid, BEARER_PREFIX};
@@ -114,105 +108,4 @@ pub fn handshake(
         }
     });
     UnboundedReceiverStream::new(stream)
-}
-
-type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
-
-fn not_ported<T>(java_method: &str) -> Result<T, Status> {
-    Err(Status::unimplemented(format!(
-        "not ported yet: io.deephaven.server.arrow.FlightServiceGrpcImpl#{java_method}"
-    )))
-}
-
-/// A Flight service with `Handshake` only. Every other call answers `UNIMPLEMENTED`; the
-/// task that ports Flight replaces this type and keeps calling [`handshake`].
-pub struct HandshakeOnlyFlight {
-    store: Arc<SessionStore>,
-}
-
-impl HandshakeOnlyFlight {
-    pub fn new(store: Arc<SessionStore>) -> Self {
-        Self { store }
-    }
-}
-
-#[tonic::async_trait]
-impl FlightService for HandshakeOnlyFlight {
-    type HandshakeStream = HandshakeStream;
-    type ListFlightsStream = BoxStream<FlightInfo>;
-    type DoGetStream = BoxStream<FlightData>;
-    type DoPutStream = BoxStream<PutResult>;
-    type DoExchangeStream = BoxStream<FlightData>;
-    type DoActionStream = BoxStream<oxhaven_proto::flight::Result>;
-    type ListActionsStream = BoxStream<ActionType>;
-
-    async fn handshake(
-        &self,
-        request: Request<Streaming<HandshakeRequest>>,
-    ) -> Result<Response<Self::HandshakeStream>, Status> {
-        Ok(Response::new(handshake(self.store.clone(), request)))
-    }
-
-    async fn list_flights(
-        &self,
-        _request: Request<Criteria>,
-    ) -> Result<Response<Self::ListFlightsStream>, Status> {
-        not_ported("listFlights")
-    }
-
-    async fn get_flight_info(
-        &self,
-        _request: Request<FlightDescriptor>,
-    ) -> Result<Response<FlightInfo>, Status> {
-        not_ported("getFlightInfo")
-    }
-
-    async fn poll_flight_info(
-        &self,
-        _request: Request<FlightDescriptor>,
-    ) -> Result<Response<PollInfo>, Status> {
-        not_ported("pollFlightInfo")
-    }
-
-    async fn get_schema(
-        &self,
-        _request: Request<FlightDescriptor>,
-    ) -> Result<Response<SchemaResult>, Status> {
-        not_ported("getSchema")
-    }
-
-    async fn do_get(
-        &self,
-        _request: Request<Ticket>,
-    ) -> Result<Response<Self::DoGetStream>, Status> {
-        not_ported("doGet")
-    }
-
-    async fn do_put(
-        &self,
-        _request: Request<Streaming<FlightData>>,
-    ) -> Result<Response<Self::DoPutStream>, Status> {
-        not_ported("doPut")
-    }
-
-    async fn do_exchange(
-        &self,
-        _request: Request<Streaming<FlightData>>,
-    ) -> Result<Response<Self::DoExchangeStream>, Status> {
-        not_ported("doExchange")
-    }
-
-    async fn do_action(
-        &self,
-        _request: Request<Action>,
-    ) -> Result<Response<Self::DoActionStream>, Status> {
-        not_ported("doAction")
-    }
-
-    async fn list_actions(
-        &self,
-        _request: Request<Empty>,
-    ) -> Result<Response<Self::ListActionsStream>, Status> {
-        not_ported("listActions")
-    }
 }
