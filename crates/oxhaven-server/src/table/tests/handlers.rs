@@ -8,6 +8,8 @@ use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
+mod asof;
+
 /// What the Java server answers for any exception out of the engine.
 fn assert_internal(status: &Status) {
     assert_eq!(status.code(), Code::InvalidArgument, "{status:?}");

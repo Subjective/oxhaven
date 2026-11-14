@@ -320,3 +320,193 @@ impl TableOp for AsOfJoin {
         Ok(as_of_join(&sources[0], &sources[1], &exact, &as_of, &add)?)
     }
 }
+
+// Every expectation below is what Java 42.9 answered for the string in an `AjTables` or
+// `RajTables` request: as its as-of column, as an exact match or as an addition.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Match = Result<(String, &'static str, String), String>;
+    type Pair = Result<(String, String), String>;
+
+    fn aj(text: &str) -> Match {
+        as_of_match_for(text, Direction::Aj).map(|m| (m.left, m.rule.operator(), m.right))
+    }
+
+    fn raj(text: &str) -> Match {
+        as_of_match_for(text, Direction::Raj).map(|m| (m.left, m.rule.operator(), m.right))
+    }
+
+    fn matched(left: &str, rule: &'static str, right: &str) -> Match {
+        Ok((left.to_string(), rule, right.to_string()))
+    }
+
+    fn no_match(text: &str) -> Match {
+        Err(format!(
+            "Input expression {text} does not match expected pattern \
+             \\A\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(>=?|<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*\\Z"
+        ))
+    }
+
+    fn reserved<T>(name: &str) -> Result<T, String> {
+        Err(format!(
+            "Invalid column name \"{name}\": \"{name}\" is a reserved keyword"
+        ))
+    }
+
+    #[test]
+    fn an_as_of_match_is_a_name_or_two_names_around_one_of_four_rules() {
+        assert_eq!(aj("T"), matched("T", ">=", "T"));
+        assert_eq!(raj("T"), matched("T", "<=", "T"));
+        assert_eq!(aj(" T "), matched("T", ">=", "T"));
+        assert_eq!(aj("\tT\n"), matched("T", ">=", "T"));
+        // a name alone is trimmed as `String#trim` trims; the parts of a match are not
+        assert_eq!(raj("\u{1}T\u{2}"), matched("T", "<=", "T"));
+        assert_eq!(aj("\u{1}T>=T2"), no_match("\u{1}T>=T2"));
+        assert_eq!(aj("T>=T2\u{1}"), no_match("T>=T2\u{1}"));
+        // and a name alone need not fit the pattern of a match
+        assert_eq!(aj("\u{dc}bung"), matched("\u{dc}bung", ">=", "\u{dc}bung"));
+        assert_eq!(aj("\u{dc}bung>=T2"), no_match("\u{dc}bung>=T2"));
+
+        assert_eq!(aj("T>=T2"), matched("T", ">=", "T2"));
+        assert_eq!(aj("T>T2"), matched("T", ">", "T2"));
+        assert_eq!(raj("T<=T2"), matched("T", "<=", "T2"));
+        assert_eq!(raj("T<T2"), matched("T", "<", "T2"));
+        assert_eq!(aj(" T >= T2 "), matched("T", ">=", "T2"));
+        assert_eq!(aj("T\t>\nT2"), matched("T", ">", "T2"));
+        assert_eq!(aj("T\u{0B}>=\u{0C}T2"), matched("T", ">=", "T2"));
+        assert_eq!(aj("T>=T2\r\n"), matched("T", ">=", "T2"));
+        assert_eq!(aj("T$>=_T"), matched("T$", ">=", "_T"));
+        assert_eq!(aj("T>=T"), matched("T", ">=", "T"));
+        assert_eq!(aj("t>=t2"), matched("t", ">=", "t2"));
+
+        for refused in [
+            "T>=",
+            ">=T2",
+            "T=T2",
+            "T==T2",
+            "T>==T2",
+            "T=>T2",
+            "T=<T2",
+            "T T2",
+            "T\u{2028}",
+            "T>=T2\u{2028}",
+            "T>=T2\u{85}",
+            " ",
+            "\u{a0}T",
+            "T<>T2",
+            "T>>T2",
+            "T> =T2",
+            "T>=T2>=T",
+            "1T>=T2",
+            "T>=2T",
+            "T\u{1c}>=T2",
+            "T,T2",
+        ] {
+            assert_eq!(aj(refused), no_match(refused), "{refused:?}");
+            assert_eq!(raj(refused), no_match(refused), "{refused:?}");
+        }
+    }
+
+    #[test]
+    fn a_reserved_name_is_refused_as_no_match_alone_and_by_name_in_a_match() {
+        // alone it is not a column name, so it is read as a match, which it is not
+        for alone in ["in", "class"] {
+            assert_eq!(aj(alone), no_match(alone));
+            assert_eq!(raj(alone), no_match(alone));
+        }
+        assert_eq!(aj("in>=T2"), reserved("in"));
+        assert_eq!(aj("T>=in"), reserved("in"));
+        // the left name first, and the names before the rule
+        assert_eq!(aj("i<k"), reserved("i"));
+        assert_eq!(raj("in>=T2"), reserved("in"));
+    }
+
+    #[test]
+    fn each_operation_refuses_the_rules_of_the_other_by_javas_name() {
+        let unsupported =
+            |operation: &str, rule: &str| Err(format!("Unsupported operation for {operation}: {rule}"));
+        assert_eq!(aj("T<=T2"), unsupported("aj", "LESS_THAN_EQUAL"));
+        assert_eq!(aj("T<T2"), unsupported("aj", "LESS_THAN"));
+        assert_eq!(raj("T>=T2"), unsupported("raj", "GREATER_THAN_EQUAL"));
+        assert_eq!(raj("T\t>\nT2"), unsupported("raj", "GREATER_THAN"));
+        assert_eq!(raj(" T >= T2 "), unsupported("raj", "GREATER_THAN_EQUAL"));
+    }
+
+    fn exact(text: &str) -> Pair {
+        join_match(text).map(|m| (m.left, m.right))
+    }
+
+    fn addition(text: &str) -> Pair {
+        join_addition(text).map(|a| (a.name, a.source))
+    }
+
+    fn pair(left: &str, right: &str) -> Pair {
+        Ok((left.to_string(), right.to_string()))
+    }
+
+    fn invalid(name: &str) -> Pair {
+        Err(format!("Invalid column name \"{name}\""))
+    }
+
+    fn no_name() -> Pair {
+        Err("Invalid column name: name can not be null or empty".to_string())
+    }
+
+    #[test]
+    fn an_exact_match_is_split_at_its_first_equals_sign() {
+        assert_eq!(exact("K"), pair("K", "K"));
+        assert_eq!(exact(" K "), pair("K", "K"));
+        assert_eq!(exact("\tK\n"), pair("K", "K"));
+        assert_eq!(exact("\u{1}K"), pair("K", "K"));
+        assert_eq!(exact("K=K2"), pair("K", "K2"));
+        assert_eq!(exact("K==K2"), pair("K", "K2"));
+        assert_eq!(exact("K = K2"), pair("K", "K2"));
+        assert_eq!(exact("K == K2"), pair("K", "K2"));
+
+        for text in ["K=", "K==", "=", "=="] {
+            assert_eq!(
+                exact(text),
+                Err(format!(
+                    "Unable to parse match '{text}', expected form '<left>==<right>' or \
+                     `<left>=<right>`"
+                ))
+            );
+        }
+        for text in ["=K", "==K", "", " ", "K=\u{1}", "K= "] {
+            assert_eq!(exact(text), no_name(), "{text:?}");
+        }
+        assert_eq!(exact("K===K2"), invalid("=K2"));
+        assert_eq!(exact("K= =K2"), invalid("=K2"));
+        assert_eq!(exact("K=K2=K"), invalid("K2=K"));
+        assert_eq!(exact("K K"), invalid("K K"));
+        assert_eq!(exact("1K"), invalid("1K"));
+        assert_eq!(exact("K,K2"), invalid("K,K2"));
+        assert_eq!(exact("K\u{2028}"), invalid("K\u{2028}"));
+        assert_eq!(exact("K==\u{2028}K2"), invalid("\u{2028}K2"));
+        for text in ["in", "K=in", "in=K"] {
+            assert_eq!(exact(text), reserved("in"), "{text:?}");
+        }
+    }
+
+    #[test]
+    fn an_addition_has_one_equals_sign_at_most() {
+        assert_eq!(addition("V"), pair("V", "V"));
+        assert_eq!(addition(" V "), pair("V", "V"));
+        assert_eq!(addition("\u{1}V"), pair("V", "V"));
+        assert_eq!(addition("X=V"), pair("X", "V"));
+        assert_eq!(addition("X = V"), pair("X", "V"));
+        assert_eq!(addition("X==V"), invalid("=V"));
+        assert_eq!(addition("X=V=W"), invalid("V=W"));
+        assert_eq!(addition("V\u{2028}"), invalid("V\u{2028}"));
+        assert_eq!(addition("1X=V"), invalid("1X"));
+        assert_eq!(addition("X=1V"), invalid("1V"));
+        for text in ["X=", "=V", "", " ", "="] {
+            assert_eq!(addition(text), no_name(), "{text:?}");
+        }
+        for text in ["in", "X=in"] {
+            assert_eq!(addition(text), reserved("in"), "{text:?}");
+        }
+    }
+}
