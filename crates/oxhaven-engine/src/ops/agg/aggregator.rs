@@ -34,18 +34,18 @@ struct Marks {
 
 impl Marks {
     fn note(&mut self, slot: usize, effect: Effect) {
-        let bit = match effect {
-            Effect::Unchanged => return,
-            Effect::Modified => MODIFIED,
-            Effect::Recompute => RECOMPUTE,
-        };
+        let bits = if effect.modified { MODIFIED } else { 0 }
+            | if effect.recompute { RECOMPUTE } else { 0 };
+        if bits == 0 {
+            return;
+        }
         if self.state.len() <= slot {
             self.state.resize(slot + 1, 0);
         }
         if self.state[slot] == 0 {
             self.touched.push(slot);
         }
-        self.state[slot] |= bit;
+        self.state[slot] |= bits;
     }
 
     /// The slots marked with `bit`, increasing.
@@ -520,7 +520,11 @@ impl Aggregator {
         modified_columns: &ModifiedColumnSet,
     ) -> Result<(), TableFailure> {
         let wanted = |column: usize| modified_columns.contains(column);
-        if !self.ops.iter().any(|column| column.input.is_some_and(wanted)) {
+        if !self
+            .ops
+            .iter()
+            .any(|column| column.input.is_some_and(wanted))
+        {
             return Ok(());
         }
         for (pre_chunk, post_chunk) in chunks(pre).zip(chunks(post)) {
@@ -623,7 +627,7 @@ impl Aggregator {
             let changed = column.op.recompute(&pending, &reader)?;
             for (&slot, changed) in pending.iter().zip(changed) {
                 if changed {
-                    column.marks.note(slot, Effect::Modified);
+                    column.marks.note(slot, Effect::MODIFIED);
                 }
             }
         }

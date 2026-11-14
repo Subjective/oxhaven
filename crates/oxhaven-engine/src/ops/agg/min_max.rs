@@ -111,14 +111,20 @@ impl AggOperator for MinMax {
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let before = self.result(slot);
+        let mut recompute = false;
         for (_, value) in run.scalars() {
             if value.is_nan() {
                 self.nan[slot] = self.nan[slot].saturating_sub(1);
             } else if !value.is_null() && value.compare(&self.best[slot]) == Ordering::Equal {
-                return Effect::Recompute;
+                recompute = true;
             }
         }
-        Effect::modified_if(!before.same(&self.result(slot)))
+        // The result can change here and not in the recompute: a NaN that leaves shows
+        // the best value again, which the recompute may then confirm.
+        Effect {
+            modified: !before.same(&self.result(slot)),
+            recompute,
+        }
     }
 
     fn recompute(

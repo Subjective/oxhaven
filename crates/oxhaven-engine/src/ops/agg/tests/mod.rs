@@ -15,6 +15,7 @@ use arrow::util::display::array_value_to_string;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 /// `spec` with each of `pairs`, written `"Out = In"` or `"Column"`.
@@ -128,4 +129,57 @@ fn all_of(input: &str) -> Vec<Aggregation> {
         agg(AggSpec::Last, &[&format!("Last = {input}")]),
         count("N"),
     ]
+}
+
+/// A static table with the current rows of `table`.
+fn static_copy(table: &dyn Table) -> Arc<dyn Table> {
+    let columns: Vec<(&str, ColumnType, ArrayRef)> = table
+        .definition()
+        .columns()
+        .iter()
+        .zip(read(table))
+        .map(|(column, values)| (column.name.as_str(), column.column_type.clone(), values))
+        .collect();
+    static_table(&columns)
+}
+
+/// `expected` with its rows in the order `like` has their keys (the first `key_columns`
+/// columns), followed by the rows whose key `like` does not have.
+///
+/// An aggregation that was kept up to date has its groups in the order they were first
+/// seen over its whole history, and one made now has them in the order of the current
+/// rows. Both are right; the order is checked by the scripted tests and the corpus.
+fn in_order_of(expected: &dyn Table, like: &dyn Table, key_columns: usize) -> Arc<dyn Table> {
+    let key = |columns: &[ArrayRef], row: usize| {
+        columns[..key_columns]
+            .iter()
+            .map(|column| cell(column, row))
+            .collect::<Vec<_>>()
+            .join("|")
+    };
+    let expected_columns = read(expected);
+    let like_columns = read(like);
+    let size = |columns: &[ArrayRef]| columns.first().map_or(0, |column| column.len());
+    let mut row_of: HashMap<String, usize> = (0..size(&expected_columns))
+        .map(|row| (key(&expected_columns, row), row))
+        .collect();
+    let mut order: Vec<u64> = (0..size(&like_columns))
+        .filter_map(|row| row_of.remove(&key(&like_columns, row)))
+        .map(|row| row as u64)
+        .collect();
+    let mut unmatched: Vec<u64> = row_of.into_values().map(|row| row as u64).collect();
+    unmatched.sort_unstable();
+    order.extend(unmatched);
+    let order = arrow::array::UInt64Array::from(order);
+    let columns: Vec<(&str, ColumnType, ArrayRef)> = expected
+        .definition()
+        .columns()
+        .iter()
+        .zip(&expected_columns)
+        .map(|(column, values)| {
+            let values = arrow::compute::take(values, &order, None).expect("a reordered column");
+            (column.name.as_str(), column.column_type.clone(), values)
+        })
+        .collect();
+    static_table(&columns)
 }

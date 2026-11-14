@@ -6,34 +6,46 @@ use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 
-/// What a call did to a group's result.
+/// What a call did to a group's result. Both can be true: a removal that needs the
+/// group read again, followed by an addition that changed the result.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Effect {
-    /// The result is what it was.
-    Unchanged,
+pub struct Effect {
     /// The result may have changed. The framework writes it and reports the row modified.
-    Modified,
+    pub modified: bool,
     /// The operator cannot tell from the rows it was given. The framework calls
     /// [`AggOperator::recompute`] for the group once all rows of this cycle are processed.
     /// Only an operator that [needs group rows](AggOperator::needs_group_rows) may ask.
-    Recompute,
+    pub recompute: bool,
 }
 
 impl Effect {
+    /// The result is what it was.
+    pub const UNCHANGED: Effect = Effect {
+        modified: false,
+        recompute: false,
+    };
+    pub const MODIFIED: Effect = Effect {
+        modified: true,
+        recompute: false,
+    };
+    pub const RECOMPUTE: Effect = Effect {
+        modified: false,
+        recompute: true,
+    };
+
     /// The effect of two calls on one group.
     pub fn and(self, other: Effect) -> Effect {
-        match (self, other) {
-            (Effect::Recompute, _) | (_, Effect::Recompute) => Effect::Recompute,
-            (Effect::Modified, _) | (_, Effect::Modified) => Effect::Modified,
-            _ => Effect::Unchanged,
+        Effect {
+            modified: self.modified || other.modified,
+            recompute: self.recompute || other.recompute,
         }
     }
 
     pub fn modified_if(changed: bool) -> Effect {
         if changed {
-            Effect::Modified
+            Effect::MODIFIED
         } else {
-            Effect::Unchanged
+            Effect::UNCHANGED
         }
     }
 }
@@ -75,7 +87,7 @@ impl<'a> GroupReader<'a> {
 /// - Running state that can retract (sum, count, avg) implements `add` and `remove` and
 ///   nothing else.
 /// - State that a removal can invalidate (min, max, first, last on a table that removes
-///   rows) returns `true` from `needs_group_rows` and [`Effect::Recompute`] when it cannot
+///   rows) returns `true` from `needs_group_rows` and [`Effect::RECOMPUTE`] when it cannot
 ///   answer from its state; the framework then keeps the rows of every group and calls
 ///   `recompute`. If no operator of an aggregation needs them, group rows are not kept.
 ///
@@ -127,7 +139,7 @@ pub trait AggOperator: Send {
     ///
     /// Behavior: IterativeChunkedAggregationOperator#shiftChunk
     fn shifted(&mut self, _slot: usize) -> Effect {
-        Effect::Unchanged
+        Effect::UNCHANGED
     }
 
     /// Brings the state of `slots` up to date from the rows of each group. Returns, for

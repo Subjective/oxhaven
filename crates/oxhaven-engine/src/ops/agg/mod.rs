@@ -21,7 +21,7 @@
 //! 2. Decide what the operator needs. If a group's result can always be brought up to date
 //!    from the rows that came and went, implement `add` and `remove` and nothing else. If a
 //!    removal can leave it unable to answer, return `true` from `needs_group_rows` and
-//!    [`Effect::Recompute`] when that happens; `recompute` is then called with the rows of
+//!    [`Effect::RECOMPUTE`] when that happens; `recompute` is then called with the rows of
 //!    the group. The framework keeps the rows of every group only if some operator of the
 //!    aggregation asks.
 //! 3. Add a variant to [`AggSpec`] and an arm to `make_operator`, where the operator for
@@ -154,7 +154,10 @@ impl fmt::Display for AggregateError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             AggregateError::NoAggregations => {
-                write!(f, "aggBy must have at least one aggregation, none specified")
+                write!(
+                    f,
+                    "aggBy must have at least one aggregation, none specified"
+                )
             }
             AggregateError::UnknownColumn(column) => write!(f, "unknown column {column}"),
             AggregateError::DuplicateOutput(column) => {
@@ -221,7 +224,11 @@ fn make_operator(
 ) -> Option<Box<dyn AggOperator>> {
     let integer = matches!(
         input,
-        ColumnType::Byte | ColumnType::Char | ColumnType::Short | ColumnType::Int | ColumnType::Long
+        ColumnType::Byte
+            | ColumnType::Char
+            | ColumnType::Short
+            | ColumnType::Int
+            | ColumnType::Long
     );
     Some(match spec {
         AggSpec::Sum => match input {

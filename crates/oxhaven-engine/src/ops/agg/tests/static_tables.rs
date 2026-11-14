@@ -73,7 +73,9 @@ fn one_of_each_type() -> Vec<(&'static str, ColumnType, ArrayRef)> {
         (
             "Time",
             ColumnType::Instant,
-            Arc::new(TimestampNanosecondArray::from(pattern(2_000, 1_000).to_vec()).with_timezone("UTC")),
+            Arc::new(
+                TimestampNanosecondArray::from(pattern(2_000, 1_000).to_vec()).with_timezone("UTC"),
+            ),
         ),
     ]
 }
@@ -147,13 +149,22 @@ fn result_types_follow_java() {
     let columns = one_of_each_type();
     let parent = static_table(&columns);
     let type_of = |spec: AggSpec, input: &str| {
-        let result = aggregate(&parent, &[agg(spec, &[&format!("Out = {input}")])], false, &[]);
+        let result = aggregate(
+            &parent,
+            &[agg(spec, &[&format!("Out = {input}")])],
+            false,
+            &[],
+        );
         result.map(|table| schema(&*table)[0].1.clone())
     };
     for (name, column_type, _) in &columns {
         // min, max, first and last have the type of their input, whatever it is.
         for spec in [AggSpec::Min, AggSpec::Max, AggSpec::First, AggSpec::Last] {
-            assert_eq!(type_of(spec, name), Ok(column_type.clone()), "{spec:?} of {name}");
+            assert_eq!(
+                type_of(spec, name),
+                Ok(column_type.clone()),
+                "{spec:?} of {name}"
+            );
         }
         let unsupported = |spec| {
             Err(AggregateError::UnsupportedType {
@@ -195,7 +206,11 @@ fn every_aggregation_of_every_type() {
     assert_eq!(one(AggSpec::Sum, "Float"), "2.75");
     assert_eq!(one(AggSpec::Sum, "Double"), "2.75");
     for input in ["Byte", "Short", "Int", "Long"] {
-        assert_eq!(one(AggSpec::Avg, input), format!("{:?}", 4.0 / 3.0), "{input}");
+        assert_eq!(
+            one(AggSpec::Avg, input),
+            format!("{:?}", 4.0 / 3.0),
+            "{input}"
+        );
     }
     assert_eq!(
         one(AggSpec::Avg, "Char"),
@@ -205,22 +220,16 @@ fn every_aggregation_of_every_type() {
     assert_eq!(one(AggSpec::Avg, "Double"), format!("{:?}", 2.75 / 3.0));
 
     let all = |spec: AggSpec| {
-        let pairs: Vec<&str> = one_of_each_type().iter().map(|(name, _, _)| *name).collect();
+        let pairs: Vec<&str> = one_of_each_type()
+            .iter()
+            .map(|(name, _, _)| *name)
+            .collect();
         let result = agg_by(&parent, &[agg(spec, &pairs)], &[]);
         rows(&*result).join(";")
     };
-    assert_eq!(
-        all(AggSpec::Min),
-        "false|-2|65|-2|-2|-2|-0.25|-0.25|w|1000"
-    );
-    assert_eq!(
-        all(AggSpec::Max),
-        "true|3|65534|3|3|3|1.5|1.5|x|2000"
-    );
-    assert_eq!(
-        all(AggSpec::First),
-        "true|3|65534|3|3|3|1.5|1.5|x|2000"
-    );
+    assert_eq!(all(AggSpec::Min), "false|-2|65|-2|-2|-2|-0.25|-0.25|w|1000");
+    assert_eq!(all(AggSpec::Max), "true|3|65534|3|3|3|1.5|1.5|x|2000");
+    assert_eq!(all(AggSpec::First), "true|3|65534|3|3|3|1.5|1.5|x|2000");
     assert_eq!(
         all(AggSpec::Last),
         "null|null|null|null|null|null|null|null|null|null"
@@ -229,7 +238,14 @@ fn every_aggregation_of_every_type() {
 
 #[test]
 fn integer_sums_widen_and_wrap_and_the_null_sentinel_reads_as_null() {
-    let k = strs(&[Some("wrap"), Some("wrap"), Some("past"), Some("past"), Some("wide"), Some("wide")]);
+    let k = strs(&[
+        Some("wrap"),
+        Some("wrap"),
+        Some("past"),
+        Some("past"),
+        Some("wide"),
+        Some("wide"),
+    ]);
     let l: ArrayRef = Arc::new(Int64Array::from(vec![i64::MAX, 1, i64::MAX, 2, 5, 6]));
     let i: ArrayRef = Arc::new(Int32Array::from(vec![1, 1, 1, 1, i32::MAX, i32::MAX]));
     let parent = static_table(&[
@@ -239,7 +255,10 @@ fn integer_sums_widen_and_wrap_and_the_null_sentinel_reads_as_null() {
     ]);
     let result = agg_by(
         &parent,
-        &[agg(AggSpec::Sum, &["L", "I"]), agg(AggSpec::Avg, &["AvgL = L"])],
+        &[
+            agg(AggSpec::Sum, &["L", "I"]),
+            agg(AggSpec::Avg, &["AvgL = L"]),
+        ],
         &["K"],
     );
     assert_eq!(
@@ -269,8 +288,15 @@ fn nan_and_infinities_decide_floating_point_sums_and_averages() {
         .iter()
         .flat_map(|(name, values)| values.iter().map(|_| Some(*name)))
         .collect();
-    let d: Vec<Option<f64>> = groups.iter().flat_map(|(_, values)| values.iter().copied()).collect();
-    let f: ArrayRef = Arc::new(d.iter().map(|v| v.map(|v| v as f32)).collect::<Float32Array>());
+    let d: Vec<Option<f64>> = groups
+        .iter()
+        .flat_map(|(_, values)| values.iter().copied())
+        .collect();
+    let f: ArrayRef = Arc::new(
+        d.iter()
+            .map(|v| v.map(|v| v as f32))
+            .collect::<Float32Array>(),
+    );
     let parent = static_table(&[
         ("K", ColumnType::String, strs(&k)),
         ("D", ColumnType::Double, double_opts(&d)),
@@ -312,11 +338,7 @@ fn nan_and_infinities_decide_floating_point_sums_and_averages() {
 
 #[test]
 fn without_keys_there_is_one_row_unless_the_table_is_empty() {
-    let parent = static_table(&[(
-        "I",
-        ColumnType::Int,
-        int_opts(&[Some(4), None, Some(-1)]),
-    )]);
+    let parent = static_table(&[("I", ColumnType::Int, int_opts(&[Some(4), None, Some(-1)]))]);
     let result = agg_by(&parent, &all_of("I"), &[]);
     assert_eq!(rows(&*result), ["3|1.5|-1|4|4|-1|3"]);
     assert!(result.is_flat());
@@ -347,7 +369,11 @@ fn every_type_is_a_key_and_null_is_a_key() {
         let second = cell(values, 1);
         assert_eq!(
             rows(&*result),
-            [format!("{first}|2"), format!("{second}|1"), "null|1".to_string()],
+            [
+                format!("{first}|2"),
+                format!("{second}|1"),
+                "null|1".to_string()
+            ],
             "by {name}"
         );
     }
@@ -388,9 +414,21 @@ fn floating_point_keys_group_nans_and_zeros_and_show_the_first_seen() {
 #[test]
 fn several_key_columns_group_by_their_combination() {
     let parent = static_table(&[
-        ("A", ColumnType::String, strs(&[Some("x"), Some("x"), None, Some("x"), None, Some("y")])),
-        ("B", ColumnType::Int, int_opts(&[Some(1), None, Some(1), Some(1), Some(1), Some(1)])),
-        ("V", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(4), Some(8), Some(16), Some(32)])),
+        (
+            "A",
+            ColumnType::String,
+            strs(&[Some("x"), Some("x"), None, Some("x"), None, Some("y")]),
+        ),
+        (
+            "B",
+            ColumnType::Int,
+            int_opts(&[Some(1), None, Some(1), Some(1), Some(1), Some(1)]),
+        ),
+        (
+            "V",
+            ColumnType::Int,
+            int_opts(&[Some(1), Some(2), Some(4), Some(8), Some(16), Some(32)]),
+        ),
     ]);
     let result = agg_by(&parent, &[agg(AggSpec::Sum, &["V"])], &["A", "B"]);
     assert_eq!(rows(&*result), ["x|1|9", "x|null|2", "null|1|20", "y|1|32"]);
@@ -440,7 +478,10 @@ fn requests_java_refuses_are_errors() {
         Some(AggregateError::UnknownColumn("Nope".to_string()))
     );
     assert_eq!(
-        error(&[agg(AggSpec::Sum, &["S = I"]), agg(AggSpec::Max, &["S = I"])], &[]),
+        error(
+            &[agg(AggSpec::Sum, &["S = I"]), agg(AggSpec::Max, &["S = I"])],
+            &[]
+        ),
         Some(AggregateError::DuplicateOutput("S".to_string()))
     );
     assert_eq!(
@@ -499,8 +540,16 @@ fn minimum_and_maximum_use_java_ordering() {
     // In UTF-16 code units, as String#compareTo orders, U+1F600 (a surrogate pair starting
     // 0xD83D) is below U+FF5E; by code point or UTF-8 byte it is above.
     let parent = static_table(&[
-        ("S", ColumnType::String, strs(&[Some("\u{FF5E}"), Some("\u{1F600}"), None, Some("a")])),
-        ("D", ColumnType::Double, double_opts(&[Some(0.0), Some(-0.0), None, Some(0.0)])),
+        (
+            "S",
+            ColumnType::String,
+            strs(&[Some("\u{FF5E}"), Some("\u{1F600}"), None, Some("a")]),
+        ),
+        (
+            "D",
+            ColumnType::Double,
+            double_opts(&[Some(0.0), Some(-0.0), None, Some(0.0)]),
+        ),
     ]);
     let result = agg_by(
         &parent,

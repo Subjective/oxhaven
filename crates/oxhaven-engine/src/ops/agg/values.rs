@@ -58,7 +58,9 @@ impl Values {
             arrow::compute::cast(array, to).map_err(|error| failure(error.to_string()))
         };
         Ok(match Shape::of(column_type) {
-            Shape::Long => Values::Longs(cast(&DataType::Int64)?.as_primitive::<Int64Type>().clone()),
+            Shape::Long => {
+                Values::Longs(cast(&DataType::Int64)?.as_primitive::<Int64Type>().clone())
+            }
             Shape::Double => Values::Doubles(
                 cast(&DataType::Float64)?
                     .as_primitive::<Float64Type>()
@@ -287,9 +289,11 @@ impl Scalar {
 /// becomes null. Integers are narrowed as Java's casts narrow them.
 pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scalar>) -> ArrayRef {
     match column_type {
-        ColumnType::Byte => {
-            Arc::new(values.map(|s| s.long().map(|v| v as i8)).collect::<Int8Array>())
-        }
+        ColumnType::Byte => Arc::new(
+            values
+                .map(|s| s.long().map(|v| v as i8))
+                .collect::<Int8Array>(),
+        ),
         ColumnType::Short => Arc::new(
             values
                 .map(|s| s.long().map(|v| v as i16))

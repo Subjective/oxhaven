@@ -97,12 +97,12 @@ impl AggOperator for Count {
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         self.counts[slot] += run.len() as i64;
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         self.counts[slot] -= run.len() as i64;
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
@@ -132,7 +132,7 @@ impl LongSum {
         if non_null > 0 {
             self.non_null[slot] += non_null;
             self.result[slot] = plus_long(self.result[slot], sum);
-            Effect::Modified
+            Effect::MODIFIED
         } else if non_null < 0 {
             self.non_null[slot] += non_null;
             self.result[slot] = if self.non_null[slot] > 0 {
@@ -140,9 +140,9 @@ impl LongSum {
             } else {
                 NULL_LONG
             };
-            Effect::Modified
+            Effect::MODIFIED
         } else {
-            Effect::Unchanged
+            Effect::UNCHANGED
         }
     }
 }
@@ -173,12 +173,12 @@ impl AggOperator for LongSum {
         let (new_sum, new_non_null) = sum_longs(new);
         let difference = new_sum.wrapping_sub(old_sum);
         if old_non_null == 0 && new_non_null == 0 {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         }
         let change = new_non_null - old_non_null;
         if change == 0 {
             if difference == 0 {
-                return Effect::Unchanged;
+                return Effect::UNCHANGED;
             }
             self.result[slot] = plus_long(self.result[slot], difference);
         } else {
@@ -189,7 +189,7 @@ impl AggOperator for LongSum {
                 NULL_LONG
             };
         }
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
@@ -293,13 +293,13 @@ impl AggOperator for BooleanSum {
                 }
             }
             self.result[slot] = new_true;
-            return Effect::Modified;
+            return Effect::MODIFIED;
         }
         if new_false == Some(0) && self.result[slot] == 0 {
             self.result[slot] = NULL_LONG;
-            return Effect::Modified;
+            return Effect::MODIFIED;
         }
-        Effect::Unchanged
+        Effect::UNCHANGED
     }
 
     /// Behavior: BooleanChunkedSumOperator#modifyChunk
@@ -309,7 +309,7 @@ impl AggOperator for BooleanSum {
         let true_modified = old_trues != new_trues;
         let false_modified = old_falses != new_falses;
         if !true_modified && !false_modified {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         }
         let mut new_false = None;
         if false_modified {
@@ -328,18 +328,18 @@ impl AggOperator for BooleanSum {
                 }
             }
             self.result[slot] = new_true;
-            return Effect::Modified;
+            return Effect::MODIFIED;
         }
         let existing = self.result[slot];
         if new_false == Some(0) && existing == 0 {
             self.result[slot] = NULL_LONG;
-            return Effect::Modified;
+            return Effect::MODIFIED;
         }
         if new_false.is_some_and(|count| count > 0) && existing == NULL_LONG {
             self.result[slot] = 0;
-            return Effect::Modified;
+            return Effect::MODIFIED;
         }
-        Effect::Unchanged
+        Effect::UNCHANGED
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
@@ -518,7 +518,7 @@ impl AggOperator for FloatSum {
                 self.result[slot] = self.null();
             }
         }
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     /// Behavior: DoubleChunkedSumOperator#removeChunk
@@ -534,16 +534,16 @@ impl AggOperator for FloatSum {
             };
             self.running[slot] = sum;
             self.result[slot] = self.value_with_sum(slot, sum);
-            Effect::Modified
+            Effect::MODIFIED
         } else if chunk.has_non_normal() {
             self.result[slot] = match self.value_no_sum(slot) {
                 Some(forced) => forced,
                 None if self.counts.normal[slot] == 0 => self.null(),
                 None => self.typed(self.running[slot]),
             };
-            Effect::Modified
+            Effect::MODIFIED
         } else {
-            Effect::Unchanged
+            Effect::UNCHANGED
         }
     }
 
@@ -563,7 +563,7 @@ impl AggOperator for FloatSum {
                 single_value_or_empty = true;
             }
         } else if unchanged_result {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         }
         let total = self.counts.normal[slot];
         self.counts.update_non_normal(slot, &pre, -1);
@@ -600,7 +600,11 @@ impl AggOperator for FloatSum {
             .iter()
             .map(|&slot| Some(self.result[slot]).filter(|&v| v != null));
         if self.narrow {
-            Arc::new(values.map(|v| v.map(|v| v as f32)).collect::<Float32Array>())
+            Arc::new(
+                values
+                    .map(|v| v.map(|v| v as f32))
+                    .collect::<Float32Array>(),
+            )
         } else {
             Arc::new(values.collect::<Float64Array>())
         }
@@ -639,12 +643,12 @@ impl AggOperator for LongAvg {
             let sum = plus_long(self.running[slot], sum);
             self.running[slot] = sum;
             self.result[slot] = sum as f64 / self.non_null[slot] as f64;
-            Effect::Modified
+            Effect::MODIFIED
         } else if self.non_null[slot] == 0 {
             self.result[slot] = NULL_DOUBLE;
-            Effect::Modified
+            Effect::MODIFIED
         } else {
-            Effect::Unchanged
+            Effect::UNCHANGED
         }
     }
 
@@ -652,7 +656,7 @@ impl AggOperator for LongAvg {
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let (sum, non_null) = sum_longs(run);
         if non_null == 0 {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         }
         self.non_null[slot] -= non_null;
         let sum = minus_long(self.running[slot], sum);
@@ -662,7 +666,7 @@ impl AggOperator for LongAvg {
         } else {
             sum as f64 / self.non_null[slot] as f64
         };
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
@@ -719,14 +723,14 @@ impl AggOperator for FloatAvg {
             self.running[slot] = plus_double(self.running[slot], chunk.sum);
         }
         self.update_result(slot);
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     /// Behavior: DoubleChunkedAvgOperator#removeChunk
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let chunk = FloatRun::of(run);
         if chunk.normal == 0 && !chunk.has_non_normal() {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         }
         self.counts.normal[slot] -= chunk.normal;
         self.counts.update_non_normal(slot, &chunk, -1);
@@ -734,7 +738,7 @@ impl AggOperator for FloatAvg {
             self.running[slot] = plus_double(self.running[slot], -chunk.sum);
         }
         self.update_result(slot);
-        Effect::Modified
+        Effect::MODIFIED
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {

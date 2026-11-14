@@ -135,11 +135,15 @@ fn column<'a>(type_name: &str, cells: impl Iterator<Item = &'a Value>) -> (Colum
 }
 
 fn list<'a>(value: &'a Value, what: &str) -> &'a Vec<Value> {
-    value.as_array().unwrap_or_else(|| panic!("{what} is not a list"))
+    value
+        .as_array()
+        .unwrap_or_else(|| panic!("{what} is not a list"))
 }
 
 fn text<'a>(value: &'a Value, what: &str) -> &'a str {
-    value.as_str().unwrap_or_else(|| panic!("{what} is not a string"))
+    value
+        .as_str()
+        .unwrap_or_else(|| panic!("{what} is not a string"))
 }
 
 /// The rows of an input, or of an action on it, as a batch of the first `columns.len()`
@@ -268,7 +272,11 @@ fn floats_match(actual: f64, expected: f64, tolerance: Option<(f64, f64)>) -> bo
 fn assert_matches(context: &str, table: &dyn Table, expected: &RecordBatch, computed: &[String]) {
     let actual = read(table);
     let schema = expected.schema();
-    let names: Vec<&str> = schema.fields().iter().map(|field| field.name().as_str()).collect();
+    let names: Vec<&str> = schema
+        .fields()
+        .iter()
+        .map(|field| field.name().as_str())
+        .collect();
     let actual_names: Vec<&str> = table
         .definition()
         .columns()
@@ -285,11 +293,19 @@ fn assert_matches(context: &str, table: &dyn Table, expected: &RecordBatch, comp
     assert_eq!(size, expected.num_rows(), "{context}: row count");
     for (index, name) in names.iter().enumerate() {
         let (actual, expected) = (&actual[index], expected.column(index));
-        assert_eq!(actual.data_type(), expected.data_type(), "{context}: type of {name}");
+        assert_eq!(
+            actual.data_type(),
+            expected.data_type(),
+            "{context}: type of {name}"
+        );
         let is_computed = computed.iter().any(|column| column == name);
         for row in 0..size {
             let context = format!("{context}: {name} at row {row}");
-            assert_eq!(actual.is_null(row), expected.is_null(row), "{context}: null");
+            assert_eq!(
+                actual.is_null(row),
+                expected.is_null(row),
+                "{context}: null"
+            );
             if actual.is_null(row) {
                 continue;
             }
@@ -334,10 +350,15 @@ fn run_step(step: &Value, inputs: &BTreeMap<String, Input>, graph: &Arc<SteppedU
                     .columns
                     .iter()
                     .filter(|column| {
-                        input.key_columns.iter().any(|key| column["name"] == key.as_str())
+                        input
+                            .key_columns
+                            .iter()
+                            .any(|key| column["name"] == key.as_str())
                     })
                     .collect();
-                writer.delete(rows_batch(&declared, rows).1).expect("a delete");
+                writer
+                    .delete(rows_batch(&declared, rows).1)
+                    .expect("a delete");
             }
             other => panic!("no action {other}"),
         }
@@ -356,7 +377,10 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
     let scenario = json(path);
     let name = text(&scenario["name"], "name");
     let operations = list(&scenario["operations"], "operations");
-    if !operations.iter().any(|operation| operation["op"] == "agg_by") {
+    if !operations
+        .iter()
+        .any(|operation| operation["op"] == "agg_by")
+    {
         return;
     }
     let manifest = json(&oracle().join(format!("corpus/{name}/manifest.json")));
@@ -366,7 +390,10 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
 
     // The tables to compare at each step, with their computed columns.
     let mut tables: Vec<(&str, Arc<dyn Table>, Vec<String>)> = Vec::new();
-    for operation in operations.iter().filter(|operation| operation["op"] == "agg_by") {
+    for operation in operations
+        .iter()
+        .filter(|operation| operation["op"] == "agg_by")
+    {
         let table_name = text(&operation["name"], "name");
         let context = format!("{name}.{table_name}");
         let Some(input) = inputs.get(text(&operation["source"], "source")) else {
@@ -431,7 +458,10 @@ fn aggregations_match_the_recorded_java_results() {
         let mut paths: Vec<PathBuf> = std::fs::read_dir(&directory)
             .unwrap_or_else(|e| panic!("{}: {e}", directory.display()))
             .map(|entry| entry.expect("a directory entry").path())
-            .filter(|path| path.extension().is_some_and(|extension| extension == "json"))
+            .filter(|path| {
+                path.extension()
+                    .is_some_and(|extension| extension == "json")
+            })
             .collect();
         paths.sort();
         for path in paths {

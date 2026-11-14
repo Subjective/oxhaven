@@ -52,9 +52,9 @@ impl FirstLast {
 
     fn tracked(&self) -> Effect {
         if self.mode == FirstLastMode::Tracked {
-            Effect::Recompute
+            Effect::RECOMPUTE
         } else {
-            Effect::Unchanged
+            Effect::UNCHANGED
         }
     }
 }
@@ -78,11 +78,11 @@ impl AggOperator for FirstLast {
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         // A run is in row key order, so its first and last rows are its candidates.
         let Some((row_key, value)) = run.end(self.first) else {
-            return Effect::Unchanged;
+            return Effect::UNCHANGED;
         };
         let current = self.row_key[slot];
         let takes = match self.mode {
-            FirstLastMode::Tracked => return Effect::Recompute,
+            FirstLastMode::Tracked => return Effect::RECOMPUTE,
             FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
             FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
             FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
@@ -135,6 +135,9 @@ impl AggOperator for FirstLast {
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
-        build(&self.column_type, slots.iter().map(|&slot| &self.value[slot]))
+        build(
+            &self.column_type,
+            slots.iter().map(|&slot| &self.value[slot]),
+        )
     }
 }
