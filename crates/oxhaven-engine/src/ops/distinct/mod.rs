@@ -1,4 +1,5 @@
-//! `select_distinct`. Task 4.8.
+//! `select_distinct`, and `where_in` and `where_not_in` ([`where_in`], in `where_in.rs`),
+//! which Java builds on it. Task 4.8.
 //!
 //! In Java `select_distinct` is an aggregation without aggregations: one row per group of
 //! the key columns, with the key columns alone. The rules of an aggregation's result
@@ -14,17 +15,20 @@
 //!   `-0.0` and `0.0`, which are one key: a group made by `-0.0` shows `-0.0` for good,
 //!   even after that row has gone and a row with `0.0` has brought the group back.
 //!
-//! `where_in` and `where_not_in`, the other half of task 4.8, are not here yet.
-//!
 //! This module does not use `ops::agg`. The key encoding ([`keys`]) and the bookkeeping of
 //! groups ([`Groups`]) are what a keyed aggregation needs too.
 
 mod keys;
+mod where_in;
 
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod where_in_tests;
+
+pub use where_in::{where_in, where_not_in, WhereInError};
 
 use crate::table::{tracked_source, QueryTable, TableSpec};
 use crate::update::modified_pre_shift;

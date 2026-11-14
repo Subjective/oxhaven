@@ -63,7 +63,7 @@
   "ticking_natural_join": {"state": "differs", "kinds": ["column_metadata:inputtable.isValue"], "tables": ["ej", "nj", "nj_static_right"], "why": "exact_join and natural_join of an input table mark the columns they add from the right table as input-table value columns, which Java's results do not"},
   "ticking_raj": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["aj_le", "raj_ge", "raj_gt", "raj_no_key"], "why": "no handler for aj and raj"},
   "ticking_range_join": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED"], "tables": ["ticking_both", "ticking_left", "ticking_right"], "why": "no handler for range_join"},
-  "ticking_select_distinct_where_in": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["in_distinct", "in_fixed", "in_ticking", "not_in_fixed", "not_in_ticking"], "why": "no handler for where_in"},
+  "ticking_select_distinct_where_in": {"state": "clean"},
   "ticking_slice_flatten_reverse": {"state": "clean"},
   "ticking_snapshot_when": {"state": "clean"},
   "ticking_sort_absolute_descending": {"state": "differs", "kinds": ["column_metadata:inputtable.isKey", "column_metadata:inputtable.isValue"], "tables": ["abs_double", "abs_double_down", "abs_int", "abs_int_down", "abs_then_down"], "why": "a sort by absolute value keeps the input-table column metadata of its source, which Java's results do not carry"},
@@ -81,7 +81,7 @@
   "update_null_propagation": {"state": "clean"},
   "view_arithmetic": {"state": "clean"},
   "where_float_nan": {"state": "clean"},
-  "where_in": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED", "failure_unexpected:UNIMPLEMENTED"], "tables": ["empty_left", "in_double", "in_int", "in_itself", "in_none", "in_string", "in_two", "not_in_double", "not_in_int", "not_in_none", "not_in_string", "not_in_two", "other_type", "unknown_left", "unknown_right"], "why": "no handler for where_in"},
+  "where_in": {"state": "clean"},
   "where_int": {"state": "clean"},
   "where_string_bool": {"state": "clean"}
  },

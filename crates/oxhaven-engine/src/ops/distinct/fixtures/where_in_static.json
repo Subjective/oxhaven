@@ -1,0 +1,341 @@
+{
+ "name": "where_in_static",
+ "description": "where_in and where_not_in of static tables: every key type with null, NaN, signed zero and extreme keys, duplicates in the set, several match columns, one set column matched twice, Boolean with byte and Instant with long, pairs of types that are refused, unknown columns, and no match columns.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "rows": [
+   [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+   [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+   [3, null, null, null, null, null, null, null, null, null, null, null],
+   [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+   [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+   [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+   [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+   [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+  ]},
+  {"name": "f", "columns": [{"name": "B2", "type": "bool"}, {"name": "Y2", "type": "int8"}, {"name": "C2", "type": "char"}, {"name": "H2", "type": "int16"}, {"name": "I2", "type": "int32"}, {"name": "L2", "type": "int64"}, {"name": "F2", "type": "float32"}, {"name": "D2", "type": "float64"}, {"name": "S2", "type": "string"}, {"name": "T2", "type": "timestamp"}], "rows": [
+   [true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", 1000],
+   [null, null, null, null, null, null, null, null, null, null],
+   [true, -1, 97, 4, 4, 1000, "NaN", "NaN", "a", 1],
+   [null, 0, 0, 32767, 2147483647, 2, 0.0, -0.0, "", 2000],
+   [true, 5, 5, 5, 5, 5, "Infinity", 9.5, "zz", 5]
+  ]},
+  {"name": "g", "columns": [{"name": "Y2", "type": "int8"}, {"name": "I2", "type": "int32"}], "rows": [
+   [1, 7],
+   [-1, 8]
+  ]},
+  {"name": "none", "columns": [{"name": "Y2", "type": "int8"}, {"name": "I2", "type": "int32"}], "rows": [
+  ]}
+ ],
+ "operations": [
+  {"name": "in_bool", "op": "where_in", "source": "t", "set": "f", "columns": ["B = B2"]},
+  {"name": "not_in_bool", "op": "where_not_in", "source": "t", "set": "f", "columns": ["B = B2"]},
+  {"name": "in_byte", "op": "where_in", "source": "t", "set": "f", "columns": ["Y = Y2"]},
+  {"name": "not_in_byte", "op": "where_not_in", "source": "t", "set": "f", "columns": ["Y = Y2"]},
+  {"name": "in_char", "op": "where_in", "source": "t", "set": "f", "columns": ["C = C2"]},
+  {"name": "not_in_char", "op": "where_not_in", "source": "t", "set": "f", "columns": ["C = C2"]},
+  {"name": "in_short", "op": "where_in", "source": "t", "set": "f", "columns": ["H = H2"]},
+  {"name": "not_in_short", "op": "where_not_in", "source": "t", "set": "f", "columns": ["H = H2"]},
+  {"name": "in_int", "op": "where_in", "source": "t", "set": "f", "columns": ["I = I2"]},
+  {"name": "not_in_int", "op": "where_not_in", "source": "t", "set": "f", "columns": ["I = I2"]},
+  {"name": "in_long", "op": "where_in", "source": "t", "set": "f", "columns": ["L = L2"]},
+  {"name": "not_in_long", "op": "where_not_in", "source": "t", "set": "f", "columns": ["L = L2"]},
+  {"name": "in_float", "op": "where_in", "source": "t", "set": "f", "columns": ["F = F2"]},
+  {"name": "not_in_float", "op": "where_not_in", "source": "t", "set": "f", "columns": ["F = F2"]},
+  {"name": "in_double", "op": "where_in", "source": "t", "set": "f", "columns": ["D = D2"]},
+  {"name": "not_in_double", "op": "where_not_in", "source": "t", "set": "f", "columns": ["D = D2"]},
+  {"name": "in_string", "op": "where_in", "source": "t", "set": "f", "columns": ["S = S2"]},
+  {"name": "not_in_string", "op": "where_not_in", "source": "t", "set": "f", "columns": ["S = S2"]},
+  {"name": "in_time", "op": "where_in", "source": "t", "set": "f", "columns": ["T = T2"]},
+  {"name": "not_in_time", "op": "where_not_in", "source": "t", "set": "f", "columns": ["T = T2"]},
+  {"name": "in_string_double", "op": "where_in", "source": "t", "set": "f", "columns": ["S = S2", "D = D2"]},
+  {"name": "not_in_string_double", "op": "where_not_in", "source": "t", "set": "f", "columns": ["S = S2", "D = D2"]},
+  {"name": "in_double_string", "op": "where_in", "source": "t", "set": "f", "columns": ["D = D2", "S = S2"]},
+  {"name": "in_three", "op": "where_in", "source": "t", "set": "f", "columns": ["F = F2", "B = B2", "I = I2"]},
+  {"name": "not_in_three", "op": "where_not_in", "source": "t", "set": "f", "columns": ["F = F2", "B = B2", "I = I2"]},
+  {"name": "in_float_double", "op": "where_in", "source": "t", "set": "f", "columns": ["F = F2", "D = D2"]},
+  {"name": "set_column_twice", "op": "where_in", "source": "t", "set": "f", "columns": ["S = S2", "S3 = S2"]},
+  {"name": "not_set_column_twice", "op": "where_not_in", "source": "t", "set": "f", "columns": ["S = S2", "S3 = S2"]},
+  {"name": "left_column_twice", "op": "where_in", "source": "t", "set": "f", "columns": ["I = I2", "I = H2"]},
+  {"name": "bool_in_byte", "op": "where_in", "source": "t", "set": "f", "columns": ["B = Y2"]},
+  {"name": "bool_in_few_bytes", "op": "where_in", "source": "t", "set": "g", "columns": ["B = Y2"]},
+  {"name": "bool_not_in_few_bytes", "op": "where_not_in", "source": "t", "set": "g", "columns": ["B = Y2"]},
+  {"name": "byte_in_bool", "op": "where_in", "source": "t", "set": "f", "columns": ["Y = B2"]},
+  {"name": "byte_not_in_bool", "op": "where_not_in", "source": "t", "set": "f", "columns": ["Y = B2"]},
+  {"name": "time_in_long", "op": "where_in", "source": "t", "set": "f", "columns": ["T = L2"]},
+  {"name": "time_not_in_long", "op": "where_not_in", "source": "t", "set": "f", "columns": ["T = L2"]},
+  {"name": "long_in_time", "op": "where_in", "source": "t", "set": "f", "columns": ["L = T2"]},
+  {"name": "in_empty", "op": "where_in", "source": "t", "set": "none", "columns": ["I = I2"]},
+  {"name": "not_in_empty", "op": "where_not_in", "source": "t", "set": "none", "columns": ["I = I2"]},
+  {"name": "float_in_double", "op": "where_in", "source": "t", "set": "f", "columns": ["F = D2"]},
+  {"name": "double_in_float", "op": "where_in", "source": "t", "set": "f", "columns": ["D = F2"]},
+  {"name": "short_in_int", "op": "where_in", "source": "t", "set": "f", "columns": ["H = I2"]},
+  {"name": "char_in_int", "op": "where_in", "source": "t", "set": "f", "columns": ["C = I2"]},
+  {"name": "char_in_short", "op": "where_in", "source": "t", "set": "f", "columns": ["C = H2"]},
+  {"name": "byte_in_short", "op": "where_in", "source": "t", "set": "f", "columns": ["Y = H2"]},
+  {"name": "string_in_int", "op": "where_in", "source": "t", "set": "f", "columns": ["S = I2"]},
+  {"name": "int_in_long", "op": "where_not_in", "source": "t", "set": "f", "columns": ["I = L2"]},
+  {"name": "bool_in_string", "op": "where_in", "source": "t", "set": "f", "columns": ["B = S2"]},
+  {"name": "time_in_int", "op": "where_in", "source": "t", "set": "f", "columns": ["T = I2"]},
+  {"name": "second_pair_mismatched", "op": "where_in", "source": "t", "set": "f", "columns": ["I = I2", "H = I2"]},
+  {"name": "unknown_left", "op": "where_in", "source": "t", "set": "f", "columns": ["Nope = I2"]},
+  {"name": "unknown_right", "op": "where_in", "source": "t", "set": "f", "columns": ["I = Nope"]},
+  {"name": "unknown_both", "op": "where_not_in", "source": "t", "set": "f", "columns": ["Nope = Nada"]},
+  {"name": "unknown_and_mismatched", "op": "where_in", "source": "t", "set": "f", "columns": ["H = I2", "Nope = I2"]},
+  {"name": "no_columns", "op": "where_in", "source": "t", "set": "f", "columns": []}
+ ],
+ "results": ["in_bool", "not_in_bool", "in_byte", "not_in_byte", "in_char", "not_in_char", "in_short", "not_in_short", "in_int", "not_in_int", "in_long", "not_in_long", "in_float", "not_in_float", "in_double", "not_in_double", "in_string", "not_in_string", "in_time", "not_in_time", "in_string_double", "not_in_string_double", "in_double_string", "in_three", "not_in_three", "in_float_double", "set_column_twice", "not_set_column_twice", "left_column_twice", "bool_in_byte", "bool_in_few_bytes", "bool_not_in_few_bytes", "byte_in_bool", "byte_not_in_bool", "time_in_long", "time_not_in_long", "long_in_time", "in_empty", "not_in_empty", "float_in_double", "double_in_float", "short_in_int", "char_in_int", "char_in_short", "byte_in_short", "string_in_int", "int_in_long", "bool_in_string", "time_in_int", "second_pair_mismatched", "unknown_left", "unknown_right", "unknown_both", "unknown_and_mismatched", "no_columns"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "in_bool": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "not_in_bool": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_byte": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "not_in_byte": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "in_char": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "not_in_char": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "in_short": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "not_in_short": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000]
+   ]},
+   "in_int": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "not_in_int": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000]
+   ]},
+   "in_long": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null]
+   ]},
+   "not_in_long": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_float": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000]
+   ]},
+   "not_in_float": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_double": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1]
+   ]},
+   "not_in_double": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_string": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "not_in_string": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_time": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "not_in_time": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_string_double": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0]
+   ]},
+   "not_in_string_double": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_double_string": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0]
+   ]},
+   "in_three": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null]
+   ]},
+   "not_in_three": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_float_double": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1]
+   ]},
+   "set_column_twice": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0]
+   ]},
+   "not_set_column_twice": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "left_column_twice": {"failure": "INVALID_ARGUMENT"},
+   "bool_in_byte": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "bool_in_few_bytes": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "bool_not_in_few_bytes": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "byte_in_bool": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "byte_not_in_bool": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000]
+   ]},
+   "time_in_long": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "time_not_in_long": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000]
+   ]},
+   "long_in_time": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "in_empty": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+   ]},
+   "not_in_empty": {"columns": [{"name": "K", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "S3", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": true, "AppendOnly": true, "BlinkTable": false}, "rows": [
+    [1, true, 1, 97, 1, 1, 1, 0.5, 1.5, "a", "a", 1000],
+    [2, false, 0, 98, 2, 2, 2, "NaN", "NaN", "b", "x", 2000],
+    [3, null, null, null, null, null, null, null, null, null, null, null],
+    [4, true, -1, 65534, -32767, -2147483647, -9223372036854775807, -0.0, -0.0, "", "", 0],
+    [5, false, 127, 0, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "A", "a", -1],
+    [6, null, -127, 99, 3, 3, 3, "Infinity", "Infinity", "c", "c", 3000],
+    [7, true, 2, 100, 4, 4, 4, "-Infinity", "-Infinity", "a", "b", 1000],
+    [8, false, 1, 97, 1, 1, 2000, 2.5, 2.5, "b", "b", 2]
+   ]},
+   "float_in_double": {"failure": "INVALID_ARGUMENT"},
+   "double_in_float": {"failure": "INVALID_ARGUMENT"},
+   "short_in_int": {"failure": "INVALID_ARGUMENT"},
+   "char_in_int": {"failure": "INVALID_ARGUMENT"},
+   "char_in_short": {"failure": "INVALID_ARGUMENT"},
+   "byte_in_short": {"failure": "INVALID_ARGUMENT"},
+   "string_in_int": {"failure": "INVALID_ARGUMENT"},
+   "int_in_long": {"failure": "INVALID_ARGUMENT"},
+   "bool_in_string": {"failure": "INVALID_ARGUMENT"},
+   "time_in_int": {"failure": "INVALID_ARGUMENT"},
+   "second_pair_mismatched": {"failure": "INVALID_ARGUMENT"},
+   "unknown_left": {"failure": "INVALID_ARGUMENT"},
+   "unknown_right": {"failure": "INVALID_ARGUMENT"},
+   "unknown_both": {"failure": "INVALID_ARGUMENT"},
+   "unknown_and_mismatched": {"failure": "INVALID_ARGUMENT"},
+   "no_columns": {"failure": "INVALID_ARGUMENT"}
+  }
+ ]}
+}

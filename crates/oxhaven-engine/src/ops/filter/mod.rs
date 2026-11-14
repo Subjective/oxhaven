@@ -85,7 +85,7 @@ fn accepted(
     Ok(matched)
 }
 
-fn shift_failure(error: impl fmt::Display) -> TableFailure {
+pub(crate) fn shift_failure(error: impl fmt::Display) -> TableFailure {
     TableFailure {
         message: format!("where could not apply the parent's shifts: {error}"),
     }
@@ -102,8 +102,8 @@ struct WhereOperator {
 }
 
 impl WhereOperator {
-    /// Behavior: io.deephaven.engine.table.impl.WhereListener#process,
-    /// WhereListener#makeUpdateFilterExecution and WhereListener#completeUpdate
+    /// Behavior: io.deephaven.engine.table.impl.WhereListener#process and
+    /// WhereListener#makeUpdateFilterExecution
     fn on_update(
         &self,
         result: &QueryTable,
@@ -112,57 +112,74 @@ impl WhereOperator {
         // Modified rows are filtered again only if a column a filter reads was modified.
         let filter_modified =
             self.reads_arrays || upstream.modified_columns.contains_any(&self.columns);
-        let to_filter = if filter_modified {
-            upstream.added.union(&upstream.modified)
-        } else {
-            upstream.added.clone()
-        };
-        let passed = accepted(&self.filters, &*self.parent, &to_filter)?;
-        let mut added = passed.intersect(&upstream.added);
-
-        // The result's rows before this step, then in the parent's new key space.
-        let before = result.row_set();
-        let mut removed = before.intersect(&upstream.removed);
-        let mapping = upstream
-            .shifted
-            .apply(&before.minus(&removed))
-            .map_err(shift_failure)?;
-
-        let modified = if filter_modified {
-            let passed_modified = passed.minus(&upstream.added);
-            // A modified row that passes now and did not before is added.
-            added.insert(&passed_modified.minus(&mapping));
-            // A modified row that passed before and does not now is removed, by the key
-            // it had before the shifts.
-            let dropped = upstream
-                .modified
-                .minus(&passed_modified)
-                .intersect(&mapping);
-            removed.insert(
-                &upstream
-                    .shifted
-                    .inverse()
-                    .apply(&dropped)
-                    .map_err(shift_failure)?,
-            );
-            passed_modified.intersect(&mapping)
-        } else {
-            upstream.modified.intersect(&mapping)
-        };
-        let modified_columns = if modified.is_empty() {
-            ModifiedColumnSet::empty()
-        } else {
-            upstream.modified_columns.clone()
-        };
-        // A filter never moves a row, so the parent's shifts are the result's.
-        Ok(TableUpdate {
-            added,
-            removed,
-            modified,
-            shifted: upstream.shifted.clone(),
-            modified_columns,
+        filtered_update(result, upstream, filter_modified, |rows| {
+            accepted(&self.filters, &*self.parent, rows)
         })
     }
+}
+
+/// The change of a filtered table `result` for the change `upstream` of its parent, when
+/// what the filters accept has not changed. `accept` gives the rows of a selection of the
+/// parent's current rows that pass; it is asked about the added rows and, with
+/// `filter_modified`, about the modified rows.
+///
+/// Behavior: io.deephaven.engine.table.impl.WhereListener#completeUpdate
+pub(crate) fn filtered_update(
+    result: &QueryTable,
+    upstream: &TableUpdate,
+    filter_modified: bool,
+    accept: impl FnOnce(&RowSet) -> Result<RowSet, TableFailure>,
+) -> Result<TableUpdate, TableFailure> {
+    let to_filter = if filter_modified {
+        upstream.added.union(&upstream.modified)
+    } else {
+        upstream.added.clone()
+    };
+    let passed = accept(&to_filter)?;
+    let mut added = passed.intersect(&upstream.added);
+
+    // The result's rows before this step, then in the parent's new key space.
+    let before = result.row_set();
+    let mut removed = before.intersect(&upstream.removed);
+    let mapping = upstream
+        .shifted
+        .apply(&before.minus(&removed))
+        .map_err(shift_failure)?;
+
+    let modified = if filter_modified {
+        let passed_modified = passed.minus(&upstream.added);
+        // A modified row that passes now and did not before is added.
+        added.insert(&passed_modified.minus(&mapping));
+        // A modified row that passed before and does not now is removed, by the key
+        // it had before the shifts.
+        let dropped = upstream
+            .modified
+            .minus(&passed_modified)
+            .intersect(&mapping);
+        removed.insert(
+            &upstream
+                .shifted
+                .inverse()
+                .apply(&dropped)
+                .map_err(shift_failure)?,
+        );
+        passed_modified.intersect(&mapping)
+    } else {
+        upstream.modified.intersect(&mapping)
+    };
+    let modified_columns = if modified.is_empty() {
+        ModifiedColumnSet::empty()
+    } else {
+        upstream.modified_columns.clone()
+    };
+    // A filter never moves a row, so the parent's shifts are the result's.
+    Ok(TableUpdate {
+        added,
+        removed,
+        modified,
+        shifted: upstream.shifted.clone(),
+        modified_columns,
+    })
 }
 
 /// The attributes of a `where` result. The blink attribute is copied. The result is add-only
@@ -174,7 +191,7 @@ impl WhereOperator {
 /// `CopyAttributeOperation.Filter` (of the three here, `BLINK_TABLE_ATTRIBUTE` only) and
 /// then sets `ADD_ONLY_TABLE_ATTRIBUTE` and `APPEND_ONLY_TABLE_ATTRIBUTE` from
 /// `BaseTable#isAddOnly` and `#isAppendOnly`, which are true of every static table.
-fn where_attributes(parent: &dyn Table) -> TableAttributes {
+pub(crate) fn where_attributes(parent: &dyn Table) -> TableAttributes {
     let mut attributes = TableAttributes::default();
     attributes.blink = parent.attributes().blink;
     attributes.add_only = is_add_only(parent);
