@@ -1,0 +1,28 @@
+{
+ "tables": {
+  "L": {"columns": ["V"], "keys": [0, 3, 4], "values": [[10, 11, 12]], "refreshing": true},
+  "R": {"columns": ["W"], "keys": [1, 2], "values": [[100, 101]], "refreshing": true},
+  "S": {"columns": ["W"], "keys": [1, 2], "values": [[100, 101]]},
+  "T": {"columns": ["V"], "keys": [0, 3, 4], "values": [[10, 11, 12]]},
+  "E": {"columns": ["W"], "keys": [], "values": [[]]}
+ },
+ "joins": [
+  {"name": "both_r1", "left": "L", "right": "R", "add": ["W"], "reserve": 1},
+  {"name": "both_r10", "left": "L", "right": "R", "add": ["W"], "reserve": 10},
+  {"name": "left_live", "left": "L", "right": "S", "add": ["W"], "reserve": 1},
+  {"name": "right_live", "left": "T", "right": "R", "add": ["W"], "reserve": 1},
+  {"name": "left_live_empty", "left": "L", "right": "E", "add": ["W"], "reserve": 1},
+  {"name": "static", "left": "T", "right": "S", "add": ["W"], "reserve": 1}
+ ],
+ "steps": [
+  {"R": {"added": {"keys": [5], "values": [[102]]}}},
+  {"L": {"added": {"keys": [1], "values": [[13]]}, "removed": [3]}},
+  {"L": {"shifted": [[4, 4, 4]]}},
+  {"R": {"modified": {"keys": [2], "columns": ["W"], "values": [[201]]}}},
+  {"L": {"modified": {"keys": [1], "columns": ["V"], "values": [[99]]}}},
+  {"R": {"removed": [1], "shifted": [[2, 5, 10]], "added": {"keys": [40], "values": [[103]]}},
+   "L": {"modified": {"keys": [8], "columns": ["V"], "values": [[98]]}}},
+  {"R": {"removed": [12, 15, 40]}},
+  {"R": {"added": {"keys": [3], "values": [[104]]}}}
+ ]
+}

@@ -71,13 +71,13 @@ fn pick(join_type: NaturalJoinType, right: &BTreeSet<RowKey>) -> Match {
 }
 
 /// A join's arguments, checked against the two tables.
-struct Plan {
+pub(crate) struct Plan {
     join_type: NaturalJoinType,
-    left_keys: KeyColumns,
-    right_keys: KeyColumns,
-    key_types: Vec<ColumnType>,
+    pub(crate) left_keys: KeyColumns,
+    pub(crate) right_keys: KeyColumns,
+    pub(crate) key_types: Vec<ColumnType>,
     /// The added columns: the name in the result and the column of the right table.
-    additions: Vec<(String, usize)>,
+    pub(crate) additions: Vec<(String, usize)>,
 }
 
 impl Plan {
@@ -86,7 +86,7 @@ impl Plan {
     /// io.deephaven.engine.table.impl.BucketingContext for the name and type checks, and
     /// io.deephaven.engine.table.impl.NaturalJoinHelper#makeResult, which keeps the last of
     /// several additions with one name.
-    fn new(
+    pub(crate) fn new(
         left: &dyn Table,
         right: &dyn Table,
         on: &[JoinMatch],
