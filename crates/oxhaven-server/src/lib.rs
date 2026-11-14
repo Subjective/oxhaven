@@ -17,6 +17,8 @@ pub mod web;
 #[cfg(test)]
 mod ide;
 #[cfg(test)]
+mod list_columns;
+#[cfg(test)]
 pub(crate) mod test_support;
 
 use std::future::Future;
