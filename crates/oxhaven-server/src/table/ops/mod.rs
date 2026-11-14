@@ -79,8 +79,9 @@ use tonic::Status;
 /// What handler files import.
 pub mod prelude {
     pub use super::super::support::{
-        compile, internal_status, missing_columns, not_ported, parse_assignment, require_columns,
-        source, validate_column_name, OpContext,
+        compile, internal_status, java_trim, missing_columns, missing_field, not_ported,
+        parse_assignment, require_columns, source, validate_column_name, validate_reference,
+        OpContext,
     };
     pub use super::TableOp;
     pub use crate::session::ExportError;
@@ -256,12 +257,14 @@ handlers! {
     apply_preview_columns { ApplyPreviewColumns => Handler }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll, ComboAggregate => ComboAggregate }
     create_input_table { CreateInputTable => Handler }
+    distinct { SelectDistinct => Handler }
     drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }
     filter { Filter => Handler }
     flatten { Flatten => Handler }
     head_tail { Head => Head, Tail => Tail }
+    join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
     select {
@@ -272,6 +275,7 @@ handlers! {
         Select => Select,
     }
     slice { Slice => Handler }
+    snapshot { Snapshot => Snapshot, SnapshotWhen => SnapshotWhen }
     sort { Sort => Handler }
     time_table { TimeTable => Handler }
     unstructured_filter { UnstructuredFilter => Handler }

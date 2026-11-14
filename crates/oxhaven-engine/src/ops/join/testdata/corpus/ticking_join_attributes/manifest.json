@@ -1,0 +1,548 @@
+{
+  "format": 2,
+  "scenario": "ticking_join_attributes",
+  "scenario_sha256": "5dbe44747d3e521dfb3b13f6e3ee98e397caa9bb5d43f4cb617e83e6c15d902b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "append_static",
+      "file": "step000.append_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_static_first",
+      "file": "step000.append_static_first.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_static_exact",
+      "file": "step000.append_static_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_keyed",
+      "file": "step000.append_keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_append",
+      "file": "step000.append_append.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_append_first",
+      "file": "step000.append_append_first.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_append_last",
+      "file": "step000.append_append_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_append_exactly_one",
+      "file": "step000.append_append_exactly_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_append_exact",
+      "file": "step000.append_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "static_append",
+      "file": "step000.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "static_append_exact",
+      "file": "step000.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "static_keyed",
+      "file": "step000.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "keyed_static",
+      "file": "step000.keyed_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "keyed_append_exact",
+      "file": "step000.keyed_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_keyed_zero_keys",
+      "file": "step000.append_keyed_zero_keys.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "append_static",
+      "file": "step001.append_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_static_first",
+      "file": "step001.append_static_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_static_exact",
+      "file": "step001.append_static_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_keyed",
+      "file": "step001.append_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_append",
+      "file": "step001.append_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_append_first",
+      "file": "step001.append_append_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_append_last",
+      "file": "step001.append_append_last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_append_exactly_one",
+      "file": "step001.append_append_exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_append_exact",
+      "file": "step001.append_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "static_append",
+      "file": "step001.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "static_append_exact",
+      "file": "step001.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "static_keyed",
+      "file": "step001.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "keyed_static",
+      "file": "step001.keyed_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "keyed_append_exact",
+      "file": "step001.keyed_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "append_keyed_zero_keys",
+      "file": "step001.append_keyed_zero_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_static",
+      "file": "step002.append_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_static_first",
+      "file": "step002.append_static_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_static_exact",
+      "file": "step002.append_static_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_keyed",
+      "file": "step002.append_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_append",
+      "file": "step002.append_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_append_first",
+      "file": "step002.append_append_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_append_last",
+      "file": "step002.append_append_last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_append_exactly_one",
+      "file": "step002.append_append_exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_append_exact",
+      "file": "step002.append_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "static_append",
+      "file": "step002.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "static_append_exact",
+      "file": "step002.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "static_keyed",
+      "file": "step002.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "keyed_static",
+      "file": "step002.keyed_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "keyed_append_exact",
+      "file": "step002.keyed_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "append_keyed_zero_keys",
+      "file": "step002.append_keyed_zero_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "append_static",
+      "file": "step003.append_static.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_static_first",
+      "file": "step003.append_static_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_static_exact",
+      "file": "step003.append_static_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_keyed",
+      "file": "step003.append_keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_append",
+      "file": "step003.append_append.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_append_first",
+      "file": "step003.append_append_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_append_last",
+      "file": "step003.append_append_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_append_exactly_one",
+      "file": "step003.append_append_exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "append_append_exact",
+      "file": "step003.append_append_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "static_append",
+      "file": "step003.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "static_append_exact",
+      "file": "step003.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "static_keyed",
+      "file": "step003.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "keyed_static",
+      "file": "step003.keyed_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "keyed_append_exact",
+      "file": "step003.keyed_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "append_keyed_zero_keys",
+      "file": "step003.append_keyed_zero_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_static",
+      "file": "step004.append_static.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_static_first",
+      "file": "step004.append_static_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_static_exact",
+      "file": "step004.append_static_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_keyed",
+      "file": "step004.append_keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_append",
+      "file": "step004.append_append.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_append_first",
+      "file": "step004.append_append_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_append_last",
+      "file": "step004.append_append_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_append_exactly_one",
+      "file": "step004.append_append_exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "append_append_exact",
+      "file": "step004.append_append_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "static_append",
+      "file": "step004.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "static_append_exact",
+      "file": "step004.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "static_keyed",
+      "file": "step004.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "keyed_static",
+      "file": "step004.keyed_static.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "keyed_append_exact",
+      "file": "step004.keyed_append_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "append_keyed_zero_keys",
+      "file": "step004.append_keyed_zero_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_static",
+      "file": "step005.append_static.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_static_first",
+      "file": "step005.append_static_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_static_exact",
+      "file": "step005.append_static_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_keyed",
+      "file": "step005.append_keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_append",
+      "file": "step005.append_append.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_append_first",
+      "file": "step005.append_append_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_append_last",
+      "file": "step005.append_append_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_append_exactly_one",
+      "file": "step005.append_append_exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "append_append_exact",
+      "file": "step005.append_append_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "static_append",
+      "file": "step005.static_append.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "static_append_exact",
+      "file": "step005.static_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "static_keyed",
+      "file": "step005.static_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "keyed_static",
+      "file": "step005.keyed_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "keyed_append_exact",
+      "file": "step005.keyed_append_exact.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "append_keyed_zero_keys",
+      "file": "step005.append_keyed_zero_keys.arrow",
+      "rows": 3
+    }
+  ]
+}

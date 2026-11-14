@@ -1,0 +1,77 @@
+{
+  "format": 2,
+  "scenario": "agg_by_sets",
+  "scenario_sha256": "f89335e69c182132895850227455108db2fae49ff447b0a482c026cd5b447140",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "by_bool",
+      "file": "step000.by_bool.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "of_empty_by_key",
+      "file": "step000.of_empty_by_key.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "sorted_by_double",
+      "file": "step000.sorted_by_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "unique_sentinel",
+      "file": "step000.unique_sentinel.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "group_strings",
+      "file": "step000.group_strings.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "count_where_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "formula_bad",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "sorted_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

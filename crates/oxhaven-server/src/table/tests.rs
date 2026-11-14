@@ -219,6 +219,12 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "AGGREGATE_ALL",
             "COMBO_AGGREGATE",
             "CREATE_INPUT_TABLE",
+            "SELECT_DISTINCT",
+            "NATURAL_JOIN",
+            "EXACT_JOIN",
+            "LEFT_JOIN",
+            "SNAPSHOT",
+            "SNAPSHOT_WHEN",
             "EMPTY_TABLE",
             "TIME_TABLE",
             "FETCH_TABLE",
@@ -266,34 +272,30 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
 #[tokio::test]
 async fn an_operation_without_a_handler_is_unimplemented_in_both_forms() {
     let mut c = Connected::start().await;
-    let request = SelectDistinctRequest {
+    let request = UngroupRequest {
         result_id: ticket(1),
         source_id: by_ticket(2),
-        column_names: Vec::new(),
+        ..Default::default()
     };
-    let refused = c
-        .client
-        .select_distinct(c.auth(request.clone()))
-        .await
-        .unwrap_err();
+    let refused = c.client.ungroup(c.auth(request.clone())).await.unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "TableService operation SELECT_DISTINCT is not implemented"
+        "TableService operation UNGROUP is not implemented"
     );
 
     // In a batch the whole call is refused and nothing before it is created.
     let refused = c
         .batch(vec![
             Op::EmptyTable(empty(ticket(3), 1)),
-            Op::SelectDistinct(request),
+            Op::Ungroup(request),
         ])
         .await
         .unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "TableService operation SELECT_DISTINCT is not implemented"
+        "TableService operation UNGROUP is not implemented"
     );
     let session = c.server.session(&c.bearer);
     let unused = session.get_export(3).unwrap();

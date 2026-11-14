@@ -118,6 +118,22 @@ fn infix(symbol: &str) -> Option<(u8, Infix)> {
     Some((strength, Infix::Operator(op)))
 }
 
+/// The scope of a static field access the formula language reads: a simple name that may
+/// be one of the boxed numeric classes of `java.lang`.
+///
+/// `Integer.MAX_VALUE` becomes the qualified name `Integer.MAX_VALUE`, and the type checker
+/// resolves it as it resolves a default-imported constant such as `NULL_INT`: a column of
+/// the scope's name comes first, as a variable comes before a class in
+/// `QueryLanguageParser#resolveName`, and otherwise the field is looked up on the class.
+/// Every other field access is refused here.
+fn static_field_scope(expr: &Expr) -> Option<&str> {
+    const SCOPES: [&str; 6] = ["Byte", "Short", "Integer", "Long", "Float", "Double"];
+    match expr {
+        Expr::Column(name) if SCOPES.contains(&name.as_str()) => Some(name),
+        _ => None,
+    }
+}
+
 const PRIMITIVE_TYPES: &[&str] = &[
     "boolean", "byte", "char", "short", "int", "long", "float", "double",
 ];
@@ -353,7 +369,18 @@ impl Parser {
                         };
                     }
                     (Some(Token::Identifier(name)), _) => {
-                        return Err(unsupported(format!("field access .{name}")))
+                        // A parenthesized name is an expression, never a class.
+                        let bare = matches!(
+                            self.position
+                                .checked_sub(1)
+                                .and_then(|at| self.tokens.get(at)),
+                            Some((Token::Identifier(_), _))
+                        );
+                        let Some(scope) = static_field_scope(&expr).filter(|_| bare) else {
+                            return Err(unsupported(format!("field access .{name}")));
+                        };
+                        expr = Expr::Column(format!("{scope}.{name}"));
+                        self.position += 2;
                     }
                     _ => {
                         self.position += 1;
@@ -892,6 +919,32 @@ mod tests {
         ));
     }
 
+    /// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)`; the type checker resolves the
+    /// qualified name.
+    #[test]
+    fn a_field_of_a_boxed_numeric_class_is_a_qualified_name() {
+        assert_eq!(
+            parse_expression("D == Double.NaN"),
+            Ok(binary(BinaryOp::Equal, column("D"), column("Double.NaN")))
+        );
+        assert_eq!(
+            parse_expression("-Integer.MAX_VALUE"),
+            Ok(Expr::Unary {
+                op: UnaryOp::Negate,
+                operand: Box::new(column("Integer.MAX_VALUE")),
+            })
+        );
+        // A method call on the class is still a method call.
+        assert_eq!(
+            parse_expression("Double.isNaN(D)"),
+            Ok(Expr::MethodCall {
+                receiver: Box::new(column("Double")),
+                method: "isNaN".into(),
+                arguments: vec![column("D")],
+            })
+        );
+    }
+
     #[test]
     fn constructs_outside_the_subset_are_named() {
         let cases = [
@@ -899,6 +952,9 @@ mod tests {
             ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
             ("(int[]) A", "cast to int[]"),
             ("Math.PI", "field access .PI"),
+            ("(Double).NaN", "field access .NaN"),
+            ("Double.NaN.x", "field access .x"),
+            ("java.lang.Double.NaN", "field access .lang"),
             ("A[0]", "array access [...]"),
             ("f(A)[0]", "array access [...]"),
             ("_[0]", "array access [...]"),

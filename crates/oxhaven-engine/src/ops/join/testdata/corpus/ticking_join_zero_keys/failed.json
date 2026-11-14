@@ -1,0 +1,165 @@
+{
+  "probe": "where(\"true\")",
+  "failed": [
+    {
+      "step": 2,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 3,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 4,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 4,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 5,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 5,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 6,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 6,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 6,
+      "table": "static_none_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 6,
+      "table": "static_two_error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 6,
+      "table": "static_two_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "static_left",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "static_none_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "static_two_error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 7,
+      "table": "static_two_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "static_left",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "static_none_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "static_two_error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 8,
+      "table": "static_two_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "exactly_one",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "exact_two",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "static_left",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "static_none_exact",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "static_two_error",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 9,
+      "table": "static_two_exact",
+      "code": "INVALID_ARGUMENT"
+    }
+  ]
+}

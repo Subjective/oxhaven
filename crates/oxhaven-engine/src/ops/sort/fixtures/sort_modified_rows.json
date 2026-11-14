@@ -1,0 +1,256 @@
+{
+ "name": "sort_modified_rows",
+ "description": "The updates of a sort whose parent modifies rows: which modified rows the sort reports as modified and which it removes and adds. An input table reports every column as modified, so every modified row is placed again. Java looks for a modified row's place among the previous values of all rows, its own included, and keeps the row only if that place is the row itself and no row placed just before it in the same cycle goes to that place. By step, for `asc`: 1 a key that moves before the old one between the same neighbours (removed and added); 2 one that moves after the old one between the same neighbours (modified); 3 an unchanged key (modified); 4 a row that moves to the end; 5 and 6 two rows that exchange their keys (both removed and added); 7 a key that grows in place while a row is added between its old and new value (removed and added); 8 one row that stays and one that moves; 9 a remove, an add and a modify among equal keys; 10 an unchanged key among equal keys beside a row that leaves them; 11 a key that becomes equal to its successor's (modified in `asc`, moved in `desc`); 12 two unchanged keys; 13 removes and a move.",
+ "inputs": [
+  {"name": "base", "ticking": {"key_columns": ["K"]}, "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "rows": [
+   [1, 3, "a"],
+   [2, 1, "b"],
+   [3, 3, "c"],
+   [4, 2, "d"]
+  ]}
+ ],
+ "operations": [
+  {"name": "asc", "op": "sort", "source": "base", "by": [{"column": "V", "direction": "ascending"}]},
+  {"name": "desc", "op": "sort", "source": "base", "by": [{"column": "V", "direction": "descending"}]}
+ ],
+ "results": ["asc", "desc"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 1, "d"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 2, "d"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 2, "D"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[2, 5, "b"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 3, "d"], [1, 2, "a"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[1, 3, "a"], [3, 2, "c"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[2, 9, "b"], [5, 7, "e"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[5, 8, "e"], [2, 0, "b"]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[3]]}, {"action": "add", "table": "base", "rows": [[1, 3, "A"], [6, 3, "f"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 3, "x"], [1, 4, "a"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[2, 3, "b"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[6, 3, "F"], [4, 3, "d"]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[2], [4]]}, {"action": "add", "table": "base", "rows": [[5, 1, "e"]]}]}
+ ],
+ "updates": ["asc", "desc"],
+ "java": {"steps": [
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 1, "b"],
+    [4, 2, "d"],
+    [1, 3, "a"],
+    [3, 3, "c"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [4, 2, "d"],
+    [2, 1, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 1, "b"],
+    [4, 1, "d"],
+    [1, 3, "a"],
+    [3, 3, "c"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [2, 1, "b"],
+    [4, 1, "d"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 1, "b"],
+    [4, 2, "d"],
+    [1, 3, "a"],
+    [3, 3, "c"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [4, 2, "d"],
+    [2, 1, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 1, "b"],
+    [4, 2, "D"],
+    [1, 3, "a"],
+    [3, 3, "c"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [4, 2, "D"],
+    [2, 1, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 2, "D"],
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [2, 5, "b"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 5, "b"],
+    [1, 3, "a"],
+    [3, 3, "c"],
+    [4, 2, "D"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2, "a"],
+    [3, 3, "c"],
+    [4, 3, "d"],
+    [2, 5, "b"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 5, "b"],
+    [3, 3, "c"],
+    [4, 3, "d"],
+    [1, 2, "a"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, "c"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [2, 5, "b"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 5, "b"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [3, 2, "c"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, "c"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [5, 7, "e"],
+    [2, 9, "b"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 9, "b"],
+    [5, 7, "e"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [3, 2, "c"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 0, "b"],
+    [3, 2, "c"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [5, 8, "e"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 8, "e"],
+    [1, 3, "a"],
+    [4, 3, "d"],
+    [3, 2, "c"],
+    [2, 0, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 0, "b"],
+    [1, 3, "A"],
+    [4, 3, "d"],
+    [6, 3, "f"],
+    [5, 8, "e"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 8, "e"],
+    [1, 3, "A"],
+    [4, 3, "d"],
+    [6, 3, "f"],
+    [2, 0, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 0, "b"],
+    [4, 3, "x"],
+    [6, 3, "f"],
+    [1, 4, "a"],
+    [5, 8, "e"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 8, "e"],
+    [1, 4, "a"],
+    [4, 3, "x"],
+    [6, 3, "f"],
+    [2, 0, "b"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 3, "b"],
+    [4, 3, "x"],
+    [6, 3, "f"],
+    [1, 4, "a"],
+    [5, 8, "e"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 8, "e"],
+    [1, 4, "a"],
+    [2, 3, "b"],
+    [4, 3, "x"],
+    [6, 3, "f"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 3, "b"],
+    [4, 3, "d"],
+    [6, 3, "F"],
+    [1, 4, "a"],
+    [5, 8, "e"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 8, "e"],
+    [1, 4, "a"],
+    [2, 3, "b"],
+    [4, 3, "d"],
+    [6, 3, "F"]
+   ]}
+  },
+  {
+   "asc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 1, "e"],
+    [6, 3, "F"],
+    [1, 4, "a"]
+   ]},
+   "desc": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "Tag", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 4, "a"],
+    [6, 3, "F"],
+    [5, 1, "e"]
+   ]}
+  }
+ ],
+ "updates": [
+  {"asc": [{"added": [1], "removed": [1], "modified": []}], "desc": [{"added": [3], "removed": [2], "modified": []}]},
+  {"asc": [{"added": [], "removed": [], "modified": [1]}], "desc": [{"added": [2], "removed": [3], "modified": []}]},
+  {"asc": [{"added": [], "removed": [], "modified": [1]}], "desc": [{"added": [], "removed": [], "modified": [2]}]},
+  {"asc": [{"added": [3], "removed": [0], "modified": []}], "desc": [{"added": [0], "removed": [3], "modified": []}]},
+  {"asc": [{"added": [0, 2], "removed": [0, 1], "modified": []}], "desc": [{"added": [2, 3], "removed": [1, 3], "modified": []}]},
+  {"asc": [{"added": [0, 1], "removed": [0, 1], "modified": []}], "desc": [{"added": [1, 3], "removed": [1, 3], "modified": []}]},
+  {"asc": [{"added": [3, 4], "removed": [3], "modified": []}], "desc": [{"added": [0, 1], "removed": [0], "modified": []}]},
+  {"asc": [{"added": [0], "removed": [4], "modified": [4]}], "desc": [{"added": [0, 4], "removed": [0, 1], "modified": []}]},
+  {"asc": [{"added": [], "removed": [1], "modified": []}, {"added": [3], "removed": [], "modified": [1]}], "desc": [{"added": [], "removed": [3], "modified": []}, {"added": [3], "removed": [], "modified": [1]}]},
+  {"asc": [{"added": [3], "removed": [1], "modified": [1]}], "desc": [{"added": [1], "removed": [1], "modified": [2]}]},
+  {"asc": [{"added": [], "removed": [], "modified": [0]}], "desc": [{"added": [2], "removed": [4], "modified": []}]},
+  {"asc": [{"added": [], "removed": [], "modified": [1, 2]}], "desc": [{"added": [], "removed": [], "modified": [3, 4]}]},
+  {"asc": [{"added": [], "removed": [0, 1], "modified": []}, {"added": [0], "removed": [2], "modified": []}], "desc": [{"added": [], "removed": [2, 3], "modified": []}, {"added": [2], "removed": [0], "modified": []}]}
+ ]}
+}

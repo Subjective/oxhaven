@@ -1,0 +1,167 @@
+{
+  "format": 2,
+  "scenario": "join_arguments",
+  "scenario_sha256": "f5b7fac3f6290b5cdf195e827c23137f54d711416cf4a1bec311fbdff797cf31",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "other_names",
+      "file": "step000.other_names.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "default_additions",
+      "file": "step000.default_additions.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "default_additions_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "repeated_name",
+      "file": "step000.repeated_name.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "repeated_name_between",
+      "file": "step000.repeated_name_between.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "default_conflict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "conflict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "conflict_with_match",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_left_match",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_right_match",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_addition",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_addition_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "other_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "int_and_long",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unmatched_duplicates",
+      "file": "step000.unmatched_duplicates.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "both_zeros",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "both_zeros_first",
+      "file": "step000.both_zeros_first.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "both_zeros_last",
+      "file": "step000.both_zeros_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "two_nulls",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "two_nulls_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "two_nulls_last",
+      "file": "step000.two_nulls_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "no_right_row_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_right_row_exactly_one",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

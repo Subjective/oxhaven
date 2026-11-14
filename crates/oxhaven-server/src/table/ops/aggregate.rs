@@ -21,13 +21,6 @@ impl From<AggregateError> for ExportError {
 
 const ONE_OF_NOTE: &str = "Note: this may also indicate that the server is older than the client and doesn't know about this new oneof option.";
 
-/// Behavior: `io.deephaven.server.grpc.GrpcErrorHelper#checkHasField`
-fn missing_field(message: &str, field: &str, number: u32) -> Status {
-    Status::invalid_argument(format!(
-        "io.deephaven.proto.backplane.grpc.{message} must have field {field} ({number})"
-    ))
-}
-
 /// Behavior: `io.deephaven.server.grpc.GrpcErrorHelper#checkRepeatedFieldNonEmpty`
 fn empty_field(message: &str, field: &str, number: u32) -> Status {
     Status::invalid_argument(format!(

@@ -44,6 +44,45 @@ pub fn source(reference: &Option<TableReference>) -> TableReference {
     reference.clone().unwrap_or_default()
 }
 
+/// The status of a request whose message field `field`, number `number`, is not set.
+/// `message` is the request's name without its package, such as `SnapshotTableRequest`.
+///
+/// Behavior: `io.deephaven.server.grpc.GrpcErrorHelper#checkHasField`
+pub fn missing_field(message: &str, field: &str, number: u32) -> Status {
+    Status::invalid_argument(format!(
+        "io.deephaven.proto.backplane.grpc.{message} must have field {field} ({number})"
+    ))
+}
+
+/// Checks the shape of a table reference: it names a ticket or a batch offset, and a ticket
+/// is not empty. Java also refuses a reference with unknown fields; prost drops them, so
+/// that check cannot be made here.
+///
+/// Behavior: `io.deephaven.server.grpc.Common#validate(TableReference)`,
+/// `Common#validate(Ticket)`
+pub fn validate_reference(reference: &TableReference) -> Result<(), Status> {
+    use oxhaven_proto::grpc::table_reference::Ref;
+    match &reference.r#ref {
+        None => Err(Status::invalid_argument(
+            "io.deephaven.proto.backplane.grpc.TableReference must have oneof ref. Note: this \
+             may also indicate that the server is older than the client and doesn't know about \
+             this new oneof option.",
+        )),
+        Some(Ref::Ticket(ticket)) if ticket.ticket.is_empty() => {
+            Err(Status::invalid_argument("Ticket is empty"))
+        }
+        Some(Ref::Ticket(_) | Ref::BatchOffset(_)) => Ok(()),
+    }
+}
+
+/// `text` without the characters at either end that Java's `String#trim` removes: every
+/// character up to and including the space.
+///
+/// Behavior: `java.lang.String#trim`
+pub fn java_trim(text: &str) -> &str {
+    text.trim_matches(|c: char| c <= ' ')
+}
+
 /// A formula that was not accepted is, like any exception out of the Java engine, an
 /// internal failure: the client is told `INVALID_ARGUMENT` and where the details were
 /// logged.

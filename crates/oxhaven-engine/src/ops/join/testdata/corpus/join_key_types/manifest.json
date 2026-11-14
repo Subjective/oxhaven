@@ -1,0 +1,86 @@
+{
+  "format": 2,
+  "scenario": "join_key_types",
+  "scenario_sha256": "60bb3d1408217c4dfaddc2c1ae27a0eaa7743c1546df372ccdb8561b601cfbe6",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "on_bool",
+      "file": "step000.on_bool.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_bool_last",
+      "file": "step000.on_bool_last.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_int8",
+      "file": "step000.on_int8.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_int16",
+      "file": "step000.on_int16.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_int32",
+      "file": "step000.on_int32.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_int64",
+      "file": "step000.on_int64.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_float32",
+      "file": "step000.on_float32.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_float64",
+      "file": "step000.on_float64.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_string",
+      "file": "step000.on_string.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_timestamp",
+      "file": "step000.on_timestamp.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_string_float64",
+      "file": "step000.on_string_float64.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_bool_int8_timestamp",
+      "file": "step000.on_bool_int8_timestamp.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_every_column",
+      "file": "step000.on_every_column.arrow",
+      "rows": 7
+    }
+  ]
+}

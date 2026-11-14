@@ -1,0 +1,488 @@
+{
+ "format": 1,
+ "name": "group_by_ungroup",
+ "description": "group_by on one key, two keys and no key, ungroup of all array columns and of some, ungroup after a group aggregation, with null fill on and off, of an empty table, of a table whose arrays differ in length, and of a column that is not an array.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "name": "a",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     10
+    ],
+    [
+     1,
+     11
+    ],
+    [
+     2,
+     20
+    ],
+    [
+     3,
+     30
+    ],
+    [
+     3,
+     31
+    ],
+    [
+     3,
+     32
+    ]
+   ]
+  },
+  {
+   "name": "b",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "Y",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "p"
+    ],
+    [
+     2,
+     "q"
+    ],
+    [
+     2,
+     "r"
+    ],
+    [
+     4,
+     "s"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "grouped",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "grouped_two",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G",
+    "B"
+   ]
+  },
+  {
+   "name": "grouped_all",
+   "op": "group_by",
+   "source": "t",
+   "by": []
+  },
+  {
+   "name": "grouped_empty",
+   "op": "group_by",
+   "source": "empty",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "grouped_empty_all",
+   "op": "group_by",
+   "source": "empty",
+   "by": []
+  },
+  {
+   "name": "back",
+   "op": "ungroup",
+   "source": "grouped"
+  },
+  {
+   "name": "back_two",
+   "op": "ungroup",
+   "source": "grouped_two"
+  },
+  {
+   "name": "back_all",
+   "op": "ungroup",
+   "source": "grouped_all"
+  },
+  {
+   "name": "back_empty",
+   "op": "ungroup",
+   "source": "grouped_empty"
+  },
+  {
+   "name": "back_some",
+   "op": "ungroup",
+   "source": "grouped",
+   "columns": [
+    "K",
+    "I"
+   ]
+  },
+  {
+   "name": "back_one",
+   "op": "ungroup",
+   "source": "grouped",
+   "columns": [
+    "D"
+   ]
+  },
+  {
+   "name": "ga",
+   "op": "group_by",
+   "source": "a",
+   "by": [
+    "K"
+   ]
+  },
+  {
+   "name": "gb",
+   "op": "group_by",
+   "source": "b",
+   "by": [
+    "K"
+   ]
+  },
+  {
+   "name": "uneven",
+   "op": "natural_join",
+   "left": "ga",
+   "right": "gb",
+   "on": [
+    "K"
+   ],
+   "joins": [
+    "Y"
+   ]
+  },
+  {
+   "name": "uneven_filled",
+   "op": "ungroup",
+   "source": "uneven",
+   "null_fill": true
+  },
+  {
+   "name": "uneven_strict",
+   "op": "ungroup",
+   "source": "uneven",
+   "null_fill": false
+  },
+  {
+   "name": "uneven_one",
+   "op": "ungroup",
+   "source": "uneven",
+   "columns": [
+    "X"
+   ]
+  },
+  {
+   "name": "not_an_array",
+   "op": "ungroup",
+   "source": "t",
+   "columns": [
+    "I"
+   ]
+  },
+  {
+   "name": "no_arrays",
+   "op": "ungroup",
+   "source": "t"
+  },
+  {
+   "name": "unknown",
+   "op": "ungroup",
+   "source": "grouped",
+   "columns": [
+    "Nope"
+   ]
+  },
+  {
+   "name": "agg_group",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Is = I",
+      "Ds = D"
+     ]
+    },
+    {
+     "agg": "max",
+     "columns": [
+      "MaxK = K"
+     ]
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "agg_back",
+   "op": "ungroup",
+   "source": "agg_group"
+  },
+  {
+   "name": "group_unknown",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "Nope"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "grouped"
+  },
+  {
+   "table": "grouped_two"
+  },
+  {
+   "table": "grouped_all"
+  },
+  {
+   "table": "grouped_empty"
+  },
+  {
+   "table": "grouped_empty_all"
+  },
+  {
+   "table": "back"
+  },
+  {
+   "table": "back_two"
+  },
+  {
+   "table": "back_all"
+  },
+  {
+   "table": "back_empty"
+  },
+  {
+   "table": "back_some"
+  },
+  {
+   "table": "back_one"
+  },
+  {
+   "table": "ga"
+  },
+  {
+   "table": "gb"
+  },
+  {
+   "table": "uneven"
+  },
+  {
+   "table": "uneven_filled"
+  },
+  {
+   "table": "uneven_strict"
+  },
+  {
+   "table": "uneven_one"
+  },
+  {
+   "table": "not_an_array"
+  },
+  {
+   "table": "no_arrays"
+  },
+  {
+   "table": "unknown"
+  },
+  {
+   "table": "agg_group"
+  },
+  {
+   "table": "agg_back"
+  },
+  {
+   "table": "group_unknown"
+  }
+ ]
+}

@@ -1,0 +1,15 @@
+{
+  "probe": "where(\"true\")",
+  "failed": [
+    {
+      "step": 4,
+      "table": "append_keyed_zero_keys",
+      "code": "INVALID_ARGUMENT"
+    },
+    {
+      "step": 5,
+      "table": "append_keyed_zero_keys",
+      "code": "INVALID_ARGUMENT"
+    }
+  ]
+}

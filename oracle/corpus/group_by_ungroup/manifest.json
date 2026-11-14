@@ -1,0 +1,150 @@
+{
+  "format": 2,
+  "scenario": "group_by_ungroup",
+  "scenario_sha256": "ec118f84f618f6885d492cea8b3c2e12996f11a6fe8bc19809f8928860486165",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "grouped_two",
+      "file": "step000.grouped_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "grouped_all",
+      "file": "step000.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "grouped_empty",
+      "file": "step000.grouped_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "grouped_empty_all",
+      "file": "step000.grouped_empty_all.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "back",
+      "file": "step000.back.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "back_two",
+      "file": "step000.back_two.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "back_all",
+      "file": "step000.back_all.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "back_empty",
+      "file": "step000.back_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "back_some",
+      "file": "step000.back_some.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "back_one",
+      "file": "step000.back_one.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "ga",
+      "file": "step000.ga.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "gb",
+      "file": "step000.gb.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uneven",
+      "file": "step000.uneven.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uneven_filled",
+      "file": "step000.uneven_filled.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "uneven_strict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "uneven_one",
+      "file": "step000.uneven_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "not_an_array",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_arrays",
+      "file": "step000.no_arrays.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_group",
+      "file": "step000.agg_group.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "agg_back",
+      "file": "step000.agg_back.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "group_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -39,6 +39,12 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Aggregate(r) => c.client.aggregate(c.auth(r)).await,
         Op::AggregateAll(r) => c.client.aggregate_all(c.auth(r)).await,
         Op::ComboAggregate(r) => c.client.combo_aggregate(c.auth(r)).await,
+        Op::SelectDistinct(r) => c.client.select_distinct(c.auth(r)).await,
+        Op::NaturalJoin(r) => c.client.natural_join_tables(c.auth(r)).await,
+        Op::ExactJoin(r) => c.client.exact_join_tables(c.auth(r)).await,
+        Op::LeftJoin(r) => c.client.left_join_tables(c.auth(r)).await,
+        Op::Snapshot(r) => c.client.snapshot(c.auth(r)).await,
+        Op::SnapshotWhen(r) => c.client.snapshot_when(c.auth(r)).await,
         other => panic!("no call for {}", op_name(&other)),
     };
     response.map(Response::into_inner)
@@ -1346,4 +1352,395 @@ async fn aggregate_keeps_the_row_of_an_empty_table_only_when_asked() {
     let kept = call(&mut c, preserving).await.unwrap();
     assert_eq!(kept.size, 1);
     assert_eq!(values(c.table(4).as_ref(), "Rows"), ints(&[0]));
+}
+
+// ---------------------------------------------------------------- select_distinct
+
+fn distinct(result: i32, columns: &[&str]) -> Op {
+    Op::SelectDistinct(proto::SelectDistinctRequest {
+        result_id: ticket(result),
+        source_id: by_ticket(1),
+        column_names: texts(columns),
+    })
+}
+
+#[tokio::test]
+async fn select_distinct_keeps_the_first_of_each_key_and_refuses_unknown_columns() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let response = call(&mut c, distinct(2, &["S"])).await.unwrap();
+    assert_eq!(response.size, 2);
+    assert!(response.is_static);
+    assert_eq!(column_names(c.table(2).as_ref()), ["S"]);
+    assert_eq!(values(c.table(2).as_ref(), "S"), texts(&["a", "b"]));
+
+    // Java checks the names itself and lists the missing ones in request order
+    let refused = call(&mut c, distinct(3, &["Y", "S", "X=I"]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::FailedPrecondition);
+    assert_eq!(refused.message(), "column(s) not found: Y, X=I");
+}
+
+// ---------------------------------------------------------------- joins
+
+/// Exports, as `id`, a table of one row per element of `rows`, each a list of formulas of
+/// constants.
+async fn table_of(c: &mut Connected, id: i32, rows: &[&[&str]]) {
+    let mut ops = Vec::new();
+    let mut sources = Vec::new();
+    for (row, columns) in rows.iter().enumerate() {
+        let row = i32::try_from(row).unwrap();
+        ops.push(Op::EmptyTable(empty(None, 1)));
+        ops.push(Op::Update(SelectOrUpdateRequest {
+            result_id: None,
+            source_id: by_offset(2 * row),
+            column_specs: texts(columns),
+        }));
+        sources.push(by_offset(2 * row + 1).unwrap());
+    }
+    ops.push(Op::Merge(MergeTablesRequest {
+        result_id: ticket(id),
+        source_ids: sources,
+        key_column: String::new(),
+    }));
+    let (responses, status) = c.batch(ops).await.unwrap();
+    assert!(status.is_none(), "{status:?}");
+    assert!(responses.iter().all(|response| response.success));
+}
+
+/// `S` = a, b, b and `W` = 1, 2, 3: key `a` once, key `b` twice.
+async fn words(c: &mut Connected, id: i32) {
+    table_of(
+        c,
+        id,
+        &[
+            &["S = `a`", "W = 1"],
+            &["S = `b`", "W = 2"],
+            &["S = `b`", "W = 3"],
+        ],
+    )
+    .await;
+}
+
+fn natural(result: i32, right: i32, on: &[&str], add: &[&str], join_type: i32) -> Op {
+    Op::NaturalJoin(proto::NaturalJoinTablesRequest {
+        result_id: ticket(result),
+        left_id: by_ticket(1),
+        right_id: by_ticket(right),
+        columns_to_match: texts(on),
+        columns_to_add: texts(add),
+        join_type,
+    })
+}
+
+#[tokio::test]
+async fn natural_join_adds_the_matching_right_row_by_join_type() {
+    use proto::natural_join_tables_request::JoinType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    words(&mut c, 2).await;
+    table_of(&mut c, 3, &[&["Key = `b`", "W = 7"]]).await;
+
+    // match and addition spelled with space and `==`, and renamed
+    let not_specified = JoinType::NotSpecified as i32;
+    let response = call(
+        &mut c,
+        natural(10, 3, &[" S == Key "], &["Word=W"], not_specified),
+    )
+    .await
+    .unwrap();
+    assert_eq!(response.size, 6);
+    let table = c.table(10);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "Word"]);
+    assert_eq!(
+        values(table.as_ref(), "Word"),
+        texts(&["", "7", "", "7", "", "7"])
+    );
+
+    for (result, join_type, b) in [
+        (11, JoinType::FirstMatch, "2"),
+        (12, JoinType::LastMatch, "3"),
+    ] {
+        call(&mut c, natural(result, 2, &["S"], &["W"], join_type as i32))
+            .await
+            .unwrap();
+        assert_eq!(
+            values(c.table(result).as_ref(), "W"),
+            texts(&["1", b, "1", b, "1", b])
+        );
+    }
+
+    // a duplicate right key fails the join types that do not choose; so does a type the
+    // protocol does not have, in Java an exception out of `adapt`
+    for (result, join_type) in [
+        (20, not_specified),
+        (21, JoinType::ErrorOnDuplicate as i32),
+        (22, JoinType::ExactlyOneMatch as i32),
+        (23, 99),
+    ] {
+        let refused = call(&mut c, natural(result, 2, &["S"], &["W"], join_type))
+            .await
+            .unwrap_err();
+        assert_internal(&refused);
+    }
+    // and so does every refusal of the engine: here a missing column and a type mismatch
+    let first = JoinType::FirstMatch as i32;
+    for (result, on, add) in [(24, "S=Nope", "W"), (25, "S=W", "Key")] {
+        let refused = call(&mut c, natural(result, 3, &[on], &[add], first))
+            .await
+            .unwrap_err();
+        assert_internal(&refused);
+    }
+}
+
+#[tokio::test]
+async fn exact_join_needs_one_right_row_for_every_left_row() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    table_of(&mut c, 2, &[&["S = `a`", "W = 1"], &["S = `b`", "W = 2"]]).await;
+    table_of(&mut c, 3, &[&["S = `a`", "W = 1"]]).await;
+    let exact = |result: i32, right: i32| {
+        Op::ExactJoin(proto::ExactJoinTablesRequest {
+            result_id: ticket(result),
+            left_id: by_ticket(1),
+            right_id: by_ticket(right),
+            columns_to_match: texts(&["S"]),
+            columns_to_add: Vec::new(),
+        })
+    };
+    let response = call(&mut c, exact(10, 2)).await.unwrap();
+    assert_eq!(response.size, 6);
+    assert_eq!(
+        values(c.table(10).as_ref(), "W"),
+        texts(&["1", "2", "1", "2", "1", "2"])
+    );
+    assert_internal(&call(&mut c, exact(11, 3)).await.unwrap_err());
+}
+
+#[tokio::test]
+async fn join_columns_are_read_first_and_left_join_is_unimplemented() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    words(&mut c, 2).await;
+    let left = |result: i32, on: &[&str], add: &[&str]| {
+        Op::LeftJoin(proto::LeftJoinTablesRequest {
+            result_id: ticket(result),
+            left_id: by_ticket(1),
+            right_id: by_ticket(2),
+            columns_to_match: texts(on),
+            columns_to_add: texts(add),
+        })
+    };
+
+    let refused = call(&mut c, left(10, &["S"], &["W"])).await.unwrap_err();
+    assert_eq!(refused.code(), Code::Unimplemented);
+    assert_eq!(
+        refused.message(),
+        "LeftJoinTables is currently unimplemented"
+    );
+
+    // the columns of every join are checked first, and refused with a status of their own
+    let unparsable = [
+        left(11, &["S"], &["W = 1"]),
+        natural(12, 2, &["S", "A B"], &[], 2),
+        Op::ExactJoin(proto::ExactJoinTablesRequest {
+            result_id: ticket(13),
+            left_id: by_ticket(1),
+            right_id: by_ticket(2),
+            columns_to_match: texts(&["S=in"]),
+            columns_to_add: Vec::new(),
+        }),
+    ];
+    let messages = [
+        "Unable to parse expression: \"W = 1\": W = 1",
+        "Unable to parse expression: \"A B\": A B",
+        "Failed to get expression for all matched patterns: S=in",
+    ];
+    for (op, message) in unparsable.into_iter().zip(messages) {
+        let refused = call(&mut c, op.clone()).await.unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+
+        // in a batch, before any operation of the batch is created
+        let refused = c
+            .batch(vec![Op::EmptyTable(empty(ticket(20), 1)), op])
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument);
+        assert_eq!(refused.message(), message);
+        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        assert_ne!(unused.state(), ExportState::Exported);
+    }
+}
+
+// ---------------------------------------------------------------- snapshots
+
+fn snapshot_of(result: i32, source: Option<TableReference>) -> Op {
+    Op::Snapshot(proto::SnapshotTableRequest {
+        result_id: ticket(result),
+        source_id: source,
+    })
+}
+
+/// A snapshot of table 1 when `trigger` changes, with a first snapshot at once.
+fn when(result: i32, trigger: i32, stamps: &[&str]) -> proto::SnapshotWhenTableRequest {
+    proto::SnapshotWhenTableRequest {
+        result_id: ticket(result),
+        base_id: by_ticket(1),
+        trigger_id: by_ticket(trigger),
+        initial: true,
+        incremental: false,
+        history: false,
+        stamp_columns: texts(stamps),
+    }
+}
+
+#[tokio::test]
+async fn snapshot_copies_a_refreshing_table_into_a_static_one() {
+    let mut c = Connected::start().await;
+    call(&mut c, Op::TimeTable(ticking_time_table(ticket(1))))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    let response = call(&mut c, snapshot_of(2, by_ticket(1))).await.unwrap();
+    assert!(response.is_static);
+    assert!(response.size > 0);
+    let copied = values(c.table(2).as_ref(), "Timestamp");
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    assert_eq!(values(c.table(2).as_ref(), "Timestamp"), copied);
+}
+
+#[tokio::test]
+async fn snapshot_requests_are_checked_as_java_checks_them() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let no_ref = Some(TableReference { r#ref: None });
+    let empty_ticket = Some(ticket_reference(Vec::new()));
+    let oneof = "io.deephaven.proto.backplane.grpc.TableReference must have oneof ref. Note: \
+        this may also indicate that the server is older than the client and doesn't know about \
+        this new oneof option.";
+    let base = |base_id| {
+        Op::SnapshotWhen(proto::SnapshotWhenTableRequest {
+            base_id,
+            ..when(2, 1, &[])
+        })
+    };
+    let trigger = |trigger_id| {
+        Op::SnapshotWhen(proto::SnapshotWhenTableRequest {
+            trigger_id,
+            ..when(2, 1, &[])
+        })
+    };
+    for (op, message) in [
+        (
+            snapshot_of(2, None),
+            "io.deephaven.proto.backplane.grpc.SnapshotTableRequest must have field source_id (2)",
+        ),
+        (snapshot_of(2, no_ref.clone()), oneof),
+        (snapshot_of(2, empty_ticket.clone()), "Ticket is empty"),
+        (
+            base(None),
+            "io.deephaven.proto.backplane.grpc.SnapshotWhenTableRequest must have field base_id (2)",
+        ),
+        (
+            trigger(None),
+            "io.deephaven.proto.backplane.grpc.SnapshotWhenTableRequest must have field trigger_id (3)",
+        ),
+        (base(no_ref), oneof),
+        (trigger(empty_ticket), "Ticket is empty"),
+    ] {
+        let refused = call(&mut c, op).await.unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+    }
+
+    // history goes alone: Java's UnsupportedOperationException is UNIMPLEMENTED
+    for (initial, incremental) in [(true, false), (false, true), (true, true)] {
+        let request = proto::SnapshotWhenTableRequest {
+            initial,
+            incremental,
+            history: true,
+            ..when(3, 1, &[])
+        };
+        let refused = call(&mut c, Op::SnapshotWhen(request)).await.unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented);
+        assert_eq!(
+            refused.message(),
+            "snapshotWhen with history does not currently support incremental nor initial. \
+             See https://github.com/deephaven/deephaven-core/issues/3260."
+        );
+    }
+
+    // a stamp column that names no column is an exception in Java, met before history is
+    // checked
+    for stamps in [&["1N=I"][..], &["int"], &["=I"], &["A=B=C"], &["I=", "N"]] {
+        let request = proto::SnapshotWhenTableRequest {
+            history: true,
+            ..when(4, 1, stamps)
+        };
+        assert_internal(&call(&mut c, Op::SnapshotWhen(request)).await.unwrap_err());
+    }
+    // and so, in the engine, is a stamp column the trigger lacks or the base has
+    for (result, stamps) in [(5, &["Nope"][..]), (6, &["S"])] {
+        let request = when(result, 1, stamps);
+        assert_internal(&call(&mut c, Op::SnapshotWhen(request)).await.unwrap_err());
+    }
+}
+
+#[tokio::test]
+async fn snapshot_when_stamps_the_copy_with_the_trigger() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    table_of(&mut c, 2, &[&["Tick = 7", "Other = 1"]]).await;
+
+    // the stamp column names are trimmed as Java's `String#trim` trims, at and below the
+    // space
+    let request = when(3, 2, &["\u{1}Stamp = Tick\u{1f}"]);
+    let response = call(&mut c, Op::SnapshotWhen(request)).await.unwrap();
+    assert!(response.is_static);
+    assert_eq!(response.size, 6);
+    let table = c.table(3);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "Stamp"]);
+    assert_eq!(values(table.as_ref(), "Stamp"), ints(&[7; 6]));
+
+    // and not as Rust trims: a no-break space stays, and cannot be part of a name
+    let request = when(4, 2, &["\u{a0}Tick"]);
+    assert_internal(&call(&mut c, Op::SnapshotWhen(request)).await.unwrap_err());
+
+    // without `initial` the copy waits for the trigger to change
+    let request = proto::SnapshotWhenTableRequest {
+        initial: false,
+        ..when(5, 2, &[])
+    };
+    let response = call(&mut c, Op::SnapshotWhen(request)).await.unwrap();
+    assert_eq!(response.size, 0);
+    assert_eq!(
+        column_names(c.table(5).as_ref()),
+        ["I", "N", "S", "Tick", "Other"]
+    );
+}
+
+#[tokio::test]
+async fn snapshot_when_of_a_ticking_trigger_follows_it() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    call(&mut c, Op::TimeTable(ticking_time_table(ticket(2))))
+        .await
+        .unwrap();
+    let request = proto::SnapshotWhenTableRequest {
+        initial: false,
+        ..when(3, 2, &[])
+    };
+    let response = call(&mut c, Op::SnapshotWhen(request)).await.unwrap();
+    assert!(!response.is_static);
+    assert_eq!(response.size, 0);
+    let result = c.table(3);
+    let graph = c.server.state.graph.clone();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    let size = locked(graph.as_ref(), || result.row_set().size());
+    assert_eq!(size, 6);
 }

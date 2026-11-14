@@ -1,0 +1,847 @@
+{
+ "name": "snapshot_when_ticking",
+ "description": "snapshot_when without incremental or history while the base and the trigger tick: an append-only and a keyed trigger, a trigger that empties, changes to trigger columns that are not stamp columns, a static base, a static trigger, and snapshot of a ticking table.",
+ "inputs": [
+  {"name": "base", "ticking": {"key_columns": ["K"]}, "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "rows": [
+   [1, 1.0, "a"],
+   [2, -2.0, "b"],
+   [3, null, null]
+  ]},
+  {"name": "trig", "ticking": {"key_columns": []}, "columns": [{"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "rows": [
+  ]},
+  {"name": "ktrig", "ticking": {"key_columns": ["N"]}, "columns": [{"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "rows": [
+   [1, "p"],
+   [2, "q"]
+  ]},
+  {"name": "fixed", "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "rows": [
+   [7, 7.0, "s"],
+   [8, 8.0, "t"]
+  ]},
+  {"name": "fixed_trig", "columns": [{"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "rows": [
+   [5, "f"]
+  ]}
+ ],
+ "operations": [
+  {"name": "plain", "op": "snapshot_when", "source": "base", "trigger": "trig", "stamp_columns": [], "initial": false, "incremental": false, "history": false},
+  {"name": "plain_initial", "op": "snapshot_when", "source": "base", "trigger": "trig", "stamp_columns": [], "initial": true, "incremental": false, "history": false},
+  {"name": "stamp_w", "op": "snapshot_when", "source": "base", "trigger": "trig", "stamp_columns": ["W"], "initial": true, "incremental": false, "history": false},
+  {"name": "stamp_renamed", "op": "snapshot_when", "source": "base", "trigger": "trig", "stamp_columns": ["Count=N"], "initial": false, "incremental": false, "history": false},
+  {"name": "keyed_trigger", "op": "snapshot_when", "source": "base", "trigger": "ktrig", "stamp_columns": [], "initial": true, "incremental": false, "history": false},
+  {"name": "keyed_trigger_w", "op": "snapshot_when", "source": "base", "trigger": "ktrig", "stamp_columns": ["W"], "initial": true, "incremental": false, "history": false},
+  {"name": "keyed_trigger_n", "op": "snapshot_when", "source": "base", "trigger": "ktrig", "stamp_columns": ["N"], "initial": true, "incremental": false, "history": false},
+  {"name": "static_base", "op": "snapshot_when", "source": "fixed", "trigger": "ktrig", "stamp_columns": [], "initial": true, "incremental": false, "history": false},
+  {"name": "static_trigger", "op": "snapshot_when", "source": "base", "trigger": "fixed_trig", "stamp_columns": [], "initial": true, "incremental": false, "history": false},
+  {"name": "static_trigger_not_initial", "op": "snapshot_when", "source": "base", "trigger": "fixed_trig", "stamp_columns": [], "initial": false, "incremental": false, "history": false},
+  {"name": "snap", "op": "snapshot", "source": "base"},
+  {"name": "base_sorted", "op": "sort", "source": "base", "by": [{"column": "V", "direction": "ascending"}]},
+  {"name": "sorted_base", "op": "snapshot_when", "source": "base_sorted", "trigger": "trig", "stamp_columns": [], "initial": true, "incremental": false, "history": false},
+  {"name": "snap_of_snapshot_when", "op": "snapshot", "source": "plain_initial"}
+ ],
+ "results": ["plain", "plain_initial", "stamp_w", "stamp_renamed", "keyed_trigger", "keyed_trigger_w", "keyed_trigger_n", "static_base", "static_trigger", "static_trigger_not_initial", "snap", "sorted_base", "snap_of_snapshot_when"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 4.0, "d"]]}]},
+  {"actions": [{"action": "add", "table": "trig", "rows": [[10, "t1"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[2, 20.0, "B"]]}, {"action": "delete", "table": "base", "rows": [[1]]}]},
+  {"actions": [{"action": "add", "table": "ktrig", "rows": [[2, "q2"]]}]},
+  {"actions": [{"action": "add", "table": "trig", "rows": [[11, "t2"], [12, "t3"]]}]},
+  {"actions": [{"action": "add", "table": "ktrig", "rows": [[3, "r"]]}]},
+  {"actions": [{"action": "delete", "table": "ktrig", "rows": [[3]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[2], [3], [4]]}]},
+  {"actions": [{"action": "delete", "table": "ktrig", "rows": [[1], [2]]}]},
+  {"actions": [{"action": "add", "table": "trig", "rows": [[13, null]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[9, "NaN", "z"]]}, {"action": "add", "table": "ktrig", "rows": [[1, "again"]]}]},
+  {"actions": [{"action": "delete", "table": "ktrig", "rows": [[99]]}]},
+  {"actions": [{"action": "add", "table": "ktrig", "rows": [[1, "again"]]}]}
+ ],
+ "java": {"steps": [
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null],
+    [2, -2.0, "b", null],
+    [3, null, null, null]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2, "q"],
+    [2, -2.0, "b", 2, "q"],
+    [3, null, null, 2, "q"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "q"],
+    [2, -2.0, "b", "q"],
+    [3, null, null, "q"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2],
+    [2, -2.0, "b", 2],
+    [3, null, null, 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q"],
+    [8, 8.0, "t", 2, "q"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, null, null],
+    [2, -2.0, "b", null, null],
+    [1, 1.0, "a", null, null]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null],
+    [2, -2.0, "b", null],
+    [3, null, null, null]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2, "q"],
+    [2, -2.0, "b", 2, "q"],
+    [3, null, null, 2, "q"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "q"],
+    [2, -2.0, "b", "q"],
+    [3, null, null, "q"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2],
+    [2, -2.0, "b", 2],
+    [3, null, null, 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q"],
+    [8, 8.0, "t", 2, "q"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, null, null],
+    [2, -2.0, "b", null, null],
+    [1, 1.0, "a", null, null]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "t1"],
+    [2, -2.0, "b", "t1"],
+    [3, null, null, "t1"],
+    [4, 4.0, "d", "t1"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10],
+    [2, -2.0, "b", 10],
+    [3, null, null, 10],
+    [4, 4.0, "d", 10]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2, "q"],
+    [2, -2.0, "b", 2, "q"],
+    [3, null, null, 2, "q"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "q"],
+    [2, -2.0, "b", "q"],
+    [3, null, null, "q"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2],
+    [2, -2.0, "b", 2],
+    [3, null, null, 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q"],
+    [8, 8.0, "t", 2, "q"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [1, 1.0, "a", 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "t1"],
+    [2, -2.0, "b", "t1"],
+    [3, null, null, "t1"],
+    [4, 4.0, "d", "t1"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10],
+    [2, -2.0, "b", 10],
+    [3, null, null, 10],
+    [4, 4.0, "d", 10]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2, "q"],
+    [2, -2.0, "b", 2, "q"],
+    [3, null, null, 2, "q"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "q"],
+    [2, -2.0, "b", "q"],
+    [3, null, null, "q"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 2],
+    [2, -2.0, "b", 2],
+    [3, null, null, 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q"],
+    [8, 8.0, "t", 2, "q"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [1, 1.0, "a", 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [3, null, null, 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", "t1"],
+    [2, -2.0, "b", "t1"],
+    [3, null, null, "t1"],
+    [4, 4.0, "d", "t1"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 10],
+    [2, -2.0, "b", 10],
+    [3, null, null, 10],
+    [4, 4.0, "d", 10]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2, "q2"],
+    [3, null, null, 2, "q2"],
+    [4, 4.0, "d", 2, "q2"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "q2"],
+    [3, null, null, "q2"],
+    [4, 4.0, "d", "q2"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2],
+    [3, null, null, 2],
+    [4, 4.0, "d", 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q2"],
+    [8, 8.0, "t", 2, "q2"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 10, "t1"],
+    [2, -2.0, "b", 10, "t1"],
+    [1, 1.0, "a", 10, "t1"],
+    [4, 4.0, "d", 10, "t1"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "t3"],
+    [3, null, null, "t3"],
+    [4, 4.0, "d", "t3"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12],
+    [3, null, null, 12],
+    [4, 4.0, "d", 12]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2, "q2"],
+    [3, null, null, 2, "q2"],
+    [4, 4.0, "d", 2, "q2"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "q2"],
+    [3, null, null, "q2"],
+    [4, 4.0, "d", "q2"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2],
+    [3, null, null, 2],
+    [4, 4.0, "d", 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q2"],
+    [8, 8.0, "t", 2, "q2"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"],
+    [2, 20.0, "B", 12, "t3"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "t3"],
+    [3, null, null, "t3"],
+    [4, 4.0, "d", "t3"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12],
+    [3, null, null, 12],
+    [4, 4.0, "d", 12]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 3, "r"],
+    [3, null, null, 3, "r"],
+    [4, 4.0, "d", 3, "r"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "r"],
+    [3, null, null, "r"],
+    [4, 4.0, "d", "r"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 3],
+    [3, null, null, 3],
+    [4, 4.0, "d", 3]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 3, "r"],
+    [8, 8.0, "t", 3, "r"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"],
+    [2, 20.0, "B", 12, "t3"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "t3"],
+    [3, null, null, "t3"],
+    [4, 4.0, "d", "t3"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12],
+    [3, null, null, 12],
+    [4, 4.0, "d", 12]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2, "q2"],
+    [3, null, null, 2, "q2"],
+    [4, 4.0, "d", 2, "q2"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "q2"],
+    [3, null, null, "q2"],
+    [4, 4.0, "d", "q2"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2],
+    [3, null, null, 2],
+    [4, 4.0, "d", 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q2"],
+    [8, 8.0, "t", 2, "q2"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"],
+    [2, 20.0, "B", 12, "t3"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "t3"],
+    [3, null, null, "t3"],
+    [4, 4.0, "d", "t3"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12],
+    [3, null, null, 12],
+    [4, 4.0, "d", 12]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2, "q2"],
+    [3, null, null, 2, "q2"],
+    [4, 4.0, "d", 2, "q2"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "q2"],
+    [3, null, null, "q2"],
+    [4, 4.0, "d", "q2"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 2],
+    [3, null, null, 2],
+    [4, 4.0, "d", 2]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 2, "q2"],
+    [8, 8.0, "t", 2, "q2"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"],
+    [2, 20.0, "B", 12, "t3"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12, "t3"],
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"]
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", "t3"],
+    [3, null, null, "t3"],
+    [4, 4.0, "d", "t3"]
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 20.0, "B", 12],
+    [3, null, null, 12],
+    [4, 4.0, "d", 12]
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", null, null],
+    [8, 8.0, "t", null, null]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, null, null, 12, "t3"],
+    [4, 4.0, "d", 12, "t3"],
+    [2, 20.0, "B", 12, "t3"]
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", null, null],
+    [8, 8.0, "t", null, null]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1, "again"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", "again"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 1, "again"],
+    [8, 8.0, "t", 1, "again"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1, "again"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", "again"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 1, "again"],
+    [8, 8.0, "t", 1, "again"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  },
+  {
+   "plain": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "plain_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_renamed": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "Count", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "keyed_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1, "again"]
+   ]},
+   "keyed_trigger_w": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", "again"]
+   ]},
+   "keyed_trigger_n": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, "NaN", "z", 1]
+   ]},
+   "static_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, 7.0, "s", 1, "again"],
+    [8, 8.0, "t", 1, "again"]
+   ]},
+   "static_trigger": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", 5, "f"],
+    [2, -2.0, "b", 5, "f"],
+    [3, null, null, 5, "f"]
+   ]},
+   "static_trigger_not_initial": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a"],
+    [2, -2.0, "b"],
+    [3, null, null]
+   ]},
+   "sorted_base": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "snap_of_snapshot_when": {"columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "N", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1.0, "a", null, null],
+    [2, -2.0, "b", null, null],
+    [3, null, null, null, null]
+   ]}
+  }
+ ]}
+}

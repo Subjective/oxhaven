@@ -1,14 +1,16 @@
 //! Aggregations of the oracle's scenarios, checked against the results recorded from the
 //! Java server (`oracle/corpus`, see `oracle/README.md`).
 //!
-//! Every `agg_by` operation whose source is an input table of its scenario is run, in
-//! every scenario, and compared at every recorded step by the rules of `PARITY.md` as
-//! `oracle/harness/rules.py` applies them. An `agg_by` over the result of another
-//! operation cannot be run here and is listed in `NOT_RUN`.
+//! Every `agg_by` operation whose source is an input table of its scenario, or a `merge`
+//! of input tables, is run, in every scenario, and compared at every recorded step by the
+//! rules of `PARITY.md` as `oracle/harness/rules.py` applies them. An `agg_by` over the
+//! result of another operation or over a blink input, and one with an aggregation this
+//! crate does not have, cannot be run here and is listed in `NOT_RUN`.
 
 use super::super::AggregateError;
 use super::*;
 use crate::graph::SteppedUpdateGraph;
+use crate::ops::merge::merge;
 use crate::table::{append_only_input_table, keyed_input_table};
 use arrow::array::{
     BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
@@ -22,18 +24,81 @@ use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::PathBuf;
 
-/// The `agg_by` operations that are not run, as `scenario.operation`, each because its
-/// source is the result of an operation this crate does not have yet.
-const NOT_RUN: [&str; 2] = [
-    // Source is a `where`.
-    "agg_by_no_keys.all_d",
-    // Source is a `natural_join` of an `update`.
-    "pipeline.by_region",
+/// The `agg_by` operations that are not run, as `scenario.operation: why`.
+const NOT_RUN: [&str; 41] = [
+    "agg_by_no_keys.all_d: the source is made by where",
+    "agg_by_sets.by_key: the source is made by update_view",
+    "agg_by_sets.no_key: the source is made by update_view",
+    "agg_by_sets.by_bool: the source is made by update_view",
+    "agg_by_sets.of_empty: the source is made by update_view",
+    "agg_by_sets.of_empty_by_key: the source is made by update_view",
+    "agg_by_sets.sorted_by_double: no aggregation sorted_first",
+    "agg_by_sets.unique_sentinel: no aggregation unique",
+    "agg_by_sets.group_strings: no aggregation group",
+    "agg_by_sets.count_where_unknown: no aggregation count_where",
+    "agg_by_sets.formula_bad: no aggregation formula",
+    "agg_by_sets.sorted_unknown: no aggregation sorted_first",
+    "agg_by_statistics.by_key: no aggregation abs_sum",
+    "agg_by_statistics.no_key: no aggregation abs_sum",
+    "agg_by_statistics.by_two: no aggregation abs_sum",
+    "agg_by_statistics.special_by_key: no aggregation abs_sum",
+    "agg_by_statistics.special_no_key: no aggregation abs_sum",
+    "agg_by_statistics.of_empty: no aggregation abs_sum",
+    "agg_by_statistics.of_empty_by_key: no aggregation abs_sum",
+    "agg_by_statistics.time_median: no aggregation median",
+    "agg_by_statistics.string_median: no aggregation median",
+    "agg_by_statistics.string_std: no aggregation std",
+    "agg_by_statistics.string_abs_sum: no aggregation abs_sum",
+    "agg_by_statistics.bool_var: no aggregation var",
+    "agg_by_statistics.pct_out_of_range: no aggregation pct",
+    "agg_by_statistics.string_weight: no aggregation weighted_avg",
+    "group_by_ungroup.agg_group: no aggregation group",
+    "pipeline.by_region: the source is made by natural_join",
+    "ticking_agg_by_full.by_key: no aggregation abs_sum",
+    "ticking_agg_by_full.no_key: no aggregation abs_sum",
+    "ticking_blink_sort_head_tail.seen: the source is a blink input",
+    "ticking_blink_sort_head_tail.seen_sorted: the source is made by sort",
+    "ticking_blink_sort_head_tail.seen_first_two: the source is made by head",
+    "ticking_blink_sort_head_tail.seen_last_two: the source is made by tail",
+    "ticking_blink_sort_head_tail.seen_none: the source is made by head",
+    "ticking_blink_sort_head_tail.seen_top_two: the source is made by head",
+    "ticking_blink_sort_head_tail.seen_bottom_one: the source is made by tail",
+    "ticking_blink_sort_head_tail.seen_rev: the source is made by reverse",
+    "ticking_blink_sort_head_tail.seen_big_by_s: the source is made by where",
+    "ticking_snapshot_when.count_snapshots: the source is made by snapshot_when",
+    "ticking_time_table.first_day_count: the source is made by where",
 ];
 
-/// The number of recorded (table, step) results the test must compare. A scenario or
-/// operation that silently stops being run shows as a different count.
-const COMPARED: usize = 48;
+/// The number of recorded results of `agg_all_by`, none of which is run: the engine has
+/// no such operation, the gRPC handler makes the aggregations of an `agg_by` from it.
+const AGG_ALL_BY: usize = 43;
+
+/// The results the test must compare, as `scenario.table xN` for a table compared at N
+/// recorded steps. A scenario or operation that silently stops being run is missing here.
+const COMPARED: [&str; 22] = [
+    "agg_by_avg.avg_g x1",
+    "agg_by_avg.avg_k x1",
+    "agg_by_int_overflow.avgs x1",
+    "agg_by_int_overflow.sums x1",
+    "agg_by_int_overflow.total x1",
+    "agg_by_min_max_first_last.first_last x1",
+    "agg_by_min_max_first_last.min_max x1",
+    "agg_by_no_keys.all x1",
+    "agg_by_sum_count.by_k x1",
+    "agg_by_sum_count.by_k_g x1",
+    "empty_table_ops.a_all x1",
+    "empty_table_ops.a_keyed x1",
+    "error_types_and_matches.min_all x1",
+    "error_types_and_matches.sum_bool x1",
+    "null_sentinel_inputs.counted x1",
+    "ticking_agg_by.by_k x8",
+    "ticking_agg_by.total x8",
+    "ticking_empty_start.by_g x5",
+    "ticking_empty_start.total x5",
+    "ticking_error_after_step.healthy x6",
+    "ticking_merge_refreshing.merged_count x8",
+    "timestamps.range x1",
+];
 
 /// The number of operations that must be refused, as Java refused them.
 const REFUSED: usize = 7;
@@ -178,6 +243,8 @@ pub(super) struct Input {
 pub(super) fn inputs(scenario: &Value, graph: &Arc<SteppedUpdateGraph>) -> BTreeMap<String, Input> {
     list(&scenario["inputs"], "inputs")
         .iter()
+        // The engine has no blink input table.
+        .filter(|input| input["ticking"]["blink"] != true)
         .map(|input| {
             let columns = list(&input["columns"], "columns").clone();
             let declared: Vec<&Value> = columns.iter().collect();
@@ -211,28 +278,54 @@ pub(super) fn inputs(scenario: &Value, graph: &Arc<SteppedUpdateGraph>) -> BTree
         .collect()
 }
 
-/// The aggregations of an `agg_by` operation.
+/// The table an `agg_by` reads, if it is an input or a `merge` of such tables; otherwise
+/// why it is not made here.
+fn source(
+    name: &str,
+    scenario: &Value,
+    inputs: &BTreeMap<String, Input>,
+) -> Result<Arc<dyn Table>, String> {
+    if let Some(input) = inputs.get(name) {
+        return Ok(input.table.clone());
+    }
+    let operations = list(&scenario["operations"], "operations");
+    let Some(operation) = operations.iter().find(|o| o["name"] == name) else {
+        return Err("the source is a blink input".to_string());
+    };
+    match text(&operation["op"], "op") {
+        "merge" => {
+            let parents = list(&operation["sources"], "sources")
+                .iter()
+                .map(|parent| source(text(parent, "source"), scenario, inputs))
+                .collect::<Result<Vec<_>, _>>()?;
+            merge(&parents).map_err(|error| format!("the merge is refused: {error}"))
+        }
+        other => Err(format!("the source is made by {other}")),
+    }
+}
+
+/// The aggregations of an `agg_by` operation, or the first one this crate does not have.
 ///
 /// Behavior: `agg_by` in `oracle/harness/scenario.py`.
-fn aggregations(operation: &Value) -> Vec<Aggregation> {
+fn aggregations(operation: &Value) -> Result<Vec<Aggregation>, String> {
     list(&operation["aggs"], "aggs")
         .iter()
         .map(|entry| {
             let spec = match text(&entry["agg"], "agg") {
-                "count" => return count(text(&entry["column"], "column")),
+                "count" => return Ok(count(text(&entry["column"], "column"))),
                 "sum" => AggSpec::Sum,
                 "avg" => AggSpec::Avg,
                 "min" => AggSpec::Min,
                 "max" => AggSpec::Max,
                 "first" => AggSpec::First,
                 "last" => AggSpec::Last,
-                other => panic!("no aggregation {other}"),
+                other => return Err(format!("no aggregation {other}")),
             };
             let pairs: Vec<&str> = list(&entry["columns"], "columns")
                 .iter()
                 .map(|pair| text(pair, "pair"))
                 .collect();
-            agg(spec, &pairs)
+            Ok(agg(spec, &pairs))
         })
         .collect()
 }
@@ -354,7 +447,10 @@ pub(super) fn run_step(
     graph: &Arc<SteppedUpdateGraph>,
 ) {
     for action in list(&step["actions"], "actions") {
-        let input = &inputs[text(&action["table"], "table")];
+        // An input that was not made takes no actions.
+        let Some(input) = inputs.get(text(&action["table"], "table")) else {
+            continue;
+        };
         let writer = input.table.input_table().expect("an input table");
         let rows = list(&action["rows"], "rows");
         match text(&action["action"], "action") {
@@ -385,15 +481,23 @@ pub(super) fn run_step(
 
 #[derive(Default)]
 struct Tally {
-    compared: usize,
+    /// The number of steps compared, by `scenario.table`.
+    compared: BTreeMap<String, usize>,
     refused: usize,
     not_run: Vec<String>,
+    agg_all_by: usize,
 }
 
 fn run_scenario(path: &PathBuf, tally: &mut Tally) {
     let scenario = json(path);
     let name = text(&scenario["name"], "name");
     let operations = list(&scenario["operations"], "operations");
+    let results = list(&scenario["results"], "results");
+    tally.agg_all_by += operations
+        .iter()
+        .filter(|operation| operation["op"] == "agg_all_by")
+        .filter(|operation| results.iter().any(|r| r["table"] == operation["name"]))
+        .count();
     if !operations
         .iter()
         .any(|operation| operation["op"] == "agg_by")
@@ -413,16 +517,19 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
     {
         let table_name = text(&operation["name"], "name");
         let context = format!("{name}.{table_name}");
-        let Some(input) = inputs.get(text(&operation["source"], "source")) else {
-            tally.not_run.push(context);
-            continue;
+        let parent = source(text(&operation["source"], "source"), &scenario, &inputs);
+        let (parent, aggregations) = match parent.and_then(|p| Ok((p, aggregations(operation)?))) {
+            Ok(made) => made,
+            Err(why) => {
+                tally.not_run.push(format!("{context}: {why}"));
+                continue;
+            }
         };
-        let aggregations = aggregations(operation);
         let by: Vec<&str> = list(&operation["by"], "by")
             .iter()
             .map(|column| text(column, "by"))
             .collect();
-        let result = aggregate(&input.table, &aggregations, false, &by);
+        let result = aggregate(&parent, &aggregations, false, &by);
         let initial = entries
             .iter()
             .find(|entry| entry["step"] == 0 && entry["table"] == table_name);
@@ -461,7 +568,10 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
             assert!(!table.is_failed(), "{context}: failed");
             let expected = recorded(name, text(&entry["file"], "file"));
             assert_matches(&context, &**table, &expected, computed);
-            tally.compared += 1;
+            *tally
+                .compared
+                .entry(format!("{name}.{table_name}"))
+                .or_default() += 1;
         }
     }
 }
@@ -487,6 +597,14 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
+    assert_eq!(scenarios, 83);
     assert_eq!(tally.not_run, NOT_RUN);
-    assert_eq!((tally.compared, tally.refused), (COMPARED, REFUSED));
+    assert_eq!(tally.agg_all_by, AGG_ALL_BY);
+    let compared: Vec<String> = tally
+        .compared
+        .iter()
+        .map(|(table, steps)| format!("{table} x{steps}"))
+        .collect();
+    assert_eq!(compared, COMPARED, "compared");
+    assert_eq!(tally.refused, REFUSED);
 }
