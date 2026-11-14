@@ -161,3 +161,10 @@ Fixes 1, 2 and 4 go to the where agent (87k tokens, lowest context among operato
 row variables to the expr agent already working on the function library. `fuzz` stops at the first
 difference, which hides later ones once a known difference exists: the oracle agent should add a
 keep-going mode with grouping of known causes (the handler agent wrote a driver for this).
+
+## 11:06 PR 25 merged; replay gate for CI started
+
+Operator handlers are on main. A fresh agent builds the CI gate: start Oxhaven, replay the whole
+corpus and the client smokes, compare with a checked-in baseline that ratchets in both directions
+(a clean scenario that breaks fails; a differing scenario that becomes clean must be promoted in
+the same pull request). Ten agents are running.
