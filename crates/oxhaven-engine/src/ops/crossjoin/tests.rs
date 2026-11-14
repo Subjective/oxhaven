@@ -478,6 +478,87 @@ fn a_ticking_left_table_with_an_empty_static_right_table_never_updates() {
     );
 }
 
+/// Java listens to a refreshing table of a join without match columns only when the other
+/// table is refreshing or has rows, and a result that listens to nothing is static. The
+/// results below are those of the Java server (Deephaven 42.9) for the same pairs.
+#[test]
+fn a_join_without_match_columns_of_a_ticking_and_an_empty_static_table_is_static() {
+    let graph = graph();
+    let live = |keys: &[RowKey], columns: &[(&str, ColumnType, ArrayRef)]| {
+        scripted(&graph, keys.iter().copied(), columns)
+    };
+    let left_script = live(&[10, 20], &left_columns(&[1, 2], &["a", "b"]));
+    let right_script = live(&[5, 6], &right_columns(&[1, 2], &[100, 200]));
+    let (left, right): (Arc<dyn Table>, Arc<dyn Table>) =
+        (left_script.table(), right_script.table());
+    let no_left_yet: Arc<dyn Table> = live(&[], &left_columns(&[], &[])).table();
+    let no_right_yet: Arc<dyn Table> = live(&[], &right_columns(&[], &[])).table();
+    let no_left = static_table(&left_columns(&[], &[]));
+    let no_right = static_table(&right_columns(&[], &[]));
+    let some_left = static_table(&left_columns(&[1], &["a"]));
+    let some_right = static_table(&right_columns(&[1], &[100]));
+    let join = |left: &Arc<dyn Table>, right: &Arc<dyn Table>, on: &[JoinMatch]| {
+        cross_join(left, right, on, &add(&["V"]), 10).unwrap()
+    };
+
+    // a static table without rows on either side: there is no pair and there never is one
+    let unheard = [
+        join(&left, &no_right, &[]),
+        join(&no_left, &right, &[]),
+        join(&no_left_yet, &no_right, &[]),
+        join(&no_left, &no_right_yet, &[]),
+    ];
+    for result in &unheard {
+        assert!(!result.is_refreshing());
+        assert!(result.row_set().is_empty());
+        assert_eq!(result.definition().columns().len(), 3);
+    }
+    left_script.push(TableChange::new().add([30], left_row(3, "c")));
+    right_script.push(TableChange::new().remove([5]));
+    graph.run_cycle();
+    for result in &unheard {
+        assert!(result.row_set().is_empty());
+        assert!(!result.is_failed());
+    }
+
+    // every other pair with a refreshing table is refreshing: a static table with rows, two
+    // refreshing tables with or without rows, and any join with match columns
+    let k = on(&["K"]);
+    let heard: [(&Arc<dyn Table>, &Arc<dyn Table>, &[JoinMatch]); 8] = [
+        (&left, &some_right, &[]),
+        (&some_left, &right, &[]),
+        (&left, &right, &[]),
+        (&no_left_yet, &no_right_yet, &[]),
+        (&left, &no_right_yet, &[]),
+        (&no_left_yet, &right, &[]),
+        (&left, &no_right, &k),
+        (&no_left, &right, &k),
+    ];
+    for (index, (left, right, on)) in heard.into_iter().enumerate() {
+        assert!(join(left, right, on).is_refreshing(), "pair {index}");
+    }
+    assert!(!join(&no_left, &no_right, &[]).is_refreshing());
+    assert!(!join(&some_left, &no_right, &[]).is_refreshing());
+
+    // the refreshing table is still read: its row keys must leave room for the reserve,
+    // and a failed one is refused
+    let wide: Arc<dyn Table> = live(&[0, 1 << 60], &left_columns(&[1, 1], &["a", "b"])).table();
+    assert!(matches!(
+        cross_join(&wide, &no_right, &[], &add(&["V"]), 10),
+        Err(CrossJoinError::OutOfKeySpace(_))
+    ));
+    assert_eq!(
+        cross_join(&left, &no_right, &[], &add(&["V"]), 0).err(),
+        Some(CrossJoinError::ReserveBits(0))
+    );
+    left_script.push_failure("broken");
+    graph.run_cycle();
+    assert!(matches!(
+        cross_join(&left, &no_right, &[], &add(&["V"]), 10),
+        Err(CrossJoinError::Join(JoinError::Table(_)))
+    ));
+}
+
 #[test]
 fn a_failure_of_either_table_fails_the_result() {
     for build in [keyed(10), zero(10)] {

@@ -33,6 +33,7 @@ use crate::update::ModifiedColumnTransformer;
 use keyed::Keyed;
 use layout::{min_bits, Layout, LeftRows, RightRows};
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection};
+use oxhaven_contracts::graph::{locked, UpdateGraph};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
@@ -125,8 +126,10 @@ impl MergedOperator for Operator {
 /// would need row keys of more than 63 bits is refused, and a refreshing one fails when a
 /// cycle takes it there.
 ///
-/// The result is refreshing when either table is. It is not flat and has none of the
-/// add-only, append-only and blink attributes.
+/// The result is refreshing when either table is, with one exception: a join without match
+/// columns of a refreshing table and a static table that has no rows is static, since it
+/// can never have a row. The result is not flat and has none of the add-only, append-only
+/// and blink attributes.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#join and
 /// io.deephaven.engine.table.impl.CrossJoinHelper#join
@@ -152,9 +155,9 @@ pub fn cross_join(
         }
     }
 
-    let parents = [left.clone(), right.clone()];
+    let unheard = plan.key_types.is_empty() && unheard(&**left, &**right);
     let mut refused = None;
-    let result = QueryTable::derive_merged(&parents, Vec::new(), || {
+    let init = || {
         start(plan, left, right, reserve_bits).map_err(|error| {
             let failure = TableFailure {
                 message: error.to_string(),
@@ -162,11 +165,44 @@ pub fn cross_join(
             refused = Some(error);
             failure
         })
-    });
+    };
+    let result = match [left, right].into_iter().find_map(graph_of) {
+        // The refreshing table is read under its graph's lock and refused if it has
+        // failed, as `derive_merged` does, and then left alone.
+        Some(graph) if unheard => locked(&*graph, || {
+            if left.is_failed() || right.is_failed() {
+                return Err(TableFailure {
+                    message: "the parent table has failed".into(),
+                });
+            }
+            Ok(QueryTable::new_static(init()?.0))
+        }),
+        _ => QueryTable::derive_merged(&[left.clone(), right.clone()], Vec::new(), init),
+    };
     match result {
         Ok(table) => Ok(table),
         Err(failure) => Err(refused.unwrap_or(CrossJoinError::Join(JoinError::Table(failure)))),
     }
+}
+
+/// The update graph of `table` if it is refreshing.
+fn graph_of(table: &Arc<dyn Table>) -> Option<Arc<dyn UpdateGraph>> {
+    table.update_graph().filter(|_| table.is_refreshing())
+}
+
+/// Whether a join without match columns never changes although one of its tables does:
+/// the other table is static and has no rows, so there is no pair and there never will be
+/// one. Java listens to neither table then, and a result that listens to nothing is a
+/// static table. When both tables are refreshing Java listens to both, with or without
+/// rows.
+///
+/// Behavior: the listeners at the end of
+/// io.deephaven.engine.table.impl.CrossJoinHelper#zeroKeyColumnsJoin, where a table is
+/// empty when `Table#isEmpty` says so: its size is 0
+fn unheard(left: &dyn Table, right: &dyn Table) -> bool {
+    let never_has_rows = |table: &dyn Table| !table.is_refreshing() && table.row_set().is_empty();
+    (left.is_refreshing() && never_has_rows(right))
+        || (right.is_refreshing() && never_has_rows(left))
 }
 
 /// Reads both tables and returns the result's initial state with the operator.
