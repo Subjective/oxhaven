@@ -197,6 +197,47 @@ impl RowSet {
         None
     }
 
+    /// Position of `key` if present, or the position at which it would be inserted.
+    ///
+    /// Port of `RowSet#find`: `Ok(pos)` where Java returns `pos`, `Err(pos)` where Java returns
+    /// `-pos - 1`.
+    pub fn find_or_insertion(&self, key: RowKey) -> Result<u64, u64> {
+        let mut pos = 0u64;
+        for r in &self.ranges {
+            if key < r.first {
+                return Err(pos);
+            }
+            if key <= r.last {
+                return Ok(pos + (key - r.first) as u64);
+            }
+            pos += r.size();
+        }
+        Err(pos)
+    }
+
+    /// The keys at the given positions. Positions at or beyond `size()` are ignored. With
+    /// `reversed`, position 0 is the last key.
+    ///
+    /// Port of `RowSet#subSetForPositions` and `#subSetForReversePositions`.
+    pub fn sub_set_for_positions(&self, positions: &RowSet, reversed: bool) -> RowSet {
+        let size = self.size();
+        let mut out = Vec::new();
+        for p in positions.ranges() {
+            let start = p.first() as u64;
+            if start >= size {
+                break;
+            }
+            let end = (p.last() as u64 + 1).min(size);
+            let part = if reversed {
+                self.sub_set_by_position_range(size - end, size - start)
+            } else {
+                self.sub_set_by_position_range(start, end)
+            };
+            out.extend_from_slice(part.ranges());
+        }
+        RowSet::from_ranges(out)
+    }
+
     /// The key at position `pos`, or `None` if `pos >= size()`.
     ///
     /// Port of `RowSet#get`, which returns `NULL_ROW_KEY` when out of range.
@@ -317,6 +358,9 @@ impl RowSet {
     ///
     /// Port of `RowSet#subSetByPositionRange`.
     pub fn sub_set_by_position_range(&self, start: u64, end: u64) -> RowSet {
+        if start >= end {
+            return RowSet::empty();
+        }
         let mut out = Vec::new();
         let mut pos = 0u64;
         for r in &self.ranges {
@@ -464,6 +508,13 @@ mod tests {
                     sorted.binary_search(&probe).ok().map(|p| p as u64)
                 );
                 assert_eq!(ra.get(probe as u64), sorted.get(probe as usize).copied());
+                assert_eq!(
+                    ra.find_or_insertion(probe),
+                    sorted
+                        .binary_search(&probe)
+                        .map(|p| p as u64)
+                        .map_err(|p| p as u64)
+                );
             }
 
             let start = g.next(12);
@@ -474,7 +525,28 @@ mod tests {
                 .skip(start as usize)
                 .take((end - start) as usize)
                 .collect();
-            assert_eq!(keys(&ra.sub_set_by_position_range(start, end)), by_pos);
+            let sub = ra.sub_set_by_position_range(start, end);
+            assert_canonical(&sub);
+            assert_eq!(sub, rs(&by_pos), "{ra:?} positions {start}..{end}");
+            assert!(ra.sub_set_by_position_range(end, start).is_empty() || start == end);
+
+            let positions = g.key_set();
+            let picked: BTreeSet<RowKey> = positions
+                .iter()
+                .filter_map(|p| sorted.get(*p as usize).copied())
+                .collect();
+            assert_eq!(
+                ra.sub_set_for_positions(&rs(&positions), false),
+                rs(&picked)
+            );
+            let picked_rev: BTreeSet<RowKey> = positions
+                .iter()
+                .filter_map(|p| sorted.iter().rev().nth(*p as usize).copied())
+                .collect();
+            assert_eq!(
+                ra.sub_set_for_positions(&rs(&positions), true),
+                rs(&picked_rev)
+            );
 
             let lo = g.next(70) as RowKey;
             let hi = lo + g.next(20) as RowKey - 5;
@@ -495,6 +567,14 @@ mod tests {
                 assert_eq!(ra.invert(&rb), Err(RowSetError::NotASubset));
             }
         }
+    }
+
+    #[test]
+    fn empty_or_inverted_position_range_is_the_empty_set() {
+        let set = RowSet::from_range(0, 9);
+        assert_eq!(set.sub_set_by_position_range(2, 2), RowSet::empty());
+        assert_eq!(set.sub_set_by_position_range(5, 3), RowSet::empty());
+        assert_eq!(set.sub_set_by_position_range(20, 30), RowSet::empty());
     }
 
     #[test]

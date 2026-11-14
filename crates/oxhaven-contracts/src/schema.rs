@@ -3,7 +3,7 @@
 //! Port of `io.deephaven.engine.table.TableDefinition` and
 //! `io.deephaven.engine.table.ColumnDefinition`, reduced to what crosses crate boundaries.
 
-use arrow_schema::{DataType, TimeUnit};
+use arrow::datatypes::{DataType, TimeUnit};
 
 /// The Deephaven type of a column, named after the Java type clients see in the schema.
 ///

@@ -16,7 +16,7 @@ pub struct ShiftRange {
 /// Why a set of shifts, or its application, is invalid.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum ShiftError {
-    /// A range is empty, negative, has a zero delta, or would move keys below zero.
+    /// A range is empty or negative, or applying it would move a key below zero.
     BadRange(ShiftRange),
     /// Ranges are not sorted by `first`, or overlap before or after shifting. Shifts never
     /// reorder keys.
@@ -53,19 +53,31 @@ impl RowSetShiftData {
 
     /// Validates and builds shift data. Ranges must be sorted by `first`, must not overlap
     /// before or after shifting, and must keep keys in the same relative order.
+    ///
+    /// As in `RowSetShiftData.Builder#shiftRange`, a range with a zero delta is dropped and
+    /// adjacent ranges with the same delta are merged, so equal shifts compare equal.
     pub fn new(shifts: Vec<ShiftRange>) -> Result<Self, ShiftError> {
-        for s in &shifts {
-            if s.first < 0 || s.first > s.last || s.delta == 0 || s.first + s.delta < 0 {
-                return Err(ShiftError::BadRange(*s));
+        let mut out: Vec<ShiftRange> = Vec::with_capacity(shifts.len());
+        for s in shifts {
+            if s.first < 0 || s.first > s.last {
+                return Err(ShiftError::BadRange(s));
+            }
+            if s.delta == 0 {
+                continue;
+            }
+            match out.last_mut() {
+                Some(prev)
+                    if prev.last >= s.first || prev.last + prev.delta >= s.first + s.delta =>
+                {
+                    return Err(ShiftError::OutOfOrder(*prev, s));
+                }
+                Some(prev) if prev.delta == s.delta && prev.last + 1 == s.first => {
+                    prev.last = s.last;
+                }
+                _ => out.push(s),
             }
         }
-        for w in shifts.windows(2) {
-            let (a, b) = (w[0], w[1]);
-            if a.last >= b.first || a.last + a.delta >= b.first + b.delta {
-                return Err(ShiftError::OutOfOrder(a, b));
-            }
-        }
-        Ok(Self { shifts })
+        Ok(Self { shifts: out })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -173,13 +185,25 @@ mod tests {
             Err(ShiftError::OutOfOrder(..))
         ));
         assert!(matches!(
-            RowSetShiftData::new(vec![shift(3, 4, -4)]),
+            RowSetShiftData::new(vec![shift(4, 3, 1)]),
             Err(ShiftError::BadRange(_))
         ));
+        let below_zero = RowSetShiftData::new(vec![shift(3, 4, -4)]).unwrap();
         assert!(matches!(
-            RowSetShiftData::new(vec![shift(3, 4, 0)]),
+            below_zero.apply(&RowSet::from_keys([3])),
             Err(ShiftError::BadRange(_))
         ));
+    }
+
+    #[test]
+    fn zero_deltas_are_dropped_and_adjacent_equal_deltas_merge() {
+        let merged = RowSetShiftData::new(vec![shift(0, 4, 5), shift(5, 9, 5)]).unwrap();
+        assert_eq!(merged, RowSetShiftData::new(vec![shift(0, 9, 5)]).unwrap());
+        assert!(RowSetShiftData::new(vec![shift(3, 4, 0)])
+            .unwrap()
+            .is_empty());
+        let apart = RowSetShiftData::new(vec![shift(0, 4, 5), shift(6, 9, 5)]).unwrap();
+        assert_eq!(apart.ranges().len(), 2);
     }
 
     #[test]

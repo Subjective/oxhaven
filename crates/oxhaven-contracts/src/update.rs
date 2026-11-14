@@ -126,11 +126,27 @@ impl TableUpdate {
             && self.shifted.is_empty()
     }
 
+    /// The update as a table must deliver it, or `None` if nothing is left to deliver.
+    ///
+    /// Port of the repair in `BaseTable#notifyListeners`: modified rows with no modified
+    /// columns, or modified columns with no modified rows, both mean nothing was modified. An
+    /// operator may produce either (for example when only a dropped column changed); the
+    /// table's notify path calls this before delivery.
+    pub fn normalized(mut self) -> Option<TableUpdate> {
+        if self.modified.is_empty() != self.modified_columns.is_empty() {
+            self.modified = RowSet::empty();
+            self.modified_columns = ModifiedColumnSet::empty();
+        }
+        (!self.is_empty()).then_some(self)
+    }
+
     /// Applies this update to the previous row set, returning the current row set, or the first
     /// rule the update breaks.
     ///
-    /// Port of the checks in `TableUpdate#validate`. Every table's updates must pass this; the
-    /// self-consistency checker runs it on every cycle.
+    /// Port of the checks in `TableUpdateValidator#onUpdate` and
+    /// `BaseTable#validateUpdateOverlaps`. Every delivered update, meaning one that has been
+    /// through [`TableUpdate::normalized`], must pass this; the self-consistency checker runs
+    /// it on every cycle.
     pub fn apply_to(&self, prev: &RowSet) -> Result<RowSet, UpdateError> {
         let missing = self.removed.minus(prev);
         if !missing.is_empty() {
@@ -261,6 +277,29 @@ mod tests {
             collision.apply_to(&prev),
             Err(UpdateError::Shift(_))
         ));
+    }
+
+    #[test]
+    fn normalized_drops_modifies_without_columns_and_empty_updates() {
+        let rows_only = TableUpdate {
+            modified: RowSet::from_keys([0]),
+            ..base()
+        };
+        assert_eq!(rows_only.normalized(), None);
+        let columns_only = TableUpdate {
+            added: RowSet::from_keys([7]),
+            modified_columns: ModifiedColumnSet::of([0]),
+            ..base()
+        };
+        let fixed = columns_only.normalized().unwrap();
+        assert!(fixed.modified_columns.is_empty() && fixed.added == RowSet::from_keys([7]));
+        let valid = TableUpdate {
+            modified: RowSet::from_keys([0]),
+            modified_columns: ModifiedColumnSet::All,
+            ..base()
+        };
+        assert_eq!(valid.clone().normalized(), Some(valid));
+        assert_eq!(base().normalized(), None);
     }
 
     #[test]
