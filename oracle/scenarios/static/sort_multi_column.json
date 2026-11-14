@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "sort_multi_column",
+  "description": "Sort on two columns with mixed directions; strings with case, empty and null; booleans.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "s_then_i", "op": "sort", "source": "t", "by": [{"column": "S", "direction": "ascending"}, {"column": "I", "direction": "descending"}]},
+    {"name": "s_down_l_up", "op": "sort", "source": "t", "by": [{"column": "S", "direction": "descending"}, {"column": "L", "direction": "ascending"}]},
+    {"name": "by_bool", "op": "sort", "source": "t", "by": [{"column": "B", "direction": "ascending"}, {"column": "I", "direction": "ascending"}]},
+    {"name": "by_bool_down", "op": "sort", "source": "t", "by": [{"column": "B", "direction": "descending"}]}
+  ],
+  "results": [
+    {"table": "s_then_i"},
+    {"table": "s_down_l_up"},
+    {"table": "by_bool"},
+    {"table": "by_bool_down"}
+  ]
+}

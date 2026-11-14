@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "scenario": "exact_join",
+  "scenario_sha256": "6547efe94d0953f1ad425c5bb0a122fd2129766cbadd4fde32d4691597fa84ac",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "on_k",
+      "file": "step000.on_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "on_k_s",
+      "file": "step000.on_k_s.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 5
+    }
+  ]
+}

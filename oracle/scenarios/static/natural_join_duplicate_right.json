@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "natural_join_duplicate_right",
+  "description": "natural_join against a right table with duplicate keys, taking the first and the last match.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "LV", "type": "float64"}],
+      "rows": [
+        [1, "a", 0.1],
+        [2, "b", 0.2],
+        [null, "c", 0.3],
+        [4, null, 0.4],
+        [2, "b", 0.5],
+        [9, "z", null]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "RV", "type": "int64"}],
+      "rows": [
+        [2, 20],
+        [1, 10],
+        [2, 21],
+        [null, -1],
+        [2, 22],
+        [null, -2],
+        [7, 70]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "first", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV"], "type": "first_match"},
+    {"name": "last", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV"], "type": "last_match"}
+  ],
+  "results": [
+    {"table": "first"},
+    {"table": "last"}
+  ]
+}

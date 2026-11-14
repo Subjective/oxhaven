@@ -1,0 +1,224 @@
+{
+  "format": 1,
+  "scenario": "ticking_update_by_append",
+  "scenario_sha256": "c7e728e40335b9a2e066a0b0e990701962038fd001b4fdbf0f134b2a5c749291",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "t",
+      "file": "step000.t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "computed",
+      "file": "step000.computed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "first3",
+      "file": "step000.first3.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "last3",
+      "file": "step000.last3.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "t",
+      "file": "step001.t.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "whole",
+      "file": "step001.whole.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "computed",
+      "file": "step001.computed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "first3",
+      "file": "step001.first3.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "last3",
+      "file": "step001.last3.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "t",
+      "file": "step002.t.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "whole",
+      "file": "step002.whole.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "computed",
+      "file": "step002.computed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "first3",
+      "file": "step002.first3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "last3",
+      "file": "step002.last3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "t",
+      "file": "step003.t.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "whole",
+      "file": "step003.whole.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "keyed",
+      "file": "step003.keyed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "computed",
+      "file": "step003.computed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "first3",
+      "file": "step003.first3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "last3",
+      "file": "step003.last3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "t",
+      "file": "step004.t.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "whole",
+      "file": "step004.whole.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "keyed",
+      "file": "step004.keyed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "computed",
+      "file": "step004.computed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "first3",
+      "file": "step004.first3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "last3",
+      "file": "step004.last3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "t",
+      "file": "step005.t.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "whole",
+      "file": "step005.whole.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "keyed",
+      "file": "step005.keyed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "computed",
+      "file": "step005.computed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "first3",
+      "file": "step005.first3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "last3",
+      "file": "step005.last3.arrow",
+      "rows": 3
+    }
+  ]
+}

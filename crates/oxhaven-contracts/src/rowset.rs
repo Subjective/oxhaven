@@ -381,14 +381,15 @@ impl RowSet {
         RowSet { ranges: out }
     }
 
-    /// The keys within `first..=last`.
+    /// The keys within `first..=last`. Empty when the range is empty or wholly negative.
     ///
     /// Port of `RowSet#subSetByKeyRange`.
     pub fn sub_set_by_key_range(&self, first: RowKey, last: RowKey) -> RowSet {
+        let first = first.max(0);
         if first > last {
             return RowSet::empty();
         }
-        self.intersect(&RowSet::from_range(first.max(0), last))
+        self.intersect(&RowSet::from_range(first, last))
     }
 
     /// Every key moved by `delta`.
@@ -606,5 +607,13 @@ mod tests {
         let mut z = a.clone();
         z.retain(&b);
         assert_eq!(z, a.intersect(&b));
+    }
+
+    #[test]
+    fn sub_set_by_key_range_with_negative_bounds() {
+        let rs = RowSet::from_keys([0, 1, 2]);
+        assert!(rs.sub_set_by_key_range(-2, -1).is_empty());
+        assert!(rs.sub_set_by_key_range(-2, -2).is_empty());
+        assert_eq!(rs.sub_set_by_key_range(-2, 1), RowSet::from_range(0, 1));
     }
 }

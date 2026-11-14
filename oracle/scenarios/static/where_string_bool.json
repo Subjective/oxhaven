@@ -1,0 +1,41 @@
+{
+  "format": 1,
+  "name": "where_string_bool",
+  "description": "String equality, inequality, ordering and boolean filters, with nulls and the empty string.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "eq", "op": "where", "source": "t", "filters": ["S == `a`"]},
+    {"name": "ne", "op": "where", "source": "t", "filters": ["S != `a`"]},
+    {"name": "null_s", "op": "where", "source": "t", "filters": ["S == null"]},
+    {"name": "empty_s", "op": "where", "source": "t", "filters": ["S == ``"]},
+    {"name": "lt", "op": "where", "source": "t", "filters": ["S < `aa`"]},
+    {"name": "is_true", "op": "where", "source": "t", "filters": ["B == true"]},
+    {"name": "is_false", "op": "where", "source": "t", "filters": ["B == false"]},
+    {"name": "null_b", "op": "where", "source": "t", "filters": ["isNull(B)"]}
+  ],
+  "results": [
+    {"table": "eq"},
+    {"table": "ne"},
+    {"table": "null_s"},
+    {"table": "empty_s"},
+    {"table": "lt"},
+    {"table": "is_true"},
+    {"table": "is_false"},
+    {"table": "null_b"}
+  ]
+}

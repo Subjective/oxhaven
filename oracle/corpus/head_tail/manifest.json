@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "scenario": "head_tail",
+  "scenario_sha256": "f02bd14d75c35fa684d6da167cc2d967dc0d180a729c71450349e7e5876f2bbf",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "h0",
+      "file": "step000.h0.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "h3",
+      "file": "step000.h3.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "h7",
+      "file": "step000.h7.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "h99",
+      "file": "step000.h99.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "t0",
+      "file": "step000.t0.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "t2",
+      "file": "step000.t2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "t7",
+      "file": "step000.t7.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "t99",
+      "file": "step000.t99.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "h5_t2",
+      "file": "step000.h5_t2.arrow",
+      "rows": 2
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "null_sentinel_inputs",
+  "description": "Input values equal to the reference's null sentinels (the minimum of each integer type) read back and compute as null.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "By", "type": "int8"}, {"name": "Sh", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}],
+      "rows": [
+        [-128, -32768, -2147483648, -9223372036854775808],
+        [-127, -32767, -2147483647, -9223372036854775807],
+        [0, 0, 0, 0]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "as_is", "op": "view", "source": "t", "formulas": ["By", "Sh", "I", "L"]},
+    {"name": "plus", "op": "update", "source": "t", "formulas": ["By1 = By + 1", "Sh1 = Sh + 1", "I1 = I + 1", "L1 = L + 1"]},
+    {"name": "nulls", "op": "where", "source": "t", "filters": ["isNull(I)"]},
+    {"name": "counted", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["By", "Sh", "I", "L"]}], "by": []}
+  ],
+  "results": [
+    {"table": "as_is"},
+    {"table": "plus"},
+    {"table": "nulls"},
+    {"table": "counted"}
+  ]
+}

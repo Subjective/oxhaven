@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "name": "update_float_special",
+  "description": "Division by zero, NaN and infinity arithmetic, signed zero.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "D", "type": "float64"}, {"name": "I", "type": "int32"}],
+      "rows": [
+        [1.0, 1],
+        [-1.0, -1],
+        [0.0, 0],
+        [-0.0, 0],
+        ["NaN", 2],
+        ["Infinity", 3],
+        ["-Infinity", 4],
+        [null, null],
+        [1e+308, 5],
+        [5e-324, 6]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "u", "op": "update", "source": "t", "formulas": ["A = D / 0.0", "B = D * 0.0", "C = D - D", "E = D * 10", "G = I / 0", "H = D / I", "J = D + 0.1", "K = D / 3"]}
+  ],
+  "results": [
+    {"table": "u"}
+  ]
+}

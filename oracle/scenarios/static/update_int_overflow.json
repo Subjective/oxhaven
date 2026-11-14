@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "name": "update_int_overflow",
+  "description": "Integer arithmetic at the edges of int and long: wraparound and results that land on the null sentinel.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}],
+      "rows": [
+        [2147483647, 9223372036854775807],
+        [2147483646, 9223372036854775806],
+        [-2147483647, -9223372036854775807],
+        [-1, -1],
+        [1073741824, 4611686018427387904],
+        [0, 0]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "u", "op": "update", "source": "t", "formulas": ["IPlus = I + 1", "IMinus = I - 1", "ITwice = I * 2", "INeg = -I", "LPlus = L + 1", "LMinus = L - 1", "LTwice = L * 2", "IL = I + L"]}
+  ],
+  "results": [
+    {"table": "u"}
+  ]
+}

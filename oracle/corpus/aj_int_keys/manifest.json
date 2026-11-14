@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "scenario": "aj_int_keys",
+  "scenario_sha256": "8edd1d751072d64a7fd6328e227dd70ee2a6207fc5a9581f32b727a0e4a8e1c4",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "strict",
+      "file": "step000.strict.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "unkeyed",
+      "file": "step000.unkeyed.arrow",
+      "rows": 8
+    }
+  ]
+}

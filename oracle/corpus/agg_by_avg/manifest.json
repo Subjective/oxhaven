@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "agg_by_avg",
+  "scenario_sha256": "b7bac2958d4502f86eb3fc4d1208f6c0e0171549dd99db72ba469109b8ec1117",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "avg_k",
+      "file": "step000.avg_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "avg_g",
+      "file": "step000.avg_g.arrow",
+      "rows": 4
+    }
+  ]
+}

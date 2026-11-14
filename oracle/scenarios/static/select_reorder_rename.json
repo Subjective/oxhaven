@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "select_reorder_rename",
+  "description": "select and view that reorder, rename, duplicate and compute columns; later formulas use earlier ones.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "sel", "op": "select", "source": "t", "formulas": ["S", "Renamed = I", "B", "I"]},
+    {"name": "chain", "op": "select", "source": "t", "formulas": ["X = I + 1", "Y = X * 2", "Z = Y - X"]},
+    {"name": "upd_replace", "op": "update", "source": "t", "formulas": ["I = I + 100", "L = I + L"]},
+    {"name": "vw", "op": "view", "source": "t", "formulas": ["D", "Twice = D * 2", "D2 = D"]}
+  ],
+  "results": [
+    {"table": "sel"},
+    {"table": "chain"},
+    {"table": "upd_replace"},
+    {"table": "vw"}
+  ]
+}

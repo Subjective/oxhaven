@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "scenario": "update_int_overflow",
+  "scenario_sha256": "5038aaee100379161e62205d120cb2c21dceb3e482acd53fe55c0d86fc50c94a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "u",
+      "file": "step000.u.arrow",
+      "rows": 6
+    }
+  ]
+}

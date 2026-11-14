@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "scenario": "where_string_bool",
+  "scenario_sha256": "3f08fb411e2028e7b0b5b7e511b81995040d4649ad345b8f8a261edbb26955be",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "eq",
+      "file": "step000.eq.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ne",
+      "file": "step000.ne.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "null_s",
+      "file": "step000.null_s.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "empty_s",
+      "file": "step000.empty_s.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "lt",
+      "file": "step000.lt.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "is_true",
+      "file": "step000.is_true.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "is_false",
+      "file": "step000.is_false.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "null_b",
+      "file": "step000.null_b.arrow",
+      "rows": 2
+    }
+  ]
+}
