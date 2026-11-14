@@ -7,7 +7,9 @@
 use super::operator::{AggOperator, Effect};
 use super::values::Run;
 use arrow::array::{ArrayRef, Float64Array, Int64Array};
-use oxhaven_column::sentinel::{NULL_DOUBLE, NULL_LONG};
+use oxhaven_column::sentinel::{
+    NULL_BYTE, NULL_CHAR, NULL_DOUBLE, NULL_INT, NULL_LONG, NULL_SHORT,
+};
 use oxhaven_contracts::schema::ColumnType;
 use std::sync::Arc;
 
@@ -262,29 +264,66 @@ impl AggOperator for WeightedFloat {
 }
 
 /// The weighted sum `sum(w * x)` of an integer column weighted by an integer column, as a
-/// `long` that wraps, over the rows where neither is null. Null when no row has both, and
-/// whenever the sum is `NULL_LONG`.
+/// `long` that wraps. Null when no row counts, and whenever the sum is `NULL_LONG`.
 ///
-/// Behavior: io.deephaven.engine.table.impl.by.LongChunkedWeightedSumOperator
-#[derive(Default)]
+/// Java widens both columns to `long` with a plain cast, which leaves the null sentinel of a
+/// `byte`, `char`, `short` or `int` column as an ordinary number (`-128`, `65535`, `-32768`,
+/// `-2147483648`). Only `NULL_LONG` is recognized as null, so only a null in a `long` column
+/// excludes its row. A null `int` weight, for example, weighs its row by `-2147483648`. This is
+/// recorded from Java in `fixtures/agg_static.json` (groups `a` and `d` of `wsum_int_weight`).
+///
+/// Behavior: io.deephaven.engine.table.impl.by.LongChunkedWeightedSumOperator, whose inputs
+/// come from io.deephaven.chunk.util.hashing.ToLongCast#makeToLongCast (`IntToLongCast#apply`
+/// and the like: `(long) input.get(ii)`) here and in
+/// io.deephaven.engine.table.impl.by.LongWeightRecordingInternalOperator.
 pub struct WeightedLongSum {
+    value_null: Option<i64>,
+    weight_null: Option<i64>,
     normal: Vec<i64>,
     weighted_sum: Vec<i64>,
     result: Vec<i64>,
 }
 
-/// Behavior: LongChunkedWeightedSumOperator#sumChunks
-fn long_sums(run: &Run<'_>) -> (i64, i64) {
-    run.weighted_longs()
-        .fold((0, 0), |(normal, sum), pair| match pair {
-            (Some(component), Some(weight)) => {
-                (normal + 1, sum.wrapping_add(weight.wrapping_mul(component)))
-            }
-            _ => (normal, sum),
-        })
+/// The value a null of an integer column of this type has after Java's widening cast to
+/// `long`, or `None` for a `long` column, whose null stays `NULL_LONG`.
+///
+/// Behavior: io.deephaven.chunk.util.hashing.ToLongCast#makeToLongCast
+fn widened_null(column_type: &ColumnType) -> Option<i64> {
+    match column_type {
+        ColumnType::Byte => Some(i64::from(NULL_BYTE)),
+        ColumnType::Char => Some(i64::from(NULL_CHAR)),
+        ColumnType::Short => Some(i64::from(NULL_SHORT)),
+        ColumnType::Int => Some(i64::from(NULL_INT)),
+        _ => None,
+    }
 }
 
 impl WeightedLongSum {
+    /// The weighted sum of a column of type `value_type` weighted by one of `weight_type`,
+    /// both integer types.
+    pub fn new(value_type: &ColumnType, weight_type: &ColumnType) -> Self {
+        WeightedLongSum {
+            value_null: widened_null(value_type),
+            weight_null: widened_null(weight_type),
+            normal: Vec::new(),
+            weighted_sum: Vec::new(),
+            result: Vec::new(),
+        }
+    }
+
+    /// Behavior: LongChunkedWeightedSumOperator#sumChunks
+    fn sums(&self, run: &Run<'_>) -> (i64, i64) {
+        run.weighted_longs()
+            .fold((0, 0), |(normal, sum), (component, weight)| {
+                match (component.or(self.value_null), weight.or(self.weight_null)) {
+                    (Some(component), Some(weight)) => {
+                        (normal + 1, sum.wrapping_add(weight.wrapping_mul(component)))
+                    }
+                    _ => (normal, sum),
+                }
+            })
+    }
+
     fn set_result(&mut self, slot: usize, value: i64) -> Effect {
         let old = std::mem::replace(&mut self.result[slot], value);
         Effect::modified_if(old != value)
@@ -304,7 +343,7 @@ impl AggOperator for WeightedLongSum {
 
     /// Behavior: LongChunkedWeightedSumOperator#addChunk(LongChunk, LongChunk, int, int, long)
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (normal, sum) = long_sums(run);
+        let (normal, sum) = self.sums(run);
         self.normal[slot] += normal;
         if self.normal[slot] > 0 {
             let total = plus_long(self.weighted_sum[slot], sum);
@@ -318,7 +357,7 @@ impl AggOperator for WeightedLongSum {
 
     /// Behavior: LongChunkedWeightedSumOperator#removeChunk(LongChunk, LongChunk, int, int, long)
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (normal, sum) = long_sums(run);
+        let (normal, sum) = self.sums(run);
         self.normal[slot] -= normal;
         let total_normal = self.normal[slot];
         let total = if normal > 0 {
@@ -344,8 +383,8 @@ impl AggOperator for WeightedLongSum {
 
     /// Behavior: LongChunkedWeightedSumOperator#modifyChunk(LongChunk, LongChunk, LongChunk, LongChunk, int, int, long)
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
-        let (prev_normal, prev_sum) = long_sums(old);
-        let (new_normal, new_sum) = long_sums(new);
+        let (prev_normal, prev_sum) = self.sums(old);
+        let (new_normal, new_sum) = self.sums(new);
         self.normal[slot] += new_normal - prev_normal;
         if self.normal[slot] > 0 {
             let total = plus_long(self.weighted_sum[slot], new_sum.wrapping_sub(prev_sum));

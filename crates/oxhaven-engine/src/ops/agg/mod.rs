@@ -389,7 +389,7 @@ fn make_operator(
             }
             let sum = matches!(spec, AggSpec::WeightedSum { .. });
             let op: Box<dyn AggOperator> = if sum && integer && is_integer(weight_type) {
-                Box::<WeightedLongSum>::default()
+                Box::new(WeightedLongSum::new(input_type, weight_type))
             } else {
                 Box::new(WeightedFloat::new(!sum))
             };
