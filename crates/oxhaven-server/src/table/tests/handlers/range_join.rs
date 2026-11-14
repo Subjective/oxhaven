@@ -11,9 +11,7 @@ use proto::{AggSpec, Aggregation, RangeJoinTablesRequest};
 fn columns(spec: SpecType, pairs: &[&str]) -> Aggregation {
     Aggregation {
         r#type: Some(AggregationType::Columns(AggregationColumns {
-            spec: Some(AggSpec {
-                r#type: Some(spec),
-            }),
+            spec: Some(AggSpec { r#type: Some(spec) }),
             match_pairs: texts(pairs),
         })),
     }
@@ -331,9 +329,8 @@ async fn the_shape_of_a_range_join_request_is_checked_in_java_s_order() {
         )
     };
     let no_aggregations = format!("{PREFIX} must have at least one aggregations (10)");
-    let no_ref = format!(
-        "io.deephaven.proto.backplane.grpc.TableReference must have oneof ref. {ONE_OF}"
-    );
+    let no_ref =
+        format!("io.deephaven.proto.backplane.grpc.TableReference must have oneof ref. {ONE_OF}");
     let empty_ticket = Some(TableReference {
         r#ref: Some(Ref::Ticket(Ticket { ticket: Vec::new() })),
     });
@@ -431,7 +428,10 @@ async fn the_shape_of_a_range_join_request_is_checked_in_java_s_order() {
         change(&mut request);
         assert_invalid(&mut c, request, message).await;
     }
-    for (left, right) in [(empty_ticket.clone(), by_ticket(2)), (by_ticket(1), empty_ticket)] {
+    for (left, right) in [
+        (empty_ticket.clone(), by_ticket(2)),
+        (by_ticket(1), empty_ticket),
+    ] {
         let request = RangeJoinTablesRequest {
             left_id: left,
             right_id: right,
@@ -572,7 +572,8 @@ async fn the_matches_of_a_range_join_request_are_read_as_java_reads_them() {
     tables(&mut c).await;
     let pattern = "\\A\\s*(<-)?\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(<=?)\\s*\
                    ([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(->)?\\s*\\Z";
-    let unfit = |text: &str| format!("Input expression {text} does not match expected pattern {pattern}");
+    let unfit =
+        |text: &str| format!("Input expression {text} does not match expected pattern {pattern}");
     let reserved =
         |name: &str| format!("Invalid column name \"{name}\": \"{name}\" is a reserved keyword");
     let same = "RangeJoinMatch must have distinct ColumnNames for leftStartColumn() and \

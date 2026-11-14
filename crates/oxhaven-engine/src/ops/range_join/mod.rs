@@ -146,7 +146,8 @@ impl RangeJoinMatch {
         });
         let Some(found) = pattern.captures(input) else {
             // The pattern as Java writes it, which the text above is in this crate's syntax.
-            let java = format!(r"\A\s*(<-)?\s*({ID})\s*(<=?)\s*({ID})\s*(<=?)\s*({ID})\s*(->)?\s*\Z");
+            let java =
+                format!(r"\A\s*(<-)?\s*({ID})\s*(<=?)\s*({ID})\s*(<=?)\s*({ID})\s*(->)?\s*\Z");
             return Err(RangeJoinError::InvalidMatch(format!(
                 "Input expression {input} does not match expected pattern {java}"
             )));

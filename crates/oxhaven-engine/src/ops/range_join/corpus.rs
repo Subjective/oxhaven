@@ -16,7 +16,9 @@
 //! element by element, a null vector equal only to a null vector), and the attributes
 //! `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`, none of which a result has.
 
-use super::{range_join, RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule};
+use super::{
+    range_join, RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule,
+};
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
 use crate::ops::oracle::{replay_all, Built};
@@ -393,7 +395,9 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
         // A table defined from a refused one is in no scenario.
         let side = |name: &str| {
             let table = tables.get(name);
-            table.unwrap_or_else(|| panic!("{place}: no table {name}")).clone()
+            table
+                .unwrap_or_else(|| panic!("{place}: no table {name}"))
+                .clone()
         };
         let (left, right) = (side(left), side(right));
         let entries = list(&manifest["entries"]);

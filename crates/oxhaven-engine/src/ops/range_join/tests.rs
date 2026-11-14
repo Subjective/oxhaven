@@ -184,11 +184,7 @@ fn group_column(joined: &Arc<dyn Table>, name: &str) -> Arc<dyn ColumnSource> {
 
 /// The vectors of the `group` column `name`, at `rows` or at every row: `None` for a null
 /// vector, else the elements as text.
-fn arrays(
-    joined: &Arc<dyn Table>,
-    name: &str,
-    rows: Option<&RowSet>,
-) -> Vec<Option<Vec<String>>> {
+fn arrays(joined: &Arc<dyn Table>, name: &str, rows: Option<&RowSet>) -> Vec<Option<Vec<String>>> {
     let group = group_column(joined, name);
     let all = joined.row_set();
     let rows = rows.unwrap_or(&all);
@@ -947,13 +943,25 @@ fn range_columns_that_are_vectors_are_refused_after_the_range_match() {
     let lists = range_join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
     let vector = ColumnType::vector(ColumnType::Int);
     // Before the aggregations are looked at, and after a fault of the range match.
-    let error = refusal(&lists, &lists, &[], "Rs <= Rs <= Ss", &[sum.clone()]);
+    let error = refusal(
+        &lists,
+        &lists,
+        &[],
+        "Rs <= Rs <= Ss",
+        std::slice::from_ref(&sum),
+    );
     assert_eq!(error, RangeJoinError::InvalidRangeValueType(vector.clone()));
     assert_eq!(
         error.to_string(),
         "Invalid range value type Vector(Int), must be primitive or comparable"
     );
-    let error = refusal(&lists, &lists, &[], "Rs <= Rs <= Lo", &[sum.clone()]);
+    let error = refusal(
+        &lists,
+        &lists,
+        &[],
+        "Rs <= Rs <= Lo",
+        std::slice::from_ref(&sum),
+    );
     assert!(matches!(error, RangeJoinError::InvalidRangeMatch(_)));
     let error = refusal(&lists, &lists, &on(&["Nope"]), "Rs <= Rs <= Ss", &[sum]);
     assert!(matches!(error, RangeJoinError::InvalidExactMatches(_)));
