@@ -19,6 +19,38 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+  oracle-replay:
+    # Builds the server, starts it, and compares it with the recorded Java results and the
+    # client smoke checks, against oracle/replay-baseline.json. See oracle/README.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: oracle/requirements-replay.txt
+      - name: Install the harness's replay environment
+        run: |
+          python -m venv oracle/.venv
+          oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
+      - name: Tests of the harness
+        working-directory: oracle
+        run: .venv/bin/python -m pytest -q
+      - name: Replay the recorded Java results and run the client smokes
+        env:
+          ORACLE_GATE_OUT: ${{ runner.temp }}/oracle-replay
+          ORACLE_GATE_TIMEOUT: "300"
+        run: oracle/bin/ci-replay.sh
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: oracle-replay-report
+          path: ${{ runner.temp }}/oracle-replay
+          if-no-files-found: warn
+
   rules:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
@@ -31,12 +63,24 @@ jobs:
           LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          changed=$(git diff --name-only "$BASE"...HEAD -- oracle PARITY.md crates/oxhaven-contracts)
+          # oracle/replay-baseline.json is not in this list: the next step holds its rule.
+          changed=$(git diff --name-only "$BASE"...HEAD -- oracle PARITY.md crates/oxhaven-contracts \
+            ':(exclude)oracle/replay-baseline.json')
           if [ -n "$changed" ] && ! echo "$LABELS" | grep -q '"oracle-change"'; then
             echo "These protected files changed without the oracle-change label:"
             echo "$changed"
             exit 1
           fi
+      - name: The replay baseline only gets stricter without the oracle-change label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if echo "$LABELS" | grep -q '"oracle-change"'; then
+            echo "The pull request has the oracle-change label."
+            exit 0
+          fi
+          oracle/bin/check-baseline-change.sh "$BASE"
       - name: Commit subjects are scope-prefixed
         env:
           BASE: ${{ github.event.pull_request.base.sha }}
