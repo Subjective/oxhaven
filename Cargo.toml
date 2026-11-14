@@ -6,6 +6,20 @@ members = ["crates/*"]
 version = "0.0.0"
 edition = "2021"
 
+# Protocol stack. tonic, tonic-prost, prost and prost-types must stay on the 0.14 line together:
+# arrow-flight 60 is generated against that line, and its message types are used directly in the
+# BrowserFlight service stubs. Every arrow-* crate must share one major version.
+[workspace.dependencies]
+arrow = "60.1.0"
+arrow-flight = "60.1.0"
+flatbuffers = "25.12.19"
+prost = "0.14.6"
+prost-types = "0.14.6"
+protox = "0.10.0"
+tonic = "0.14.9"
+tonic-prost = "0.14.9"
+tonic-prost-build = "0.14.9"
+
 [workspace.lints.rust]
 unsafe_op_in_unsafe_fn = "deny"
 

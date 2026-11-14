@@ -3,8 +3,20 @@ name = "oxhaven-proto"
 version.workspace = true
 edition.workspace = true
 publish = false
+build = "build.rs"
 
 [lints]
 workspace = true
 
 [dependencies]
+arrow-flight.workspace = true
+flatbuffers.workspace = true
+prost.workspace = true
+prost-types.workspace = true
+tonic.workspace = true
+tonic-prost.workspace = true
+
+[build-dependencies]
+prost.workspace = true
+protox.workspace = true
+tonic-prost-build.workspace = true
