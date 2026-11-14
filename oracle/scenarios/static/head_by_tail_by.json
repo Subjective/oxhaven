@@ -1,0 +1,360 @@
+{
+ "format": 1,
+ "name": "head_by_tail_by",
+ "description": "head_by and tail_by with zero, one and several rows, on one key, two keys and no key, with null keys, on an empty table, and on a key the table lacks.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "head_one",
+   "op": "head_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_two",
+   "op": "head_by",
+   "source": "t",
+   "rows": 2,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_zero",
+   "op": "head_by",
+   "source": "t",
+   "rows": 0,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_many",
+   "op": "head_by",
+   "source": "t",
+   "rows": 100,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "tail_one",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "tail_two",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 2,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "tail_zero",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 0,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_two_keys",
+   "op": "head_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G",
+    "B"
+   ]
+  },
+  {
+   "name": "tail_two_keys",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G",
+    "B"
+   ]
+  },
+  {
+   "name": "head_by_double",
+   "op": "head_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "D"
+   ]
+  },
+  {
+   "name": "tail_by_int",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 2,
+   "by": [
+    "I"
+   ]
+  },
+  {
+   "name": "head_no_key",
+   "op": "head_by",
+   "source": "t",
+   "rows": 2,
+   "by": []
+  },
+  {
+   "name": "tail_no_key",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 2,
+   "by": []
+  },
+  {
+   "name": "head_empty",
+   "op": "head_by",
+   "source": "empty",
+   "rows": 2,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_unknown",
+   "op": "head_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "Nope"
+   ]
+  },
+  {
+   "name": "tail_unknown",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "Nope"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "head_one"
+  },
+  {
+   "table": "head_two"
+  },
+  {
+   "table": "head_zero"
+  },
+  {
+   "table": "head_many"
+  },
+  {
+   "table": "tail_one"
+  },
+  {
+   "table": "tail_two"
+  },
+  {
+   "table": "tail_zero"
+  },
+  {
+   "table": "head_two_keys"
+  },
+  {
+   "table": "tail_two_keys"
+  },
+  {
+   "table": "head_by_double"
+  },
+  {
+   "table": "tail_by_int"
+  },
+  {
+   "table": "head_no_key"
+  },
+  {
+   "table": "tail_no_key"
+  },
+  {
+   "table": "head_empty"
+  },
+  {
+   "table": "head_unknown"
+  },
+  {
+   "table": "tail_unknown"
+  }
+ ]
+}

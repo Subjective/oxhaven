@@ -1,0 +1,1571 @@
+{
+ "format": 1,
+ "name": "filter_structured",
+ "description": "The structured filter request (conditions as messages, not text): each comparison on each column type, literals on either side, column against column, and, or, not, in and not in, null and NaN tests, regular expression and substring matches with and without case, invoked methods, search; over nulls, NaN, infinities and signed zeros; and conditions that Java refuses.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "int_less",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "literal": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "int_less_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<=",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "literal": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "int_greater",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "int_greater_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">=",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "int_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "int_not_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "!=",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "literal_on_the_left",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "literal": 1
+      },
+      "rhs": {
+       "column": "I"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_less",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": 1.5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_greater_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">=",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_equal_zero",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_equal_nan",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": "NaN"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_not_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "!=",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": 1.5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "double_less_infinity",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": "Infinity"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "float_greater",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "F"
+      },
+      "rhs": {
+       "literal": 0.5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "a"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_equal_ignore_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "A"
+      },
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_not_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "!=",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "a"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_less",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "b"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_less_quoted",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "\"b\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_greater_equal_quoted",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">=",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "\"b\""
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "bool_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "B"
+      },
+      "rhs": {
+       "literal": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "bool_not_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "!=",
+      "lhs": {
+       "column": "B"
+      },
+      "rhs": {
+       "literal": true
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "time_greater",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "T"
+      },
+      "rhs": {
+       "nanos": 1700000000000000000
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "time_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "T"
+      },
+      "rhs": {
+       "nanos": 1700000000000000000
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "column_to_column",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "K"
+      },
+      "rhs": {
+       "column": "I"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "column_to_other_type",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "column": "D"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "two_filters",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 0
+      }
+     }
+    },
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "a"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "and_",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "and": [
+      {
+       "compare": {
+        "op": ">",
+        "lhs": {
+         "column": "I"
+        },
+        "rhs": {
+         "long": 0
+        }
+       }
+      },
+      {
+       "compare": {
+        "op": "==",
+        "lhs": {
+         "column": "G"
+        },
+        "rhs": {
+         "literal": "a"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "or_",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "or": [
+      {
+       "compare": {
+        "op": "<",
+        "lhs": {
+         "column": "I"
+        },
+        "rhs": {
+         "long": 0
+        }
+       }
+      },
+      {
+       "compare": {
+        "op": "==",
+        "lhs": {
+         "column": "G"
+        },
+        "rhs": {
+         "literal": "b"
+        }
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "not_",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "not": {
+      "compare": {
+       "op": "==",
+       "lhs": {
+        "column": "G"
+       },
+       "rhs": {
+        "literal": "a"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "not_less",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "not": {
+      "compare": {
+       "op": "<",
+       "lhs": {
+        "column": "D"
+       },
+       "rhs": {
+        "literal": 1.5
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "nested",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "or": [
+      {
+       "and": [
+        {
+         "compare": {
+          "op": ">",
+          "lhs": {
+           "column": "I"
+          },
+          "rhs": {
+           "long": 0
+          }
+         }
+        },
+        {
+         "not": {
+          "is_null": "G"
+         }
+        }
+       ]
+      },
+      {
+       "is_null": "I"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "in_ints",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "I"
+      },
+      "candidates": [
+       {
+        "long": 5
+       },
+       {
+        "long": -7
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "not_in_ints",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "I"
+      },
+      "candidates": [
+       {
+        "long": 5
+       },
+       {
+        "long": -7
+       }
+      ],
+      "inverted": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_strings",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "G"
+      },
+      "candidates": [
+       {
+        "literal": "a"
+       },
+       {
+        "literal": ""
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_strings_ignore_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "G"
+      },
+      "candidates": [
+       {
+        "literal": "A"
+       },
+       {
+        "literal": "B"
+       }
+      ],
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_doubles",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": 0
+       },
+       {
+        "literal": "NaN"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_doubles_finite",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": 0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "not_in_doubles_finite",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": 0
+       }
+      ],
+      "inverted": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_doubles_nan_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": "NaN"
+       }
+      ],
+      "nan_equals": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_doubles_nan_not_equal",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": "NaN"
+       }
+      ],
+      "nan_equals": false
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_columns",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "K"
+      },
+      "candidates": [
+       {
+        "column": "I"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "is_null_string",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "is_null": "G"
+    }
+   ]
+  },
+  {
+   "name": "is_null_double",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "is_null": "D"
+    }
+   ]
+  },
+  {
+   "name": "is_not_null_bool",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "not": {
+      "is_null": "B"
+     }
+    }
+   ]
+  },
+  {
+   "name": "is_nan_double",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "is_nan": "D"
+    }
+   ]
+  },
+  {
+   "name": "is_nan_float",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "is_nan": "F"
+    }
+   ]
+  },
+  {
+   "name": "is_nan_int",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "is_nan": "I"
+    }
+   ]
+  },
+  {
+   "name": "matches",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": "a|b"
+     }
+    }
+   ]
+  },
+  {
+   "name": "matches_ignore_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": "[AB]",
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "matches_inverted",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": "a",
+      "inverted": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "matches_empty",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "contains",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "contains": {
+      "column": "G",
+      "text": "a"
+     }
+    }
+   ]
+  },
+  {
+   "name": "contains_ignore_case",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "contains": {
+      "column": "G",
+      "text": "A",
+      "ignore_case": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "contains_inverted",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "contains": {
+      "column": "G",
+      "text": "a",
+      "inverted": true
+     }
+    }
+   ]
+  },
+  {
+   "name": "contains_empty",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "contains": {
+      "column": "G",
+      "text": ""
+     }
+    }
+   ]
+  },
+  {
+   "name": "invoke_method",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "invoke": {
+      "method": "startsWith",
+      "target": {
+       "column": "G"
+      },
+      "arguments": [
+       {
+        "literal": "a"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "invoke_method_no_nulls",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "not": {
+      "is_null": "G"
+     }
+    },
+    {
+     "invoke": {
+      "method": "startsWith",
+      "target": {
+       "column": "G"
+      },
+      "arguments": [
+       {
+        "literal": "a"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "invoke_function",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "invoke": {
+      "method": "isNull",
+      "arguments": [
+       {
+        "column": "I"
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "search",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "search": {
+      "text": "a"
+     }
+    }
+   ]
+  },
+  {
+   "name": "search_columns",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "search": {
+      "text": "5",
+      "columns": [
+       "I",
+       "D"
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "unknown_column",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "Nope"
+      },
+      "rhs": {
+       "literal": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "string_against_number",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": 5
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "matches_on_int",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "I",
+      "text": "5"
+     }
+    }
+   ]
+  },
+  {
+   "name": "bad_regex",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": "("
+     }
+    }
+   ]
+  },
+  {
+   "name": "of_empty",
+   "op": "filter",
+   "source": "empty",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "literal": 5
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "int_less"
+  },
+  {
+   "table": "int_less_equal"
+  },
+  {
+   "table": "int_greater"
+  },
+  {
+   "table": "int_greater_equal"
+  },
+  {
+   "table": "int_equal"
+  },
+  {
+   "table": "int_not_equal"
+  },
+  {
+   "table": "literal_on_the_left"
+  },
+  {
+   "table": "double_less"
+  },
+  {
+   "table": "double_greater_equal"
+  },
+  {
+   "table": "double_equal_zero"
+  },
+  {
+   "table": "double_equal_nan"
+  },
+  {
+   "table": "double_not_equal"
+  },
+  {
+   "table": "double_less_infinity"
+  },
+  {
+   "table": "float_greater"
+  },
+  {
+   "table": "string_equal"
+  },
+  {
+   "table": "string_equal_ignore_case"
+  },
+  {
+   "table": "string_not_equal"
+  },
+  {
+   "table": "string_less"
+  },
+  {
+   "table": "string_less_quoted"
+  },
+  {
+   "table": "string_greater_equal_quoted"
+  },
+  {
+   "table": "bool_equal"
+  },
+  {
+   "table": "bool_not_equal"
+  },
+  {
+   "table": "time_greater"
+  },
+  {
+   "table": "time_equal"
+  },
+  {
+   "table": "column_to_column"
+  },
+  {
+   "table": "column_to_other_type"
+  },
+  {
+   "table": "two_filters"
+  },
+  {
+   "table": "and_"
+  },
+  {
+   "table": "or_"
+  },
+  {
+   "table": "not_"
+  },
+  {
+   "table": "not_less"
+  },
+  {
+   "table": "nested"
+  },
+  {
+   "table": "in_ints"
+  },
+  {
+   "table": "not_in_ints"
+  },
+  {
+   "table": "in_strings"
+  },
+  {
+   "table": "in_strings_ignore_case"
+  },
+  {
+   "table": "in_doubles"
+  },
+  {
+   "table": "in_doubles_finite"
+  },
+  {
+   "table": "not_in_doubles_finite"
+  },
+  {
+   "table": "in_doubles_nan_equal"
+  },
+  {
+   "table": "in_doubles_nan_not_equal"
+  },
+  {
+   "table": "in_columns"
+  },
+  {
+   "table": "is_null_string"
+  },
+  {
+   "table": "is_null_double"
+  },
+  {
+   "table": "is_not_null_bool"
+  },
+  {
+   "table": "is_nan_double"
+  },
+  {
+   "table": "is_nan_float"
+  },
+  {
+   "table": "is_nan_int"
+  },
+  {
+   "table": "matches"
+  },
+  {
+   "table": "matches_ignore_case"
+  },
+  {
+   "table": "matches_inverted"
+  },
+  {
+   "table": "matches_empty"
+  },
+  {
+   "table": "contains"
+  },
+  {
+   "table": "contains_ignore_case"
+  },
+  {
+   "table": "contains_inverted"
+  },
+  {
+   "table": "contains_empty"
+  },
+  {
+   "table": "invoke_method"
+  },
+  {
+   "table": "invoke_method_no_nulls"
+  },
+  {
+   "table": "invoke_function"
+  },
+  {
+   "table": "search"
+  },
+  {
+   "table": "search_columns"
+  },
+  {
+   "table": "unknown_column"
+  },
+  {
+   "table": "string_against_number"
+  },
+  {
+   "table": "matches_on_int"
+  },
+  {
+   "table": "bad_regex"
+  },
+  {
+   "table": "of_empty"
+  }
+ ]
+}

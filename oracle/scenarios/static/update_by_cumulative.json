@@ -1,0 +1,756 @@
+{
+ "format": 1,
+ "name": "update_by_cumulative",
+ "description": "cum_sum, cum_prod, cum_min, cum_max, forward_fill, delta with each null rule and cum_count_where, per key and over the whole table, with nulls; with NaN, infinities and integer overflow; of an empty table; of a string column.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     10,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "b",
+     2,
+     null,
+     2.5,
+     null,
+     1700000000000000000
+    ],
+    [
+     "a",
+     null,
+     30,
+     null,
+     2.5,
+     1700000001000000000
+    ],
+    [
+     "a",
+     3,
+     -40,
+     -0.5,
+     -1.5,
+     1700000002000000000
+    ],
+    [
+     "b",
+     -4,
+     50,
+     0.0,
+     0.0,
+     1700000002000000000
+    ],
+    [
+     null,
+     5,
+     60,
+     4.0,
+     4.0,
+     1700000005000000000
+    ],
+    [
+     "a",
+     0,
+     0,
+     1.0,
+     1.0,
+     1700000006000000000
+    ],
+    [
+     "b",
+     null,
+     null,
+     null,
+     null,
+     1700000007000000000
+    ],
+    [
+     "a",
+     7,
+     70,
+     7.5,
+     7.5,
+     1700000007000000000
+    ],
+    [
+     "b",
+     8,
+     80,
+     -8.0,
+     -8.0,
+     1700000020000000000
+    ]
+   ]
+  },
+  {
+   "name": "special",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "a",
+     2,
+     9223372036854775807,
+     "NaN",
+     "NaN",
+     1700000001000000000
+    ],
+    [
+     "a",
+     2147483647,
+     2,
+     2.5,
+     2.5,
+     1700000002000000000
+    ],
+    [
+     "a",
+     3,
+     3,
+     "Infinity",
+     "Infinity",
+     1700000003000000000
+    ],
+    [
+     "a",
+     null,
+     null,
+     null,
+     null,
+     1700000004000000000
+    ],
+    [
+     "a",
+     4,
+     4,
+     -0.0,
+     -0.0,
+     null
+    ],
+    [
+     "a",
+     5,
+     5,
+     "-Infinity",
+     1.0,
+     1700000006000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "by_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I",
+      "SumD = D",
+      "SumF = F"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "ProdI = I",
+      "ProdL = L",
+      "ProdD = D"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinI = I",
+      "MinD = D",
+      "MinT = T"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D",
+      "MaxT = T"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FillI = I",
+      "FillD = D",
+      "FillF = F"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaI = I",
+      "DeltaD = D"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaNullI = I"
+     ],
+     "args": {
+      "delta_control": "NULL_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaValueI = I"
+     ],
+     "args": {
+      "delta_control": "VALUE_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaZeroI = I"
+     ],
+     "args": {
+      "delta_control": "ZERO_DOMINATES"
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "no_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I",
+      "SumD = D",
+      "SumF = F"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "ProdI = I",
+      "ProdL = L",
+      "ProdD = D"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinI = I",
+      "MinD = D",
+      "MinT = T"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D",
+      "MaxT = T"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FillI = I",
+      "FillD = D",
+      "FillF = F"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaI = I",
+      "DeltaD = D"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaNullI = I"
+     ],
+     "args": {
+      "delta_control": "NULL_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaValueI = I"
+     ],
+     "args": {
+      "delta_control": "VALUE_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaZeroI = I"
+     ],
+     "args": {
+      "delta_control": "ZERO_DOMINATES"
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_special",
+   "op": "update_by",
+   "source": "special",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I",
+      "SumD = D",
+      "SumF = F"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "ProdI = I",
+      "ProdL = L",
+      "ProdD = D"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinI = I",
+      "MinD = D",
+      "MinT = T"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D",
+      "MaxT = T"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FillI = I",
+      "FillD = D",
+      "FillF = F"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaI = I",
+      "DeltaD = D"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaNullI = I"
+     ],
+     "args": {
+      "delta_control": "NULL_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaValueI = I"
+     ],
+     "args": {
+      "delta_control": "VALUE_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaZeroI = I"
+     ],
+     "args": {
+      "delta_control": "ZERO_DOMINATES"
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_empty",
+   "op": "update_by",
+   "source": "empty",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I",
+      "SumD = D",
+      "SumF = F"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "ProdI = I",
+      "ProdL = L",
+      "ProdD = D"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinI = I",
+      "MinD = D",
+      "MinT = T"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D",
+      "MaxT = T"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FillI = I",
+      "FillD = D",
+      "FillF = F"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaI = I",
+      "DeltaD = D"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaNullI = I"
+     ],
+     "args": {
+      "delta_control": "NULL_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaValueI = I"
+     ],
+     "args": {
+      "delta_control": "VALUE_DOMINATES"
+     }
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaZeroI = I"
+     ],
+     "args": {
+      "delta_control": "ZERO_DOMINATES"
+     }
+    },
+    {
+     "op": "cum_count_where",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "in_place",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "I"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "D"
+     ]
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "string_sum",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_min",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_min",
+     "columns": [
+      "X = G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_fill",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "forward_fill",
+     "columns": [
+      "X = G"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "time_delta",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "delta",
+     "columns": [
+      "X = T"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "unknown_column",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "X = Nope"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "unknown_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "X = I"
+     ]
+    }
+   ],
+   "by": [
+    "Nope"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "by_key"
+  },
+  {
+   "table": "no_key"
+  },
+  {
+   "table": "of_special"
+  },
+  {
+   "table": "of_empty"
+  },
+  {
+   "table": "in_place"
+  },
+  {
+   "table": "string_sum"
+  },
+  {
+   "table": "string_min"
+  },
+  {
+   "table": "string_fill"
+  },
+  {
+   "table": "time_delta"
+  },
+  {
+   "table": "unknown_column"
+  },
+  {
+   "table": "unknown_key"
+  }
+ ]
+}

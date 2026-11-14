@@ -345,7 +345,7 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
                     out.add(name)
         elif kind == "column_statistics":
             # io.deephaven.server.table.stats: sums, averages and deviations of the column.
-            out = {"SUM", "ABSOLUTE_SUM", "AVERAGE", "STD_DEV", "SQRD_SUM"}
+            out = {"SUM", "SUM_ABS", "SUM_SQRD", "AVG", "AVG_ABS", "STD_DEV"}
         elif kind in ("time_table", "empty_table", "meta_table"):
             out = set()
         else:

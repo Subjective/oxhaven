@@ -1,0 +1,1154 @@
+{
+ "format": 1,
+ "name": "update_by_time_and_ema",
+ "description": "Rolling operators over windows measured in time on a timestamp column with equal and missing timestamps, and the exponential moving average, sum, min, max and standard deviation by rows and by time, per key and over the whole table; of an empty table; a null timestamp; a timestamp column of another type.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     10,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "b",
+     2,
+     null,
+     2.5,
+     null,
+     1700000000000000000
+    ],
+    [
+     "a",
+     null,
+     30,
+     null,
+     2.5,
+     1700000001000000000
+    ],
+    [
+     "a",
+     3,
+     -40,
+     -0.5,
+     -1.5,
+     1700000002000000000
+    ],
+    [
+     "b",
+     -4,
+     50,
+     0.0,
+     0.0,
+     1700000002000000000
+    ],
+    [
+     null,
+     5,
+     60,
+     4.0,
+     4.0,
+     1700000005000000000
+    ],
+    [
+     "a",
+     0,
+     0,
+     1.0,
+     1.0,
+     1700000006000000000
+    ],
+    [
+     "b",
+     null,
+     null,
+     null,
+     null,
+     1700000007000000000
+    ],
+    [
+     "a",
+     7,
+     70,
+     7.5,
+     7.5,
+     1700000007000000000
+    ],
+    [
+     "b",
+     8,
+     80,
+     -8.0,
+     -8.0,
+     1700000020000000000
+    ]
+   ]
+  },
+  {
+   "name": "special",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "a",
+     2,
+     9223372036854775807,
+     "NaN",
+     "NaN",
+     1700000001000000000
+    ],
+    [
+     "a",
+     2147483647,
+     2,
+     2.5,
+     2.5,
+     1700000002000000000
+    ],
+    [
+     "a",
+     3,
+     3,
+     "Infinity",
+     "Infinity",
+     1700000003000000000
+    ],
+    [
+     "a",
+     null,
+     null,
+     null,
+     null,
+     1700000004000000000
+    ],
+    [
+     "a",
+     4,
+     4,
+     -0.0,
+     -0.0,
+     null
+    ],
+    [
+     "a",
+     5,
+     5,
+     "-Infinity",
+     1.0,
+     1700000006000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "timed_by_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_avg_time",
+     "columns": [
+      "AvgD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_min_time",
+     "columns": [
+      "MinI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_max_time",
+     "columns": [
+      "MaxD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_count_time",
+     "columns": [
+      "CountI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_group_time",
+     "columns": [
+      "GroupI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_std_time",
+     "columns": [
+      "StdD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_prod_time",
+     "columns": [
+      "ProdI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_wavg_time",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT1S",
+      "fwd_time": "PT1S"
+     }
+    },
+    {
+     "op": "rolling_count_where_time",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_formula_time",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "avg(each)",
+      "formula_param": "each",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "timed_no_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_avg_time",
+     "columns": [
+      "AvgD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_min_time",
+     "columns": [
+      "MinI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_max_time",
+     "columns": [
+      "MaxD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_count_time",
+     "columns": [
+      "CountI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_group_time",
+     "columns": [
+      "GroupI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_std_time",
+     "columns": [
+      "StdD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_prod_time",
+     "columns": [
+      "ProdI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_wavg_time",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT1S",
+      "fwd_time": "PT1S"
+     }
+    },
+    {
+     "op": "rolling_count_where_time",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_formula_time",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "avg(each)",
+      "formula_param": "each",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "ema_by_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "ema_tick",
+     "columns": [
+      "EmaI = I",
+      "EmaD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ems_tick",
+     "columns": [
+      "EmsI = I",
+      "EmsD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmin_tick",
+     "columns": [
+      "EmminD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmax_tick",
+     "columns": [
+      "EmmaxD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emstd_tick",
+     "columns": [
+      "EmstdD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ema_time",
+     "columns": [
+      "EmaTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "ems_time",
+     "columns": [
+      "EmsTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmin_time",
+     "columns": [
+      "EmminTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmax_time",
+     "columns": [
+      "EmmaxTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emstd_time",
+     "columns": [
+      "EmstdTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "ema_no_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "ema_tick",
+     "columns": [
+      "EmaI = I",
+      "EmaD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ems_tick",
+     "columns": [
+      "EmsI = I",
+      "EmsD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmin_tick",
+     "columns": [
+      "EmminD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmax_tick",
+     "columns": [
+      "EmmaxD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emstd_tick",
+     "columns": [
+      "EmstdD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ema_time",
+     "columns": [
+      "EmaTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "ems_time",
+     "columns": [
+      "EmsTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmin_time",
+     "columns": [
+      "EmminTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmax_time",
+     "columns": [
+      "EmmaxTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emstd_time",
+     "columns": [
+      "EmstdTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "timed_empty",
+   "op": "update_by",
+   "source": "empty",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_avg_time",
+     "columns": [
+      "AvgD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_min_time",
+     "columns": [
+      "MinI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_max_time",
+     "columns": [
+      "MaxD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_count_time",
+     "columns": [
+      "CountI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_group_time",
+     "columns": [
+      "GroupI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_std_time",
+     "columns": [
+      "StdD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_prod_time",
+     "columns": [
+      "ProdI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_wavg_time",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT1S",
+      "fwd_time": "PT1S"
+     }
+    },
+    {
+     "op": "rolling_count_where_time",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "rolling_formula_time",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "avg(each)",
+      "formula_param": "each",
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "ema_tick",
+     "columns": [
+      "EmaI = I",
+      "EmaD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ems_tick",
+     "columns": [
+      "EmsI = I",
+      "EmsD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmin_tick",
+     "columns": [
+      "EmminD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmax_tick",
+     "columns": [
+      "EmmaxD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emstd_tick",
+     "columns": [
+      "EmstdD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ema_time",
+     "columns": [
+      "EmaTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "ems_time",
+     "columns": [
+      "EmsTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmin_time",
+     "columns": [
+      "EmminTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emmax_time",
+     "columns": [
+      "EmmaxTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    },
+    {
+     "op": "emstd_time",
+     "columns": [
+      "EmstdTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "ema_special_ticks",
+   "op": "update_by",
+   "source": "special",
+   "ops": [
+    {
+     "op": "ema_tick",
+     "columns": [
+      "EmaI = I",
+      "EmaD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ems_tick",
+     "columns": [
+      "EmsI = I",
+      "EmsD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmin_tick",
+     "columns": [
+      "EmminD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emmax_tick",
+     "columns": [
+      "EmmaxD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "emstd_tick",
+     "columns": [
+      "EmstdD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "null_timestamp",
+   "op": "update_by",
+   "source": "special",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "ema_null_timestamp",
+   "op": "update_by",
+   "source": "special",
+   "ops": [
+    {
+     "op": "ema_time",
+     "columns": [
+      "EmaTimeD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "int_timestamp",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "X = D"
+     ],
+     "args": {
+      "ts_col": "I",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "bad_duration",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "X = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "soon",
+      "fwd_time": "PT0S"
+     }
+    }
+   ],
+   "by": []
+  }
+ ],
+ "results": [
+  {
+   "table": "timed_by_key"
+  },
+  {
+   "table": "timed_no_key"
+  },
+  {
+   "table": "ema_by_key"
+  },
+  {
+   "table": "ema_no_key"
+  },
+  {
+   "table": "timed_empty"
+  },
+  {
+   "table": "ema_special_ticks"
+  },
+  {
+   "table": "null_timestamp"
+  },
+  {
+   "table": "ema_null_timestamp"
+  },
+  {
+   "table": "int_timestamp"
+  },
+  {
+   "table": "bad_duration"
+  }
+ ]
+}

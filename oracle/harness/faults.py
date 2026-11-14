@@ -185,6 +185,10 @@ def dropped_row(table: pa.Table, ctx: Context) -> Change:
 
 def extra_row(table: pa.Table, ctx: Context) -> Change:
     """Appends a copy of the last row, or a row of nulls to an empty table."""
+    if table.num_columns == 0:
+        # pyarrow cannot add a row to a table without columns (the result of empty_table):
+        # concat_tables and from_arrays both answer with zero rows.
+        raise NotApplicable
     if table.num_rows > 0:
         extra = table.slice(table.num_rows - 1, 1)
     else:
@@ -257,6 +261,9 @@ def changed_engine_type(table: pa.Table, ctx: Context) -> Change:
 
 def changed_table_attribute(table: pa.Table, ctx: Context) -> Change:
     """Adds or removes the blink marker in the schema metadata."""
+    if table.num_columns == 0:
+        # replace_schema_metadata answers with zero rows for a table without columns.
+        raise NotApplicable
     metadata = dict(table.schema.metadata or {})
     key = b"deephaven:attribute.BlinkTable"
     before = metadata.get(key)

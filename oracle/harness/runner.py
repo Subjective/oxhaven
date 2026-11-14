@@ -6,6 +6,8 @@ No Java counterpart: this is the harness. It speaks to the server only through p
 
 from __future__ import annotations
 
+import os
+import sys
 from typing import Any, Callable
 
 import grpc
@@ -352,6 +354,15 @@ def failure_code(error: BaseException | None) -> str | None:
     return None
 
 
+def _details(error: BaseException | None) -> str:
+    """The server's message behind a client exception, on one line."""
+    while error is not None:
+        if isinstance(error, grpc.RpcError):
+            return " ".join(str(error.details()).split())[:400]
+        error = error.__cause__ or error.__context__
+    return ""
+
+
 def _do_get_code(session: Session, table: Table) -> str | None:
     """Repeats a DoGet over plain gRPC and returns the status code name it fails with.
 
@@ -414,6 +425,9 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
         code = failure_code(error)
         if code is None:
             raise
+        if os.environ.get("ORACLE_TRACE"):
+            # For the author of a scenario: why the server refused. Never part of a result.
+            print(f"trace: {op['name']}: {code}: {_details(error)}", file=sys.stderr)
         tables[op["name"]] = Failure(code)
 
 

@@ -17,9 +17,9 @@ from harness import scenario as sc
 ORACLE = Path(__file__).resolve().parent.parent
 SCENARIOS = sc.load_all(ORACLE / "scenarios")
 
-# The operations of the first corpus.
-ORIGINAL = {"where", "sort", "head", "tail", "view", "select", "update", "drop_columns", "merge",
-            "agg_by", "natural_join", "exact_join", "join", "aj", "update_by"}
+# Operations with no ticking scenario: empty_table has no input to change, and Java 42.9
+# answers LeftJoinTables with UNIMPLEMENTED whatever the tables are.
+STATIC_ONLY = {"empty_table", "left_join"}
 
 MINIMAL = {
     "format": 1,
@@ -108,13 +108,18 @@ def test_starter_corpus_size_and_coverage():
     assert len(static) >= 20 and len(ticking) >= 5
     assert all(s.steps for s in ticking)
     used = {op["op"] for s in SCENARIOS for op in s.operations}
-    assert used <= set(sc.OPERATIONS) and used >= ORIGINAL
+    assert used == set(sc.OPERATIONS)
     aggs = {a["agg"] for s in SCENARIOS for op in s.operations if op["op"] == "agg_by"
             for a in op["aggs"]}
-    assert aggs <= set(sc.AGGREGATIONS)
-    assert aggs >= {"sum", "count", "min", "max", "first", "last", "avg"}
+    assert aggs == set(sc.AGGREGATIONS)
+    ticking_aggs = {a["agg"] for s in ticking for op in s.operations if op["op"] == "agg_by"
+                    for a in op["aggs"]}
+    assert ticking_aggs == set(sc.AGGREGATIONS)
+    update_by = {o["op"] for s in SCENARIOS for op in s.operations if op["op"] == "update_by"
+                 for o in op["ops"]}
+    assert update_by == set(sc.UPDATE_BY_OPS)
     ticking_ops = {op["op"] for s in ticking for op in s.operations}
-    assert ticking_ops >= ORIGINAL
+    assert ticking_ops == set(sc.OPERATIONS) - STATIC_ONLY
     actions = {a.action for s in ticking for step in s.steps for a in step}
     assert actions == sc.ACTIONS
     assert any(not i.rows for s in SCENARIOS for i in s.inputs), "no empty input table"

@@ -1,0 +1,59 @@
+{
+  "format": 2,
+  "scenario": "update_by_rolling_tick",
+  "scenario_sha256": "2b7f3eb88948da024eaa125f2be7cfd3ed0bf88944147d8844cc3560b4ac5fa7",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "of_special",
+      "file": "step000.of_special.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "one_row_window",
+      "file": "step000.one_row_window.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "empty_window",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "negative_window",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_sum",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

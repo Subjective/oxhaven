@@ -1,0 +1,591 @@
+{
+ "format": 1,
+ "name": "ticking_agg_by_full",
+ "description": "Every aggregation of a keyed input table, per key and over the whole table, and agg_all_by, through adds, rows that change value and key, deletes that empty groups and the table, and refilling it.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     2.5
+    ],
+    [
+     4,
+     null,
+     2,
+     -0.0
+    ],
+    [
+     5,
+     "b",
+     7,
+     2.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "by_key",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25 = I"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "Wavg = D"
+     ],
+     "args": {
+      "wcol": "I"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "Wsum = I"
+     ],
+     "args": {
+      "wcol": "Id"
+     }
+    },
+    {
+     "agg": "count_distinct",
+     "columns": [
+      "Cd = I"
+     ]
+    },
+    {
+     "agg": "distinct",
+     "columns": [
+      "Di = I"
+     ]
+    },
+    {
+     "agg": "unique",
+     "columns": [
+      "Un = I"
+     ]
+    },
+    {
+     "agg": "group",
+     "columns": [
+      "Gr = Id"
+     ]
+    },
+    {
+     "agg": "sorted_first",
+     "columns": [
+      "Sf = Id"
+     ],
+     "args": {
+      "order_by": "I"
+     }
+    },
+    {
+     "agg": "sorted_last",
+     "columns": [
+      "Sl = Id"
+     ],
+     "args": {
+      "order_by": "I"
+     }
+    },
+    {
+     "agg": "count_where",
+     "column": "Pos",
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    },
+    {
+     "agg": "formula",
+     "columns": [
+      "Fo = I"
+     ],
+     "args": {
+      "formula": "sum(each)",
+      "formula_param": "each"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "no_key",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "abs_sum",
+     "columns": [
+      "AbsI = I"
+     ]
+    },
+    {
+     "agg": "std",
+     "columns": [
+      "StdD = D"
+     ]
+    },
+    {
+     "agg": "var",
+     "columns": [
+      "VarI = I"
+     ]
+    },
+    {
+     "agg": "median",
+     "columns": [
+      "MedI = I",
+      "MedD = D"
+     ]
+    },
+    {
+     "agg": "pct",
+     "columns": [
+      "P25 = I"
+     ],
+     "args": {
+      "percentile": 0.25
+     }
+    },
+    {
+     "agg": "weighted_avg",
+     "columns": [
+      "Wavg = D"
+     ],
+     "args": {
+      "wcol": "I"
+     }
+    },
+    {
+     "agg": "weighted_sum",
+     "columns": [
+      "Wsum = I"
+     ],
+     "args": {
+      "wcol": "Id"
+     }
+    },
+    {
+     "agg": "count_distinct",
+     "columns": [
+      "Cd = I"
+     ]
+    },
+    {
+     "agg": "distinct",
+     "columns": [
+      "Di = I"
+     ]
+    },
+    {
+     "agg": "unique",
+     "columns": [
+      "Un = I"
+     ]
+    },
+    {
+     "agg": "group",
+     "columns": [
+      "Gr = Id"
+     ]
+    },
+    {
+     "agg": "sorted_first",
+     "columns": [
+      "Sf = Id"
+     ],
+     "args": {
+      "order_by": "I"
+     }
+    },
+    {
+     "agg": "sorted_last",
+     "columns": [
+      "Sl = Id"
+     ],
+     "args": {
+      "order_by": "I"
+     }
+    },
+    {
+     "agg": "count_where",
+     "column": "Pos",
+     "args": {
+      "filters": [
+       "I > 0"
+      ]
+     }
+    },
+    {
+     "agg": "formula",
+     "columns": [
+      "Fo = I"
+     ],
+     "args": {
+      "formula": "sum(each)",
+      "formula_param": "each"
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "numbers",
+   "op": "view",
+   "source": "t",
+   "formulas": [
+    "G",
+    "I",
+    "D"
+   ]
+  },
+  {
+   "name": "all_sum",
+   "op": "agg_all_by",
+   "source": "numbers",
+   "agg": {
+    "agg": "sum",
+    "columns": []
+   },
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "all_avg",
+   "op": "agg_all_by",
+   "source": "numbers",
+   "agg": {
+    "agg": "avg",
+    "columns": []
+   },
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "all_max",
+   "op": "agg_all_by",
+   "source": "numbers",
+   "agg": {
+    "agg": "max",
+    "columns": []
+   },
+   "by": []
+  },
+  {
+   "name": "all_last",
+   "op": "agg_all_by",
+   "source": "t",
+   "agg": {
+    "agg": "last",
+    "columns": []
+   },
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "all_group",
+   "op": "agg_all_by",
+   "source": "t",
+   "agg": {
+    "agg": "group",
+    "columns": []
+   },
+   "by": [
+    "G"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "by_key"
+  },
+  {
+   "table": "no_key"
+  },
+  {
+   "table": "all_sum"
+  },
+  {
+   "table": "all_avg"
+  },
+  {
+   "table": "all_max"
+  },
+  {
+   "table": "all_last"
+  },
+  {
+   "table": "all_group"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "a",
+       1,
+       0.5
+      ],
+      [
+       7,
+       "c",
+       4,
+       4.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       3,
+       3.5
+      ],
+      [
+       4,
+       "b",
+       2,
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       "c",
+       0,
+       0.0
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       null,
+       null,
+       null
+      ],
+      [
+       9,
+       "b",
+       6,
+       6.5
+      ],
+      [
+       10,
+       "a",
+       -1,
+       -1.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       "a",
+       1,
+       1.0
+      ],
+      [
+       12,
+       "a",
+       2,
+       2.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

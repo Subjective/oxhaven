@@ -1,0 +1,108 @@
+{
+  "format": 2,
+  "scenario": "head_by_tail_by",
+  "scenario_sha256": "81b2a6ee805f0c03dcf2754da5fdeb3a82618ae79b63b900b3eb2e441f6b12ac",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "head_one",
+      "file": "step000.head_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "head_two",
+      "file": "step000.head_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "head_many",
+      "file": "step000.head_many.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "tail_one",
+      "file": "step000.tail_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "tail_two",
+      "file": "step000.tail_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "tail_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "head_two_keys",
+      "file": "step000.head_two_keys.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "tail_two_keys",
+      "file": "step000.tail_two_keys.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "head_by_double",
+      "file": "step000.head_by_double.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "tail_by_int",
+      "file": "step000.tail_by_int.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "head_no_key",
+      "file": "step000.head_no_key.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "tail_no_key",
+      "file": "step000.tail_no_key.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "head_empty",
+      "file": "step000.head_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "head_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "tail_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

@@ -1,0 +1,503 @@
+{
+  "format": 2,
+  "scenario": "ticking_group_ungroup_head_by",
+  "scenario_sha256": "4fe7f0db06a5dbc2e6de2b5eccf2d4729b1566b5918b7aab67837eeb955a78a0",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "grouped_all",
+      "file": "step000.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "back",
+      "file": "step000.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "back_ids",
+      "file": "step000.back_ids.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "head_one",
+      "file": "step000.head_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "head_two",
+      "file": "step000.head_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "tail_one",
+      "file": "step000.tail_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "tail_two",
+      "file": "step000.tail_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "grouped",
+      "file": "step001.grouped.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "grouped_all",
+      "file": "step001.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "back",
+      "file": "step001.back.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "back_ids",
+      "file": "step001.back_ids.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "head_one",
+      "file": "step001.head_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "head_two",
+      "file": "step001.head_two.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "tail_one",
+      "file": "step001.tail_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "tail_two",
+      "file": "step001.tail_two.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "grouped",
+      "file": "step002.grouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "grouped_all",
+      "file": "step002.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "back",
+      "file": "step002.back.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "back_ids",
+      "file": "step002.back_ids.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "head_one",
+      "file": "step002.head_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "head_two",
+      "file": "step002.head_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "tail_one",
+      "file": "step002.tail_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "tail_two",
+      "file": "step002.tail_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "grouped",
+      "file": "step003.grouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "grouped_all",
+      "file": "step003.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "back",
+      "file": "step003.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "back_ids",
+      "file": "step003.back_ids.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "head_one",
+      "file": "step003.head_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "head_two",
+      "file": "step003.head_two.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "tail_one",
+      "file": "step003.tail_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "tail_two",
+      "file": "step003.tail_two.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "grouped",
+      "file": "step004.grouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "grouped_all",
+      "file": "step004.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "back",
+      "file": "step004.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "back_ids",
+      "file": "step004.back_ids.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "head_one",
+      "file": "step004.head_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "head_two",
+      "file": "step004.head_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "tail_one",
+      "file": "step004.tail_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "tail_two",
+      "file": "step004.tail_two.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "grouped",
+      "file": "step005.grouped.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "grouped_all",
+      "file": "step005.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "back",
+      "file": "step005.back.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "back_ids",
+      "file": "step005.back_ids.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "head_one",
+      "file": "step005.head_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "head_two",
+      "file": "step005.head_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "tail_one",
+      "file": "step005.tail_one.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "tail_two",
+      "file": "step005.tail_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "grouped",
+      "file": "step006.grouped.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "grouped_all",
+      "file": "step006.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "back",
+      "file": "step006.back.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "back_ids",
+      "file": "step006.back_ids.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "head_one",
+      "file": "step006.head_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "head_two",
+      "file": "step006.head_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tail_one",
+      "file": "step006.tail_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tail_two",
+      "file": "step006.tail_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "grouped",
+      "file": "step007.grouped.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "grouped_all",
+      "file": "step007.grouped_all.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "back",
+      "file": "step007.back.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "back_ids",
+      "file": "step007.back_ids.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_one",
+      "file": "step007.head_one.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_two",
+      "file": "step007.head_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_one",
+      "file": "step007.tail_one.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_two",
+      "file": "step007.tail_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "grouped",
+      "file": "step008.grouped.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "grouped_all",
+      "file": "step008.grouped_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "back",
+      "file": "step008.back.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "back_ids",
+      "file": "step008.back_ids.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "head_one",
+      "file": "step008.head_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "head_two",
+      "file": "step008.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "tail_one",
+      "file": "step008.tail_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "tail_two",
+      "file": "step008.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "head_zero",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
