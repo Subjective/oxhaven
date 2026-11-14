@@ -1099,6 +1099,7 @@ dependencies = [
  "oxhaven-expr",
  "oxhaven-rowset",
  "oxhaven-testkit",
+ "regex",
  "serde_json",
 ]
 
