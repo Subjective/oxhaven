@@ -319,8 +319,10 @@ fn a_modified_column_that_is_not_sorted_by_keeps_the_row_in_place() {
     assert!(update.modified_columns.contains(1) && !update.modified_columns.contains(0));
 }
 
+/// Java looks for the row's place among the previous values, the row's own included, and
+/// so finds a place before the row: `fixtures/sort_modified_rows.json`, step 1.
 #[test]
-fn a_modified_sort_value_that_keeps_its_place_is_a_modify() {
+fn a_sort_value_that_moves_before_its_old_one_is_a_remove_and_an_add_even_in_place() {
     let t = ticking_sort();
     // d at key 40 goes from 2 to 1: equal to b at key 20, and still after it.
     let update = t
@@ -328,10 +330,58 @@ fn a_modified_sort_value_that_keeps_its_place_is_a_modify() {
         .unwrap();
     assert_eq!(tags(&*t.result).concat(), "bdac");
     assert_eq!(cells(&*t.result, 0), ["1", "1", "3", "3"]);
-    assert_eq!(keys(&update.modified), [1]);
-    assert!(update.added.is_empty() && update.removed.is_empty());
+    assert_eq!(keys(&update.removed), [1]);
+    assert_eq!(keys(&update.added), [1]);
+    assert!(update.modified.is_empty());
     assert!(update.shifted.is_empty());
-    assert!(update.modified_columns.contains(0));
+}
+
+/// `fixtures/sort_modified_rows.json`, steps 2 and 3.
+#[test]
+fn a_sort_value_that_moves_after_its_old_one_or_stays_is_a_modify_in_place() {
+    let t = ticking_sort();
+    t.step(TableChange::new().modify([40], [(0, ints([1]))]));
+    for value in [2, 2] {
+        // d goes from 1 back to 2, still before a, and then from 2 to 2.
+        let update = t
+            .step(TableChange::new().modify([40], [(0, ints([value]))]))
+            .unwrap();
+        assert_eq!(tags(&*t.result).concat(), "bdac");
+        assert_eq!(cells(&*t.result, 0), ["1", "2", "3", "3"]);
+        assert_eq!(keys(&update.modified), [1]);
+        assert!(update.added.is_empty() && update.removed.is_empty());
+        assert!(update.shifted.is_empty());
+        assert!(update.modified_columns.contains(0));
+    }
+}
+
+/// `fixtures/sort_modified_rows.json`, step 7.
+#[test]
+fn a_row_added_between_the_old_and_new_value_of_a_row_in_place_moves_that_row() {
+    let t = ticking_sort();
+    // c at key 30 goes from 3 to 9 and stays last; e comes between its old and new value.
+    let change = TableChange::new()
+        .add([50], rows([5], &["e"]))
+        .modify([30], [(0, ints([9]))]);
+    let update = t.step(change).unwrap();
+    assert_eq!(tags(&*t.result).concat(), "bdaec");
+    assert_eq!(keys(&update.removed), [3]);
+    assert_eq!(keys(&update.added), [3, 4]);
+    assert!(update.modified.is_empty());
+}
+
+/// `fixtures/sort_modified_rows.json`, step 8.
+#[test]
+fn a_row_that_stays_is_a_modify_beside_a_row_that_moves() {
+    let t = ticking_sort();
+    // a goes to the front, c from 3 to 4 stays where it is.
+    let update = t
+        .step(TableChange::new().modify([10, 30], [(0, ints([0, 4]))]))
+        .unwrap();
+    assert_eq!(tags(&*t.result).concat(), "abdc");
+    assert_eq!(keys(&update.removed), [2]);
+    assert_eq!(keys(&update.added), [0]);
+    assert_eq!(keys(&update.modified), [3]);
 }
 
 #[test]
@@ -347,18 +397,20 @@ fn a_modified_sort_value_that_moves_is_a_remove_and_an_add() {
     assert_eq!(shifts(&update), [(1, 3, -1)]);
 }
 
+/// `fixtures/sort_modified_rows.json`, step 6.
 #[test]
-fn rows_that_swap_places_are_not_both_modifies() {
+fn rows_that_swap_places_are_both_removed_and_added() {
     let t = ticking_sort();
     // b and d exchange their values: d, b, a, c.
     let update = t
         .step(TableChange::new().modify([20, 40], [(0, ints([2, 1]))]))
         .unwrap();
     assert_eq!(tags(&*t.result).concat(), "dbac");
-    // One of the two keeps its position in the update, the other moves.
-    assert_eq!(update.modified.size(), 1);
-    assert_eq!(update.added.size(), 1);
-    assert_eq!(update.removed.size(), 1);
+    // d goes to the front. b finds its place at itself, but d, queued just before it,
+    // goes to that place too, so b follows it.
+    assert!(update.modified.is_empty());
+    assert_eq!(keys(&update.removed), [0, 1]);
+    assert_eq!(keys(&update.added), [0, 1]);
 }
 
 #[test]
