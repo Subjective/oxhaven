@@ -357,6 +357,10 @@ async fn sort_orders_by_columns_absolute_values_and_reversal() {
             ],
             [5, 4, 3, 2, 1, 0],
         ),
+        (
+            vec![sort_by(Reverse, ""), sort_by(Reverse, "")],
+            [0, 1, 2, 3, 4, 5],
+        ),
         (vec![], [0, 1, 2, 3, 4, 5]),
     ];
     let mut next = 10;
@@ -942,4 +946,31 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
         .unwrap();
     assert_eq!(values(c.table(30).as_ref(), "Rows"), ints(&[6]));
     assert_eq!(served.size, 1);
+}
+
+#[tokio::test]
+async fn aggregate_keeps_the_row_of_an_empty_table_only_when_asked() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 2).await;
+    call(
+        &mut c,
+        Op::Head(HeadOrTailRequest {
+            result_id: ticket(1),
+            source_id: by_ticket(2),
+            num_rows: 0,
+        }),
+    )
+    .await
+    .unwrap();
+    let dropped = call(&mut c, aggregated(3, vec![agg_count("Rows")], &[]))
+        .await
+        .unwrap();
+    assert_eq!(dropped.size, 0);
+    let mut preserving = aggregated(4, vec![agg_count("Rows")], &[]);
+    if let Op::Aggregate(request) = &mut preserving {
+        request.preserve_empty = true;
+    }
+    let kept = call(&mut c, preserving).await.unwrap();
+    assert_eq!(kept.size, 1);
+    assert_eq!(values(c.table(4).as_ref(), "Rows"), ints(&[0]));
 }
