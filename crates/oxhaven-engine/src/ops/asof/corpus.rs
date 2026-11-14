@@ -130,6 +130,30 @@ fn exact_match_columns_of_every_type_match_java() {
     assert_eq!(replay(&fixture("asof_key_types"), &define), 24);
 }
 
+#[test]
+fn a_ticking_right_table_matches_java() {
+    // 11 results at 24 steps, and the updates of 10 of them during 23 steps.
+    assert_eq!(replay(&fixture("asof_ticking_right"), &define), 11 * 24 + 10 * 23);
+}
+
+#[test]
+fn a_ticking_left_table_matches_java() {
+    // 15 results at 16 steps, and the updates of 6 of them during 15 steps.
+    assert_eq!(replay(&fixture("asof_ticking_left"), &define), 15 * 16 + 6 * 15);
+}
+
+#[test]
+fn two_ticking_tables_match_java() {
+    // 15 results at 28 steps, and the updates of 5 of them during 27 steps.
+    assert_eq!(replay(&fixture("asof_ticking_both"), &define), 15 * 28 + 5 * 27);
+}
+
+#[test]
+fn exact_match_columns_of_different_types_fail_as_in_java() {
+    // 5 results at 5 steps.
+    assert_eq!(replay(&fixture("asof_ticking_key_types"), &define), 5 * 5);
+}
+
 /// The oracle's scenarios, as far as they can be built from `aj` and `raj`.
 #[test]
 fn the_results_of_the_oracle_match_java() {

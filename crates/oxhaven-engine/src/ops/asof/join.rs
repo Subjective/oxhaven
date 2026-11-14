@@ -43,21 +43,15 @@ type Stamped = BTreeSet<(Stamp, RowKey)>;
 struct Bucket {
     left: Stamped,
     right: Stamped,
+    /// Whether a left row has had this key since the join began.
+    left_seen: bool,
+    /// Whether a right row has had this key since the join began.
+    right_seen: bool,
 }
 
 /// The keys in use, in key order, so that a cycle visits them in the same order on every
-/// run. A key stays only while a row of either table has it. A join without exact-match
-/// columns has the one key `[]`.
+/// run. A join without exact-match columns has the one key `[]`.
 type Buckets = BTreeMap<Key, Bucket>;
-
-fn drop_if_empty(buckets: &mut Buckets, key: &Key) {
-    if buckets
-        .get(key)
-        .is_some_and(|bucket| bucket.left.is_empty() && bucket.right.is_empty())
-    {
-        buckets.remove(key);
-    }
-}
 
 /// A join's arguments, checked against the two tables.
 struct Plan {
@@ -74,6 +68,11 @@ struct Plan {
     right_stamp: usize,
     /// The added columns: the name in the result and the column of the right table.
     additions: Vec<(String, usize)>,
+    /// Whether a key is kept after its last row has gone, with what [`Bucket`] remembers
+    /// of it. Java keeps every key in every join; it is only when both tables are
+    /// refreshing and there are exact-match columns that what it remembers shows, in
+    /// [`AsOfJoin::apply_right`].
+    keep_keys: bool,
 }
 
 /// The columns to add, by name: the right column of every match the left table has no
@@ -233,6 +232,7 @@ impl Plan {
             left_stamp,
             right_stamp,
             additions,
+            keep_keys: left.is_refreshing() && right.is_refreshing() && !exact.is_empty(),
         })
     }
 
@@ -321,6 +321,18 @@ fn keys_of(
         }
     }
     Ok(keys)
+}
+
+impl Plan {
+    fn drop_if_empty(&self, buckets: &mut Buckets, key: &Key) {
+        if !self.keep_keys
+            && buckets
+                .get(key)
+                .is_some_and(|bucket| bucket.left.is_empty() && bucket.right.is_empty())
+        {
+            buckets.remove(key);
+        }
+    }
 }
 
 /// The incremental half of a join, and the state it keeps between cycles.
@@ -436,7 +448,9 @@ impl AsOfJoin {
             let right_rows = right.row_set();
             let rows = join.right_rows(&right_rows, false)?;
             for (row, (key, stamp)) in right_rows.iter().zip(rows) {
-                buckets.entry(key).or_default().right.insert((stamp, row));
+                let bucket = buckets.entry(key).or_default();
+                bucket.right_seen = true;
+                bucket.right.insert((stamp, row));
             }
             let left_rows = left.row_set();
             let rows = join.left_rows(&left_rows, false)?;
@@ -445,6 +459,7 @@ impl AsOfJoin {
                 if let Some(inner) = join.plan.matched(&bucket.right, &stamp) {
                     join.redirection.put(row, inner);
                 }
+                bucket.left_seen = true;
                 bucket.left.insert((stamp, row));
             }
         }
@@ -484,7 +499,7 @@ impl AsOfJoin {
             if let Some(bucket) = buckets.get_mut(&key) {
                 bucket.left.remove(&(stamp, row));
             }
-            drop_if_empty(buckets, &key);
+            self.plan.drop_if_empty(buckets, &key);
             self.redirection.remove(row);
         }
 
@@ -598,15 +613,26 @@ impl AsOfJoin {
             }
         }
         let rows = self.right_rows(&arriving, false).map_err(failure)?;
+        let before = modified.len();
         for (row, (key, stamp)) in arriving.iter().zip(rows) {
             touch(&key, &stamp);
-            buckets.entry(key).or_default().right.insert((stamp, row));
+            let bucket = buckets.entry(key).or_default();
+            if !bucket.right_seen {
+                bucket.right_seen = true;
+                if self.plan.keep_keys && bucket.left_seen {
+                    // Java reports every left row of a key as modified when the key's first
+                    // right rows arrive: it has kept the left rows unsorted until then, and
+                    // does not look at which of them the new right rows are joined with
+                    // (`processInitial` in `BucketedChunkedAjMergedListener#process`).
+                    modified.extend(bucket.left.iter().map(|(_, row)| *row));
+                }
+            }
+            bucket.right.insert((stamp, row));
         }
 
         // The right rows whose values are new: a left row that reads one of them has
         // changed, whichever right row it read before.
         let fresh = update.added.union(&update.modified);
-        let before = modified.len();
         for (key, stamps) in &touched {
             if let Some(bucket) = buckets.get(key) {
                 let mut reached: BTreeMap<RowKey, &Stamp> = BTreeMap::new();
@@ -644,7 +670,7 @@ impl AsOfJoin {
                     }
                 }
             }
-            drop_if_empty(buckets, key);
+            self.plan.drop_if_empty(buckets, key);
         }
 
         if modified.len() == before {
@@ -685,6 +711,7 @@ impl AsOfJoin {
                     self.redirection.remove(row);
                 }
             }
+            bucket.left_seen = true;
             bucket.left.insert((stamp, row));
         }
         Ok(())
@@ -729,7 +756,13 @@ impl MergedOperator for AsOfJoin {
             downstream.shifted = update.shifted.clone();
         }
 
-        downstream.modified = RowSet::from_keys(modified);
+        // A row the left table added in this cycle is added, whatever the right table did.
+        let mut modified = RowSet::from_keys(modified);
+        modified.remove(&downstream.added);
+        if modified.is_empty() {
+            columns = ModifiedColumnSet::empty();
+        }
+        downstream.modified = modified;
         downstream.modified_columns = columns;
         Ok(downstream)
     }
