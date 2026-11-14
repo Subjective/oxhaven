@@ -12,7 +12,7 @@ use arrow::record_batch::{RecordBatch, RecordBatchOptions};
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
-use oxhaven_engine::table::in_memory_table;
+use oxhaven_engine::table::uploaded_table;
 use tonic::Status;
 
 use super::wire::remember_uploaded;
@@ -258,7 +258,7 @@ impl TableUpload {
             .iter()
             .map(|batch| stored_batch(batch, &stored))
             .collect::<Result<Vec<_>, _>>()?;
-        let table: Arc<dyn Table> = in_memory_table(layout.definition, &batches)
+        let table: Arc<dyn Table> = uploaded_table(layout.definition, &batches)
             .map_err(|failure| UploadError::Internal(failure.message))?;
         remember_uploaded(&table, layout.sent.as_ref().clone());
         Ok(table)

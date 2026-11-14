@@ -5,14 +5,14 @@
 //! when a constituent outgrows its slot, the slots after it move up and their rows shift.
 
 use super::MergeError;
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use arrow::array::{new_empty_array, Array, ArrayRef};
 use oxhaven_contracts::graph::{ClockPhase, UpdateGraph};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::shift::RowSetShiftData;
-use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, InputTable, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_rowset::{RowSetBuilderRandom, ShiftBuilder};
 use std::sync::{Arc, PoisonError, RwLock};
@@ -364,6 +364,25 @@ fn shared_attributes(tables: &[Arc<dyn Table>]) -> TableAttributes {
     attributes
 }
 
+/// The input table every constituent has, if they all have the same one.
+///
+/// Behavior: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#computeSharedAttributes,
+/// which keeps an attribute that every constituent has with an equal value. The value of
+/// `INPUT_TABLE_ATTRIBUTE` is an `InputTableUpdater`, equal only to itself.
+fn shared_input_table(tables: &[Arc<dyn Table>]) -> Option<Arc<dyn InputTable>> {
+    let (first, rest) = tables.split_first()?;
+    let shared = first.input_table()?;
+    let same = |other: &Arc<dyn InputTable>| {
+        std::ptr::eq(
+            Arc::as_ptr(other) as *const (),
+            Arc::as_ptr(&shared) as *const (),
+        )
+    };
+    rest.iter()
+        .all(|table| table.input_table().is_some_and(|other| same(&other)))
+        .then_some(shared)
+}
+
 /// The rows of `tables`, all rows of the first table, then of the second, and so on, each
 /// table's rows in its own order. The result has the first table's definition; every other
 /// table must have the same columns with the same types, in any order.
@@ -430,14 +449,14 @@ pub fn merge(tables: &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, MergeError> {
             .columns()
             .iter()
             .map(|column| {
-                Arc::new(UnionSource {
+                reads_through(UnionSource {
                     column_type: column.column_type.clone(),
                     layout: layout.clone(),
                     parts: tables
                         .iter()
                         .map(|table| table.column(column_in(table, &column.name)))
                         .collect(),
-                }) as Arc<dyn ColumnSource>
+                })
             })
             .collect();
         let transformers = tables
@@ -453,8 +472,9 @@ pub fn merge(tables: &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, MergeError> {
             })
             .collect();
 
-        let spec = TableSpec::new(definition.clone(), rows.build(), columns)
+        let mut spec = TableSpec::new(definition.clone(), rows.build(), columns)
             .with_attributes(shared_attributes(tables));
+        spec.input = shared_input_table(tables);
         let operator = MergeOperator {
             tables: tables.to_vec(),
             layout,

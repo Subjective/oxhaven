@@ -454,10 +454,11 @@ fn no_filters_give_the_parent_itself() {
 }
 
 #[test]
-fn the_result_has_the_parents_columns_and_attributes_and_is_static_for_a_static_parent() {
+fn the_result_has_the_parents_columns_and_is_static_for_a_static_parent() {
     let t = strings_table();
     let result = unstructured_filter(&t, &["S != `a`"], &Compiler).unwrap();
     assert!(!result.is_refreshing());
+    assert!(!result.is_flat());
     assert_eq!(result.definition(), t.definition());
     let expected = static_table(vec![
         (
@@ -509,6 +510,74 @@ fn the_result_has_the_parents_columns_and_attributes_and_is_static_for_a_static_
     let rows = RecordBatch::try_new(schema, vec![Arc::new(Int64Array::from(vec![1, 2, 3]))]);
     parent.input_table().unwrap().add(rows.unwrap()).unwrap();
     assert_eq!(keys_of(&*result), [1, 2]);
+}
+
+/// A refreshing table of two rows with the given attributes.
+fn refreshing_with(add_only: bool, append_only: bool, blink: bool, flat: bool) -> Arc<dyn Table> {
+    let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
+    let source = ScriptedTable::new(
+        graph,
+        definition(&[("Qty", ColumnType::Long)]),
+        RowSet::flat(2),
+        vec![longs([1, 2])],
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let mut attributes = TableAttributes::default();
+    attributes.add_only = add_only;
+    attributes.append_only = append_only;
+    attributes.blink = blink;
+    let table = QueryTable::derive(&parent, || {
+        let mut spec = TableSpec::new(
+            parent.definition().clone(),
+            (*parent.row_set()).clone(),
+            vec![parent.column(0)],
+        )
+        .with_attributes(attributes);
+        spec.flat = flat;
+        Ok((spec, |_: &QueryTable, upstream: &TableUpdate| {
+            Ok(upstream.clone())
+        }))
+    });
+    table.unwrap()
+}
+
+#[test]
+fn the_result_is_add_only_and_append_only_when_the_parent_is_or_is_static() {
+    let attributes_of = |parent: &Arc<dyn Table>| {
+        let attributes = unstructured_filter(parent, &["Qty > 1"], &Compiler)
+            .unwrap()
+            .attributes();
+        (
+            attributes.add_only,
+            attributes.append_only,
+            attributes.blink,
+        )
+    };
+    // A static table never removes a row and never adds one out of order.
+    let fixed = static_table(vec![("Qty", ColumnType::Long, longs([1, 2, 3]))]);
+    assert_eq!(fixed.attributes(), TableAttributes::default());
+    assert_eq!(attributes_of(&fixed), (true, true, false));
+    // (add-only, append-only, blink, flat) of a refreshing parent, and the result's three.
+    for (parent, expected) in [
+        ((false, false, false, false), (false, false, false)),
+        ((false, false, false, true), (false, false, false)),
+        ((true, false, false, false), (true, false, false)),
+        // Rows added to a flat add-only table are added at its end.
+        ((true, false, false, true), (true, true, false)),
+        ((false, true, false, false), (true, true, false)),
+        ((true, true, false, false), (true, true, false)),
+        ((false, false, true, false), (false, false, true)),
+    ] {
+        let (add_only, append_only, blink, flat) = parent;
+        let table = refreshing_with(add_only, append_only, blink, flat);
+        assert_eq!(attributes_of(&table), expected, "parent {parent:?}");
+    }
+    // The structured form builds its result the same way.
+    let qty_above_one = compare(CompareOp::GreaterThan, column("Qty"), double(1.0));
+    let attributes = filter(&fixed, &[qty_above_one], &Compiler)
+        .unwrap()
+        .attributes();
+    assert!(attributes.add_only && attributes.append_only);
 }
 
 // ---------------------------------------------------------------------------------------

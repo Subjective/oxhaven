@@ -1,6 +1,6 @@
 //! Static tables built from data in memory.
 
-use super::{arrange_columns, failure, QueryTable, TableSpec};
+use super::{arrange_columns, failure, reads_through, QueryTable, TableSpec};
 use arrow::array::{new_empty_array, ArrayRef};
 use arrow::record_batch::RecordBatch;
 use oxhaven_column::FlatSource;
@@ -19,6 +19,29 @@ pub fn in_memory_table(
     definition: TableDefinition,
     batches: &[RecordBatch],
 ) -> Result<Arc<QueryTable>, TableFailure> {
+    static_table(definition, batches, false)
+}
+
+/// As [`in_memory_table`], for the rows a client uploaded. Java keeps those behind a row
+/// redirection, so its columns are not in-memory columns: `select` and `update` copy such
+/// a column where they would share a column of an [`in_memory_table`], and so a static
+/// `select` of rows of this table always has the row keys `0..size`.
+///
+/// Behavior: the table of io.deephaven.server.arrow.ArrowFlightUtil.DoPutObserver, an
+/// io.deephaven.extensions.barrage.table.BarrageRedirectedTable whose columns are
+/// io.deephaven.engine.table.impl.sources.WritableRedirectedColumnSource
+pub fn uploaded_table(
+    definition: TableDefinition,
+    batches: &[RecordBatch],
+) -> Result<Arc<QueryTable>, TableFailure> {
+    static_table(definition, batches, true)
+}
+
+fn static_table(
+    definition: TableDefinition,
+    batches: &[RecordBatch],
+    redirected: bool,
+) -> Result<Arc<QueryTable>, TableFailure> {
     let declared: Vec<&ColumnDefinition> = definition.columns().iter().collect();
     let arranged = batches
         .iter()
@@ -35,10 +58,12 @@ pub fn in_memory_table(
         } else {
             arrow::compute::concat(&parts).map_err(|e| failure(e.to_string()))?
         };
-        columns.push(Arc::new(FlatSource::new(
-            column.column_type.clone(),
-            values,
-        )?));
+        let source = FlatSource::new(column.column_type.clone(), values)?;
+        columns.push(if redirected {
+            reads_through(source)
+        } else {
+            Arc::new(source)
+        });
     }
     Ok(QueryTable::new_static(
         TableSpec::new(definition, RowSet::flat(size as u64), columns).flat(),
