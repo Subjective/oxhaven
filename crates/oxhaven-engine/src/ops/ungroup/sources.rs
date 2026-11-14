@@ -260,3 +260,96 @@ impl ColumnSource for Elements {
         self.read(rows, true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::Int64Array;
+    use arrow::buffer::{NullBuffer, OffsetBuffer};
+    use arrow::datatypes::DataType;
+
+    /// A column of three rows that answers with its cells as they are, whichever rows are
+    /// asked for in order: a source may answer with a null cell that spans elements, which
+    /// the sources of the testkit do not.
+    struct Raw {
+        column_type: ColumnType,
+        current: ArrayRef,
+        previous: ArrayRef,
+    }
+
+    impl ColumnSource for Raw {
+        fn column_type(&self) -> &ColumnType {
+            &self.column_type
+        }
+
+        fn chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+            assert_eq!(rows, &RowSet::flat(3));
+            Ok(self.current.clone())
+        }
+
+        fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+            assert_eq!(rows, &RowSet::flat(3));
+            Ok(self.previous.clone())
+        }
+
+        fn chunk_by_keys(&self, keys: &[RowKey], use_prev: bool) -> Result<ArrayRef, TableFailure> {
+            assert_eq!(keys, [0, 1, 2]);
+            let cells = if use_prev {
+                &self.previous
+            } else {
+                &self.current
+            };
+            Ok(cells.clone())
+        }
+    }
+
+    fn cells(column_type: &ColumnType, lengths: [usize; 3], valid: [bool; 3]) -> ArrayRef {
+        let DataType::List(field) = column_type.arrow_type() else {
+            panic!("a list");
+        };
+        let total = lengths.iter().sum::<usize>() as i64;
+        let elements = Arc::new(Int64Array::from_iter_values(1..=total));
+        let offsets = OffsetBuffer::from_lengths(lengths);
+        let valid = NullBuffer::from(valid.to_vec());
+        Arc::new(ListArray::new(field, offsets, elements, Some(valid)))
+    }
+
+    #[test]
+    fn a_null_cell_has_no_elements_whatever_it_spans_and_previous_cells_are_read_as_such() {
+        for column_type in [
+            ColumnType::vector(ColumnType::Long),
+            ColumnType::array(ColumnType::Long),
+        ] {
+            let raw = Raw {
+                current: cells(&column_type, [2, 3, 1], [true, false, true]),
+                previous: cells(&column_type, [1, 1, 0], [true, true, false]),
+                column_type,
+            };
+            let lists = Lists::of(Arc::new(raw)).expect("a list column");
+            assert_eq!(lists.element_type(), &ColumnType::Long);
+            let rows = RowSet::flat(3);
+            assert_eq!(lists.sizes(&rows, false).unwrap(), [2, 0, 1]);
+            assert_eq!(lists.sizes(&rows, true).unwrap(), [1, 1, 0]);
+            let longs = |values: &[Option<i64>]| -> ArrayRef {
+                Arc::new(values.iter().copied().collect::<Int64Array>())
+            };
+            // In and beyond each array, and in the null one.
+            let asked = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 2), (2, 0), (2, 1)];
+            let found = lists.elements(&asked, false).unwrap();
+            let expected = longs(&[Some(1), Some(2), None, None, None, Some(6), None]);
+            assert_eq!(found.to_data(), expected.to_data());
+            let found = lists.elements(&[(0, 0), (1, 0), (2, 0)], true).unwrap();
+            assert_eq!(found.to_data(), longs(&[Some(1), Some(2), None]).to_data());
+        }
+    }
+
+    #[test]
+    fn a_column_that_is_not_a_vector_or_an_array_has_no_arrays() {
+        let raw = Raw {
+            column_type: ColumnType::Long,
+            current: Arc::new(Int64Array::from(vec![1, 2, 3])),
+            previous: Arc::new(Int64Array::from(vec![1, 2, 3])),
+        };
+        assert!(Lists::of(Arc::new(raw)).is_none());
+    }
+}

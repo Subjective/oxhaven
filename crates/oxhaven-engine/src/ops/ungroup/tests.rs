@@ -319,7 +319,8 @@ fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
             counted(&array(), [Some(2), None, Some(0), Some(-3)]),
         ),
     ]);
-    let of_array = ungrouped(&array_source, false, &["A"], MINIMUM_BASE).unwrap();
+    // The operation as a client calls it, with Java's slots.
+    let of_array = ungroup(&array_source, false, &names(&["A"])).unwrap();
     assert_eq!(rows(&*of_array), rows(&*result));
     assert_eq!(keys_of(&*of_array), keys_of(&*result));
     assert!(!result.is_refreshing() && !result.is_flat());
@@ -328,9 +329,11 @@ fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
     assert!(!holds_values(&result.column(K)) && !holds_values(&result.column(A)));
 }
 
-/// The contracts let a null cell span elements, which mean nothing.
+/// A null cell between others: it has no rows, and with null fill its elements are null.
+/// (`sources.rs` has the null cell that spans elements, which no table of the testkit
+/// answers with.)
 #[test]
-fn a_null_cell_that_spans_elements_has_none() {
+fn a_null_cell_has_no_elements() {
     let DataType::List(field) = vector().arrow_type() else {
         panic!("a vector is a list");
     };
@@ -345,7 +348,7 @@ fn a_null_cell_that_spans_elements_has_none() {
     ]);
     let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
     assert_eq!(rows(&*result), ["x|1|[100]", "x|2|[100]", "z|6|[100]"]);
-    // Beside a longer array its elements are null, not the ones it spans.
+    // Beside a longer array its elements are null.
     let result = ungrouped(&source, true, &["A", "B"], MINIMUM_BASE).unwrap();
     assert_eq!(
         rows(&*result),
