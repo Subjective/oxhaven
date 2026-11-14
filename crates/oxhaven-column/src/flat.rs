@@ -87,7 +87,8 @@ impl ColumnSource for FlatSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use arrow::array::{Int32Array, StringArray};
+    use arrow::array::{AsArray, Int32Array, ListArray, StringArray};
+    use arrow::datatypes::{DataType, Int32Type};
     use std::sync::Arc;
 
     fn ints(source: &FlatSource, rows: &RowSet) -> Vec<Option<i32>> {
@@ -143,6 +144,46 @@ mod tests {
         assert!(source.chunk(&RowSet::from_range(3, 5)).is_err());
         assert!(source.chunk(&RowSet::from_keys([0, 5])).is_err());
         assert!(source.chunk_by_keys(&[5], false).is_err());
+    }
+
+    #[test]
+    fn list_cells_are_read_whole_and_a_list_with_another_child_field_is_refused() {
+        let array = ColumnType::array(ColumnType::Int);
+        let DataType::List(field) = array.arrow_type() else {
+            unreachable!("an array is a list")
+        };
+        // [1, null], null, [], [4]
+        let cells = ListArray::from_iter_primitive::<Int32Type, _, _>([
+            Some(vec![Some(1), None]),
+            None,
+            Some(vec![]),
+            Some(vec![Some(4)]),
+        ]);
+        // Arrow names the child of a list it builds "item"; Java names it "".
+        let named_item: ArrayRef = Arc::new(cells.clone());
+        assert!(FlatSource::new(array.clone(), named_item).is_err());
+        let (_, offsets, values, nulls) = cells.into_parts();
+        let cells: ArrayRef = Arc::new(ListArray::new(field, offsets, values, nulls));
+        let source = FlatSource::new(array, cells.clone()).unwrap();
+
+        assert_eq!(&source.chunk(&RowSet::flat(4)).unwrap(), &cells);
+        let read = |chunk: ArrayRef| -> Vec<Option<Vec<Option<i32>>>> {
+            let chunk = chunk.as_any().downcast_ref::<ListArray>().unwrap();
+            let ints = |cell: ArrayRef| cell.as_primitive::<Int32Type>().iter().collect();
+            chunk.iter().map(|cell| cell.map(ints)).collect()
+        };
+        assert_eq!(
+            read(source.chunk(&RowSet::from_keys([0, 2, 3])).unwrap()),
+            vec![Some(vec![Some(1), None]), Some(vec![]), Some(vec![Some(4)])]
+        );
+        assert_eq!(
+            read(
+                source
+                    .chunk_by_keys(&[3, NULL_ROW_KEY, 1, 0], false)
+                    .unwrap()
+            ),
+            vec![Some(vec![Some(4)]), None, None, Some(vec![Some(1), None])]
+        );
     }
 
     #[test]

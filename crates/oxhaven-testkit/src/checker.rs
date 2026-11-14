@@ -414,7 +414,8 @@ impl UpdateListener for ConsistencyChecker {
 mod tests {
     use super::*;
     use crate::{
-        definition, longs, strings, ReferenceGraph, ReferenceTable, ScriptedTable, TableChange,
+        definition, list_of, longs, strings, ReferenceGraph, ReferenceTable, ScriptedTable,
+        TableChange,
     };
     use arrow::array::new_null_array;
     use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
@@ -609,6 +610,86 @@ mod tests {
             issues,
             "column Qty: value changed in a row or column the update does not report as \
              modified: row key 1: expected 20 but found 21",
+        );
+    }
+
+    /// Rows 0, 1, 5 of a vector column holding `[1, 2]`, null and `[]`, and the checker's
+    /// problems after one cycle that applies `change` and reports `reported`.
+    fn list_issues_for(change: TableChange, reported: Option<TableUpdate>) -> Vec<String> {
+        let vector = ColumnType::vector(ColumnType::Long);
+        let graph = ReferenceGraph::new();
+        let script = ScriptedTable::new(
+            graph.clone(),
+            definition(&[("V", vector.clone())]),
+            RowSet::from_keys([0, 1, 5]),
+            vec![list_of(&vector, [Some(2), None, Some(0)], longs([1, 2]))],
+        );
+        let checker = ConsistencyChecker::attach(script.table());
+        match reported {
+            Some(reported) => script.push_misreported(change, reported),
+            None => script.push(change),
+        }
+        graph.run_cycle();
+        assert_eq!(checker.updates_seen(), 1);
+        checker.verify().err().map(|e| e.issues).unwrap_or_default()
+    }
+
+    fn long_lists<const N: usize, const M: usize>(
+        lengths: [Option<usize>; N],
+        elements: [i64; M],
+    ) -> ArrayRef {
+        let vector = ColumnType::vector(ColumnType::Long);
+        list_of(&vector, lengths, longs(elements))
+    }
+
+    #[test]
+    fn truthful_updates_of_a_list_column_pass() {
+        let change = TableChange::new()
+            .remove([1])
+            .shift(5, 5, -3)
+            .add([7, 9], vec![long_lists([None, Some(1)], [4])])
+            .modify([0], [(0, long_lists([Some(3)], [1, 2, 3]))]);
+        assert_eq!(list_issues_for(change, None), Vec::<String>::new());
+    }
+
+    #[test]
+    fn list_cell_changed_but_not_reported_as_modified_is_caught() {
+        let reported = || {
+            Some(TableUpdate {
+                modified: keys([0]),
+                modified_columns: ModifiedColumnSet::of([0]),
+                ..update()
+            })
+        };
+        let unreported = "column V: value changed in a row or column the update does not \
+                          report as modified: ";
+        // A null cell that became an empty one.
+        let change =
+            TableChange::new().modify([0, 1], [(0, long_lists([Some(2), Some(0)], [1, 2]))]);
+        assert_one_issue(
+            list_issues_for(change, reported()),
+            &format!("{unreported}row key 1: expected null but found []"),
+        );
+        // A cell that gained an element.
+        let change =
+            TableChange::new().modify([0, 5], [(0, long_lists([Some(2), Some(1)], [1, 2, 3]))]);
+        assert_one_issue(
+            list_issues_for(change, reported()),
+            &format!("{unreported}row key 5: expected [] but found [3]"),
+        );
+        // A cell with another element in the same place.
+        let change = TableChange::new().modify([0], [(0, long_lists([Some(2)], [1, 9]))]);
+        let issues = list_issues_for(
+            change,
+            Some(TableUpdate {
+                modified: keys([5]),
+                modified_columns: ModifiedColumnSet::of([0]),
+                ..update()
+            }),
+        );
+        assert_one_issue(
+            issues,
+            &format!("{unreported}row key 0: expected [1, 2] but found [1, 9]"),
         );
     }
 

@@ -312,3 +312,11 @@ Josh's sign-off, like every change to what counts as equal.
 Range join finding: Java's results for `->` depend on left table size and order (the 2048-row
 read and the equality shortcut), and the shortcut treats -0.0 and 0.0 as equal while the binary
 search does not. Reproduced, not corrected.
+
+## 21:25 List types on main
+
+PR 43 merged after a second Actions run on top of as-of join and range join (both match on
+column types, so the first green run did not cover the combination). PRs 42, 44 and 45 merged.
+Baseline is 51 of 83 clean. Running: cross join handler, as-of join handler, shared tickets,
+head_by and tail_by. Next, now unblocked: group_by with the group aggregation, ungroup reading
+real array columns, range join result tables.

@@ -49,6 +49,14 @@ struct History {
 /// against the `set` overloads of io.deephaven.engine.table.impl.sources.ArrayBackedColumnSource
 /// and its subclasses, as recorded in `fixtures/snapshot_static.json` (`conflict_history_*`)
 fn fits(stamp: &ColumnType, column: &ColumnType, null: bool) -> bool {
+    // A vector or an array is stored as an object, like a String, but which `set`
+    // overloads take one was not recorded.
+    if stamp.list_element().is_some() || column.list_element().is_some() {
+        oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.chunkfillers.ChunkFiller#fillFromSingleValue",
+            "a stamp column of type {stamp:?} with the name of a base column of type {column:?}"
+        );
+    }
     match stamp {
         ColumnType::Boolean | ColumnType::String | ColumnType::Instant => {
             null || *column == ColumnType::String

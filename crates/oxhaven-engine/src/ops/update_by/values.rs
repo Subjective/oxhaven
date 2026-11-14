@@ -71,6 +71,12 @@ impl Values {
                     .map(|v| v.map(str::to_owned))
                     .collect(),
             ),
+            // Java buckets by a vector or an array column, forward fills one and counts
+            // its rows in a window, all as a column of objects.
+            ColumnType::Vector(_) | ColumnType::Array(_) => oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy",
+                "a bucket or input column of type {column_type:?}"
+            ),
             other => {
                 return Err(failure(format!(
                     "update_by cannot read a column of type {other:?}"

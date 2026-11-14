@@ -11,12 +11,16 @@
 //!   padding;
 //! - the value under a null is Java's sentinel for the type (`false` for `Boolean`, no bytes
 //!   for `String`);
-//! - a batch of no rows has no bytes at all, not even the first offset of a `String` column.
+//! - a batch of no rows has no bytes at all, not even the first offset of a `String` column;
+//! - the offsets of an array or vector column start at 0 and a null cell has no elements,
+//!   so the elements sent are exactly those of the cells that are not null.
 //!
 //! The same layout is what a Barrage snapshot or update carries, so the subscription code
 //! uses this module too.
 
-use arrow::array::{Array, ArrayRef, ArrowPrimitiveType, AsArray, PrimitiveArray};
+use arrow::array::{
+    Array, ArrayRef, ArrowPrimitiveType, AsArray, ListArray, PrimitiveArray, UInt32Array,
+};
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
     TimestampNanosecondType, UInt16Type,
@@ -47,6 +51,90 @@ pub struct BatchOptions {
     pub batch_size: usize,
     /// The largest size of one message in bytes.
     pub max_message_size: usize,
+    /// The elements of an array or vector column are sent with Java's sentinel values in
+    /// place of a validity buffer, where their type has one. The client asked for
+    /// Deephaven nulls, which reach the writer of the elements as they reach the writer
+    /// of a column; the caller applies them to the columns themselves.
+    ///
+    /// Behavior: `io.deephaven.extensions.barrage.BarrageOptions#useDeephavenNulls`
+    pub element_sentinels: bool,
+    /// The most elements sent of each cell of an array or vector column, and of each list
+    /// within one: the first so many if positive, the last so many if negative, all if
+    /// zero.
+    ///
+    /// Behavior: `io.deephaven.extensions.barrage.BarrageOptions#previewListLengthLimit`
+    pub list_length_limit: i64,
+}
+
+/// Whether Java's writer for the type sends sentinel values in place of a validity buffer
+/// when the client asked for Deephaven nulls: the primitive writers do, the `Boolean`,
+/// `String` and list writers do not.
+///
+/// Behavior: the `dhNullable` argument each writer passes to
+/// `io.deephaven.extensions.barrage.chunk.BaseChunkWriter`
+pub(crate) fn has_sentinel(data_type: &DataType) -> bool {
+    matches!(
+        data_type,
+        DataType::Int8
+            | DataType::UInt16
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::Float32
+            | DataType::Float64
+            | DataType::Timestamp(TimeUnit::Nanosecond, _)
+    )
+}
+
+/// What a list column sends: the end of each cell among the elements sent, counted from 0,
+/// and those elements. A null cell has no elements, whatever its offsets say, and a cell
+/// longer than `limit` allows is cut as [`BatchOptions::list_length_limit`] says.
+///
+/// Behavior: the `expand` of every expansion kernel, for example
+/// `io.deephaven.extensions.barrage.chunk.vector.IntVectorExpansionKernel#expand` (dense
+/// offsets, a null row is empty), and
+/// `io.deephaven.extensions.barrage.chunk.ListChunkWriter.ListChunkInputStream` (the limit)
+fn sent_elements(lists: &ListArray, limit: i64) -> Result<(Vec<i32>, ArrayRef), EncodeError> {
+    let too_large = || EncodeError("a list column is too large for one record batch".into());
+    let offsets = lists.value_offsets();
+    let mut ends = Vec::with_capacity(lists.len());
+    // the ranges of elements to send, joined where one continues the one before
+    let mut ranges: Vec<(usize, usize)> = Vec::new();
+    let mut sent = 0usize;
+    for row in 0..lists.len() {
+        if lists.is_valid(row) {
+            let (mut start, mut end) = (offsets[row] as usize, offsets[row + 1] as usize);
+            let most = usize::try_from(limit.unsigned_abs()).unwrap_or(usize::MAX);
+            if limit < 0 {
+                start = start.max(end.saturating_sub(most));
+            } else if limit > 0 {
+                end = end.min(start.saturating_add(most));
+            }
+            if end > start {
+                sent += end - start;
+                match ranges.last_mut() {
+                    Some(last) if last.1 == start => last.1 = end,
+                    _ => ranges.push((start, end)),
+                }
+            }
+        }
+        ends.push(i32::try_from(sent).map_err(|_| too_large())?);
+    }
+    let values = lists.values();
+    let elements = match ranges.as_slice() {
+        [] => values.slice(0, 0),
+        [(start, end)] => values.slice(*start, end - start),
+        ranges => {
+            let positions: UInt32Array = ranges
+                .iter()
+                .flat_map(|(start, end)| *start as u32..*end as u32)
+                .collect::<Vec<u32>>()
+                .into();
+            arrow::compute::take(values.as_ref(), &positions, None)
+                .map_err(|problem| EncodeError(problem.to_string()))?
+        }
+    };
+    Ok((ends, elements))
 }
 
 /// The data could not be written: a column has an Arrow type no column type maps to, or
@@ -72,6 +160,7 @@ pub struct EncodedBatch {
 /// Collects the buffers of a batch and what the header says about them.
 #[derive(Default)]
 struct BatchWriter {
+    options: BatchOptions,
     body: Vec<u8>,
     nodes: Vec<ipc::FieldNode>,
     buffers: Vec<ipc::Buffer>,
@@ -163,6 +252,28 @@ impl BatchWriter {
                 self.buffer(&offsets);
                 self.buffer(&data);
             }
+            // The offsets of the cells, then the elements as a column of their own: a
+            // field node, a validity buffer and the buffers of their type. A null cell is
+            // told by the validity buffer alone, whether or not the client asked for
+            // Deephaven nulls.
+            //
+            // Behavior: io.deephaven.extensions.barrage.chunk.ListChunkWriter
+            DataType::List(_) => {
+                let (ends, elements) =
+                    sent_elements(array.as_list::<i32>(), self.options.list_length_limit)?;
+                let mut offsets = Vec::with_capacity(4 * (ends.len() + 1));
+                if !ends.is_empty() {
+                    offsets.extend_from_slice(&0i32.to_le_bytes());
+                }
+                for end in ends {
+                    offsets.extend_from_slice(&end.to_le_bytes());
+                }
+                self.buffer(&offsets);
+                // The element field is nullable in every schema this server sends.
+                let validity =
+                    !(self.options.element_sentinels && has_sentinel(elements.data_type()));
+                self.column(&elements, validity)?;
+            }
             other => {
                 let values = nulls_to_sentinels(array).map_err(|_| unsupported())?;
                 match other {
@@ -232,7 +343,14 @@ pub fn encode_batch(
     offset: usize,
     rows: usize,
 ) -> Result<EncodedBatch, EncodeError> {
-    encode_batch_with(columns, nullable, offset, rows, false)
+    encode_batch_with(
+        columns,
+        nullable,
+        offset,
+        rows,
+        false,
+        BatchOptions::default(),
+    )
 }
 
 /// [`encode_batch`], with each column as the one element of a list if `as_lists`: the
@@ -248,8 +366,12 @@ fn encode_batch_with(
     offset: usize,
     rows: usize,
     as_lists: bool,
+    options: BatchOptions,
 ) -> Result<EncodedBatch, EncodeError> {
-    let mut writer = BatchWriter::default();
+    let mut writer = BatchWriter {
+        options,
+        ..Default::default()
+    };
     for (column, &nullable) in columns.iter().zip(nullable) {
         let start = offset.min(column.len());
         let count = rows.min(column.len() - start);
@@ -329,7 +451,7 @@ pub fn record_batch_messages_with(
     if rows == 0 {
         return Ok(if send_empty {
             vec![flight_data(
-                encode_batch_with(columns, nullable, 0, 0, as_lists)?,
+                encode_batch_with(columns, nullable, 0, 0, as_lists, options)?,
                 app_metadata,
             )]
         } else {
@@ -350,7 +472,7 @@ pub fn record_batch_messages_with(
     let mut offset = 0;
     while offset < rows {
         let count = batch_size.min(rows - offset);
-        let batch = encode_batch_with(columns, nullable, offset, count, as_lists)?;
+        let batch = encode_batch_with(columns, nullable, offset, count, as_lists, options)?;
         let size =
             batch.header.len() + batch.body.len() + app_metadata.as_ref().map_or(0, Vec::len);
         if size < max_message_size || batch_size == 1 {
