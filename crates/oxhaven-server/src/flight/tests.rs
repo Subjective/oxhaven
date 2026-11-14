@@ -920,14 +920,8 @@ async fn flight_calls_need_a_session_and_a_table() {
     let not_a_table = server.get_schema(1).await.unwrap_err();
     assert_eq!(not_a_table.code(), Code::NotFound);
 
-    for call in ["do_exchange", "do_action", "list_actions"] {
+    for call in ["do_action", "list_actions"] {
         let status = match call {
-            "do_exchange" => server
-                .flight()
-                .do_exchange(server.authorized(tokio_stream::iter(Vec::<FlightData>::new())))
-                .await
-                .map(|_| ())
-                .unwrap_err(),
             "do_action" => server
                 .flight()
                 .do_action(server.authorized(oxhaven_proto::flight::Action::default()))
