@@ -8,3 +8,5 @@ publish = false
 workspace = true
 
 [dependencies]
+arrow-array = "60.1"
+arrow-schema = "60.1"
