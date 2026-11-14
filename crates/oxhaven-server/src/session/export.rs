@@ -193,6 +193,19 @@ enum Effect {
     MarkReleased,
 }
 
+/// A handle to an export that lasts only as long as some [`Export`] handle to it does: the
+/// one in its session's export table, until the export is released or the session ends, and
+/// those of work that is using it.
+#[derive(Clone)]
+pub struct WeakExport(Weak<Inner>);
+
+impl WeakExport {
+    /// The export, if a handle to it still exists.
+    pub fn upgrade(&self) -> Option<Export> {
+        self.0.upgrade().map(|inner| Export { inner })
+    }
+}
+
 static NEXT_NON_EXPORT: AtomicU64 = AtomicU64::new(1);
 
 fn non_export_identity() -> String {
@@ -313,6 +326,11 @@ impl Export {
 
     pub fn is_non_export(&self) -> bool {
         self.inner.id == NON_EXPORT_ID
+    }
+
+    /// A handle that does not keep the export alive.
+    pub fn downgrade(&self) -> WeakExport {
+        WeakExport(Arc::downgrade(&self.inner))
     }
 
     pub fn state(&self) -> ExportState {
