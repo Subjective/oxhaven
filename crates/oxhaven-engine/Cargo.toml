@@ -14,4 +14,6 @@ oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-rowset = { path = "../oxhaven-rowset" }
 
 [dev-dependencies]
+oxhaven-expr = { path = "../oxhaven-expr" }
+serde_json.workspace = true
 oxhaven-testkit = { path = "../oxhaven-testkit" }

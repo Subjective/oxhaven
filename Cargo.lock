@@ -1081,8 +1081,10 @@ dependencies = [
  "arrow",
  "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-expr",
  "oxhaven-rowset",
  "oxhaven-testkit",
+ "serde_json",
 ]
 
 [[package]]
