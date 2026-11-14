@@ -2,7 +2,8 @@
 //! `ops/snapshot/fixtures/record.py`, and in the oracle's corpus (`oracle/corpus`) by the
 //! replay of `ops/oracle.rs`.
 
-use super::{select_distinct, DistinctError};
+use super::{select_distinct, where_in, where_not_in, DistinctError, WhereInError};
+use crate::ops::join::JoinMatch;
 use crate::ops::snapshot::testing::{replay, text, texts, Built};
 use crate::ops::sort::testing::{cells, graph, scripted};
 use oxhaven_contracts::schema::ColumnType;
@@ -21,8 +22,53 @@ fn code(error: &DistinctError) -> &'static str {
     }
 }
 
+/// The gRPC status code the Java server answers with for each refusal, as recorded in
+/// `fixtures/where_in_static.json` and `fixtures/where_in_ticking.json`.
+fn where_in_code(error: &WhereInError) -> &'static str {
+    match error {
+        WhereInError::NoSuchColumn(_) | WhereInError::MismatchedTypes { .. } => "INVALID_ARGUMENT",
+        other => panic!("no recorded status code for {other:?}"),
+    }
+}
+
+/// The pairs of match columns of a request, each `Left = Right`, `Left == Right` or the
+/// one name of both.
+///
+/// Behavior: io.deephaven.api.JoinMatch#parse
+fn matches(columns: &[&str]) -> Vec<JoinMatch> {
+    columns
+        .iter()
+        .map(|column| match column.split_once('=') {
+            Some((left, right)) => {
+                JoinMatch::new(left.trim(), right.trim_start_matches('=').trim())
+            }
+            None => JoinMatch::same(column.trim()),
+        })
+        .collect()
+}
+
+/// `where_in` (and with `inverted` `where_not_in`) as the server's handler will call it.
+/// A request without match columns is refused there, before the engine sees it; the
+/// engine itself has an answer for it (`where_in_tests.rs`).
+///
+/// Behavior: io.deephaven.server.table.ops.WhereInGrpcImpl#validateRequest
+fn where_in_of(sources: &[Arc<dyn Table>], columns: &[&str], inverted: bool) -> Built {
+    if columns.is_empty() {
+        return Err("INVALID_ARGUMENT");
+    }
+    let on = matches(columns);
+    let result = if inverted {
+        where_not_in(&sources[0], &sources[1], &on)
+    } else {
+        where_in(&sources[0], &sources[1], &on)
+    };
+    result.map_err(|error| where_in_code(&error))
+}
+
 fn define(operation: &Value, sources: &[Arc<dyn Table>]) -> Built {
     match text(&operation["op"]) {
+        "where_in" => where_in_of(sources, &texts(&operation["columns"]), false),
+        "where_not_in" => where_in_of(sources, &texts(&operation["columns"]), true),
         "select_distinct" => {
             let columns = texts(&operation["columns"]);
             let columns: Vec<String> = columns.into_iter().map(str::to_string).collect();
@@ -50,6 +96,21 @@ fn ticking_tables_match_java() {
     assert_eq!(
         replay(&fixture("select_distinct_ticking"), &define),
         16 * 14
+    );
+}
+
+#[test]
+fn where_in_of_static_tables_matches_java() {
+    // Every result of the fixture, at its one step.
+    assert_eq!(replay(&fixture("where_in_static"), &define), 55);
+}
+
+#[test]
+fn where_in_of_ticking_tables_matches_java() {
+    // 29 results at 20 steps, and the updates of 13 of them during 19 steps.
+    assert_eq!(
+        replay(&fixture("where_in_ticking"), &define),
+        29 * 20 + 13 * 19
     );
 }
 
@@ -163,6 +224,66 @@ fn the_results_of_the_oracle_match_java() {
     // 13 static results at one step, 1 ticking one at 4 steps and 3 at 9 steps.
     assert_eq!(tally.comparisons, 13 + 4 + 3 * 9);
     // Results made from an operation of another test.
+    let not_run = ["select_distinct/all_but_key: drop_columns"];
+    assert_eq!(tally.not_run, not_run, "not run");
+}
+
+/// The oracle's scenarios, as far as they can be built from `where_in` and
+/// `select_distinct`. There an operation is `where_in` with `left`, `right`, `on` and
+/// `inverted`.
+#[test]
+fn the_where_in_results_of_the_oracle_match_java() {
+    use crate::ops::oracle::{self, replay_all};
+    let define = |operation: &Value, sources: &[Arc<dyn Table>]| -> oracle::Built {
+        let built = match text(&operation["op"]) {
+            "where_in" => {
+                let inverted = operation["inverted"] == true;
+                where_in_of(sources, &texts(&operation["on"]), inverted)
+            }
+            _ => define(operation, sources),
+        };
+        match built {
+            Ok(table) => oracle::Built::Table(table),
+            Err(code) => oracle::Built::Refused(code),
+        }
+    };
+    let tally = replay_all(&["select_distinct", "where_in"], &define);
+    let differences: [&str; 0] = [];
+    assert_eq!(tally.differences, differences, "differences from Java");
+    let compared: Vec<&String> = tally
+        .compared
+        .iter()
+        .filter(|name| name.contains("where_in/"))
+        .collect();
+    let expected = [
+        "ticking_select_distinct_where_in/doubles",
+        "ticking_select_distinct_where_in/groups",
+        "ticking_select_distinct_where_in/in_distinct",
+        "ticking_select_distinct_where_in/in_fixed",
+        "ticking_select_distinct_where_in/in_ticking",
+        "ticking_select_distinct_where_in/not_in_fixed",
+        "ticking_select_distinct_where_in/not_in_ticking",
+        "ticking_select_distinct_where_in/pairs",
+        "where_in/empty_left",
+        "where_in/in_double",
+        "where_in/in_int",
+        "where_in/in_itself",
+        "where_in/in_none",
+        "where_in/in_string",
+        "where_in/in_two",
+        "where_in/not_in_double",
+        "where_in/not_in_int",
+        "where_in/not_in_none",
+        "where_in/not_in_string",
+        "where_in/not_in_two",
+        "where_in/other_type",
+        "where_in/unknown_left",
+        "where_in/unknown_right",
+    ];
+    assert_eq!(compared, expected, "compared");
+    // The results of `select_distinct` alone (see above), 15 static results of `where_in`
+    // at one step and 5 ticking ones at 9 steps.
+    assert_eq!(tally.comparisons, (13 + 4 + 3 * 9) + 15 + 5 * 9);
     let not_run = ["select_distinct/all_but_key: drop_columns"];
     assert_eq!(tally.not_run, not_run, "not run");
 }

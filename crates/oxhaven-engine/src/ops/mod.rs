@@ -7,6 +7,8 @@ pub mod distinct;
 pub mod filter;
 pub mod head_by;
 pub mod join;
+#[cfg(test)]
+mod list_columns;
 pub mod merge;
 #[cfg(test)]
 pub(crate) mod oracle;

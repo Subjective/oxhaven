@@ -104,6 +104,13 @@ fn append(values: &ArrayRef, keys: &mut [Vec<u8>]) -> Result<(), TableFailure> {
                 }
             }
         }
+        // Java takes a vector or an array as a key and compares it as an object; when two
+        // of them are one key is not ported.
+        DataType::List(_) => oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+            "a key column stored as {}",
+            values.data_type()
+        ),
         other => {
             return Err(TableFailure {
                 message: format!("a key column of the Arrow type {other} is not supported"),

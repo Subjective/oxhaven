@@ -8,19 +8,21 @@
 //!
 //! # What is here and what is not
 //!
-//! The contracts have no array-valued column type: `ColumnType` has no list variant and a
-//! `ColumnSource` has no way to hand out arrays. So no table has a column that can be
-//! ungrouped, and [`ungroup`] today answers the two cases that need no arrays, as Java
-//! does: without named columns it returns a source without array columns as it is, and a
-//! named column that does not exist or is not an array is refused.
+//! This module was written before the contracts had array-valued column types
+//! (`ColumnType::Vector`, `ColumnType::Array`), and does not read their list cells yet.
+//! [`ungroup`] answers the two cases that need no arrays, as Java does: without named
+//! columns it returns a source without array columns as it is, and a named column that
+//! does not exist or is not an array is refused. A vector or array column is recognized
+//! and then stops at [`arrays_of`], which is `unported!`.
 //!
 //! Everything behind that is built against a private stand-in for an array column
 //! ([`sources::ArrayColumn`]: the sizes of the arrays of some rows, and elements by row and
 //! offset) and tested with stand-ins made of ordinary columns: the row keys of the result
 //! ([`keys`]), its columns ([`sources`]), the initial result and the change of the result
-//! for every change of the source ([`operator`]). What is left for the task that adds list
-//! columns is the one function [`arrays_of`], which is `unported!`, and the comparison
-//! with the recorded Java results, which need `group_by`.
+//! for every change of the source ([`operator`]). What is left is the one function
+//! [`arrays_of`], an [`sources::ArrayColumn`] over the list arrays that
+//! `ColumnSource::chunk` returns, and the comparison with the recorded Java results, which
+//! need `group_by`.
 
 pub(crate) mod keys;
 pub(crate) mod operator;
@@ -136,10 +138,10 @@ impl From<UngroupError> for TableFailure {
     }
 }
 
-/// Whether a column of `column_type` holds arrays. None of the types there are does.
+/// Whether a column of `column_type` holds arrays: a vector or an array column does.
 ///
-/// With `unported!` for a type this module does not know: a list type added to the
-/// contracts must be ungrouped, not passed over.
+/// With `unported!` for a type this module does not know: a type added to the contracts
+/// must be decided here, not passed over.
 ///
 /// Behavior: the test `c.getDataType().isArray() || QueryLanguageParser.isTypedVector(c.getDataType())`
 /// of io.deephaven.engine.table.impl.QueryTable#ungroup and the test of
@@ -156,6 +158,7 @@ fn is_array(column_type: &ColumnType) -> bool {
         | ColumnType::Double
         | ColumnType::String
         | ColumnType::Instant => false,
+        ColumnType::Vector(_) | ColumnType::Array(_) => true,
         other => unported!(
             "io.deephaven.engine.table.impl.UngroupOperation#UngroupOperation",
             "a column of type {other:?}"
@@ -165,7 +168,8 @@ fn is_array(column_type: &ColumnType) -> bool {
 
 /// The arrays of column `index` of `source`, which [`is_array`].
 ///
-/// `unported!`: the contracts have no array-valued column to read.
+/// `unported!`: reading the list cells of a vector or array column as an [`ArrayColumn`]
+/// is not written yet.
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource
 fn arrays_of(source: &dyn Table, index: usize) -> Arc<dyn ArrayColumn> {

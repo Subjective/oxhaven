@@ -320,8 +320,9 @@ mod tests {
     use crate::tracked::testing::ManualClock;
     use arrow::array::{
         BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
-        StringArray, TimestampNanosecondArray, UInt16Array,
+        ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
     };
+    use arrow::datatypes::{DataType, Int32Type, Int64Type};
     use oxhaven_contracts::shift::ShiftRange;
 
     fn int_array(values: impl IntoIterator<Item = Option<i32>>) -> ArrayRef {
@@ -636,6 +637,147 @@ mod tests {
         assert!(source.read().batches.len() <= 66);
     }
 
+    /// Cells of a vector of `int`; `None` is a null cell.
+    fn int_lists(cells: &[Option<&[Option<i32>]>]) -> ArrayRef {
+        let lists = ListArray::from_iter_primitive::<Int32Type, _, _>(
+            cells.iter().map(|cell| cell.map(|cell| cell.to_vec())),
+        );
+        let (_, offsets, values, nulls) = lists.into_parts();
+        let DataType::List(field) = ColumnType::vector(ColumnType::Int).arrow_type() else {
+            unreachable!("a vector is a list")
+        };
+        Arc::new(ListArray::new(field, offsets, values, nulls))
+    }
+
+    fn lists(chunk: Result<ArrayRef, TableFailure>) -> Vec<Option<Vec<Option<i32>>>> {
+        let chunk = chunk.unwrap();
+        assert_eq!(
+            chunk.data_type(),
+            &ColumnType::vector(ColumnType::Int).arrow_type()
+        );
+        let chunk = chunk.as_any().downcast_ref::<ListArray>().unwrap();
+        chunk
+            .iter()
+            .map(|cell| cell.map(|cell| ints(Ok(cell))))
+            .collect()
+    }
+
+    #[test]
+    fn list_cells_are_written_read_removed_and_shifted_whole() {
+        let source = WritableSource::new(ColumnType::vector(ColumnType::Int));
+        assert_eq!(lists(source.chunk(&RowSet::flat(2))), vec![None, None]);
+        source
+            .fill(
+                &RowSet::from_keys([1, 2, 5, 9]),
+                &int_lists(&[Some(&[Some(1), None]), None, Some(&[]), Some(&[Some(9)])]),
+            )
+            .unwrap();
+        let (one, empty, nine) = (vec![Some(1), None], vec![], vec![Some(9)]);
+        // A written null cell and a key never written both read as a null cell; an empty
+        // cell stays an empty cell.
+        assert_eq!(
+            lists(source.chunk(&RowSet::from_keys([0, 1, 2, 5, 9]))),
+            vec![
+                None,
+                Some(one.clone()),
+                None,
+                Some(empty.clone()),
+                Some(nine.clone())
+            ]
+        );
+        assert_eq!(
+            lists(source.chunk_by_keys(&[9, NULL_ROW_KEY, 1, 9, 5], false)),
+            vec![
+                Some(nine.clone()),
+                None,
+                Some(one.clone()),
+                Some(nine.clone()),
+                Some(empty.clone())
+            ]
+        );
+
+        // An overwrite replaces the whole cell, whatever its length was.
+        source
+            .fill(
+                &RowSet::from_keys([1, 5]),
+                &int_lists(&[Some(&[]), Some(&[Some(5), Some(6), Some(7)])]),
+            )
+            .unwrap();
+        source.remove(&RowSet::from_keys([9]));
+        source.shift(&RowSet::from_keys([5]), 3).unwrap();
+        assert_eq!(
+            lists(source.chunk(&RowSet::from_keys([1, 5, 8, 9]))),
+            vec![
+                Some(empty),
+                None,
+                Some(vec![Some(5), Some(6), Some(7)]),
+                None
+            ]
+        );
+
+        // Cells of another element type, or that are not lists, are refused.
+        let longs = ListArray::from_iter_primitive::<Int64Type, _, _>([Some([Some(1)])]);
+        assert!(source
+            .fill(&RowSet::from_keys([1]), &(Arc::new(longs) as ArrayRef))
+            .is_err());
+        assert!(source
+            .fill(&RowSet::from_keys([1]), &int_array([Some(1)]))
+            .is_err());
+    }
+
+    #[test]
+    fn list_cells_keep_their_previous_value_for_the_cycle() {
+        let source = WritableSource::new(ColumnType::vector(ColumnType::Int));
+        let rows = RowSet::from_keys([1, 2, 3]);
+        source
+            .fill(
+                &rows,
+                &int_lists(&[Some(&[Some(1)]), None, Some(&[Some(3), Some(3)])]),
+            )
+            .unwrap();
+        let clock = ManualClock::idle_at(7);
+        source.start_tracking_prev(clock.clone());
+        let before = vec![Some(vec![Some(1)]), None, Some(vec![Some(3), Some(3)])];
+
+        clock.start_cycle();
+        source
+            .fill(
+                &RowSet::from_keys([1, 2]),
+                &int_lists(&[None, Some(&[Some(2), None])]),
+            )
+            .unwrap();
+        source.remove(&RowSet::from_keys([3]));
+        let after = vec![None, Some(vec![Some(2), None]), None];
+        assert_eq!(lists(source.chunk(&rows)), after);
+        assert_eq!(lists(source.prev_chunk(&rows)), before);
+        assert_eq!(
+            lists(source.chunk_by_keys(&[3, NULL_ROW_KEY, 1], true)),
+            vec![before[2].clone(), None, before[0].clone()]
+        );
+        clock.finish_cycle();
+        assert_eq!(lists(source.prev_chunk(&rows)), after);
+    }
+
+    #[test]
+    fn list_storage_is_compacted_without_changing_cells() {
+        let source = WritableSource::new(ColumnType::vector(ColumnType::Int));
+        let rows = RowSet::flat(50);
+        for round in 0..100 {
+            let cells: Vec<Vec<Option<i32>>> = (0..50)
+                .map(|row| vec![Some(round * 100 + row); (row % 3) as usize])
+                .collect();
+            let cells: Vec<Option<&[Option<i32>]>> =
+                cells.iter().map(|cell| Some(cell.as_slice())).collect();
+            source.fill(&rows, &int_lists(&cells)).unwrap();
+        }
+        let expected: Vec<Option<Vec<Option<i32>>>> = (0..50)
+            .map(|row| Some(vec![Some(9900 + row); (row % 3) as usize]))
+            .collect();
+        assert_eq!(lists(source.chunk(&rows)), expected);
+        let state = source.read();
+        assert!(state.stored < 5000, "stored {}", state.stored);
+    }
+
     #[test]
     fn every_column_type_round_trips_with_nulls() {
         let instants = TimestampNanosecondArray::from(vec![Some(1), None, Some(i64::MAX)])
@@ -678,6 +820,10 @@ mod tests {
                 Arc::new(StringArray::from(vec![Some("a"), None, Some("")])),
             ),
             (ColumnType::Instant, Arc::new(instants)),
+            (
+                ColumnType::vector(ColumnType::Int),
+                int_lists(&[Some(&[Some(1), None]), None, Some(&[])]),
+            ),
         ];
         for (column_type, values) in cases {
             let source = WritableSource::new(column_type.clone());

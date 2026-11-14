@@ -8,6 +8,8 @@ use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
+mod update_by;
+
 /// What the Java server answers for any exception out of the engine.
 fn assert_internal(status: &Status) {
     assert_eq!(status.code(), Code::InvalidArgument, "{status:?}");
@@ -40,11 +42,13 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::AggregateAll(r) => c.client.aggregate_all(c.auth(r)).await,
         Op::ComboAggregate(r) => c.client.combo_aggregate(c.auth(r)).await,
         Op::SelectDistinct(r) => c.client.select_distinct(c.auth(r)).await,
+        Op::WhereIn(r) => c.client.where_in(c.auth(r)).await,
         Op::NaturalJoin(r) => c.client.natural_join_tables(c.auth(r)).await,
         Op::ExactJoin(r) => c.client.exact_join_tables(c.auth(r)).await,
         Op::LeftJoin(r) => c.client.left_join_tables(c.auth(r)).await,
         Op::Snapshot(r) => c.client.snapshot(c.auth(r)).await,
         Op::SnapshotWhen(r) => c.client.snapshot_when(c.auth(r)).await,
+        Op::UpdateBy(r) => c.client.update_by(c.auth(r)).await,
         other => panic!("no call for {}", op_name(&other)),
     };
     response.map(Response::into_inner)
@@ -1572,6 +1576,206 @@ async fn join_columns_are_read_first_and_left_join_is_unimplemented() {
         let unused = c.server.session(&c.bearer).get_export(20).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
+}
+
+// ---------------------------------------------------------------- where in
+
+fn where_in(result: i32, right: i32, on: &[&str], inverted: bool) -> proto::WhereInRequest {
+    proto::WhereInRequest {
+        result_id: ticket(result),
+        left_id: by_ticket(1),
+        right_id: by_ticket(right),
+        inverted,
+        columns_to_match: texts(on),
+    }
+}
+
+#[tokio::test]
+async fn where_in_keeps_the_rows_with_a_key_of_the_other_table_or_the_others() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    table_of(
+        &mut c,
+        2,
+        &[
+            &["Key = `b`", "W = 3"],
+            &["Key = `zz`", "W = 4"],
+            &["Key = `b`", "W = 9"],
+        ],
+    )
+    .await;
+
+    // a match spelled with space and `==`, and renamed
+    let op = Op::WhereIn(where_in(10, 2, &[" S == Key "], false));
+    let response = call(&mut c, op).await.unwrap();
+    assert_eq!(response.size, 3);
+    assert!(response.is_static);
+    let table = c.table(10);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S"]);
+    assert_eq!(values(table.as_ref(), "I"), ints(&[1, 3, 5]));
+
+    let op = Op::WhereIn(where_in(11, 2, &["S=Key"], true));
+    assert_eq!(call(&mut c, op).await.unwrap().size, 3);
+    assert_eq!(values(c.table(11).as_ref(), "I"), ints(&[0, 2, 4]));
+
+    // several columns are one key
+    let both = ["S=Key", "I = W"];
+    let op = Op::WhereIn(where_in(12, 2, &both, false));
+    assert_eq!(call(&mut c, op).await.unwrap().size, 1);
+    assert_eq!(values(c.table(12).as_ref(), "I"), ints(&[3]));
+    let op = Op::WhereIn(where_in(13, 2, &both, true));
+    assert_eq!(call(&mut c, op).await.unwrap().size, 5);
+    assert_eq!(values(c.table(13).as_ref(), "I"), ints(&[0, 1, 2, 4, 5]));
+
+    // what the engine refuses is an exception in Java: a column either table lacks, two
+    // types; and so is a match that cannot be read, which Java reads in `create`
+    for (result, on) in [
+        (20, &["S=Nope"][..]),
+        (21, &["Nope=Key"]),
+        (22, &["S=W"]),
+        (23, &["S="]),
+        (24, &["S=="]),
+        (25, &["=Key"]),
+        (26, &["S Key"]),
+        (27, &["S=Key", "1I=W"]),
+        (28, &["S=Key=W"]),
+    ] {
+        for inverted in [false, true] {
+            let result = result + 10 * i32::from(inverted);
+            let op = Op::WhereIn(where_in(result, 2, on, inverted));
+            assert_internal(&call(&mut c, op).await.unwrap_err());
+        }
+    }
+}
+
+#[tokio::test]
+async fn where_in_requests_are_checked_as_java_checks_them() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let no_ref = Some(TableReference { r#ref: None });
+    let empty_ticket = Some(ticket_reference(Vec::new()));
+    let oneof = "io.deephaven.proto.backplane.grpc.TableReference must have oneof ref. Note: \
+        this may also indicate that the server is older than the client and doesn't know about \
+        this new oneof option.";
+    let request = || where_in(2, 1, &["S"], false);
+    let left = |left_id| proto::WhereInRequest {
+        left_id,
+        ..request()
+    };
+    let right = |right_id| proto::WhereInRequest {
+        right_id,
+        ..request()
+    };
+    let no_columns = "io.deephaven.proto.backplane.grpc.WhereInRequest must have at least one \
+        columns_to_match (5)";
+    let cases = [
+        (
+            left(None),
+            "io.deephaven.proto.backplane.grpc.WhereInRequest must have field left_id (2)",
+        ),
+        (
+            right(None),
+            "io.deephaven.proto.backplane.grpc.WhereInRequest must have field right_id (3)",
+        ),
+        (where_in(2, 1, &[], false), no_columns),
+        (where_in(2, 1, &[], true), no_columns),
+        (left(no_ref.clone()), oneof),
+        (right(empty_ticket.clone()), "Ticket is empty"),
+        // in Java's order: the fields, then the columns, then the references
+        (
+            proto::WhereInRequest {
+                right_id: None,
+                ..where_in(2, 1, &[], false)
+            },
+            "io.deephaven.proto.backplane.grpc.WhereInRequest must have field right_id (3)",
+        ),
+        (
+            proto::WhereInRequest {
+                left_id: no_ref,
+                ..where_in(2, 1, &[], false)
+            },
+            no_columns,
+        ),
+        (
+            proto::WhereInRequest {
+                left_id: empty_ticket,
+                right_id: Some(TableReference { r#ref: None }),
+                ..request()
+            },
+            "Ticket is empty",
+        ),
+    ];
+    for (request, message) in cases {
+        let refused = call(&mut c, Op::WhereIn(request.clone()))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+
+        // in a batch, before any operation of the batch is created
+        let refused = c
+            .batch(vec![
+                Op::EmptyTable(empty(ticket(20), 1)),
+                Op::WhereIn(request),
+            ])
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument);
+        assert_eq!(refused.message(), message);
+        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        assert_ne!(unused.state(), ExportState::Exported);
+    }
+}
+
+#[tokio::test]
+async fn where_in_of_a_ticking_set_follows_it() {
+    let mut c = Connected::start().await;
+    call(&mut c, Op::TimeTable(ticking_time_table(ticket(1))))
+        .await
+        .unwrap();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    // the rows of the time table up to now, which stay as they are
+    let snapshot = Op::Snapshot(proto::SnapshotTableRequest {
+        result_id: ticket(2),
+        source_id: by_ticket(1),
+    });
+    let fixed = call(&mut c, snapshot).await.unwrap().size;
+    assert!(fixed > 0);
+
+    // a static left table and a ticking set: the result refreshes and is not add-only
+    let request = |result: i32, inverted: bool| proto::WhereInRequest {
+        left_id: by_ticket(2),
+        ..where_in(result, 1, &["Timestamp"], inverted)
+    };
+    let response = call(&mut c, Op::WhereIn(request(3, false))).await.unwrap();
+    assert!(!response.is_static);
+    assert_eq!(response.size, fixed);
+    let attributes: Vec<(String, String)> = schema_metadata(&response)
+        .into_iter()
+        .filter(|(key, _)| key.starts_with("deephaven:attribute."))
+        .collect();
+    assert_eq!(attributes, pairs(&[]));
+    let response = call(&mut c, Op::WhereIn(request(4, true))).await.unwrap();
+    assert!(!response.is_static);
+    assert_eq!(response.size, 0);
+
+    // the other way round the result grows with the left table
+    let request = proto::WhereInRequest {
+        left_id: by_ticket(1),
+        ..where_in(5, 2, &["Timestamp"], true)
+    };
+    let response = call(&mut c, Op::WhereIn(request)).await.unwrap();
+    assert!(!response.is_static);
+    let (ticking, late) = (c.table(1), c.table(5));
+    let graph = c.server.state.graph.clone();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    let (all, others) = locked(graph.as_ref(), || {
+        (ticking.row_set().size(), late.row_set().size())
+    });
+    assert!(all > fixed as u64);
+    assert_eq!(others, all - fixed as u64);
 }
 
 // ---------------------------------------------------------------- snapshots

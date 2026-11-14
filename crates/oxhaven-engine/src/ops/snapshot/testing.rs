@@ -278,9 +278,14 @@ fn positions(rows: &Value) -> Vec<i64> {
 }
 
 /// Compares the updates a table delivered during a step with the recorded ones. The
-/// recording has positions, removed rows by their position before the update and the
-/// others after it; `rows` are the table's rows before the first of the updates and
-/// become its rows after the last.
+/// recording has positions, removed rows by their position in the table before the update
+/// and the others by their position after it, so the row keys of each update are turned
+/// into positions in `rows`, the table's row set before the update, and in what the
+/// update makes of it, which `rows` then is.
+///
+/// An update that only shifts rows moves no position, so it is not an update to this
+/// comparison, on either side: row keys are ours to choose (`PARITY.md` A4), and a table
+/// here may shift where Java's does not, as the rows after a removed row of a sort do.
 fn compare_updates(
     place: &str,
     expected: &Value,
@@ -296,9 +301,8 @@ fn compare_updates(
             let update = event.unwrap_or_else(|failure| panic!("{place}: {}", failure.message));
             let after = update.apply_to(rows).expect("a valid update");
             let positions = |keys: &RowSet, within: &RowSet| -> Vec<i64> {
-                let keys = keys.iter();
-                keys.map(|key| within.find(key).expect("a row of the table") as i64)
-                    .collect()
+                let found = within.invert(keys).expect("rows of the table");
+                found.iter().collect()
             };
             let found = [
                 positions(&update.added, &after),
@@ -308,10 +312,12 @@ fn compare_updates(
             *rows = after;
             found
         })
+        .filter(|found| found.iter().any(|rows| !rows.is_empty()))
         .collect();
     let recorded: Vec<[Vec<i64>; 3]> = list(expected)
         .iter()
         .map(|update| ["added", "removed", "modified"].map(|rows| positions(&update[rows])))
+        .filter(|recorded| recorded.iter().any(|rows| !rows.is_empty()))
         .collect();
     assert_eq!(
         found, recorded,
