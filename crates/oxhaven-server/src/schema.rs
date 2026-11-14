@@ -109,7 +109,11 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     let mut flag = |name: &str, set: bool| {
         if set {
             put(&mut metadata, &format!("attribute.{name}"), TRUE);
-            put(&mut metadata, &format!("attribute_type.{name}"), JAVA_BOOLEAN);
+            put(
+                &mut metadata,
+                &format!("attribute_type.{name}"),
+                JAVA_BOOLEAN,
+            );
         }
     };
     flag("IsFlat", context.is_flat);
@@ -204,12 +208,16 @@ pub fn schema_message(schema: &Schema) -> Vec<u8> {
 ///
 /// Behavior: `MessageHelper#toIpcBytes`
 pub fn schema_ipc_bytes(schema: &Schema) -> Vec<u8> {
-    let message = schema_message(schema);
+    frame_ipc_message(&schema_message(schema))
+}
+
+/// Frames a flatbuffer `Message` as an encapsulated IPC message.
+fn frame_ipc_message(message: &[u8]) -> Vec<u8> {
     let padded = message.len().div_ceil(8) * 8;
     let mut bytes = Vec::with_capacity(8 + padded);
     bytes.extend_from_slice(&IPC_CONTINUATION_TOKEN);
     bytes.extend_from_slice(&(padded as u32).to_le_bytes());
-    bytes.extend_from_slice(&message);
+    bytes.extend_from_slice(message);
     bytes.resize(8 + padded, 0);
     bytes
 }
@@ -315,9 +323,11 @@ mod tests {
     fn attributes_become_schema_metadata() {
         let mut attributes = TableAttributes::default();
         attributes.blink = true;
-        let mut context = SchemaContext::default();
-        context.attributes = attributes;
-        context.is_flat = true;
+        let context = SchemaContext {
+            attributes,
+            is_flat: true,
+            ..Default::default()
+        };
         let schema = arrow_schema(&definition(&[("X", ColumnType::Long)]), &context);
         assert_eq!(
             schema.metadata(),
@@ -332,8 +342,10 @@ mod tests {
         let mut attributes = TableAttributes::default();
         attributes.add_only = true;
         attributes.append_only = true;
-        let mut context = SchemaContext::default();
-        context.attributes = attributes;
+        let context = SchemaContext {
+            attributes,
+            ..Default::default()
+        };
         let schema = arrow_schema(&definition(&[("X", ColumnType::Long)]), &context);
         assert_eq!(
             schema.metadata(),
@@ -348,8 +360,10 @@ mod tests {
 
     #[test]
     fn input_table_columns_are_marked_key_or_value() {
-        let mut context = SchemaContext::default();
-        context.input_table_keys = Some(vec!["K".to_owned()]);
+        let context = SchemaContext {
+            input_table_keys: Some(vec!["K".to_owned()]),
+            ..Default::default()
+        };
         let schema = arrow_schema(
             &definition(&[("K", ColumnType::String), ("V", ColumnType::Int)]),
             &context,
@@ -416,9 +430,27 @@ mod tests {
     }
 
     #[test]
+    fn a_framed_message_is_padded_to_eight_bytes_and_its_length_counts_the_padding() {
+        assert_eq!(
+            frame_ipc_message(&[1, 2, 3, 4, 5]),
+            vec![0xff, 0xff, 0xff, 0xff, 8, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0]
+        );
+        assert_eq!(
+            frame_ipc_message(&[9; 8]),
+            [&[0xff, 0xff, 0xff, 0xff, 8, 0, 0, 0][..], &[9; 8][..]].concat()
+        );
+        assert_eq!(
+            frame_ipc_message(&[]),
+            vec![0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
     fn ipc_bytes_are_one_framed_schema_message_a_stream_reader_decodes() {
-        let mut context = SchemaContext::default();
-        context.is_flat = true;
+        let context = SchemaContext {
+            is_flat: true,
+            ..Default::default()
+        };
         let schema = arrow_schema(
             &definition(&[("A", ColumnType::Int), ("T", ColumnType::Instant)]),
             &context,
