@@ -37,6 +37,14 @@ Citations are `path: Class#method`, with paths relative to the root of the Java 
 to. Java has one class per primitive type for most kernels; a citation of the `Double` or `Int`
 class stands for the whole family unless a row says otherwise.
 
+A citation that starts with `FC/` is not Java source. It names an outcome recorded from the
+reference server: `FC/` is `oracle/corpus/formulas/cases/` in this repository, and
+`FC/grid-where.jsonl: literal.le.double.06` is the case with id `grid-where/literal.le.double.06`
+in that file. A citation of a case family (`FC/grid-binary.jsonl: remainder.*`) stands for every
+case whose id starts that way. In the grid cases the columns `B1`, `S1`, `I1`, `L1`, `F1`, `D1`,
+`C1`, `Z1`, `T1` are `byte`, `short`, `int`, `long`, `float`, `double`, `char`, `Boolean` and
+`String`.
+
 ## Must match
 
 The harness compares the full table state of every exported result, after the initial snapshot and
@@ -288,11 +296,13 @@ other on NaN and signed zero. The harness must generate all three shapes.
 
 | Case | Behavior | Citation |
 | --- | --- | --- |
-| Match filter, null literal | Matches null cells. | **UNVERIFIED** in `ET/select/MatchFilter.java`; consistent with sentinel equality |
-| Match filter, NaN | By default NaN matches nothing, and `Col != NaN` keeps every row. A `nanMatch` option makes NaN equal NaN. | `ET/chunkfilter/DoubleChunkMatchFilterFactory.java: DoubleChunkMatchFilterFactory#makeFilter` |
+| Match filter, null literal | Matches null cells: `Col == null` and `Col in null` keep exactly the null rows, `Col != null` and `Col not in null` the others, for every column type. | `FC/grid-where.jsonl: literal.eq.int.00`, `literal.eq.double.00`, `literal.eq.string.00`, `literal.eq.boolean.00`, `literal.ne.int.00`, `extra.039` (`I1 in null`), `extra.041` (`I1 not in null`), `extra.073` (`Z1 in null`) |
+| Match filter, NaN | `Col == NaN` matches nothing, and `Col != NaN` keeps every row. A `nanMatch` option makes NaN equal NaN, and the `in` forms set it: **`Col in NaN` keeps the NaN rows and `Col not in NaN` drops them.** | `ET/chunkfilter/DoubleChunkMatchFilterFactory.java: DoubleChunkMatchFilterFactory#makeFilter`; `ET/select/WhereFilterFactory.java: WhereFilterFactory#getExpression` (comment "When given an explicit list of values, we allow NaN-matching"); `FC/grid-where.jsonl: literal.eq.double.06`, `literal.ne.double.06`, `extra.063` (`D1 in NaN`), `extra.064` (`D1 not in NaN`), `extra.058` (`F1 in NaN`) |
 | Match filter, zero | `-0.0` and `0.0` match each other. | same file, `#getBits` and the value filters |
-| Range filter `Col > x`, `Col >= x` | Excludes NaN and null. | `ET/select/DoubleRangeFilter.java: DoubleRangeFilter#gt`, `#geq` (upper bound NaN, exclusive) |
-| Range filter `Col < x`, `Col <= x` | **Includes null cells** (null is the lowest value). Excludes NaN. | `ET/select/DoubleRangeFilter.java: DoubleRangeFilter#lt`, `#leq` (lower bound `NULL_DOUBLE`, inclusive) |
+| Range filter `Col > x`, `Col >= x`, x neither null nor NaN | Excludes NaN and null. | `ET/select/DoubleRangeFilter.java: DoubleRangeFilter#gt`, `#geq` (upper bound NaN, exclusive) |
+| Range filter `Col < x`, `Col <= x`, x neither null nor NaN | **Includes null cells** (null is the lowest value). Excludes NaN. | `ET/select/DoubleRangeFilter.java: DoubleRangeFilter#lt`, `#leq` (lower bound `NULL_DOUBLE`, inclusive) |
+| Range filter against the literal `null` | The literal is the lowest value. `Col > null` keeps every non-null row, `Col >= null` also the null rows; on `float` and `double` both drop NaN. `Col < null` keeps nothing; `Col <= null` keeps exactly the null rows. | `FC/grid-where.jsonl: literal.gt.int.00`, `literal.ge.int.00`, `literal.lt.int.00`, `literal.le.int.00`, `literal.gt.double.00`, `literal.ge.double.00`, `literal.lt.double.00`, `literal.le.double.00`, `literal.ge.string.00` |
+| Range filter against the literal `NaN` | The literal is the highest value, so the NaN exclusion above does not hold. **`Col < NaN` keeps every row that is not NaN, null rows included; `Col <= NaN` keeps every row, NaN rows included.** `Col > NaN` and `Col >= NaN` keep nothing. This is the literal `NaN` only: `Col < NAN_DOUBLE` is a condition filter and keeps nothing, for all four operators. | `FC/grid-where.jsonl: literal.lt.double.06`, `literal.le.double.06`, `literal.gt.double.06`, `literal.ge.double.06`; `literal.lt.double.07` to `literal.ge.double.07` (`NAN_DOUBLE`) |
 | Range filter, zero | `-0.0` and `0.0` are equal. | `ET/chunkfilter/DoubleRangeComparator.java` (uses `DoubleComparisons`) |
 
 #### Formula operators
@@ -305,7 +315,10 @@ Binary operators in a formula compile to static functions named after the operat
 | --- | --- | --- |
 | Null in `+ - * / %` | If either operand is null the result is null, of the result type. | `QLFU: QueryLanguageFunctionUtils#plus(int,int)`, `#divide(double,double)`, `#remainder(int,int)` |
 | Unary minus, casts | Null in, null out. | `QLFU: #negate(int)`, `#doubleCast(int)`, `#intCast(double)` |
-| `null == null` | true. | `QLFU: #eq(int,int)`, `#eq(double,double)`, `#eq(Object,Object)` |
+| Unary minus on `int`, `long`, `float`, `double` | Result has the operand type. Negating the largest finite `float` or `double` gives the sentinel bit pattern and is therefore null. | `QLFU: #negate(float)`, `#negate(double)`; `FC/grid-unary.jsonl: negate.int`, `negate.long`, `negate.float`, `negate.double` |
+| Unary minus on `byte`, `short`, `char` | **The formula fails to compile**, for a column and for a `char` literal. `QLFU` has `negate` overloads for these types that return `int`, but the parser asserts that the result type equals the operand type. | `ET/lang/QueryLanguageParser.java: QueryLanguageParser#visit(UnaryExpr, VisitArgs)`; `QLFU: #negate(char)`; `FC/grid-unary.jsonl: negate.byte`, `negate.short`, `negate.char`; `FC/grid-literal.jsonl: constant.062` (`-'a'`) |
+| `null == null`, operands of the same type | true. | `QLFU: #eq(int,int)`, `#eq(double,double)`, `#eq(Object,Object)` |
+| `null == null`, operands of different types | Between two primitive types: true, each operand is tested against the sentinel of its own type (`int` with `long`, `char` with `int`, `float` with `double`, `byte` with `double`). Between two object types: true (`String` with `Boolean`). **Between a primitive type and an object type: false**, and so is every other row: a null `int` does not equal a null `String`. The comparison compiles for every pair of types. | `FC/grid-null.jsonl: extra.00`, `extra.01`, `extra.02`; `FC/grid-binary.jsonl: eq.int.long`, `eq.char.int`, `eq.float.double`, `eq.byte.double`, `eq.string.boolean`, `eq.int.string`, `eq.double.string`, `eq.int.boolean` (first row of each: both operands null) |
 | `null == x`, x not null | false. | as above |
 | `null < x`, x not null and not NaN | **true**. Null is less than every non-null value in `<`, `<=`, `>`, `>=`. | `QLFU: #compareTo(int,int)`, `#less(int,int)`, `#compareTo(double,double)` |
 | `NaN == NaN` | false (IEEE). This differs from sort, keys and min/max, where NaN equals NaN. | `QLFU: #eq(double,double)` |
@@ -314,7 +327,8 @@ Binary operators in a formula compile to static functions named after the operat
 | `-0.0 < 0.0` | **true**, and `0.0 <= -0.0` is false: after the NaN check these operators use `Double.compare`, which orders `-0.0` below `0.0`. This differs from the range filter, where the two are equal. See Q5. | `QLFU: #less(double,double)`, `#compareTo(double,double)` |
 | `Boolean` `&`, `\|`, `^` with a null operand | null. | `QLFU: #binaryAnd(Boolean,Boolean)`, `#binaryOr`, `#xor` |
 | `!` on a null `Boolean` | null. | `QLFU: #not(Boolean)` |
-| `&&`, `\|\|` with a null `Boolean` operand, and a `where` condition that evaluates to null | **UNVERIFIED**. | — |
+| `&&`, `\|\|` with a null `Boolean` operand | **The formula fails** (Java `NullPointerException`, status `INVALID_ARGUMENT`) when a null operand is evaluated. The operators short-circuit, so `Z != null && Z` succeeds. A null `Boolean` as the condition of `? :` and as the operand of a `(boolean)` cast fails the same way. | `FC/grid-binary.jsonl: and.boolean.boolean`, `or.boolean.boolean`; `FC/grid-where.jsonl: extra.014` (`Z1 != null && Z1`); `FC/grid-ternary.jsonl: boolean-column-condition.int`; `FC/grid-cast.jsonl: boolean.from-boolean` |
+| `where` condition that evaluates to null | **The filter fails** (Java `NullPointerException`, status `INVALID_ARGUMENT`); the row is not dropped. This includes `where("Z")` on a `Boolean` column with a null, and the null results of `!`, `&`, `\|`, `^`. `Z == true` is a match filter and drops the null rows without failing. | `FC/grid-where.jsonl: extra.000` (`Z1`), `extra.001` (`!Z1`), `extra.004` (`Z1 & Z2`), `extra.005`, `extra.006`, `extra.009` (`Z1 == true`) |
 | Object comparison | Null less than non-null; otherwise `compareTo`. | `QLFU: #compareTo(Comparable,Comparable)`, `#less(Comparable,Comparable)` |
 
 #### Arithmetic: promotion, overflow, division
@@ -339,12 +353,47 @@ Result type of `a op b` for `+`, `-`, `*`, `%`:
 | Integer division by zero | No error. `1 / 0` is `+Infinity`, `-1 / 0` is `-Infinity`, `0 / 0` is NaN. | `QLFU: #divide(int,int)` (operands cast to `double` first) |
 | Floating division by zero | IEEE: ±Infinity or NaN. | `QLFU: #divide(double,double)` |
 | `%` on integer types | Java remainder: truncated toward zero, sign of the dividend. Result type follows the promotion table. | `QLFU: #remainder(int,int)` |
-| Integer `%` by zero | The formula fails (Java `ArithmeticException`). Oxhaven must fail too. | `QLFU: #remainder(int,int)` (plain `a % b`) |
-| `%` on floating types | Java floating remainder (C `fmod`); `x % 0.0` is NaN. | `QLFU: #remainder(double,double)` |
+| Integer `%` by zero | The formula fails (Java `ArithmeticException`). Oxhaven must fail too. This holds only when **both** operands are integer types (`byte`, `short`, `char`, `int`, `long`, in any combination). | `QLFU: #remainder(int,int)` (plain `a % b`); `FC/grid-binary.jsonl: remainder.int.int`, `remainder.long.byte`, `remainder.char.short`; `FC/grid-literal.jsonl: remainder.int.zero-int`, `remainder.char.zero-long` |
+| `%` on floating types | Java floating remainder (C `fmod`); `x % 0.0` is NaN. If either operand is `float` or `double` the remainder is floating: an integer zero divisor gives NaN, not a failure (`F % 0`, `D % L` with `L` zero, `I % 0.0`). | `QLFU: #remainder(double,double)`; `FC/grid-literal.jsonl: remainder.float.zero-int`, `remainder.double.zero-long`, `remainder.int.zero-double`; `FC/grid-binary.jsonl: remainder.float.int`, `remainder.double.long` |
 | Cast between integer types | Java narrowing: keeps the low bits. A result equal to the target sentinel is null. | `QLFU: #intCast(long)`, `#byteCast(int)`, `#shortCast(int)` |
-| Cast from floating to integer | Java rules: truncate toward zero, saturate at the type's range, NaN becomes 0. `(int)` of a value at or below `Integer.MIN_VALUE` saturates to the sentinel and is therefore null. | `QLFU: #intCast(double)`, `#longCast(double)` |
+| Cast from floating to `int` or `long` | Java rules: truncate toward zero, saturate at the type's range, NaN becomes 0. `(int)` of a value at or below `Integer.MIN_VALUE` saturates to the sentinel and is therefore null; likewise `(long)`. So `-Infinity` casts to null and `+Infinity` to the largest value. | `QLFU: #intCast(double)`, `#longCast(double)`; `FC/grid-cast.jsonl: int.from-double`, `long.from-double`, `int.from-float`, `constant.006` (`(int)-1e10`), `constant.009` (`(int)(0.0/0)`) |
+| Cast from floating to `byte`, `short` or `char` | **Does not saturate at the target's range.** Java converts to `int` first (truncating and saturating at the `int` range, NaN to 0) and then keeps the low bits. `(byte)` and `(short)` of `+Infinity` are -1 and of `-Infinity` are 0; `(byte)1e10` is -1. `(char)` of `-Infinity` is 0 and of `+Infinity` is 0xFFFF, the sentinel, so null; `(char)-2.5` is 65534. A result equal to the target sentinel is null. | `QLFU: #byteCast(double)`, `#shortCast(double)`, `#charCast(double)` (plain `(byte) a`); `FC/grid-cast.jsonl: byte.from-double`, `short.from-double`, `char.from-double`, `byte.from-float`, `constant.013`, `constant.014`, `constant.015`, `constant.016` |
 | Cast from integer to floating | Null in, null out; otherwise the Java widening conversion (round to nearest). | `QLFU: #doubleCast(int)`, `#floatCast(int)` |
 | Cast of a boxed or object value | Null in, null out; otherwise `Number#intValue` and friends. | `QLFU: #intCast(Object)` |
+
+#### String concatenation
+
+`+` with a `String` on either side is not a `QLFU` function. The parser prints it as Java's own
+`+`, so each operand is converted with Java's string conversion and nothing is null-aware
+(`ET/lang/QueryLanguageParser.java: QueryLanguageParser#visit(BinaryExpr, VisitArgs)`, the branch
+for `String` with `PLUS`).
+
+| Case | Behavior | Citation |
+| --- | --- | --- |
+| Result | `String`, never null. | `FC/grid-binary.jsonl: plus.string.*`, `plus.*.string` |
+| Null `String` or null `Boolean` operand | The text `null`: a null `String` plus `a` is `nulla`, and two null strings give `nullnull`. | `FC/grid-binary.jsonl: plus.string.string`, `plus.boolean.string`, `plus.string.boolean` |
+| Null operand of a primitive type | **The sentinel is printed**: `-128`, `-32768`, `-2147483648`, `-9223372036854775808`, `-3.4028235E38`, `-1.7976931348623157E308`, and for `char` the code unit 0xFFFF. | `FC/grid-binary.jsonl: plus.byte.string`, `plus.short.string`, `plus.int.string`, `plus.long.string`, `plus.float.string`, `plus.double.string`, `plus.char.string` (first rows: the primitive operand is null) |
+| `float` and `double` operands | Java's `Float#toString` and `Double#toString`: `1.5`, `-0.0`, `NaN`, `Infinity`, `3.4028235E38`. | `FC/grid-binary.jsonl: plus.string.float`, `plus.string.double` |
+| `char` operand | The character, not its number. | `FC/grid-binary.jsonl: plus.string.char` |
+| `Boolean` with a number | Not concatenation, and there is no `plus` for it: the formula fails to compile. | `FC/grid-binary.jsonl: plus.boolean.int` |
+
+#### Expressions the gRPC validator refuses
+
+A formula or filter that arrives over gRPC is checked before the engine compiles it. An
+expression that calls a method or constructor outside the server's allow list is refused with
+status `INVALID_ARGUMENT`, whatever its operands
+(`extensions/formula-validation/base/src/main/java/io/deephaven/server/table/validation/ParsingColumnExpressionValidator.java`,
+the checks that throw "User expressions are not permitted to ..."). The allow list of the
+reference configuration is the `ColumnExpressionValidator.allowedMethods.*` properties in
+`props/configs/src/main/resources/dh-defaults.prop`, plus the annotated function library.
+Must match, item 7 applies: Oxhaven must refuse what Java refuses.
+
+| Case | Behavior | Citation |
+| --- | --- | --- |
+| Static methods of `java.lang.Math` and `java.lang.StrictMath` | Refused: `Math.abs(I)`, `Math.max(I, J)`, `Math.sqrt(D)`, `java.lang.Math.sin(X)`. The library functions `abs`, `sqrt`, `sin` are the accepted spelling. | `FC/grid-function.jsonl: java.20` to `java.23`; `FC/docs-python.jsonl: conceptual.ninja.L192.5.0`, `how-to-guides.built-in-functions.L103.9.1` |
+| Methods and fields of the boxed primitive classes and of `String` | Accepted: `String.valueOf(I)`, `Integer.parseInt("12")`, `Integer.MAX_VALUE`, `Double.isNaN(D)`, `T.length()`, `T.toUpperCase()`. An instance method on a null receiver fails with `NullPointerException`. `String.valueOf` of a null `int` gives the sentinel's text. | `FC/grid-function.jsonl: java.18`, `java.19`, `java.24`, `java.26`, `java.00`, `java.01`, `java-guarded.00` |
+| Constructors | `new String("a")` and `new Integer(I)` are accepted. `new java.net.URL(...)` and `new io.deephaven.vector.LongVectorDirect(...)` are refused. | `FC/grid-function.jsonl: java.28`, `java.29`; `FC/docs-python.jsonl: getting-started.crash-course.query-strings.L317.5.0`; `FC/java-engine.jsonl: QueryTableSelectUpdateTest.L1166.0.1` |
+| Methods of `java.time.Duration` | Refused: `'PT1h'.multipliedBy(ii)`. `Duration` is not in the allow list; `Instant`, `LocalDate`, `LocalTime` and `ZonedDateTime` are. | `FC/docs-python.jsonl: conceptual.time-in-deephaven.L256.4.1` |
 
 #### Aggregations
 
@@ -539,8 +588,6 @@ oracle run before the harness encodes them:
 - key equality (null, NaN, signed zero) in cross join and in the exact-match columns of as-of join;
 - row order inside `group_by` arrays and inside `partition_by` constituents;
 - row order of an incremental `snapshot_when` result, and of static `select` when it flattens;
-- `&&` and `||` with a null `Boolean`, and a `where` condition that evaluates to null;
-- match filter against a null literal;
 - `sum` of `Boolean` when every value is false;
 - NaN and signed-zero handling in `count_distinct`, `distinct`, `unique`;
 - result types of `+ - * %` involving `BigDecimal` or `BigInteger`, and of `weighted_avg` / `weighted_sum` for non-primitive types;
@@ -550,3 +597,13 @@ oracle run before the harness encodes them:
 Formula library functions (the numeric, string and time functions callable from formulas) and
 `update_by` null and NaN behavior are not covered by this file at all. Each needs its own section
 before the tasks that port them start.
+
+**Q11. A ticking table that failed during an update cycle.** When a ticking table fails in a cycle
+(a formula that throws in `update`, a duplicate right key arriving in a `natural_join`), Java
+keeps answering snapshots of it, with contents that are not a consistent table: rows of the
+parent with stale or null values in the added columns. This file does not say what Oxhaven must
+answer after the failure. The harness records the failure at the step where it happens and does
+not compare such a table afterwards (`oracle/README.md`, "Known limits"; scenario
+`oracle/corpus/ticking_error_after_step`). Options: (a) a failed table refuses every later
+request; (b) Oxhaven reproduces what Java serves; (c) the state of a table after it failed is
+left out of the comparison, which would be a new allowed difference.
