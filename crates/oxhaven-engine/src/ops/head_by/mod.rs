@@ -13,8 +13,13 @@
 //! as it shows: [`groups`] keeps the rows of each group and reports the groups that Java's
 //! aggregation reports, and the `ungroup` of `ops/ungroup` turns the kept rows of the
 //! groups into rows of the result, with the row keys and the updates of Java's. The
-//! arrays are never built: the contracts have no column type for them, and `ungroup` reads
-//! an array column only through the sizes of its arrays and their elements.
+//! arrays are never built: `ungroup` reads an array column only through the sizes of its
+//! arrays and their elements, which are rows of the source.
+//!
+//! A column of the source that holds vectors or arrays is kept like any other when it is
+//! not a group-by column: Java's `ungroup` takes apart the arrays of the aggregation, not
+//! the cells in them. As a group-by column an array is refused, and a vector is not
+//! ported, see [`vector_key`].
 //!
 //! What follows from that construction, as in Java:
 //!
@@ -77,6 +82,18 @@ pub enum HeadByError {
     /// Behavior: io.deephaven.engine.table.impl.QueryTable#aggBy, an
     /// `IllegalArgumentException`
     NoOtherColumns(Vec<String>),
+    /// A group-by column holds Java arrays; the first such column of those given. A column
+    /// of vectors is not refused here.
+    ///
+    /// Behavior: the key sources of
+    /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation, an
+    /// `IllegalArgumentException`
+    ArrayKey {
+        /// The name of the column.
+        column: String,
+        /// The type of the elements of its arrays.
+        element: ColumnType,
+    },
     /// The source is a blink table.
     ///
     /// Behavior: the `visit(AggSpecGroup)` of
@@ -104,6 +121,12 @@ impl fmt::Display for HeadByError {
                 "aggBy must have at least one aggregation, none specified. \
                  groupByColumns=[{}]",
                 columns.join(",")
+            ),
+            HeadByError::ArrayKey { column, element } => write!(
+                f,
+                "Cannot aggregate using an array column: {column}, column type is an array \
+                 of {}",
+                component(element)
             ),
             HeadByError::Blink => write!(
                 f,
@@ -147,30 +170,90 @@ pub fn tail_by(
     head_or_tail_by(source, rows, false, columns)
 }
 
-/// Checks that a group-by column of `column_type` holds one value in a row, as all the
-/// types there are do.
+/// The name Java prints for the class of the elements of an array, which is the name of
+/// a primitive, and `class` and the binary name of any other class: `int`,
+/// `class java.lang.String`, `class [I` for an `int[]`.
 ///
-/// With `unported!` for a type this module does not know: Java's `ungroup()` of the
-/// aggregation ungroups every array column, a group-by column that is an array included,
-/// so a list type added to the contracts must not be grouped by as a scalar is.
+/// Behavior: `java.lang.Class#toString` of the `getComponentType()` in
+/// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
+fn component(element: &ColumnType) -> String {
+    match element {
+        ColumnType::Byte => "byte".to_string(),
+        ColumnType::Char => "char".to_string(),
+        ColumnType::Short => "short".to_string(),
+        ColumnType::Int => "int".to_string(),
+        ColumnType::Long => "long".to_string(),
+        ColumnType::Float => "float".to_string(),
+        ColumnType::Double => "double".to_string(),
+        other => format!("class {}", binary_name(other)),
+    }
+}
+
+/// The name of the Java class of a column type as `java.lang.Class#getName` gives it,
+/// which for an array is `[` and the descriptor of its elements.
+///
+/// Behavior: `java.lang.Class#getName`; the classes are those the contracts name for
+/// each column type
+fn binary_name(column_type: &ColumnType) -> String {
+    let name = match column_type {
+        ColumnType::Boolean => "java.lang.Boolean",
+        ColumnType::Byte => "byte",
+        ColumnType::Char => "char",
+        ColumnType::Short => "short",
+        ColumnType::Int => "int",
+        ColumnType::Long => "long",
+        ColumnType::Float => "float",
+        ColumnType::Double => "double",
+        ColumnType::String => "java.lang.String",
+        ColumnType::Instant => "java.time.Instant",
+        ColumnType::Vector(element) => match **element {
+            ColumnType::Byte => "io.deephaven.vector.ByteVector",
+            ColumnType::Char => "io.deephaven.vector.CharVector",
+            ColumnType::Short => "io.deephaven.vector.ShortVector",
+            ColumnType::Int => "io.deephaven.vector.IntVector",
+            ColumnType::Long => "io.deephaven.vector.LongVector",
+            ColumnType::Float => "io.deephaven.vector.FloatVector",
+            ColumnType::Double => "io.deephaven.vector.DoubleVector",
+            _ => "io.deephaven.vector.ObjectVector",
+        },
+        ColumnType::Array(element) => {
+            let descriptor = match &**element {
+                ColumnType::Byte => "B".to_string(),
+                ColumnType::Char => "C".to_string(),
+                ColumnType::Short => "S".to_string(),
+                ColumnType::Int => "I".to_string(),
+                ColumnType::Long => "J".to_string(),
+                ColumnType::Float => "F".to_string(),
+                ColumnType::Double => "D".to_string(),
+                array @ ColumnType::Array(_) => binary_name(array),
+                other => format!("L{};", binary_name(other)),
+            };
+            return format!("[{descriptor}");
+        }
+        other => unported!(
+            "io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation",
+            "the Java class of column type {other:?}"
+        ),
+    };
+    name.to_string()
+}
+
+/// Stops at a group-by column that holds vectors.
+///
+/// Java does not refuse one. It groups by the vectors, and its `ungroup()` of the
+/// aggregation then takes apart every array column, the group-by column among them: the
+/// result has a row for each element of the key, and the request fails with an
+/// `IllegalStateException` ("Array sizes differ at row key 0 (position 0), V has size 2,
+/// K has size 1", in `fixtures/java_refusals.txt`) when a key does not have as many
+/// elements as its group has kept rows, at once or in a later cycle.
 ///
 /// Behavior: the `ungroup()` of io.deephaven.engine.table.impl.QueryTable#headOrTailBy
-fn scalar_key(column_type: &ColumnType) {
-    match column_type {
-        ColumnType::Boolean
-        | ColumnType::Byte
-        | ColumnType::Char
-        | ColumnType::Short
-        | ColumnType::Int
-        | ColumnType::Long
-        | ColumnType::Float
-        | ColumnType::Double
-        | ColumnType::String
-        | ColumnType::Instant => {}
-        other => unported!(
+fn vector_key(name: &str, column_type: &ColumnType) {
+    if let ColumnType::Vector(_) = column_type {
+        unported!(
             "io.deephaven.engine.table.impl.QueryTable#headOrTailBy",
-            "a group-by column of type {other:?}"
-        ),
+            "the group-by column {name} of type {column_type:?}, which Java ungroups"
+        );
     }
 }
 
@@ -195,18 +278,23 @@ fn checked(source: &dyn Table, rows: i64, columns: &[String]) -> Result<Vec<usiz
     if room == 0 {
         return Err(HeadByError::NoOtherColumns(columns.to_vec()));
     }
+    let index = |name: &String| source.definition().index_of(name).expect("a column");
+    let indexes: Vec<usize> = columns.iter().map(index).collect();
+    for &index in &indexes {
+        if let ColumnType::Array(element) = &declared[index].column_type {
+            return Err(HeadByError::ArrayKey {
+                column: declared[index].name.clone(),
+                element: (**element).clone(),
+            });
+        }
+    }
     if source.attributes().blink {
         return Err(HeadByError::Blink);
     }
-    let index = |name: &String| {
-        let index = source.definition().index_of(name)?;
-        scalar_key(&declared[index].column_type);
-        Some(index)
-    };
-    Ok(columns
-        .iter()
-        .map(|name| index(name).expect("a column"))
-        .collect())
+    for &index in &indexes {
+        vector_key(&declared[index].name, &declared[index].column_type);
+    }
+    Ok(indexes)
 }
 
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#headOrTailBy

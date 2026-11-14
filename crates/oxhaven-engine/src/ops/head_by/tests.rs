@@ -14,7 +14,7 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, ints, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
+    definition, ints, list_of, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
     TableChange,
 };
 use std::collections::HashMap;
@@ -234,7 +234,9 @@ fn exception(error: &HeadByError) -> &'static str {
             "java.lang.NegativeArraySizeException"
         }
         HeadByError::GroupColumns { .. } => "java.lang.ArrayIndexOutOfBoundsException",
-        HeadByError::NoOtherColumns(_) => "java.lang.IllegalArgumentException",
+        HeadByError::NoOtherColumns(_) | HeadByError::ArrayKey { .. } => {
+            "java.lang.IllegalArgumentException"
+        }
         HeadByError::Blink => "java.lang.UnsupportedOperationException",
         HeadByError::Failed(_) => panic!("not an exception of headBy"),
     }
@@ -256,11 +258,32 @@ fn refusals_are_javas_in_javas_order() {
         ("B", ColumnType::String),
     ];
     let (blink, _source) = blink_table(&graph(), &blink_columns);
+    let lists = lists();
+    let blink_columns = [
+        ("Timestamp", ColumnType::Instant),
+        ("A", ColumnType::Int),
+        ("Arr", ColumnType::array(ColumnType::Int)),
+        ("V", ColumnType::vector(ColumnType::Int)),
+    ];
+    let (blink_lists, _source) = blink_table(&graph(), &blink_columns);
     let answers = java_answers();
-    assert_eq!(answers.len(), 23);
+    assert_eq!(answers.len(), 38);
+    let mut refused = 0;
     for (call, answer) in answers {
+        // What Java makes of a vector it groups by is not ported.
+        if call == VECTOR_KEY {
+            assert!(answer.starts_with("java.lang.IllegalStateException: Array sizes differ"));
+            continue;
+        }
+        refused += usize::from(answer != "OK");
         let words: Vec<&str> = call.split(' ').collect();
-        let table = if words[0] == "blink" { &blink } else { &fixed };
+        let table = match words[0] {
+            "static" => &fixed,
+            "blink" => &blink,
+            "lists" => &lists,
+            "blinklists" => &blink_lists,
+            other => panic!("no table {other}"),
+        };
         let rows: i64 = words[2].parse().unwrap();
         let by: Vec<&str> = words[3].split(',').filter(|name| *name != "-").collect();
         let made = match words[1] {
@@ -271,6 +294,144 @@ fn refusals_are_javas_in_javas_order() {
             Ok(_) => assert_eq!(answer, "OK", "{call}"),
             Err(error) => assert_eq!(format!("{}: {error}", exception(&error)), answer, "{call}"),
         }
+    }
+    assert_eq!(refused, 34);
+}
+
+/// The call of `fixtures/java_refusals.txt` that groups by a vector column alone.
+const VECTOR_KEY: &str = "lists head 1 V";
+
+/// The table `lists` of `fixtures/record_refusals.py`.
+fn lists() -> Arc<dyn Table> {
+    use arrow::array::{new_null_array, BooleanArray, Int8Array};
+    let one_each =
+        |column_type: &ColumnType, elements: ArrayRef| list_of(column_type, [Some(1); 3], elements);
+    let vector = ColumnType::vector(ColumnType::Int);
+    let array = ColumnType::array(ColumnType::Int);
+    let texts = ColumnType::array(ColumnType::String);
+    let deep = ColumnType::array(array.clone());
+    let times = ColumnType::array(ColumnType::Instant);
+    let flags = ColumnType::array(ColumnType::Boolean);
+    let bytes = ColumnType::array(ColumnType::Byte);
+    let columns = [
+        ("K", ColumnType::Int, ints([1, 2, 3])),
+        (
+            "V",
+            vector.clone(),
+            list_of(&vector, [Some(2), Some(1), Some(1)], ints([1, 2, 3, 4])),
+        ),
+        ("Arr", array.clone(), one_each(&array, ints([1, 2, 3]))),
+        (
+            "SArr",
+            texts.clone(),
+            one_each(&texts, strings(["x", "x", "x"])),
+        ),
+        (
+            "Deep",
+            deep.clone(),
+            one_each(&deep, one_each(&array, ints([1, 2, 3]))),
+        ),
+        (
+            "Times",
+            times.clone(),
+            one_each(&times, new_null_array(&ColumnType::Instant.arrow_type(), 3)),
+        ),
+        (
+            "Flags",
+            flags.clone(),
+            one_each(&flags, Arc::new(BooleanArray::from(vec![true; 3]))),
+        ),
+        (
+            "Bytes",
+            bytes.clone(),
+            one_each(&bytes, Arc::new(Int8Array::from(vec![1i8; 3]))),
+        ),
+    ];
+    static_table(&columns)
+}
+
+/// Java ungroups a vector that it grouped by, which is not ported; the checks of the
+/// request come first, as the blink table of `refusals_are_javas_in_javas_order` shows.
+#[test]
+#[should_panic(expected = "the group-by column V of type Vector(Int), which Java ungroups")]
+fn a_vector_to_group_by_is_not_ported() {
+    let words: Vec<&str> = VECTOR_KEY.split(' ').collect();
+    assert_eq!(words[1..], ["head", "1", "V"]);
+    let _ = head_by(&lists(), 1, &names(&["V"]));
+}
+
+/// A table of `fixtures/java_lists.txt`: its name, its column names, the Java classes of
+/// its columns and its rows.
+struct Recorded {
+    name: &'static str,
+    columns: Vec<&'static str>,
+    classes: Vec<&'static str>,
+    rows: Vec<&'static str>,
+}
+
+fn java_lists() -> Vec<Recorded> {
+    let mut tables: Vec<Recorded> = Vec::new();
+    let mut lines = include_str!("fixtures/java_lists.txt").lines();
+    while let Some(line) = lines.next() {
+        match line.split_once(": ") {
+            Some((name, columns)) => tables.push(Recorded {
+                name,
+                columns: columns.split(',').collect(),
+                classes: lines.next().expect("the classes").split(',').collect(),
+                rows: Vec::new(),
+            }),
+            None => tables.last_mut().expect("a table").rows.push(line),
+        }
+    }
+    tables
+}
+
+/// A column of vectors or arrays that is not grouped by is kept as it is: Java's
+/// `ungroup` takes apart the arrays of the groups, not the cells in them. The source and
+/// the results are those `fixtures/record_lists.py` read from Java.
+#[test]
+fn vectors_and_arrays_that_are_not_grouped_by_are_kept_whole() {
+    let vector = ColumnType::vector(ColumnType::Int);
+    let array = ColumnType::array(ColumnType::Int);
+    let texts = ColumnType::array(ColumnType::String);
+    // C and Arr: [1], [2, 5], [3, 4], [6]
+    let lengths = [Some(1), Some(2), Some(2), Some(1)];
+    let elements = || ints([1, 2, 5, 3, 4, 6]);
+    let columns = [
+        ("A", ColumnType::Int, ints([1, 1, 2, 3])),
+        ("B", ColumnType::String, strings(["x", "y", "x", "x"])),
+        ("C", vector.clone(), list_of(&vector, lengths, elements())),
+        ("Arr", array.clone(), list_of(&array, lengths, elements())),
+        ("K", ColumnType::Int, ints([1, 1, 2, 3])),
+        (
+            "SArr",
+            texts.clone(),
+            list_of(&texts, [Some(1); 4], strings(["x", "y", "x", "x"])),
+        ),
+    ];
+    let source = static_table(&columns);
+
+    let recorded = java_lists();
+    assert_eq!(recorded.len(), 5);
+    for java in recorded {
+        let words: Vec<&str> = java.name.split(' ').collect();
+        let table = match words[..] {
+            ["source"] => source.clone(),
+            [kind, rows, by] => {
+                let by: Vec<&str> = by.split(',').filter(|name| *name != "-").collect();
+                make(&source, kind == "head", rows.parse().unwrap(), &by)
+            }
+            _ => panic!("no table {}", java.name),
+        };
+        let declared = table.definition().columns();
+        let names: Vec<&str> = declared.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, java.columns, "{}", java.name);
+        let classes: Vec<String> = declared
+            .iter()
+            .map(|c| super::binary_name(&c.column_type))
+            .collect();
+        assert_eq!(classes, java.classes, "{}", java.name);
+        assert_eq!(shown(&*table), java.rows, "{}", java.name);
     }
 }
 
@@ -304,6 +465,15 @@ fn each_refusal_has_its_variant() {
     );
     let tail = tail_by(&source, -3, &names(&["G"])).err().unwrap();
     assert_eq!(tail, HeadByError::RowsNotPositive(-3));
+    let lists = lists();
+    let refused = |by: &[&str]| tail_by(&lists, 1, &names(by)).err().unwrap();
+    assert_eq!(
+        refused(&["K", "Deep", "Arr"]),
+        HeadByError::ArrayKey {
+            column: "Deep".to_string(),
+            element: ColumnType::array(ColumnType::Int)
+        }
+    );
 }
 
 /// Java gets to the failed table only when it makes the result, after its checks of the
@@ -837,8 +1007,8 @@ fn a_failure_of_the_source_fails_the_result() {
 // Random changes
 
 /// Runs random changes of a source with the columns `K` (int), `G` (String), `D`
-/// (double), `V` (long) and `Z` (Boolean) through a `head_by` or `tail_by`. Returns the
-/// number of updates the result delivered.
+/// (double), `V` (long), `Z` (Boolean), `L` (a vector of int) and `S` (an array of String)
+/// through a `head_by` or `tail_by`. Returns the number of updates the result delivered.
 fn random_run(seed: u64, head: bool, rows: i64, by: &'static [&'static str], steps: usize) -> u64 {
     let graph = graph();
     let mut random = RandomUpdates::new(seed);
@@ -848,6 +1018,8 @@ fn random_run(seed: u64, head: bool, rows: i64, by: &'static [&'static str], ste
         ("D", ColumnType::Double),
         ("V", ColumnType::Long),
         ("Z", ColumnType::Boolean),
+        ("L", ColumnType::vector(ColumnType::Int)),
+        ("S", ColumnType::array(ColumnType::String)),
     ];
     let initial = 8;
     let values = columns

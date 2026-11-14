@@ -8,7 +8,11 @@ call to `java_refusals.txt`, one line per call:
     <table> <head|tail> <rows> <group-by columns, comma separated, or -> => <exception: message | OK>
 
 `static` is a table of the columns `A` (int) and `B` (String); `blink` is a blink time table
-of the columns `Timestamp`, `A` and `B`. The last lines are the status codes of the gRPC
+of the columns `Timestamp`, `A` and `B`. `lists` has a row for each `K` of 1, 2 and 3, with
+the vector column `V` (`IntVector`, of 2, 1 and 1 elements) and the array columns `Arr`
+(`int[]`), `SArr` (`String[]`), `Deep` (`int[][]`), `Times` (`Instant[]`), `Flags`
+(`Boolean[]`) and `Bytes` (`byte[]`); `blinklists` is a blink table of `Timestamp`, `A`,
+`Arr` (`int[]`) and `V` (`IntVector`). The last lines are the status codes of the gRPC
 handler for a blink table.
 
     oracle/bin/start-java.sh 10882
@@ -53,6 +57,21 @@ CALLS = [
     ("blink", "head", 1, ["Timestamp", "A", "B"]),
     ("blink", "head", 1, ["A"]),
     ("blink", "tail", 1, []),
+    ("lists", "head", 0, ["Arr"]),
+    ("lists", "head", 1, ["Arr", "Arr"]),
+    ("lists", "head", 1, ["K", "V", "Arr", "SArr", "Deep", "Times", "Flags", "Bytes"]),
+    ("lists", "head", 1, ["Arr"]),
+    ("lists", "tail", 1, ["SArr", "Arr"]),
+    ("lists", "head", 1, ["K", "Arr", "SArr"]),
+    ("lists", "head", 1, ["Deep"]),
+    ("lists", "head", 1, ["Times"]),
+    ("lists", "head", 1, ["Flags"]),
+    ("lists", "head", 1, ["Bytes"]),
+    ("lists", "head", 1, ["K"]),
+    ("lists", "head", 1, ["V"]),
+    ("lists", "head", 1, ["V", "Arr"]),
+    ("blinklists", "head", 1, ["Arr"]),
+    ("blinklists", "head", 1, ["V"]),
 ]
 
 SCRIPT = """
@@ -62,6 +81,19 @@ from deephaven.column import string_col as _string_col, int_col as _int_col
 _refusal_tables = dict(
     static=_new_table([_int_col("A", [1, 1, 2]), _string_col("B", ["x", "y", "x"])]),
     blink=_time_table("PT1S", blink_table=True).update(["A=1", "B=`x`"]),
+    lists=_new_table([_int_col("K", [1, 1, 2, 3]), _int_col("V", [1, 2, 3, 4])])
+    .group_by(["K"])
+    .update([
+        "Arr = new int[]{{K}}",
+        "SArr = new String[]{{`x`}}",
+        "Deep = new int[][]{{new int[]{{K}}}}",
+        "Times = new java.time.Instant[]{{null}}",
+        "Flags = new Boolean[]{{true}}",
+        "Bytes = new byte[]{{(byte) 1}}",
+    ]),
+    blinklists=_time_table("PT1S", blink_table=True).update(
+        ["A=1", "Arr = new int[]{{A}}", "V = new io.deephaven.vector.IntVectorDirect(A)"]
+    ),
 )
 refusals_blink = _refusal_tables["blink"]
 
