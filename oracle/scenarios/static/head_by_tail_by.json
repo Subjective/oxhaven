@@ -1,7 +1,7 @@
 {
  "format": 1,
  "name": "head_by_tail_by",
- "description": "head_by and tail_by with zero, one and several rows, on one key, two keys and no key, with null keys, on an empty table, and on a key the table lacks.",
+ "description": "head_by and tail_by with zero, one and several rows, on one key, two keys and no key, with null keys, on an empty table, on a key the table lacks, and with every column of the table as a key.",
  "inputs": [
   {
    "name": "t",
@@ -161,6 +161,37 @@
     }
    ],
    "rows": []
+  },
+  {
+   "name": "pair",
+   "columns": [
+    {
+     "name": "A",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "x"
+    ],
+    [
+     1,
+     "x"
+    ],
+    [
+     2,
+     null
+    ],
+    [
+     null,
+     "y"
+    ]
+   ]
   }
  ],
  "operations": [
@@ -289,6 +320,35 @@
    ]
   },
   {
+   "name": "head_all_keys",
+   "op": "head_by",
+   "source": "pair",
+   "rows": 1,
+   "by": [
+    "A",
+    "B"
+   ]
+  },
+  {
+   "name": "tail_all_keys",
+   "op": "tail_by",
+   "source": "pair",
+   "rows": 1,
+   "by": [
+    "B",
+    "A"
+   ]
+  },
+  {
+   "name": "head_pair",
+   "op": "head_by",
+   "source": "pair",
+   "rows": 1,
+   "by": [
+    "B"
+   ]
+  },
+  {
    "name": "head_unknown",
    "op": "head_by",
    "source": "t",
@@ -349,6 +409,15 @@
   },
   {
    "table": "head_empty"
+  },
+  {
+   "table": "head_all_keys"
+  },
+  {
+   "table": "tail_all_keys"
+  },
+  {
+   "table": "head_pair"
   },
   {
    "table": "head_unknown"

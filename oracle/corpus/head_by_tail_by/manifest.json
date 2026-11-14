@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "head_by_tail_by",
-  "scenario_sha256": "81b2a6ee805f0c03dcf2754da5fdeb3a82618ae79b63b900b3eb2e441f6b12ac",
+  "scenario_sha256": "25f78f317107cc9410cd900bec5e73dd6f5b8cf1ff19e6ea5cf6adccc8396bee",
   "reference": "42.9",
   "entries": [
     {
@@ -89,6 +89,26 @@
       "table": "head_empty",
       "file": "step000.head_empty.arrow",
       "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "head_all_keys",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "tail_all_keys",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "head_pair",
+      "file": "step000.head_pair.arrow",
+      "rows": 3
     },
     {
       "step": 0,
