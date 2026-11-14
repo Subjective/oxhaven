@@ -44,16 +44,14 @@ fn name_length(text: &str) -> usize {
 }
 
 /// The names of `Name` or `Left=Right` (or `Left==Right`) with space around each part, or
-/// `None` if `text` is neither. The patterns end in `\s*\Z`, and `\Z` also matches before a
-/// line terminator at the very end; the terminators `\s` does not cover are removed first.
+/// `None` if `text` is neither. Java's `Matcher#matches` must consume the whole string, so
+/// the `\Z` that ends the patterns does not let a final line terminator through, though
+/// `\Z` alone would match before one (checked on OpenJDK 21: `"A\u2028"` is refused).
 ///
 /// Behavior: the two patterns registered by
 /// `io.deephaven.engine.table.impl.select.MatchPairFactory`, with `START_PTRN` and `END_PTRN`
 /// of `io.deephaven.api.expression.SelectFactoryConstants`
 fn match_names(text: &str) -> Option<(&str, &str)> {
-    let text = text
-        .strip_suffix(['\u{85}', '\u{2028}', '\u{2029}'])
-        .unwrap_or(text);
     let text = text.trim_matches(is_space);
     let left = name_length(text);
     if left == 0 {
@@ -222,12 +220,12 @@ mod tests {
         assert_eq!(names(" A \t= B "), pair("A", "B"));
         assert_eq!(names("A ==\nB"), pair("A", "B"));
         assert_eq!(names("$x_1=_y$2"), pair("$x_1", "_y$2"));
-        // `\Z` matches before one final line terminator that `\s` does not cover
-        assert_eq!(names("A\u{2028}"), pair("A", "A"));
-        assert_eq!(names("A=B \u{85}"), pair("A", "B"));
+        assert_eq!(names("A\u{0B}"), pair("A", "A"));
+        // what Java's patterns refuse, run on OpenJDK 21
         for refused in [
             "", " ", "=", "A=", "=B", "A===B", "A = = B", "A B", "A=B=C", "1A", "A=1B", "A-B",
-            "Übung", "A\u{2028}\u{2028}", "A\u{2028} ", "A\u{a0}", "A+B", "A=B C",
+            "Übung", "A\u{2028}", "A=B \u{85}", "A\u{2028}\u{2028}", "A\u{2028} ", "A\u{a0}",
+            "A+B", "A=B C", "A\n\u{2028}", "A\u{1c}",
         ] {
             assert_eq!(names(refused), None, "{refused:?}");
         }
