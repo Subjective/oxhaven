@@ -107,7 +107,7 @@ fn oracle() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oracle")
 }
 
-fn json(path: &PathBuf) -> Value {
+pub(super) fn json(path: &PathBuf) -> Value {
     let file = File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     serde_json::from_reader(file).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
@@ -146,7 +146,10 @@ fn narrow<T: TryFrom<i64>>(cell: &Value) -> Option<T> {
 
 /// A column of a scenario's type from its cells. A cell holding Java's null value of the
 /// type becomes null, as it does when the table is sent to a server.
-fn column<'a>(type_name: &str, cells: impl Iterator<Item = &'a Value>) -> (ColumnType, ArrayRef) {
+pub(super) fn column<'a>(
+    type_name: &str,
+    cells: impl Iterator<Item = &'a Value>,
+) -> (ColumnType, ArrayRef) {
     let (column_type, values): (ColumnType, ArrayRef) = match type_name {
         "bool" => (
             ColumnType::Boolean,
@@ -180,6 +183,11 @@ fn column<'a>(type_name: &str, cells: impl Iterator<Item = &'a Value>) -> (Colum
             ColumnType::Double,
             Arc::new(cells.map(float_cell).collect::<Float64Array>()),
         ),
+        // Not a type of the oracle's scenarios: one more of the fixtures in `ops/agg/fixtures`.
+        "char" => (
+            ColumnType::Char,
+            Arc::new(cells.map(narrow).collect::<arrow::array::UInt16Array>()),
+        ),
         "string" => (
             ColumnType::String,
             Arc::new(cells.map(Value::as_str).collect::<StringArray>()),
@@ -199,13 +207,13 @@ fn column<'a>(type_name: &str, cells: impl Iterator<Item = &'a Value>) -> (Colum
     (column_type, values)
 }
 
-fn list<'a>(value: &'a Value, what: &str) -> &'a Vec<Value> {
+pub(super) fn list<'a>(value: &'a Value, what: &str) -> &'a Vec<Value> {
     value
         .as_array()
         .unwrap_or_else(|| panic!("{what} is not a list"))
 }
 
-fn text<'a>(value: &'a Value, what: &str) -> &'a str {
+pub(super) fn text<'a>(value: &'a Value, what: &str) -> &'a str {
     value
         .as_str()
         .unwrap_or_else(|| panic!("{what} is not a string"))
@@ -213,7 +221,7 @@ fn text<'a>(value: &'a Value, what: &str) -> &'a str {
 
 /// The rows of an input, or of an action on it, as a batch of the first `columns.len()`
 /// columns of the input.
-fn rows_batch(columns: &[&Value], rows: &[Value]) -> (TableDefinition, RecordBatch) {
+pub(super) fn rows_batch(columns: &[&Value], rows: &[Value]) -> (TableDefinition, RecordBatch) {
     let built: Vec<(&str, ColumnType, ArrayRef)> = columns
         .iter()
         .enumerate()
@@ -226,13 +234,13 @@ fn rows_batch(columns: &[&Value], rows: &[Value]) -> (TableDefinition, RecordBat
     batch(&built)
 }
 
-struct Input {
-    table: Arc<dyn Table>,
+pub(super) struct Input {
+    pub(super) table: Arc<dyn Table>,
     columns: Vec<Value>,
     key_columns: Vec<String>,
 }
 
-fn inputs(scenario: &Value, graph: &Arc<SteppedUpdateGraph>) -> BTreeMap<String, Input> {
+pub(super) fn inputs(scenario: &Value, graph: &Arc<SteppedUpdateGraph>) -> BTreeMap<String, Input> {
     list(&scenario["inputs"], "inputs")
         .iter()
         // The engine has no blink input table.
@@ -362,7 +370,12 @@ fn floats_match(actual: f64, expected: f64, tolerance: Option<(f64, f64)>) -> bo
 }
 
 /// Compares `table` with what Java returned, by the rules of `oracle/harness/rules.py`.
-fn assert_matches(context: &str, table: &dyn Table, expected: &RecordBatch, computed: &[String]) {
+pub(super) fn assert_matches(
+    context: &str,
+    table: &dyn Table,
+    expected: &RecordBatch,
+    computed: &[String],
+) {
     let actual = read(table);
     let schema = expected.schema();
     let names: Vec<&str> = schema
@@ -428,7 +441,11 @@ fn assert_matches(context: &str, table: &dyn Table, expected: &RecordBatch, comp
 }
 
 /// Applies the actions of one step to the inputs and runs a cycle.
-fn run_step(step: &Value, inputs: &BTreeMap<String, Input>, graph: &Arc<SteppedUpdateGraph>) {
+pub(super) fn run_step(
+    step: &Value,
+    inputs: &BTreeMap<String, Input>,
+    graph: &Arc<SteppedUpdateGraph>,
+) {
     for action in list(&step["actions"], "actions") {
         // An input that was not made takes no actions.
         let Some(input) = inputs.get(text(&action["table"], "table")) else {
