@@ -212,10 +212,16 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
     let implemented: HashSet<String> = IMPLEMENTED.iter().map(|v| java_name(v)).collect();
     assert_eq!(
         implemented,
-        ["EMPTY_TABLE", "TIME_TABLE", "FETCH_TABLE", "META_TABLE"]
-            .into_iter()
-            .map(String::from)
-            .collect::<HashSet<_>>(),
+        [
+            "CREATE_INPUT_TABLE",
+            "EMPTY_TABLE",
+            "TIME_TABLE",
+            "FETCH_TABLE",
+            "META_TABLE",
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect::<HashSet<_>>(),
         "a new handler belongs in this list"
     );
     for op in operations {

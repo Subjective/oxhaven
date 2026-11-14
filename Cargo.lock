@@ -1211,6 +1211,7 @@ dependencies = [
  "arrow",
  "base64 0.22.1",
  "bytes",
+ "flatbuffers",
  "futures-util",
  "http",
  "http-body",

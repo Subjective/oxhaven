@@ -247,6 +247,7 @@ macro_rules! handlers {
 
 // One line per handler file: `file { Operation => HandlerType }`.
 handlers! {
+    create_input_table { CreateInputTable => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }
     meta_table { MetaTable => Handler }

@@ -12,6 +12,7 @@ arrow.workspace = true
 base64.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
+flatbuffers.workspace = true
 http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true

@@ -1821,10 +1821,8 @@ mod wire {
         server.session(&bearer);
 
         let err = FlightServiceClient::new(server.channel.clone())
-            .do_get(with_auth(
-                oxhaven_proto::flight::Ticket {
-                    ticket: export_id_to_bytes(1).into(),
-                },
+            .do_exchange(with_auth(
+                tokio_stream::iter(Vec::<oxhaven_proto::flight::FlightData>::new()),
                 &bearer,
             ))
             .await
