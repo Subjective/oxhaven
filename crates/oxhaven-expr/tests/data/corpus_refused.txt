@@ -250,9 +250,8 @@ docs-python/how-to-guides.iterate-table-data.L28.9.1	java-accepts	setup: functio
 docs-python/how-to-guides.iterate-table-data.L74.9.1	java-accepts	function randomBool()
 docs-python/how-to-guides.iterate-table-data.L74.9.2	java-accepts	setup: function randomBool()
 docs-python/how-to-guides.iterate-table-data.L87.9.2	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.java-classes.L37.9.0	java-accepts	field access .MAX_VALUE
-docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	setup: field access .MAX_VALUE
-docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: field access .MAX_VALUE
+docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	object creation (new)
+docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.java-classes.L66.9.0	java-fails	static method call Math.random()
 docs-python/how-to-guides.java-classes.L88.9.0	java-accepts	time literal '2025-09-01T09:30:00 ET'
 docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
@@ -651,10 +650,7 @@ grid-function/java.20	java-fails	static method call Math.abs()
 grid-function/java.21	java-fails	static method call Math.max()
 grid-function/java.22	java-fails	static method call Math.sqrt()
 grid-function/java.23	java-fails	static method call Math.floorMod()
-grid-function/java.24	java-accepts	field access .MAX_VALUE
-grid-function/java.25	java-accepts	field access .NaN
 grid-function/java.26	java-accepts	static method call Double.isNaN()
-grid-function/java.27	java-accepts	field access .MIN_VALUE
 grid-function/java.28	java-accepts	object creation (new)
 grid-function/java.29	java-accepts	object creation (new)
 grid-literal/plus.boolean.null	java-fails	null literal as an operand of +

@@ -665,12 +665,7 @@ fn replay(scenario: &Json, tally: &mut Tally) {
 const OURS: [&str; 2] = ["where", "filter"];
 
 /// Results that differ from what Java recorded, each with the first difference found.
-const KNOWN_DIFFERENCES: [&str; 1] = [
-    // The condition prints as `D == Double.NaN`, a formula Java compiles; the formula
-    // compiler has no field access yet.
-    "filter_structured.double_equal_nan at step 0: refused (unsupported in formulas: field \
-     access .NaN), Java has a table",
-];
+const KNOWN_DIFFERENCES: [&str; 0] = [];
 
 /// Every scenario of the oracle, replayed as far as `where` and `filter` reach: each
 /// recorded result of one of them is compared at every step, or listed as not run with the
@@ -717,6 +712,7 @@ fn scenarios_match_the_recorded_java_results() {
         "filter_structured.contains_empty x1",
         "filter_structured.contains_ignore_case x1",
         "filter_structured.contains_inverted x1",
+        "filter_structured.double_equal_nan x1",
         "filter_structured.double_equal_zero x1",
         "filter_structured.double_greater_equal x1",
         "filter_structured.double_less x1",

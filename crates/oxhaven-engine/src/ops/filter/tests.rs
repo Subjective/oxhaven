@@ -657,6 +657,42 @@ fn structured_comparisons_use_range_match_and_formula_semantics() {
         kept_by(&t, &[compare(CompareOp::NotEquals, d(), double(1.0))]),
         [1, 2, 3, 4, 5, 6, 7, 8]
     );
+    // A non-finite literal prints as a field, `D == Double.NaN`, which is a formula:
+    // `QueryLanguageFunctionUtils#eq(double, double)` is `==` on non-null values, so NaN
+    // equals nothing, as recorded for `filter_structured.double_equal_nan`.
+    assert_eq!(
+        kept_by(&t, &[compare(CompareOp::Equals, d(), double(f64::NAN))]),
+        [] as [i64; 0]
+    );
+    assert_eq!(
+        kept_by(&t, &[compare(CompareOp::Equals, double(f64::NAN), d())]),
+        [] as [i64; 0]
+    );
+    assert_eq!(
+        kept_by(&t, &[compare(CompareOp::NotEquals, d(), double(f64::NAN))]),
+        [0, 1, 2, 3, 4, 5, 6, 7, 8]
+    );
+    assert_eq!(
+        kept_by(
+            &t,
+            &[compare(CompareOp::Equals, d(), double(f64::INFINITY))]
+        ),
+        [7]
+    );
+    assert_eq!(
+        kept_by(
+            &t,
+            &[compare(CompareOp::Equals, d(), double(f64::NEG_INFINITY))]
+        ),
+        [8]
+    );
+    assert_eq!(
+        kept_by(
+            &t,
+            &[compare(CompareOp::NotEquals, d(), double(f64::INFINITY))]
+        ),
+        [0, 1, 2, 3, 4, 5, 6, 8]
+    );
     // A range against NaN: everything is below it and nothing above.
     assert_eq!(
         kept_by(&t, &[compare(CompareOp::LessThan, d(), double(f64::NAN))]),
