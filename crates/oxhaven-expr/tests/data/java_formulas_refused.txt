@@ -91,9 +91,6 @@ java-rejects	update	Math.abs(I)	static method call Math.abs()
 java-accepts	update	String.valueOf(I)	static method call String.valueOf()
 java-accepts	update	Integer.toString(I)	static method call Integer.toString()
 java-accepts	update	Math.PI	field access .PI
-java-accepts	update	i	row variable I
-java-accepts	update	ii	row variable Ii
-java-accepts	update	k	row variable K
 java-accepts	update	I_[i - 1]	column array access I_[...]
 java-accepts	update	I_	column array I_
 java-accepts	update	I_[0]	column array access I_[...]

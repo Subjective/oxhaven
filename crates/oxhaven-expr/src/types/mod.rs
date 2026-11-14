@@ -14,7 +14,7 @@ mod methods;
 use crate::functions::{self, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
-use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, UnaryOp};
+use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, RowVariable, UnaryOp};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 
 /// The four types Java computes numbers in, in promotion order.
@@ -186,6 +186,8 @@ pub(crate) struct Typed {
 pub(crate) enum Node {
     /// The column at this index of [`Checked::columns`].
     Column(usize),
+    /// `i` or `ii`, the row's position in the table, or `k`, its key.
+    RowVariable(RowVariable),
     /// Never `Literal::Null`.
     Literal(Literal),
     /// Null of the node's type.
@@ -253,6 +255,10 @@ pub(crate) struct Checked {
     pub(crate) root: Typed,
     /// The columns the formula reads, in order of first use.
     pub(crate) columns: Vec<String>,
+    /// Whether the formula uses `i` or `ii`.
+    pub(crate) positions: bool,
+    /// Whether the formula uses `k`.
+    pub(crate) keys: bool,
 }
 
 /// Type-checks `expr` against `definition`.
@@ -260,11 +266,15 @@ pub(crate) fn check(expr: &Expr, definition: &TableDefinition) -> Result<Checked
     let mut checker = Checker {
         definition,
         columns: Vec::new(),
+        positions: false,
+        keys: false,
     };
     let root = checker.check(expr)?;
     Ok(Checked {
         root,
         columns: checker.columns,
+        positions: checker.positions,
+        keys: checker.keys,
     })
 }
 
@@ -354,6 +364,8 @@ fn family(op: BinaryOp) -> Family {
 struct Checker<'a> {
     definition: &'a TableDefinition,
     columns: Vec<String>,
+    positions: bool,
+    keys: bool,
 }
 
 impl Checker<'_> {
@@ -362,7 +374,19 @@ impl Checker<'_> {
             Expr::Column(name) => self.column(name),
             Expr::Literal(literal) => literal_type(literal)
                 .map(|column_type| typed(column_type, Node::Literal(literal.clone()))),
-            Expr::RowVariable(variable) => Err(unsupported(format!("row variable {variable:?}"))),
+            // Behavior: `QueryLanguageParser`'s variables `i` (`int`), `ii` and `k` (`long`),
+            // which `DhFormulaColumn#generateFillChunkHelper` and `ConditionFilter` supply.
+            Expr::RowVariable(variable) => {
+                let column_type = match variable {
+                    RowVariable::I => ColumnType::Int,
+                    RowVariable::Ii | RowVariable::K => ColumnType::Long,
+                };
+                match variable {
+                    RowVariable::I | RowVariable::Ii => self.positions = true,
+                    RowVariable::K => self.keys = true,
+                }
+                Ok(typed(column_type, Node::RowVariable(*variable)))
+            }
             Expr::Unary { op, operand } => self.unary(*op, operand),
             Expr::Binary { op, left, right } => self.binary(*op, left, right),
             Expr::Call {
