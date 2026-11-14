@@ -80,7 +80,13 @@ the differential tests decide. When the two conflict on results, `PARITY.md` win
    `cargo test --workspace`.
 2. The differential smoke run in `oracle/` for the operations your change touches.
 3. The self-consistency checker, which is on in all engine tests.
-4. Blind review by a second agent that sees only the diff, the contracts and this file.
+4. CI checks for deleted or skipped tests, protected-path changes and commit style.
+
+You own your task until its pull request is green: watch CI and fix your own failures.
+
+There is no routine code review. A second agent audits only what the checks above cannot see:
+`unsafe` code, contract changes and oracle changes. An audit finding must come with evidence, a
+failing test or seed, and gets one round. Style and structure are not audit findings.
 
 Report what you ran and what you saw. Say which checks you did not run. Never report a pass you
 did not observe.

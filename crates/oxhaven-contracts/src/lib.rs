@@ -3,6 +3,14 @@
 //! Types and traits here are frozen once approved. Change them only through a
 //! contract-change pull request; see PORTING.md.
 
+pub mod expr;
+pub mod graph;
+pub mod rowset;
+pub mod schema;
+pub mod shift;
+pub mod table;
+pub mod update;
+
 /// Marks a call into behavior that has not been ported yet.
 ///
 /// Use this instead of guessing what the Java engine does. The message must
