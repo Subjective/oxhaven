@@ -41,8 +41,8 @@ use app::{ApplicationGrpc, ApplicationTicketResolver, Applications, Scope, Scope
 use flight::FlightGrpc;
 use inputtable::InputTableGrpc;
 use session::{
-    system_clock, AuthHandlers, ExportTicketResolver, SessionGrpc, SessionStore, TicketRouter,
-    TokioExecutor,
+    system_clock, AuthHandlers, ExportTicketResolver, SessionGrpc, SessionStore,
+    SharedTicketResolver, TicketRouter, TokioExecutor,
 };
 use table::support::OpContext;
 use update_graph::PeriodicUpdateGraph;
@@ -99,6 +99,7 @@ impl ServerState {
         let scope = Scope::new();
         let tickets = Arc::new(TicketRouter::new(vec![
             Arc::new(ExportTicketResolver),
+            Arc::new(SharedTicketResolver::new()),
             Arc::new(ApplicationTicketResolver::new(applications.clone())),
             Arc::new(ScopeTicketResolver::new(scope.clone())),
         ])?);
