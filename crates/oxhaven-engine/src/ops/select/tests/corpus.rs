@@ -467,6 +467,7 @@ fn results_match_the_ones_recorded_from_java() {
             "ticking_update_by_append.computed x6",
             "update_float_special.u x1",
             "update_int_overflow.u x1",
+            "update_null_propagation.u x1",
             "view_arithmetic.floats x1",
             "view_arithmetic.ints x1",
             "view_arithmetic.small x1",
@@ -484,7 +485,6 @@ fn results_match_the_ones_recorded_from_java() {
             "error_unknown_column.after_bad_sort: sort",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",
-            "update_null_propagation.u: unsupported formula M = S + `x`",
         ],
         "not run"
     );
