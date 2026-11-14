@@ -1,0 +1,112 @@
+baseline (--empty ConsoleService/GetConsoleTypes)
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny ConfigService/GetAuthenticationConstants
+    panels   FAIL (the IDE did not show the pre-shared key login form)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    ok
+--deny ConfigService/GetConfigurationConstants
+    panels   FAIL (the IDE stayed on the login form (the key was not accepted); page says: Token Login io.dee)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: login was rejected: disconnect null)
+--deny SessionService/TerminationNotification
+    panels   ok
+    iframe   ok
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: updates of ide_ticking)
+--deny SessionService/Release
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny TableService/ExportedTableUpdates
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny StorageService/ListItems
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny ApplicationService/ListFields
+    panels   FAIL (ide_static could not be opened from the Panels list; it lists: ["No bound variables found.)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: getObject ide_static was rejected: "Timeout after)
+--deny ConsoleService/GetConsoleTypes
+    panels   FAIL (the IDE did not load its dashboard; page says: Error: answered by ide-test --deny)
+    iframe   ok
+    jsapi    ok
+--deny TableService/FetchTable
+    panels   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: getObject ide_static was rejected: "Error: answer)
+--deny TableService/ApplyPreviewColumns
+    panels   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: viewport of ide_static)
+--deny TableService/Batch
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny FlightService/DoExchange
+    panels   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: viewport of ide_static)
+--deny FlightService/DoGet
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--deny ObjectService/FetchObject
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty ConfigService/GetAuthenticationConstants
+    panels   FAIL (the IDE did not show the pre-shared key login form)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    ok
+--empty ConfigService/GetConfigurationConstants
+    panels   FAIL (the IDE did not load its dashboard; page says: )
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: getObject ide_static was rejected: "Timeout after)
+--empty SessionService/TerminationNotification
+    panels   FAIL (the IDE did not load its dashboard; page says: Server shutdown: Server exited normally.)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: updates of ide_ticking)
+--empty SessionService/Release
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty TableService/ExportedTableUpdates
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty StorageService/ListItems
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty ApplicationService/ListFields
+    panels   FAIL (ide_static could not be opened from the Panels list; it lists: ["No bound variables found.)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: getObject ide_static was rejected: "Timeout after)
+--empty TableService/FetchTable
+    panels   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: no grid with the header ["Id","Sym)
+    jsapi    FAIL (the JS API failed: page.evaluate: Cannot serialize result: object reference chain is too l)
+--empty TableService/ApplyPreviewColumns
+    panels   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: viewport of ide_static)
+--empty TableService/Batch
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty FlightService/DoExchange
+    panels   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    iframe   FAIL (the grid of ide_static did not show the expected cells: painted [], expected [["1","AAPL",)
+    jsapi    FAIL (the JS API failed: page.evaluate: Error: timed out: viewport of ide_static)
+--empty FlightService/DoGet
+    panels   ok
+    iframe   ok
+    jsapi    ok
+--empty ObjectService/FetchObject
+    panels   ok
+    iframe   ok
+    jsapi    ok

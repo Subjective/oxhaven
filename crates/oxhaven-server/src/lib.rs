@@ -1,6 +1,8 @@
 //! gRPC services, sessions, tickets, and Barrage.
 
 pub mod config;
+pub mod flight;
+pub mod inputtable;
 pub mod schema;
 pub mod session;
 pub mod table;
@@ -16,18 +18,26 @@ use std::time::Duration;
 use oxhaven_engine::table::WallClock;
 use oxhaven_proto::flight::flight_service_server::FlightServiceServer;
 use oxhaven_proto::grpc::config_service_server::ConfigServiceServer;
+use oxhaven_proto::grpc::input_table_service_server::InputTableServiceServer;
 use oxhaven_proto::grpc::session_service_server::SessionServiceServer;
 use oxhaven_proto::grpc::table_service_server::TableServiceServer;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::service::Routes;
 
+use flight::FlightGrpc;
+use inputtable::InputTableGrpc;
 use session::{
-    system_clock, AuthHandlers, ExportTicketResolver, HandshakeOnlyFlight, SessionGrpc,
-    SessionLayer, SessionStore, TicketRouter, TokioExecutor,
+    system_clock, AuthHandlers, ExportTicketResolver, SessionGrpc, SessionLayer, SessionStore,
+    TicketRouter, TokioExecutor,
 };
 use table::support::OpContext;
 use update_graph::PeriodicUpdateGraph;
+
+/// The largest message a client may send, as in the reference server.
+///
+/// Behavior: `io.deephaven.server.config.ServerConfig#DEFAULT_MAX_INBOUND_MESSAGE_SIZE_MiB`
+const MAX_INBOUND_MESSAGE_SIZE: usize = 100 * 1024 * 1024;
 
 /// What the server is started with.
 pub struct ServerConfig {
@@ -90,8 +100,12 @@ impl ServerState {
             self.sessions.clone(),
             self.tickets.clone(),
         )))
-        .add_service(FlightServiceServer::new(HandshakeOnlyFlight::new(
-            self.sessions.clone(),
+        .add_service(
+            FlightServiceServer::new(FlightGrpc::new(self.sessions.clone(), self.tickets.clone()))
+                .max_decoding_message_size(MAX_INBOUND_MESSAGE_SIZE),
+        )
+        .add_service(InputTableServiceServer::new(InputTableGrpc::new(
+            self.tickets.clone(),
         )))
         .add_service(ConfigServiceServer::new(config::ConfigGrpc::new(
             self.sessions.auth_handlers(),

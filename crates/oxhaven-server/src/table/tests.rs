@@ -215,6 +215,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
     assert_eq!(
         implemented,
         [
+            "CREATE_INPUT_TABLE",
             "EMPTY_TABLE",
             "TIME_TABLE",
             "FETCH_TABLE",

@@ -111,3 +111,29 @@ handlers. The Flight agent is resumed to bring its branch onto main and wire Cre
 
 Guard added to the handler task: an `unported!` reachable from a client must be rejected with a
 status before it reaches the engine (found in the aggregation report).
+
+## 10:35 IDE acceptance test exists; the IDE path is re-planned from its findings
+
+The scout's test passes against Java and its fault matrix replaces my guesses about the IDE path.
+Corrections to the plan:
+
+- Task 2.6 assumed gRPC-web. Over plain http the browser uses one multiplexed websocket for every
+  call, so the websocket transport is on the critical path and gRPC-web is not.
+- Login is GetConfigurationConstants with an authorization header; no Flight handshake.
+- ApplyPreviewColumns (4.10) is fatal for every route, not optional.
+- No console is needed: GetConsoleTypes may return an empty list.
+
+Three pieces now run in parallel toward the acceptance test: browser transport and static files
+(scout resumed, it holds the traces), application fields with startup tables plus the console,
+storage and preview calls (fresh agent, task 6.1), and Barrage DoExchange, which starts when the
+Flight branch is on main because it reuses the Flight encoder. Static web files are not checked in;
+the server takes a web root extracted from the reference wheel (licensing stays an owner question).
+
+Lesson for the retrospective: scouting the acceptance test against the reference first was cheap
+(101k tokens) and removed a wrong task (gRPC-web first) before anyone built it.
+
+## 10:40 Main verified after stacked merges
+
+PRs 20, 21 and 22 were each green against an older main and merged within two minutes of each
+other. Checked the combined main locally: fmt, clippy and all workspace tests pass. PR 23's CI ran
+on the combined tree as well. PR 23 (IDE acceptance test) merged.
