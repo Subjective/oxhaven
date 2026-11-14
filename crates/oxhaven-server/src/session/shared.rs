@@ -61,7 +61,7 @@ fn hex(bytes: &[u8]) -> String {
 /// Behavior: `com.google.protobuf.ByteString#fromHex`
 fn from_hex(text: &str) -> Option<Vec<u8>> {
     let digits = text.as_bytes();
-    if digits.len() % 2 != 0 {
+    if !digits.len().is_multiple_of(2) {
         return None;
     }
     digits
