@@ -405,7 +405,10 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                     put(&mut metadata, key, TRUE);
                 }
             }
-            let role = context.input_table.as_ref().and_then(|input| input.role(name));
+            let role = context
+                .input_table
+                .as_ref()
+                .and_then(|input| input.role(name));
             match role {
                 Some(InputRole::Key) => put(&mut metadata, "inputtable.isKey", TRUE),
                 Some(InputRole::Value) => put(&mut metadata, "inputtable.isValue", TRUE),
