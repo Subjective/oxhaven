@@ -23,21 +23,38 @@ A fixture:
      "operations": [{"name", "op", ...}],
      "results": ["table", ...],
      "steps": [{"actions": [{"action": "add" | "delete", "table", "rows"}]}],
-     "java": {"steps": [{"table": {"columns", "attributes", "rows"} | {"failure": "CODE"}}]}}
+     "updates": ["table", ...],
+     "java": {"steps": [{"table": {"columns", "attributes", "rows"} | {"failure": "CODE"}}],
+              "updates": [{"table": [{"added", "removed", "modified", "modified_columns"}]}]}}
 
 Inputs, cells and steps are those of the oracle's scenario format (`oracle/README.md`), with
-one more column type, `char` (a UTF-16 code unit as an integer). Step 0 of `java` is the state
+more column types: `char` (a UTF-16 code unit as an integer), and `vector<T>` and `array<T>`
+for a Deephaven vector and a Java array of `T`, which may itself be one of the two. A cell of
+those is a JSON list of cells of `T`, or null for a null cell, which is not an empty one. A
+result column is a vector where Java's `deephaven:type` is a class of `io.deephaven.vector`
+and an array otherwise; an element that is a list is told apart by `deephaven:componentType`
+in the same way. An input column can only be an array: that is what Java makes of an Arrow
+list.
+
+For the tables named under `updates`, `java.updates` has, for each step after the first, the
+updates the table delivered during it: the added, removed and modified rows by position
+(removed rows by their position before the update), and the names of the columns in the
+update's modified column set.
+
+Step 0 of `java` is the state
 after the operations were applied, step k the state after the k-th entry of `steps`. Every
 action is applied in an update cycle of its own, in the order written. This is the format of
 `ops/snapshot/fixtures/record.py` (task 4.9), of which this script is a copy with other
 operations:
 
     {"op": "agg", "source", "by": [...], "aggs": [agg, ...]}
+    {"op": "group_by", "source", "by": [...]}
 
-where each `agg` is one of
+and the operations of the oracle's scenarios (`natural_join`, `update_view`, ...), where each
+`agg` is one of
 
-    {"agg": "abs_sum" | "var" | "std" | "sum" | "avg" | "min" | "max" | "first" | "last",
-     "cols": [...]}
+    {"agg": "abs_sum" | "var" | "std" | "sum" | "avg" | "min" | "max" | "first" | "last"
+            | "group", "cols": [...]}
     {"agg": "median", "cols", "average": bool}
     {"agg": "pct", "cols", "percentile": p, "average": bool}
     {"agg": "count_distinct", "cols", "count_nulls": bool}
@@ -90,13 +107,33 @@ WORDS = {"NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}
 ATTRIBUTES = ("IsFlat", "AddOnly", "AppendOnly", "BlinkTable")
 
 
+def element_type(type_name):
+    """The element type of `vector<T>` or `array<T>`, or None for any other type."""
+    for kind in ("vector<", "array<"):
+        if type_name.startswith(kind) and type_name.endswith(">"):
+            return type_name[len(kind):-1]
+    return None
+
+
+def arrow_type(type_name):
+    element = element_type(type_name)
+    if element is not None:
+        return pa.list_(arrow_type(element))
+    return TYPES[type_name]
+
+
 def decode(type_name, cell):
+    element = element_type(type_name)
+    if element is not None:
+        return None if cell is None else [decode(element, item) for item in cell]
     if isinstance(cell, str) and type_name in ("float32", "float64"):
         return WORDS[cell]
     return cell
 
 
 def encode(cell):
+    if isinstance(cell, list):
+        return [encode(item) for item in cell]
     if isinstance(cell, float):
         if math.isnan(cell):
             return "NaN"
@@ -107,26 +144,67 @@ def encode(cell):
 
 def arrow_table(columns, rows):
     arrays = [
-        pa.array([decode(c["type"], row[i]) for row in rows], type=TYPES[c["type"]])
+        pa.array([decode(c["type"], row[i]) for row in rows], type=arrow_type(c["type"]))
         for i, c in enumerate(columns)
     ]
-    schema = pa.schema([(c["name"], TYPES[c["type"]]) for c in columns])
+    schema = pa.schema([(c["name"], arrow_type(c["type"])) for c in columns])
     return pa.Table.from_arrays(arrays, schema=schema)
 
 
-def type_name(arrow_type):
+def type_name(arrow_type, java_type=None, component_type=None):
+    """The fixture's name of a column type. `java_type` and `component_type` are the column's
+    `deephaven:type` and `deephaven:componentType`, which tell a vector from an array."""
+    if pa.types.is_list(arrow_type):
+        if java_type is None:
+            raise SystemExit(f"a list within a list within a list: {arrow_type}")
+        kind = "vector" if java_type.startswith("io.deephaven.vector.") else "array"
+        return f"{kind}<{type_name(arrow_type.value_type, component_type)}>"
     for name, known in TYPES.items():
         if known == arrow_type:
             return name
     raise SystemExit(f"a result column of type {arrow_type}, which the fixtures cannot hold")
 
 
+def nanoseconds(arrow_type, cell):
+    """`cell` with every timestamp in it as nanoseconds since the epoch."""
+    if cell is None:
+        return None
+    if pa.types.is_list(arrow_type):
+        return [nanoseconds(arrow_type.value_type, item) for item in cell]
+    if pa.types.is_timestamp(arrow_type):
+        return cell.value
+    return cell
+
+
+def scalar_cell(scalar):
+    """An Arrow scalar as a cell: lists as lists, timestamps as `pandas.Timestamp`."""
+    if not scalar.is_valid:
+        return None
+    if pa.types.is_list(scalar.type):
+        return [scalar_cell(item) for item in scalar.values]
+    if pa.types.is_timestamp(scalar.type):
+        return scalar
+    return scalar.as_py()
+
+
 def recorded(table: pa.Table):
-    columns = [{"name": field.name, "type": type_name(field.type)} for field in table.schema]
+    columns = []
+    for field in table.schema:
+        described = field.metadata or {}
+        java_type = described.get(b"deephaven:type", b"").decode()
+        component_type = described.get(b"deephaven:componentType", b"").decode()
+        name = type_name(field.type, java_type, component_type)
+        columns.append({"name": field.name, "type": name})
     cells = []
     for column in table.columns:
         if pa.types.is_timestamp(column.type):
             column = column.cast(pa.int64())
+        elif pa.types.is_list(column.type):
+            # `to_pylist` gives a timestamp within a list as a datetime, which has no
+            # nanoseconds.
+            values = [nanoseconds(column.type, scalar_cell(scalar)) for scalar in column]
+            cells.append([encode(cell) for cell in values])
+            continue
         cells.append([encode(cell) for cell in column.to_pylist()])
     metadata = table.schema.metadata or {}
     attributes = {
@@ -164,6 +242,8 @@ def apply(session, tables, op):
         return source.where_not_in(tables[op["set"]], op["columns"])
     if kind == "agg":
         return source.agg_by([aggregation(a) for a in op["aggs"]], op["by"])
+    if kind == "group_by":
+        return source.group_by(op["by"])
     return apply_operation(session, tables, op)
 
 
@@ -234,6 +314,8 @@ def _{log}_listen(name, table):
             added=_{log}_positions(j.added(), rows),
             removed=_{log}_positions(j.removed(), rows.prev()),
             modified=_{log}_positions(j.modified(), rows),
+            modified_columns=[str(c) for c in j.modifiedColumnSet().dirtyColumnNames()]
+                if j.modified().isNonempty() else [],
         )]))
     return _listen(table, on_update)
 
@@ -294,7 +376,7 @@ def record(fixture, url):
             if "ticking" not in item:
                 tables[item["name"]] = _import(session, arrow_table(item["columns"], item["rows"]))
                 continue
-            schema = pa.schema([(c["name"], TYPES[c["type"]]) for c in item["columns"]])
+            schema = pa.schema([(c["name"], arrow_type(c["type"])) for c in item["columns"]])
             table = session.input_table(schema=schema, key_cols=item["ticking"]["key_columns"])
             inputs[item["name"]] = table
             tables[item["name"]] = table
