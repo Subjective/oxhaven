@@ -47,6 +47,9 @@ The operations:
     {"op": "where_in" | "where_not_in", "source", "set", "columns": [...]}
     {"op": "sort", "source", "by": [{"column", "direction"}]}
     {"op": "head" | "tail", "source", "rows": n}
+
+and every other operation of the oracle's scenario format (`where`, `merge`, ...). The Rust
+replay runs none of those: a fixture that uses one is compared by a test of its own.
 """
 
 from __future__ import annotations
@@ -134,12 +137,15 @@ def recorded(table: pa.Table):
     return {
         "columns": columns,
         "attributes": attributes,
-        "rows": [list(row) for row in zip(*cells)] if cells else [],
+        # A table without columns still has a number of rows: one empty row for each.
+        "rows": [list(row) for row in zip(*cells)] if cells else [[]] * table.num_rows,
     }
 
 
 def apply(session, tables, op):
     kind = op["op"]
+    if "source" not in op:
+        return apply_operation(session, tables, op)
     source = tables[op["source"]]
     if kind == "snapshot":
         return source.snapshot()
