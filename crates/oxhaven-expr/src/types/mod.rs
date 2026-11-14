@@ -11,10 +11,10 @@
 
 mod methods;
 
-use crate::functions::{self, Function};
+use crate::functions::{self, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
-use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, UnaryOp};
+use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, RowVariable, UnaryOp};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 
 /// The four types Java computes numbers in, in promotion order.
@@ -186,6 +186,8 @@ pub(crate) struct Typed {
 pub(crate) enum Node {
     /// The column at this index of [`Checked::columns`].
     Column(usize),
+    /// `i` or `ii`, the row's position in the table, or `k`, its key.
+    RowVariable(RowVariable),
     /// Never `Literal::Null`.
     Literal(Literal),
     /// Null of the node's type.
@@ -234,6 +236,11 @@ pub(crate) enum Node {
         left: Box<Typed>,
         right: Box<Typed>,
     },
+    /// A library function; the arguments have the kernel's parameter types, in its order.
+    Call {
+        kernel: Kernel,
+        arguments: Vec<Typed>,
+    },
     /// `int` arguments are of type `Int`.
     StringMethod {
         method: StringMethod,
@@ -248,6 +255,10 @@ pub(crate) struct Checked {
     pub(crate) root: Typed,
     /// The columns the formula reads, in order of first use.
     pub(crate) columns: Vec<String>,
+    /// Whether the formula uses `i` or `ii`.
+    pub(crate) positions: bool,
+    /// Whether the formula uses `k`.
+    pub(crate) keys: bool,
 }
 
 /// Type-checks `expr` against `definition`.
@@ -255,11 +266,15 @@ pub(crate) fn check(expr: &Expr, definition: &TableDefinition) -> Result<Checked
     let mut checker = Checker {
         definition,
         columns: Vec::new(),
+        positions: false,
+        keys: false,
     };
     let root = checker.check(expr)?;
     Ok(Checked {
         root,
         columns: checker.columns,
+        positions: checker.positions,
+        keys: checker.keys,
     })
 }
 
@@ -349,6 +364,8 @@ fn family(op: BinaryOp) -> Family {
 struct Checker<'a> {
     definition: &'a TableDefinition,
     columns: Vec<String>,
+    positions: bool,
+    keys: bool,
 }
 
 impl Checker<'_> {
@@ -357,7 +374,19 @@ impl Checker<'_> {
             Expr::Column(name) => self.column(name),
             Expr::Literal(literal) => literal_type(literal)
                 .map(|column_type| typed(column_type, Node::Literal(literal.clone()))),
-            Expr::RowVariable(variable) => Err(unsupported(format!("row variable {variable:?}"))),
+            // Behavior: `QueryLanguageParser`'s variables `i` (`int`), `ii` and `k` (`long`),
+            // which `DhFormulaColumn#generateFillChunkHelper` and `ConditionFilter` supply.
+            Expr::RowVariable(variable) => {
+                let column_type = match variable {
+                    RowVariable::I => ColumnType::Int,
+                    RowVariable::Ii | RowVariable::K => ColumnType::Long,
+                };
+                match variable {
+                    RowVariable::I | RowVariable::Ii => self.positions = true,
+                    RowVariable::K => self.keys = true,
+                }
+                Ok(typed(column_type, Node::RowVariable(*variable)))
+            }
             Expr::Unary { op, operand } => self.unary(*op, operand),
             Expr::Binary { op, left, right } => self.binary(*op, left, right),
             Expr::Call {
@@ -387,11 +416,15 @@ impl Checker<'_> {
             let array_of = name
                 .strip_suffix('_')
                 .is_some_and(|base| self.definition.index_of(base).is_some());
-            return Err(if array_of {
-                unsupported(format!("column array {name}"))
+            return if array_of {
+                Err(unsupported(format!("column array {name}")))
+            } else if let Some((column_type, literal)) = functions::constant(name) {
+                Ok(constant(column_type, literal))
+            } else if functions::is_other_constant(name) {
+                Err(unsupported(format!("constant {name}")))
             } else {
-                type_error(format!("cannot find column {name}"))
-            });
+                Err(type_error(format!("cannot find column {name}")))
+            };
         };
         let column_type = self.definition.columns()[index].column_type.clone();
         let known = matches!(
@@ -527,12 +560,21 @@ impl Checker<'_> {
         }
         let Some((l, r)) = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type))
         else {
-            return Err(if either(ColumnType::Instant) {
-                // `plus(Instant, long)` and its relatives are functions of the library.
-                unsupported("arithmetic on Instant values")
-            } else {
-                operands_error(spelled, &left, &right)
-            });
+            // `plus(Instant, long)`, `minus(Instant, long)` and `minus(Instant, Instant)`
+            // of `DateTimeUtils` are the only arithmetic on an `Instant`.
+            let name = match op {
+                ArithmeticOp::Add => "plus",
+                ArithmeticOp::Subtract => "minus",
+                _ => return Err(operands_error(spelled, &left, &right)),
+            };
+            let types = [
+                Some(left.column_type.clone()),
+                Some(right.column_type.clone()),
+            ];
+            return match functions::resolve(name, &types) {
+                Ok(Resolved::Call(call)) => Ok(library_call(call, vec![left, right])),
+                _ => Err(operands_error(spelled, &left, &right)),
+            };
         };
         let result = arithmetic_type(op, l, r);
         Ok(typed(
@@ -781,20 +823,105 @@ impl Checker<'_> {
         ))
     }
 
+    /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:
+    /// a static method of the default imports. [`functions::resolve`] chooses the overload.
     fn call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
-        match functions::lookup(function) {
-            None => Err(unsupported(format!("function {function}()"))),
-            Some(Function::IsNull) => {
-                let [argument] = arguments else {
-                    return Err(type_error(format!(
-                        "isNull takes one argument, not {}",
-                        arguments.len()
-                    )));
-                };
-                let argument = self.check(argument)?;
-                Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))))
+        if function == "isNull" {
+            let [argument] = arguments else {
+                return Err(type_error(format!(
+                    "isNull takes one argument, not {}",
+                    arguments.len()
+                )));
+            };
+            // `Basic#isNull(Object)`.
+            if is_null_literal(argument) {
+                return Ok(typed(
+                    ColumnType::Boolean,
+                    Node::Literal(Literal::Boolean(true)),
+                ));
             }
+            let argument = self.check(argument)?;
+            return Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))));
         }
+        let mut checked = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            checked.push(if is_null_literal(argument) {
+                None
+            } else {
+                Some(self.check(argument)?)
+            });
+        }
+        let types: Vec<Option<ColumnType>> = checked
+            .iter()
+            .map(|argument| argument.as_ref().map(|typed| typed.column_type.clone()))
+            .collect();
+        match functions::resolve(function, &types)? {
+            Resolved::Call(call) => {
+                let arguments = checked.into_iter().flatten().collect();
+                Ok(library_call(call, arguments))
+            }
+            Resolved::Binary(op) => self.binary(op, &arguments[0], &arguments[1]),
+            Resolved::Unary(op) => self.unary(op, &arguments[0]),
+            Resolved::NegateAsInt => {
+                let operand = checked.into_iter().flatten().next().expect("one argument");
+                let operand = convert(operand, &ColumnType::Int);
+                Ok(typed(ColumnType::Int, Node::Negate(Box::new(operand))))
+            }
+            // `intCast(Object)` and its relatives fail on a value that is not null.
+            Resolved::Cast(_) if types[0] == Some(ColumnType::Boolean) => {
+                Err(unsupported(format!("function {function}() of a Boolean")))
+            }
+            // `QueryLanguageFunctionUtils` has no `longCast(long)`: the call reaches
+            // `longCast(float)`, as recorded (`longCast(16777217L)` is 16777216).
+            Resolved::Cast(ColumnType::Long) if types[0] == Some(ColumnType::Long) => {
+                let operand = checked.into_iter().flatten().next().expect("one argument");
+                Ok(convert(
+                    convert(operand, &ColumnType::Float),
+                    &ColumnType::Long,
+                ))
+            }
+            Resolved::Cast(to) => self.cast(&to, &arguments[0]),
+        }
+    }
+}
+
+/// `operand` converted to `to` as a cast converts it.
+fn convert(operand: Typed, to: &ColumnType) -> Typed {
+    if operand.column_type == *to {
+        operand
+    } else {
+        typed(to.clone(), Node::Cast(Box::new(operand)))
+    }
+}
+
+/// The call `call` of `arguments`, each converted to its parameter's type.
+fn library_call(call: functions::Call, arguments: Vec<Typed>) -> Typed {
+    let mut arguments: Vec<Typed> = arguments
+        .into_iter()
+        .zip(&call.parameters)
+        .map(|(argument, parameter)| convert(argument, parameter))
+        .collect();
+    if call.exchanged {
+        arguments.reverse();
+    }
+    typed(
+        call.result,
+        Node::Call {
+            kernel: call.kernel,
+            arguments,
+        },
+    )
+}
+
+/// A default-imported constant. A `byte` or `short` one is an `int` literal converted.
+fn constant(column_type: ColumnType, literal: Literal) -> Typed {
+    match (&column_type, &literal) {
+        (_, Literal::Null) => typed(column_type, Node::Null),
+        (ColumnType::Byte | ColumnType::Short, _) => {
+            let int = typed(ColumnType::Int, Node::Literal(literal));
+            typed(column_type, Node::Cast(Box::new(int)))
+        }
+        _ => typed(column_type, Node::Literal(literal)),
     }
 }
 

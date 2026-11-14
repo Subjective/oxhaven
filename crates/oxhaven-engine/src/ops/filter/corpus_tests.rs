@@ -309,8 +309,6 @@ fn check_static_scenario(name: &str, not_run: &[&str]) -> usize {
 /// - `agg_by_no_keys.no_nan` and `error_formula.nonzero` are not recorded results; they feed
 ///   an aggregation and an update.
 /// - `ticking_error_after_step.after_joined` filters a natural join.
-/// - `where_float_nan.is_nan` and `.is_inf` call `isNaN` and `isInf`, which the formula
-///   compiler does not have yet.
 #[test]
 fn static_scenarios_match_the_recorded_java_results() {
     let checked = [
@@ -320,11 +318,11 @@ fn static_scenarios_match_the_recorded_java_results() {
         check_static_scenario("null_sentinel_inputs", &[]),
         check_static_scenario("pipeline", &[]),
         check_static_scenario("timestamps", &[]),
-        check_static_scenario("where_float_nan", &["is_nan", "is_inf"]),
+        check_static_scenario("where_float_nan", &[]),
         check_static_scenario("where_int", &[]),
         check_static_scenario("where_string_bool", &[]),
     ];
-    assert_eq!(checked, [1, 2, 2, 1, 1, 2, 5, 6, 8]);
+    assert_eq!(checked, [1, 2, 2, 1, 1, 2, 7, 6, 8]);
 }
 
 /// Runs a ticking scenario's recorded `where` operations over a keyed input table, applying
@@ -462,6 +460,14 @@ fn compiler_refusal(text: &str, table: &dyn Table) -> Option<String> {
 fn verdict(case: &Json, table: &Arc<dyn Table>) -> Verdict {
     let formula = case["formula"].as_str().expect("a formula");
     let java = &case["java"];
+    // The fixture tables here have the row keys 0, 10, 20, ..., to tell keys from positions;
+    // Java recorded the case on a table whose keys are its positions.
+    let reads_keys = formula
+        .split(|c: char| !c.is_alphanumeric() && c != '_')
+        .any(|word| word == "k");
+    if reads_keys {
+        return Verdict::NotRun("the formula reads row keys, which differ here".to_string());
+    }
     if java["nondeterministic"] == true {
         return Verdict::NotRun("the recorded outcome is not deterministic".to_string());
     }

@@ -196,6 +196,44 @@ fn substring(text: &str, begin: i32, end: Option<i32>) -> Result<String, TableFa
     String::from_utf16(&units[begin as usize..end as usize]).map_err(|_| unpaired_surrogate())
 }
 
+/// `Character.toUpperCase(int)` as far as comparing without case needs it: the uppercase
+/// letter Unicode gives a character on its own.
+///
+/// Rust gives the uppercase a character has within a word, which is more than one
+/// character for some (`ß` is `SS`); those stay as they are. Unicode gives them no
+/// uppercase of their own, except the Greek letters with an iota below (`ᾳ` to `ᾼ`), and
+/// such a pair shares its lowercase, which [`equals_ignore_case`] compares next.
+fn java_upper(c: char) -> char {
+    let mut upper = c.to_uppercase();
+    match (upper.next(), upper.next()) {
+        (Some(only), None) => only,
+        _ => c,
+    }
+}
+
+/// `Character.toLowerCase(int)`. Only `İ` has a lowercase of more than one character within
+/// a word; on its own it is `i`.
+fn java_lower(c: char) -> char {
+    let mut lower = c.to_lowercase();
+    match (lower.next(), lower.next()) {
+        (Some(only), None) => only,
+        (Some(first), Some(_)) => first,
+        _ => c,
+    }
+}
+
+/// Behavior: `java.lang.String#equalsIgnoreCase`, in `StringUTF16#regionMatchesCI`: the
+/// strings have the same length and, character by character, are the same, or have the same
+/// uppercase, or their uppercases have the same lowercase.
+fn equals_ignore_case(a: &str, b: &str) -> bool {
+    a.encode_utf16().count() == b.encode_utf16().count()
+        && a.chars().count() == b.chars().count()
+        && a.chars().zip(b.chars()).all(|(a, b)| {
+            let (upper_a, upper_b) = (java_upper(a), java_upper(b));
+            a == b || upper_a == upper_b || java_lower(upper_a) == java_lower(upper_b)
+        })
+}
+
 /// Behavior: `java.lang.String#compareTo(String)`: the difference of the first pair of
 /// UTF-16 code units that differ, or else the difference of the lengths.
 fn compare_to(a: &str, b: &str) -> i32 {
@@ -307,6 +345,10 @@ pub(crate) fn string_method(
         StringMethod::Equals => each_row!(BooleanArray, |row| {
             let text = text(row)?;
             Ok(optional_string(0, row) == Some(text))
+        }),
+        StringMethod::EqualsIgnoreCase => each_row!(BooleanArray, |row| {
+            let text = text(row)?;
+            Ok(optional_string(0, row).is_some_and(|other| equals_ignore_case(text, other)))
         }),
         StringMethod::CompareTo => {
             each_row!(Int32Array, |row| Ok(compare_to(text(row)?, string(row)?)))
