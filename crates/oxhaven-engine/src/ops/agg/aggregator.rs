@@ -76,6 +76,9 @@ pub(super) struct Planned {
     pub weight: Option<usize>,
     /// Other columns the operator reads itself, whose modification it must be told of.
     pub reads: Vec<usize>,
+    /// Whether this is a `group` aggregation, whose result columns are reported modified
+    /// together; see `Aggregator::downstream`.
+    pub group: bool,
 }
 
 impl Planned {
@@ -85,6 +88,7 @@ impl Planned {
             input,
             weight: None,
             reads: Vec::new(),
+            group: false,
         }
     }
 
@@ -716,6 +720,19 @@ impl Aggregator {
             if !slots.is_empty() {
                 modified_columns.push(key_columns + index);
                 modified.extend(slots.into_iter().map(|slot| slot as RowKey));
+            }
+        }
+        // Behavior: GroupByChunkedOperator.InputToResultModifiedColumnSetFactory#apply.
+        // Java has one operator for every `group` column of an aggregation, and in a
+        // cycle in which any group gained or lost a row (`someKeyHasAddsOrRemoves`, also
+        // for a group that is new or gone) it reports all of them modified, if any row is
+        // modified at all. Otherwise it reports those whose input column the parent
+        // modified, which are the ones whose operators were told.
+        if !modified.is_empty() && !self.touched.is_empty() {
+            for (index, column) in self.ops.iter().enumerate() {
+                if column.plan.group && !modified_columns.contains(&(key_columns + index)) {
+                    modified_columns.push(key_columns + index);
+                }
             }
         }
         let row_set = |slots: Vec<usize>| RowSet::from_keys(slots.into_iter().map(|s| s as RowKey));

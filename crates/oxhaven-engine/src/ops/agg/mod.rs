@@ -16,6 +16,7 @@
 //! | `distinct` | Count distinct, unique, median and percentile, over a sorted multiset per group |
 //! | `weighted` | Weighted average and weighted sum, which read a weight column too |
 //! | `sorted` | Sorted first and sorted last, which read sort columns and an output column |
+//! | `group` | Group, and with it [`group_by`]: the values of each group as a vector |
 //!
 //! # Adding an aggregation
 //!
@@ -34,16 +35,18 @@
 //!    [`Run`]s; one that reads columns itself names them in `Planned::reads`, so that it is
 //!    told when they are modified.
 //!
-//! Not here: the aggregations whose results are arrays, tables or formulas over arrays
-//! (`AggSpecGroup`, `AggSpecDistinct`, `AggSpecFormula`, `Formula`, `Partition`), since the
-//! contracts have no column type for them, and so neither `headBy` and `tailBy`, which Java
-//! builds from a group-by; `CountWhere`, `FirstRowKey`, `LastRowKey`, the approximate
-//! percentile, t-digest and freeze; a non-null non-unique sentinel; and `initialGroups`.
-//! The gRPC handler refuses each of them by name.
+//! `Table#groupBy` is [`group_by`]: the `group` aggregation of every column that is not
+//! grouped by.
+//!
+//! Not here: the other aggregations whose results are arrays, tables or formulas over
+//! arrays (`AggSpecDistinct`, `AggSpecFormula`, `Formula`, `Partition`); `CountWhere`,
+//! `FirstRowKey`, `LastRowKey`, the approximate percentile, t-digest and freeze; a non-null
+//! non-unique sentinel; and `initialGroups`. The gRPC handler refuses each of them by name.
 
 mod aggregator;
 mod distinct;
 mod first_last;
+mod group;
 mod keys;
 mod min_max;
 mod operator;
@@ -58,6 +61,7 @@ mod tests;
 
 pub use distinct::{SetMode, SortedValues};
 pub use first_last::{FirstLast, FirstLastMode};
+pub use group::Group;
 pub use min_max::MinMax;
 pub use operator::{AggOperator, Effect, GroupReader};
 pub use sorted::{SortColumn, SortedFirstLast};
@@ -121,6 +125,8 @@ pub enum AggSpec {
     /// The value in the row that sorts last by the columns given, ascending. See
     /// [`SortedFirstLast`].
     SortedLast { columns: Vec<String> },
+    /// The values of the group's rows, in row order, as a vector. See [`Group`].
+    Group,
 }
 
 /// An input column and the output column aggregated from it.
@@ -182,6 +188,8 @@ impl Aggregation {
 pub enum AggregateError {
     /// No aggregation was given.
     NoAggregations,
+    /// A `group_by` of a table whose columns are all grouped by.
+    NothingToAggregate,
     /// A group-by column or an input column is not a column of the table.
     UnknownColumn(String),
     /// Two aggregations have the same output column.
@@ -196,6 +204,9 @@ pub enum AggregateError {
     InvalidPercentile(String),
     /// A sorted first or last without sort columns.
     NoSortColumns,
+    /// The aggregation is not defined for a blink table. Java reports this one as an
+    /// `UnsupportedOperationException`.
+    BlinkUnsupported(AggSpec),
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -208,6 +219,9 @@ impl fmt::Display for AggregateError {
                     f,
                     "aggBy must have at least one aggregation, none specified"
                 )
+            }
+            AggregateError::NothingToAggregate => {
+                write!(f, "aggAllBy has no columns to aggregate")
             }
             AggregateError::UnknownColumn(column) => write!(f, "unknown column {column}"),
             AggregateError::DuplicateOutput(column) => {
@@ -225,6 +239,11 @@ impl fmt::Display for AggregateError {
                 write!(f, "percentile {percentile} is not between 0 and 1")
             }
             AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
+            AggregateError::BlinkUnsupported(spec) => write!(
+                f,
+                "Blink tables do not support {spec:?}; use BlinkTableTools.blinkToAppendOnly \
+                 to accumulate full history"
+            ),
             AggregateError::Failed(failure) => failure.fmt(f),
         }
     }
@@ -290,8 +309,10 @@ fn is_floating(column_type: &ColumnType) -> bool {
 /// `visit(AggSpecVar)`, `visit(AggSpecStd)` / `makeVarOrStdOperator`,
 /// `visit(AggSpecMedian)`, `visit(AggSpecPercentile)`, `visit(AggSpecCountDistinct)` /
 /// `makeCountDistinctOperator`, `visit(AggSpecUnique)` / `makeUniqueOperator`,
-/// `visit(AggSpecWAvg)`, `visit(AggSpecWSum)` / `addWeightedAvgOrSumOperator`, and
-/// `visit(AggSpecSortedFirst)`, `visit(AggSpecSortedLast)` / `addSortedFirstOrLastOperator`
+/// `visit(AggSpecWAvg)`, `visit(AggSpecWSum)` / `addWeightedAvgOrSumOperator`,
+/// `visit(AggSpecSortedFirst)`, `visit(AggSpecSortedLast)` / `addSortedFirstOrLastOperator`,
+/// and `visit(AggSpecGroup)`, which takes a column of any type and refuses a blink table
+/// (`unsupportedForBlinkTables`)
 fn make_operator(
     spec: &AggSpec,
     parent: &Arc<dyn Table>,
@@ -339,6 +360,18 @@ fn make_operator(
         _ => {}
     }
     let op: Box<dyn AggOperator> = match spec {
+        AggSpec::Group => {
+            if kind == ParentKind::Blink {
+                return Err(AggregateError::BlinkUnsupported(spec.clone()));
+            }
+            // The operator reads the column itself, by the rows of each group, so the
+            // framework need not decode it: it is told when the column is modified.
+            return Ok(Some(Planned {
+                reads: vec![input],
+                group: true,
+                ..Planned::new(Box::new(Group::new(parent.column(input), input_type)), None)
+            }));
+        }
         AggSpec::Sum | AggSpec::AbsSum => {
             let absolute = *spec == AggSpec::AbsSum;
             match input_type {
@@ -581,4 +614,41 @@ pub fn aggregate(
         Ok((spec, operator))
     })?;
     Ok(table)
+}
+
+/// Groups the rows of `parent` by the `group_by` columns. The result has the group-by
+/// columns, then every other column of `parent` as a vector of each group's values: the
+/// `group` aggregation ([`AggSpec::Group`]) of each. A table whose columns are all grouped
+/// by has nothing to aggregate, which Java refuses.
+///
+/// The gRPC handler has its own form of this, which also leaves out formatting columns.
+///
+/// Behavior: io.deephaven.api.TableOperationsDefaults#groupBy(Collection), which is
+/// io.deephaven.engine.table.impl.QueryTable#aggAllBy with `AggSpec.group()`
+pub fn group_by(
+    parent: &Arc<dyn Table>,
+    group_by: &[&str],
+) -> Result<Arc<dyn Table>, AggregateError> {
+    let definition = parent.definition();
+    if let Some(unknown) = group_by
+        .iter()
+        .find(|name| definition.index_of(name).is_none())
+    {
+        return Err(AggregateError::UnknownColumn(unknown.to_string()));
+    }
+    let pairs: Vec<Pair> = definition
+        .columns()
+        .iter()
+        .filter(|column| !group_by.contains(&column.name.as_str()))
+        .map(|column| Pair::of(column.name.as_str()))
+        .collect();
+    if pairs.is_empty() {
+        return Err(AggregateError::NothingToAggregate);
+    }
+    aggregate(
+        parent,
+        &[Aggregation::columns(AggSpec::Group, pairs)],
+        false,
+        group_by,
+    )
 }
