@@ -11,6 +11,7 @@ use crate::ops::merge::{flatten, merge};
 use crate::ops::select::{drop_columns, update};
 use crate::ops::sort::testing::{frozen, graph};
 use crate::ops::sort::{head, reverse, sort, SortColumn};
+use crate::ops::ungroup::ungroup;
 use crate::ops::update_by::{update_by, UpdateByOperation, UpdateBySpec};
 use crate::table::{in_memory_table, keyed_input_table};
 use arrow::array::{Array, ArrayRef, RecordBatch};
@@ -219,6 +220,134 @@ fn first_of_a_list_column_is_not_ported() {
 fn min_of_a_list_column_is_not_ported() {
     let min = Aggregation::columns(AggSpec::Min, [Pair::of("V")]);
     let _ = aggregate(&listed(), &[min], false, &["G"]);
+}
+
+/// The message of the panic `f` ends in.
+fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
+    let payload = std::panic::catch_unwind(f).expect_err("a panic");
+    match payload.downcast::<String>() {
+        Ok(message) => *message,
+        Err(_) => panic!("a panic without a message"),
+    }
+}
+
+#[test]
+fn aggregations_that_compare_or_store_list_cells_are_not_ported() {
+    let cases = [
+        (
+            AggSpec::Median {
+                average_evenly_divided: true,
+            },
+            "visit(AggSpecPercentile)",
+        ),
+        (
+            AggSpec::Percentile {
+                percentile: 0.25,
+                average_evenly_divided: false,
+            },
+            "visit(AggSpecPercentile)",
+        ),
+        (
+            AggSpec::CountDistinct { count_nulls: false },
+            "makeCountDistinctOperator",
+        ),
+        (
+            AggSpec::Unique {
+                include_nulls: false,
+            },
+            "makeUniqueOperator",
+        ),
+        (
+            AggSpec::SortedFirst {
+                columns: vec!["K".to_string()],
+            },
+            "addSortedFirstOrLastOperator",
+        ),
+        (
+            AggSpec::SortedLast {
+                columns: vec!["K".to_string()],
+            },
+            "addSortedFirstOrLastOperator",
+        ),
+    ];
+    for (spec, java_method) in cases {
+        let aggregation = Aggregation::columns(spec.clone(), [Pair::of("V")]);
+        let message = panic_of(move || {
+            let _ = aggregate(&listed(), &[aggregation], false, &["G"]);
+        });
+        assert_eq!(
+            message,
+            format!(
+                "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
+                 {java_method} for a column of type Vector(Int)"
+            ),
+            "{spec:?}"
+        );
+    }
+    // a scalar column picked by the order of a list column
+    let by_list = AggSpec::SortedFirst {
+        columns: vec!["V".to_string()],
+    };
+    let aggregation = Aggregation::columns(by_list, [Pair::of("K")]);
+    let message = panic_of(move || {
+        let _ = aggregate(&listed(), &[aggregation], false, &["G"]);
+    });
+    assert!(
+        message.ends_with("addSortedFirstOrLastOperator for a column of type Vector(Int)"),
+        "{message}"
+    );
+}
+
+#[test]
+fn numeric_aggregations_of_a_list_column_are_refused_as_those_of_a_string() {
+    let weight = || "K".to_string();
+    for spec in [
+        AggSpec::AbsSum,
+        AggSpec::Avg,
+        AggSpec::Var,
+        AggSpec::Std,
+        AggSpec::WeightedAvg { weight: weight() },
+        AggSpec::WeightedSum { weight: weight() },
+    ] {
+        let message = |column: &str| {
+            let aggregation = Aggregation::columns(spec.clone(), [Pair::of(column)]);
+            let refused = aggregate(&listed(), &[aggregation], false, &["K"]);
+            refused.err().map(|error| error.to_string())
+        };
+        let of_list = message("V").unwrap_or_else(|| panic!("{spec:?} of a list is accepted"));
+        let of_string = message("G").unwrap_or_else(|| panic!("{spec:?} of a string is accepted"));
+        assert_eq!(
+            of_list,
+            of_string
+                .replace("column G", "column V")
+                .replace("type String", "type Vector(Int)"),
+            "{spec:?}"
+        );
+    }
+}
+
+#[test]
+fn ungroup_recognizes_a_list_column_and_cannot_read_it_yet() {
+    let expected = "unported: \
+        io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource: \
+        column V of type Vector(Int)";
+    // every array column, which is V,
+    let message = panic_of(|| {
+        let _ = ungroup(&listed(), false, &[]);
+    });
+    assert_eq!(message, expected);
+    // and V by name
+    let message = panic_of(|| {
+        let _ = ungroup(&listed(), true, &["V".to_string()]);
+    });
+    assert_eq!(message, expected);
+    // A column that is not one is still refused as Java refuses it.
+    let refused = ungroup(&listed(), false, &["K".to_string()]);
+    let message = refused.err().map(|error| error.to_string());
+    assert_eq!(
+        message.as_deref(),
+        Some("Column K is not an array or Vector")
+    );
 }
 
 #[test]

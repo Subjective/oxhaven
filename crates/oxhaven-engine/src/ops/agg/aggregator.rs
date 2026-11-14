@@ -67,11 +67,36 @@ impl Marks {
     }
 }
 
-/// One operator with its input column and result column.
-struct OpColumn {
-    op: Box<dyn AggOperator>,
+/// One operator and the columns of the parent it reads.
+pub(super) struct Planned {
+    pub op: Box<dyn AggOperator>,
     /// The index of the input column in the parent, if the operator has one.
-    input: Option<usize>,
+    pub input: Option<usize>,
+    /// The index of the weight column, for the weighted aggregations.
+    pub weight: Option<usize>,
+    /// Other columns the operator reads itself, whose modification it must be told of.
+    pub reads: Vec<usize>,
+}
+
+impl Planned {
+    pub fn new(op: Box<dyn AggOperator>, input: Option<usize>) -> Planned {
+        Planned {
+            op,
+            input,
+            weight: None,
+            reads: Vec::new(),
+        }
+    }
+
+    /// Whether a modification of `column` concerns the operator.
+    fn watches(&self, column: usize) -> bool {
+        self.input == Some(column) || self.weight == Some(column) || self.reads.contains(&column)
+    }
+}
+
+/// One operator with its input columns and result column.
+struct OpColumn {
+    plan: Planned,
     result: Arc<WritableSource>,
     marks: Marks,
 }
@@ -189,7 +214,7 @@ impl Aggregator {
     pub fn new(
         parent: Arc<dyn Table>,
         key_columns: Vec<usize>,
-        operators: Vec<(Box<dyn AggOperator>, Option<usize>)>,
+        operators: Vec<Planned>,
         preserve_empty: bool,
     ) -> Result<Aggregator, TableFailure> {
         let graph = parent.update_graph().filter(|_| parent.is_refreshing());
@@ -218,16 +243,15 @@ impl Aggregator {
         };
         let ops: Vec<OpColumn> = operators
             .into_iter()
-            .map(|(op, input)| OpColumn {
-                result: source(op.result_type()),
-                op,
-                input,
+            .map(|plan| OpColumn {
+                result: source(plan.op.result_type()),
+                plan,
                 marks: Marks::default(),
             })
             .collect();
         let group_rows = ops
             .iter()
-            .any(|column| column.op.needs_group_rows())
+            .any(|column| column.plan.op.needs_group_rows())
             .then(Vec::new);
         let blink = parent.attributes().blink;
         let mut aggregator = Aggregator {
@@ -286,7 +310,7 @@ impl Aggregator {
         }
         self.slots = slots;
         for column in &mut self.ops {
-            column.op.ensure_slots(slots);
+            column.plan.op.ensure_slots(slots);
         }
         self.row_counts.resize(slots, 0);
         self.seen.resize(slots, false);
@@ -336,16 +360,22 @@ impl Aggregator {
         Ok(slots)
     }
 
-    /// The chunks at `rows` of the input columns that `wanted` selects, decoded.
+    /// The chunks at `rows` of the input and weight columns of the operators that `wanted`
+    /// selects, decoded.
     fn decode(
         &self,
         rows: &RowSet,
         use_prev: bool,
-        wanted: impl Fn(usize) -> bool,
+        wanted: impl Fn(&Planned) -> bool,
     ) -> Result<Vec<(usize, Values)>, TableFailure> {
         let mut decoded: Vec<(usize, Values)> = Vec::new();
-        for column in self.ops.iter().filter_map(|column| column.input) {
-            if wanted(column) && values_of(&decoded, Some(column)).is_none() {
+        let columns = self
+            .ops
+            .iter()
+            .filter(|column| wanted(&column.plan))
+            .flat_map(|column| column.plan.input.into_iter().chain(column.plan.weight));
+        for column in columns {
+            if values_of(&decoded, Some(column)).is_none() {
                 let array = read(&self.parent, column, rows, use_prev)?;
                 decoded.push((column, Values::decode(&self.parent_types[column], &array)?));
             }
@@ -372,13 +402,15 @@ impl Aggregator {
     ) -> Result<(), TableFailure> {
         let decoded = self.decode(rows, use_prev, |_| true)?;
         for column in &mut self.ops {
-            let values = values_of(&decoded, column.input);
+            let values = values_of(&decoded, column.plan.input);
+            let weights = values_of(&decoded, column.plan.weight);
             for (slot, range) in &grouped.runs {
-                let run = Run::new(values, row_keys, &grouped.order[range.clone()]);
+                let run =
+                    Run::new(values, row_keys, &grouped.order[range.clone()]).with_weights(weights);
                 let effect = if add {
-                    column.op.add(*slot, &run)
+                    column.plan.op.add(*slot, &run)
                 } else {
-                    column.op.remove(*slot, &run)
+                    column.plan.op.remove(*slot, &run)
                 };
                 column.marks.note(*slot, effect);
             }
@@ -503,8 +535,8 @@ impl Aggregator {
         Ok(())
     }
 
-    /// Gives the modified rows that stayed in their group to the operators whose input
-    /// column is among `modified_columns`.
+    /// Gives the modified rows that stayed in their group to the operators that read a
+    /// column among `modified_columns`.
     ///
     /// Behavior: KeyedUpdateContext#doSameSlotModifies and
     /// ChunkedOperatorAggregationHelper#doNoKeyModifications
@@ -514,12 +546,12 @@ impl Aggregator {
         post: &RowSet,
         modified_columns: &ModifiedColumnSet,
     ) -> Result<(), TableFailure> {
-        let wanted = |column: usize| modified_columns.contains(column);
-        if !self
-            .ops
-            .iter()
-            .any(|column| column.input.is_some_and(wanted))
-        {
+        let column_count = self.parent_types.len();
+        let wanted = |plan: &Planned| {
+            (0..column_count)
+                .any(|column| modified_columns.contains(column) && plan.watches(column))
+        };
+        if !self.ops.iter().any(|column| wanted(&column.plan)) {
             return Ok(());
         }
         for (pre_chunk, post_chunk) in chunks(pre).zip(chunks(post)) {
@@ -530,18 +562,17 @@ impl Aggregator {
             let old = self.decode(&pre_chunk, true, wanted)?;
             let new = self.decode(&post_chunk, false, wanted)?;
             for column in &mut self.ops {
-                if !column.input.is_some_and(wanted) {
+                if !wanted(&column.plan) {
                     continue;
                 }
-                let old_values = values_of(&old, column.input);
-                let new_values = values_of(&new, column.input);
+                let (input, weight) = (column.plan.input, column.plan.weight);
                 for (slot, range) in &grouped.runs {
                     let positions = &grouped.order[range.clone()];
-                    let effect = column.op.modify(
-                        *slot,
-                        &Run::new(old_values, &pre_keys, positions),
-                        &Run::new(new_values, &post_keys, positions),
-                    );
+                    let old_run = Run::new(values_of(&old, input), &pre_keys, positions)
+                        .with_weights(values_of(&old, weight));
+                    let new_run = Run::new(values_of(&new, input), &post_keys, positions)
+                        .with_weights(values_of(&new, weight));
+                    let effect = column.plan.op.modify(*slot, &old_run, &new_run);
                     column.marks.note(*slot, effect);
                 }
             }
@@ -609,17 +640,15 @@ impl Aggregator {
 
     /// Lets the operators that could not answer from their state read their groups.
     fn recompute(&mut self) -> Result<(), TableFailure> {
-        let Some(group_rows) = &self.group_rows else {
-            return Ok(());
-        };
+        let group_rows: &[RowSet] = self.group_rows.as_deref().unwrap_or(&[]);
         for column in &mut self.ops {
             let pending = column.marks.marked(RECOMPUTE);
             if pending.is_empty() {
                 continue;
             }
-            let input = column.input.map(|input| self.parent.column(input));
+            let input = column.plan.input.map(|input| self.parent.column(input));
             let reader = GroupReader::new(group_rows, input.as_deref());
-            let changed = column.op.recompute(&pending, &reader)?;
+            let changed = column.plan.op.recompute(&pending, &reader)?;
             for (&slot, changed) in pending.iter().zip(changed) {
                 if changed {
                     column.marks.note(slot, Effect::MODIFIED);
@@ -649,7 +678,7 @@ impl Aggregator {
             let row_keys: Vec<RowKey> = written.iter().map(|&slot| slot as RowKey).collect();
             column
                 .result
-                .fill_by_keys(&row_keys, &column.op.results(&written))?;
+                .fill_by_keys(&row_keys, &column.plan.op.results(&written))?;
             modified_by_op.push(modified);
         }
         Ok(modified_by_op)
