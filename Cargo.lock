@@ -1136,6 +1136,7 @@ dependencies = [
 name = "oxhaven-server"
 version = "0.0.0"
 dependencies = [
+ "arrow",
  "base64 0.22.1",
  "http",
  "oxhaven-contracts",

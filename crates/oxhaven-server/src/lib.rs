@@ -1,5 +1,6 @@
 //! gRPC services, sessions, tickets, and Barrage.
 
+pub mod schema;
 pub mod session;
 
 use std::future::Future;
