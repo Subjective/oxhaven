@@ -259,14 +259,18 @@ fn a_table_without_arrays_is_returned_as_it_is() {
 
 #[test]
 fn a_column_that_is_not_an_array_is_refused() {
-    let error = ungroup(&plain(), false, &names(&["A"])).err().expect("a refusal");
+    let error = ungroup(&plain(), false, &names(&["A"]))
+        .err()
+        .expect("a refusal");
     assert_eq!(error, UngroupError::NotAnArray("A".to_string()));
     assert_eq!(error.to_string(), "Column A is not an array or Vector");
 }
 
 #[test]
 fn a_column_that_does_not_exist_is_refused() {
-    let error = ungroup(&plain(), true, &names(&["Nope"])).err().expect("a refusal");
+    let error = ungroup(&plain(), true, &names(&["Nope"]))
+        .err()
+        .expect("a refusal");
     assert_eq!(
         error.to_string(),
         "Unknown column names [Nope], available column names are [K, A]"
@@ -276,9 +280,13 @@ fn a_column_that_does_not_exist_is_refused() {
 /// Java looks at the names in turn and stops at the first it cannot ungroup.
 #[test]
 fn the_first_bad_column_is_the_error() {
-    let error = ungroup(&plain(), false, &names(&["K", "Nope"])).err().expect("a refusal");
+    let error = ungroup(&plain(), false, &names(&["K", "Nope"]))
+        .err()
+        .expect("a refusal");
     assert_eq!(error, UngroupError::NotAnArray("K".to_string()));
-    let error = ungroup(&plain(), false, &names(&["Nope", "K"])).err().expect("a refusal");
+    let error = ungroup(&plain(), false, &names(&["Nope", "K"]))
+        .err()
+        .expect("a refusal");
     assert!(matches!(error, UngroupError::NoSuchColumn { name, .. } if name == "Nope"));
 }
 
@@ -289,7 +297,11 @@ fn the_first_bad_column_is_the_error() {
 fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
     let source = static_table(&[
         ("K", ColumnType::String, strings(["x", "y", "z", "w"])),
-        ("A", ColumnType::Int, some_ints(&[Some(2), None, Some(0), Some(-3)])),
+        (
+            "A",
+            ColumnType::Int,
+            some_ints(&[Some(2), None, Some(0), Some(-3)]),
+        ),
     ]);
     let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
     // A null array and an empty one have no rows.
@@ -352,14 +364,19 @@ fn arrays_of_one_row_have_one_size() {
     let source = static_table(&columns);
     let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
     assert_eq!(rows(&*result), ["x|200|5", "x|201|5", "y|100|0"]);
-    assert_eq!(result.definition().columns()[B].column_type, ColumnType::Int);
+    assert_eq!(
+        result.definition().columns()[B].column_type,
+        ColumnType::Int
+    );
 }
 
 #[test]
 fn arrays_that_differ_in_size_are_refused() {
     let columns = two(&["x", "y", "z"], &[2, 1, 4], &[Some(2), Some(3), Some(1)]);
     let source = scripted(&graph(), [4, 7, 9], &columns).table() as Arc<dyn Table>;
-    let error = ungrouped(&source, false, &["A", "B"], MINIMUM_BASE).err().expect("a refusal");
+    let error = ungrouped(&source, false, &["A", "B"], MINIMUM_BASE)
+        .err()
+        .expect("a refusal");
     assert_eq!(
         error,
         UngroupError::SizesDiffer {
@@ -377,7 +394,9 @@ fn arrays_that_differ_in_size_are_refused() {
         "Array sizes differ at row key 7 (position 1), A has size 1, B has size 3"
     );
     // The first column asked for is the one the others are compared with.
-    let error = ungrouped(&source, false, &["B", "A"], MINIMUM_BASE).err().expect("a refusal");
+    let error = ungrouped(&source, false, &["B", "A"], MINIMUM_BASE)
+        .err()
+        .expect("a refusal");
     assert_eq!(
         error.to_string(),
         "Array sizes differ at row key 7 (position 1), B has size 3, A has size 1"
@@ -399,14 +418,16 @@ fn the_difference_reported_is_the_first_of_the_first_chunk() {
             ("C", ColumnType::Int, sizes(c_differs)),
         ])
     };
-    let differs = |source: Arc<dyn Table>| {
-        match ungrouped(&source, false, &["A", "B", "C"], MINIMUM_BASE).err().expect("a refusal") {
+    let differs =
+        |source: Arc<dyn Table>| match ungrouped(&source, false, &["A", "B", "C"], MINIMUM_BASE)
+            .err()
+            .expect("a refusal")
+        {
             UngroupError::SizesDiffer {
                 row_key, column, ..
             } => (row_key, column),
             other => panic!("{other}"),
-        }
-    };
+        };
     // In one chunk, the first column wins.
     assert_eq!(differs(table(900, 10)), (900, "B".to_string()));
     // The first chunk wins over the first column.
@@ -445,7 +466,9 @@ fn a_slot_beyond_the_row_keys_is_refused() {
     let last = RowKey::MAX >> 10;
     let source = scripted(&graph(), [0, last], &one(&["x", "y"], &[1, 0])).table();
     let source: Arc<dyn Table> = source;
-    let error = ungrouped(&source, false, &["A"], MINIMUM_BASE).err().expect("a refusal");
+    let error = ungrouped(&source, false, &["A"], MINIMUM_BASE)
+        .err()
+        .expect("a refusal");
     assert_eq!(
         error,
         UngroupError::KeyOverflow {
@@ -474,10 +497,7 @@ fn an_added_row_brings_its_elements() {
     assert_eq!(keys_of(&*rig.result), [0, 4, 5]);
     let shown = rig.changed(TableChange::new().add([1], row("y", 2)));
     assert_eq!(shown, Shown::of(&[2, 3], &[], &[]));
-    assert_eq!(
-        rig.rows(),
-        ["x|100", "y|200", "y|201", "z|200", "z|201"]
-    );
+    assert_eq!(rig.rows(), ["x|100", "y|200", "y|201", "z|200", "z|201"]);
     // A row without elements shows nothing.
     assert_eq!(rig.step(TableChange::new().add([7], row("w", 0))), None);
 }
@@ -510,10 +530,7 @@ fn a_modified_array_keeps_adds_and_removes_elements() {
     // Row 0 keeps its size, row 1 shrinks, row 2 grows, row 3 gets its first element.
     let change = TableChange::new().modify([0, 1, 2, 3], [(A, ints([-2, 1, 2, 1]))]);
     let shown = rig.changed(change);
-    assert_eq!(
-        shown,
-        Shown::of(&[5, 6], &[3], &[0, 1, 2, 4]).columns(&[A])
-    );
+    assert_eq!(shown, Shown::of(&[5, 6], &[3], &[0, 1, 2, 4]).columns(&[A]));
     assert_eq!(
         rig.rows(),
         ["x|-200", "x|-199", "y|100", "z|200", "z|201", "w|100"]
@@ -563,8 +580,7 @@ fn an_added_array_that_does_not_fit_moves_every_slot() {
     assert_eq!(keys_of(&*rig.result), [0, 1, 2, 3, 6]);
     // Five elements need slots of eight keys.
     let shown = rig.changed(TableChange::new().add([2], row("z", 5)));
-    let expected =
-        Shown::of(&[16, 17, 18, 19, 20], &[], &[]).shifted(&[(2, 3, 6), (6, 6, 18)]);
+    let expected = Shown::of(&[16, 17, 18, 19, 20], &[], &[]).shifted(&[(2, 3, 6), (6, 6, 18)]);
     assert_eq!(shown, expected);
     assert_eq!(keys_of(&*rig.result), [0, 1, 8, 9, 16, 17, 18, 19, 20, 24]);
     // The slots stay as large when the array has gone.
@@ -657,6 +673,22 @@ fn an_added_row_whose_slot_is_beyond_the_row_keys_fails_the_result() {
     let failure = rig.fails(TableChange::new().add([last], row("y", 0)));
     assert_eq!(
         failure,
+        "Key overflow detected, perhaps you should flatten your table before calling \
+         ungroup: lastRowKey=4611686018427387903, base=1"
+    );
+}
+
+/// Java checks an added row with the slots that hold the added rows, before it looks at
+/// the modified rows, which here make the slots grow.
+#[test]
+fn an_added_row_is_checked_before_modified_rows_grow_the_slots() {
+    let rig = rig(&[0], &["x"], &[1]);
+    let last = RowKey::MAX >> 1;
+    let change = TableChange::new()
+        .add([last], row("y", 0))
+        .modify([0], [(A, ints([3]))]);
+    assert_eq!(
+        rig.fails(change),
         "Key overflow detected, perhaps you should flatten your table before calling \
          ungroup: lastRowKey=4611686018427387903, base=1"
     );
@@ -755,7 +787,14 @@ fn an_array_modified_alone_goes_unchecked_when_added_rows_grow_the_slots() {
     assert_eq!(shown, expected);
     assert_eq!(
         rig.rows(),
-        ["x|200|-200", "x|201|-199", "y|100|200", "z|300|300", "z|301|301", "z|302|302"]
+        [
+            "x|200|-200",
+            "x|201|-199",
+            "y|100|200",
+            "z|300|300",
+            "z|301|301",
+            "z|302|302"
+        ]
     );
 }
 
@@ -771,7 +810,13 @@ fn null_fill_reads_every_array_when_one_is_modified() {
     assert_eq!(shown, expected);
     assert_eq!(
         rig.rows(),
-        ["x|200|100", "x|201|null", "y|100|300", "y|null|301", "y|null|302"]
+        [
+            "x|200|100",
+            "x|201|null",
+            "y|100|300",
+            "y|null|301",
+            "y|null|302"
+        ]
     );
     // It shrinks below the one of `A`, which was not modified.
     let shown = rig.changed(TableChange::new().modify([1], [(B, ints([0]))]));

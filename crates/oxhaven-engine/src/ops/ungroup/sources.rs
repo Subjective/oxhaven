@@ -1,11 +1,11 @@
 //! The columns of an ungrouped table. Both kinds read the parent at the row a key's slot
 //! belongs to.
 
+use arrow::array::ArrayRef;
 use oxhaven_contracts::graph::{ClockPhase, UpdateGraph};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
-use arrow::array::ArrayRef;
 use std::sync::{Arc, Mutex, PoisonError};
 
 /// A column whose cells are arrays, as `ungroup` reads it.
@@ -78,7 +78,10 @@ impl Bases {
     }
 
     pub(super) fn current(&self) -> u32 {
-        self.base.lock().unwrap_or_else(PoisonError::into_inner).current
+        self.base
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .current
     }
 
     /// Behavior: io.deephaven.engine.table.impl.CrossJoinShiftState#getPrevNumShiftBits
@@ -86,7 +89,9 @@ impl Bases {
         let base = self.base.lock().unwrap_or_else(PoisonError::into_inner);
         let clock = self.graph.as_ref().map(|graph| graph.clock());
         match clock {
-            Some(clock) if clock.phase == ClockPhase::Updating && base.changed == Some(clock.step) => {
+            Some(clock)
+                if clock.phase == ClockPhase::Updating && base.changed == Some(clock.step) =>
+            {
                 base.previous
             }
             _ => base.current,

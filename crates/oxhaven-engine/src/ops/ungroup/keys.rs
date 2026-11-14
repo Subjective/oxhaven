@@ -104,11 +104,7 @@ pub(super) fn slots(rows: &RowSet, sizes: &[u64], base: u32) -> Result<RowSet, U
 /// its new slot without looking; keys that would leave the row keys are an error here.
 ///
 /// Behavior: the added rows of io.deephaven.engine.table.impl.UngroupOperation.UngroupListener#rebase
-pub(super) fn moved_slots(
-    rows: &RowSet,
-    sizes: &[u64],
-    base: u32,
-) -> Result<RowSet, UngroupError> {
+pub(super) fn moved_slots(rows: &RowSet, sizes: &[u64], base: u32) -> Result<RowSet, UngroupError> {
     let mut ranges = Vec::new();
     for (key, size) in rows.iter().zip(sizes).filter(|(_, size)| **size != 0) {
         let size = *size as RowKey;
@@ -169,9 +165,8 @@ pub(super) fn shifts(
         let Some(first) = slot_start(shift.first, base) else {
             continue;
         };
-        let last = slot_start(shift.last, base).map_or(RowKey::MAX, |start| {
-            start.saturating_add((1 << base) - 1)
-        });
+        let last = slot_start(shift.last, base)
+            .map_or(RowKey::MAX, |start| start.saturating_add((1 << base) - 1));
         for range in rows.sub_set_by_key_range(first, last).ranges() {
             // The last key of the range, by its row and its place in the slot.
             let (row, place) = (range.last() >> base, range.last() & ((1 << base) - 1));
@@ -228,7 +223,11 @@ mod tests {
     use super::*;
 
     fn set(ranges: &[(RowKey, RowKey)]) -> RowSet {
-        RowSet::from_ranges(ranges.iter().map(|(first, last)| RowRange::new(*first, *last)))
+        RowSet::from_ranges(
+            ranges
+                .iter()
+                .map(|(first, last)| RowRange::new(*first, *last)),
+        )
     }
 
     fn shift_ranges(data: &RowSetShiftData) -> Vec<(RowKey, RowKey, i64)> {
@@ -237,11 +236,9 @@ mod tests {
     }
 
     fn upstream(ranges: &[(RowKey, RowKey, i64)]) -> RowSetShiftData {
-        let ranges = ranges.iter().map(|&(first, last, delta)| ShiftRange {
-            first,
-            last,
-            delta,
-        });
+        let ranges = ranges
+            .iter()
+            .map(|&(first, last, delta)| ShiftRange { first, last, delta });
         RowSetShiftData::new(ranges.collect()).unwrap()
     }
 
@@ -378,10 +375,12 @@ mod tests {
         assert_eq!(modified_start(last, 1, 2), Ok(RowKey::MAX - 1));
         assert_eq!(modified_start(last, 1, 0), Ok(RowKey::MAX - 1));
         // The first key is negative.
-        let refused = |key, base| Err(UngroupError::KeyOverflow {
-            last_row_key: key,
-            base,
-        });
+        let refused = |key, base| {
+            Err(UngroupError::KeyOverflow {
+                last_row_key: key,
+                base,
+            })
+        };
         assert_eq!(modified_start(last + 1, 1, 0), refused(last + 1, 1));
         // The last key is.
         assert_eq!(modified_start(last, 1, 3), refused(last, 1));
@@ -399,10 +398,7 @@ mod tests {
         assert_eq!(result, set(&[(0, 4), (12, 13)]));
         // Row 0 stays; rows 1 and 2 were one range with row 0.
         let moved = rebase(&result, 1, 3, &RowSetShiftData::empty()).unwrap();
-        assert_eq!(
-            shift_ranges(&moved),
-            [(2, 3, 6), (4, 4, 12), (12, 13, 36)]
-        );
+        assert_eq!(shift_ranges(&moved), [(2, 3, 6), (4, 4, 12), (12, 13, 36)]);
         assert_eq!(
             moved.apply(&result).unwrap(),
             slots(&rows, &[2, 2, 1, 0, 2], 3).unwrap()

@@ -57,7 +57,9 @@ struct Compared<'a> {
 
 impl Ungroup {
     fn name(&self, column: &Ungrouped) -> String {
-        self.parent.definition().columns()[column.index].name.clone()
+        self.parent.definition().columns()[column.index]
+            .name
+            .clone()
     }
 
     /// The error for the first of the positions `chunk` of `rows` at which the sizes
