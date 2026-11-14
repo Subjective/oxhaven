@@ -23,6 +23,8 @@ mod sources;
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
+mod fixtures;
+#[cfg(test)]
 mod tests;
 
 use operator::Ungrouped;

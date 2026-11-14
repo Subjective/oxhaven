@@ -11,8 +11,9 @@ use crate::ops::sort::testing::{
 };
 use crate::table::holds_values;
 use crate::update::modified_pre_shift;
-use arrow::array::{Array, ArrayRef, Int64Array, ListArray};
-use arrow::datatypes::Int64Type;
+use arrow::array::{Array, ArrayRef, Int32Array, Int64Array, ListArray};
+use arrow::buffer::{NullBuffer, OffsetBuffer};
+use arrow::datatypes::{DataType, Int64Type};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -325,6 +326,31 @@ fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
     assert_eq!(result.attributes(), Default::default());
     // Neither kind of column holds its values.
     assert!(!holds_values(&result.column(K)) && !holds_values(&result.column(A)));
+}
+
+/// The contracts let a null cell span elements, which mean nothing.
+#[test]
+fn a_null_cell_that_spans_elements_has_none() {
+    let DataType::List(field) = vector().arrow_type() else {
+        panic!("a vector is a list");
+    };
+    let offsets = OffsetBuffer::from_lengths([2, 3, 1]);
+    let valid = NullBuffer::from(vec![true, false, true]);
+    let elements = Arc::new(Int64Array::from(vec![1, 2, 3, 4, 5, 6]));
+    let cells: ArrayRef = Arc::new(ListArray::new(field, offsets, elements, Some(valid)));
+    let source = static_table(&[
+        ("K", ColumnType::String, strings(["x", "y", "z"])),
+        ("A", vector(), cells),
+        ("B", array(), b([1, 2, 1])),
+    ]);
+    let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
+    assert_eq!(rows(&*result), ["x|1|[100]", "x|2|[100]", "z|6|[100]"]);
+    // Beside a longer array its elements are null, not the ones it spans.
+    let result = ungrouped(&source, true, &["A", "B"], MINIMUM_BASE).unwrap();
+    assert_eq!(
+        rows(&*result),
+        ["x|1|100", "x|2|null", "y|null|200", "y|null|201", "z|6|100"]
+    );
 }
 
 #[test]
@@ -917,6 +943,27 @@ fn keep_sizes_equal(source: &dyn Table, change: &mut TableChange) {
     }
 }
 
+/// Cells of `column_type` for random counts, which go up to ten where the lists of
+/// `RandomUpdates` have three elements at most: these outgrow slots of two, four and
+/// eight keys.
+fn random_counted(random: &mut RandomUpdates, column_type: &ColumnType, size: usize) -> ArrayRef {
+    let counts = random.values(&ColumnType::Int, size as u64);
+    let counts = counts.as_any().downcast_ref::<Int32Array>().expect("ints");
+    counted(column_type, counts.iter())
+}
+
+/// Replaces the cells of the array columns in `change` by [`random_counted`] ones.
+fn with_large_arrays(random: &mut RandomUpdates, change: &mut TableChange) {
+    for (index, column_type) in [(A, vector()), (B, array())] {
+        if let Some(values) = change.added_values.get_mut(index) {
+            *values = random_counted(random, &column_type, values.len());
+        }
+        if let Some(values) = change.modified_values.get_mut(&index) {
+            *values = random_counted(random, &column_type, values.len());
+        }
+    }
+}
+
 /// Drives a source of `K`, `A` and `B` through random cycles for every seed. After each
 /// cycle the result must be consistent and equal to the ungrouped table of a static copy
 /// of the source. Returns how many updates the results delivered.
@@ -926,6 +973,7 @@ fn check_random(
     names: &'static [&'static str],
     minimum_base: u32,
     equal_sizes: bool,
+    large: bool,
 ) -> u64 {
     let types = [("K", ColumnType::String), ("A", vector()), ("B", array())];
     let mut updates = 0;
@@ -937,6 +985,10 @@ fn check_random(
             .iter()
             .map(|(_, column_type)| random.values(column_type, size))
             .collect();
+        if large {
+            values[A] = random_counted(&mut random, &vector(), size as usize);
+            values[B] = random_counted(&mut random, &array(), size as usize);
+        }
         if equal_sizes {
             values[B] = sized_as(&values[A], &array());
         }
@@ -957,6 +1009,9 @@ fn check_random(
         }
         for step in 0..40 {
             let mut change = random.next_change(&*source, 4);
+            if large {
+                with_large_arrays(&mut random, &mut change);
+            }
             if equal_sizes {
                 keep_sizes_equal(&*source, &mut change);
             }
@@ -974,20 +1029,26 @@ fn check_random(
 
 #[test]
 fn random_changes_of_one_array_column() {
-    // Up to three elements: the slots start with two keys and grow to four.
-    assert!(check_random(0..150, false, &["A"], 1, false) > 3000);
+    // Up to ten elements: the slots start with two keys and grow to sixteen.
+    assert!(check_random(0..100, false, &["A"], 1, false, true) > 2000);
+    // The lists of `RandomUpdates`, with null elements, in slots that grow once.
+    assert!(check_random(100..150, false, &["A"], 1, false, false) > 1000);
     // With Java's slots, which never grow here.
-    assert!(check_random(150..200, false, &["A"], MINIMUM_BASE, false) > 1000);
+    assert!(check_random(150..200, false, &["A"], MINIMUM_BASE, false, false) > 1000);
+    // The array column instead of the vector.
+    assert!(check_random(200..250, false, &["B"], 1, false, true) > 1000);
 }
 
 #[test]
 fn random_changes_of_two_array_columns_with_null_fill() {
-    assert!(check_random(0..150, true, &["A", "B"], 1, false) > 3000);
-    assert!(check_random(150..200, true, &["B", "A"], 3, false) > 1000);
+    assert!(check_random(0..100, true, &["A", "B"], 1, false, true) > 2000);
+    assert!(check_random(100..150, true, &["A", "B"], 1, false, false) > 1000);
+    assert!(check_random(150..200, true, &["B", "A"], 3, false, true) > 1000);
 }
 
 #[test]
 fn random_changes_of_two_array_columns_of_one_size() {
-    assert!(check_random(0..150, false, &["A", "B"], 1, true) > 3000);
-    assert!(check_random(150..200, false, &["B", "A"], 3, true) > 1000);
+    assert!(check_random(0..100, false, &["A", "B"], 1, true, true) > 2000);
+    assert!(check_random(100..150, false, &["A", "B"], 1, true, false) > 1000);
+    assert!(check_random(150..200, false, &["B", "A"], 3, true, true) > 1000);
 }

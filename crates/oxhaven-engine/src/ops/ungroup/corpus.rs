@@ -27,7 +27,7 @@ use std::sync::Arc;
 
 /// The gRPC status code the Java server answers with for each refusal, as recorded in
 /// `oracle/corpus/group_by_ungroup`: `unknown`, `not_an_array` and `uneven_strict`.
-fn code(error: &UngroupError) -> &'static str {
+pub(super) fn code(error: &UngroupError) -> &'static str {
     match error {
         UngroupError::NoSuchColumn { .. }
         | UngroupError::NotAnArray(_)
@@ -159,7 +159,7 @@ fn table_of(source: &RecordBatch) -> Arc<dyn Table> {
 /// null cell is not an empty one.
 ///
 /// Behavior: the comparison rules of `oracle/README.md`
-fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
+pub(super) fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
     fn bits<A: Array + 'static>(
         expected: &ArrayRef,
         actual: &ArrayRef,
