@@ -1078,7 +1078,11 @@ dependencies = [
 name = "oxhaven-engine"
 version = "0.0.0"
 dependencies = [
+ "arrow",
+ "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-rowset",
+ "oxhaven-testkit",
 ]
 
 [[package]]
