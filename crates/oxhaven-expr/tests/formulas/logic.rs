@@ -132,8 +132,6 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
     let table = checker_table();
     let mut wrong = Vec::new();
     for (formula, construct) in [
-        ("T - T", "arithmetic on Instant values"),
-        ("T + 1", "arithmetic on Instant values"),
         ("T >= 1L", "ordering comparison of Instant with long"),
         (
             "null",
@@ -142,11 +140,12 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
         ("null == null", "comparison of null with null"),
         ("S < null", "null literal as an operand of <"),
         ("B & null", "null literal as an operand of &"),
+        ("cbrt(I)", "function cbrt()"),
         (
-            "isNull(null)",
-            "null literal outside ==, !=, ?:, a cast and string concatenation",
+            "replaceIfNull(I, null)",
+            "null literal as an argument of replaceIfNull()",
         ),
-        ("abs(I)", "function abs()"),
+        ("BS_ANY", "constant BS_ANY"),
         ("S.split(S)", "method call String.split()"),
         (
             "S.indexOf(S, I)",
@@ -192,10 +191,10 @@ fn expression_trees_outside_the_subset_do_not_compile() {
     );
     assert_eq!(
         compile(Expr::Call {
-            function: "abs".into(),
+            function: "cbrt".into(),
             arguments: vec![*column()],
         }),
-        FormulaError::Unsupported("function abs()".into())
+        FormulaError::Unsupported("function cbrt()".into())
     );
     assert_eq!(
         compile(Expr::ColumnVector("I".into())),

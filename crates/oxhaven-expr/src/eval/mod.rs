@@ -1,7 +1,7 @@
 //! Evaluation of a type-checked formula over Arrow arrays, one batch of rows at a time.
 
 mod compare;
-mod numeric;
+pub(crate) mod numeric;
 mod text;
 
 use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
@@ -292,6 +292,13 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             let left = evaluate(left, batch)?;
             let right = evaluate(right, batch)?;
             text::concat(left.as_ref(), right.as_ref()).map(erase)
+        }
+        Node::Call { kernel, arguments } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::functions::eval::evaluate(*kernel, &arguments)
         }
         Node::StringMethod {
             method,
