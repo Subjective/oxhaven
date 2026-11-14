@@ -58,11 +58,10 @@ fn ticking_tables_match_java() {
 /// step 4 a row changes its sort key to one that comes earlier and keeps its neighbours:
 /// Java's sort removes and adds it, because it looks for the row's place among the
 /// previous values, its own included
-/// (io.deephaven.engine.table.impl.SortListener.TargetComparator#compareTargetTo), and
-/// `ops::sort` reports it as modified, so the key it brings is met before the key of the
-/// row added in front of it.
+/// (io.deephaven.engine.table.impl.SortListener.TargetComparator#compareTargetTo). Were
+/// it reported as modified, the key it brings would be met before the key of the row
+/// added in front of it.
 #[test]
-#[ignore = "ops::sort reports a modified row that moves towards the front between the same neighbours as modified; Java removes and adds it"]
 fn the_keys_of_a_sorted_table_match_java() {
     // 1 result at 14 steps.
     assert_eq!(replay(&fixture("select_distinct_of_sort"), &define), 14);
