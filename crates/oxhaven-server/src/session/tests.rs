@@ -883,9 +883,10 @@ mod store {
     fn closing_a_session_forgets_its_tokens() {
         let fixture = Fixture::new();
         let session = fixture.session();
-        let other = fixture.session();
         let first = session.expiration().unwrap();
         fixture.advance(EXPIRE_MS / 2);
+        // created now, so that its token outlives the first token of `session`
+        let other = fixture.session();
         let second = fixture.store.refresh_token(&session).unwrap();
         fixture.store.close_session(&session);
         assert!(fixture.store.session_for_token(first.token).is_none());
@@ -1350,6 +1351,17 @@ mod wire {
                 .unwrap(),
             format!("deephaven-auth-cookie={token}")
         );
+
+        let mut not_requested = Request::new(HandshakeRequest::default());
+        not_requested.metadata_mut().insert(
+            "cookie",
+            format!("deephaven-auth-cookie={token}").parse().unwrap(),
+        );
+        not_requested
+            .metadata_mut()
+            .insert("x-deephaven-auth-cookie-request", "false".parse().unwrap());
+        let response = client.refresh_session_token(not_requested).await.unwrap();
+        assert!(response.metadata().get("set-cookie").is_none());
 
         let mut other_cookie = Request::new(HandshakeRequest::default());
         other_cookie
