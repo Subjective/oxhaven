@@ -13,6 +13,7 @@ use arrow::datatypes::{Field, Schema};
 use arrow::ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes};
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Prefix of every Deephaven metadata key. `BarrageUtil.ATTR_DH_PREFIX`.
@@ -53,11 +54,35 @@ impl SchemaContext {
     }
 }
 
-/// The Java class name clients see for a column type, as `Class#getCanonicalName` prints it.
+/// Field metadata key holding the Java class name of the elements of an array or vector
+/// column. `BarrageUtil.ATTR_DH_PREFIX + ATTR_COMPONENT_TYPE_TAG`.
+pub const COMPONENT_TYPE_KEY: &str = "deephaven:componentType";
+
+const OBJECT_VECTOR: &str = "io.deephaven.vector.ObjectVector";
+
+/// The Java vector class of a primitive element type, or `None` for an element that Java
+/// holds in an `ObjectVector`.
+///
+/// Behavior: the classes `VectorExpansionKernel#getComponentType` tells apart
+fn primitive_vector_name(element: &ColumnType) -> Option<&'static str> {
+    Some(match element {
+        ColumnType::Byte => "io.deephaven.vector.ByteVector",
+        ColumnType::Char => "io.deephaven.vector.CharVector",
+        ColumnType::Short => "io.deephaven.vector.ShortVector",
+        ColumnType::Int => "io.deephaven.vector.IntVector",
+        ColumnType::Long => "io.deephaven.vector.LongVector",
+        ColumnType::Float => "io.deephaven.vector.FloatVector",
+        ColumnType::Double => "io.deephaven.vector.DoubleVector",
+        _ => return None,
+    })
+}
+
+/// The Java class name clients see for a column type, as `Class#getCanonicalName` prints it:
+/// `int`, `java.lang.String`, `io.deephaven.vector.IntVector`, `java.lang.String[]`.
 ///
 /// Behavior: `BarrageUtil#columnDefinitionsToFields` (the `deephaven:type` entry)
-pub fn java_type_name(column_type: &ColumnType) -> &'static str {
-    match column_type {
+pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
+    Cow::Borrowed(match column_type {
         ColumnType::Boolean => JAVA_BOOLEAN,
         ColumnType::Byte => "byte",
         ColumnType::Char => "char",
@@ -68,14 +93,132 @@ pub fn java_type_name(column_type: &ColumnType) -> &'static str {
         ColumnType::Double => "double",
         ColumnType::String => "java.lang.String",
         ColumnType::Instant => "java.time.Instant",
+        ColumnType::Vector(element) => primitive_vector_name(element).unwrap_or(OBJECT_VECTOR),
+        ColumnType::Array(element) => {
+            return Cow::Owned(format!("{}[]", java_type_name(element)));
+        }
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
         ),
+    })
+}
+
+/// The Java class name of the elements of an array or vector column, which clients see as
+/// `deephaven:componentType`; `None` for a column of any other type. For a vector of a
+/// primitive it is the primitive, as `ColumnDefinition#fromGenericType` infers it.
+///
+/// Behavior: `BarrageUtil#columnDefinitionsToFields` (the `deephaven:componentType` entry);
+/// every element type here is one `BarrageUtil#isTypeNativelySupported` accepts
+pub fn java_component_type_name(column_type: &ColumnType) -> Option<Cow<'static, str>> {
+    column_type.list_element().map(java_type_name)
+}
+
+/// The column type of a field whose `deephaven:type` is `name` and whose
+/// `deephaven:componentType` is `component`, if it has one: the inverse of
+/// [`java_type_name`] and [`java_component_type_name`], also for arrays and vectors.
+///
+/// `None` for a class no column type stands for, and for a vector whose elements this
+/// cannot name: an `ObjectVector` without a component type, and one whose component is
+/// again an `ObjectVector`, where Java itself does not know the inner elements.
+///
+/// Behavior: `BarrageUtil#convertArrowSchema`, `BarrageUtil#getDefaultType`
+pub fn column_type_for_java_names(name: &str, component: Option<&str>) -> Option<ColumnType> {
+    if let Some(element) = name.strip_suffix("[]") {
+        // An array's component is its element class; Java refuses any other.
+        if component.is_some_and(|component| component != element) {
+            return None;
+        }
+        return column_type_for_java_names(element, None).map(ColumnType::array);
+    }
+    if name == OBJECT_VECTOR {
+        let element = column_type_for_java_names(component?, None)?;
+        // A primitive in an ObjectVector is the boxed class, which no column type is.
+        return primitive_vector_name(&element)
+            .is_none()
+            .then(|| ColumnType::vector(element));
+    }
+    let primitive = [
+        ColumnType::Byte,
+        ColumnType::Char,
+        ColumnType::Short,
+        ColumnType::Int,
+        ColumnType::Long,
+        ColumnType::Float,
+        ColumnType::Double,
+    ]
+    .into_iter()
+    .find(|element| primitive_vector_name(element) == Some(name));
+    if let Some(element) = primitive {
+        let agrees = component.is_none_or(|component| component == java_type_name(&element));
+        return agrees.then(|| ColumnType::vector(element));
+    }
+    column_type_for_java_name(name)
+}
+
+/// Whether Java can sort a column of this type, which clients see as
+/// `deephaven:isSortable`: a primitive, a `Comparable`, which every vector is, or a class
+/// with a registered comparator, which the arrays of primitives, `String` and `Instant`
+/// are and an array of `Boolean`, of arrays or of vectors is not.
+///
+/// Behavior: `BarrageUtil#isDataTypeSortable`, `io.deephaven.vector.Vector` (which
+/// extends `Comparable`), `io.deephaven.engine.table.impl.ComparatorRegistry#reset`
+fn is_sortable(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Array(element) => matches!(
+            **element,
+            ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
+                | ColumnType::String
+                | ColumnType::Instant
+        ),
+        _ => true,
     }
 }
 
-/// The inverse of [`java_type_name`], for schemas a client sends.
+/// Stops at a column type whose Arrow field Java does not derive from the column type
+/// alone, so that [`ColumnType::arrow_type`] is not the type Java declares.
+///
+/// Behavior: `BarrageUtil#arrowTypeFor` (a `byte[]` is `Binary`), `BarrageUtil#arrowFieldFor`
+/// (the elements of an `ObjectVector` that is itself an element have no class, and are
+/// declared as strings)
+fn require_described_as_stored(name: &str, column_type: &ColumnType) {
+    let mut at = column_type;
+    let mut outermost = true;
+    loop {
+        match at {
+            ColumnType::Array(element) if **element == ColumnType::Byte => {
+                oxhaven_contracts::unported!(
+                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowTypeFor",
+                    "column {name} of type {column_type:?}: a byte[] is sent as Binary"
+                )
+            }
+            ColumnType::Vector(element)
+                if !outermost && primitive_vector_name(element).is_none() =>
+            {
+                oxhaven_contracts::unported!(
+                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowFieldFor",
+                    "column {name} of type {column_type:?}: the elements of an inner \
+                     ObjectVector are sent as strings"
+                )
+            }
+            _ => {}
+        }
+        match at.list_element() {
+            Some(element) => at = element,
+            None => return,
+        }
+        outermost = false;
+    }
+}
+
+/// The inverse of [`java_type_name`] for the types that are not arrays or vectors, for
+/// schemas a client sends; see [`column_type_for_java_names`] for all of them.
 pub fn column_type_for_java_name(name: &str) -> Option<ColumnType> {
     Some(match name {
         JAVA_BOOLEAN => ColumnType::Boolean,
@@ -171,14 +314,22 @@ fn input_table_metadata(definition: &TableDefinition, keys: &[String]) -> String
 /// The Arrow schema Java sends for a table with this definition.
 ///
 /// Every field is nullable and carries `deephaven:type` and `deephaven:isSortable`; format
-/// columns and input table key and value columns are marked as Java marks them.
+/// columns and input table key and value columns are marked as Java marks them. An array or
+/// vector column also carries `deephaven:componentType`, and its field is a list whose
+/// element field has the empty name, is nullable and has no metadata.
 ///
 /// An input table also carries `deephaven:tableMetadata`.
 ///
-/// Not emitted: column descriptions, component types, and restrictions on the values of an
-/// input table's columns, none of which a table in this engine can carry yet.
+/// Not emitted: column descriptions, and restrictions on the values of an input table's
+/// columns, neither of which a table in this engine can carry yet.
 ///
-/// Behavior: `BarrageUtil#makeSchema`, `BarrageUtil#columnDefinitionsToFields`
+/// # Panics
+/// By `unported!`, for a column whose Arrow type Java does not derive from the column type
+/// alone: a `byte[]` at any depth, and a vector of non-primitive elements that is itself
+/// an element.
+///
+/// Behavior: `BarrageUtil#makeSchema`, `BarrageUtil#columnDefinitionsToFields`,
+/// `BarrageUtil#arrowFieldFor`
 pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Schema {
     let columns = definition.columns();
     let has_column = |name: &str| columns.iter().any(|c| c.name == name);
@@ -187,8 +338,11 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
         .map(|column| {
             let name = column.name.as_str();
             let mut metadata = HashMap::new();
-            // Every supported column type is a Java primitive or Comparable.
-            put(&mut metadata, "isSortable", TRUE);
+            require_described_as_stored(name, &column.column_type);
+            // Java writes the entry only when it is true.
+            if is_sortable(&column.column_type) {
+                put(&mut metadata, "isSortable", TRUE);
+            }
             for (key, suffix) in [
                 ("styleColumn", STYLE_SUFFIX),
                 ("numberFormatColumn", NUMBER_SUFFIX),
@@ -199,7 +353,10 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                     put(&mut metadata, key, &format_column);
                 }
             }
-            put(&mut metadata, "type", java_type_name(&column.column_type));
+            put(&mut metadata, "type", &java_type_name(&column.column_type));
+            if let Some(component) = java_component_type_name(&column.column_type) {
+                put(&mut metadata, "componentType", &component);
+            }
             if name == ROW_STYLE_COLUMN {
                 put(&mut metadata, "isRowStyle", TRUE);
             }
@@ -359,7 +516,7 @@ mod tests {
             ColumnType::Instant,
         ] {
             assert_eq!(
-                column_type_for_java_name(java_type_name(&column_type)),
+                column_type_for_java_name(&java_type_name(&column_type)),
                 Some(column_type)
             );
         }

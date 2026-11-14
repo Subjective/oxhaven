@@ -543,6 +543,7 @@ fn batches_follow_the_client_options_and_the_message_size_limit() {
     let by_rows = BatchOptions {
         batch_size: 4,
         max_message_size: 0,
+        ..Default::default()
     };
     assert_eq!(sizes(by_rows), [4, 4, 2]);
     // One row is a header of well over 100 bytes and 8 bytes of body: a message limit
@@ -550,6 +551,7 @@ fn batches_follow_the_client_options_and_the_message_size_limit() {
     let by_bytes = BatchOptions {
         batch_size: 0,
         max_message_size: 100,
+        ..Default::default()
     };
     assert_eq!(sizes(by_bytes), [1; 10]);
 

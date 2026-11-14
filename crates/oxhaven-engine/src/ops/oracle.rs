@@ -19,7 +19,7 @@ use crate::table::{
 };
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, RecordBatch, StringArray, TimestampNanosecondArray,
+    Int8Array, ListArray, RecordBatch, StringArray, TimestampNanosecondArray,
 };
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::reader::FileReader;
@@ -72,6 +72,9 @@ fn narrow<T: TryFrom<i64>>(cell: &Value) -> Option<T> {
     int_cell(cell).map(|v| T::try_from(v).ok().expect("a value in the column's range"))
 }
 
+/// The column type of an input of a scenario. The scenario format (`COLUMN_TYPES` in
+/// `oracle/harness/scenario.py`) has no vector or array type: a scenario gets its list
+/// columns from operations, so neither this nor [`cells`] makes one.
 fn column_type(name: &str) -> ColumnType {
     match name {
         "bool" => ColumnType::Boolean,
@@ -380,6 +383,12 @@ impl Recording {
 
 /// Whether two arrays of one type hold the same cells. Floats are compared bit for bit,
 /// except that every NaN equals every NaN.
+///
+/// The cells of a vector or array column are the same when both are null, or neither is
+/// and they have the same number of elements, the same one by one in order under the rule
+/// for the element type. A null cell is not an empty one.
+///
+/// Behavior: `cells_equal` in `oracle/harness/rules.py` (`LIST_EXACT`, `LIST_FLOAT`).
 fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
     fn bits<A: Array + 'static, B: PartialEq>(
         expected: &ArrayRef,
@@ -396,6 +405,9 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
             e.is_null(row) == a.is_null(row) && (e.is_null(row) || cell(e, row) == cell(a, row))
         })
     }
+    if expected.len() != actual.len() {
+        return false;
+    }
     match expected.data_type() {
         DataType::Float32 => bits::<Float32Array, _>(expected, actual, |array, row| {
             let value = array.value(row);
@@ -405,7 +417,42 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
             let value = array.value(row);
             (!value.is_nan()).then(|| value.to_bits())
         }),
+        DataType::List(_) => {
+            let (Some(e), Some(a)) = (
+                expected.as_any().downcast_ref::<ListArray>(),
+                actual.as_any().downcast_ref::<ListArray>(),
+            ) else {
+                return false;
+            };
+            (0..e.len()).all(|row| {
+                e.is_null(row) == a.is_null(row)
+                    && (e.is_null(row) || same_cells(&e.value(row), &a.value(row)))
+            })
+        }
         _ => expected == actual,
+    }
+}
+
+/// Whether a column is a vector or an array: for ours by its type, for Java's by the
+/// `deephaven:type` of its field, `io.deephaven.vector.IntVector` or `int[]`. `None` for a
+/// column that is neither. The two have one Arrow type, so the comparison of Arrow types
+/// does not tell them apart.
+fn list_kind(column_type: &ColumnType) -> Option<&'static str> {
+    match column_type {
+        ColumnType::Vector(_) => Some("vector"),
+        ColumnType::Array(_) => Some("array"),
+        _ => None,
+    }
+}
+
+fn java_list_kind(field: &Field) -> Option<&'static str> {
+    let java_type = field.metadata().get("deephaven:type")?;
+    if java_type.starts_with("io.deephaven.vector.") {
+        Some("vector")
+    } else if java_type.ends_with("[]") {
+        Some("array")
+    } else {
+        None
     }
 }
 
@@ -425,6 +472,16 @@ fn difference(recording: &Recording, entry: &Value, table: &dyn Table) -> Option
         .collect();
     if ours != theirs {
         return Some(format!("columns {ours:?}, Java has {theirs:?}"));
+    }
+    for (column, field) in columns.iter().zip(schema.fields()) {
+        let (ours, theirs) = (list_kind(&column.column_type), java_list_kind(field));
+        if ours.is_some() && ours != theirs {
+            let java_type = field.metadata().get("deephaven:type");
+            return Some(format!(
+                "column {} is {:?}, Java has {java_type:?}",
+                column.name, column.column_type
+            ));
+        }
     }
     let snapshot = match TableSnapshot::current(table) {
         Ok(snapshot) => snapshot,
@@ -586,4 +643,212 @@ pub(crate) fn replay_all(ours: &[&str], define: Define) -> Tally {
     }
     tally.compared.sort();
     tally
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::AsArray;
+    use arrow::buffer::NullBuffer;
+    use arrow::datatypes::{Float64Type, TimeUnit};
+    use oxhaven_contracts::schema::ColumnDefinition;
+    use oxhaven_testkit::list_of;
+
+    /// The column type of a field of a recording.
+    fn recorded_type(field: &Field) -> ColumnType {
+        fn of(data_type: &DataType, kind: Option<&str>) -> ColumnType {
+            match data_type {
+                DataType::Boolean => ColumnType::Boolean,
+                DataType::Int32 => ColumnType::Int,
+                DataType::Int64 => ColumnType::Long,
+                DataType::Float32 => ColumnType::Float,
+                DataType::Float64 => ColumnType::Double,
+                DataType::Utf8 => ColumnType::String,
+                DataType::Timestamp(TimeUnit::Nanosecond, _) => ColumnType::Instant,
+                DataType::List(element) => match kind {
+                    Some("vector") => ColumnType::vector(of(element.data_type(), None)),
+                    Some("array") => ColumnType::array(of(element.data_type(), None)),
+                    other => panic!("a list that is {other:?}"),
+                },
+                other => panic!("no column type for {other}"),
+            }
+        }
+        of(field.data_type(), java_list_kind(field))
+    }
+
+    /// How a table differs from the recorded table of Java it was made from, after
+    /// `change` was given each column's name, type and cells and returned those to use.
+    fn difference_after(
+        scenario: &str,
+        table: &str,
+        change: impl Fn(&str, ColumnType, ArrayRef) -> (ColumnType, ArrayRef),
+    ) -> Option<String> {
+        let recording = Recording::of(scenario);
+        let entry = recording.entry(0, table);
+        let (batch, _) = recording.table(entry);
+        let schema = batch.schema();
+        let (mut columns, mut fields, mut arrays) = (Vec::new(), Vec::new(), Vec::new());
+        for (field, cells) in schema.fields().iter().zip(batch.columns()) {
+            let (column_type, cells) = change(field.name(), recorded_type(field), cells.clone());
+            fields.push(Field::new(field.name(), column_type.arrow_type(), true));
+            columns.push(ColumnDefinition::new(field.name(), column_type));
+            arrays.push(cells);
+        }
+        let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).expect("a batch");
+        let definition = TableDefinition::new(columns).expect("a definition");
+        let ours = in_memory_table(definition, &[batch]).expect("a table");
+        difference(&recording, entry, &*ours)
+    }
+
+    fn unchanged(_: &str, column_type: ColumnType, cells: ArrayRef) -> (ColumnType, ArrayRef) {
+        (column_type, cells)
+    }
+
+    /// Changes the cells of one column with `change`.
+    fn changed(
+        column: &'static str,
+        change: impl Fn(&ArrayRef) -> ArrayRef,
+    ) -> impl Fn(&str, ColumnType, ArrayRef) -> (ColumnType, ArrayRef) {
+        move |name, column_type, cells| {
+            if name == column {
+                (column_type, change(&cells))
+            } else {
+                (column_type, cells)
+            }
+        }
+    }
+
+    /// Makes a vector column an array column of the same cells, and the reverse.
+    fn swapped(
+        column: &'static str,
+    ) -> impl Fn(&str, ColumnType, ArrayRef) -> (ColumnType, ArrayRef) {
+        move |name, column_type, cells| {
+            let other = match &column_type {
+                ColumnType::Vector(element) if name == column => ColumnType::Array(element.clone()),
+                ColumnType::Array(element) if name == column => ColumnType::Vector(element.clone()),
+                _ => column_type,
+            };
+            (other, cells)
+        }
+    }
+
+    /// `cells` of doubles with every element changed by `change`; a null element stays
+    /// null.
+    fn double_elements(cells: &ArrayRef, change: impl Fn(f64) -> f64) -> ArrayRef {
+        let (field, offsets, values, nulls) = cells.as_list::<i32>().clone().into_parts();
+        let values = values.as_primitive::<Float64Type>();
+        let values: Float64Array = values.unary(change);
+        Arc::new(ListArray::new(field, offsets, Arc::new(values), nulls))
+    }
+
+    fn other_nan() -> f64 {
+        f64::from_bits(f64::NAN.to_bits() | 1)
+    }
+
+    #[test]
+    fn recorded_vectors_and_arrays_are_the_same_cells_as_themselves() {
+        // Every vector Java recorded for group_by: of int, double, float, Boolean and
+        // Instant, with null elements, NaN, infinities and both zeros.
+        let same = |scenario, table| difference_after(scenario, table, unchanged);
+        assert_eq!(same("group_by_ungroup", "grouped"), None);
+        assert_eq!(same("group_by_ungroup", "grouped_empty"), None);
+        // Arrays: `String[]` and `long[]`.
+        assert_eq!(same("column_statistics", "empty_string"), None);
+    }
+
+    #[test]
+    fn a_vector_where_java_has_an_array_differs_and_the_reverse() {
+        assert_eq!(
+            difference_after("group_by_ungroup", "grouped", swapped("I")).as_deref(),
+            Some("column I is Array(Int), Java has Some(\"io.deephaven.vector.IntVector\")")
+        );
+        assert_eq!(
+            difference_after(
+                "column_statistics",
+                "empty_string",
+                swapped("UNIQUE_COUNTS")
+            )
+            .as_deref(),
+            Some("column UNIQUE_COUNTS is Vector(Long), Java has Some(\"long[]\")")
+        );
+    }
+
+    #[test]
+    fn an_element_of_a_recorded_vector_that_changed_differs() {
+        let after = |column: &'static str, change: &dyn Fn(&ArrayRef) -> ArrayRef| {
+            difference_after("group_by_ungroup", "grouped", changed(column, change))
+        };
+        let differs = |column: &'static str, change: &dyn Fn(&ArrayRef) -> ArrayRef| {
+            after(column, change).is_some_and(|d| d.starts_with(&format!("column {column} is")))
+        };
+        // Another NaN is the same element; the other zero and another number are not.
+        assert!(other_nan().is_nan() && other_nan().to_bits() != f64::NAN.to_bits());
+        let nans = |v: f64| if v.is_nan() { other_nan() } else { v };
+        assert_eq!(after("D", &|cells| double_elements(cells, nans)), None);
+        let zeros = |v: f64| if v == 0.0 { 0.0 } else { v };
+        assert!(differs("D", &|cells| double_elements(cells, zeros)));
+        let numbers = |v: f64| if v == 2.5 { 2.25 } else { v };
+        assert!(differs("D", &|cells| double_elements(cells, numbers)));
+        // A null element that became a value, here the value Java reserves for null.
+        assert!(differs("D", &|cells| {
+            let (field, offsets, values, nulls) = cells.as_list::<i32>().clone().into_parts();
+            let values = values.as_primitive::<Float64Type>().iter();
+            let values: Float64Array = values.map(|v| Some(v.unwrap_or(-f64::MAX))).collect();
+            Arc::new(ListArray::new(field, offsets, Arc::new(values), nulls))
+        }));
+        // A cell that became null, and a cell that lost its last element.
+        assert!(differs("I", &|cells| {
+            let (field, offsets, values, _) = cells.as_list::<i32>().clone().into_parts();
+            let valid: NullBuffer = (0..offsets.len() - 1).map(|row| row != 3).collect();
+            Arc::new(ListArray::new(field, offsets, values, Some(valid)))
+        }));
+        assert!(differs("I", &|cells| {
+            let lists = cells.as_list::<i32>();
+            let last = lists.len() - 1;
+            let lengths: Vec<Option<usize>> = (0..lists.len())
+                .map(|row| Some(lists.value(row).len() - usize::from(row == last)))
+                .collect();
+            let kept: usize = lengths.iter().flatten().sum();
+            let vector = ColumnType::vector(ColumnType::Int);
+            list_of(&vector, lengths, lists.values().slice(0, kept))
+        }));
+    }
+
+    #[test]
+    fn list_cells_are_the_same_only_with_the_same_elements_in_the_same_order() {
+        let vector = ColumnType::vector(ColumnType::Double);
+        let lists = |lengths: &[Option<usize>], elements: Vec<Option<f64>>| {
+            let elements: ArrayRef = Arc::new(Float64Array::from(elements));
+            list_of(&vector, lengths.iter().copied(), elements)
+        };
+        let nan = Some(f64::NAN);
+        // [1.0, NaN], null, [], [null]
+        let lengths = [Some(2), None, Some(0), Some(1)];
+        let expected = lists(&lengths, vec![Some(1.0), nan, None]);
+        let same = |actual: ArrayRef| same_cells(&expected, &actual);
+        assert!(same(lists(
+            &lengths,
+            vec![Some(1.0), Some(other_nan()), None]
+        )));
+        assert!(!same(lists(&lengths, vec![nan, Some(1.0), None])));
+        assert!(!same(lists(&lengths, vec![Some(1.0), nan, Some(0.0)])));
+        // A null cell is not an empty one, and an empty one is not a null one.
+        let other = [Some(2), Some(0), Some(0), Some(1)];
+        assert!(!same(lists(&other, vec![Some(1.0), nan, None])));
+        let other = [Some(2), None, None, Some(1)];
+        assert!(!same(lists(&other, vec![Some(1.0), nan, None])));
+        // The same elements cut into other cells, and fewer cells.
+        let other = [Some(1), None, Some(1), Some(1)];
+        assert!(!same(lists(&other, vec![Some(1.0), nan, None])));
+        assert!(!same(lists(&lengths[..3], vec![Some(1.0), nan])));
+
+        // Lists of lists: the rule holds at every depth.
+        let nested = ColumnType::array(vector.clone());
+        let outer = |inner: ArrayRef| list_of(&nested, [Some(3), Some(1)], inner);
+        let expected = outer(lists(&lengths, vec![Some(1.0), nan, None]));
+        let inner = lists(&lengths, vec![Some(1.0), Some(other_nan()), None]);
+        assert!(same_cells(&expected, &outer(inner)));
+        let inner = lists(&lengths, vec![Some(1.0), nan, Some(-0.0)]);
+        assert!(!same_cells(&expected, &outer(inner)));
+    }
 }
