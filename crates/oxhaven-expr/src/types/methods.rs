@@ -21,6 +21,7 @@ pub(crate) enum StringMethod {
     ToLowerCase,
     Trim,
     Equals,
+    EqualsIgnoreCase,
     CompareTo,
     Concat,
 }
@@ -37,7 +38,7 @@ pub(crate) enum Parameter {
 /// Whether `java.lang.String` (JDK 21) has a public method of this name: its own, static
 /// or not, or inherited from `Object`.
 pub(crate) fn is_string_method(name: &str) -> bool {
-    const NAMES: [&str; 59] = [
+    const NAMES: [&str; 58] = [
         "charAt",
         "chars",
         "codePointAt",
@@ -52,7 +53,6 @@ pub(crate) fn is_string_method(name: &str) -> bool {
         "describeConstable",
         "endsWith",
         "equals",
-        "equalsIgnoreCase",
         "formatted",
         "getBytes",
         "getChars",
@@ -116,6 +116,7 @@ impl StringMethod {
             "toLowerCase" => StringMethod::ToLowerCase,
             "trim" => StringMethod::Trim,
             "equals" => StringMethod::Equals,
+            "equalsIgnoreCase" => StringMethod::EqualsIgnoreCase,
             "compareTo" => StringMethod::CompareTo,
             "concat" => StringMethod::Concat,
             _ => return None,
@@ -140,6 +141,7 @@ impl StringMethod {
             | StringMethod::EndsWith
             | StringMethod::IndexOf
             | StringMethod::Equals
+            | StringMethod::EqualsIgnoreCase
             | StringMethod::CompareTo
             | StringMethod::Concat => &[&[String]],
         }
@@ -173,7 +175,8 @@ impl StringMethod {
             | StringMethod::Contains
             | StringMethod::StartsWith
             | StringMethod::EndsWith
-            | StringMethod::Equals => ColumnType::Boolean,
+            | StringMethod::Equals
+            | StringMethod::EqualsIgnoreCase => ColumnType::Boolean,
             StringMethod::CharAt => ColumnType::Char,
             StringMethod::Substring
             | StringMethod::ToUpperCase

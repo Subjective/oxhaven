@@ -3,7 +3,7 @@
 //! | Item | What it is |
 //! | --- | --- |
 //! | [`QueryTable`] | The concrete `Table`: row set, columns, attributes, listeners, and what feeds it |
-//! | [`in_memory_table`], [`empty_table`] | Static tables |
+//! | [`in_memory_table`], [`uploaded_table`], [`empty_table`] | Static tables |
 //! | [`append_only_input_table`], [`keyed_input_table`] | Tables written through `Table::input_table` |
 //! | [`time_table`] | A row per period of an injected [`TimeSource`] |
 //!
@@ -81,14 +81,17 @@
 mod in_memory;
 mod input;
 mod query_table;
+mod storage;
 mod time;
 
 #[cfg(test)]
 mod tests;
 
-pub use in_memory::{empty_table, in_memory_table};
+pub use in_memory::{empty_table, in_memory_table, uploaded_table};
 pub use input::{append_only_input_table, keyed_input_table};
 pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator};
+pub(crate) use storage::{forget_reads_through, register_reads_through};
+pub use storage::{holds_values, reads_through};
 pub use time::{time_table, TimeSource, TimeTableOptions, WallClock};
 
 use arrow::array::ArrayRef;
@@ -96,13 +99,30 @@ use arrow::record_batch::RecordBatch;
 use oxhaven_column::{Clock, WritableSource};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType};
-use oxhaven_contracts::table::TableFailure;
+use oxhaven_contracts::table::{Table, TableFailure};
 use std::sync::Arc;
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
         message: message.into(),
     }
+}
+
+/// Whether `table` never removes, modifies or shifts a row: it is static, or says so.
+///
+/// Behavior: io.deephaven.engine.table.impl.BaseTable#isAddOnly
+pub fn is_add_only(table: &dyn Table) -> bool {
+    let attributes = table.attributes();
+    !table.is_refreshing() || attributes.add_only || attributes.append_only
+}
+
+/// Whether `table` only ever adds rows after its last row: it is static, or says so, or is
+/// add-only and flat.
+///
+/// Behavior: io.deephaven.engine.table.impl.BaseTable#isAppendOnly
+pub fn is_append_only(table: &dyn Table) -> bool {
+    let attributes = table.attributes();
+    !table.is_refreshing() || attributes.append_only || (attributes.add_only && table.is_flat())
 }
 
 /// An empty writable column that keeps previous values for writes made during a cycle of

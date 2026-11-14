@@ -1,7 +1,7 @@
 //! `&& || !`, and what the type checker refuses.
 
 use super::*;
-use oxhaven_contracts::expr::{Expr, Literal, RowVariable, UnaryOp};
+use oxhaven_contracts::expr::{Expr, Literal, UnaryOp};
 
 #[test]
 fn and_or_and_not_follow_their_truth_tables() {
@@ -132,8 +132,6 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
     let table = checker_table();
     let mut wrong = Vec::new();
     for (formula, construct) in [
-        ("T - T", "arithmetic on Instant values"),
-        ("T + 1", "arithmetic on Instant values"),
         ("T >= 1L", "ordering comparison of Instant with long"),
         (
             "null",
@@ -142,11 +140,12 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
         ("null == null", "comparison of null with null"),
         ("S < null", "null literal as an operand of <"),
         ("B & null", "null literal as an operand of &"),
+        ("cbrt(I)", "function cbrt()"),
         (
-            "isNull(null)",
-            "null literal outside ==, !=, ?:, a cast and string concatenation",
+            "replaceIfNull(I, null)",
+            "null literal as an argument of replaceIfNull()",
         ),
-        ("abs(I)", "function abs()"),
+        ("BS_ANY", "constant BS_ANY"),
         ("S.split(S)", "method call String.split()"),
         (
             "S.indexOf(S, I)",
@@ -154,9 +153,6 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
         ),
         ("(Integer) I", "cast to Integer"),
         ("1.5F", "float literal with an uppercase F suffix 1.5F"),
-        ("i", "row variable I"),
-        ("ii + 1", "row variable Ii"),
-        ("I + k", "row variable K"),
         ("I_", "column array I_"),
     ] {
         let result = Compiler
@@ -187,15 +183,11 @@ fn expression_trees_outside_the_subset_do_not_compile() {
         FormulaError::Unsupported("method call String.hashCode()".into())
     );
     assert_eq!(
-        compile(Expr::RowVariable(RowVariable::I)),
-        FormulaError::Unsupported("row variable I".into())
-    );
-    assert_eq!(
         compile(Expr::Call {
-            function: "abs".into(),
+            function: "cbrt".into(),
             arguments: vec![*column()],
         }),
-        FormulaError::Unsupported("function abs()".into())
+        FormulaError::Unsupported("function cbrt()".into())
     );
     assert_eq!(
         compile(Expr::ColumnVector("I".into())),

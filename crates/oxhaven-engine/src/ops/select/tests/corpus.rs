@@ -482,6 +482,9 @@ fn results_match_the_ones_recorded_from_java() {
             "drop_columns.most x1",
             "drop_columns.one x1",
             "drop_columns.some x1",
+            "empty_table_and_meta.five_columns x1",
+            "empty_table_and_meta.five_view x1",
+            "empty_table_and_meta.none_columns x1",
             "empty_table_ops.d x1",
             "empty_table_ops.u x1",
             "empty_table_ops.v x1",
@@ -492,6 +495,7 @@ fn results_match_the_ones_recorded_from_java() {
             "error_formula.rem_view x1",
             "error_formula.syntax x1",
             "error_formula.type_error x1",
+            "error_formula.unknown_function x1",
             "error_types_and_matches.duplicate_output x1",
             "error_unknown_column.bad_drop x1",
             "error_unknown_column.bad_view x1",
@@ -541,19 +545,12 @@ fn results_match_the_ones_recorded_from_java() {
         ],
         "compared"
     );
-    // Results of this module's operations that need an operation of another module (the
-    // one named; `ticking_time_table.numbered` is made from a `head` of a `time_table`), or
-    // a formula the compiler does not support yet (the row variables `i` and `ii` among
-    // them). An unknown function is among the latter: Java refuses it, and the compiler
-    // cannot tell it from a function it has yet to learn.
+    // Results of this module's operations that need an operation of another module, the
+    // one named (`ticking_time_table.numbered` is made from a `head` of a `time_table`).
     assert_eq!(
         outcome.not_run,
         [
-            "empty_table_and_meta.five_columns: unsupported formula I = i",
-            "empty_table_and_meta.none_columns: unsupported formula I = i",
-            "empty_table_and_meta.five_view: unsupported formula Twice = ii * 2",
             "error_formula.rem_ok: where",
-            "error_formula.unknown_function: unsupported formula X = noSuchFunction(I)",
             "error_unknown_column.after_bad_sort: sort",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",

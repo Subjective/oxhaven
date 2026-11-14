@@ -1,9 +1,9 @@
 //! `select` and `update`: columns whose values are computed once and stored.
 
 use super::plan::{self, Kind, Origin, Plan, Sources, Step};
-use super::sources::{holds_values, ByPosition, ConstantSource, FormulaInput};
+use super::sources::{ByPosition, ConstantSource, FormulaInput};
 use super::{result_attributes, spec, Flavor, SelectError};
-use crate::table::{tracked_source, QueryTable, TableSpec};
+use crate::table::{holds_values, tracked_source, QueryTable, TableSpec};
 use arrow::array::ArrayRef;
 use oxhaven_column::{FlatSource, RedirectedSource, RowRedirection, WritableSource};
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
