@@ -84,6 +84,18 @@ pub fn keyed_input_table(
                 definition.columns()[index].name
             );
         }
+        // Java keys such a column by the vector or array as an object.
+        if definition.columns()[index]
+            .column_type
+            .list_element()
+            .is_some()
+        {
+            unported!(
+                "io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource",
+                "vector or array key column {}",
+                definition.columns()[index].name
+            );
+        }
     }
     make(
         graph,

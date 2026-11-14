@@ -230,6 +230,17 @@ fn make_operator(
             | ColumnType::Int
             | ColumnType::Long
     );
+    // Sum and avg have no operator for a vector or an array, as for a `String`. The
+    // operators below would take one, by Java's comparison and storage of objects, and
+    // the ones here read cells of the scalar types only.
+    let no_lists = |java_method: &str| {
+        if input.list_element().is_some() {
+            unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                "{java_method} for a column of type {input:?}"
+            );
+        }
+    };
     Some(match spec {
         AggSpec::Sum => match input {
             ColumnType::Boolean => Box::<BooleanSum>::default(),
@@ -243,12 +254,16 @@ fn make_operator(
             _ if integer => Box::<LongAvg>::default(),
             _ => return None,
         },
-        AggSpec::Min | AggSpec::Max => Box::new(MinMax::new(
-            input.clone(),
-            spec == AggSpec::Min,
-            parent == ParentKind::General,
-        )),
+        AggSpec::Min | AggSpec::Max => {
+            no_lists("makeMinOrMaxOperator");
+            Box::new(MinMax::new(
+                input.clone(),
+                spec == AggSpec::Min,
+                parent == ParentKind::General,
+            ))
+        }
         AggSpec::First | AggSpec::Last => {
+            no_lists("makeFirstOrLastOperator");
             let mode = match parent {
                 ParentKind::Static | ParentKind::AddOnly => FirstLastMode::ByRowKey,
                 ParentKind::Blink => FirstLastMode::Arrival,
