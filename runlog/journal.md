@@ -71,3 +71,9 @@ entry from "not run" to "compared" on the formula branch. This was the predicted
 parallel branches; the pin did its job. Cost: one CI round, about ten minutes.
 
 PR 17 (formula corpus) merged. PR 18 opened for the PARITY.md corrections (facts only).
+
+## 10:12 PRs 16 and 18 merged; expr agent resumed for 5.4
+
+Formula language and the PARITY.md corrections are on main. The expr agent is resumed in its own
+context for the tagged corpus test and the function library (5.4), with an explicit exit after the
+corpus test if its context is nearly full. Column arrays (5.5) stay separate.
