@@ -18,7 +18,9 @@ pub trait ColumnSource: Send + Sync {
     fn column_type(&self) -> &ColumnType;
 
     /// Current values at `rows`, in row-key order, as an Arrow array of
-    /// `column_type().arrow_type()` with `rows.size()` elements.
+    /// `column_type().arrow_type()` with `rows.size()` elements. For a vector or array
+    /// column that is a `ListArray`; [`ColumnType::list_element`] says how its cells are
+    /// laid out.
     ///
     /// Port of `ColumnSource#getChunk` / `fillChunk`. `rows` must be a subset of the owning
     /// table's current row set.
@@ -212,7 +214,8 @@ pub trait Table: Dependency {
 mod tests {
     use super::*;
     use crate::schema::ColumnType;
-    use arrow::array::{Array, Int64Array};
+    use arrow::array::{Array, Int64Array, ListArray};
+    use arrow::datatypes::{DataType, Int64Type};
 
     /// A column whose value at row key `k` is `10 * k` now and `k` on the previous cycle.
     struct TenTimesKey(ColumnType);
@@ -248,6 +251,61 @@ mod tests {
         assert_eq!(
             prev.iter().collect::<Vec<_>>(),
             vec![Some(7), Some(2), None, Some(7), Some(100)]
+        );
+    }
+
+    /// A vector column whose cell at row key `k` holds `k` elements, all `k`; the cell at
+    /// row key 3 is null.
+    struct KeyTimesKey(ColumnType);
+
+    impl ColumnSource for KeyTimesKey {
+        fn column_type(&self) -> &ColumnType {
+            &self.0
+        }
+        fn chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+            let cells = rows
+                .iter()
+                .map(|k| (k != 3).then(|| (0..k).map(move |_| Some(k)).collect::<Vec<_>>()));
+            let lists = ListArray::from_iter_primitive::<Int64Type, _, _>(cells);
+            let (_, offsets, values, nulls) = lists.into_parts();
+            let DataType::List(field) = self.0.arrow_type() else {
+                unreachable!("a vector is a list")
+            };
+            Ok(Arc::new(ListArray::new(field, offsets, values, nulls)))
+        }
+        fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+            self.chunk(rows)
+        }
+    }
+
+    #[test]
+    fn chunk_by_keys_of_a_list_column_gives_null_entries_and_whole_cells() {
+        let source = KeyTimesKey(ColumnType::vector(ColumnType::Long));
+        let cells = source
+            .chunk_by_keys(&[2, NULL_ROW_KEY, 0, 3, 2, 1], false)
+            .unwrap();
+        assert_eq!(cells.data_type(), &source.column_type().arrow_type());
+        let cells = cells.as_any().downcast_ref::<ListArray>().unwrap();
+        let seen: Vec<Option<Vec<Option<i64>>>> = cells
+            .iter()
+            .map(|cell| {
+                cell.map(|cell| {
+                    let cell = cell.as_any().downcast_ref::<Int64Array>().unwrap();
+                    cell.iter().collect()
+                })
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                Some(vec![Some(2), Some(2)]),
+                None,
+                // an empty vector is not a null cell
+                Some(vec![]),
+                None,
+                Some(vec![Some(2), Some(2)]),
+                Some(vec![Some(1)]),
+            ]
         );
     }
 }

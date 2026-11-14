@@ -189,6 +189,16 @@ impl RandomUpdates {
                 });
                 Arc::new(nanos.with_timezone("UTC"))
             }
+            ColumnType::Vector(element) | ColumnType::Array(element) => {
+                // About one null cell in ten, and otherwise zero to three elements, about
+                // one in ten of them null, so that empty and null cells both occur.
+                let lengths: Vec<Option<usize>> = (0..n)
+                    .map(|_| (self.below(10) != 0).then(|| self.below(4) as usize))
+                    .collect();
+                let total: usize = lengths.iter().flatten().sum();
+                let elements = self.values(element, total as u64);
+                crate::list_of(column_type, lengths, elements)
+            }
             other => panic!("RandomUpdates has no values for column type {other:?}"),
         }
     }
@@ -238,7 +248,7 @@ impl RandomUpdates {
 mod tests {
     use super::*;
     use crate::{definition, ConsistencyChecker, ReferenceGraph, ReferenceTable, ScriptedTable};
-    use arrow::array::Array;
+    use arrow::array::{Array, ListArray};
     use oxhaven_contracts::graph::UpdateGraph;
     use oxhaven_contracts::schema::TableDefinition;
 
@@ -254,6 +264,13 @@ mod tests {
             ("Double", ColumnType::Double),
             ("String", ColumnType::String),
             ("Instant", ColumnType::Instant),
+            ("Ints", ColumnType::vector(ColumnType::Int)),
+            ("Doubles", ColumnType::array(ColumnType::Double)),
+            ("Strings", ColumnType::vector(ColumnType::String)),
+            (
+                "Nested",
+                ColumnType::vector(ColumnType::array(ColumnType::Boolean)),
+            ),
         ])
     }
 
@@ -360,6 +377,29 @@ mod tests {
             let nulls = values.null_count();
             assert!((5..60).contains(&nulls), "{}: {nulls} nulls", column.name);
         }
+    }
+
+    #[test]
+    fn list_values_have_null_cells_empty_cells_and_null_elements() {
+        let mut random = RandomUpdates::new(1);
+        let values = random.values(&ColumnType::vector(ColumnType::Int), 200);
+        let lists = values.as_any().downcast_ref::<ListArray>().unwrap();
+        let null_cells = lists.null_count();
+        let lengths: Vec<usize> = (0..200)
+            .filter(|&row| lists.is_valid(row))
+            .map(|row| lists.value(row).len())
+            .collect();
+        let empty_cells = lengths.iter().filter(|&&length| length == 0).count();
+        assert!((5..60).contains(&null_cells), "{null_cells} null cells");
+        assert!(
+            (10..100).contains(&empty_cells),
+            "{empty_cells} empty cells"
+        );
+        assert_eq!(lengths.iter().max(), Some(&3));
+        // Every element belongs to a cell that is not null.
+        assert_eq!(lists.values().len(), lengths.iter().sum::<usize>());
+        let null_elements = lists.values().null_count();
+        assert!((5..80).contains(&null_elements), "{null_elements} nulls");
     }
 
     #[test]

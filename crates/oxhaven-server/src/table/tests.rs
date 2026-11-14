@@ -223,6 +223,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "AS_OF_JOIN",
             "CREATE_INPUT_TABLE",
             "SELECT_DISTINCT",
+            "WHERE_IN",
             "NATURAL_JOIN",
             "EXACT_JOIN",
             "LEFT_JOIN",
@@ -247,6 +248,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "FLATTEN",
             "UNSTRUCTURED_FILTER",
             "FILTER",
+            "UPDATE_BY",
         ]
         .into_iter()
         .map(String::from)

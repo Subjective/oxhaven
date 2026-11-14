@@ -6,7 +6,7 @@
 //! is told positions within its viewport.
 
 use arrow::array::{Array, ArrayRef, UInt64Array};
-use arrow::datatypes::{DataType, TimeUnit};
+
 use flatbuffers::{FlatBufferBuilder, WIPOffset};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::shift::RowSetShiftData;
@@ -17,7 +17,7 @@ use oxhaven_proto::barrage::{
 use oxhaven_proto::flight::FlightData;
 
 use super::codec::{encode_row_set, encode_shift_data, ColumnSet};
-use crate::flight::{record_batch_messages_with, BatchOptions, EncodeError};
+use crate::flight::{has_sentinel, record_batch_messages_with, BatchOptions, EncodeError};
 
 /// The modified rows of one column and their new values, in row order.
 #[derive(Clone, Debug)]
@@ -62,6 +62,10 @@ pub struct WireOptions {
     /// Each column of a record batch is sent as the one element of a list, for clients
     /// that cannot read columns of different lengths. Subscriptions only.
     pub columns_as_list: bool,
+    /// The most elements sent of each cell of an array or vector column; see
+    /// [`BatchOptions::list_length_limit`].
+    pub preview_list_length_limit: i64,
+    /// The sizes the client asked for. The writer fills in the other fields.
     pub batch: BatchOptions,
 }
 
@@ -96,27 +100,18 @@ fn error(problem: impl std::fmt::Display) -> EncodeError {
     EncodeError(problem.to_string())
 }
 
-/// Whether Java's writer for the type sends sentinel values in place of a validity buffer
-/// when the client asked for Deephaven nulls: the primitive writers do, the `Boolean` and
-/// `String` writers do not.
-///
-/// Behavior: the `dhNullable` argument each writer passes to
-/// `io.deephaven.extensions.barrage.chunk.BaseChunkWriter`
-fn has_sentinel(data_type: &DataType) -> bool {
-    matches!(
-        data_type,
-        DataType::Int8
-            | DataType::UInt16
-            | DataType::Int16
-            | DataType::Int32
-            | DataType::Int64
-            | DataType::Float32
-            | DataType::Float64
-            | DataType::Timestamp(TimeUnit::Nanosecond, _)
-    )
+/// What the record batch writer is told: the sizes the client asked for, and what its
+/// options mean for the elements of array and vector columns.
+fn batch(options: WireOptions) -> BatchOptions {
+    BatchOptions {
+        element_sentinels: options.use_deephaven_nulls,
+        list_length_limit: options.preview_list_length_limit,
+        ..options.batch
+    }
 }
 
-/// Per column, whether a validity buffer may be written.
+/// Per column, whether a validity buffer may be written. An array or vector column has
+/// one whenever a cell is null; [`batch`] passes the option on for its elements.
 ///
 /// Behavior: `BaseChunkWriter.BaseChunkInputStream#nullCount`
 fn validity(message: &BarrageMessage, nullable: &[bool], options: WireOptions) -> Vec<bool> {
@@ -182,6 +177,7 @@ pub(super) fn batch_options(batch_size: i32, max_message_size: i32) -> BatchOpti
     BatchOptions {
         batch_size: usize::try_from(batch_size).unwrap_or(0),
         max_message_size: usize::try_from(max_message_size).unwrap_or(0),
+        ..Default::default()
     }
 }
 
@@ -378,7 +374,7 @@ pub fn subscription_messages(
             &add_data,
             &nullable,
             0,
-            view.options.batch,
+            batch(view.options),
             metadata,
             true,
             as_lists,
@@ -394,7 +390,7 @@ pub fn subscription_messages(
         &add_data,
         &nullable,
         included_count,
-        view.options.batch,
+        batch(view.options),
         with_adds,
         false,
         as_lists,
@@ -403,7 +399,7 @@ pub fn subscription_messages(
         &mod_data,
         &nullable,
         mod_count,
-        view.options.batch,
+        batch(view.options),
         with_mods,
         false,
         as_lists,
@@ -498,7 +494,7 @@ pub fn snapshot_messages(
         &data,
         &nullable,
         offsets.size() as usize,
-        view.options.batch,
+        batch(view.options),
         metadata,
         true,
         false,
