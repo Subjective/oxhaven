@@ -205,3 +205,18 @@ join (4.3), as-of join (4.4), ungroup (4.7), shared-ticket resolver, second PARI
 
 For the retrospective: a second container, or a shared compile cache (sccache) set up in M0,
 would have roughly doubled throughput in this phase. Worth raising with Josh.
+
+## 11:50 A downstream operator found a divergence in merged sort
+
+The select_distinct agent recorded Java for select_distinct of a sorted ticking table and found
+that ops::sort emits "modified" where Java removes and re-adds a row whose new key sorts before its
+old one. Sorted rows are identical, so the sort corpus test (which compares contents) passed; only
+an order-sensitive consumer shows it. A sort unit test asserted the non-Java shape.
+
+Decision: the finding agent fixes sort on its branch with a sort-only fixture recorded from Java,
+corrects the unit test to the recorded behavior, and removes its ignored test. No ignored tests.
+
+For the retrospective: corpus tests compare table contents per step, not update shapes. Update
+shape errors surface only through downstream consumers or Barrage. A recorded update-shape check
+(Barrage deltas from Java are exactly that) would close this hole; the Barrage fixtures may give
+it for free.
