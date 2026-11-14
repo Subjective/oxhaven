@@ -17,7 +17,7 @@ use oxhaven_proto::barrage::{
 use oxhaven_proto::flight::FlightData;
 
 use super::codec::{encode_row_set, encode_shift_data, ColumnSet};
-use crate::flight::{record_batch_messages, BatchOptions, EncodeError};
+use crate::flight::{record_batch_messages_with, BatchOptions, EncodeError};
 
 /// The modified rows of one column and their new values, in row order.
 #[derive(Clone, Debug)]
@@ -59,6 +59,9 @@ pub struct WireOptions {
     /// Nulls of primitive columns are sent as Java's sentinel values, with no validity
     /// buffer.
     pub use_deephaven_nulls: bool,
+    /// Each column of a record batch is sent as the one element of a list, for clients
+    /// that cannot read columns of different lengths. Subscriptions only.
+    pub columns_as_list: bool,
     pub batch: BatchOptions,
 }
 
@@ -357,6 +360,7 @@ pub fn subscription_messages(
     let metadata = wrap(builder.finished_data());
 
     let nullable = validity(message, nullable, view.options);
+    let as_lists = view.options.columns_as_list;
     let add_data = message
         .add_columns
         .iter()
@@ -370,7 +374,15 @@ pub fn subscription_messages(
         })
         .collect::<Result<Vec<_>, _>>()?;
     if included_count == 0 && mod_count == 0 {
-        return record_batch_messages(&add_data, &nullable, 0, view.options.batch, metadata, true);
+        return record_batch_messages_with(
+            &add_data,
+            &nullable,
+            0,
+            view.options.batch,
+            metadata,
+            true,
+            as_lists,
+        );
     }
     // the metadata goes with the first batch, whichever kind that is
     let (with_adds, with_mods) = if included_count > 0 {
@@ -378,21 +390,23 @@ pub fn subscription_messages(
     } else {
         (Vec::new(), metadata)
     };
-    let mut messages = record_batch_messages(
+    let mut messages = record_batch_messages_with(
         &add_data,
         &nullable,
         included_count,
         view.options.batch,
         with_adds,
         false,
+        as_lists,
     )?;
-    messages.extend(record_batch_messages(
+    messages.extend(record_batch_messages_with(
         &mod_data,
         &nullable,
         mod_count,
         view.options.batch,
         with_mods,
         false,
+        as_lists,
     )?);
     Ok(messages)
 }
@@ -480,12 +494,13 @@ pub fn snapshot_messages(
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
-    record_batch_messages(
+    record_batch_messages_with(
         &data,
         &nullable,
         offsets.size() as usize,
         view.options.batch,
         metadata,
         true,
+        false,
     )
 }

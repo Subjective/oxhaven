@@ -26,7 +26,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 
 use arrow::array::{new_empty_array, Array, ArrayRef};
-use arrow::datatypes::Schema;
+use arrow::datatypes::{DataType, Field, Schema};
 use oxhaven_contracts::graph::{locked, UpdateGraph};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::shift::RowSetShiftData;
@@ -323,6 +323,22 @@ pub(super) fn nullable_columns(table: &Arc<dyn Table>, schema: &Schema) -> Vec<b
                 .map_or(true, |field| field.is_nullable())
         })
         .collect()
+}
+
+/// `schema` with each field as a list of it, which is not nullable and has the field's
+/// metadata.
+///
+/// Behavior: `io.deephaven.extensions.barrage.util.BarrageUtil#schemaWithColumnsAsList`
+fn schema_with_columns_as_list(schema: &Schema) -> Schema {
+    let fields: Vec<Field> = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            Field::new(field.name(), DataType::List(field.clone()), false)
+                .with_metadata(field.metadata().clone())
+        })
+        .collect();
+    Schema::new_with_metadata(fields, schema.metadata().clone())
 }
 
 impl Producer {
@@ -1121,9 +1137,13 @@ impl Producer {
                 )
             });
             if subscription.pending_initial_snapshot {
-                subscription
-                    .listener
-                    .on_next(vec![schema_message(&self.schema)]);
+                // the schema describes the data as this subscriber is sent it
+                let schema = if subscription.options.columns_as_list {
+                    schema_with_columns_as_list(&self.schema)
+                } else {
+                    self.schema.clone()
+                };
+                subscription.listener.on_next(vec![schema_message(&schema)]);
             }
             // without rows the message still tells the viewport and columns in effect
             let messages = subscription_messages(

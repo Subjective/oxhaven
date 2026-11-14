@@ -41,8 +41,8 @@ use super::codec::{
 };
 use super::producer::{Job, Listener, Producer, Scheduler};
 use super::writer::WireOptions;
+use crate::flight::do_get_messages;
 use crate::flight::tests::support::Server;
-use crate::flight::{do_get_messages, wire_schema};
 use crate::inputtable::create_input_table;
 use crate::schema::schema_ipc_bytes;
 use crate::session::ticket_to_export_id;
@@ -80,10 +80,24 @@ fn columns_of(message: &FlightData, schema: &Schema) -> Vec<ArrayRef> {
     let batch = parsed.header_as_record_batch().expect("a record batch");
     let nodes = batch.nodes().unwrap();
     let buffers = batch.buffers().unwrap();
-    assert_eq!(nodes.len(), schema.fields().len());
     let mut next_buffer = 0;
     let mut columns = Vec::new();
-    for (field, node) in schema.fields().iter().zip(nodes.iter()) {
+    let mut nodes = nodes.iter();
+    for field in schema.fields() {
+        // a column sent as the one element of a list: its node, no validity, its offsets
+        let field = match field.data_type() {
+            DataType::List(inner) => {
+                let list = nodes.next().unwrap();
+                assert_eq!((list.length(), list.null_count()), (1, 0));
+                assert_eq!(batch.length(), 1);
+                assert_eq!(buffers.get(next_buffer).length(), 0);
+                assert_eq!(buffers.get(next_buffer + 1).length(), 8);
+                next_buffer += 2;
+                inner
+            }
+            _ => field,
+        };
+        let node = nodes.next().unwrap();
         let count = match field.data_type() {
             DataType::Utf8 => 3,
             _ => 2,
@@ -114,6 +128,7 @@ fn columns_of(message: &FlightData, schema: &Schema) -> Vec<ArrayRef> {
         columns.push(make_array(data));
     }
     assert_eq!(next_buffer, buffers.len());
+    assert!(nodes.next().is_none());
     columns
 }
 
@@ -1040,7 +1055,6 @@ async fn replay(case: &str, table: impl Fn(&Server) -> Arc<dyn Table>, exact: bo
                 Some(java_schema.clone()),
                 "{context}"
             );
-            assert_eq!(wire_schema(&table), java_schema);
             schema = Some(java_schema);
         }
         let schema = schema.as_ref().unwrap();
@@ -1100,7 +1114,14 @@ async fn replay(case: &str, table: impl Fn(&Server) -> Arc<dyn Table>, exact: bo
 
 #[tokio::test]
 async fn subscriptions_to_a_ticking_table_leave_clients_with_what_java_leaves_them() {
-    for case in ["sub_full", "sub_viewport", "sub_reverse", "sub_columns"] {
+    for case in [
+        "sub_full",
+        "sub_viewport",
+        "sub_reverse",
+        "sub_columns",
+        "sub_as_list",
+        "sub_as_list_viewport",
+    ] {
         // Java cut the changes of a step into messages by its own timing
         replay(case, |server| keyed_input_table(server, 6), false).await;
     }

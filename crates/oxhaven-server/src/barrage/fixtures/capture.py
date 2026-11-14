@@ -143,10 +143,10 @@ def bit_set(*columns: int) -> bytes:
 
 def subscription(ticket: bytes | None, columns: bytes | None = None,
                  viewport: bytes | None = None, reverse: bool = False,
-                 nulls: bool = False, options: bool = True) -> bytes:
+                 nulls: bool = False, options: bool = True, as_list: bool = False) -> bytes:
     """A BarrageSubscriptionRequest in its wrapper. The update interval is 100 ms."""
     subscription_options = table([
-        None, ("bool", nulls), ("i32", 100), ("i32", 0), ("i32", 0), ("bool", False), ("i64", 0)])
+        None, ("bool", nulls), ("i32", 100), ("i32", 0), ("i32", 0), ("bool", as_list), ("i64", 0)])
     return wrapper(SUBSCRIPTION_REQUEST, finished(table([
         None if ticket is None else ("bytes", ticket),
         None if columns is None else ("bytes", columns),
@@ -287,7 +287,8 @@ def main(url: str) -> None:
         return session.import_table(pa.table({"K": pa.array(keys, pa.int32())}))
 
     def ticking(case: str, columns: bytes | None, viewport: bytes | None, reverse: bool,
-                changed_viewport: bytes | None, nulls: bool = False) -> None:
+                changed_viewport: bytes | None, nulls: bool = False,
+                as_list: bool = False) -> None:
         """A subscription to a keyed input table of the keys 1 to 6, through these steps.
         A viewport subscription then changes its viewport and sees one more step."""
         keyed = session.input_table(schema=INPUT_SCHEMA, key_cols=["K"])
@@ -296,7 +297,7 @@ def main(url: str) -> None:
         ticket = ticket_of(keyed)
 
         exchange.step("subscribe")
-        exchange.send(subscription(ticket, columns, viewport, reverse, nulls))
+        exchange.send(subscription(ticket, columns, viewport, reverse, nulls, as_list=as_list))
         exchange.collect()
         exchange.step("add 7 8")
         keyed.add(rows([7, 8]))
@@ -314,7 +315,8 @@ def main(url: str) -> None:
         exchange.collect()
         if changed_viewport is not None:
             exchange.step("viewport")
-            exchange.send(subscription(ticket, columns, changed_viewport, reverse, nulls))
+            exchange.send(subscription(
+                ticket, columns, changed_viewport, reverse, nulls, as_list=as_list))
             exchange.collect()
             exchange.step("add 10, delete 2")
             keyed.add(rows([10]))
@@ -330,6 +332,9 @@ def main(url: str) -> None:
     ticking("sub_viewport", None, row_set((1, 3)), False, row_set((0, 1)))
     ticking("sub_reverse", None, row_set((0, 1)), True, row_set((0, 3)))
     ticking("sub_columns", bit_set(0, 2), row_set((0, 99)), False, row_set((2, 4)), nulls=True)
+    # What the C++ client asks for: each column of a record batch as one list.
+    ticking("sub_as_list", None, None, False, None, as_list=True)
+    ticking("sub_as_list_viewport", None, row_set((1, 3)), False, row_set((0, 1)), as_list=True)
 
     # The static tables of the Flight fixtures: every column type, with a null row.
     formulas = [

@@ -9,8 +9,7 @@
 //!
 //! - A request that is not the flatbuffer it claims to be, or whose viewport is not an
 //!   encoded row set, is answered `INVALID_ARGUMENT`. Java reads such bytes unchecked.
-//! - `columns_as_list` is not ported and is answered `UNIMPLEMENTED`;
-//!   `preview_list_length_limit` has nothing to apply to, as no column type is a list.
+//! - `preview_list_length_limit` has nothing to apply to, as no column type is a list.
 //! - A call that never sent a request is completed when the client closes its side. Java
 //!   leaves it open.
 
@@ -109,7 +108,6 @@ struct TableRequest {
     reverse_viewport: bool,
     options: WireOptions,
     min_update_interval_ms: i64,
-    columns_as_list: bool,
 }
 
 fn malformed(what: &str, problem: impl std::fmt::Display) -> Status {
@@ -140,6 +138,7 @@ impl TableRequest {
             reverse_viewport: request.reverse_viewport(),
             options: options.map_or_else(WireOptions::default, |options| WireOptions {
                 use_deephaven_nulls: options.use_deephaven_nulls(),
+                columns_as_list: options.columns_as_list(),
                 batch: batch_options(options.batch_size(), options.max_message_size()),
             }),
             // Behavior: BarrageRequestHelpers#getMinUpdateIntervalMs
@@ -147,7 +146,6 @@ impl TableRequest {
                 None | Some(0) => DEFAULT_MIN_UPDATE_INTERVAL_MS,
                 Some(interval) => i64::from(interval),
             },
-            columns_as_list: options.is_some_and(|options| options.columns_as_list()),
         })
     }
 
@@ -167,10 +165,10 @@ impl TableRequest {
             reverse_viewport: request.reverse_viewport(),
             options: options.map_or_else(WireOptions::default, |options| WireOptions {
                 use_deephaven_nulls: options.use_deephaven_nulls(),
+                columns_as_list: false,
                 batch: batch_options(options.batch_size(), options.max_message_size()),
             }),
             min_update_interval_ms: DEFAULT_MIN_UPDATE_INTERVAL_MS,
-            columns_as_list: false,
         })
     }
 }
@@ -350,12 +348,6 @@ impl Exchange {
         };
         if table.is_failed() {
             return Err(Status::failed_precondition("Table is already failed").into());
-        }
-        if request.columns_as_list {
-            self.listener.on_error(Status::unimplemented(
-                "not ported yet: io.deephaven.extensions.barrage.BarrageSubscriptionOptions#columnsAsList",
-            ));
-            return Ok(ExportValue::unit());
         }
         let producer = self.barrage.producer(table, request.min_update_interval_ms);
         let id = producer.add_subscription(

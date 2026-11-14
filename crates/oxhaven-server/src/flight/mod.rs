@@ -26,7 +26,8 @@ mod wire;
 pub(crate) mod tests;
 
 pub use encode::{
-    encode_batch, record_batch_messages, schema_message, BatchOptions, EncodeError, EncodedBatch,
+    encode_batch, record_batch_messages, record_batch_messages_with, schema_message, BatchOptions,
+    EncodeError, EncodedBatch,
 };
 pub use service::{do_get_messages, flight_info, FlightGrpc};
 pub use upload::{convert_schema, not_ported, schema_from_ipc_bytes, TableUpload, UploadError};
