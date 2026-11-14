@@ -307,6 +307,37 @@ fn make_operator(
     let input_type = &definition.columns()[input].column_type;
     let integer = is_integer(input_type);
     let floating = is_floating(input_type);
+    // The sums, averages, variances and weighted aggregations have no operator for a
+    // vector or an array, as for a `String`. Every other aggregation takes one in Java, by
+    // its comparison and storage of objects, and the operators here read cells of the
+    // scalar types only.
+    let no_lists = |java_method: &str, column_type: &ColumnType| {
+        if column_type.list_element().is_some() {
+            unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                "{java_method} for a column of type {column_type:?}"
+            );
+        }
+    };
+    match spec {
+        AggSpec::Min | AggSpec::Max => no_lists("makeMinOrMaxOperator", input_type),
+        AggSpec::First | AggSpec::Last => no_lists("makeFirstOrLastOperator", input_type),
+        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
+            no_lists("visit(AggSpecPercentile)", input_type);
+        }
+        AggSpec::CountDistinct { .. } => no_lists("makeCountDistinctOperator", input_type),
+        AggSpec::Unique { .. } => no_lists("makeUniqueOperator", input_type),
+        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => {
+            no_lists("addSortedFirstOrLastOperator", input_type);
+            for name in columns {
+                no_lists(
+                    "addSortedFirstOrLastOperator",
+                    &definition.columns()[column(name)?].column_type,
+                );
+            }
+        }
+        _ => {}
+    }
     let op: Box<dyn AggOperator> = match spec {
         AggSpec::Sum | AggSpec::AbsSum => {
             let absolute = *spec == AggSpec::AbsSum;

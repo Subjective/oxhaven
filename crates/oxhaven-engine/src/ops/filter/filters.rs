@@ -355,7 +355,17 @@ enum Cells {
 }
 
 fn read(table: &dyn Table, column: usize, rows: &RowSet) -> Result<Cells, TableFailure> {
-    let values = sentinels_to_nulls(&table.column(column).chunk(rows)?)?;
+    let source = table.column(column);
+    // Java filters a vector or an array column as a column of objects: a null test and a
+    // match against null work, and what else does is not ported.
+    if source.column_type().list_element().is_some() {
+        oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
+            "a filter of a column of type {:?}",
+            source.column_type()
+        );
+    }
+    let values = sentinels_to_nulls(&source.chunk(rows)?)?;
     macro_rules! widen {
         ($kind:ident, $arrow:ty, $to:ty) => {
             Cells::$kind(

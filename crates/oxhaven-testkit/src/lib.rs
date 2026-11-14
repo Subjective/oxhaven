@@ -92,7 +92,9 @@ pub use recorder::Recorder;
 pub use script::ScriptedTable;
 pub use table::{ChangeError, ReferenceTable, TableChange};
 
-use arrow::array::{ArrayRef, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, StringArray};
+use arrow::buffer::{NullBuffer, OffsetBuffer};
+use arrow::datatypes::DataType;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use std::sync::Arc;
 
@@ -125,6 +127,44 @@ pub fn longs(values: impl IntoIterator<Item = i64>) -> ArrayRef {
 /// Values for a [`ColumnType::Double`] column, without nulls.
 pub fn doubles(values: impl IntoIterator<Item = f64>) -> ArrayRef {
     Arc::new(Float64Array::from_iter_values(values))
+}
+
+/// Values for a column of the vector or array type `column_type`, from the length of each
+/// cell, `None` for a null cell, and the elements of all cells one after another. A null
+/// cell has no elements.
+///
+/// ```
+/// use oxhaven_contracts::schema::ColumnType;
+/// use oxhaven_testkit::{ints, list_of};
+///
+/// // [1, 2], null, [], [3]
+/// let cells = list_of(
+///     &ColumnType::vector(ColumnType::Int),
+///     [Some(2), None, Some(0), Some(1)],
+///     ints([1, 2, 3]),
+/// );
+/// assert_eq!(cells.len(), 4);
+/// assert_eq!(cells.null_count(), 1);
+/// ```
+///
+/// # Panics
+/// If `column_type` is not list-valued, `elements` is not of its element's Arrow type, or
+/// the lengths do not add up to the number of elements.
+pub fn list_of(
+    column_type: &ColumnType,
+    lengths: impl IntoIterator<Item = Option<usize>>,
+    elements: ArrayRef,
+) -> ArrayRef {
+    let DataType::List(field) = column_type.arrow_type() else {
+        panic!("{column_type:?} is not a vector or an array");
+    };
+    let lengths: Vec<Option<usize>> = lengths.into_iter().collect();
+    let total: usize = lengths.iter().flatten().sum();
+    assert_eq!(total, elements.len(), "the lengths of the cells");
+    let offsets = OffsetBuffer::from_lengths(lengths.iter().map(|length| length.unwrap_or(0)));
+    let valid: NullBuffer = lengths.iter().map(Option::is_some).collect();
+    let valid = (valid.null_count() > 0).then_some(valid);
+    Arc::new(ListArray::new(field, offsets, elements, valid))
 }
 
 /// Values for a [`ColumnType::String`] column, without nulls.
