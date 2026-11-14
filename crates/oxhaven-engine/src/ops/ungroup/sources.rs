@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 /// Only tests implement this so far. It is what `ungroup` needs of such a column, not a
 /// contract: for a column of `ColumnType::Vector` or `ColumnType::Array` it becomes one
 /// implementation over the list arrays that `ColumnSource::chunk` returns.
-pub(super) trait ArrayColumn: Send + Sync {
+pub(crate) trait ArrayColumn: Send + Sync {
     /// The type of the elements, which is the type of the ungrouped column.
     fn element_type(&self) -> &ColumnType;
 

@@ -1,0 +1,25 @@
+source: A,B,C,Arr,K,SArr
+int,java.lang.String,io.deephaven.vector.IntVector,[I,int,[Ljava.lang.String;
+1|x|[1]|[1]|1|[x]
+1|y|[2, 5]|[2, 5]|1|[y]
+2|x|[3, 4]|[3, 4]|2|[x]
+3|x|[6]|[6]|3|[x]
+head 1 K: K,A,B,C,Arr,SArr
+int,int,java.lang.String,io.deephaven.vector.IntVector,[I,[Ljava.lang.String;
+1|1|x|[1]|[1]|[x]
+2|2|x|[3, 4]|[3, 4]|[x]
+3|3|x|[6]|[6]|[x]
+tail 2 B: B,A,C,Arr,K,SArr
+java.lang.String,int,io.deephaven.vector.IntVector,[I,int,[Ljava.lang.String;
+x|2|[3, 4]|[3, 4]|2|[x]
+x|3|[6]|[6]|3|[x]
+y|1|[2, 5]|[2, 5]|1|[y]
+head 2 A: A,B,C,Arr,K,SArr
+int,java.lang.String,io.deephaven.vector.IntVector,[I,int,[Ljava.lang.String;
+1|x|[1]|[1]|1|[x]
+1|y|[2, 5]|[2, 5]|1|[y]
+2|x|[3, 4]|[3, 4]|2|[x]
+3|x|[6]|[6]|3|[x]
+tail 1 -: A,B,C,Arr,K,SArr
+int,java.lang.String,io.deephaven.vector.IntVector,[I,int,[Ljava.lang.String;
+3|x|[6]|[6]|3|[x]
