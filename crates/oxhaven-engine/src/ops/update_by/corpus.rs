@@ -7,7 +7,8 @@
 
 use super::values::Values;
 use super::{
-    update_by, DeltaControl, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
+    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::graph::SteppedUpdateGraph;
 use crate::table::keyed_input_table;
@@ -86,7 +87,45 @@ fn array(column_type: &ColumnType, values: &[&Value]) -> ArrayRef {
 }
 
 fn window(op: &Value) -> RollingWindow {
-    RollingWindow::ticks(op["rev"].as_i64().unwrap(), op["fwd"].as_i64().unwrap())
+    let (rev, fwd) = (op["rev"].as_i64().unwrap(), op["fwd"].as_i64().unwrap());
+    match op.get("ts").and_then(Value::as_str) {
+        None => RollingWindow::ticks(rev, fwd),
+        Some(column) => RollingWindow {
+            rev: WindowScale::Time {
+                column: column.into(),
+                nanos: rev,
+            },
+            fwd: WindowScale::Time {
+                column: column.into(),
+                nanos: fwd,
+            },
+        },
+    }
+}
+
+fn behavior(op: &Value, key: &str) -> Option<BadDataBehavior> {
+    op.get(key).and_then(Value::as_str).map(|b| match b {
+        "skip" => BadDataBehavior::Skip,
+        "reset" => BadDataBehavior::Reset,
+        "poison" => BadDataBehavior::Poison,
+        "throw" => BadDataBehavior::Throw,
+        other => panic!("no bad data behavior {other}"),
+    })
+}
+
+fn em(op: &Value) -> EmSpec {
+    let decay = op["decay"].as_f64().unwrap();
+    EmSpec {
+        window: match op.get("ts").and_then(Value::as_str) {
+            None => WindowScale::Ticks(decay),
+            Some(column) => WindowScale::Time {
+                column: column.into(),
+                nanos: op["decay"].as_i64().unwrap(),
+            },
+        },
+        on_null: behavior(op, "on_null"),
+        on_nan: behavior(op, "on_nan"),
+    }
 }
 
 fn operation(op: &Value) -> UpdateByOperation {
@@ -108,6 +147,10 @@ fn operation(op: &Value) -> UpdateByOperation {
         "rolling_max" => UpdateBySpec::RollingMax(window(op)),
         "rolling_count" => UpdateBySpec::RollingCount(window(op)),
         "rolling_prod" => UpdateBySpec::RollingProduct(window(op)),
+        "ema" => UpdateBySpec::Ema(em(op)),
+        "ems" => UpdateBySpec::Ems(em(op)),
+        "emmin" => UpdateBySpec::EmMin(em(op)),
+        "emmax" => UpdateBySpec::EmMax(em(op)),
         other => panic!("no operation {other}"),
     };
     let columns: Vec<&str> = op["columns"]
@@ -208,10 +251,11 @@ fn definition(columns: &Value) -> TableDefinition {
     .unwrap()
 }
 
-#[test]
-fn static_results_match_java() {
+/// Runs every case of one recorded table, `section`, which holds at least `at_least` cases
+/// that Java answers.
+fn static_section(section: &str, at_least: usize) {
     let recorded: Value = serde_json::from_str(RECORDED).unwrap();
-    let columns = &recorded["static"]["columns"];
+    let columns = &recorded[section]["columns"];
     let definition = definition(columns);
     let values: Vec<ArrayRef> = columns
         .as_array()
@@ -226,8 +270,7 @@ fn static_results_match_java() {
     let size = values[0].len() as u64;
     let source: Arc<dyn Table> = ReferenceTable::new_static(definition, RowSet::flat(size), values);
 
-    let cases = recorded["static"]["cases"].as_array().unwrap();
-    assert!(cases.len() > 500, "the recording is incomplete");
+    let cases = recorded[section]["cases"].as_array().unwrap();
     let mut failures = Vec::new();
     let mut compared = 0;
     for case in cases {
@@ -260,7 +303,7 @@ fn static_results_match_java() {
         }
     }
     assert!(
-        compared > 300,
+        compared >= at_least,
         "too few cases that Java answers: {compared}"
     );
     assert!(
@@ -270,6 +313,25 @@ fn static_results_match_java() {
         cases.len(),
         failures.join("\n")
     );
+}
+
+#[test]
+fn static_results_match_java() {
+    static_section("static", 800);
+}
+
+/// Sums and products that round, over windows up to and beyond the 64 slots the operators
+/// start with: the results are Java's only if they are taken in Java's order.
+#[test]
+fn rounded_results_match_java() {
+    static_section("long", 170);
+}
+
+/// Rolling operators over windows in time, and the exponential moving operators decaying by
+/// ticks and by time, with every way of treating null and NaN values.
+#[test]
+fn timed_results_match_java() {
+    static_section("timed", 1135);
 }
 
 fn batch(columns: &Value, rows: &Value) -> RecordBatch {
@@ -306,7 +368,7 @@ fn frozen(table: &dyn Table) -> Arc<dyn Table> {
 fn ticking_results_match_java() {
     let recorded: Value = serde_json::from_str(RECORDED).unwrap();
     let scenarios = recorded["ticking"].as_array().unwrap();
-    assert_eq!(scenarios.len(), 3);
+    assert_eq!(scenarios.len(), 5);
     let mut failures = Vec::new();
     for scenario in scenarios {
         let name = scenario["name"].as_str().unwrap();

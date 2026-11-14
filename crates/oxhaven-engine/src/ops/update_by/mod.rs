@@ -11,11 +11,14 @@
 //! | Operation | Ported |
 //! | --- | --- |
 //! | cumulative sum, product, minimum, maximum; forward fill; delta | yes |
-//! | rolling sum, average, minimum, maximum, count, product over a window in rows | yes |
+//! | rolling sum, average, minimum, maximum, count, product, over rows or time | yes |
 //! | rolling standard deviation, weighted average, group, formula, count-where | no (`unported!`) |
-//! | any rolling operation over a window in time | no (`unported!`) |
-//! | exponential moving average, sum, minimum, maximum, standard deviation | no (`unported!`) |
+//! | exponential moving average, sum, minimum, maximum, decaying by ticks or time | yes |
+//! | exponential moving standard deviation | no (`unported!`) |
 //! | cumulative count-where | no (`unported!`) |
+//!
+//! One `update_by` takes at most one timestamp column, for all operations in time. Within
+//! a bucket its values must not decrease, nulls aside.
 //!
 //! Java's `UpdateByControl` has no option that changes the result for the column types of
 //! this engine (its `mathContext` applies to `BigDecimal` only), so there is no counterpart.
@@ -30,24 +33,30 @@
 //! removed and an added row.
 
 mod cumulative;
+mod em;
 mod rolling;
 mod values;
 
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
+mod oracle_corpus;
+#[cfg(test)]
 mod tests;
 
 use crate::table::{tracked_source, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
+use arrow::array::UInt32Array;
+use arrow::compute::take;
 use cumulative::Cumulative;
+use em::{Em, EmKind};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
-use rolling::{Rolling, Ticks};
+use rolling::{Rolling, Stamped, Ticks, Time};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -254,12 +263,14 @@ pub fn update_by<S: AsRef<str>>(
 enum Window {
     Cumulative,
     Ticks(Ticks),
+    Time(Time),
 }
 
 #[derive(Clone, Copy)]
 enum Kernel {
     Cumulative(Cumulative),
     Rolling(Rolling),
+    Em(Em),
 }
 
 /// One result column.
@@ -271,6 +282,8 @@ struct Column {
     output: Arc<WritableSource>,
     /// Index of the result column in the result.
     result: usize,
+    /// Whether the operation is in time, so that the timestamp column affects it too.
+    timed: bool,
 }
 
 struct Plan {
@@ -281,6 +294,8 @@ struct Plan {
     windows: Vec<(Window, Vec<usize>)>,
     /// Indices of the bucket columns in the parent.
     by: Vec<usize>,
+    /// Index of the timestamp column in the parent, if an operation is in time.
+    timestamp: Option<usize>,
     /// Parent columns to the result columns that pass them through.
     transformer: ModifiedColumnTransformer,
 }
@@ -298,6 +313,8 @@ struct Change {
     /// In the previous key space.
     removed: Vec<RowKey>,
     modified: Vec<RowKey>,
+    /// The rows of `modified`, in the previous key space.
+    modified_before: Vec<RowKey>,
 }
 
 /// Behavior: io.deephaven.api.Pair#parse
@@ -319,24 +336,25 @@ fn parse_pair(text: &str) -> Result<(String, String), UpdateByError> {
     Ok((output.to_owned(), input.to_owned()))
 }
 
-/// The whole number of rows of one side of a window in rows.
-///
-/// # Panics
-/// With `unported!` for a window in time.
+/// The length of one side of a window, in rows or nanoseconds; a fraction of a row is cut.
 ///
 /// Behavior: io.deephaven.api.updateby.spec.WindowScale#getTimeScaleUnits
-fn tick_units(scale: &WindowScale) -> i64 {
+fn units(scale: &WindowScale) -> i64 {
     match scale {
         WindowScale::Ticks(ticks) => *ticks as i64,
-        WindowScale::Time { .. } => unported!(
-            "io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeAffectedRowsAndOperators"
-        ),
+        WindowScale::Time { nanos, .. } => *nanos,
     }
 }
 
+/// The window of a rolling operation, and its timestamp column if it is in time. Whether
+/// it is, and the column, are those of the reverse side.
+///
 /// Behavior: io.deephaven.api.updateby.spec.RollingOpSpec#checkWindowSizes and
-/// #checkCompatibleTimeColumns
-fn ticks_of(window: &RollingWindow) -> Result<Ticks, UpdateByError> {
+/// #checkCompatibleTimeColumns, and the operators of
+/// io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor, which
+/// take their timestamp column from `revWindowScale` and their units from
+/// WindowScale#getTimeScaleUnits
+fn rolling_window(window: &RollingWindow) -> Result<(Window, Option<String>), UpdateByError> {
     let fraction = |scale: &WindowScale| match scale {
         WindowScale::Ticks(ticks) => *ticks,
         WindowScale::Time { nanos, .. } => *nanos as f64,
@@ -354,27 +372,55 @@ fn ticks_of(window: &RollingWindow) -> Result<Ticks, UpdateByError> {
             ));
         }
     }
-    // Behavior: io.deephaven.util.type.ArrayTypeUtils#MAX_ARRAY_SIZE
-    if matches!(window.rev, WindowScale::Ticks(_)) && size > (i32::MAX - 8) as f64 {
-        return Err(invalid(
-            "UpdateBy rolling window size may not exceed MAX_ARRAY_SIZE",
-        ));
+    let (rev, fwd) = (units(&window.rev), units(&window.fwd));
+    match &window.rev {
+        WindowScale::Ticks(_) => {
+            // Behavior: io.deephaven.util.type.ArrayTypeUtils#MAX_ARRAY_SIZE
+            if size > (i32::MAX - 8) as f64 {
+                return Err(invalid(
+                    "UpdateBy rolling window size may not exceed MAX_ARRAY_SIZE",
+                ));
+            }
+            Ok((Window::Ticks(Ticks { rev, fwd }), None))
+        }
+        WindowScale::Time { column, .. } => {
+            Ok((Window::Time(Time { rev, fwd }), Some(column.clone())))
+        }
     }
-    Ok(Ticks {
-        rev: tick_units(&window.rev),
-        fwd: tick_units(&window.fwd),
-    })
 }
 
-/// The kernel and window of an operation.
+/// An exponential moving operator of `kind` with the parameters of `spec`, and its
+/// timestamp column if it decays in time.
+///
+/// Behavior: io.deephaven.api.updateby.spec.WindowScale#getFractionalTimeScaleUnits and
+/// io.deephaven.api.updateby.OperationControl#onNullValueOrDefault and
+/// #onNanValueOrDefault, whose default is `SKIP`
+fn em_of(kind: EmKind, spec: &EmSpec) -> (Kernel, Window, Option<String>) {
+    let (units, column) = match &spec.window {
+        WindowScale::Ticks(ticks) => (*ticks, None),
+        WindowScale::Time { column, nanos } => (*nanos as f64, Some(column.clone())),
+    };
+    let em = Em {
+        kind,
+        units,
+        timed: column.is_some(),
+        on_null: spec.on_null.unwrap_or(BadDataBehavior::Skip),
+        on_nan: spec.on_nan.unwrap_or(BadDataBehavior::Skip),
+    };
+    (Kernel::Em(em), Window::Cumulative, column)
+}
+
+/// The kernel and window of an operation, and the timestamp column it needs.
 ///
 /// # Panics
 /// With `unported!` for the operations that are not ported.
-fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window), UpdateByError> {
-    let cumulative = |kernel| Ok((Kernel::Cumulative(kernel), Window::Cumulative));
+fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), UpdateByError> {
+    let cumulative = |kernel| Ok((Kernel::Cumulative(kernel), Window::Cumulative, None));
     let rolling = |kernel, window: &RollingWindow| {
-        Ok((Kernel::Rolling(kernel), Window::Ticks(ticks_of(window)?)))
+        let (window, column) = rolling_window(window)?;
+        Ok((Kernel::Rolling(kernel), window, column))
     };
+    let ticks_of = rolling_window;
     match spec {
         UpdateBySpec::CumSum => cumulative(Cumulative::Sum),
         UpdateBySpec::CumMin => cumulative(Cumulative::Min),
@@ -411,15 +457,10 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window), UpdateByError> {
         UpdateBySpec::CumCountWhere { .. } => {
             unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator")
         }
-        UpdateBySpec::Ema(_) => {
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmaOperator")
-        }
-        UpdateBySpec::Ems(_) => {
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmsOperator")
-        }
-        UpdateBySpec::EmMin(_) | UpdateBySpec::EmMax(_) => {
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmMinMaxOperator")
-        }
+        UpdateBySpec::Ema(spec) => Ok(em_of(EmKind::Average, spec)),
+        UpdateBySpec::Ems(spec) => Ok(em_of(EmKind::Sum, spec)),
+        UpdateBySpec::EmMin(spec) => Ok(em_of(EmKind::Min, spec)),
+        UpdateBySpec::EmMax(spec) => Ok(em_of(EmKind::Max, spec)),
         UpdateBySpec::EmStd(_) => {
             unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmStdOperator")
         }
@@ -430,7 +471,8 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window), UpdateByError> {
 ///
 /// Behavior: io.deephaven.api.updateby.spec.UpdateBySpec#applicableTo as implemented by
 /// `CumSumSpec`, `CumProdSpec`, `CumMinMaxSpec`, `FillBySpec`, `DeltaSpec`, `RollingSumSpec`,
-/// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec` and `RollingProductSpec`
+/// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec`, `RollingProductSpec`, `EmaSpec`,
+/// `EmsSpec` and `EmMinMaxSpec`
 fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     use ColumnType::*;
     let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
@@ -447,7 +489,7 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
         Kernel::Cumulative(Cumulative::Min | Cumulative::Max)
         | Kernel::Rolling(Rolling::Min | Rolling::Max) => numeric || character || comparable,
         Kernel::Cumulative(Cumulative::ForwardFill) | Kernel::Rolling(Rolling::Count) => true,
-        Kernel::Cumulative(Cumulative::Delta(_)) => numeric || character,
+        Kernel::Cumulative(Cumulative::Delta(_)) | Kernel::Em(_) => numeric || character,
     }
 }
 
@@ -471,8 +513,22 @@ impl Plan {
         let mut duplicates = Vec::new();
         let mut columns = Vec::new();
         let mut windows: Vec<(Window, Vec<usize>)> = Vec::new();
+        let mut timestamp: Option<String> = None;
         for operation in operations {
-            let (kernel, window) = kernel_of(&operation.spec)?;
+            let (kernel, window, timestamp_column) = kernel_of(&operation.spec)?;
+            // Behavior: the check of the timestamp columns in
+            // io.deephaven.engine.table.impl.updateby.UpdateBy.UpdateByOperatorCollection#from
+            if let Some(column) = &timestamp_column {
+                match &timestamp {
+                    None => timestamp = Some(column.clone()),
+                    Some(first) if first != column => {
+                        return Err(invalid(format!(
+                            "Cannot reference more than one timestamp source on a single UpdateBy call {{{first}, {column}}}"
+                        )))
+                    }
+                    Some(_) => {}
+                }
+            }
             let pairs = if operation.columns.is_empty() {
                 declared
                     .iter()
@@ -488,6 +544,18 @@ impl Plan {
                     .map(|text| parse_pair(text))
                     .collect::<Result<Vec<_>, _>>()?
             };
+            // Behavior: the visitors of io.deephaven.engine.table.impl.updateby
+            // .UpdateByOperatorFactory.OperationVisitor for operations in time make no
+            // operator for the timestamp column itself, and UpdateBy#updateBy then fails to
+            // find the result column it was promised.
+            if let Some((output, _)) = pairs
+                .iter()
+                .find(|(_, input)| timestamp_column.as_ref() == Some(input))
+            {
+                return Err(invalid(format!(
+                    "Requested output column '{output}' was not found in operator output"
+                )));
+            }
             for (output_name, input_name) in pairs {
                 let input = parent
                     .definition()
@@ -497,6 +565,7 @@ impl Plan {
                 let output_type = match kernel {
                     Kernel::Cumulative(kernel) => kernel.output_type(&input_type),
                     Kernel::Rolling(kernel) => kernel.output_type(&input_type),
+                    Kernel::Em(_) => Em::output_type(&input_type),
                 }
                 .ok_or_else(|| {
                     invalid(format!(
@@ -533,6 +602,7 @@ impl Plan {
                     input_type,
                     output,
                     result: position,
+                    timed: timestamp_column.is_some(),
                 });
             }
         }
@@ -560,6 +630,26 @@ impl Plan {
             .iter()
             .filter_map(|name| parent.definition().index_of(name))
             .collect();
+        // Behavior: the check of the timestamp column's type in
+        // io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy: a long, or a type
+        // ReinterpretUtils#maybeConvertToPrimitive makes a long of
+        let timestamp = match timestamp {
+            None => None,
+            Some(name) => {
+                let index = parent
+                    .definition()
+                    .index_of(&name)
+                    .ok_or_else(|| invalid(format!("Column {name} does not exist")))?;
+                match &declared[index].column_type {
+                    ColumnType::Long | ColumnType::Instant => Some(index),
+                    other => {
+                        return Err(invalid(format!(
+                            "Unsupported timestamp column type {other:?} for column '{name}'"
+                        )))
+                    }
+                }
+            }
+        };
         let definition = match TableDefinition::new(result) {
             Ok(definition) => definition,
             Err(e) => panic!("replacing columns by name keeps names distinct: {e}"),
@@ -577,6 +667,7 @@ impl Plan {
             columns,
             windows,
             by,
+            timestamp,
             transformer,
         })
     }
@@ -623,7 +714,7 @@ impl Plan {
                     for (key, value) in keys.iter_mut().zip(values) {
                         let bits = match value {
                             Some(v) if v.is_nan() => f64::NAN.to_bits(),
-                            Some(v) if v == 0.0 => 0,
+                            Some(0.0) => 0,
                             Some(v) => v.to_bits(),
                             None => 0,
                         };
@@ -642,6 +733,80 @@ impl Plan {
             }
         }
         Ok(keys)
+    }
+
+    /// The timestamps of `rows`, now or before the current cycle.
+    fn timestamps(&self, rows: &RowSet, previous: bool) -> Result<Vec<Option<i64>>, TableFailure> {
+        let Some(index) = self.timestamp else {
+            return Err(failure("update_by: no timestamp column"));
+        };
+        let source = self.parent.column(index);
+        let chunk = if previous {
+            source.prev_chunk(rows)?
+        } else {
+            source.chunk(rows)?
+        };
+        match Values::read(
+            &chunk,
+            &self.parent.definition().columns()[index].column_type,
+        )? {
+            Values::Int(values) => Ok(values),
+            _ => Err(failure("update_by: a timestamp column that holds no longs")),
+        }
+    }
+
+    /// The rows of a bucket that have a timestamp. Fails if the timestamps decrease.
+    fn stamped(&self, rows: &RowSet) -> Result<Stamped, TableFailure> {
+        Stamped::new(rows, &self.timestamps(rows, false)?)
+    }
+
+    /// The timestamp Java seeds the exponential moving operators on `input` with, for a run
+    /// that follows the row at `position` of the bucket `rows`: that row's, unless it has
+    /// none or its value does not count, then the one of the nearest row before it that has
+    /// both, or, if there is none, of the bucket's first row. Which values count is decided
+    /// by the first operator in time on the column.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindowCumulative#processWindowBucketOperatorSet
+    fn seed_timestamp(
+        &self,
+        members: &[usize],
+        input: usize,
+        rows: &RowSet,
+        position: u64,
+    ) -> Result<Option<i64>, TableFailure> {
+        let first = members.iter().find_map(|&member| {
+            let column = &self.columns[member];
+            match column.kernel {
+                Kernel::Em(em) if column.timed && column.input == input => Some((em, column)),
+                _ => None,
+            }
+        });
+        let Some((em, column)) = first else {
+            return Ok(None);
+        };
+        // The rows from the bucket's first to the one before the run, read once.
+        let (Some(first_key), Some(key_before)) = (rows.first_row_key(), rows.get(position)) else {
+            return Err(failure(
+                "update_by: the row before a run is not in its bucket",
+            ));
+        };
+        let before = rows.sub_set_by_key_range(first_key, key_before);
+        let stamps = self.timestamps(&before, false)?;
+        let values = match Values::read(
+            &self.parent.column(input).chunk(&before)?,
+            &column.input_type,
+        )? {
+            Values::Int(v) => v.into_iter().map(|v| v.map(|v| v as f64)).collect(),
+            Values::Float(v) => v,
+            Values::Text(_) => return Err(failure("update_by: an exponential operator on text")),
+        };
+        let counts = |i: usize| stamps[i].is_some() && em.valid(values[i]);
+        let last = position as usize;
+        if counts(last) {
+            return Ok(stamps[last]);
+        }
+        // Without such a row, the walk ends on the bucket's first row.
+        Ok(stamps[(0..last).rev().find(|&i| counts(i)).unwrap_or(0)])
     }
 
     /// Buckets `rows` and computes every result column for all of them.
@@ -668,6 +833,9 @@ impl Plan {
         for bucket in &state.buckets {
             if bucket.is_empty() {
                 continue;
+            }
+            if self.timestamp.is_some() {
+                self.stamped(bucket)?;
             }
             for (window, members) in &self.windows {
                 self.compute(*window, members, bucket, bucket)?;
@@ -701,19 +869,57 @@ impl Plan {
                     0 => None,
                     _ => rows.get(position - 1).map(|key| RowSet::from_keys([key])),
                 };
+                let timed = members.iter().any(|&member| self.columns[member].timed);
+                let stamps = if timed {
+                    self.timestamps(affected, false)?
+                } else {
+                    Vec::new()
+                };
                 for &member in members {
                     let column = &self.columns[member];
-                    let Kernel::Cumulative(kernel) = column.kernel else {
-                        return Err(internal("a rolling operator in the cumulative window"));
-                    };
                     let input = self.parent.column(column.input);
-                    let seed = match &before {
-                        None => None,
-                        Some(before) if kernel.seeded_by_input() => Some(input.chunk(before)?),
-                        Some(before) => Some(column.output.chunk(before)?),
-                    };
                     let values = input.chunk(affected)?;
-                    let results = kernel.accumulate(&column.input_type, &values, seed.as_ref())?;
+                    let results = match column.kernel {
+                        Kernel::Cumulative(kernel) => {
+                            let seed = match &before {
+                                None => None,
+                                Some(before) if kernel.seeded_by_input() => {
+                                    Some(input.chunk(before)?)
+                                }
+                                Some(before) => Some(column.output.chunk(before)?),
+                            };
+                            kernel.accumulate(&column.input_type, &values, seed.as_ref())?
+                        }
+                        Kernel::Em(em) => {
+                            let seed = match &before {
+                                None => None,
+                                Some(before) => {
+                                    let value = match Values::read(
+                                        &column.output.chunk(before)?,
+                                        &ColumnType::Double,
+                                    )? {
+                                        Values::Float(v) => v[0],
+                                        _ => {
+                                            return Err(internal(
+                                                "an exponential result of another type",
+                                            ))
+                                        }
+                                    };
+                                    let stamp = self.seed_timestamp(
+                                        members,
+                                        column.input,
+                                        rows,
+                                        position - 1,
+                                    )?;
+                                    Some((value, stamp))
+                                }
+                            };
+                            em.accumulate(&column.input_type, &values, &stamps, seed)?
+                        }
+                        Kernel::Rolling(_) => {
+                            return Err(internal("a rolling operator in the cumulative window"))
+                        }
+                    };
                     column.output.fill(affected, &results)?;
                 }
             }
@@ -735,6 +941,41 @@ impl Plan {
                     column.output.fill(affected, &results)?;
                 }
             }
+            Window::Time(time) => {
+                // Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime
+                // #computeAffectedRowsAndOperators for the influencers and #computeWindows; a
+                // row without a timestamp gets null from every operator
+                // (io.deephaven.engine.table.impl.updateby.internal.BaseLongUpdateByOperator.Context#accumulateRolling)
+                let stamped = self.stamped(rows)?;
+                let stamps = self.timestamps(affected, false)?;
+                let windowed = stamped.rows().intersect(affected);
+                let influencers = stamped.reach(stamps.iter().copied(), time.rev, time.fwd);
+                let slides = time.slides(
+                    &stamped.stamps_of(&windowed),
+                    &stamped.stamps_of(&influencers),
+                );
+                let mut next = 0;
+                let indices: UInt32Array = stamps
+                    .iter()
+                    .map(|stamp| {
+                        stamp.map(|_| {
+                            next += 1;
+                            next - 1
+                        })
+                    })
+                    .collect();
+                for &member in members {
+                    let column = &self.columns[member];
+                    let Kernel::Rolling(kernel) = column.kernel else {
+                        return Err(internal("a cumulative operator in a rolling window"));
+                    };
+                    let values = self.parent.column(column.input).chunk(&influencers)?;
+                    let results = kernel.evaluate(&column.input_type, &values, &slides)?;
+                    let results = take(results.as_ref(), &indices, None)
+                        .map_err(|e| internal(&e.to_string()))?;
+                    column.output.fill(affected, &results)?;
+                }
+            }
         }
         Ok(())
     }
@@ -750,6 +991,8 @@ impl Plan {
         upstream: &TableUpdate,
     ) -> Result<BTreeMap<usize, Change>, TableFailure> {
         let mut changes: BTreeMap<usize, Change> = BTreeMap::new();
+        let before =
+            modified_pre_shift(upstream).map_err(|e| failure(format!("update_by: {e}")))?;
         if self.by.is_empty() {
             changes.insert(
                 0,
@@ -757,6 +1000,7 @@ impl Plan {
                     added: upstream.added.iter().collect(),
                     removed: upstream.removed.iter().collect(),
                     modified: upstream.modified.iter().collect(),
+                    modified_before: before.iter().collect(),
                 },
             );
             return Ok(changes);
@@ -790,14 +1034,14 @@ impl Plan {
         if !upstream.modified.is_empty() {
             let keys = self.keys(&upstream.modified, false)?;
             if upstream.modified_columns.contains_any(&self.by) {
-                let before =
-                    modified_pre_shift(upstream).map_err(|e| failure(format!("update_by: {e}")))?;
                 let old_keys = self.keys(&before, true)?;
                 let rows = before.iter().zip(upstream.modified.iter());
                 for ((old_row, row), (old_key, key)) in rows.zip(old_keys.into_iter().zip(keys)) {
                     if old_key == key {
                         let bucket = known(state, &key)?;
-                        changes.entry(bucket).or_default().modified.push(row);
+                        let change = changes.entry(bucket).or_default();
+                        change.modified.push(row);
+                        change.modified_before.push(old_row);
                     } else {
                         let old_bucket = known(state, &old_key)?;
                         changes.entry(old_bucket).or_default().removed.push(old_row);
@@ -806,9 +1050,12 @@ impl Plan {
                     }
                 }
             } else {
-                for (row, key) in upstream.modified.iter().zip(keys) {
+                let rows = before.iter().zip(upstream.modified.iter());
+                for ((old_row, row), key) in rows.zip(keys) {
                     let bucket = known(state, &key)?;
-                    changes.entry(bucket).or_default().modified.push(row);
+                    let change = changes.entry(bucket).or_default();
+                    change.modified.push(row);
+                    change.modified_before.push(old_row);
                 }
             }
         }
@@ -821,6 +1068,55 @@ impl Plan {
             changes.entry(bucket).or_default().added.push(row);
         }
         Ok(changes)
+    }
+
+    /// The rows of a bucket a rolling window in time recomputes: those whose window holds a
+    /// row that was added, removed, or modified in an input column (`changed`), with its
+    /// timestamp before and after if that was modified, and the rows added or given a new
+    /// timestamp themselves. `changed_before` holds the rows of `changed` before the cycle.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeAffectedRowsAndOperators
+    /// and #computeAffectedRowsTime
+    #[allow(clippy::too_many_arguments)]
+    fn time_affected(
+        &self,
+        time: Time,
+        rows: &RowSet,
+        added: &RowSet,
+        removed: &RowSet,
+        changed: &RowSet,
+        timestamps_modified: bool,
+        changed_before: &RowSet,
+    ) -> Result<RowSet, TableFailure> {
+        let stamped = self.stamped(rows)?;
+        // The rows whose window holds a row stamped `stamps`: the window turned around.
+        let affected_by =
+            |stamps: Vec<Option<i64>>, rev: i64, fwd: i64| stamped.reach(stamps, fwd, rev);
+        let mut affected = RowSet::empty();
+        if !changed.is_empty() {
+            affected.insert(&affected_by(
+                self.timestamps(changed, false)?,
+                time.rev,
+                time.fwd,
+            ));
+            if timestamps_modified {
+                affected.insert(&affected_by(
+                    self.timestamps(changed_before, true)?,
+                    time.rev,
+                    time.fwd,
+                ));
+                affected.insert(changed);
+            }
+        }
+        let (rev, fwd) = (time.rev.max(0), time.fwd.max(0));
+        if !added.is_empty() {
+            affected.insert(&affected_by(self.timestamps(added, false)?, rev, fwd));
+            affected.insert(added);
+        }
+        if !removed.is_empty() {
+            affected.insert(&affected_by(self.timestamps(removed, true)?, rev, fwd));
+        }
+        Ok(affected)
     }
 
     /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateBy.PhasedUpdateProcessor, from
@@ -865,14 +1161,23 @@ impl Plan {
             if rows.is_empty() {
                 continue;
             }
-            // Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindow#processUpdateForContext
+            if self.timestamp.is_some() {
+                self.stamped(rows)?;
+            }
+            // Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindow#processUpdateForContext,
+            // where an operation in time is affected by its timestamp column too
+            // (io.deephaven.engine.table.impl.updateby.UpdateByOperator#getAffectingColumnNames)
             let adds_or_removes = !added.is_empty() || !removed.is_empty();
             let columns_modified = !changed.is_empty() && !upstream.modified_columns.is_empty();
+            let timestamps_modified = columns_modified
+                && self
+                    .timestamp
+                    .is_some_and(|index| upstream.modified_columns.contains(index));
             let input_modified = |member: &usize| {
+                let column = &self.columns[*member];
                 columns_modified
-                    && upstream
-                        .modified_columns
-                        .contains(self.columns[*member].input)
+                    && (upstream.modified_columns.contains(column.input)
+                        || (column.timed && timestamps_modified))
             };
             for (window, members) in &self.windows {
                 let dirty: Vec<usize> = if adds_or_removes {
@@ -883,7 +1188,11 @@ impl Plan {
                 if dirty.is_empty() {
                     continue;
                 }
-                let inputs_changed = members.iter().any(input_modified);
+                // Behavior: UpdateByWindowCumulative#computeAffectedRowsAndOperators counts a
+                // modified timestamp when any operation of the window is in time.
+                let inputs_changed = members.iter().any(input_modified)
+                    || (timestamps_modified
+                        && members.iter().any(|&member| self.columns[member].timed));
                 let affected = match window {
                     Window::Cumulative => cumulative_affected(
                         &previous,
@@ -901,6 +1210,15 @@ impl Plan {
                         &added,
                         &removed,
                         if inputs_changed { &changed } else { &nothing },
+                    )?,
+                    Window::Time(time) => self.time_affected(
+                        *time,
+                        rows,
+                        &added,
+                        &removed,
+                        if inputs_changed { &changed } else { &nothing },
+                        timestamps_modified,
+                        &RowSet::from_keys(change.modified_before.iter().copied()),
                     )?,
                 };
                 if affected.is_empty() {

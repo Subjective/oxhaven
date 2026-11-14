@@ -7,10 +7,11 @@
 
 use super::failure;
 use super::values::{
-    double_array, double_result, long_array, long_result, narrowed_floats, pick, Values,
+    double_array, double_result, java_extreme, long_array, long_result, narrowed_floats, pick,
+    Values,
 };
 use arrow::array::ArrayRef;
-use oxhaven_contracts::rowset::{RowRange, RowSet};
+use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
@@ -85,6 +86,124 @@ impl Ticks {
                 }
             })
             .collect()
+    }
+}
+
+/// A window in time: the rows whose timestamp is at most `rev` nanoseconds before the
+/// current row's and at most `fwd` after it, both ends included. Either may be negative;
+/// their sum is not. A row without a timestamp is in no window and has no result.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub(super) struct Time {
+    pub(super) rev: i64,
+    pub(super) fwd: i64,
+}
+
+impl Time {
+    /// For each row at `affected`, timestamps in order, how many influencers leave the
+    /// window and how many enter it; `influencers` are the influencers' timestamps, in order.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeWindows
+    pub(super) fn slides(self, affected: &[i64], influencers: &[i64]) -> Vec<Slide> {
+        let (mut head, mut tail) = (0, 0);
+        affected
+            .iter()
+            .map(|&stamp| {
+                let first = stamp.wrapping_sub(self.rev);
+                let last = stamp.wrapping_add(self.fwd);
+                let old = (head, tail);
+                while head < tail && influencers[head] < first {
+                    head += 1;
+                }
+                while tail < influencers.len() && influencers[tail] <= last {
+                    tail += 1;
+                }
+                Slide {
+                    pop: head - old.0,
+                    push: tail - old.1,
+                }
+            })
+            .collect()
+    }
+}
+
+/// The rows of a bucket that have a timestamp, in order, and their timestamps: what Java
+/// keeps in the bucket's timestamp SSA.
+pub(super) struct Stamped {
+    keys: Vec<RowKey>,
+    stamps: Vec<i64>,
+}
+
+impl Stamped {
+    /// Fails if the timestamps of the bucket decrease.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByBucketHelper#fillChunkWithNonNull,
+    /// which skips a null timestamp and refuses one that is less than the one before it
+    pub(super) fn new(rows: &RowSet, stamps: &[Option<i64>]) -> Result<Stamped, TableFailure> {
+        let mut keys = Vec::with_capacity(stamps.len());
+        let mut kept = Vec::with_capacity(stamps.len());
+        for (key, stamp) in rows.iter().zip(stamps) {
+            let Some(stamp) = *stamp else { continue };
+            if kept.last().is_some_and(|last| stamp < *last) {
+                return Err(failure(
+                    "Timestamp values in UpdateBy operators must not decrease",
+                ));
+            }
+            keys.push(key);
+            kept.push(stamp);
+        }
+        Ok(Stamped { keys, stamps: kept })
+    }
+
+    /// The rows whose timestamp is at most `before` nanoseconds before and at most `after`
+    /// after any of the timestamps `around`; a null one reaches nothing.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeInfluencerRowsTime,
+    /// which walks the SSA once over timestamps that do not decrease, so that it collects the
+    /// union of the windows
+    pub(super) fn reach(
+        &self,
+        around: impl IntoIterator<Item = Option<i64>>,
+        before: i64,
+        after: i64,
+    ) -> RowSet {
+        let mut ranges: Vec<(usize, usize)> = Vec::new();
+        for stamp in around.into_iter().flatten() {
+            let first = stamp.wrapping_sub(before);
+            let last = stamp.wrapping_add(after);
+            let start = self.stamps.partition_point(|s| *s < first);
+            let end = self.stamps.partition_point(|s| *s <= last);
+            if start < end {
+                ranges.push((start, end));
+            }
+        }
+        ranges.sort_unstable();
+        let mut keys = Vec::new();
+        let mut next = 0;
+        for (start, end) in ranges {
+            for position in start.max(next)..end {
+                keys.push(self.keys[position]);
+            }
+            next = next.max(end);
+        }
+        RowSet::from_keys(keys)
+    }
+
+    /// The timestamps of `rows`, all of which have one.
+    pub(super) fn stamps_of(&self, rows: &RowSet) -> Vec<i64> {
+        let mut out = Vec::with_capacity(rows.size() as usize);
+        let mut position = 0;
+        for key in rows.iter() {
+            while self.keys[position] != key {
+                position += 1;
+            }
+            out.push(self.stamps[position]);
+        }
+        out
+    }
+
+    /// The rows that have a timestamp.
+    pub(super) fn rows(&self) -> RowSet {
+        RowSet::from_keys(self.keys.iter().copied())
     }
 }
 
@@ -692,7 +811,7 @@ fn sum_slots(a: f64, b: f64) -> f64 {
 fn sum_doubles(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
     PairwiseRing::new(0.0, sum_slots, |a, b| a + b).replay(values, window, raw_double, |w, sum| {
         (w.end - w.start != w.nulls)
-            .then(|| sum())
+            .then(sum)
             .and_then(double_result)
     })
 }
@@ -765,25 +884,6 @@ fn extremes(values: &Values, window: Window, wanted: Ordering) -> Vec<Option<usi
                 })
         })
         .collect()
-}
-
-/// Behavior: java.lang.Math#max(double, double) and #min: NaN if either is NaN, and `-0.0`
-/// is less than `0.0`
-fn java_extreme(a: f64, b: f64, max: bool) -> f64 {
-    if a.is_nan() || b.is_nan() {
-        f64::NAN
-    } else if a == b {
-        // Equal values differ only in the sign of zero.
-        if a.is_sign_negative() == max {
-            b
-        } else {
-            a
-        }
-    } else if (a > b) == max {
-        a
-    } else {
-        b
-    }
 }
 
 /// The rolling minimum or maximum of a `float` or `double` column, with the running value

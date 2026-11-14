@@ -208,3 +208,22 @@ pub(super) fn pick(
     all.and_then(|all| take(all.as_ref(), &indices, None))
         .map_err(|e| failure(e.to_string()))
 }
+
+/// Behavior: java.lang.Math#max(double, double) and #min: NaN if either is NaN, and `-0.0`
+/// is less than `0.0`
+pub(super) fn java_extreme(a: f64, b: f64, max: bool) -> f64 {
+    if a.is_nan() || b.is_nan() {
+        f64::NAN
+    } else if a == b {
+        // Equal values differ only in the sign of zero.
+        if a.is_sign_negative() == max {
+            b
+        } else {
+            a
+        }
+    } else if (a > b) == max {
+        a
+    } else {
+        b
+    }
+}

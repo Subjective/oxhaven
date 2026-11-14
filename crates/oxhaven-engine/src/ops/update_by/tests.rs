@@ -11,11 +11,12 @@ use super::{
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::ops::sort::testing::{keys, shifts, static_table, Ticking};
-use arrow::array::{ArrayRef, Float64Array, Int32Array, StringArray};
+use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, StringArray};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
-use oxhaven_testkit::{RandomUpdates, TableChange};
+use oxhaven_testkit::{RandomUpdates, TableChange, TableSnapshot};
 use std::sync::Arc;
 
 fn op(spec: UpdateBySpec, columns: &[&str]) -> UpdateByOperation {
@@ -362,14 +363,6 @@ fn em() -> EmSpec {
 
 #[test]
 #[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmaOperator"
-)]
-fn ema_is_unported() {
-    request(UpdateBySpec::Ema(em()));
-}
-
-#[test]
-#[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmStdOperator"
 )]
 fn em_std_is_unported() {
@@ -382,21 +375,6 @@ fn em_std_is_unported() {
 )]
 fn rolling_std_is_unported() {
     request(UpdateBySpec::RollingStd(RollingWindow::ticks(3, 0)));
-}
-
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeAffectedRowsAndOperators"
-)]
-fn a_window_in_time_is_unported() {
-    let side = || WindowScale::Time {
-        column: "T".into(),
-        nanos: 1_000,
-    };
-    request(UpdateBySpec::RollingSum(RollingWindow {
-        rev: side(),
-        fwd: side(),
-    }));
 }
 
 /// Every ported operator on every column it takes. `float` and `double` columns are left
@@ -505,4 +483,412 @@ fn random_updates_match_a_recompute_with_buckets() {
 #[test]
 fn random_updates_match_a_recompute_with_two_bucket_columns() {
     random_updates(&["K", "B"]);
+}
+
+fn longs(values: &[Option<i64>]) -> ArrayRef {
+    Arc::new(Int64Array::from(values.to_vec()))
+}
+
+/// A window of `rev` nanoseconds back and `fwd` forward on the timestamp column `T`.
+fn time(rev: i64, fwd: i64) -> RollingWindow {
+    let side = |nanos| WindowScale::Time {
+        column: "T".into(),
+        nanos,
+    };
+    RollingWindow {
+        rev: side(rev),
+        fwd: side(fwd),
+    }
+}
+
+/// As `ticking`, with a timestamp column `T` (index 3) of 100, 101, 101, 105, 110 and the
+/// result column at index 4.
+fn timed(operations: Vec<UpdateByOperation>, by: &'static [&'static str]) -> Ticking {
+    Ticking::new(
+        [0, 10, 20, 30, 40],
+        &[
+            ("K", ColumnType::String, texts(&["a", "b", "a", "b", "a"])),
+            ("I", ColumnType::Int, ints(&[1, 2, 3, 4, 5])),
+            ("D", ColumnType::Double, doubles(&[0.5, 1.5, 2.5, 3.5, 4.5])),
+            (
+                "T",
+                ColumnType::Long,
+                longs(&[Some(100), Some(101), Some(101), Some(105), Some(110)]),
+            ),
+        ],
+        move |source| update_by(source, &operations, by).unwrap(),
+    )
+}
+
+fn timed_row(k: &str, i: i32, t: Option<i64>) -> Vec<ArrayRef> {
+    vec![texts(&[k]), ints(&[i]), doubles(&[0.0]), longs(&[t])]
+}
+
+const TR: usize = 4;
+
+#[test]
+fn a_window_in_time_recomputes_the_rows_whose_window_holds_the_change() {
+    // Two nanoseconds back: row 0 is in the windows of rows 0, 10 and 20.
+    let t = timed(
+        vec![op(UpdateBySpec::RollingSum(time(2, 0)), &["R = I"])],
+        &[],
+    );
+    let update = t
+        .step(TableChange::new().modify([0], [(1, ints(&[7]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (
+            vec![],
+            vec![],
+            vec![0, 10, 20],
+            ModifiedColumnSet::of([1, TR])
+        )
+    );
+    // At 106 the new row is in no other row's window.
+    let update = t
+        .step(TableChange::new().add([35], timed_row("a", 1, Some(106))))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![35], vec![], vec![], ModifiedColumnSet::empty())
+    );
+    // Row 20 moves from 101 to 103: its old place was in the window of row 10, its new
+    // one is in that of row 30, and it has a new window itself.
+    let update = t
+        .step(TableChange::new().modify([20], [(3, longs(&[Some(103)]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (
+            vec![],
+            vec![],
+            vec![10, 20, 30],
+            ModifiedColumnSet::of([3, TR])
+        )
+    );
+    // Row 10, at 101, was in the window of row 20.
+    let update = t.step(TableChange::new().remove([10])).unwrap();
+    assert_eq!(keys(&update.modified), vec![20]);
+}
+
+#[test]
+fn a_row_without_a_timestamp_is_in_no_window() {
+    let t = timed(
+        vec![op(UpdateBySpec::RollingSum(time(10, 10)), &["R = I"])],
+        &[],
+    );
+    let update = t
+        .step(TableChange::new().add([25], timed_row("a", 100, None)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![25], vec![], vec![], ModifiedColumnSet::empty())
+    );
+    let sums = TableSnapshot::current(&*t.result).unwrap().columns[TR].clone();
+    let sums = sums.as_any().downcast_ref::<Int64Array>().unwrap();
+    assert!(sums.is_null(3));
+    assert_eq!(sums.value(0), 15);
+    // Giving it a timestamp puts it in every window.
+    let update = t
+        .step(TableChange::new().modify([25], [(3, longs(&[Some(103)]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![0, 10, 20, 25, 30, 40]);
+}
+
+#[test]
+fn a_decreasing_timestamp_fails_the_result() {
+    let em = || {
+        op(
+            UpdateBySpec::Ema(EmSpec {
+                window: WindowScale::Time {
+                    column: "T".into(),
+                    nanos: 5,
+                },
+                on_null: None,
+                on_nan: None,
+            }),
+            &["R = D"],
+        )
+    };
+    for operations in [
+        vec![op(UpdateBySpec::RollingSum(time(2, 0)), &["R = I"])],
+        vec![em()],
+    ] {
+        let t = timed(operations.clone(), &["K"]);
+        // In another bucket, a smaller timestamp is fine.
+        t.step(TableChange::new().add([45], timed_row("z", 1, Some(3))))
+            .unwrap();
+        t.script
+            .push(TableChange::new().add([50], timed_row("a", 1, Some(4))));
+        t.graph.run_cycle();
+        assert!(t.result.is_failed());
+
+        let source = static_table(&[
+            ("K", ColumnType::String, texts(&["a", "a"])),
+            ("I", ColumnType::Int, ints(&[1, 2])),
+            ("D", ColumnType::Double, doubles(&[0.5, 1.5])),
+            ("T", ColumnType::Long, longs(&[Some(5), Some(4)])),
+        ]);
+        let refused = update_by(&source, &operations, &[] as &[&str]);
+        assert!(matches!(refused, Err(UpdateByError::Failed(_))));
+        assert!(update_by(&source, &operations, &["T"]).is_ok());
+    }
+}
+
+#[test]
+fn an_exponential_operator_recomputes_from_the_first_change_on() {
+    let ema = op(
+        UpdateBySpec::Ema(EmSpec {
+            window: WindowScale::Ticks(2.0),
+            on_null: None,
+            on_nan: None,
+        }),
+        &["R = D"],
+    );
+    let t = timed(vec![ema], &[]);
+    let update = t
+        .step(TableChange::new().modify([20], [(2, doubles(&[9.0]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![20, 30, 40]);
+    // The timestamp column is not one of its inputs.
+    let update = t
+        .step(TableChange::new().modify([20], [(3, longs(&[Some(102)]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![20], ModifiedColumnSet::of([3]))
+    );
+}
+
+#[test]
+fn bad_requests_in_time_are_errors() {
+    let source = static_table(&[
+        ("I", ColumnType::Int, ints(&[1, 2])),
+        ("J", ColumnType::Int, ints(&[1, 2])),
+        ("T", ColumnType::Long, longs(&[Some(1), Some(2)])),
+        ("U", ColumnType::Long, longs(&[Some(1), Some(2)])),
+    ]);
+    let refused =
+        |operations: &[UpdateByOperation]| match update_by(&source, operations, &[] as &[&str]) {
+            Err(UpdateByError::InvalidArgument(message)) => message,
+            Err(other) => panic!("refused for another reason: {other}"),
+            Ok(_) => panic!("not refused"),
+        };
+    let on = |column: &str| {
+        op(
+            UpdateBySpec::Ems(EmSpec {
+                window: WindowScale::Time {
+                    column: column.into(),
+                    nanos: 3,
+                },
+                on_null: None,
+                on_nan: None,
+            }),
+            &["R = I"],
+        )
+    };
+    assert!(refused(&[on("J")]).contains("Unsupported timestamp column type"));
+    assert!(refused(&[on("Nope")]).contains("Nope"));
+    // The timestamp column cannot be an input of an operation in time.
+    let mut itself = on("T");
+    itself.columns = vec!["R = T".into()];
+    assert!(refused(&[itself]).contains("Requested output column 'R'"));
+    let mut other = on("U");
+    other.columns = vec!["Q = I".into()];
+    assert!(refused(&[on("T"), other]).contains("more than one timestamp"));
+    assert!(
+        refused(&[op(UpdateBySpec::RollingSum(time(-3, 2)), &["R = I"])]).contains("non-negative")
+    );
+}
+
+/// Rewrites the timestamps that `change` gives added rows and modified rows of `table` in
+/// column `column` so that the table's timestamps never decrease in key order: each takes
+/// a value between those of the rows around it that keep theirs, picked by the value the
+/// change had for it. Nulls stay.
+fn rising(mut change: TableChange, table: &dyn Table, column: usize) -> TableChange {
+    let snapshot = TableSnapshot::current(table).unwrap();
+    let stamps = snapshot.columns[column]
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap()
+        .clone();
+    let update = &change.update;
+    // Every row after the change: its key, and its timestamp if it keeps it.
+    let mut rows: Vec<(i64, Option<Option<i64>>)> = Vec::new();
+    for (position, key) in snapshot.rows.iter().enumerate() {
+        if !update.removed.contains(key) {
+            let stamp = stamps.is_valid(position).then(|| stamps.value(position));
+            rows.push((update.shifted.apply_to_key(key), Some(stamp)));
+        }
+    }
+    let modified = change.modified_values.contains_key(&column);
+    for (key, kept) in rows.iter_mut() {
+        if modified && update.modified.contains(*key) {
+            *kept = None;
+        }
+    }
+    rows.extend(update.added.iter().map(|key| (key, None)));
+    rows.sort_by_key(|(key, _)| *key);
+    // The next timestamp kept after each row.
+    let mut above = vec![None; rows.len()];
+    let mut next = None;
+    for (index, (_, kept)) in rows.iter().enumerate().rev() {
+        above[index] = next;
+        if let Some(Some(stamp)) = kept {
+            next = Some(*stamp);
+        }
+    }
+    let added: Vec<i64> = update.added.iter().collect();
+    let modified_keys: Vec<i64> = update.modified.iter().collect();
+    let generated = |values: &ArrayRef, index: usize| {
+        let values = values.as_any().downcast_ref::<Int64Array>().unwrap();
+        values.is_valid(index).then(|| values.value(index))
+    };
+    let mut new_added = vec![None; added.len()];
+    let mut new_modified = vec![None; modified_keys.len()];
+    // In key order, so that each value picked bounds the next one from below.
+    let mut low = 0;
+    for (index, (key, kept)) in rows.iter().enumerate() {
+        match kept {
+            Some(Some(stamp)) => low = *stamp,
+            Some(None) => {}
+            None => {
+                let high = above[index].unwrap_or(low + 20);
+                let mut pick = |value: Option<i64>| {
+                    value.map(|value| {
+                        low += value.unsigned_abs() as i64 % (high - low + 1);
+                        low
+                    })
+                };
+                if let Ok(index) = added.binary_search(key) {
+                    new_added[index] = pick(generated(&change.added_values[column], index));
+                } else {
+                    let index = modified_keys.binary_search(key).unwrap();
+                    new_modified[index] = pick(generated(&change.modified_values[&column], index));
+                }
+            }
+        }
+    }
+    if !added.is_empty() {
+        change.added_values[column] = longs(&new_added);
+    }
+    if modified {
+        change.modified_values.insert(column, longs(&new_modified));
+    }
+    change
+}
+
+/// Every operation in time, and the exponential operators by ticks, on the timestamp
+/// column `T`. As in `everything`, `float` and `double` columns are left out of the rolling
+/// minimum and maximum.
+fn everything_in_time() -> Vec<UpdateByOperation> {
+    let em = |window, on_null, on_nan| EmSpec {
+        window,
+        on_null,
+        on_nan,
+    };
+    let decay = |nanos| WindowScale::Time {
+        column: "T".into(),
+        nanos,
+    };
+    vec![
+        op(
+            UpdateBySpec::RollingSum(time(5, 0)),
+            &["Rs1 = I", "Rs2 = D", "Rs3 = B"],
+        ),
+        op(
+            UpdateBySpec::RollingAvg(time(3, 3)),
+            &["Ra1 = L", "Ra2 = F"],
+        ),
+        op(
+            UpdateBySpec::RollingMin(time(-2, 6)),
+            &["Rn1 = I", "Rn2 = S", "Rn3 = X"],
+        ),
+        op(
+            UpdateBySpec::RollingMax(time(4, -1)),
+            &["Rx1 = L", "Rx2 = C"],
+        ),
+        op(
+            UpdateBySpec::RollingCount(time(0, 0)),
+            &["Rc1 = S", "Rc2 = D"],
+        ),
+        op(
+            UpdateBySpec::RollingProduct(time(6, 0)),
+            &["Rp1 = I", "Rp2 = D"],
+        ),
+        op(
+            UpdateBySpec::RollingSum(RollingWindow::ticks(2, 1)),
+            &["Rs4 = I"],
+        ),
+        op(UpdateBySpec::CumSum, &["Cs1 = I"]),
+        op(
+            UpdateBySpec::Ema(em(WindowScale::Ticks(2.5), None, None)),
+            &["Ea1 = I", "Ea2 = D"],
+        ),
+        op(
+            UpdateBySpec::Ema(em(decay(4), None, Some(BadDataBehavior::Reset))),
+            &["Ea3 = D", "Ea4 = F"],
+        ),
+        op(
+            UpdateBySpec::Ems(em(decay(3), Some(BadDataBehavior::Reset), None)),
+            &["Es1 = L", "Es2 = Y"],
+        ),
+        op(
+            UpdateBySpec::EmMin(em(
+                WindowScale::Ticks(1.5),
+                None,
+                Some(BadDataBehavior::Poison),
+            )),
+            &["En1 = D"],
+        ),
+        op(
+            UpdateBySpec::EmMax(em(decay(2), None, None)),
+            &["Ex1 = C", "Ex2 = H"],
+        ),
+    ]
+}
+
+fn random_updates_in_time(by: &'static [&'static str]) {
+    let types = [
+        ("K", ColumnType::String),
+        ("B", ColumnType::Boolean),
+        ("Y", ColumnType::Byte),
+        ("C", ColumnType::Char),
+        ("H", ColumnType::Short),
+        ("I", ColumnType::Int),
+        ("L", ColumnType::Long),
+        ("F", ColumnType::Float),
+        ("D", ColumnType::Double),
+        ("S", ColumnType::String),
+        ("X", ColumnType::Instant),
+        ("T", ColumnType::Long),
+    ];
+    let t_index = types.len() - 1;
+    for seed in 0..24 {
+        let mut random = RandomUpdates::new(seed);
+        let mut columns: Vec<(&str, ColumnType, ArrayRef)> = types
+            .iter()
+            .map(|(name, column_type)| (*name, column_type.clone(), random.values(column_type, 6)))
+            .collect();
+        columns[t_index].2 = longs(&[Some(0), Some(3), None, Some(3), Some(7), Some(12)]);
+        let t = Ticking::new([0, 2, 4, 6, 8, 10], &columns, move |source| {
+            update_by(source, &everything_in_time(), by).unwrap()
+        });
+        for _ in 0..30 {
+            let table = t.script.table();
+            let change = rising(random.next_change(&*table, 5), &*table, t_index);
+            t.step(change);
+        }
+    }
+}
+
+#[test]
+fn random_updates_in_time_match_a_recompute_without_buckets() {
+    random_updates_in_time(&[]);
+}
+
+#[test]
+fn random_updates_in_time_match_a_recompute_with_buckets() {
+    random_updates_in_time(&["K"]);
 }
