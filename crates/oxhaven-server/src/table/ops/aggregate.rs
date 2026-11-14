@@ -10,7 +10,7 @@ use oxhaven_engine::ops::agg::{aggregate, AggSpec, AggregateError, Aggregation, 
 use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::agg_spec::Type as SpecType;
 use oxhaven_proto::grpc::aggregation::Type as AggregationType;
-use oxhaven_proto::grpc::{AggregateAllRequest, AggregateRequest};
+use oxhaven_proto::grpc::{AggregateAllRequest, AggregateRequest, ComboAggregateRequest};
 
 /// What Java's aggregation refuses is an exception out of the engine.
 impl From<AggregateError> for ExportError {
@@ -394,39 +394,251 @@ impl TableOp for AggregateAll {
         request: &AggregateAllRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
-        let parent = &sources[0];
         let kind = spec(
             request
                 .spec
                 .as_ref()
                 .ok_or_else(|| missing_field("AggregateAllRequest", "spec", 3))?,
         )?;
-        let group_by = &request.group_by_columns;
-        let definition = parent.definition();
-        let references = spec_references(&kind);
-        if let Some(unknown) = group_by
-            .iter()
-            .map(String::as_str)
-            .chain(references)
-            .find(|name| definition.index_of(name).is_none())
-        {
+        agg_all_by(&sources[0], kind, &request.group_by_columns)
+    }
+}
+
+/// `spec` applied to every column that is not grouped by and that the spec does not leave
+/// out.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#aggAllBy` and its
+/// `singleAggregation`
+fn agg_all_by(
+    parent: &Arc<dyn Table>,
+    kind: AggSpec,
+    group_by: &[String],
+) -> Result<Arc<dyn Table>, ExportError> {
+    let definition = parent.definition();
+    let references = spec_references(&kind);
+    if let Some(unknown) = group_by
+        .iter()
+        .map(String::as_str)
+        .chain(references)
+        .find(|name| definition.index_of(name).is_none())
+    {
+        return Err(ExportError::Internal(format!(
+            "aggAllBy spec references column that does not exist: {unknown}"
+        )));
+    }
+    let pairs: Vec<Pair> = definition
+        .columns()
+        .iter()
+        .filter(|column| {
+            !group_by.contains(&column.name) && !excluded_by_agg_all(&kind, &column.name)
+        })
+        .map(|column| Pair::of(column.name.as_str()))
+        .collect();
+    if pairs.is_empty() {
+        return Err(ExportError::Internal(
+            "aggAllBy has no columns to aggregate".to_string(),
+        ));
+    }
+    run(parent, &[Aggregation::columns(kind, pairs)], false, group_by)
+}
+
+/// The engine's spec for a combo aggregate type other than `COUNT`, which has none. `GROUP`
+/// and a type this server does not know are refused.
+///
+/// Behavior: `ComboAggregateGrpcImpl#singleAggregateHelper` and `#makeAggregation`
+fn combo_spec(aggregate: &proto::combo_aggregate_request::Aggregate) -> Result<AggSpec, ExportError> {
+    use proto::combo_aggregate_request::AggType;
+    Ok(match AggType::try_from(aggregate.r#type) {
+        Ok(AggType::Sum) => AggSpec::Sum,
+        Ok(AggType::AbsSum) => AggSpec::AbsSum,
+        Ok(AggType::Avg) => AggSpec::Avg,
+        Ok(AggType::First) => AggSpec::First,
+        Ok(AggType::Last) => AggSpec::Last,
+        Ok(AggType::Min) => AggSpec::Min,
+        Ok(AggType::Max) => AggSpec::Max,
+        Ok(AggType::Std) => AggSpec::Std,
+        Ok(AggType::Var) => AggSpec::Var,
+        // `AggSpec#median()`: AggSpecMedian.AVERAGE_EVENLY_DIVIDED_DEFAULT is true.
+        Ok(AggType::Median) => AggSpec::Median {
+            average_evenly_divided: true,
+        },
+        Ok(AggType::Percentile) => AggSpec::Percentile {
+            percentile: aggregate.percentile,
+            average_evenly_divided: aggregate.avg_median,
+        },
+        Ok(AggType::WeightedAvg) => AggSpec::WeightedAvg {
+            weight: spec_column(&aggregate.column_name)?,
+        },
+        Ok(AggType::Group) => {
+            return Err(not_ported(
+                "io.deephaven.server.table.ops.ComboAggregateGrpcImpl#makeAggregation",
+                "the aggregation group",
+            )
+            .into())
+        }
+        Ok(AggType::Count) => unreachable!("COUNT has no spec"),
+        // `default: throw new UnsupportedOperationException("Unsupported aggregate: ...")`
+        Err(_) => {
             return Err(ExportError::Internal(format!(
-                "aggAllBy spec references column that does not exist: {unknown}"
-            )));
+                "Unsupported aggregate: {}",
+                aggregate.r#type
+            )))
         }
-        let pairs: Vec<Pair> = definition
-            .columns()
+    })
+}
+
+/// The Java name of a combo aggregate type, as the validation messages print it.
+fn agg_type_name(value: i32) -> &'static str {
+    proto::combo_aggregate_request::AggType::try_from(value)
+        .map_or("UNRECOGNIZED", |kind| kind.as_str_name())
+}
+
+/// Behavior: `io.deephaven.server.table.ops.ComboAggregateGrpcImpl`
+pub struct ComboAggregate;
+
+impl ComboAggregate {
+    /// Behavior: `ComboAggregateGrpcImpl#isSimpleAggregation`
+    fn is_simple(request: &ComboAggregateRequest) -> bool {
+        use proto::combo_aggregate_request::AggType;
+        let [only] = request.aggregates.as_slice() else {
+            return false;
+        };
+        !request.force_combo
+            && only.column_name.is_empty()
+            && only.r#type != AggType::Percentile as i32
+            && only.match_pairs.is_empty()
+    }
+}
+
+impl TableOp for ComboAggregate {
+    type Request = ComboAggregateRequest;
+
+    fn result_id(request: &ComboAggregateRequest) -> Option<&Ticket> {
+        request.result_id.as_ref()
+    }
+
+    fn sources(request: &ComboAggregateRequest) -> Vec<TableReference> {
+        vec![source(&request.source_id)]
+    }
+
+    /// Behavior: `ComboAggregateGrpcImpl#validateRequest`
+    fn validate(request: &ComboAggregateRequest) -> Result<(), Status> {
+        use proto::combo_aggregate_request::AggType;
+        let invalid = |message: String| Err(Status::invalid_argument(message));
+        if request.aggregates.is_empty() {
+            return invalid("ComboAggregateRequest incorrectly has zero aggregates provided".into());
+        }
+        if request
+            .group_by_columns
             .iter()
-            .filter(|column| {
-                !group_by.contains(&column.name) && !excluded_by_agg_all(&kind, &column.name)
-            })
-            .map(|column| Pair::of(column.name.as_str()))
-            .collect();
-        if pairs.is_empty() {
-            return Err(ExportError::Internal(
-                "aggAllBy has no columns to aggregate".to_string(),
-            ));
+            .any(|column| validate_column_name(column).is_err())
+        {
+            return invalid("ComboAggregateRequest group by".into());
         }
-        run(parent, &[Aggregation::columns(kind, pairs)], false, group_by)
+        let counts_or_weighs =
+            |kind: i32| kind == AggType::Count as i32 || kind == AggType::WeightedAvg as i32;
+        if Self::is_simple(request) {
+            let aggregate = &request.aggregates[0];
+            let prefix = "force_combo is false and only one aggregate provided, but";
+            if !aggregate.match_pairs.is_empty() {
+                return invalid(format!("{prefix} match_pairs is specified"));
+            }
+            if aggregate.percentile != 0.0 {
+                return invalid(format!("{prefix} percentile is specified"));
+            }
+            if aggregate.avg_median {
+                return invalid(format!("{prefix} avg_median is specified"));
+            }
+            if !counts_or_weighs(aggregate.r#type) && !aggregate.column_name.is_empty() {
+                return invalid(format!(
+                    "{prefix} column_name is specified for type other than COUNT or WEIGHTED_AVG"
+                ));
+            }
+            return Ok(());
+        }
+        for aggregate in &request.aggregates {
+            let name = agg_type_name(aggregate.r#type);
+            if aggregate.r#type != AggType::Percentile as i32 {
+                if aggregate.percentile != 0.0 {
+                    return invalid(format!("percentile is specified for type {name}"));
+                }
+                if aggregate.avg_median {
+                    return invalid(format!("avg_median is specified for type {name}"));
+                }
+            }
+            if aggregate.r#type == AggType::Count as i32 && !aggregate.match_pairs.is_empty() {
+                return invalid("match_pairs is specified for type COUNT".into());
+            }
+            if !counts_or_weighs(aggregate.r#type) && !aggregate.column_name.is_empty() {
+                return invalid(format!("column_name is specified for type {name}"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Behavior: `ComboAggregateGrpcImpl#create`, `#singleAggregateHelper` (whose
+    /// `sumBy`, `medianBy` and the like are `aggAllBy`, and `countBy` is `aggBy` of one
+    /// count) and `#comboAggregateHelper`
+    fn create(
+        _context: &OpContext,
+        request: &ComboAggregateRequest,
+        sources: &[Arc<dyn Table>],
+    ) -> Result<Arc<dyn Table>, ExportError> {
+        use proto::combo_aggregate_request::AggType;
+        let parent = &sources[0];
+        // `ColumnName#of`
+        let group_by = request
+            .group_by_columns
+            .iter()
+            .map(|column| spec_column(column))
+            .collect::<Result<Vec<_>, _>>()?;
+        let count = |aggregate: &proto::combo_aggregate_request::Aggregate| {
+            Ok::<_, ExportError>(Aggregation::count(spec_column(&aggregate.column_name)?))
+        };
+        if Self::is_simple(request) {
+            let aggregate = &request.aggregates[0];
+            if aggregate.r#type == AggType::Count as i32 {
+                return run(parent, &[count(aggregate)?], false, &group_by);
+            }
+            return agg_all_by(parent, combo_spec(aggregate)?, &group_by);
+        }
+        let definition = parent.definition();
+        let mut aggregations = Vec::with_capacity(request.aggregates.len());
+        for aggregate in &request.aggregates {
+            if aggregate.r#type == AggType::Count as i32 {
+                aggregations.push(count(aggregate)?);
+                continue;
+            }
+            let kind = combo_spec(aggregate)?;
+            // Behavior: `ComboAggregateGrpcImpl#getColumnPairs`: without match pairs, every
+            // column that is not grouped by and is not the weight of a weighted average.
+            let pairs: Vec<Pair> = if aggregate.match_pairs.is_empty() {
+                definition
+                    .columns()
+                    .iter()
+                    .filter(|column| {
+                        !group_by.contains(&column.name)
+                            && !(aggregate.r#type == AggType::WeightedAvg as i32
+                                && aggregate.column_name == column.name)
+                    })
+                    .map(|column| Pair::of(column.name.as_str()))
+                    .collect()
+            } else {
+                aggregate
+                    .match_pairs
+                    .iter()
+                    .map(|text| pair(text))
+                    .collect::<Result<_, _>>()?
+            };
+            // Behavior: `io.deephaven.api.agg.Aggregation#of(AggSpec, List)`
+            if pairs.is_empty() {
+                return Err(ExportError::Internal(
+                    "Must have at least one pair to create an Aggregation from an AggSpec."
+                        .to_string(),
+                ));
+            }
+            aggregations.push(Aggregation::columns(kind, pairs));
+        }
+        run(parent, &aggregations, false, &group_by)
     }
 }

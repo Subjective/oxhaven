@@ -38,6 +38,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Filter(r) => c.client.filter(c.auth(r)).await,
         Op::Aggregate(r) => c.client.aggregate(c.auth(r)).await,
         Op::AggregateAll(r) => c.client.aggregate_all(c.auth(r)).await,
+        Op::ComboAggregate(r) => c.client.combo_aggregate(c.auth(r)).await,
         other => panic!("no call for {}", op_name(&other)),
     };
     response.map(Response::into_inner)
@@ -923,6 +924,208 @@ async fn aggregate_has_the_specs_beyond_the_basic_set() {
     let table = c.table(3);
     assert_eq!(column_names(table.as_ref()), ["S", "I"]);
     assert_eq!(values(table.as_ref(), "I"), ints(&[-2, -8]));
+}
+
+fn combo(
+    result: i32,
+    aggregates: Vec<proto::combo_aggregate_request::Aggregate>,
+    group_by: &[&str],
+    force_combo: bool,
+) -> Op {
+    Op::ComboAggregate(proto::ComboAggregateRequest {
+        result_id: ticket(result),
+        source_id: by_ticket(1),
+        aggregates,
+        group_by_columns: texts(group_by),
+        force_combo,
+    })
+}
+
+fn combo_part(
+    kind: proto::combo_aggregate_request::AggType,
+    pairs: &[&str],
+    column: &str,
+) -> proto::combo_aggregate_request::Aggregate {
+    proto::combo_aggregate_request::Aggregate {
+        r#type: kind as i32,
+        match_pairs: texts(pairs),
+        column_name: column.to_string(),
+        percentile: 0.0,
+        avg_median: false,
+    }
+}
+
+#[tokio::test]
+async fn combo_aggregate_runs_one_aggregation_by_itself_or_several_together() {
+    use proto::combo_aggregate_request::AggType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+
+    // one aggregate, the table operation of its own: every column but S
+    call(
+        &mut c,
+        combo(2, vec![combo_part(AggType::Median, &[], "")], &["S"], false),
+    )
+    .await
+    .unwrap();
+    let table = c.table(2);
+    assert_eq!(column_names(table.as_ref()), ["S", "I", "N"]);
+    // AggSpec#median() averages: an int column gives a double
+    assert_eq!(values(table.as_ref(), "I"), texts(&["2.0", "3.0"]));
+
+    // several, with match pairs, a count, a weighted average of every other column and a
+    // percentile
+    let mut percentile = combo_part(AggType::Percentile, &["P = N"], "");
+    percentile.percentile = 0.5;
+    percentile.avg_median = true;
+    let request = combo(
+        3,
+        vec![
+            combo_part(AggType::Sum, &["Total = N"], ""),
+            combo_part(AggType::Count, &[], "Rows"),
+            combo_part(AggType::WeightedAvg, &[], "I"),
+            percentile,
+        ],
+        &["S"],
+        false,
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(
+        column_names(table.as_ref()),
+        ["S", "Total", "Rows", "N", "P"]
+    );
+    assert_eq!(values(table.as_ref(), "Total"), ints(&[3, 0]));
+    assert_eq!(values(table.as_ref(), "Rows"), ints(&[3, 3]));
+    assert_eq!(
+        values(table.as_ref(), "N"),
+        texts(&["-0.3333333333333333", "-0.8888888888888888"])
+    );
+    assert_eq!(values(table.as_ref(), "P"), texts(&["1.0", "0.0"]));
+
+    // force_combo: one aggregate, but as aggBy
+    let request = combo(
+        4,
+        vec![combo_part(AggType::Max, &["Top = I"], "")],
+        &["S"],
+        true,
+    );
+    call(&mut c, request).await.unwrap();
+    assert_eq!(column_names(c.table(4).as_ref()), ["S", "Top"]);
+}
+
+#[tokio::test]
+async fn combo_aggregate_refuses_what_java_refuses() {
+    use proto::combo_aggregate_request::AggType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let with = |kind: AggType, edit: &dyn Fn(&mut proto::combo_aggregate_request::Aggregate)| {
+        let mut part = combo_part(kind, &[], "");
+        edit(&mut part);
+        part
+    };
+    let cases: Vec<(
+        Vec<proto::combo_aggregate_request::Aggregate>,
+        &[&str],
+        bool,
+        &str,
+    )> = vec![
+        (
+            vec![],
+            &["S"],
+            false,
+            "ComboAggregateRequest incorrectly has zero aggregates provided",
+        ),
+        (
+            vec![combo_part(AggType::Sum, &[], "")],
+            &["bad name"],
+            false,
+            "ComboAggregateRequest group by",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.avg_median = true)],
+            &["S"],
+            false,
+            "force_combo is false and only one aggregate provided, but avg_median is specified",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.percentile = 0.5)],
+            &["S"],
+            false,
+            "force_combo is false and only one aggregate provided, but percentile is specified",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.percentile = 0.5)],
+            &["S"],
+            true,
+            "percentile is specified for type SUM",
+        ),
+        (
+            vec![with(AggType::Max, &|p| p.avg_median = true)],
+            &["S"],
+            true,
+            "avg_median is specified for type MAX",
+        ),
+        (
+            vec![combo_part(AggType::Count, &["I"], "Rows")],
+            &["S"],
+            true,
+            "match_pairs is specified for type COUNT",
+        ),
+        (
+            vec![combo_part(AggType::Min, &["I"], "W")],
+            &["S"],
+            true,
+            "column_name is specified for type MIN",
+        ),
+    ];
+    for (index, (aggregates, group_by, force, message)) in cases.into_iter().enumerate() {
+        let refused = call(&mut c, combo(2 + index as i32, aggregates, group_by, force))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+    }
+
+    // group is not ported, whichever way it is asked for
+    for (result, force) in [(20, false), (21, true)] {
+        let refused = call(
+            &mut c,
+            combo(
+                result,
+                vec![combo_part(AggType::Group, &[], "")],
+                &["S"],
+                force,
+            ),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
+    }
+    // what Java refuses with an exception: COUNT by itself, whose column name must be empty
+    // to be by itself; a type it does not know; no column left to aggregate
+    let unknown = proto::combo_aggregate_request::Aggregate {
+        r#type: 99,
+        ..combo_part(AggType::Sum, &[], "")
+    };
+    for (result, aggregates, group_by) in [
+        (30, vec![combo_part(AggType::Count, &[], "")], &["S"][..]),
+        (31, vec![unknown], &["S"]),
+        (
+            32,
+            vec![
+                combo_part(AggType::Sum, &[], ""),
+                combo_part(AggType::Count, &[], "N"),
+            ],
+            &["I", "N", "S"],
+        ),
+    ] {
+        assert_internal(
+            &call(&mut c, combo(result, aggregates, group_by, false))
+                .await
+                .unwrap_err(),
+        );
+    }
 }
 
 #[tokio::test]

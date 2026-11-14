@@ -217,6 +217,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
         [
             "AGGREGATE",
             "AGGREGATE_ALL",
+            "COMBO_AGGREGATE",
             "CREATE_INPUT_TABLE",
             "EMPTY_TABLE",
             "TIME_TABLE",
