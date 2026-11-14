@@ -22,12 +22,13 @@ blink head 1 Timestamp,A,B => java.lang.IllegalArgumentException: aggBy must hav
 blink head 1 A => java.lang.UnsupportedOperationException: Blink tables do not support AggGroup; use BlinkTableTools.blinkToAppendOnly to accumulate full history
 blink tail 1 - => java.lang.UnsupportedOperationException: Blink tables do not support AggGroup; use BlinkTableTools.blinkToAppendOnly to accumulate full history
 lists head 0 Arr => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
-lists head 1 Arr,Arr => java.lang.ArrayIndexOutOfBoundsException: Index 6 out of bounds for length 6
-lists head 1 K,V,Arr,SArr,Deep,Times,Flags,Bytes => java.lang.IllegalArgumentException: aggBy must have at least one aggregation, none specified. groupByColumns=[K,V,Arr,SArr,Deep,Times,Flags,Bytes]
+lists head 1 Arr,Arr => java.lang.ArrayIndexOutOfBoundsException: Index 7 out of bounds for length 7
+lists head 1 K,V,Arr,SArr,Deep,Cube,Times,Flags,Bytes => java.lang.IllegalArgumentException: aggBy must have at least one aggregation, none specified. groupByColumns=[K,V,Arr,SArr,Deep,Cube,Times,Flags,Bytes]
 lists head 1 Arr => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Arr, column type is an array of int
 lists tail 1 SArr,Arr => java.lang.IllegalArgumentException: Cannot aggregate using an array column: SArr, column type is an array of class java.lang.String
 lists head 1 K,Arr,SArr => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Arr, column type is an array of int
 lists head 1 Deep => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Deep, column type is an array of class [I
+lists head 1 Cube => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Cube, column type is an array of class [[I
 lists head 1 Times => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Times, column type is an array of class java.time.Instant
 lists head 1 Flags => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Flags, column type is an array of class java.lang.Boolean
 lists head 1 Bytes => java.lang.IllegalArgumentException: Cannot aggregate using an array column: Bytes, column type is an array of byte

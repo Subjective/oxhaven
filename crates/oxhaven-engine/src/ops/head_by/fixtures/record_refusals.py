@@ -10,8 +10,8 @@ call to `java_refusals.txt`, one line per call:
 `static` is a table of the columns `A` (int) and `B` (String); `blink` is a blink time table
 of the columns `Timestamp`, `A` and `B`. `lists` has a row for each `K` of 1, 2 and 3, with
 the vector column `V` (`IntVector`, of 2, 1 and 1 elements) and the array columns `Arr`
-(`int[]`), `SArr` (`String[]`), `Deep` (`int[][]`), `Times` (`Instant[]`), `Flags`
-(`Boolean[]`) and `Bytes` (`byte[]`); `blinklists` is a blink table of `Timestamp`, `A`,
+(`int[]`), `SArr` (`String[]`), `Deep` (`int[][]`), `Cube` (`int[][][]`), `Times`
+(`Instant[]`), `Flags` (`Boolean[]`) and `Bytes` (`byte[]`); `blinklists` is a blink table of `Timestamp`, `A`,
 `Arr` (`int[]`) and `V` (`IntVector`). The last lines are the status codes of the gRPC
 handler for a blink table.
 
@@ -59,11 +59,12 @@ CALLS = [
     ("blink", "tail", 1, []),
     ("lists", "head", 0, ["Arr"]),
     ("lists", "head", 1, ["Arr", "Arr"]),
-    ("lists", "head", 1, ["K", "V", "Arr", "SArr", "Deep", "Times", "Flags", "Bytes"]),
+    ("lists", "head", 1, ["K", "V", "Arr", "SArr", "Deep", "Cube", "Times", "Flags", "Bytes"]),
     ("lists", "head", 1, ["Arr"]),
     ("lists", "tail", 1, ["SArr", "Arr"]),
     ("lists", "head", 1, ["K", "Arr", "SArr"]),
     ("lists", "head", 1, ["Deep"]),
+    ("lists", "head", 1, ["Cube"]),
     ("lists", "head", 1, ["Times"]),
     ("lists", "head", 1, ["Flags"]),
     ("lists", "head", 1, ["Bytes"]),
@@ -87,6 +88,7 @@ _refusal_tables = dict(
         "Arr = new int[]{{K}}",
         "SArr = new String[]{{`x`}}",
         "Deep = new int[][]{{new int[]{{K}}}}",
+        "Cube = new int[][][]{{new int[][]{{new int[]{{K}}}}}}",
         "Times = new java.time.Instant[]{{null}}",
         "Flags = new Boolean[]{{true}}",
         "Bytes = new byte[]{{(byte) 1}}",

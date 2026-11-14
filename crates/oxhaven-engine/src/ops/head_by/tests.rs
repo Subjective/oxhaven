@@ -267,7 +267,7 @@ fn refusals_are_javas_in_javas_order() {
     ];
     let (blink_lists, _source) = blink_table(&graph(), &blink_columns);
     let answers = java_answers();
-    assert_eq!(answers.len(), 38);
+    assert_eq!(answers.len(), 39);
     let mut refused = 0;
     for (call, answer) in answers {
         // What Java makes of a vector it groups by is not ported.
@@ -295,7 +295,7 @@ fn refusals_are_javas_in_javas_order() {
             Err(error) => assert_eq!(format!("{}: {error}", exception(&error)), answer, "{call}"),
         }
     }
-    assert_eq!(refused, 34);
+    assert_eq!(refused, 35);
 }
 
 /// The call of `fixtures/java_refusals.txt` that groups by a vector column alone.
@@ -310,6 +310,7 @@ fn lists() -> Arc<dyn Table> {
     let array = ColumnType::array(ColumnType::Int);
     let texts = ColumnType::array(ColumnType::String);
     let deep = ColumnType::array(array.clone());
+    let cube = ColumnType::array(deep.clone());
     let times = ColumnType::array(ColumnType::Instant);
     let flags = ColumnType::array(ColumnType::Boolean);
     let bytes = ColumnType::array(ColumnType::Byte);
@@ -330,6 +331,11 @@ fn lists() -> Arc<dyn Table> {
             "Deep",
             deep.clone(),
             one_each(&deep, one_each(&array, ints([1, 2, 3]))),
+        ),
+        (
+            "Cube",
+            cube.clone(),
+            one_each(&cube, one_each(&deep, one_each(&array, ints([1, 2, 3])))),
         ),
         (
             "Times",
