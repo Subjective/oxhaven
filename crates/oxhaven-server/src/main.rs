@@ -8,7 +8,7 @@ use std::time::Duration;
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
 use oxhaven_server::update_graph::DEFAULT_TARGET_CYCLE_DURATION;
 use oxhaven_server::web::WebRoot;
-use oxhaven_server::{serve, ServerConfig, ServerState};
+use oxhaven_server::{app, serve, ServerConfig, ServerState};
 use tokio::net::TcpListener;
 
 const USAGE: &str = "\
@@ -20,6 +20,8 @@ Usage: oxhaven-server [options]
   --psk <key>               pre-shared key; also read from OXHAVEN_PSK; random if absent
   --token-expire-ms <ms>    session token lifetime (default 300000)
   --cycle-ms <ms>           target update graph cycle duration (default 1000)
+  --demo-tables             offer the application ide_app with the tables ide_static and
+                            ide_ticking, which the web IDE acceptance test expects
   --web-root <directory>    the web IDE's files, served at /ide/, /iframe/ and /jsapi/;
                             scripts/extract-web-root.sh makes the directory (default: none)
 ";
@@ -31,6 +33,7 @@ struct Args {
     psk: Option<String>,
     token_expire_ms: i64,
     cycle: Duration,
+    demo_tables: bool,
     web_root: Option<PathBuf>,
 }
 
@@ -42,6 +45,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         psk: std::env::var("OXHAVEN_PSK").ok(),
         token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
         cycle: DEFAULT_TARGET_CYCLE_DURATION,
+        demo_tables: false,
         web_root: None,
     };
     while let Some(flag) = args.next() {
@@ -65,6 +69,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map(Duration::from_millis)
                     .map_err(|e| format!("--cycle-ms: {e}"))?
             }
+            "--demo-tables" => parsed.demo_tables = true,
             "--web-root" => parsed.web_root = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
@@ -107,6 +112,14 @@ async fn run(args: Args) -> Result<(), String> {
         token_expire_ms: args.token_expire_ms,
         target_cycle_duration: Some(args.cycle),
     })?;
+    if args.demo_tables {
+        let application = app::demo::install(&state.applications, &state.op_context())?;
+        tracing::info!(
+            "Application {} offers {}",
+            application.id(),
+            application.field_names().join(", ")
+        );
+    }
     state.web_root = web_root;
     let listener = TcpListener::bind((args.host.as_str(), args.port))
         .await

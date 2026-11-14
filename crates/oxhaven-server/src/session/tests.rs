@@ -1805,13 +1805,13 @@ mod wire {
 
     #[tokio::test]
     async fn services_not_ported_answer_unimplemented_and_still_authenticate() {
-        use oxhaven_proto::grpc::application_service_client::ApplicationServiceClient;
-        use oxhaven_proto::grpc::ListFieldsRequest;
+        use oxhaven_proto::grpc::object_service_client::ObjectServiceClient;
+        use oxhaven_proto::grpc::FetchObjectRequest;
 
         let server = Server::start().await;
-        let err = ApplicationServiceClient::new(server.channel.clone())
-            .list_fields(with_auth(
-                ListFieldsRequest {},
+        let err = ObjectServiceClient::new(server.channel.clone())
+            .fetch_object(with_auth(
+                FetchObjectRequest::default(),
                 &format!("{PSK_AUTH_TYPE} {PSK}"),
             ))
             .await
