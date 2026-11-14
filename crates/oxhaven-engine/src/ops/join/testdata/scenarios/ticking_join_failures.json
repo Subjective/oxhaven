@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "name": "ticking_join_failures",
+  "description": "Joins that fail in an update cycle: a duplicate right key or a missing right row that appears after the join was made, on either side, with a static table on either side.",
+  "inputs": [
+    {
+      "name": "la",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [[1, "a", 10]]
+    },
+    {
+      "name": "lb",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [[1, "b", 10]]
+    },
+    {
+      "name": "fixed_c",
+      "columns": [{"name": "K", "type": "string"}],
+      "rows": [["c"]]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "RV", "type": "int64"}],
+      "rows": [
+        [1, "a", 100],
+        [2, "b", 200],
+        [3, "c", 300]
+      ]
+    },
+    {
+      "name": "fixed_r",
+      "columns": [{"name": "K", "type": "string"}, {"name": "FV", "type": "int64"}],
+      "rows": [
+        ["a", 1],
+        ["b", 2],
+        ["b", 3]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "error_a", "op": "natural_join", "left": "la", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "error_b", "op": "natural_join", "left": "lb", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "error_static_left", "op": "natural_join", "left": "fixed_c", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "error_static_right", "op": "natural_join", "left": "la", "right": "fixed_r", "on": ["K"], "joins": ["FV"]},
+    {"name": "first_static_right", "op": "natural_join", "left": "la", "right": "fixed_r", "on": ["K"], "joins": ["FV"], "type": "first_match"},
+    {"name": "last_static_right", "op": "natural_join", "left": "la", "right": "fixed_r", "on": ["K"], "joins": ["FV"], "type": "last_match"},
+    {"name": "exact_a", "op": "exact_join", "left": "la", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "exact_b", "op": "exact_join", "left": "lb", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "exactly_one_static_left", "op": "natural_join", "left": "fixed_c", "right": "r", "on": ["K"], "joins": ["RV"], "type": "exactly_one_match"},
+    {"name": "exact_static_right", "op": "exact_join", "left": "la", "right": "fixed_r", "on": ["K"], "joins": ["FV"]}
+  ],
+  "results": [
+    {"table": "error_a"},
+    {"table": "error_b"},
+    {"table": "error_static_left"},
+    {"table": "error_static_right"},
+    {"table": "first_static_right"},
+    {"table": "last_static_right"},
+    {"table": "exact_a"},
+    {"table": "exact_b"},
+    {"table": "exactly_one_static_left"},
+    {"table": "exact_static_right"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "r", "rows": [[4, "z", 400], [5, "z", 401]]}]},
+    {"actions": [{"action": "add", "table": "la", "rows": [[2, "q", 20]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[6, "b", 201]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[3]]}]},
+    {"actions": [{"action": "add", "table": "la", "rows": [[3, "b", 30]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[7, "c", 700], [8, "c", 701]]}]},
+    {"actions": [{"action": "delete", "table": "la", "rows": [[3]]}]}
+  ]
+}

@@ -1,0 +1,738 @@
+{
+  "format": 2,
+  "scenario": "ticking_join_zero_keys",
+  "scenario_sha256": "566d984e3a3092526a685e58dab4275e619488ca10f62327f7737538a7f3f63a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "error",
+      "file": "step000.error.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "file": "step000.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "exactly_one",
+      "file": "step000.exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "exact_two",
+      "file": "step000.exact_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "static_left",
+      "file": "step000.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "static_one",
+      "file": "step000.static_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "static_none_exact",
+      "file": "step000.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "static_none_error",
+      "file": "step000.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "static_two_error",
+      "file": "step000.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "static_two_exact",
+      "file": "step000.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "error",
+      "file": "step001.error.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "first",
+      "file": "step001.first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "last",
+      "file": "step001.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "exactly_one",
+      "file": "step001.exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "exact_two",
+      "file": "step001.exact_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "static_left",
+      "file": "step001.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "static_one",
+      "file": "step001.static_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "static_none_exact",
+      "file": "step001.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "static_none_error",
+      "file": "step001.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "static_two_error",
+      "file": "step001.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "static_two_exact",
+      "file": "step001.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "error",
+      "file": "step002.error.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "first",
+      "file": "step002.first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "last",
+      "file": "step002.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "exactly_one",
+      "file": "step002.exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "exact_two",
+      "file": "step002.exact_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "static_left",
+      "file": "step002.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "static_one",
+      "file": "step002.static_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "static_none_exact",
+      "file": "step002.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "static_none_error",
+      "file": "step002.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "static_two_error",
+      "file": "step002.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "static_two_exact",
+      "file": "step002.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "error",
+      "file": "step003.error.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "first",
+      "file": "step003.first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "last",
+      "file": "step003.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "exactly_one",
+      "file": "step003.exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "exact_two",
+      "file": "step003.exact_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "static_left",
+      "file": "step003.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "static_one",
+      "file": "step003.static_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "static_none_exact",
+      "file": "step003.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "static_none_error",
+      "file": "step003.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "static_two_error",
+      "file": "step003.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "static_two_exact",
+      "file": "step003.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "error",
+      "file": "step004.error.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "first",
+      "file": "step004.first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "last",
+      "file": "step004.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "exactly_one",
+      "file": "step004.exactly_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "exact_two",
+      "file": "step004.exact_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "static_left",
+      "file": "step004.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "static_one",
+      "file": "step004.static_one.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "static_none_exact",
+      "file": "step004.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "static_none_error",
+      "file": "step004.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "static_two_error",
+      "file": "step004.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "static_two_exact",
+      "file": "step004.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "error",
+      "file": "step005.error.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "first",
+      "file": "step005.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "last",
+      "file": "step005.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "exactly_one",
+      "file": "step005.exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "exact_two",
+      "file": "step005.exact_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "static_left",
+      "file": "step005.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "static_one",
+      "file": "step005.static_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "static_none_exact",
+      "file": "step005.static_none_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "static_none_error",
+      "file": "step005.static_none_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "static_two_error",
+      "file": "step005.static_two_error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "static_two_exact",
+      "file": "step005.static_two_exact.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "error",
+      "file": "step006.error.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "first",
+      "file": "step006.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "last",
+      "file": "step006.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "exactly_one",
+      "file": "step006.exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "exact_two",
+      "file": "step006.exact_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "static_left",
+      "file": "step006.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "static_one",
+      "file": "step006.static_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "static_none_exact",
+      "file": "step006.static_none_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "static_none_error",
+      "file": "step006.static_none_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "static_two_error",
+      "file": "step006.static_two_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "static_two_exact",
+      "file": "step006.static_two_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "error",
+      "file": "step007.error.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "first",
+      "file": "step007.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "last",
+      "file": "step007.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "exactly_one",
+      "file": "step007.exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "exact_two",
+      "file": "step007.exact_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "static_left",
+      "file": "step007.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "static_one",
+      "file": "step007.static_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "static_none_exact",
+      "file": "step007.static_none_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "static_none_error",
+      "file": "step007.static_none_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "static_two_error",
+      "file": "step007.static_two_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "static_two_exact",
+      "file": "step007.static_two_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "error",
+      "file": "step008.error.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "first",
+      "file": "step008.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "last",
+      "file": "step008.last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "exactly_one",
+      "file": "step008.exactly_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "exact_two",
+      "file": "step008.exact_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "static_left",
+      "file": "step008.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "static_one",
+      "file": "step008.static_one.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "static_none_exact",
+      "file": "step008.static_none_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "static_none_error",
+      "file": "step008.static_none_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "static_two_error",
+      "file": "step008.static_two_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "static_two_exact",
+      "file": "step008.static_two_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 9,
+      "table": "error",
+      "file": "step009.error.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "first",
+      "file": "step009.first.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "last",
+      "file": "step009.last.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "exactly_one",
+      "file": "step009.exactly_one.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "exact_two",
+      "file": "step009.exact_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "static_left",
+      "file": "step009.static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "static_one",
+      "file": "step009.static_one.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "static_none_exact",
+      "file": "step009.static_none_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "static_none_error",
+      "file": "step009.static_none_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "static_two_error",
+      "file": "step009.static_two_error.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "static_two_exact",
+      "file": "step009.static_two_exact.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "static_two_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

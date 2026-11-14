@@ -1,0 +1,85 @@
+{
+  "format": 1,
+  "name": "ticking_join_zero_keys",
+  "description": "natural_join and exact_join without match columns while the right table goes from one row to none, one and two, and while a left table gets its first row beside a static right table.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "LV", "type": "int32"}],
+      "rows": [[1, 10], [2, 20]]
+    },
+    {
+      "name": "empty",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "LV", "type": "int32"}],
+      "rows": []
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["RId"]},
+      "columns": [{"name": "RId", "type": "int32"}, {"name": "RV", "type": "int64"}],
+      "rows": [[1, 100]]
+    },
+    {
+      "name": "r_two",
+      "ticking": {"key_columns": ["RId"]},
+      "columns": [{"name": "RId", "type": "int32"}, {"name": "RV", "type": "int64"}],
+      "rows": [[1, 100]]
+    },
+    {
+      "name": "fixed0",
+      "columns": [{"name": "FV", "type": "int64"}],
+      "rows": []
+    },
+    {
+      "name": "fixed1",
+      "columns": [{"name": "FV", "type": "int64"}],
+      "rows": [[7]]
+    },
+    {
+      "name": "fixed2",
+      "columns": [{"name": "FV", "type": "int64"}],
+      "rows": [[7], [8]]
+    }
+  ],
+  "operations": [
+    {"name": "error", "op": "natural_join", "left": "l", "right": "r", "on": []},
+    {"name": "first", "op": "natural_join", "left": "l", "right": "r", "on": [], "type": "first_match"},
+    {"name": "last", "op": "natural_join", "left": "l", "right": "r", "on": [], "type": "last_match"},
+    {"name": "exactly_one", "op": "natural_join", "left": "l", "right": "r", "on": [], "type": "exactly_one_match"},
+    {"name": "exact_two", "op": "exact_join", "left": "l", "right": "r_two", "on": []},
+    {"name": "static_left", "op": "natural_join", "left": "fixed1", "right": "r", "on": []},
+    {"name": "static_one", "op": "exact_join", "left": "l", "right": "fixed1", "on": []},
+    {"name": "static_none_exact", "op": "exact_join", "left": "empty", "right": "fixed0", "on": []},
+    {"name": "static_none_error", "op": "natural_join", "left": "empty", "right": "fixed0", "on": []},
+    {"name": "static_two_error", "op": "natural_join", "left": "empty", "right": "fixed2", "on": []},
+    {"name": "static_two_exact", "op": "exact_join", "left": "empty", "right": "fixed2", "on": []},
+    {"name": "static_two_first", "op": "natural_join", "left": "empty", "right": "fixed2", "on": [], "type": "first_match"}
+  ],
+  "results": [
+    {"table": "error"},
+    {"table": "first"},
+    {"table": "last"},
+    {"table": "exactly_one"},
+    {"table": "exact_two"},
+    {"table": "static_left"},
+    {"table": "static_one"},
+    {"table": "static_none_exact"},
+    {"table": "static_none_error"},
+    {"table": "static_two_error"},
+    {"table": "static_two_exact"},
+    {"table": "static_two_first"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "r", "rows": [[1, 101]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[1]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[2, 200]]}]},
+    {"actions": [{"action": "add", "table": "r_two", "rows": [[5, 500]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[3, 30]]}]},
+    {"actions": [{"action": "add", "table": "empty", "rows": [[1, 1]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[3, 300]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[2]]}]},
+    {"actions": [{"action": "delete", "table": "l", "rows": [[1], [2], [3]]}]}
+  ]
+}
