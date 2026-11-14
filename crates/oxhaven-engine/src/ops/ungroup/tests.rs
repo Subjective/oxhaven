@@ -649,6 +649,39 @@ fn a_failure_of_the_source_fails_the_result() {
     assert_eq!(event.unwrap_err().message, "the source broke");
 }
 
+#[test]
+fn an_added_row_whose_slot_is_beyond_the_row_keys_fails_the_result() {
+    let rig = rig(&[0], &["x"], &[1]);
+    let last = RowKey::MAX >> 1;
+    // Whatever its size is.
+    let failure = rig.fails(TableChange::new().add([last], row("y", 0)));
+    assert_eq!(
+        failure,
+        "Key overflow detected, perhaps you should flatten your table before calling \
+         ungroup: lastRowKey=4611686018427387903, base=1"
+    );
+}
+
+/// Java looks at the whole slot of a row when the row is added and when it is removed,
+/// and not when the row moves: a row can move into the last slot, and get elements
+/// there, but it cannot leave.
+#[test]
+fn a_row_can_move_into_the_last_slot_but_not_be_removed_from_it() {
+    let rig = rig(&[0, 5], &["x", "y"], &[1, 0]);
+    let last = RowKey::MAX >> 1;
+    assert_eq!(rig.step(TableChange::new().shift(5, 5, last - 5)), None);
+    let shown = rig.changed(TableChange::new().modify([last], [(A, ints([1]))]));
+    // No element was modified, so no column is reported as modified.
+    assert_eq!(shown, Shown::of(&[RowKey::MAX - 1], &[], &[]));
+    assert_eq!(rig.rows(), ["x|100", "y|100"]);
+    let failure = rig.fails(TableChange::new().remove([last]));
+    assert_eq!(
+        failure,
+        "Key overflow detected, perhaps you should flatten your table before calling \
+         ungroup: lastRowKey=4611686018427387903, base=1"
+    );
+}
+
 // ---------------------------------------------------------------------------------------
 // refreshing sources with two array columns
 

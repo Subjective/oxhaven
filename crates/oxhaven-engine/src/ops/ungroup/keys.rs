@@ -28,18 +28,51 @@ pub(super) fn required_base(max_size: u64) -> u32 {
     }
 }
 
-/// The first key of the slot of the parent's row `key`, or `None` if the slot does not fit
-/// in the row keys.
-///
-/// Behavior: the check of io.deephaven.engine.table.impl.UngroupOperation#getUngroupRowset,
-/// which also asserts that the base is at most 62
+/// The first key of the slot of the parent's row `key`, or `None` if it is not a row
+/// key: the shift loses bits of `key`. Java asserts that a base is at most 62.
 fn slot_start(key: RowKey, base: u32) -> Option<RowKey> {
     if base > 62 {
         return None;
     }
     let start = key.wrapping_shl(base);
-    let fits = start >> base == key && start.wrapping_add(1 << base) >= 0;
-    fits.then_some(start)
+    (start >> base == key).then_some(start)
+}
+
+/// Whether the whole slot of the parent's row `key` is row keys.
+///
+/// Behavior: the check of io.deephaven.engine.table.impl.UngroupOperation#getUngroupRowset
+fn slot_fits(key: RowKey, base: u32) -> bool {
+    slot_start(key, base).is_some_and(|start| start.wrapping_add(1 << base) >= 0)
+}
+
+/// The first key of the slot of the parent's row `key`, to which `size` keys of a slot
+/// move, or an error if they are not all row keys.
+///
+/// Java moves keys without looking, and a key that does not fit becomes another key or a
+/// negative one.
+fn moved_to(key: RowKey, base: u32, size: RowKey) -> Result<RowKey, UngroupError> {
+    let start = slot_start(key, base).filter(|start| start.checked_add(size - 1).is_some());
+    start.ok_or_else(|| overflow(key, base))
+}
+
+/// The first key of the slot of `key`, a row the parent modified, which has `size`
+/// elements now.
+///
+/// Java asserts that the first key is not negative, and if the row has elements that its
+/// last key is not negative, as the shift and the sum come out. Here a shift that loses
+/// bits is an error as well if the row has elements; Java goes on with the keys of
+/// another row.
+///
+/// Behavior: the assertions of io.deephaven.engine.table.impl.UngroupOperation#updateRowsetForRow
+pub(super) fn modified_start(key: RowKey, base: u32, size: u64) -> Result<RowKey, UngroupError> {
+    let start = key.wrapping_shl(base.min(63));
+    let size = size as RowKey;
+    let asserted = start >= 0 && (size == 0 || start.wrapping_add(size - 1) >= 0);
+    if asserted && (size == 0 || slot_start(key, base) == Some(start)) {
+        Ok(start)
+    } else {
+        Err(overflow(key, base))
+    }
 }
 
 fn overflow(last_row_key: RowKey, base: u32) -> UngroupError {
@@ -55,7 +88,7 @@ fn overflow(last_row_key: RowKey, base: u32) -> UngroupError {
 pub(super) fn slots(rows: &RowSet, sizes: &[u64], base: u32) -> Result<RowSet, UngroupError> {
     debug_assert_eq!(rows.size(), sizes.len() as u64);
     if let Some(last) = rows.last_row_key() {
-        if slot_start(last, base).is_none() {
+        if !slot_fits(last, base) {
             return Err(overflow(last, base));
         }
     }
@@ -66,6 +99,25 @@ pub(super) fn slots(rows: &RowSet, sizes: &[u64], base: u32) -> Result<RowSet, U
     })))
 }
 
+/// The keys of the result for rows the parent added, as [`slots`], at a base that grew
+/// after their slots were checked at a smaller one. Java moves the keys of each row to
+/// its new slot without looking; keys that would leave the row keys are an error here.
+///
+/// Behavior: the added rows of io.deephaven.engine.table.impl.UngroupOperation.UngroupListener#rebase
+pub(super) fn moved_slots(
+    rows: &RowSet,
+    sizes: &[u64],
+    base: u32,
+) -> Result<RowSet, UngroupError> {
+    let mut ranges = Vec::new();
+    for (key, size) in rows.iter().zip(sizes).filter(|(_, size)| **size != 0) {
+        let size = *size as RowKey;
+        let first = moved_to(key, base, size)?;
+        ranges.push(RowRange::new(first, first + (size - 1)));
+    }
+    Ok(RowSet::from_ranges(ranges))
+}
+
 /// How many elements each of the parent's `rows` has in `result`, a row set of the result
 /// with slots of `base`. `rows` and `result` are of one cycle.
 ///
@@ -74,11 +126,11 @@ pub(super) fn sizes_in(result: &RowSet, base: u32, rows: &RowSet) -> Vec<u64> {
     let ranges = result.ranges();
     let mut next = 0;
     let sizes = rows.iter().map(|key| {
-        // A slot that does not fit in the row keys has no keys in the result.
+        // A slot that is not row keys has no keys in the result.
         let Some(first) = slot_start(key, base) else {
             return 0;
         };
-        let last = first + ((1 << base) - 1);
+        let last = first.saturating_add((1 << base) - 1);
         while next < ranges.len() && ranges[next].last() < first {
             next += 1;
         }
@@ -103,8 +155,7 @@ fn shift_data(shifts: Vec<ShiftRange>) -> Result<RowSetShiftData, UngroupError> 
 /// before and after. `rows` are the keys of the result that stay, in the key space before
 /// the shifts.
 ///
-/// Java does not look whether the slot a row moves to fits in the row keys; here that is
-/// an error.
+/// Keys that would leave the row keys are an error; Java moves them without looking.
 ///
 /// Behavior: io.deephaven.engine.table.impl.UngroupOperation.UngroupListener#processShifts
 pub(super) fn shifts(
@@ -114,23 +165,21 @@ pub(super) fn shifts(
 ) -> Result<RowSetShiftData, UngroupError> {
     let mut shifts = Vec::new();
     for shift in upstream.ranges() {
-        // Rows whose slot does not fit have no keys.
+        // Rows whose slot is not row keys have no keys.
         let Some(first) = slot_start(shift.first, base) else {
             continue;
         };
         let last = slot_start(shift.last, base).map_or(RowKey::MAX, |start| {
-            // The whole slot fits.
-            start + ((1 << base) - 1)
+            start.saturating_add((1 << base) - 1)
         });
         for range in rows.sub_set_by_key_range(first, last).ranges() {
-            let to = (range.last() >> base) + shift.delta;
-            if slot_start(to, base).is_none() {
-                return Err(overflow(to, base));
-            }
+            // The last key of the range, by its row and its place in the slot.
+            let (row, place) = (range.last() >> base, range.last() & ((1 << base) - 1));
+            let to = moved_to(row + shift.delta, base, place + 1)?;
             shifts.push(ShiftRange {
                 first: range.first(),
                 last: range.last(),
-                delta: shift.delta << base,
+                delta: to + place - range.last(),
             });
         }
     }
@@ -141,7 +190,7 @@ pub(super) fn shifts(
 /// `new_base` of the row its parent row is after the parent's shifts `upstream`. `rows`
 /// are the keys of the result that stay, in the key space before the shifts.
 ///
-/// Java does not look whether the new slot fits in the row keys; here that is an error.
+/// Keys that would leave the row keys are an error; Java moves them without looking.
 ///
 /// Behavior: io.deephaven.engine.table.impl.UngroupOperation.UngroupListener#rebase and
 /// its `ShiftWrapper`
@@ -159,9 +208,7 @@ pub(super) fn rebase(
         loop {
             let last = range.last().min(first + (slot - 1));
             let parent = upstream.apply_to_key(first >> old_base);
-            let Some(to) = slot_start(parent, new_base) else {
-                return Err(overflow(parent, new_base));
-            };
+            let to = moved_to(parent, new_base, last - first + 1)?;
             shifts.push(ShiftRange {
                 first,
                 last,
@@ -253,6 +300,27 @@ mod tests {
     }
 
     #[test]
+    fn added_rows_move_to_slots_that_grew() {
+        let rows = RowSet::from_keys([1, 3, 1 << 52]);
+        assert_eq!(
+            moved_slots(&rows, &[2, 0, 1], 10).unwrap(),
+            slots(&rows, &[2, 0, 1], 10).unwrap()
+        );
+        // The last slot, which `slots` refuses, and a key beyond.
+        let last = RowSet::from_keys([RowKey::MAX >> 10]);
+        let moved = moved_slots(&last, &[3], 10).unwrap();
+        assert_eq!(moved.last_row_key(), Some(RowKey::MAX - 1021));
+        assert!(slots(&last, &[3], 10).is_err());
+        assert_eq!(
+            moved_slots(&rows, &[2, 0, 1], 11).unwrap_err(),
+            UngroupError::KeyOverflow {
+                last_row_key: 1 << 52,
+                base: 11
+            }
+        );
+    }
+
+    #[test]
     fn sizes_are_read_back_from_the_result() {
         let rows = RowSet::from_keys([0, 1, 2, 3, 5, 7, 9]);
         let sizes = [4, 4, 0, 2, 0, 1, 0];
@@ -283,17 +351,45 @@ mod tests {
         assert_eq!(shift_ranges(&moved), [(24, 26, -12)]);
     }
 
+    /// Java checks the whole slot of a new row only: keys may move into the last slot.
     #[test]
     fn a_shift_beyond_the_row_keys_is_refused() {
         let result = slots(&RowSet::from_keys([3]), &[2], 10).unwrap();
-        let far = RowKey::MAX >> 10;
+        let last = RowKey::MAX >> 10;
+        let moved = shifts(&result, 10, &upstream(&[(3, 3, last - 3)])).unwrap();
         assert_eq!(
-            shifts(&result, 10, &upstream(&[(3, 3, far - 3)])).unwrap_err(),
+            moved.apply(&result).unwrap(),
+            RowSet::from_range(last << 10, (last << 10) + 1)
+        );
+        assert_eq!(
+            shifts(&result, 10, &upstream(&[(3, 3, last - 2)])).unwrap_err(),
             UngroupError::KeyOverflow {
-                last_row_key: far,
+                last_row_key: last + 1,
                 base: 10
             }
         );
+    }
+
+    /// Java's two assertions for a modified row, and a shift that loses bits.
+    #[test]
+    fn the_keys_of_a_modified_row_are_checked_as_java_asserts() {
+        let last = RowKey::MAX >> 1;
+        // The last slot, which a new row may not have.
+        assert_eq!(modified_start(last, 1, 2), Ok(RowKey::MAX - 1));
+        assert_eq!(modified_start(last, 1, 0), Ok(RowKey::MAX - 1));
+        // The first key is negative.
+        let refused = |key, base| Err(UngroupError::KeyOverflow {
+            last_row_key: key,
+            base,
+        });
+        assert_eq!(modified_start(last + 1, 1, 0), refused(last + 1, 1));
+        // The last key is.
+        assert_eq!(modified_start(last, 1, 3), refused(last, 1));
+        // Neither is, but the keys are those of row 1; Java lets a row without elements
+        // pass.
+        let wrapped = (1 << 62) + 1;
+        assert_eq!(modified_start(wrapped, 2, 1), refused(wrapped, 2));
+        assert_eq!(modified_start(wrapped, 2, 0), Ok(4));
     }
 
     #[test]

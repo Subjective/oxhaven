@@ -291,22 +291,26 @@ impl Ungroup {
             self.modified(before, old_base, added_base, &pre_shift, upstream)?
         };
 
-        let mut added = keys::slots(&upstream.added, &added_sizes, base)?;
+        let mut added = if base == added_base {
+            keys::slots(&upstream.added, &added_sizes, base)?
+        } else {
+            keys::moved_slots(&upstream.added, &added_sizes, base)?
+        };
         let removed_sizes = keys::sizes_in(before, old_base, &upstream.removed);
         let mut removed = keys::slots(&upstream.removed, &removed_sizes, old_base)?;
 
         // The modified rows, one by one: where they were, with the old base, and where
-        // they are, with the new one. Java asserts only that the keys of a modified row
-        // are not negative.
-        keys::slots(&upstream.modified, &modified_sizes, base)?;
+        // they are, with the new one.
         let was = keys::sizes_in(before, old_base, &pre_shift);
         let mut modified = Vec::new();
         let mut grown = Vec::new();
         let mut shrunk = Vec::new();
         let rows = upstream.modified.iter().zip(pre_shift.iter());
         for ((now, then), (size, was)) in rows.zip(modified_sizes.iter().zip(&was)) {
+            let now = keys::modified_start(now, base, *size)?;
+            // Only a row that had elements is looked up at its old place.
+            let then = then.wrapping_shl(old_base);
             let (size, was) = (*size as RowKey, *was as RowKey);
-            let (now, then) = (now << base, then << old_base);
             let kept = size.min(was);
             if kept > 0 {
                 modified.push(RowRange::new(now, now + kept - 1));
