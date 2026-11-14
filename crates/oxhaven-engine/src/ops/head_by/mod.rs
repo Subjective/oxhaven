@@ -39,6 +39,7 @@ use groups::{Groups, Kept};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
+use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::fmt;
 use std::sync::Arc;
@@ -146,6 +147,33 @@ pub fn tail_by(
     head_or_tail_by(source, rows, false, columns)
 }
 
+/// Checks that a group-by column of `column_type` holds one value in a row, as all the
+/// types there are do.
+///
+/// With `unported!` for a type this module does not know: Java's `ungroup()` of the
+/// aggregation ungroups every array column, a group-by column that is an array included,
+/// so a list type added to the contracts must not be grouped by as a scalar is.
+///
+/// Behavior: the `ungroup()` of io.deephaven.engine.table.impl.QueryTable#headOrTailBy
+fn scalar_key(column_type: &ColumnType) {
+    match column_type {
+        ColumnType::Boolean
+        | ColumnType::Byte
+        | ColumnType::Char
+        | ColumnType::Short
+        | ColumnType::Int
+        | ColumnType::Long
+        | ColumnType::Float
+        | ColumnType::Double
+        | ColumnType::String
+        | ColumnType::Instant => {}
+        other => unported!(
+            "io.deephaven.engine.table.impl.QueryTable#headOrTailBy",
+            "a group-by column of type {other:?}"
+        ),
+    }
+}
+
 /// The indexes in `source` of the group-by columns, in the order given, or the refusal.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#headOrTailBy up to its `aggBy`,
@@ -170,7 +198,11 @@ fn checked(source: &dyn Table, rows: i64, columns: &[String]) -> Result<Vec<usiz
     if source.attributes().blink {
         return Err(HeadByError::Blink);
     }
-    let index = |name: &String| source.definition().index_of(name);
+    let index = |name: &String| {
+        let index = source.definition().index_of(name)?;
+        scalar_key(&declared[index].column_type);
+        Some(index)
+    };
     Ok(columns
         .iter()
         .map(|name| index(name).expect("a column"))
