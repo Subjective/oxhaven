@@ -61,3 +61,13 @@ Written after each wave from here on: pace, bottlenecks, what changed.
 - **10:06** Formula corpus delivered (PR 17): 6,309 cases recorded from Java. It contradicts PARITY.md in nine places (written from source reading in M0), for example casts to small integer types and range filters with a NaN literal. The where agent was sent the filter findings mid-task; the corpus agent was resumed to correct PARITY.md's statements of fact, with no change to allowed differences. Lesson: rules written from reading Java source are hypotheses until recorded from a running server.
 - **10:06** Select family merged (PR 15). The formula language pull request (16) was updated with main before merging, because the select tests pin which formulas the compiler refuses and the new compiler accepts more: two green pull requests can still break each other.
 - **10:06** Disk: reclaimed 11 GB of stale build output (old shared directory, default target directory in the main checkout, two finished agents' leftovers).
+
+## 10:15 PR 16 red after select merged, fixed by updating a pin
+
+The select corpus test pins which recorded results it compares and which it does not run. Once the
+formula branch was updated with main, the new compiler accepted string concatenation, so
+`update_null_propagation.u` ran and matched Java, and the pinned lists were out of date. Moved the
+entry from "not run" to "compared" on the formula branch. This was the predicted interaction of two
+parallel branches; the pin did its job. Cost: one CI round, about ten minutes.
+
+PR 17 (formula corpus) merged. PR 18 opened for the PARITY.md corrections (facts only).
