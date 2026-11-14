@@ -168,3 +168,13 @@ Operator handlers are on main. A fresh agent builds the CI gate: start Oxhaven, 
 corpus and the client smokes, compare with a checked-in baseline that ratchets in both directions
 (a clean scenario that breaks fails; a differing scenario that becomes clean must be promoted in
 the same pull request). Ten agents are running.
+
+## 11:12 Browser transport pushed (PR 26); disk watch
+
+The web IDE now loads from Oxhaven and logs in over the websocket. Remaining for the acceptance
+test: application fields and console stubs (6.1, running), ApplyPreviewColumns (6.1), Barrage
+(2.4, running).
+
+Disk: 11 GB free with ten agents building (each target directory 1 to 3 GB; each worktree is
+0.7 GB since the formula corpus was checked in). Removed four clean worktrees of retired agents.
+If free space drops below 5 GB, the next agent to finish is not replaced until space recovers.
