@@ -1,0 +1,401 @@
+//! Aggregations of the sorted multiset of a group's values: count distinct, unique,
+//! median and percentile.
+//!
+//! Java keeps a segmented sorted multiset per group. Here it is a `BTreeMap` from the value
+//! to its count. Each entry also keeps the value it was created with: values that Java's
+//! comparisons call equal (`0.0` and `-0.0`) share an entry, and the entry shows the bits of
+//! the value that created it, as Java's multiset does.
+
+use super::operator::{AggOperator, Effect};
+use super::values::{build, Run, Scalar};
+use arrow::array::ArrayRef;
+use oxhaven_contracts::schema::ColumnType;
+use std::cmp::Ordering;
+use std::collections::BTreeMap;
+
+/// A value as a multiset key: null first, then Java's ordering ([`Scalar::compare`]), in
+/// which `0.0` equals `-0.0` and NaN equals NaN.
+#[derive(Clone, Debug)]
+struct Key(Scalar);
+
+impl PartialEq for Key {
+    fn eq(&self, other: &Key) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Key {}
+
+impl PartialOrd for Key {
+    fn partial_cmp(&self, other: &Key) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Key {
+    fn cmp(&self, other: &Key) -> Ordering {
+        match (self.0.is_null(), other.0.is_null()) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Less,
+            (false, true) => Ordering::Greater,
+            (false, false) => self.0.compare(&other.0),
+        }
+    }
+}
+
+/// The order Java sorts a chunk in before compacting it: `Arrays.sort`, under which `-0.0`
+/// comes before `0.0`. Otherwise Java's ordering.
+///
+/// Behavior: io.deephaven.function.ArraySort#sort(double[], int, int)
+fn chunk_order(a: &Scalar, b: &Scalar) -> Ordering {
+    Key(a.clone())
+        .cmp(&Key(b.clone()))
+        .then_with(|| match (a, b) {
+            (Scalar::Double(x), Scalar::Double(y)) if *x == 0.0 && *y == 0.0 => {
+                y.is_sign_negative().cmp(&x.is_sign_negative())
+            }
+            _ => Ordering::Equal,
+        })
+}
+
+/// The distinct values of a run and how often each occurs, sorted, each shown as the first
+/// of its equal values in sorted order. Nulls are dropped unless `nulls`, NaNs unless
+/// `nans`.
+///
+/// Behavior: io.deephaven.engine.table.impl.util.compact.DoubleCompactKernel#compactAndCount
+/// (and its per-type copies)
+fn compact(values: impl Iterator<Item = Scalar>, nulls: bool, nans: bool) -> Vec<(Scalar, u64)> {
+    let mut sorted: Vec<Scalar> = values
+        .filter(|value| (nulls || !value.is_null()) && (nans || !value.is_nan()))
+        .collect();
+    sorted.sort_by(chunk_order);
+    let mut runs: Vec<(Scalar, u64)> = Vec::new();
+    for value in sorted {
+        match runs.last_mut() {
+            Some((last, count)) if Key(last.clone()) == Key(value.clone()) => *count += 1,
+            _ => runs.push((value, 1)),
+        }
+    }
+    runs
+}
+
+/// One group's values.
+#[derive(Clone, Default, Debug)]
+struct Multiset {
+    entries: BTreeMap<Key, (Scalar, u64)>,
+    total: u64,
+}
+
+impl Multiset {
+    /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#insert;
+    /// a value already present keeps the bits it was first inserted with.
+    fn insert(&mut self, runs: &[(Scalar, u64)]) {
+        for (value, count) in runs {
+            self.entries
+                .entry(Key(value.clone()))
+                .or_insert_with(|| (value.clone(), 0))
+                .1 += count;
+            self.total += count;
+        }
+    }
+
+    /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#remove
+    ///
+    /// # Panics
+    /// If a value is removed more often than it was inserted: the framework only removes
+    /// rows it added.
+    fn remove(&mut self, runs: &[(Scalar, u64)]) {
+        for (value, count) in runs {
+            let key = Key(value.clone());
+            let entry = self
+                .entries
+                .get_mut(&key)
+                .expect("a removed value is in the group");
+            entry.1 = entry
+                .1
+                .checked_sub(*count)
+                .expect("a value is not removed more often than it was added");
+            self.total -= count;
+            if entry.1 == 0 {
+                self.entries.remove(&key);
+            }
+        }
+    }
+
+    /// The value at sorted position `index`, counting repeats.
+    fn nth(&self, index: u64) -> &Scalar {
+        let mut seen = 0;
+        for (value, count) in self.entries.values() {
+            seen += count;
+            if index < seen {
+                return value;
+            }
+        }
+        panic!(
+            "position {index} is beyond the {} values of the group",
+            self.total
+        )
+    }
+}
+
+/// Values with how many times each occurs.
+type Counted = Vec<(Scalar, u64)>;
+
+/// The net change of a modification: what the old values have that the new ones do not,
+/// and the reverse, with the values they share cancelled.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.compactmodifications.DoubleCompactModifications#compactAndCountModifications
+fn net(old: Counted, new: Counted) -> (Counted, Counted) {
+    let mut added: BTreeMap<Key, (Scalar, u64)> = new
+        .into_iter()
+        .map(|(value, count)| (Key(value.clone()), (value, count)))
+        .collect();
+    let mut removed = Vec::new();
+    for (value, count) in old {
+        match added.get_mut(&Key(value.clone())) {
+            Some(entry) => {
+                let shared = entry.1.min(count);
+                entry.1 -= shared;
+                if count > shared {
+                    removed.push((value, count - shared));
+                }
+            }
+            None => removed.push((value, count)),
+        }
+    }
+    let added = added
+        .into_values()
+        .filter(|(_, count)| *count > 0)
+        .collect();
+    (removed, added)
+}
+
+/// What is computed from a group's multiset.
+#[derive(Clone, Debug)]
+pub enum SetMode {
+    /// The number of distinct values; null for a group without one.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.count.DoubleChunkedCountDistinctOperator#setResult
+    CountDistinct,
+    /// The only distinct value; `non_unique` when there are several, null when none.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.unique.DoubleChunkedUniqueOperator
+    Unique { non_unique: Scalar },
+    /// The value at a percentile of the sorted non-null values; with `average`, for `int`,
+    /// `long`, `float` and `double` columns, the mean of the two middle values when the
+    /// percentile falls between them.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmpercentile.SsmChunkedPercentileOperator
+    Percentile { percentile: f64, average: bool },
+}
+
+/// One of [`SetMode`] for a column of any type.
+pub struct SortedValues {
+    column_type: ColumnType,
+    mode: SetMode,
+    /// Whether nulls and NaNs are values. Count distinct and unique count both or neither;
+    /// a percentile counts NaN and never null.
+    nulls: bool,
+    nans: bool,
+    sets: Vec<Multiset>,
+}
+
+impl SortedValues {
+    /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeCountDistinctOperator
+    pub fn count_distinct(column_type: ColumnType, count_nulls: bool) -> SortedValues {
+        SortedValues::new(
+            column_type,
+            SetMode::CountDistinct,
+            count_nulls,
+            count_nulls,
+        )
+    }
+
+    /// `non_unique` must be null or a value of the column's shape.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeUniqueOperator
+    pub fn unique(
+        column_type: ColumnType,
+        include_nulls: bool,
+        non_unique: Scalar,
+    ) -> SortedValues {
+        SortedValues::new(
+            column_type,
+            SetMode::Unique { non_unique },
+            include_nulls,
+            include_nulls,
+        )
+    }
+
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmpercentile.SsmChunkedPercentileOperator#SsmChunkedPercentileOperator
+    pub fn percentile(column_type: ColumnType, percentile: f64, average: bool) -> SortedValues {
+        // An Instant is never averaged.
+        let average = average && column_type != ColumnType::Instant;
+        SortedValues::new(
+            column_type,
+            SetMode::Percentile {
+                percentile,
+                average,
+            },
+            false,
+            true,
+        )
+    }
+
+    fn new(column_type: ColumnType, mode: SetMode, nulls: bool, nans: bool) -> SortedValues {
+        SortedValues {
+            column_type,
+            mode,
+            nulls,
+            nans,
+            sets: Vec::new(),
+        }
+    }
+
+    /// Whether the mean of two middle values is taken: only for these four types.
+    fn averages(&self) -> bool {
+        matches!(self.mode, SetMode::Percentile { average: true, .. })
+            && matches!(
+                self.column_type,
+                ColumnType::Int | ColumnType::Long | ColumnType::Float | ColumnType::Double
+            )
+    }
+
+    fn runs(&self, run: &Run<'_>) -> Vec<(Scalar, u64)> {
+        compact(run.scalars().map(|(_, value)| value), self.nulls, self.nans)
+    }
+
+    /// The result of `slot`.
+    fn value(&self, slot: usize) -> Scalar {
+        let set = &self.sets[slot];
+        match &self.mode {
+            SetMode::CountDistinct if set.entries.is_empty() => Scalar::Null,
+            SetMode::CountDistinct => Scalar::Long(set.entries.len() as i64),
+            SetMode::Unique { non_unique } => match set.entries.len() {
+                0 => Scalar::Null,
+                1 => set.entries.values().next().expect("one entry").0.clone(),
+                _ => non_unique.clone(),
+            },
+            SetMode::Percentile { percentile, .. } => self.percentile_of(set, *percentile),
+        }
+    }
+
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmpercentile.DoublePercentileTypeHelper#setResult
+    /// and io.deephaven.engine.table.impl.by.ssmpercentile.DoublePercentileTypeMedianHelper#setResult,
+    /// with their per-type copies
+    fn percentile_of(&self, set: &Multiset, percentile: f64) -> Scalar {
+        let total = set.total;
+        if total == 0 {
+            return Scalar::Null;
+        }
+        // Only the float and double helpers look for NaN, which sorts last.
+        if set
+            .entries
+            .last_key_value()
+            .is_some_and(|(_, (v, _))| v.is_nan())
+        {
+            return Scalar::Double(f64::NAN);
+        }
+        let position = (total - 1) as f64 * percentile;
+        if !self.averages() {
+            // `Math.round`, which for a value that is not negative rounds half up.
+            let target = position.round() as i64 + 1;
+            return set.nth(target as u64 - 1).clone();
+        }
+        // `(int)` truncates and saturates.
+        let target = (position as i32) as i64 + 1;
+        let low = set.nth(target as u64 - 1);
+        if target as u64 * 2 != total {
+            return match self.column_type {
+                ColumnType::Int | ColumnType::Long => {
+                    Scalar::Double(low.long().expect("an integer") as f64)
+                }
+                _ => low.clone(),
+            };
+        }
+        let high = set.nth(target as u64);
+        match self.column_type {
+            ColumnType::Int => {
+                let sum = (low.long().expect("an int") as i32)
+                    .wrapping_add(high.long().expect("an int") as i32);
+                Scalar::Double(f64::from(sum) / 2.0)
+            }
+            ColumnType::Long => {
+                let sum = low
+                    .long()
+                    .expect("a long")
+                    .wrapping_add(high.long().expect("a long"));
+                Scalar::Double(sum as f64 / 2.0)
+            }
+            ColumnType::Float => {
+                let sum =
+                    low.double().expect("a float") as f32 + high.double().expect("a float") as f32;
+                Scalar::Double(f64::from(sum / 2.0))
+            }
+            _ => Scalar::Double(
+                (low.double().expect("a double") + high.double().expect("a double")) / 2.0,
+            ),
+        }
+    }
+}
+
+impl AggOperator for SortedValues {
+    fn result_type(&self) -> ColumnType {
+        match self.mode {
+            SetMode::CountDistinct => ColumnType::Long,
+            _ if self.averages()
+                && matches!(self.column_type, ColumnType::Int | ColumnType::Long) =>
+            {
+                ColumnType::Double
+            }
+            _ => self.column_type.clone(),
+        }
+    }
+
+    fn ensure_slots(&mut self, slots: usize) {
+        if self.sets.len() < slots {
+            self.sets.resize(slots, Multiset::default());
+        }
+    }
+
+    fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        let runs = self.runs(run);
+        if runs.is_empty() {
+            return Effect::UNCHANGED;
+        }
+        let before = self.value(slot);
+        self.sets[slot].insert(&runs);
+        Effect::modified_if(!before.same(&self.value(slot)))
+    }
+
+    fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        let runs = self.runs(run);
+        if runs.is_empty() {
+            return Effect::UNCHANGED;
+        }
+        let before = self.value(slot);
+        self.sets[slot].remove(&runs);
+        Effect::modified_if(!before.same(&self.value(slot)))
+    }
+
+    /// Count distinct and unique apply the net change; the percentile removes the old
+    /// values and then inserts the new ones.
+    ///
+    /// Behavior: DoubleChunkedCountDistinctOperator#modifyChunk,
+    /// DoubleChunkedUniqueOperator#modifyChunk, SsmChunkedPercentileOperator#modifyChunk
+    fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
+        let before = self.value(slot);
+        let (removed, added) = match self.mode {
+            SetMode::Percentile { .. } => (self.runs(old), self.runs(new)),
+            _ => net(self.runs(old), self.runs(new)),
+        };
+        self.sets[slot].remove(&removed);
+        self.sets[slot].insert(&added);
+        Effect::modified_if(!before.same(&self.value(slot)))
+    }
+
+    fn results(&self, slots: &[usize]) -> ArrayRef {
+        let values: Vec<Scalar> = slots.iter().map(|&slot| self.value(slot)).collect();
+        build(&self.result_type(), values.iter())
+    }
+}

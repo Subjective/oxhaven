@@ -94,6 +94,25 @@ impl Values {
         self.len() == 0
     }
 
+    /// The value at `position` as a `double`, as Java's cast of a chunk to doubles gives
+    /// it: an integer is converted, a null is `None`. Booleans and strings are `None`; no
+    /// operator that reads doubles is made for them.
+    pub fn double(&self, position: usize) -> Option<f64> {
+        match self {
+            Values::Longs(a) if a.is_valid(position) => Some(a.value(position) as f64),
+            Values::Doubles(a) if a.is_valid(position) => Some(a.value(position)),
+            _ => None,
+        }
+    }
+
+    /// The value at `position` of an integer-shaped column, or `None` if it is null.
+    pub fn long(&self, position: usize) -> Option<i64> {
+        match self {
+            Values::Longs(a) if a.is_valid(position) => Some(a.value(position)),
+            _ => None,
+        }
+    }
+
     /// The value at `position`.
     pub fn scalar(&self, position: usize) -> Scalar {
         match self {
@@ -116,6 +135,8 @@ impl Values {
 pub struct Run<'a> {
     /// The chunk of the operator's input column; `None` for an operator without one.
     values: Option<&'a Values>,
+    /// The chunk of the operator's weight column, for the weighted aggregations.
+    weights: Option<&'a Values>,
     /// The row keys of the chunk.
     row_keys: &'a [RowKey],
     /// Positions in the chunk of this group's rows, increasing.
@@ -130,9 +151,39 @@ impl<'a> Run<'a> {
     ) -> Run<'a> {
         Run {
             values,
+            weights: None,
             row_keys,
             positions,
         }
+    }
+
+    /// The run with the chunk of a weight column at the same positions.
+    pub fn with_weights(self, weights: Option<&'a Values>) -> Run<'a> {
+        Run { weights, ..self }
+    }
+
+    /// Each row's value and weight as `double`s, in row order.
+    ///
+    /// # Panics
+    /// If the operator has no input or no weight column.
+    pub fn weighted_doubles(&self) -> impl Iterator<Item = (Option<f64>, Option<f64>)> + 'a {
+        let (Some(values), Some(weights)) = (self.values, self.weights) else {
+            panic!("the operator has no input or no weight column");
+        };
+        self.positions
+            .iter()
+            .map(move |&p| (values.double(p), weights.double(p)))
+    }
+
+    /// Each row's value and weight of integer-shaped columns, in row order. Panics as
+    /// [`Run::weighted_doubles`].
+    pub fn weighted_longs(&self) -> impl Iterator<Item = (Option<i64>, Option<i64>)> + 'a {
+        let (Some(values), Some(weights)) = (self.values, self.weights) else {
+            panic!("the operator has no input or no weight column");
+        };
+        self.positions
+            .iter()
+            .map(move |&p| (values.long(p), weights.long(p)))
     }
 
     /// The number of rows.
@@ -270,14 +321,14 @@ impl Scalar {
         }
     }
 
-    fn long(&self) -> Option<i64> {
+    pub(super) fn long(&self) -> Option<i64> {
         match self {
             Scalar::Long(v) => Some(*v),
             _ => None,
         }
     }
 
-    fn double(&self) -> Option<f64> {
+    pub(super) fn double(&self) -> Option<f64> {
         match self {
             Scalar::Double(v) => Some(*v),
             _ => None,

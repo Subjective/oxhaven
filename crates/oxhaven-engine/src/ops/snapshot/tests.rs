@@ -875,6 +875,57 @@ fn stamp_column_strings_are_parsed_as_java_does() {
     }
 }
 
+/// Behavior: java.lang.String#trim through io.deephaven.api.ColumnName#parse, which removes
+/// the characters up to U+0020 at either end and no other whitespace.
+#[test]
+fn stamp_column_strings_are_trimmed_as_java_trims() {
+    // Control characters that Rust does not count as whitespace are removed.
+    assert_eq!(
+        StampColumn::parse("\u{0}\u{1}\tNew\u{1f} \n=\r\u{1c}Old\u{8}").unwrap(),
+        StampColumn::new("New", "Old")
+    );
+    assert_eq!(
+        StampColumn::parse("\u{1b}A\u{7}").unwrap(),
+        StampColumn::new("A", "A")
+    );
+    // Nothing above U+0020 is removed, whitespace or not.
+    for kept in [
+        "\u{7f}", "\u{85}", "\u{a0}", "\u{1680}", "\u{2003}", "\u{2028}", "\u{2029}", "\u{202f}",
+        "\u{205f}", "\u{3000}", "\u{feff}",
+    ] {
+        let text = format!(" {kept}A{kept}\t");
+        assert_eq!(
+            super::java_trim(&text),
+            format!("{kept}A{kept}"),
+            "{text:?}"
+        );
+    }
+    assert_eq!(super::java_trim("\u{0} \u{1f}\u{20}"), "");
+    // So a space separator above U+0020 stays in the name, and no column name has one.
+    for kept in [
+        '\u{a0}', '\u{1680}', '\u{2003}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{205f}',
+        '\u{3000}',
+    ] {
+        for text in [
+            format!("{kept}A"),
+            format!("A{kept}"),
+            format!("{kept}A=B"),
+            format!("A{kept}=B"),
+            format!("A={kept}B"),
+            format!("A=B{kept}"),
+            format!(" {kept} A"),
+        ] {
+            assert!(
+                matches!(
+                    StampColumn::parse(&text),
+                    Err(SnapshotError::InvalidName(_))
+                ),
+                "{text:?}"
+            );
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------------------
 // random updates against models
 
