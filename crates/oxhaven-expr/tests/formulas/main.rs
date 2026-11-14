@@ -7,6 +7,7 @@
 
 mod arithmetic;
 mod comparison;
+mod corpus;
 mod formula;
 mod logic;
 
@@ -165,7 +166,8 @@ impl TestTable {
     }
 
     /// Columns given as name, current values, previous values.
-    fn with_previous<const N: usize>(columns: [(&str, Column, Column); N]) -> Self {
+    fn with_previous<'a>(columns: impl IntoIterator<Item = (&'a str, Column, Column)>) -> Self {
+        let columns: Vec<_> = columns.into_iter().collect();
         let size = columns.first().map_or(0, |(_, column, _)| column.1.len());
         let definition = TableDefinition::new(
             columns

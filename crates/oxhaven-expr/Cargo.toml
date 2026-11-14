@@ -10,3 +10,6 @@ workspace = true
 [dependencies]
 arrow.workspace = true
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+
+[dev-dependencies]
+serde_json.workspace = true
