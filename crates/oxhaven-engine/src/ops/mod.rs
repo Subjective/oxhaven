@@ -1,6 +1,7 @@
 //! Table operations, one module per operation family.
 
 pub mod agg;
+pub mod crossjoin;
 pub mod distinct;
 pub mod filter;
 pub mod join;
@@ -10,3 +11,4 @@ pub(crate) mod oracle;
 pub mod select;
 pub mod snapshot;
 pub mod sort;
+pub mod update_by;

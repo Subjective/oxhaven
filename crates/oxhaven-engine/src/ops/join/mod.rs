@@ -9,8 +9,8 @@
 //! `io.deephaven.server.table.ops.JoinTablesGrpcImpl.LeftJoinTablesGrpcImpl#doJoin` answers
 //! it with `UNIMPLEMENTED`. There is nothing in the engine to port for it.
 
-mod keys;
-mod natural;
+pub(crate) mod keys;
+pub(crate) mod natural;
 
 #[cfg(test)]
 mod corpus;
@@ -192,10 +192,13 @@ impl From<TableFailure> for JoinError {
 ///
 /// The result is refreshing when either table is. It is not flat. It keeps the left
 /// table's blink attribute, and is add-only or append-only when the left table is and the
-/// right table cannot modify it.
+/// right table cannot modify it. It has the left table's input table, if that has one, and
+/// never the right table's.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#naturalJoin and
-/// io.deephaven.engine.table.impl.NaturalJoinHelper#naturalJoin
+/// io.deephaven.engine.table.impl.NaturalJoinHelper#naturalJoin, which copies the left
+/// table's attributes by io.deephaven.engine.table.impl.BaseTable#copyAttributes with
+/// `CopyAttributeOperation.Join`
 pub fn natural_join(
     left: &Arc<dyn Table>,
     right: &Arc<dyn Table>,

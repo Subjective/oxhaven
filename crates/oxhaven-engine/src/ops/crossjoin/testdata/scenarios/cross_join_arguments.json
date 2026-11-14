@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "name": "cross_join_arguments",
+  "description": "Static cross joins with default, renamed and repeated added columns, match columns of different names, no match columns, empty tables, and the refusals: unknown columns, a name clash, match columns of different types.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "A", "type": "string"}],
+      "rows": [[1, "x"], [2, "y"], [1, "z"]]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "RK", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "V", "type": "int64"}, {"name": "W", "type": "string"}],
+      "rows": [[1, 1, 10, "p"], [1, 2, 11, "q"], [3, 1, 12, "r"]]
+    },
+    {
+      "name": "r2",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int64"}],
+      "rows": [[1, 20], [2, 21]]
+    },
+    {
+      "name": "rl",
+      "columns": [{"name": "K", "type": "int64"}, {"name": "V", "type": "int64"}],
+      "rows": [[1, 30]]
+    },
+    {
+      "name": "l0",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "A", "type": "string"}],
+      "rows": []
+    },
+    {
+      "name": "r0",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int64"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "defaults", "op": "join", "left": "l", "right": "r2", "on": ["K"]},
+    {"name": "renamed_match", "op": "join", "left": "l", "right": "r", "on": ["K=RK"], "joins": ["V", "W"]},
+    {"name": "renamed_match_defaults", "op": "join", "left": "l", "right": "r", "on": ["K=RK"], "joins": ["V", "W", "RK2=K"]},
+    {"name": "renamed_added", "op": "join", "left": "l", "right": "r2", "on": ["K"], "joins": ["X=V", "Y=V", "RK=K"]},
+    {"name": "zero_keys", "op": "join", "left": "l", "right": "r2", "on": []},
+    {"name": "zero_keys_renamed", "op": "join", "left": "l", "right": "r2", "on": [], "joins": ["RK=K", "V"]},
+    {"name": "zero_keys_empty_left", "op": "join", "left": "l0", "right": "r2", "on": [], "joins": ["V"]},
+    {"name": "zero_keys_empty_right", "op": "join", "left": "l", "right": "r0", "on": [], "joins": ["V"]},
+    {"name": "keyed_empty_left", "op": "join", "left": "l0", "right": "r2", "on": ["K"], "joins": ["V"]},
+    {"name": "keyed_empty_right", "op": "join", "left": "l", "right": "r0", "on": ["K"], "joins": ["V"]},
+    {"name": "two_matches", "op": "join", "left": "l", "right": "r", "on": ["K=RK", "K"], "joins": ["V"]},
+    {"name": "clash_default", "op": "join", "left": "l", "right": "r", "on": ["K=RK"]},
+    {"name": "clash_added", "op": "join", "left": "l", "right": "r2", "on": ["K"], "joins": ["A=V"]},
+    {"name": "clash_zero_keys", "op": "join", "left": "l", "right": "r2", "on": []},
+    {"name": "missing_left", "op": "join", "left": "l", "right": "r2", "on": ["Q=K"], "joins": ["V"]},
+    {"name": "missing_right", "op": "join", "left": "l", "right": "r2", "on": ["K=Q"], "joins": ["V"]},
+    {"name": "missing_added", "op": "join", "left": "l", "right": "r2", "on": ["K"], "joins": ["Q"]},
+    {"name": "mismatched", "op": "join", "left": "l", "right": "rl", "on": ["K"], "joins": ["V"]}
+  ],
+  "results": [
+    {"table": "defaults"},
+    {"table": "renamed_match"},
+    {"table": "renamed_match_defaults"},
+    {"table": "renamed_added"},
+    {"table": "zero_keys"},
+    {"table": "zero_keys_renamed"},
+    {"table": "zero_keys_empty_left"},
+    {"table": "zero_keys_empty_right"},
+    {"table": "keyed_empty_left"},
+    {"table": "keyed_empty_right"},
+    {"table": "two_matches"},
+    {"table": "clash_default"},
+    {"table": "clash_added"},
+    {"table": "clash_zero_keys"},
+    {"table": "missing_left"},
+    {"table": "missing_right"},
+    {"table": "missing_added"},
+    {"table": "mismatched"}
+  ]
+}
