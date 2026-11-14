@@ -1,0 +1,35 @@
+{
+ "name": "asof_default_additions",
+ "description": "The columns added when none are named, with a right table that has columns named like the left table's match columns: Java leaves out the right columns named like the left column of a match, also when the right column of the match has another name.",
+ "inputs": [
+  {"name": "l", "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "X", "type": "int32"}], "rows": [
+   [1, "a", 10],
+   [2, "b", 20]
+  ]},
+  {"name": "r", "columns": [{"name": "RK", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "W", "type": "string"}], "rows": [
+   ["a", 5, "k1", 91, "w1"],
+   ["b", 25, "k2", 92, "w2"]
+  ]}
+ ],
+ "operations": [
+  {"name": "aj_keyed", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K = RK", "X >= Y"]},
+  {"name": "raj_no_key", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["X <= Y"]},
+  {"name": "aj_named", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K = RK", "X >= Y"], "joins": ["RX = X", "W"]}
+ ],
+ "results": ["aj_keyed", "raj_no_key", "aj_named"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "aj_keyed": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "RK", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "a", 5, "w1"],
+    [2, "b", 20, null, null, null]
+   ]},
+   "raj_no_key": {"failure": "INVALID_ARGUMENT"},
+   "aj_named": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "RK", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "RX", "type": "int32"}, {"name": "W", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "a", 5, 91, "w1"],
+    [2, "b", 20, null, null, null, null]
+   ]}
+  }
+ ]}
+}

@@ -1,0 +1,695 @@
+{
+ "name": "asof_stamp_types",
+ "description": "The stamp types: for each column type, the four rules over null, the least and greatest values, NaN, the infinities, the two zeros and several right rows with one stamp; strings that order differently by UTF-16 code unit and by code point; a Boolean stamp joined with a byte stamp and an Instant stamp with a long stamp.",
+ "inputs": [
+  {"name": "l_bool", "columns": [{"name": "S", "type": "bool"}], "rows": [
+   [null],
+   [false],
+   [true]
+  ]},
+  {"name": "r_bool", "columns": [{"name": "S", "type": "bool"}, {"name": "W", "type": "int32"}], "rows": [
+   [true, 0],
+   [null, 1],
+   [false, 2],
+   [false, 3],
+   [true, 4]
+  ]},
+  {"name": "l_int8", "columns": [{"name": "S", "type": "int8"}], "rows": [
+   [null],
+   [-127],
+   [0],
+   [5],
+   [6],
+   [127]
+  ]},
+  {"name": "r_int8", "columns": [{"name": "S", "type": "int8"}, {"name": "W", "type": "int32"}], "rows": [
+   [5, 0],
+   [null, 1],
+   [-127, 2],
+   [5, 3],
+   [100, 4],
+   [null, 5]
+  ]},
+  {"name": "l_int16", "columns": [{"name": "S", "type": "int16"}], "rows": [
+   [null],
+   [-32767],
+   [0],
+   [5],
+   [6],
+   [32767]
+  ]},
+  {"name": "r_int16", "columns": [{"name": "S", "type": "int16"}, {"name": "W", "type": "int32"}], "rows": [
+   [5, 0],
+   [null, 1],
+   [-32767, 2],
+   [5, 3],
+   [100, 4],
+   [32767, 5]
+  ]},
+  {"name": "l_int32", "columns": [{"name": "S", "type": "int32"}], "rows": [
+   [null],
+   [-2147483647],
+   [0],
+   [5],
+   [6],
+   [2147483647]
+  ]},
+  {"name": "r_int32", "columns": [{"name": "S", "type": "int32"}, {"name": "W", "type": "int32"}], "rows": [
+   [5, 0],
+   [null, 1],
+   [-2147483647, 2],
+   [5, 3],
+   [100, 4],
+   [2147483647, 5]
+  ]},
+  {"name": "l_int64", "columns": [{"name": "S", "type": "int64"}], "rows": [
+   [null],
+   [-9223372036854775807],
+   [0],
+   [5],
+   [6],
+   [9223372036854775807]
+  ]},
+  {"name": "r_int64", "columns": [{"name": "S", "type": "int64"}, {"name": "W", "type": "int32"}], "rows": [
+   [5, 0],
+   [null, 1],
+   [-9223372036854775807, 2],
+   [5, 3],
+   [100, 4],
+   [9223372036854775807, 5]
+  ]},
+  {"name": "l_float32", "columns": [{"name": "S", "type": "float32"}], "rows": [
+   [null],
+   ["-Infinity"],
+   [-1.5],
+   [-0.0],
+   [0.0],
+   [2.0],
+   ["Infinity"],
+   ["NaN"],
+   [0.5]
+  ]},
+  {"name": "r_float32", "columns": [{"name": "S", "type": "float32"}, {"name": "W", "type": "int32"}], "rows": [
+   ["NaN", 0],
+   [0.0, 1],
+   [null, 2],
+   [-0.0, 3],
+   ["Infinity", 4],
+   ["-Infinity", 5],
+   [1.0, 6],
+   ["NaN", 7],
+   [null, 8]
+  ]},
+  {"name": "l_float64", "columns": [{"name": "S", "type": "float64"}], "rows": [
+   [null],
+   ["-Infinity"],
+   [-1.5],
+   [-0.0],
+   [0.0],
+   [2.0],
+   ["Infinity"],
+   ["NaN"],
+   [0.5]
+  ]},
+  {"name": "r_float64", "columns": [{"name": "S", "type": "float64"}, {"name": "W", "type": "int32"}], "rows": [
+   ["NaN", 0],
+   [0.0, 1],
+   [null, 2],
+   [-0.0, 3],
+   ["Infinity", 4],
+   ["-Infinity", 5],
+   [1.0, 6],
+   ["NaN", 7],
+   [null, 8]
+  ]},
+  {"name": "l_string", "columns": [{"name": "S", "type": "string"}], "rows": [
+   [null],
+   [""],
+   ["a"],
+   ["b"],
+   ["c"],
+   ["\uff5e"],
+   ["\ud83d\ude00"],
+   ["zz"],
+   ["\uffff"]
+  ]},
+  {"name": "r_string", "columns": [{"name": "S", "type": "string"}, {"name": "W", "type": "int32"}], "rows": [
+   ["b", 0],
+   [null, 1],
+   ["", 2],
+   ["\ud83d\ude00", 3],
+   ["\uff5e", 4],
+   ["a", 5],
+   ["a", 6],
+   ["B", 7]
+  ]},
+  {"name": "l_timestamp", "columns": [{"name": "S", "type": "timestamp"}], "rows": [
+   [null],
+   [-5],
+   [0],
+   [1700000000000000000],
+   [1700000000000000001]
+  ]},
+  {"name": "r_timestamp", "columns": [{"name": "S", "type": "timestamp"}, {"name": "W", "type": "int32"}], "rows": [
+   [1700000000000000000, 0],
+   [null, 1],
+   [-5, 2],
+   [1700000000000000000, 3],
+   [7, 4]
+  ]},
+  {"name": "l_char", "columns": [{"name": "S", "type": "char"}], "rows": [
+   [null],
+   [0],
+   [65],
+   [66],
+   [67],
+   [65534]
+  ]},
+  {"name": "r_char", "columns": [{"name": "S", "type": "char"}, {"name": "W", "type": "int32"}], "rows": [
+   [66, 0],
+   [null, 1],
+   [0, 2],
+   [65, 3],
+   [65, 4],
+   [65534, 5]
+  ]},
+  {"name": "r_long", "columns": [{"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}], "rows": [
+   [-5, 0],
+   [null, 1],
+   [1700000000000000000, 2],
+   [8, 3]
+  ]},
+  {"name": "r_byte", "columns": [{"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}], "rows": [
+   [1, 0],
+   [null, 1],
+   [0, 2],
+   [-3, 3],
+   [7, 4]
+  ]}
+ ],
+ "operations": [
+  {"name": "bool_aj_ge", "op": "aj", "left": "l_bool", "right": "r_bool", "source": "l_bool", "set": "r_bool", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "bool_aj_gt", "op": "aj", "left": "l_bool", "right": "r_bool", "source": "l_bool", "set": "r_bool", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "bool_raj_le", "op": "raj", "left": "l_bool", "right": "r_bool", "source": "l_bool", "set": "r_bool", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "bool_raj_lt", "op": "raj", "left": "l_bool", "right": "r_bool", "source": "l_bool", "set": "r_bool", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "int8_aj_ge", "op": "aj", "left": "l_int8", "right": "r_int8", "source": "l_int8", "set": "r_int8", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "int8_aj_gt", "op": "aj", "left": "l_int8", "right": "r_int8", "source": "l_int8", "set": "r_int8", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "int8_raj_le", "op": "raj", "left": "l_int8", "right": "r_int8", "source": "l_int8", "set": "r_int8", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "int8_raj_lt", "op": "raj", "left": "l_int8", "right": "r_int8", "source": "l_int8", "set": "r_int8", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "int16_aj_ge", "op": "aj", "left": "l_int16", "right": "r_int16", "source": "l_int16", "set": "r_int16", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "int16_aj_gt", "op": "aj", "left": "l_int16", "right": "r_int16", "source": "l_int16", "set": "r_int16", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "int16_raj_le", "op": "raj", "left": "l_int16", "right": "r_int16", "source": "l_int16", "set": "r_int16", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "int16_raj_lt", "op": "raj", "left": "l_int16", "right": "r_int16", "source": "l_int16", "set": "r_int16", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "int32_aj_ge", "op": "aj", "left": "l_int32", "right": "r_int32", "source": "l_int32", "set": "r_int32", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "int32_aj_gt", "op": "aj", "left": "l_int32", "right": "r_int32", "source": "l_int32", "set": "r_int32", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "int32_raj_le", "op": "raj", "left": "l_int32", "right": "r_int32", "source": "l_int32", "set": "r_int32", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "int32_raj_lt", "op": "raj", "left": "l_int32", "right": "r_int32", "source": "l_int32", "set": "r_int32", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "int64_aj_ge", "op": "aj", "left": "l_int64", "right": "r_int64", "source": "l_int64", "set": "r_int64", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "int64_aj_gt", "op": "aj", "left": "l_int64", "right": "r_int64", "source": "l_int64", "set": "r_int64", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "int64_raj_le", "op": "raj", "left": "l_int64", "right": "r_int64", "source": "l_int64", "set": "r_int64", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "int64_raj_lt", "op": "raj", "left": "l_int64", "right": "r_int64", "source": "l_int64", "set": "r_int64", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "float32_aj_ge", "op": "aj", "left": "l_float32", "right": "r_float32", "source": "l_float32", "set": "r_float32", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "float32_aj_gt", "op": "aj", "left": "l_float32", "right": "r_float32", "source": "l_float32", "set": "r_float32", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "float32_raj_le", "op": "raj", "left": "l_float32", "right": "r_float32", "source": "l_float32", "set": "r_float32", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "float32_raj_lt", "op": "raj", "left": "l_float32", "right": "r_float32", "source": "l_float32", "set": "r_float32", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "float64_aj_ge", "op": "aj", "left": "l_float64", "right": "r_float64", "source": "l_float64", "set": "r_float64", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "float64_aj_gt", "op": "aj", "left": "l_float64", "right": "r_float64", "source": "l_float64", "set": "r_float64", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "float64_raj_le", "op": "raj", "left": "l_float64", "right": "r_float64", "source": "l_float64", "set": "r_float64", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "float64_raj_lt", "op": "raj", "left": "l_float64", "right": "r_float64", "source": "l_float64", "set": "r_float64", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "string_aj_ge", "op": "aj", "left": "l_string", "right": "r_string", "source": "l_string", "set": "r_string", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "string_aj_gt", "op": "aj", "left": "l_string", "right": "r_string", "source": "l_string", "set": "r_string", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "string_raj_le", "op": "raj", "left": "l_string", "right": "r_string", "source": "l_string", "set": "r_string", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "string_raj_lt", "op": "raj", "left": "l_string", "right": "r_string", "source": "l_string", "set": "r_string", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "timestamp_aj_ge", "op": "aj", "left": "l_timestamp", "right": "r_timestamp", "source": "l_timestamp", "set": "r_timestamp", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "timestamp_aj_gt", "op": "aj", "left": "l_timestamp", "right": "r_timestamp", "source": "l_timestamp", "set": "r_timestamp", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "timestamp_raj_le", "op": "raj", "left": "l_timestamp", "right": "r_timestamp", "source": "l_timestamp", "set": "r_timestamp", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "timestamp_raj_lt", "op": "raj", "left": "l_timestamp", "right": "r_timestamp", "source": "l_timestamp", "set": "r_timestamp", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "char_aj_ge", "op": "aj", "left": "l_char", "right": "r_char", "source": "l_char", "set": "r_char", "on": ["S >= S"], "joins": ["RS = S", "W"]},
+  {"name": "char_aj_gt", "op": "aj", "left": "l_char", "right": "r_char", "source": "l_char", "set": "r_char", "on": ["S > S"], "joins": ["RS = S", "W"]},
+  {"name": "char_raj_le", "op": "raj", "left": "l_char", "right": "r_char", "source": "l_char", "set": "r_char", "on": ["S <= S"], "joins": ["RS = S", "W"]},
+  {"name": "char_raj_lt", "op": "raj", "left": "l_char", "right": "r_char", "source": "l_char", "set": "r_char", "on": ["S < S"], "joins": ["RS = S", "W"]},
+  {"name": "timestamp_long_aj_ge", "op": "aj", "left": "l_timestamp", "right": "r_long", "source": "l_timestamp", "set": "r_long", "on": ["S >= L"], "joins": ["W"]},
+  {"name": "long_timestamp_aj_ge", "op": "aj", "left": "r_long", "right": "l_timestamp", "source": "r_long", "set": "l_timestamp", "on": ["L >= S"], "joins": []},
+  {"name": "bool_byte_aj_ge", "op": "aj", "left": "l_bool", "right": "r_byte", "source": "l_bool", "set": "r_byte", "on": ["S >= Y"], "joins": ["W"]},
+  {"name": "byte_bool_aj_ge", "op": "aj", "left": "r_byte", "right": "l_bool", "source": "r_byte", "set": "l_bool", "on": ["Y >= S"], "joins": []},
+  {"name": "timestamp_long_aj_gt", "op": "aj", "left": "l_timestamp", "right": "r_long", "source": "l_timestamp", "set": "r_long", "on": ["S > L"], "joins": ["W"]},
+  {"name": "long_timestamp_aj_gt", "op": "aj", "left": "r_long", "right": "l_timestamp", "source": "r_long", "set": "l_timestamp", "on": ["L > S"], "joins": []},
+  {"name": "bool_byte_aj_gt", "op": "aj", "left": "l_bool", "right": "r_byte", "source": "l_bool", "set": "r_byte", "on": ["S > Y"], "joins": ["W"]},
+  {"name": "byte_bool_aj_gt", "op": "aj", "left": "r_byte", "right": "l_bool", "source": "r_byte", "set": "l_bool", "on": ["Y > S"], "joins": []},
+  {"name": "timestamp_long_raj_le", "op": "raj", "left": "l_timestamp", "right": "r_long", "source": "l_timestamp", "set": "r_long", "on": ["S <= L"], "joins": ["W"]},
+  {"name": "long_timestamp_raj_le", "op": "raj", "left": "r_long", "right": "l_timestamp", "source": "r_long", "set": "l_timestamp", "on": ["L <= S"], "joins": []},
+  {"name": "bool_byte_raj_le", "op": "raj", "left": "l_bool", "right": "r_byte", "source": "l_bool", "set": "r_byte", "on": ["S <= Y"], "joins": ["W"]},
+  {"name": "byte_bool_raj_le", "op": "raj", "left": "r_byte", "right": "l_bool", "source": "r_byte", "set": "l_bool", "on": ["Y <= S"], "joins": []},
+  {"name": "timestamp_long_raj_lt", "op": "raj", "left": "l_timestamp", "right": "r_long", "source": "l_timestamp", "set": "r_long", "on": ["S < L"], "joins": ["W"]},
+  {"name": "long_timestamp_raj_lt", "op": "raj", "left": "r_long", "right": "l_timestamp", "source": "r_long", "set": "l_timestamp", "on": ["L < S"], "joins": []},
+  {"name": "bool_byte_raj_lt", "op": "raj", "left": "l_bool", "right": "r_byte", "source": "l_bool", "set": "r_byte", "on": ["S < Y"], "joins": ["W"]},
+  {"name": "byte_bool_raj_lt", "op": "raj", "left": "r_byte", "right": "l_bool", "source": "r_byte", "set": "l_bool", "on": ["Y < S"], "joins": []}
+ ],
+ "results": ["bool_aj_ge", "bool_aj_gt", "bool_raj_le", "bool_raj_lt", "int8_aj_ge", "int8_aj_gt", "int8_raj_le", "int8_raj_lt", "int16_aj_ge", "int16_aj_gt", "int16_raj_le", "int16_raj_lt", "int32_aj_ge", "int32_aj_gt", "int32_raj_le", "int32_raj_lt", "int64_aj_ge", "int64_aj_gt", "int64_raj_le", "int64_raj_lt", "float32_aj_ge", "float32_aj_gt", "float32_raj_le", "float32_raj_lt", "float64_aj_ge", "float64_aj_gt", "float64_raj_le", "float64_raj_lt", "string_aj_ge", "string_aj_gt", "string_raj_le", "string_raj_lt", "timestamp_aj_ge", "timestamp_aj_gt", "timestamp_raj_le", "timestamp_raj_lt", "char_aj_ge", "char_aj_gt", "char_raj_le", "char_raj_lt", "timestamp_long_aj_ge", "long_timestamp_aj_ge", "bool_byte_aj_ge", "byte_bool_aj_ge", "timestamp_long_aj_gt", "long_timestamp_aj_gt", "bool_byte_aj_gt", "byte_bool_aj_gt", "timestamp_long_raj_le", "long_timestamp_raj_le", "bool_byte_raj_le", "byte_bool_raj_le", "timestamp_long_raj_lt", "long_timestamp_raj_lt", "bool_byte_raj_lt", "byte_bool_raj_lt"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "bool_aj_ge": {"columns": [{"name": "S", "type": "bool"}, {"name": "RS", "type": "bool"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [false, false, 3],
+    [true, true, 4]
+   ]},
+   "bool_aj_gt": {"columns": [{"name": "S", "type": "bool"}, {"name": "RS", "type": "bool"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [false, null, 1],
+    [true, false, 3]
+   ]},
+   "bool_raj_le": {"columns": [{"name": "S", "type": "bool"}, {"name": "RS", "type": "bool"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [false, false, 2],
+    [true, true, 0]
+   ]},
+   "bool_raj_lt": {"columns": [{"name": "S", "type": "bool"}, {"name": "RS", "type": "bool"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, false, 2],
+    [false, true, 0],
+    [true, null, null]
+   ]},
+   "int8_aj_ge": {"columns": [{"name": "S", "type": "int8"}, {"name": "RS", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 5],
+    [-127, -127, 2],
+    [0, -127, 2],
+    [5, 5, 3],
+    [6, 5, 3],
+    [127, 100, 4]
+   ]},
+   "int8_aj_gt": {"columns": [{"name": "S", "type": "int8"}, {"name": "RS", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-127, null, 5],
+    [0, -127, 2],
+    [5, -127, 2],
+    [6, 5, 3],
+    [127, 100, 4]
+   ]},
+   "int8_raj_le": {"columns": [{"name": "S", "type": "int8"}, {"name": "RS", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-127, -127, 2],
+    [0, 5, 0],
+    [5, 5, 0],
+    [6, 100, 4],
+    [127, null, null]
+   ]},
+   "int8_raj_lt": {"columns": [{"name": "S", "type": "int8"}, {"name": "RS", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -127, 2],
+    [-127, 5, 0],
+    [0, 5, 0],
+    [5, 100, 4],
+    [6, 100, 4],
+    [127, null, null]
+   ]},
+   "int16_aj_ge": {"columns": [{"name": "S", "type": "int16"}, {"name": "RS", "type": "int16"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-32767, -32767, 2],
+    [0, -32767, 2],
+    [5, 5, 3],
+    [6, 5, 3],
+    [32767, 32767, 5]
+   ]},
+   "int16_aj_gt": {"columns": [{"name": "S", "type": "int16"}, {"name": "RS", "type": "int16"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-32767, null, 1],
+    [0, -32767, 2],
+    [5, -32767, 2],
+    [6, 5, 3],
+    [32767, 100, 4]
+   ]},
+   "int16_raj_le": {"columns": [{"name": "S", "type": "int16"}, {"name": "RS", "type": "int16"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-32767, -32767, 2],
+    [0, 5, 0],
+    [5, 5, 0],
+    [6, 100, 4],
+    [32767, 32767, 5]
+   ]},
+   "int16_raj_lt": {"columns": [{"name": "S", "type": "int16"}, {"name": "RS", "type": "int16"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -32767, 2],
+    [-32767, 5, 0],
+    [0, 5, 0],
+    [5, 100, 4],
+    [6, 100, 4],
+    [32767, null, null]
+   ]},
+   "int32_aj_ge": {"columns": [{"name": "S", "type": "int32"}, {"name": "RS", "type": "int32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-2147483647, -2147483647, 2],
+    [0, -2147483647, 2],
+    [5, 5, 3],
+    [6, 5, 3],
+    [2147483647, 2147483647, 5]
+   ]},
+   "int32_aj_gt": {"columns": [{"name": "S", "type": "int32"}, {"name": "RS", "type": "int32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-2147483647, null, 1],
+    [0, -2147483647, 2],
+    [5, -2147483647, 2],
+    [6, 5, 3],
+    [2147483647, 100, 4]
+   ]},
+   "int32_raj_le": {"columns": [{"name": "S", "type": "int32"}, {"name": "RS", "type": "int32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-2147483647, -2147483647, 2],
+    [0, 5, 0],
+    [5, 5, 0],
+    [6, 100, 4],
+    [2147483647, 2147483647, 5]
+   ]},
+   "int32_raj_lt": {"columns": [{"name": "S", "type": "int32"}, {"name": "RS", "type": "int32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -2147483647, 2],
+    [-2147483647, 5, 0],
+    [0, 5, 0],
+    [5, 100, 4],
+    [6, 100, 4],
+    [2147483647, null, null]
+   ]},
+   "int64_aj_ge": {"columns": [{"name": "S", "type": "int64"}, {"name": "RS", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-9223372036854775807, -9223372036854775807, 2],
+    [0, -9223372036854775807, 2],
+    [5, 5, 3],
+    [6, 5, 3],
+    [9223372036854775807, 9223372036854775807, 5]
+   ]},
+   "int64_aj_gt": {"columns": [{"name": "S", "type": "int64"}, {"name": "RS", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-9223372036854775807, null, 1],
+    [0, -9223372036854775807, 2],
+    [5, -9223372036854775807, 2],
+    [6, 5, 3],
+    [9223372036854775807, 100, 4]
+   ]},
+   "int64_raj_le": {"columns": [{"name": "S", "type": "int64"}, {"name": "RS", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-9223372036854775807, -9223372036854775807, 2],
+    [0, 5, 0],
+    [5, 5, 0],
+    [6, 100, 4],
+    [9223372036854775807, 9223372036854775807, 5]
+   ]},
+   "int64_raj_lt": {"columns": [{"name": "S", "type": "int64"}, {"name": "RS", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -9223372036854775807, 2],
+    [-9223372036854775807, 5, 0],
+    [0, 5, 0],
+    [5, 100, 4],
+    [6, 100, 4],
+    [9223372036854775807, null, null]
+   ]},
+   "float32_aj_ge": {"columns": [{"name": "S", "type": "float32"}, {"name": "RS", "type": "float32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 8],
+    ["-Infinity", "-Infinity", 5],
+    [-1.5, "-Infinity", 5],
+    [-0.0, -0.0, 3],
+    [0.0, -0.0, 3],
+    [2.0, 1.0, 6],
+    ["Infinity", "Infinity", 4],
+    ["NaN", "NaN", 7],
+    [0.5, -0.0, 3]
+   ]},
+   "float32_aj_gt": {"columns": [{"name": "S", "type": "float32"}, {"name": "RS", "type": "float32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    ["-Infinity", null, 8],
+    [-1.5, "-Infinity", 5],
+    [-0.0, "-Infinity", 5],
+    [0.0, "-Infinity", 5],
+    [2.0, 1.0, 6],
+    ["Infinity", 1.0, 6],
+    ["NaN", "Infinity", 4],
+    [0.5, -0.0, 3]
+   ]},
+   "float32_raj_le": {"columns": [{"name": "S", "type": "float32"}, {"name": "RS", "type": "float32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 2],
+    ["-Infinity", "-Infinity", 5],
+    [-1.5, 0.0, 1],
+    [-0.0, 0.0, 1],
+    [0.0, 0.0, 1],
+    [2.0, "Infinity", 4],
+    ["Infinity", "Infinity", 4],
+    ["NaN", "NaN", 0],
+    [0.5, 1.0, 6]
+   ]},
+   "float32_raj_lt": {"columns": [{"name": "S", "type": "float32"}, {"name": "RS", "type": "float32"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, "-Infinity", 5],
+    ["-Infinity", 0.0, 1],
+    [-1.5, 0.0, 1],
+    [-0.0, 1.0, 6],
+    [0.0, 1.0, 6],
+    [2.0, "Infinity", 4],
+    ["Infinity", "NaN", 0],
+    ["NaN", null, null],
+    [0.5, 1.0, 6]
+   ]},
+   "float64_aj_ge": {"columns": [{"name": "S", "type": "float64"}, {"name": "RS", "type": "float64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 8],
+    ["-Infinity", "-Infinity", 5],
+    [-1.5, "-Infinity", 5],
+    [-0.0, -0.0, 3],
+    [0.0, -0.0, 3],
+    [2.0, 1.0, 6],
+    ["Infinity", "Infinity", 4],
+    ["NaN", "NaN", 7],
+    [0.5, -0.0, 3]
+   ]},
+   "float64_aj_gt": {"columns": [{"name": "S", "type": "float64"}, {"name": "RS", "type": "float64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    ["-Infinity", null, 8],
+    [-1.5, "-Infinity", 5],
+    [-0.0, "-Infinity", 5],
+    [0.0, "-Infinity", 5],
+    [2.0, 1.0, 6],
+    ["Infinity", 1.0, 6],
+    ["NaN", "Infinity", 4],
+    [0.5, -0.0, 3]
+   ]},
+   "float64_raj_le": {"columns": [{"name": "S", "type": "float64"}, {"name": "RS", "type": "float64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 2],
+    ["-Infinity", "-Infinity", 5],
+    [-1.5, 0.0, 1],
+    [-0.0, 0.0, 1],
+    [0.0, 0.0, 1],
+    [2.0, "Infinity", 4],
+    ["Infinity", "Infinity", 4],
+    ["NaN", "NaN", 0],
+    [0.5, 1.0, 6]
+   ]},
+   "float64_raj_lt": {"columns": [{"name": "S", "type": "float64"}, {"name": "RS", "type": "float64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, "-Infinity", 5],
+    ["-Infinity", 0.0, 1],
+    [-1.5, 0.0, 1],
+    [-0.0, 1.0, 6],
+    [0.0, 1.0, 6],
+    [2.0, "Infinity", 4],
+    ["Infinity", "NaN", 0],
+    ["NaN", null, null],
+    [0.5, 1.0, 6]
+   ]},
+   "string_aj_ge": {"columns": [{"name": "S", "type": "string"}, {"name": "RS", "type": "string"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    ["", "", 2],
+    ["a", "a", 6],
+    ["b", "b", 0],
+    ["c", "b", 0],
+    ["\uff5e", "\uff5e", 4],
+    ["\ud83d\ude00", "\ud83d\ude00", 3],
+    ["zz", "b", 0],
+    ["\uffff", "\uff5e", 4]
+   ]},
+   "string_aj_gt": {"columns": [{"name": "S", "type": "string"}, {"name": "RS", "type": "string"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    ["", null, 1],
+    ["a", "B", 7],
+    ["b", "a", 6],
+    ["c", "b", 0],
+    ["\uff5e", "\ud83d\ude00", 3],
+    ["\ud83d\ude00", "b", 0],
+    ["zz", "b", 0],
+    ["\uffff", "\uff5e", 4]
+   ]},
+   "string_raj_le": {"columns": [{"name": "S", "type": "string"}, {"name": "RS", "type": "string"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    ["", "", 2],
+    ["a", "a", 5],
+    ["b", "b", 0],
+    ["c", "\ud83d\ude00", 3],
+    ["\uff5e", "\uff5e", 4],
+    ["\ud83d\ude00", "\ud83d\ude00", 3],
+    ["zz", "\ud83d\ude00", 3],
+    ["\uffff", null, null]
+   ]},
+   "string_raj_lt": {"columns": [{"name": "S", "type": "string"}, {"name": "RS", "type": "string"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, "", 2],
+    ["", "B", 7],
+    ["a", "b", 0],
+    ["b", "\ud83d\ude00", 3],
+    ["c", "\ud83d\ude00", 3],
+    ["\uff5e", null, null],
+    ["\ud83d\ude00", "\uff5e", 4],
+    ["zz", "\ud83d\ude00", 3],
+    ["\uffff", null, null]
+   ]},
+   "timestamp_aj_ge": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "RS", "type": "timestamp"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-5, -5, 2],
+    [0, -5, 2],
+    [1700000000000000000, 1700000000000000000, 3],
+    [1700000000000000001, 1700000000000000000, 3]
+   ]},
+   "timestamp_aj_gt": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "RS", "type": "timestamp"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-5, null, 1],
+    [0, -5, 2],
+    [1700000000000000000, 7, 4],
+    [1700000000000000001, 1700000000000000000, 3]
+   ]},
+   "timestamp_raj_le": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "RS", "type": "timestamp"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-5, -5, 2],
+    [0, 7, 4],
+    [1700000000000000000, 1700000000000000000, 0],
+    [1700000000000000001, null, null]
+   ]},
+   "timestamp_raj_lt": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "RS", "type": "timestamp"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -5, 2],
+    [-5, 7, 4],
+    [0, 7, 4],
+    [1700000000000000000, null, null],
+    [1700000000000000001, null, null]
+   ]},
+   "char_aj_ge": {"columns": [{"name": "S", "type": "char"}, {"name": "RS", "type": "char"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [0, 0, 2],
+    [65, 65, 4],
+    [66, 66, 0],
+    [67, 66, 0],
+    [65534, 65534, 5]
+   ]},
+   "char_aj_gt": {"columns": [{"name": "S", "type": "char"}, {"name": "RS", "type": "char"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [0, null, 1],
+    [65, 0, 2],
+    [66, 65, 4],
+    [67, 66, 0],
+    [65534, 66, 0]
+   ]},
+   "char_raj_le": {"columns": [{"name": "S", "type": "char"}, {"name": "RS", "type": "char"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [0, 0, 2],
+    [65, 65, 3],
+    [66, 66, 0],
+    [67, 65534, 5],
+    [65534, 65534, 5]
+   ]},
+   "char_raj_lt": {"columns": [{"name": "S", "type": "char"}, {"name": "RS", "type": "char"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, 0, 2],
+    [0, 65, 3],
+    [65, 66, 0],
+    [66, 65534, 5],
+    [67, 65534, 5],
+    [65534, null, null]
+   ]},
+   "timestamp_long_aj_ge": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-5, -5, 0],
+    [0, -5, 0],
+    [1700000000000000000, 1700000000000000000, 2],
+    [1700000000000000001, 1700000000000000000, 2]
+   ]},
+   "long_timestamp_aj_ge": {"columns": [{"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-5, 0, -5],
+    [null, 1, null],
+    [1700000000000000000, 2, 1700000000000000000],
+    [8, 3, 0]
+   ]},
+   "bool_byte_aj_ge": {"columns": [{"name": "S", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [false, 0, 2],
+    [true, 1, 0]
+   ]},
+   "byte_bool_aj_ge": {"columns": [{"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "bool"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 0, true],
+    [null, 1, null],
+    [0, 2, false],
+    [-3, 3, null],
+    [7, 4, true]
+   ]},
+   "timestamp_long_aj_gt": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [-5, null, 1],
+    [0, -5, 0],
+    [1700000000000000000, 8, 3],
+    [1700000000000000001, 1700000000000000000, 2]
+   ]},
+   "long_timestamp_aj_gt": {"columns": [{"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-5, 0, null],
+    [null, 1, null],
+    [1700000000000000000, 2, 0],
+    [8, 3, 0]
+   ]},
+   "bool_byte_aj_gt": {"columns": [{"name": "S", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null],
+    [false, -3, 3],
+    [true, 0, 2]
+   ]},
+   "byte_bool_aj_gt": {"columns": [{"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "bool"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 0, false],
+    [null, 1, null],
+    [0, 2, null],
+    [-3, 3, null],
+    [7, 4, true]
+   ]},
+   "timestamp_long_raj_le": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [-5, -5, 0],
+    [0, 8, 3],
+    [1700000000000000000, 1700000000000000000, 2],
+    [1700000000000000001, null, null]
+   ]},
+   "long_timestamp_raj_le": {"columns": [{"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-5, 0, -5],
+    [null, 1, null],
+    [1700000000000000000, 2, 1700000000000000000],
+    [8, 3, 1700000000000000000]
+   ]},
+   "bool_byte_raj_le": {"columns": [{"name": "S", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, 1],
+    [false, 0, 2],
+    [true, 1, 0]
+   ]},
+   "byte_bool_raj_le": {"columns": [{"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "bool"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 0, true],
+    [null, 1, null],
+    [0, 2, false],
+    [-3, 3, false],
+    [7, 4, null]
+   ]},
+   "timestamp_long_raj_lt": {"columns": [{"name": "S", "type": "timestamp"}, {"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -5, 0],
+    [-5, 8, 3],
+    [0, 8, 3],
+    [1700000000000000000, null, null],
+    [1700000000000000001, null, null]
+   ]},
+   "long_timestamp_raj_lt": {"columns": [{"name": "L", "type": "int64"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "timestamp"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-5, 0, 0],
+    [null, 1, -5],
+    [1700000000000000000, 2, 1700000000000000001],
+    [8, 3, 1700000000000000000]
+   ]},
+   "bool_byte_raj_lt": {"columns": [{"name": "S", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, -3, 3],
+    [false, 1, 0],
+    [true, 7, 4]
+   ]},
+   "byte_bool_raj_lt": {"columns": [{"name": "Y", "type": "int8"}, {"name": "W", "type": "int32"}, {"name": "S", "type": "bool"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 0, null],
+    [null, 1, false],
+    [0, 2, true],
+    [-3, 3, false],
+    [7, 4, null]
+   ]}
+  }
+ ]}
+}
