@@ -7,6 +7,9 @@
 //! equal to every NaN), and the attributes `IsFlat`, `AddOnly`, `AppendOnly` and
 //! `BlinkTable`. Where Java refused an operation, it must be refused here with the same
 //! status code.
+//!
+//! For the tables a fixture names under `updates`, every update is compared as well: the
+//! added, removed and modified rows by position, update by update.
 
 use crate::ops::sort::testing::graph;
 use crate::ops::sort::{head, sort, tail, SortColumn};
@@ -19,7 +22,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use oxhaven_testkit::{definition, TableSnapshot};
+use oxhaven_testkit::{definition, Recorder, TableSnapshot};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -267,13 +270,43 @@ fn compare(place: &str, expected: &Value, table: &dyn Table) {
     );
 }
 
+/// The rows of a recorded update, which are positions.
+fn positions(rows: &Value) -> Vec<i64> {
+    let rows = list(rows).iter();
+    rows.map(|row| row.as_i64().expect("a position")).collect()
+}
+
+/// Compares the updates a table delivered during a step with the recorded ones. The table's
+/// row keys have to be its positions, as those of a sort's result are: the recording has
+/// positions, removed rows by their position before the update and the others after it.
+fn compare_updates(place: &str, expected: &Value, recorder: &Recorder, seen: &mut usize) {
+    let events = recorder.events().split_off(*seen);
+    *seen += events.len();
+    let found: Vec<[Vec<i64>; 3]> = events
+        .into_iter()
+        .map(|event| {
+            let update = event.unwrap_or_else(|failure| panic!("{place}: {}", failure.message));
+            [&update.added, &update.removed, &update.modified].map(|rows| rows.iter().collect())
+        })
+        .collect();
+    let recorded: Vec<[Vec<i64>; 3]> = list(expected)
+        .iter()
+        .map(|update| ["added", "removed", "modified"].map(|rows| positions(&update[rows])))
+        .collect();
+    assert_eq!(
+        found, recorded,
+        "{place}: the added, removed and modified positions of each update"
+    );
+}
+
 /// Builds the table of an operation from the operation and its source tables.
 pub(crate) type Define<'a> = &'a dyn Fn(&Value, &[Arc<dyn Table>]) -> Built;
 
 /// Replays the fixture at `path`. `define` builds the table of an operation that this file
 /// does not know (it knows `sort`, `head` and `tail`), given the operation and its source
 /// tables in the order `source`, `trigger`, `set`. Returns the number of comparisons made:
-/// one per result and step, including the refusals.
+/// one per result and step, including the refusals, and one per table of `updates` and
+/// step after the first.
 pub(crate) fn replay(path: &Path, define: Define) -> usize {
     let file = File::open(path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     let fixture: Value =
@@ -312,11 +345,24 @@ pub(crate) fn replay(path: &Path, define: Define) -> usize {
         tables.insert(text(&operation["name"]), built);
     }
 
+    let mut recorders: Vec<(&str, Arc<Recorder>, usize)> = texts(&fixture["updates"])
+        .into_iter()
+        .map(|name| {
+            let table = tables[name].clone().expect("a table to listen to");
+            let size = table.row_set().size();
+            assert!(
+                table.row_set().iter().eq(0..size as i64),
+                "{name}: row keys that are not positions"
+            );
+            (name, Recorder::attach(table), 0)
+        })
+        .collect();
     let results = texts(&fixture["results"]);
     let recorded = list(&fixture["java"]["steps"]);
     let steps = list(&fixture["steps"]);
     assert_eq!(recorded.len(), steps.len() + 1, "{name}: recorded steps");
     let mut comparisons = 0;
+    let mut update_comparisons = 0;
     let mut check = |step: usize| {
         for result in &results {
             let place = format!("{name}/{result} at step {step}");
@@ -354,6 +400,12 @@ pub(crate) fn replay(path: &Path, define: Define) -> usize {
             }
         }
         check(index + 1);
+        for (table, recorder, seen) in &mut recorders {
+            let place = format!("{name}/{table} during step {}", index + 1);
+            let expected = &fixture["java"]["updates"][index][*table];
+            compare_updates(&place, expected, recorder, seen);
+            update_comparisons += 1;
+        }
     }
-    comparisons
+    comparisons + update_comparisons
 }

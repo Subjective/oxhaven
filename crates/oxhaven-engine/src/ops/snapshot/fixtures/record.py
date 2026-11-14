@@ -1,4 +1,4 @@
-"""Records what the Java reference answers for the fixtures of `ops/snapshot` and `ops/distinct`.
+"""Records what the Java reference answers for the fixtures of `ops/snapshot`, `ops/distinct` and `ops/sort`.
 
 The oracle harness (`oracle/`) has no `snapshot`, `snapshot_when`, `select_distinct` or
 `where_in` operation yet, so these operations have no scenarios in `oracle/corpus`. Until it
@@ -25,7 +25,9 @@ A fixture:
      "results": ["table", ...],
      "steps": [{"actions": [{"action": "add" | "delete", "table", "rows"}]}],
      "fails": {"table": step},                               # optional, see below
-     "java": {"steps": [{"table": {"columns", "attributes", "rows"} | {"failure": "CODE"}}]}}
+     "updates": ["table", ...],                              # optional, see below
+     "java": {"steps": [{"table": {"columns", "attributes", "rows"} | {"failure": "CODE"}}],
+              "updates": [{"table": [{"added": [...], "removed": [...], "modified": [...]}]}]}}
 
 Inputs, cells and steps are those of the oracle's scenario format (`oracle/README.md`), with
 one more column type, `char` (a UTF-16 code unit as an integer). Step 0 of `java` is the state
@@ -37,6 +39,14 @@ table that failed during an update cycle, with the rows it had (`PARITY.md`, Q11
 recording cannot show the failure. `fails` names the step at which the Java source says a
 result fails; the recording supports it only in that the table stops changing there. The
 Rust tests require the failure at that step and do not compare the table from then on.
+
+`updates` names tables whose updates are recorded as well as their rows: entry k of
+`java.updates` holds, for each of them, the updates it delivered during the k-th entry of
+`steps`, in order. The script listens to the table on the server (through the Python console
+of the reference server, `deephaven.table_listener.listen`) and writes each update's added,
+removed and modified rows as positions: removed rows by their position in the table before
+the update, added and modified rows by their position after it. Row keys and shifts are not
+recorded, since Java's row keys are not compared (`PARITY.md` A4).
 
 The operations:
 
@@ -58,6 +68,7 @@ import argparse
 import json
 import math
 import sys
+import uuid
 from pathlib import Path
 
 import pyarrow as pa
@@ -197,6 +208,74 @@ def snapshot(session, fixture, tables):
     return out
 
 
+LISTEN = """
+import json as _json
+from deephaven.table_listener import listen as _listen
+
+def _{log}_positions(rows, within):
+    found = within.invert(rows)
+    return [found.get(i) for i in range(found.size())]
+
+def _{log}_listen(name, table):
+    def on_update(update, is_replay):
+        j = update.j_table_update
+        rows = table.j_table.getRowSet()
+        {log}.append(_json.dumps([name, dict(
+            added=_{log}_positions(j.added(), rows),
+            removed=_{log}_positions(j.removed(), rows.prev()),
+            modified=_{log}_positions(j.modified(), rows),
+        )]))
+    return _listen(table, on_update)
+
+{log} = []
+{log}_handles = [_{log}_listen(name, table) for name, table in {tables}]
+"""
+DRAIN = """
+from deephaven import new_table as _new_table
+from deephaven.column import string_col as _string_col
+{log}_table = _new_table([_string_col("Update", list({log}))])
+del {log}[:]
+"""
+STOP = """
+for _handle in {log}_handles:
+    _handle.stop()
+del {log}_handles, {log}
+"""
+
+
+class Updates:
+    """Listens on the server to the tables named by a fixture's `updates`."""
+
+    def __init__(self, session, fixture, tables):
+        self.session = session
+        self.names = fixture.get("updates", [])
+        self.log = f"oxhaven_updates_{uuid.uuid4().hex}"
+        if not self.names:
+            return
+        bound = []
+        for index, name in enumerate(self.names):
+            variable = f"{self.log}_{index}"
+            session.bind_table(variable, tables[name])
+            bound.append(f"({name!r}, {variable})")
+        session.run_script(LISTEN.format(log=self.log, tables="[" + ", ".join(bound) + "]"))
+
+    def drain(self):
+        """The updates since the last call, by table. Call it after the barrier."""
+        out = {name: [] for name in self.names}
+        if not self.names:
+            return out
+        self.session.run_script(DRAIN.format(log=self.log))
+        lines = self.session.open_table(f"{self.log}_table").to_arrow().column("Update")
+        for line in lines.to_pylist():
+            name, update = json.loads(line)
+            out[name].append(update)
+        return out
+
+    def stop(self):
+        if self.names:
+            self.session.run_script(STOP.format(log=self.log))
+
+
 def record(fixture, url):
     session = open_session(url)
     try:
@@ -216,9 +295,13 @@ def record(fixture, url):
                 inputs[item["name"]].add(_import(session, data))
         for op in fixture["operations"]:
             define(session, tables, op)
+        updates = Updates(session, fixture, tables)
         if barrier:
             barrier.wait()
+        if any(updates.drain().values()):
+            raise SystemExit("an update before the first step")
         steps = [snapshot(session, fixture, tables)]
+        delivered = []
         for step in fixture.get("steps", ()):
             for action in step["actions"]:
                 item = next(i for i in fixture["inputs"] if i["name"] == action["table"])
@@ -231,6 +314,10 @@ def record(fixture, url):
                     inputs[action["table"]].delete(_import(session, arrow_table(keys, action["rows"])))
             barrier.wait()
             steps.append(snapshot(session, fixture, tables))
+            delivered.append(updates.drain())
+        updates.stop()
+        if "updates" in fixture:
+            return {"steps": steps, "updates": delivered}
         return {"steps": steps}
     finally:
         session.close()
@@ -270,6 +357,8 @@ def dump(fixture):
     lines.append(" ],")
     if "fails" in fixture:
         lines.append(f' "fails": {one(fixture["fails"])},')
+    if "updates" in fixture:
+        lines.append(f' "updates": {one(fixture["updates"])},')
     lines.append(' "java": {"steps": [')
     recorded_steps = fixture["java"]["steps"]
     for s, step in enumerate(recorded_steps):
@@ -286,6 +375,11 @@ def dump(fixture):
             lines.extend(f"    {one(row)}{comma(r, rows)}" for r, row in enumerate(rows))
             lines.append(f"   ]}}{comma(n, names)}")
         lines.append(f"  }}{comma(s, recorded_steps)}")
+    if "updates" in fixture["java"]:
+        lines.append(" ],")
+        lines.append(' "updates": [')
+        delivered = fixture["java"]["updates"]
+        lines.extend(f"  {one(step)}{comma(i, delivered)}" for i, step in enumerate(delivered))
     lines.append(" ]}")
     lines.append("}")
     return "\n".join(lines) + "\n"
