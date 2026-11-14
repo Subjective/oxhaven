@@ -10,3 +10,4 @@ pub(crate) mod oracle;
 pub mod select;
 pub mod snapshot;
 pub mod sort;
+pub mod ungroup;
