@@ -141,7 +141,7 @@ oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
 oracle/bin/ci-replay.sh
 ```
 
-It takes about 40 seconds after the build. `ORACLE_GATE_PORT` fixes the port (other agents
+It takes about 20 seconds after the build (83 scenarios and 27 smoke checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
 The output directory holds `server.log` and `report.json`: every scenario and check with its
@@ -555,8 +555,10 @@ When the server refuses an operation, the table's result is a failure with the g
 from it. When an operation is accepted and the snapshot of its table fails (a `view` whose
 formula throws when it is read), the result of that step is a failure. `show` prints
 `fails with <code>`. The `error_*` scenarios and `ticking_error_after_step` record such results.
-An action of a step that the server refuses is not a result: the scenario is reported as
-`ERROR`.
+A ticking input that the server refuses to create (a blink input table on a server without
+them) fails the same way: every table defined from it fails with that code, and the actions of
+the steps on it are not sent. An action of a step on an input that was created and that the
+server refuses is not a result: the scenario is reported as `ERROR`.
 
 When writing a scenario, `ORACLE_TRACE=1` in the environment makes `show` print, for each
 operation the server refuses, the status code and the server's message. Java often answers
