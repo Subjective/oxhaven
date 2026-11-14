@@ -460,13 +460,14 @@ impl Aggregator {
         Ok((RowSet::from_keys(same_pre), RowSet::from_keys(same_post)))
     }
 
-    /// Moves the shifted rows within the row sets of their groups, and tells the operators
-    /// that keep track of rows. Does nothing if no operator needs group rows: a shift
-    /// changes no value.
+    /// Moves the shifted rows within the row sets of their groups. Does nothing if no
+    /// operator needs group rows. No operator is told: a shift changes no value and no
+    /// order, so no result, and the row sets are right for the next recompute.
     ///
     /// Behavior: KeyedUpdateContext#doShifts and
     /// ChunkedOperatorAggregationHelper#doNoKeyShifts, which run only for operators with
-    /// `requiresRowKeys`.
+    /// `requiresRowKeys`; IterativeChunkedAggregationOperator#shiftChunk is where Java's
+    /// operators move their own row sets.
     fn shift_group_rows(
         &mut self,
         update: &TableUpdate,
@@ -497,12 +498,6 @@ impl Aggregator {
             if let Some(group_rows) = &mut self.group_rows {
                 group_rows[slot].remove(&before);
                 group_rows[slot].insert(&after);
-            }
-            for column in &mut self.ops {
-                if column.op.needs_group_rows() {
-                    let effect = column.op.shifted(slot);
-                    column.marks.note(slot, effect);
-                }
             }
         }
         Ok(())

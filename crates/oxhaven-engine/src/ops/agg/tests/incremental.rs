@@ -566,6 +566,47 @@ fn sums_are_retracted_as_java_retracts_them() {
     assert_eq!(fixture.rows(), ["1e300|5e299"]);
     fixture.step(TableChange::new().remove([1]));
     assert_eq!(fixture.rows(), ["0.0|0.0"]);
+
+    // When the last value leaves, the running sum of a sum starts again from zero
+    // (DoubleChunkedSumOperator#removeChunk) and that of an average keeps what rounding
+    // left in it (DoubleChunkedAvgOperator#removeChunk).
+    let fixture = Fixture::with(
+        &[("D", ColumnType::Double, doubles(&[Some(0.1), Some(0.2)]))],
+        &[0, 1],
+        vec![agg(AggSpec::Sum, &["S = D"]), agg(AggSpec::Avg, &["A = D"])],
+        &[],
+        false,
+        false,
+    );
+    fixture.step(TableChange::new().remove([0]));
+    fixture.step(TableChange::new().remove([1]));
+    assert_eq!(fixture.rows(), [""; 0]);
+    fixture.step(TableChange::new().add([2], vec![doubles(&[Some(1e-17)])]));
+    let left_over = (0.1 + 0.2) - 0.1 - 0.2;
+    assert!(left_over != 0.0);
+    assert_eq!(fixture.rows(), [format!("1e-17|{:?}", left_over + 1e-17)]);
+}
+
+#[test]
+fn rows_join_a_group_in_java_order_within_a_cycle() {
+    // A row whose key changed joins its new group before the cycle's added rows do, which
+    // shows in a floating point sum: (1e300 + -1e300) + 0.5, not (1e300 + 0.5) + -1e300.
+    let fixture = Fixture::with(
+        &kid(&[("a", 0, 1e300), ("b", 0, -1e300)]),
+        &[0, 1],
+        vec![agg(AggSpec::Sum, &["S = D"])],
+        &["K"],
+        false,
+        false,
+    );
+    let change = TableChange::new()
+        .modify([1], [(0, strs(&["a"]))])
+        .add([2], kid_values(&[("a", 0, 0.5)]));
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [1] modified [0] columns [1]"
+    );
+    assert_eq!(fixture.rows(), ["a|0.5"]);
 }
 
 #[test]

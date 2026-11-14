@@ -134,14 +134,6 @@ pub trait AggOperator: Send {
         removed.and(self.add(slot, new))
     }
 
-    /// Rows of `slot` changed row key without changing value. Only called for an operator
-    /// that needs group rows; the group's rows are already up to date at `recompute`.
-    ///
-    /// Behavior: IterativeChunkedAggregationOperator#shiftChunk
-    fn shifted(&mut self, _slot: usize) -> Effect {
-        Effect::UNCHANGED
-    }
-
     /// Brings the state of `slots` up to date from the rows of each group. Returns, for
     /// each, whether its result changed. Called for the slots that asked for it, after the
     /// cycle's rows have all been processed.

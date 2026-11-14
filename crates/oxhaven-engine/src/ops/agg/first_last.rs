@@ -34,7 +34,8 @@ pub struct FirstLast {
     column_type: ColumnType,
     first: bool,
     mode: FirstLastMode,
-    /// The row the value was taken from, or `NULL_ROW_KEY`.
+    /// The row the value was taken from, or `NULL_ROW_KEY`. When `Tracked`, as of the last
+    /// recompute: a shift may have moved the row since.
     row_key: Vec<RowKey>,
     value: Vec<Scalar>,
 }
@@ -95,10 +96,6 @@ impl AggOperator for FirstLast {
     }
 
     fn remove(&mut self, _slot: usize, _run: &Run<'_>) -> Effect {
-        self.tracked()
-    }
-
-    fn shifted(&mut self, _slot: usize) -> Effect {
         self.tracked()
     }
 
