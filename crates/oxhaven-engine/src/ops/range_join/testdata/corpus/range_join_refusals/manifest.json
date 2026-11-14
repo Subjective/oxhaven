@@ -1,0 +1,320 @@
+{
+  "format": 2,
+  "scenario": "range_join_refusals",
+  "scenario_sha256": "622912442f8b8a8ebc4c85f72681972c0a1a487cb62948babf581ebe4e991076",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ok",
+      "file": "step000.ok.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "descending_right",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "disorder_in_unmatched_bucket",
+      "file": "step000.disorder_in_unmatched_bucket.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "disorder_without_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "nulls_between",
+      "file": "step000.nulls_between.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "disorder_late",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "interleaved_buckets",
+      "file": "step000.interleaved_buckets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "empty_left",
+      "file": "step000.empty_left.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "empty_left_disorder",
+      "file": "step000.empty_left_disorder.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "empty_left_no_exact_disorder",
+      "file": "step000.empty_left_no_exact_disorder.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "empty_both",
+      "file": "step000.empty_both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "empty_right_no_exact",
+      "file": "step000.empty_right_no_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "same_bounds",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "preceding_strict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "following_strict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "not_a_match",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_left_start",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_left_end",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_right_range",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "nothing_there",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "range_types_differ",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "range_end_type_differs",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "range_start_type_differs",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "float_bounds_int_range",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_left_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_right_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "exact_types_differ",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "exact_same_arrow_other_type",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "exact_is_range_column",
+      "file": "step000.exact_is_range_column.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "exact_twice",
+      "file": "step000.exact_twice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_no_such_input",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_no_such_input_disorder",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_left_column_as_input",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_replaces_left_column",
+      "file": "step000.agg_replaces_left_column.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_replaces_key",
+      "file": "step000.agg_replaces_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_same_output_twice",
+      "file": "step000.agg_same_output_twice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_same_output_two_aggs",
+      "file": "step000.agg_same_output_two_aggs.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_every_type",
+      "file": "step000.agg_every_type.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_group_and_sum",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_first",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_last",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_min",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_avg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_count_only",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_unsupported_disorder",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "agg_unsupported_bad_range",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "of_a_range_join",
+      "file": "step000.of_a_range_join.arrow",
+      "rows": 3
+    }
+  ]
+}

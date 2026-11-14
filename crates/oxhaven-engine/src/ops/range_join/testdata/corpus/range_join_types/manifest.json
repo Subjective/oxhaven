@@ -1,0 +1,141 @@
+{
+  "format": 2,
+  "scenario": "range_join_types",
+  "scenario_sha256": "2e7c1f77e852396c5b3c64f0142bdb4aeb3733c789a9587f25201bbd5c3483a9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "int8_lt_gt",
+      "file": "step000.int8_lt_gt.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int8_leq_geq",
+      "file": "step000.int8_leq_geq.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int8_leqap_geqaf",
+      "file": "step000.int8_leqap_geqaf.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int16_lt_gt",
+      "file": "step000.int16_lt_gt.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int16_leq_geq",
+      "file": "step000.int16_leq_geq.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int16_leqap_geqaf",
+      "file": "step000.int16_leqap_geqaf.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int64_lt_gt",
+      "file": "step000.int64_lt_gt.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int64_leq_geq",
+      "file": "step000.int64_leq_geq.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "int64_leqap_geqaf",
+      "file": "step000.int64_leqap_geqaf.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timestamp_lt_gt",
+      "file": "step000.timestamp_lt_gt.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timestamp_leq_geq",
+      "file": "step000.timestamp_leq_geq.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timestamp_leqap_geqaf",
+      "file": "step000.timestamp_leqap_geqaf.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "string_lt_gt",
+      "file": "step000.string_lt_gt.arrow",
+      "rows": 19
+    },
+    {
+      "step": 0,
+      "table": "string_leq_geq",
+      "file": "step000.string_leq_geq.arrow",
+      "rows": 19
+    },
+    {
+      "step": 0,
+      "table": "string_leqap_geqaf",
+      "file": "step000.string_leqap_geqaf.arrow",
+      "rows": 19
+    },
+    {
+      "step": 0,
+      "table": "bool_lt_gt",
+      "file": "step000.bool_lt_gt.arrow",
+      "rows": 16
+    },
+    {
+      "step": 0,
+      "table": "bool_leq_geq",
+      "file": "step000.bool_leq_geq.arrow",
+      "rows": 16
+    },
+    {
+      "step": 0,
+      "table": "bool_leqap_geqaf",
+      "file": "step000.bool_leqap_geqaf.arrow",
+      "rows": 16
+    },
+    {
+      "step": 0,
+      "table": "string_code_point_order",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "two_keys",
+      "file": "step000.two_keys.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "one_key_renamed",
+      "file": "step000.one_key_renamed.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "payloads",
+      "file": "step000.payloads.arrow",
+      "rows": 7
+    }
+  ]
+}
