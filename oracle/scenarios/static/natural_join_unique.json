@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "natural_join_unique",
+  "description": "natural_join on one and two key columns with unmatched left rows, null keys, and renamed right columns.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "LV", "type": "float64"}],
+      "rows": [
+        [1, "a", 0.1],
+        [2, "b", 0.2],
+        [null, "c", 0.3],
+        [4, null, 0.4],
+        [2, "b", 0.5],
+        [9, "z", null]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "RV", "type": "int64"}, {"name": "RD", "type": "float64"}],
+      "rows": [
+        [2, "b", 20, 2.5],
+        [1, "a", 10, "NaN"],
+        [null, "c", -1, 0.0],
+        [5, "e", 50, 5.5],
+        [4, null, 40, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "on_k", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV", "RD"]},
+    {"name": "on_k_s", "op": "natural_join", "left": "l", "right": "r", "on": ["K", "S"]},
+    {"name": "renamed", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["Value = RV", "RS = S"]}
+  ],
+  "results": [
+    {"table": "on_k"},
+    {"table": "on_k_s"},
+    {"table": "renamed"}
+  ]
+}

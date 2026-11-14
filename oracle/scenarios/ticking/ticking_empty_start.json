@@ -1,0 +1,56 @@
+{
+  "format": 1,
+  "name": "ticking_empty_start",
+  "description": "Everything starts empty; rows arrive, are all deleted, and arrive again.",
+  "inputs": [
+    {
+      "name": "t",
+      "ticking": {"key_columns": ["K"]},
+      "columns": [{"name": "K", "type": "int32"}, {"name": "G", "type": "string"}, {"name": "V", "type": "int64"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "w", "op": "where", "source": "t", "filters": ["V != 0"]},
+    {"name": "u", "op": "update", "source": "t", "formulas": ["W = V + 1"]},
+    {"name": "s", "op": "sort", "source": "t", "by": [{"column": "V", "direction": "descending"}]},
+    {"name": "by_g", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["V"]}, {"agg": "count", "column": "N"}, {"agg": "last", "columns": ["LastK = K"]}], "by": ["G"]},
+    {"name": "total", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["V"]}, {"agg": "count", "column": "N"}, {"agg": "avg", "columns": ["AvgV = V"]}], "by": []},
+    {"name": "d", "op": "drop_columns", "source": "u", "columns": ["V"]},
+    {"name": "v", "op": "view", "source": "t", "formulas": ["G", "Twice = V * 2"]},
+    {"name": "sel", "op": "select", "source": "t", "formulas": ["Key = K", "Half = V / 2", "G"]}
+  ],
+  "results": [
+    {"table": "t"},
+    {"table": "w"},
+    {"table": "u"},
+    {"table": "s"},
+    {"table": "by_g"},
+    {"table": "total"},
+    {"table": "d"},
+    {"table": "v"},
+    {"table": "sel"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[1, "g", 9223372036854775807], [2, "g", 1], [3, null, 0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[1], [2], [3]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[3, "h", -5], [1, "g", -9223372036854775807]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[2, "g", -1]]}
+      ]
+    }
+  ]
+}

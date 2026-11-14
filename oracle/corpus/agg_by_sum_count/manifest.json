@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "agg_by_sum_count",
+  "scenario_sha256": "9d4b977d56a14aad3d6709d5d938c7e00bfc38d1bd149ec3cb6fd507ce75c1c9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_k",
+      "file": "step000.by_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "by_k_g",
+      "file": "step000.by_k_g.arrow",
+      "rows": 7
+    }
+  ]
+}

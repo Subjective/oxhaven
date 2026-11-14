@@ -1077,6 +1077,10 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "oxhaven-column"
 version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "oxhaven-contracts"
@@ -1088,10 +1092,18 @@ dependencies = [
 [[package]]
 name = "oxhaven-engine"
 version = "0.0.0"
+dependencies = [
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "oxhaven-expr"
 version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-contracts",
+ "serde_json",
+]
 
 [[package]]
 name = "oxhaven-proto"
@@ -1110,6 +1122,9 @@ dependencies = [
 [[package]]
 name = "oxhaven-rowset"
 version = "0.0.0"
+dependencies = [
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "oxhaven-server"
@@ -1132,6 +1147,10 @@ dependencies = [
 [[package]]
 name = "oxhaven-testkit"
 version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "percent-encoding"

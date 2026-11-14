@@ -1,0 +1,127 @@
+//! The update graph's reader-writer lock.
+
+use std::cell::RefCell;
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
+
+static NEXT_LOCK_ID: AtomicU64 = AtomicU64::new(0);
+
+thread_local! {
+    /// How many times this thread holds the shared side of each lock, by lock id.
+    static SHARED_HOLDS: RefCell<BTreeMap<u64, usize>> = const { RefCell::new(BTreeMap::new()) };
+}
+
+#[derive(Default)]
+struct State {
+    /// Threads holding the shared side.
+    readers: usize,
+    writer: bool,
+    writers_waiting: usize,
+}
+
+/// A reader-writer lock whose shared side is re-entrant.
+///
+/// A thread that waits for the exclusive side stops new threads from taking the shared side,
+/// so readers cannot starve the update cycle. A thread that already holds the shared side
+/// may always take it again.
+///
+/// Behavior: io.deephaven.engine.updategraph.UpdateGraphLock
+pub(super) struct GraphLock {
+    id: u64,
+    state: Mutex<State>,
+    changed: Condvar,
+}
+
+impl GraphLock {
+    pub(super) fn new() -> Self {
+        Self {
+            id: NEXT_LOCK_ID.fetch_add(1, Ordering::Relaxed),
+            state: Mutex::new(State::default()),
+            changed: Condvar::new(),
+        }
+    }
+
+    fn state(&self) -> MutexGuard<'_, State> {
+        // The state is three counters that every path leaves consistent, so a panic elsewhere
+        // while it was held does not invalidate it.
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn shared_holds(&self) -> usize {
+        SHARED_HOLDS.with(|holds| holds.borrow().get(&self.id).copied().unwrap_or(0))
+    }
+
+    /// Takes the shared side until the guard is dropped. Waits while a cycle runs or is
+    /// waiting to run, unless this thread already holds the shared side.
+    pub(super) fn shared(&self) -> SharedGuard<'_> {
+        if self.shared_holds() == 0 {
+            let mut state = self.state();
+            while state.writer || state.writers_waiting > 0 {
+                state = self
+                    .changed
+                    .wait(state)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+            state.readers += 1;
+        }
+        SHARED_HOLDS.with(|holds| *holds.borrow_mut().entry(self.id).or_insert(0) += 1);
+        SharedGuard(self)
+    }
+
+    /// Takes the exclusive side until the guard is dropped.
+    ///
+    /// # Panics
+    /// If this thread holds the shared side: the lock cannot be upgraded, as in Java.
+    pub(super) fn exclusive(&self) -> ExclusiveGuard<'_> {
+        assert!(
+            self.shared_holds() == 0,
+            "cannot take the exclusive update graph lock while holding the shared lock"
+        );
+        let mut state = self.state();
+        state.writers_waiting += 1;
+        while state.writer || state.readers > 0 {
+            state = self
+                .changed
+                .wait(state)
+                .unwrap_or_else(PoisonError::into_inner);
+        }
+        state.writers_waiting -= 1;
+        state.writer = true;
+        ExclusiveGuard(self)
+    }
+}
+
+pub(super) struct SharedGuard<'a>(&'a GraphLock);
+
+impl Drop for SharedGuard<'_> {
+    fn drop(&mut self) {
+        let lock = self.0;
+        let released = SHARED_HOLDS.with(|holds| {
+            let mut holds = holds.borrow_mut();
+            match holds.get_mut(&lock.id) {
+                Some(count) if *count > 1 => {
+                    *count -= 1;
+                    false
+                }
+                _ => {
+                    holds.remove(&lock.id);
+                    true
+                }
+            }
+        });
+        if released {
+            lock.state().readers -= 1;
+            lock.changed.notify_all();
+        }
+    }
+}
+
+pub(super) struct ExclusiveGuard<'a>(&'a GraphLock);
+
+impl Drop for ExclusiveGuard<'_> {
+    fn drop(&mut self) {
+        self.0.state().writer = false;
+        self.0.changed.notify_all();
+    }
+}

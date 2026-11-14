@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "scenario": "agg_by_int_overflow",
+  "scenario_sha256": "7c7a5db402efcbe6cecbc782c429e429341ee4c5c28e1d14ac22f4ad185272df",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "sums",
+      "file": "step000.sums.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "avgs",
+      "file": "step000.avgs.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "total",
+      "file": "step000.total.arrow",
+      "rows": 1
+    }
+  ]
+}

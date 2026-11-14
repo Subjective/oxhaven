@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "scenario": "ticking_aj",
+  "scenario_sha256": "fdc984b7ffcbcde71353fd0a76711994add228c88ee063fded4a311767b38437",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "j",
+      "file": "step000.j.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "j",
+      "file": "step001.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "j",
+      "file": "step002.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "j",
+      "file": "step003.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "j",
+      "file": "step004.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "j",
+      "file": "step005.j.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "j",
+      "file": "step006.j.arrow",
+      "rows": 6
+    }
+  ]
+}

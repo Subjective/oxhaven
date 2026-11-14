@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "scenario": "timestamps",
+  "scenario_sha256": "311009b92dab972cca9154670420779a209f448399f40470a283d0db1c546f19",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "after",
+      "file": "step000.after.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "not_null",
+      "file": "step000.not_null.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "up",
+      "file": "step000.up.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "down",
+      "file": "step000.down.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "range",
+      "file": "step000.range.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "file": "step000.twice.arrow",
+      "rows": 16
+    }
+  ]
+}

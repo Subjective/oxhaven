@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "name": "ticking_update_by_append",
+  "description": "An append-only input table through cumulative sums, update, head and tail as rows arrive.",
+  "inputs": [
+    {
+      "name": "t",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "whole", "op": "update_by", "source": "t", "ops": [{"op": "cum_sum", "columns": ["CI = I", "CD = D"]}], "by": []},
+    {"name": "keyed", "op": "update_by", "source": "t", "ops": [{"op": "cum_sum", "columns": ["CI = I", "CD = D"]}], "by": ["K"]},
+    {"name": "computed", "op": "update", "source": "t", "formulas": ["Twice = I * 2", "Half = D / 2"]},
+    {"name": "first3", "op": "head", "source": "t", "rows": 3},
+    {"name": "last3", "op": "tail", "source": "keyed", "rows": 3}
+  ],
+  "results": [
+    {"table": "t"},
+    {"table": "whole"},
+    {"table": "keyed"},
+    {"table": "computed"},
+    {"table": "first3"},
+    {"table": "last3"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [["a", 1, 0.5]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [["b", 10, 1.5], ["a", null, null], ["a", 2, 0.25]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [["b", -3, "NaN"], ["c", 2147483647, 1e+300]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [["c", 1, 1.0], ["a", 1, 1.0], [null, 5, 5.0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [["a", 1, 1.0]]}
+      ]
+    }
+  ]
+}

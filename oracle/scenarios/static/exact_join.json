@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "exact_join",
+  "description": "exact_join where every left row has exactly one right match, on one and two keys, including a null key.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "LV", "type": "float64"}],
+      "rows": [
+        [1, "a", 0.1],
+        [2, "b", 0.2],
+        [null, "c", 0.3],
+        [2, "b", 0.5],
+        [1, "a", null]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "RV", "type": "int64"}, {"name": "RD", "type": "float64"}],
+      "rows": [
+        [2, "b", 20, 2.5],
+        [1, "a", 10, "NaN"],
+        [null, "c", -1, 0.0],
+        [5, "e", 50, 5.5],
+        [4, null, 40, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "on_k", "op": "exact_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV", "RD"]},
+    {"name": "on_k_s", "op": "exact_join", "left": "l", "right": "r", "on": ["K", "S"]},
+    {"name": "renamed", "op": "exact_join", "left": "l", "right": "r", "on": ["K"], "joins": ["Value = RV"]}
+  ],
+  "results": [
+    {"table": "on_k"},
+    {"table": "on_k_s"},
+    {"table": "renamed"}
+  ]
+}

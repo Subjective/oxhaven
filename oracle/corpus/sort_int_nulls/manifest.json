@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "sort_int_nulls",
+  "scenario_sha256": "0bcb2dc3716a234d0702f800842b649ad67fb2a293ac110d58a3f9c59cb5fd63",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "up",
+      "file": "step000.up.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "down",
+      "file": "step000.down.arrow",
+      "rows": 10
+    }
+  ]
+}

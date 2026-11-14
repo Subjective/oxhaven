@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "name": "empty_table_ops",
+  "description": "Every single-table operation on a table with no rows.",
+  "inputs": [
+    {
+      "name": "e",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "w", "op": "where", "source": "e", "filters": ["I > 0"]},
+    {"name": "s", "op": "sort", "source": "e", "by": [{"column": "I", "direction": "ascending"}]},
+    {"name": "h", "op": "head", "source": "e", "rows": 3},
+    {"name": "tl", "op": "tail", "source": "e", "rows": 3},
+    {"name": "u", "op": "update", "source": "e", "formulas": ["X = I + 1", "Y = D * 2"]},
+    {"name": "v", "op": "view", "source": "e", "formulas": ["S", "N = L"]},
+    {"name": "d", "op": "drop_columns", "source": "e", "columns": ["B", "S"]},
+    {"name": "m", "op": "merge", "sources": ["e", "e"]},
+    {"name": "a_keyed", "op": "agg_by", "source": "e", "aggs": [{"agg": "sum", "columns": ["I", "D"]}, {"agg": "count", "column": "N"}], "by": ["S"]},
+    {"name": "a_all", "op": "agg_by", "source": "e", "aggs": [{"agg": "sum", "columns": ["I", "D"]}, {"agg": "count", "column": "N"}, {"agg": "min", "columns": ["MinL = L"]}, {"agg": "avg", "columns": ["AvgD = D"]}], "by": []},
+    {"name": "ub", "op": "update_by", "source": "e", "ops": [{"op": "cum_sum", "columns": ["CI = I", "CD = D"]}], "by": []}
+  ],
+  "results": [
+    {"table": "w"},
+    {"table": "s"},
+    {"table": "h"},
+    {"table": "tl"},
+    {"table": "u"},
+    {"table": "v"},
+    {"table": "d"},
+    {"table": "m"},
+    {"table": "a_keyed"},
+    {"table": "a_all"},
+    {"table": "ub"}
+  ]
+}

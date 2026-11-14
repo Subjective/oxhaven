@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "name": "head_tail",
+  "description": "head and tail with zero, fewer, exactly and more rows than the table holds.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [0, "s0"],
+        [1, "s1"],
+        [2, "s2"],
+        [3, "s3"],
+        [4, "s4"],
+        [5, "s5"],
+        [6, "s6"]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "h0", "op": "head", "source": "t", "rows": 0},
+    {"name": "h3", "op": "head", "source": "t", "rows": 3},
+    {"name": "h7", "op": "head", "source": "t", "rows": 7},
+    {"name": "h99", "op": "head", "source": "t", "rows": 99},
+    {"name": "t0", "op": "tail", "source": "t", "rows": 0},
+    {"name": "t2", "op": "tail", "source": "t", "rows": 2},
+    {"name": "t7", "op": "tail", "source": "t", "rows": 7},
+    {"name": "t99", "op": "tail", "source": "t", "rows": 99},
+    {"name": "h5_t2", "op": "tail", "source": "h3", "rows": 2}
+  ],
+  "results": [
+    {"table": "h0"},
+    {"table": "h3"},
+    {"table": "h7"},
+    {"table": "h99"},
+    {"table": "t0"},
+    {"table": "t2"},
+    {"table": "t7"},
+    {"table": "t99"},
+    {"table": "h5_t2"}
+  ]
+}

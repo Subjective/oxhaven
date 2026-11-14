@@ -1,0 +1,45 @@
+{
+  "format": 1,
+  "name": "merge_tables",
+  "description": "merge of two and three tables, a table with itself, and with an empty table.",
+  "inputs": [
+    {
+      "name": "a",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [1, 1.0, "a1"],
+        [2, null, "a2"],
+        [null, "NaN", null]
+      ]
+    },
+    {
+      "name": "b",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [2, 2.0, "b1"],
+        [3, 3.0, "b2"]
+      ]
+    },
+    {
+      "name": "e",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "ab", "op": "merge", "sources": ["a", "b"]},
+    {"name": "ba", "op": "merge", "sources": ["b", "a"]},
+    {"name": "aa", "op": "merge", "sources": ["a", "a"]},
+    {"name": "aeb", "op": "merge", "sources": ["a", "e", "b"]},
+    {"name": "ee", "op": "merge", "sources": ["e", "e"]},
+    {"name": "abab", "op": "merge", "sources": ["ab", "ba"]}
+  ],
+  "results": [
+    {"table": "ab"},
+    {"table": "ba"},
+    {"table": "aa"},
+    {"table": "aeb"},
+    {"table": "ee"},
+    {"table": "abab"}
+  ]
+}
