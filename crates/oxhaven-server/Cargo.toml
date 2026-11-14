@@ -33,3 +33,6 @@ tower = { workspace = true, features = ["util"] }
 tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
+
+[dev-dependencies]
+oxhaven-testkit = { path = "../oxhaven-testkit" }
