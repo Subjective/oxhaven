@@ -14,29 +14,44 @@ writing code. Read nothing else unless your task file points you to it.
 - The pin does not move during a run. Re-pinning is its own task.
 - Do not copy Java source text into this repository. Cite it.
 
-## What to port and what to redesign
+## Java is the behavior reference, not the template
 
-Port with the logic intact:
+The target is the same observable behavior and the same wire protocol. It is not the same code.
+Write the Rust a good Rust engineer would write for this problem, and use the Java source to learn
+what the behavior is.
 
-- Row-set operations, shift handling, and previous-value tracking.
-- The incremental algorithms of each operator: what is added, removed, modified and shifted
-  downstream for a given upstream update. Follow the Java control flow for these.
-- Null, NaN, overflow, and ordering behavior of every operation and expression.
+Do not carry over Java's structure:
 
-Redesign freely, behind the contracts:
+- No mirrored class hierarchies. An abstract base with per-type subclasses becomes one generic
+  function or an enum with a `match`.
+- No interface for a single implementation, no factories, builders, visitors, adapters or
+  "helper" and "impl" pairs unless Rust needs them for a reason you can state.
+- No per-primitive copies. Java replicates one algorithm per type; write it once.
+- Nothing that exists for the JVM: chunk pools, reusable context objects, soft and weak
+  references, class loading, javac formula compilation, Dagger wiring, the property system.
+- Memory layout is ours: columns are Arrow arrays and nulls are validity bitmaps, not sentinel
+  values.
+- One module per operation, organized by what it does, not by the Java package it came from.
 
-- Memory layout. Columns are Arrow arrays; nulls are validity bitmaps, not sentinel values.
-- Per-type code. One generic implementation replaces Java's replicated per-primitive classes.
-- Anything that exists for the JVM: chunk pools, reusable contexts, soft and weak references,
-  class loading, javac formula compilation, Dagger wiring, the property system.
+Do keep the behavior, exactly:
 
-When the two conflict, observable behavior wins: the result must match under `PARITY.md`.
+- Null, NaN, overflow, type promotion and ordering results of every operation and expression.
+- For incremental operators, the case analysis: which upstream changes (added, removed,
+  modified, shifted, and their combinations) produce which downstream changes. Java's handling
+  of these cases is the product of years of fixes. Restructure the code freely, but account for
+  every case Java handles, and do not invent a cleverer incremental algorithm in a first port.
+- Row-set, shift and previous-value semantics.
+
+When in doubt between simpler code and code that looks like Java, choose simpler code and let
+the differential tests decide. When the two conflict on results, `PARITY.md` wins.
 
 ## Rules for every change
 
-1. **Cite the source.** Each ported function carries a doc comment naming the Java class and
-   method it implements, for example `/// Port of io.deephaven.engine.rowset.RowSet#invert`.
-   New designs with no Java counterpart say so: `/// No Java counterpart: <why it exists>`.
+1. **Cite the behavior's source.** A function whose behavior comes from Java carries a doc
+   comment naming the Java class and method that defines it, for example
+   `/// Behavior: io.deephaven.engine.rowset.RowSet#invert`. One citation may cover several Java
+   methods, and one Rust function need not map to one Java method. New designs with no Java
+   counterpart need no citation.
 2. **Never guess.** If behavior you depend on is not ported yet, call
    `unported!("<java.Class#method>")` and list it in your pull request. Do not stub a return
    value, do not approximate, do not leave a silent default.
@@ -65,7 +80,13 @@ When the two conflict, observable behavior wins: the result must match under `PA
    `cargo test --workspace`.
 2. The differential smoke run in `oracle/` for the operations your change touches.
 3. The self-consistency checker, which is on in all engine tests.
-4. Blind review by a second agent that sees only the diff, the contracts and this file.
+4. CI checks for deleted or skipped tests, protected-path changes and commit style.
+
+You own your task until its pull request is green: watch CI and fix your own failures.
+
+There is no routine code review. A second agent audits only what the checks above cannot see:
+`unsafe` code, contract changes and oracle changes. An audit finding must come with evidence, a
+failing test or seed, and gets one round. Style and structure are not audit findings.
 
 Report what you ran and what you saw. Say which checks you did not run. Never report a pass you
 did not observe.
