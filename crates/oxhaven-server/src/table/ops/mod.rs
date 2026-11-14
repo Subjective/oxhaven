@@ -255,6 +255,7 @@ macro_rules! handlers {
 // One line per handler file: `file { Operation => HandlerType }`.
 handlers! {
     apply_preview_columns { ApplyPreviewColumns => Handler }
+    asof { Aj => Aj, Raj => Raj, AsOfJoin => AsOfJoin }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll, ComboAggregate => ComboAggregate }
     create_input_table { CreateInputTable => Handler }
     crossjoin { CrossJoin => Handler }
