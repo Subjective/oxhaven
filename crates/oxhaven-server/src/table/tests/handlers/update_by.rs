@@ -243,7 +243,6 @@ macro_rules! proto_rolling {
         Spec::$variant(spec::$message {
             reverse_window_scale: $reverse,
             forward_window_scale: $forward,
-            ..Default::default()
         })
     };
 }
@@ -797,7 +796,11 @@ async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
             "makeRollingStdOperator",
         ),
         (
-            proto_rolling!(RollingWavg, UpdateByRollingWAvg, ticks(2.0), ticks(0.0)),
+            Spec::RollingWavg(spec::UpdateByRollingWAvg {
+                reverse_window_scale: ticks(2.0),
+                forward_window_scale: ticks(0.0),
+                weight_column: "I".to_string(),
+            }),
             "makeRollingWAvgOperator",
         ),
         (
