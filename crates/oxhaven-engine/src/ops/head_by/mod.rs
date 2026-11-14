@@ -185,7 +185,7 @@ fn checked(source: &dyn Table, rows: i64, columns: &[String]) -> Result<Vec<usiz
     let declared = source.definition().columns();
     let room = declared.len() as i64 - columns.len() as i64;
     let others = declared.iter().filter(|c| !columns.contains(&c.name));
-    if room < 0 || others.count() as i64 > room {
+    if others.count() as i64 > room {
         return Err(HeadByError::GroupColumns {
             columns: columns.to_vec(),
             room,

@@ -606,6 +606,45 @@ fn a_key_modified_to_an_equal_key_changes_nothing() {
         update([], [], [key(0, 0), key(0, 1)], only_w)
     );
     assert_eq!(rig.rows(), ["a|1|11", "a|3|30", "b|2|20", "b|5|50"]);
+    // In a cycle that changes another group, the group of a row whose key alone was
+    // modified is not reported.
+    let change = TableChange::new()
+        .modify([30], [(1, strings(["a"]))])
+        .add([60], row("b", 6));
+    assert_eq!(
+        rig.step(change),
+        update([], [], [key(1, 0), key(1, 1)], values())
+    );
+}
+
+/// What `ungroup` reads of a column that is not a key: for each group an array of its
+/// kept values, with nulls beyond them.
+#[test]
+fn the_kept_rows_of_a_group_are_an_array_with_nulls_beyond_it() {
+    use super::groups::{Groups, Kept};
+    use crate::ops::ungroup::sources::ArrayColumn;
+    use arrow::array::{Array, Int32Array};
+    use oxhaven_column::WritableSource;
+
+    let columns = letters(&["a", "b", "a", "a"], 1..=4);
+    let source = static_table(&columns);
+    for (head, expected) in [
+        (true, [Some(1), Some(3), None, Some(2), None]),
+        (false, [Some(3), Some(4), None, Some(2), None]),
+    ] {
+        let keys = vec![Arc::new(WritableSource::new(ColumnType::String))];
+        let groups = Groups::new(source.clone(), vec![1], keys, 2, head).unwrap();
+        assert_eq!(groups.initial().unwrap(), RowSet::flat(2));
+        let kept = Kept {
+            groups: Arc::new(groups),
+            column: source.column(0),
+        };
+        assert_eq!(kept.sizes(&RowSet::flat(2), false).unwrap(), [2, 1]);
+        let cells = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1)];
+        let values = kept.elements(&cells, false).unwrap();
+        let values = values.as_any().downcast_ref::<Int32Array>().unwrap();
+        assert_eq!(values.iter().collect::<Vec<_>>(), expected, "head: {head}");
+    }
 }
 
 #[test]

@@ -206,8 +206,8 @@ impl Groups {
                 return Err(failure("head_by: a row left a group that it was not in"));
             }
             state.save(slot);
-            let had_rows = !state.rows[slot].is_empty();
-            cycle.touched.entry(slot).or_insert(had_rows);
+            // It has the rows that leave it.
+            cycle.touched.entry(slot).or_insert(true);
             cycle.changed.insert(slot);
             state.rows[slot].remove(&rows);
         }
@@ -321,7 +321,6 @@ impl Groups {
             let key_columns = state.keys.as_ref().map(|keys| keys.columns.as_slice());
             let keys_modified =
                 key_columns.is_some_and(|columns| update.modified_columns.contains_any(columns));
-            let mut same = update.modified.clone();
             let mut moved_post = RowSet::empty();
             let mut moved_pre = RowSet::empty();
             if keys_modified {
@@ -339,12 +338,13 @@ impl Groups {
                 }
                 moved_pre = RowSet::from_keys(leaving.values().flatten().copied());
                 moved_post = RowSet::from_keys(arriving);
-                same.remove(&moved_post);
                 Self::take_out(state, &mut cycle, leaving)?;
             }
             self.shift(state, update, &moved_pre)?;
             if update.modified_columns.contains_any(&self.value_columns) {
-                let slots = self.slots_of(state, &same, false, false)?;
+                // The rows that changed group are among them, which notes groups that
+                // are noted below in any case.
+                let slots = self.slots_of(state, &update.modified, false, false)?;
                 modified_in_place = !slots.is_empty();
                 cycle.changed.extend(slots);
             }
@@ -358,7 +358,7 @@ impl Groups {
             let has_rows = !state.rows[slot].is_empty();
             if !had_rows && has_rows {
                 added.push(slot as RowKey);
-            } else if had_rows && !has_rows {
+            } else if !has_rows {
                 removed.push(slot as RowKey);
             }
         }

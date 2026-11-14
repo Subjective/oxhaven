@@ -3,6 +3,7 @@
 //! in the oracle's corpus (`oracle/corpus`) by the replay of `ops/oracle.rs`.
 
 use super::{head_by, tail_by, HeadByError};
+use crate::ops::merge::flatten;
 use crate::ops::snapshot::testing::{replay, text, texts, Built};
 use oxhaven_contracts::table::Table;
 use serde_json::Value;
@@ -23,6 +24,10 @@ fn code(error: &HeadByError) -> &'static str {
 }
 
 fn define(operation: &Value, sources: &[Arc<dyn Table>]) -> Built {
+    // A flatten shifts the rows behind a deleted one, which an input table does not.
+    if text(&operation["op"]) == "flatten" {
+        return Ok(flatten(&sources[0]).expect("a flatten"));
+    }
     let rows = operation["rows"].as_i64().expect("a number of rows");
     let by: Vec<String> = texts(&operation["by"])
         .into_iter()
@@ -50,10 +55,10 @@ fn static_tables_match_java() {
 
 #[test]
 fn ticking_tables_and_their_updates_match_java() {
-    // 16 results at 22 steps, and the updates of 15 of them in 21 steps.
+    // 21 results at 22 steps, and the updates of 19 of them in 21 steps.
     assert_eq!(
         replay(&fixture("head_tail_by_ticking"), &define),
-        16 * 22 + 15 * 21
+        21 * 22 + 19 * 21
     );
 }
 
