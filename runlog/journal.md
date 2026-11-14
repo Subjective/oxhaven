@@ -194,3 +194,14 @@ that; worth doing once the operator set settles.
 New Java facts from the recordings that PARITY.md does not state (left_join unimplemented, range
 join restrictions, head_by/tail_by refusals, sum of a single -0.0 is 0.0 which bears on A2) are
 collected for a second PARITY corrections pass after integration.
+
+## 11:36 Machine is the bottleneck: load 16 on 4 cores, 8.6 GB disk free
+
+Eight agents are building and testing at once. Load average is 16 to 18 on 4 cores and one agent
+hit "No space left on device". Agent tokens are not the limit; CPU and disk on this one container
+are. No new agent is started until load is under 8 and disk over 10 GB; the next freed slots are
+left empty. New agents get CARGO_INCREMENTAL=0. Queue, in order: full aggregations (4.1), cross
+join (4.3), as-of join (4.4), ungroup (4.7), shared-ticket resolver, second PARITY pass.
+
+For the retrospective: a second container, or a shared compile cache (sccache) set up in M0,
+would have roughly doubled throughput in this phase. Worth raising with Josh.
