@@ -27,6 +27,8 @@ mod store;
 mod ticket;
 
 #[cfg(test)]
+mod shared_tests;
+#[cfg(test)]
 mod tests;
 
 pub use auth::{
@@ -51,6 +53,7 @@ pub use store::{
     DEFAULT_TOKEN_EXPIRE_MS, MIN_TOKEN_EXPIRE_MS,
 };
 pub use ticket::{
-    descriptor_log_name, descriptor_to_export_id, export_id_to_bytes, export_id_to_ticket, export_log_name,
-    ticket_to_export_id, EXPORT_DESCRIPTOR_ROUTE, EXPORT_TICKET_ROUTE, NON_EXPORT_ID,
+    descriptor_log_name, descriptor_to_export_id, export_id_to_bytes, export_id_to_ticket,
+    export_log_name, ticket_to_export_id, EXPORT_DESCRIPTOR_ROUTE, EXPORT_TICKET_ROUTE,
+    NON_EXPORT_ID,
 };

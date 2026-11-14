@@ -1088,6 +1088,227 @@ mod router {
     }
 }
 
+mod shared {
+    use super::*;
+
+    fn router() -> (Arc<SharedTicketResolver>, TicketRouter) {
+        let shared = Arc::new(SharedTicketResolver::new());
+        let router =
+            TicketRouter::new(vec![Arc::new(ExportTicketResolver), shared.clone()]).unwrap();
+        (shared, router)
+    }
+
+    /// Publishes `source` and returns how often each handler ran.
+    fn publish(
+        router: &TicketRouter,
+        session: &Arc<Session>,
+        ticket: &[u8],
+        source: Export,
+    ) -> Result<(usize, Vec<Status>), Status> {
+        let (published, on_publish) = capture::<()>();
+        let (errors, on_error) = capture::<Status>();
+        router.publish_from(
+            session,
+            ticket,
+            "resultId",
+            Some(Box::new(move || on_publish(()))),
+            on_error,
+            source,
+        )?;
+        let outcome = (
+            published.lock().unwrap().len(),
+            errors.lock().unwrap().clone(),
+        );
+        Ok(outcome)
+    }
+
+    #[test]
+    fn shared_and_export_routes_do_not_collide() {
+        let twice = TicketRouter::new(vec![
+            Arc::new(SharedTicketResolver::new()),
+            Arc::new(SharedTicketResolver::new()),
+        ]);
+        assert!(twice.is_err());
+        let (_, router) = router();
+        assert_eq!(router.log_name(b"h\x12\xab", "id").unwrap(), "shared/12ab");
+        assert_eq!(
+            router.log_name(&export_id_to_bytes(2), "id").unwrap(),
+            "export/2"
+        );
+    }
+
+    #[test]
+    fn publishing_is_immediate_and_resolving_waits_for_the_value() {
+        let fixture = Fixture::new();
+        let (publisher, reader) = (fixture.session(), fixture.session());
+        let (_, router) = router();
+
+        // the source has no work yet; it is published all the same, without the executor
+        let source = publisher.get_export(1).unwrap();
+        let (published, errors) = publish(&router, &publisher, b"hid", source).unwrap();
+        assert_eq!((published, errors.len()), (1, 0));
+        assert_eq!(fixture.executor.queued(), 0);
+
+        let resolved = router.resolve(Some(&reader), b"hid", "sourceId").unwrap();
+        assert!(resolved.is_non_export());
+        assert_eq!(resolved.state(), Pending);
+        let taken = reader
+            .new_export(5)
+            .unwrap()
+            .require([resolved.clone()])
+            .submit(sum)
+            .unwrap();
+
+        publisher
+            .new_export(1)
+            .unwrap()
+            .submit(constant(21))
+            .unwrap();
+        fixture.executor.run_all();
+        assert_eq!(resolved.state(), Exported);
+        assert_eq!(taken.value().map(|v| number(&v)), Some(21));
+
+        // releasing what the reader took, or the reader's whole session, leaves the
+        // publisher's export and the ticket as they were
+        taken.cancel();
+        fixture.store.close_session(&reader);
+        assert_eq!(publisher.get_export(1).unwrap().state(), Exported);
+        let again = fixture.session();
+        let resolved = router.resolve(Some(&again), b"hid", "sourceId").unwrap();
+        fixture.executor.run_all();
+        assert_eq!(resolved.value().map(|v| number(&v)), Some(21));
+    }
+
+    #[test]
+    fn identifier_is_held_while_the_export_lives_and_no_longer() {
+        let fixture = Fixture::new();
+        let (publisher, other) = (fixture.session(), fixture.session());
+        let (shared, router) = router();
+        let export = |session: &Arc<Session>, n: i32| {
+            session
+                .new_server_side_export(ExportValue::object(n))
+                .unwrap()
+        };
+        let first = export(&publisher, 1);
+        assert_eq!(
+            publish(&router, &publisher, b"hid", first.clone())
+                .unwrap()
+                .0,
+            1
+        );
+
+        // taken, for the publisher and for everybody else; the handler is told, not the call
+        for (session, source) in [
+            (&publisher, export(&publisher, 2)),
+            (&other, export(&other, 3)),
+        ] {
+            let (published, errors) = publish(&router, session, b"hid", source).unwrap();
+            assert_eq!(published, 0);
+            assert_eq!(errors.len(), 1);
+            assert_eq!(errors[0].code(), Code::AlreadyExists);
+            assert_eq!(
+                errors[0].message(),
+                "Could not publish 'resultId' to shared ticket '6964' (hex): destination \
+                 already exists"
+            );
+        }
+        let value = |session: &Arc<Session>| {
+            let resolved = router.resolve(Some(session), b"hid", "sourceId").unwrap();
+            fixture.executor.run_all();
+            resolved.value().map(|v| number(&v))
+        };
+        assert_eq!(value(&other), Some(1));
+
+        // released: the ticket names nothing, as a failed export for whoever requires it
+        first.cancel();
+        drop(first);
+        let gone = router.resolve(Some(&other), b"hid", "sourceId").unwrap();
+        assert_eq!(gone.state(), Failed);
+        let status = gone.failure().unwrap().cause.unwrap();
+        assert_eq!(status.code(), Code::NotFound);
+        assert_eq!(
+            status.message(),
+            "Could not resolve 'sourceId': ticket '6964' not found"
+        );
+
+        // and can be published to again, by anyone
+        let theirs = export(&other, 4);
+        assert_eq!(publish(&router, &other, b"hid", theirs).unwrap().0, 1);
+        assert_eq!(value(&publisher), Some(4));
+
+        // the end of a session ends everything it published; dead entries do not pile up
+        publish(&router, &other, b"hid2", export(&other, 5)).unwrap();
+        assert_eq!(shared.entry_count(), 2);
+        fixture.store.close_session(&other);
+        assert_eq!(
+            router
+                .resolve(Some(&publisher), b"hid", "s")
+                .unwrap()
+                .state(),
+            Failed
+        );
+        assert_eq!(
+            router
+                .resolve(Some(&publisher), b"hid2", "s")
+                .unwrap()
+                .state(),
+            Failed
+        );
+        publish(&router, &publisher, b"hnew", export(&publisher, 6)).unwrap();
+        assert_eq!(shared.entry_count(), 1);
+    }
+
+    #[test]
+    fn only_a_session_export_can_be_published() {
+        let fixture = Fixture::new();
+        let session = fixture.session();
+        let (shared, router) = router();
+        let refused = |source: Export| {
+            let status = publish(&router, &session, b"h\x01", source).unwrap_err();
+            (status.code(), status.message().to_string())
+        };
+        let message = "Could not publish 'resultId' to shared ticket '01' (hex): can only \
+                       publish directly from a session export to a shared ticket";
+        let wanted = (Code::FailedPrecondition, message.to_string());
+        assert_eq!(refused(Export::ready(ExportValue::object(1))), wanted);
+        assert_eq!(
+            refused(Export::failed(Status::not_found("x").into())),
+            wanted
+        );
+        let work = session.non_export().unwrap().submit(constant(1)).unwrap();
+        assert_eq!(refused(work), wanted);
+        // a new value cannot be published to a shared ticket either
+        let status = router
+            .publish(&session, b"h\x01", "resultId", None)
+            .err()
+            .unwrap();
+        assert_eq!(
+            (status.code(), status.message()),
+            (Code::FailedPrecondition, message)
+        );
+        assert_eq!(shared.entry_count(), 0);
+
+        // the shape of the ticket is checked before the source
+        let status = publish(&router, &session, b"h", Export::ready(ExportValue::unit()));
+        assert_eq!(
+            status.unwrap_err().message(),
+            "Could not resolve 'resultId': found 0x68 (hex)"
+        );
+    }
+
+    #[test]
+    fn resolving_needs_a_session() {
+        let (_, router) = router();
+        let export = router.resolve(None, b"hid", "sourceId").unwrap();
+        let status = export.failure().unwrap().cause.unwrap();
+        assert_eq!(status.code(), Code::Unauthenticated);
+        assert_eq!(
+            status.message(),
+            "Could not resolve 'sourceId': no session to handoff to"
+        );
+    }
+}
+
 mod wire {
     // RefreshSessionToken and NewSession are deprecated in the protocol and still served
     #![allow(deprecated)]

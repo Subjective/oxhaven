@@ -310,3 +310,78 @@ impl TicketResolver for SharedTicketResolver {
         Err(bad_source(log_id, &id_for_descriptor(descriptor, log_id)?))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tonic::Code;
+
+    #[test]
+    fn ticket_is_the_route_byte_then_the_identifier() {
+        assert_eq!(shared_id_to_bytes(b"\x00\xff"), [b'h', 0, 0xff]);
+        assert_eq!(id_for_ticket(b"h\x00\xff", "id").unwrap(), [0, 0xff]);
+        assert_eq!(id_for_ticket(b"hh", "id").unwrap(), b"h");
+    }
+
+    #[test]
+    fn malformed_tickets_are_failed_precondition_with_the_bytes_in_lower_case_hex() {
+        let refused = |ticket: &[u8]| {
+            let status = id_for_ticket(ticket, "id").unwrap_err();
+            assert_eq!(status.code(), Code::FailedPrecondition);
+            status.message().to_string()
+        };
+        assert_eq!(refused(b""), "Could not resolve 'id': no ticket supplied");
+        assert_eq!(refused(b"h"), "Could not resolve 'id': found 0x68 (hex)");
+        assert_eq!(
+            refused(b"e\xAB\x00"),
+            "Could not resolve 'id': found 0x65ab00 (hex)"
+        );
+    }
+
+    #[test]
+    fn hex_is_pairs_of_digits_in_either_case() {
+        assert_eq!(from_hex(""), Some(vec![]));
+        assert_eq!(from_hex("00ff"), Some(vec![0, 0xff]));
+        assert_eq!(from_hex("aBCd"), Some(vec![0xab, 0xcd]));
+        for bad in ["a", "abc", "zz", "-1", "0x", " 1", "é"] {
+            assert_eq!(from_hex(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn descriptor_names_the_identifier_in_hex() {
+        let descriptor = |path: &[&str], r#type: DescriptorType| FlightDescriptor {
+            r#type: r#type as i32,
+            cmd: Default::default(),
+            path: path.iter().map(|s| s.to_string()).collect(),
+        };
+        let id = |path: &[&str]| id_for_descriptor(&descriptor(path, DescriptorType::Path), "d");
+        assert_eq!(id(&["shared", "12AB"]).unwrap(), [0x12, 0xab]);
+        assert_eq!(id(&["shared", ""]).unwrap(), Vec::<u8>::new());
+        let refused = |result: Result<Vec<u8>, Status>| {
+            let status = result.unwrap_err();
+            assert_eq!(status.code(), Code::FailedPrecondition);
+            status.message().to_string()
+        };
+        assert_eq!(
+            refused(id_for_descriptor(
+                &descriptor(&["shared", "12"], DescriptorType::Cmd),
+                "d"
+            )),
+            "Could not resolve descriptor 'd': only paths are supported"
+        );
+        assert_eq!(
+            refused(id(&["shared", "1", "2"])),
+            "Could not resolve descriptor 'd': unexpected path length (found: /shared/1/2, \
+             expected: 2)"
+        );
+        assert_eq!(
+            refused(id(&["export", "12"])),
+            "Could not resolve descriptor 'd': unexpected path (found: /export/12, expected: \
+             shared)"
+        );
+        let internal = id(&["shared", "xyz1"]).unwrap_err();
+        assert_eq!(internal.code(), Code::InvalidArgument);
+        assert!(internal.message().starts_with("Details Logged w/ID '"));
+    }
+}
