@@ -138,14 +138,14 @@ impl Multiset {
     }
 }
 
+/// Values with how many times each occurs.
+type Counted = Vec<(Scalar, u64)>;
+
 /// The net change of a modification: what the old values have that the new ones do not,
 /// and the reverse, with the values they share cancelled.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.compactmodifications.DoubleCompactModifications#compactAndCountModifications
-fn net(
-    old: Vec<(Scalar, u64)>,
-    new: Vec<(Scalar, u64)>,
-) -> (Vec<(Scalar, u64)>, Vec<(Scalar, u64)>) {
+fn net(old: Counted, new: Counted) -> (Counted, Counted) {
     let mut added: BTreeMap<Key, (Scalar, u64)> = new
         .into_iter()
         .map(|(value, count)| (Key(value.clone()), (value, count)))

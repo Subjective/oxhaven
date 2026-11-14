@@ -611,8 +611,12 @@ impl AggOperator for FloatSum {
             None => self.typed(sum),
         };
         let old_value = std::mem::replace(&mut self.result[slot], value);
-        // io.deephaven.util.compare.DoubleComparisons#eq: equal, or both NaN.
-        Effect::modified_if(!(old_value == value || (old_value.is_nan() && value.is_nan())))
+        // io.deephaven.util.compare.DoubleComparisons#eq: equal, or both NaN. Java stores the
+        // new value either way; the result column here takes only what is reported, so a
+        // change of the sign of zero, which `eq` ignores, is reported too.
+        Effect::modified_if(
+            !(old_value.to_bits() == value.to_bits() || (old_value.is_nan() && value.is_nan())),
+        )
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {

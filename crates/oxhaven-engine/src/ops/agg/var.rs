@@ -140,10 +140,9 @@ impl Var {
         } else {
             0.0
         };
-        // `Math.max(variance, 0.0)`: NaN stays NaN, and -0.0 is below 0.0.
-        let variance = if variance.is_nan() {
-            variance
-        } else if variance > 0.0 || (variance == 0.0 && variance.is_sign_positive()) {
+        // `Math.max(variance, 0.0)`: NaN stays NaN, and -0.0 is below 0.0, so either zero
+        // gives 0.0.
+        let variance = if variance.is_nan() || variance > 0.0 {
             variance
         } else {
             0.0

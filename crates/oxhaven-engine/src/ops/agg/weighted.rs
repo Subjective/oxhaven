@@ -112,8 +112,12 @@ impl WeightedFloat {
 
     fn set_result(&mut self, slot: usize, value: f64) -> Effect {
         let old = std::mem::replace(&mut self.result[slot], value);
-        // `newResult != existingResult`: a NaN is always a change.
-        Effect::modified_if(old != value)
+        // Java reports `newResult != existingResult`, under which a NaN is always a change
+        // and `-0.0` to `0.0` is none, but it has stored the new value in the result column
+        // either way. The result column here takes only what is reported, so a change of
+        // the sign of zero is reported too: the delta differs (PARITY.md A4 does not compare
+        // it), the state matches.
+        Effect::modified_if(old != value || old.to_bits() != value.to_bits())
     }
 }
 
