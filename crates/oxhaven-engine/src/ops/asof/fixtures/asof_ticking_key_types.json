@@ -1,0 +1,120 @@
+{
+ "name": "asof_ticking_key_types",
+ "description": "Exact-match columns of different types (int and long). Java reads the right table's column as the left table's type and fails when it first reads a right row: at once when the right table has rows, and in the cycle in which the first right row arrives otherwise. It never fails for a static left table without rows or a right table that stays empty.",
+ "inputs": [
+  {"name": "l", "columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}], "rows": [
+   [1, 1]
+  ]},
+  {"name": "l_empty", "columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}], "rows": [
+  ]},
+  {"name": "l_log", "columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}], "ticking": {"key_columns": []}, "rows": [
+   [1, 1]
+  ]},
+  {"name": "r", "columns": [{"name": "Rid", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}], "ticking": {"key_columns": ["Rid"]}, "rows": [
+   [1, 1, 1]
+  ]},
+  {"name": "r_empty", "columns": [{"name": "Rid", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}], "rows": [
+  ]},
+  {"name": "r_later", "columns": [{"name": "Rid", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}], "ticking": {"key_columns": ["Rid"]}, "rows": [
+  ]}
+ ],
+ "operations": [
+  {"name": "static_left", "op": "aj", "left": "l", "right": "r_later", "source": "l", "set": "r_later", "on": ["KI = KL", "X >= Y"], "joins": ["Rid"]},
+  {"name": "ticking_left", "op": "raj", "left": "l_log", "right": "r_later", "source": "l_log", "set": "r_later", "on": ["KI = KL", "X <= Y"], "joins": ["Rid"]},
+  {"name": "empty_static_left", "op": "aj", "left": "l_empty", "right": "r_later", "source": "l_empty", "set": "r_later", "on": ["KI = KL", "X >= Y"], "joins": ["Rid"]},
+  {"name": "right_has_rows", "op": "aj", "left": "l_log", "right": "r", "source": "l_log", "set": "r", "on": ["KI = KL", "X >= Y"], "joins": ["Rid"]},
+  {"name": "right_never_has_rows", "op": "aj", "left": "l_log", "right": "r_empty", "source": "l_log", "set": "r_empty", "on": ["KI = KL", "X >= Y"], "joins": ["Rid"]}
+ ],
+ "results": ["static_left", "ticking_left", "empty_static_left", "right_has_rows", "right_never_has_rows"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "l_log", "rows": [[2, 2]]}]},
+  {"actions": [{"action": "add", "table": "r_later", "rows": [[1, 1, 1]]}]},
+  {"actions": [{"action": "add", "table": "l_log", "rows": [[3, 3]]}]},
+  {"actions": [{"action": "delete", "table": "r_later", "rows": [[1]]}]}
+ ],
+ "fails": {"static_left": 2, "ticking_left": 2},
+ "java": {"steps": [
+  {
+   "static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "ticking_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "empty_static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "right_has_rows": {"failure": "INVALID_ARGUMENT"},
+   "right_never_has_rows": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]}
+  },
+  {
+   "static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "ticking_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null]
+   ]},
+   "empty_static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "right_has_rows": {"failure": "INVALID_ARGUMENT"},
+   "right_never_has_rows": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null]
+   ]}
+  },
+  {
+   "static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "ticking_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null]
+   ]},
+   "empty_static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "right_has_rows": {"failure": "INVALID_ARGUMENT"},
+   "right_never_has_rows": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null]
+   ]}
+  },
+  {
+   "static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "ticking_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null],
+    [3, 3, null, null, null]
+   ]},
+   "empty_static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "right_has_rows": {"failure": "INVALID_ARGUMENT"},
+   "right_never_has_rows": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null],
+    [3, 3, null, null, null]
+   ]}
+  },
+  {
+   "static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null]
+   ]},
+   "ticking_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null],
+    [3, 3, null, null, null]
+   ]},
+   "empty_static_left": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "right_has_rows": {"failure": "INVALID_ARGUMENT"},
+   "right_never_has_rows": {"columns": [{"name": "KI", "type": "int32"}, {"name": "X", "type": "int32"}, {"name": "KL", "type": "int64"}, {"name": "Y", "type": "int32"}, {"name": "Rid", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 1, null, null, null],
+    [2, 2, null, null, null],
+    [3, 3, null, null, null]
+   ]}
+  }
+ ]}
+}

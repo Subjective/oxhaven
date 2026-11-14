@@ -1,0 +1,64 @@
+{
+  "format": 2,
+  "scenario": "range_join_doubles",
+  "scenario_sha256": "a6c10a3aa26e37b6d2510de5538a8169f9d02741079dc2a4ed7ef28a2ea71a91",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lt_gt",
+      "file": "step000.lt_gt.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "leq_gt",
+      "file": "step000.leq_gt.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "lt_geq",
+      "file": "step000.lt_geq.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "leq_geq",
+      "file": "step000.leq_geq.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "leqap_geq",
+      "file": "step000.leqap_geq.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "leq_geqaf",
+      "file": "step000.leq_geqaf.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "leqap_geqaf",
+      "file": "step000.leqap_geqaf.arrow",
+      "rows": 48
+    },
+    {
+      "step": 0,
+      "table": "disorder_around_nan",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "less_after_zeros",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
