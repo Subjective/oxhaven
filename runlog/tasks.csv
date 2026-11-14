@@ -4,3 +4,4 @@ task,run,who,started_utc,minutes,tokens,tool_uses,outcome,gate_failures,pr,size_
 0.4,1,orchestrator,2026-11-14T07:59Z,12,,,pr-open,2,1,right,"Test bug (BTreeSet range with lo>hi) caught on first run. `rules` CI job failed because the label was added after the run started; workflow now reruns on label changes."
 0.11,1,orchestrator,2026-11-14T08:03Z,6,,,merged,0,2,right,"34 task files generated from one table; two cited reference paths were wrong and caught by an existence check."
 0.3,1,agent,2026-11-14T07:57Z,10,213308,65,pr-open,0,3,right,"Research task. Returned verified rules with citations, an UNVERIFIED list and 10 owner questions. Proposed one allowed difference (sign of zero) beyond the owner's list; orchestrator marked it not in force."
+0.6,1,agent,2026-11-14T07:57Z,11,174671,54,pr-open,0,4,right,"Used a pure-Rust proto compiler so CI needs no protoc. Barrage code generated with flatc and checked in. No interop test against a live server yet."
