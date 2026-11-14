@@ -77,3 +77,15 @@ PR 17 (formula corpus) merged. PR 18 opened for the PARITY.md corrections (facts
 Formula language and the PARITY.md corrections are on main. The expr agent is resumed in its own
 context for the tagged corpus test and the function library (5.4), with an explicit exit after the
 corpus test if its context is nearly full. Column arrays (5.5) stay separate.
+
+## 10:25 Flight branch waits for the table service; oracle agent resumed
+
+The Flight and input-table branch is pushed but depends on the table service branch for `schema.rs`
+and for the config service its input-table gate needs. It is held until 2.2 merges, then takes main
+and gets its PR. Lesson: two service tasks sharing one file should have had that file merged first
+as its own small PR. Next time a shared file is split out before the fan-out.
+
+The oracle agent is resumed to add recordings for operations the corpus lacks (slice, flatten,
+reverse, absolute sort, blink) and harness support for the remaining batch operations, because two
+operator agents reported verifying against the Java source alone for those. Agents now get a
+private scratch directory after one overwrote another's script in the shared scratchpad.
