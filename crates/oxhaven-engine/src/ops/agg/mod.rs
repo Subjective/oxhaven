@@ -44,7 +44,7 @@
 mod aggregator;
 mod distinct;
 mod first_last;
-mod keys;
+pub(crate) mod keys;
 mod min_max;
 mod operator;
 mod sorted;

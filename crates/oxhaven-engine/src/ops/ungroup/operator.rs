@@ -21,10 +21,10 @@ use std::sync::Arc;
 const CHUNK_SIZE: usize = 1 << 10;
 
 /// A column to ungroup.
-pub(super) struct Ungrouped {
+pub(crate) struct Ungrouped {
     /// Its place in the parent's definition.
-    pub(super) index: usize,
-    pub(super) arrays: Arc<dyn ArrayColumn>,
+    pub(crate) index: usize,
+    pub(crate) arrays: Arc<dyn ArrayColumn>,
 }
 
 /// One `ungroup`.
@@ -358,7 +358,7 @@ impl Ungroup {
 /// attribute. A static parent gives a static result.
 ///
 /// Behavior: io.deephaven.engine.table.impl.UngroupOperation#initialize
-pub(super) fn ungroup_arrays(
+pub(crate) fn ungroup_arrays(
     parent: &Arc<dyn Table>,
     null_fill: bool,
     columns: Vec<Ungrouped>,
