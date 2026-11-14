@@ -1279,6 +1279,69 @@ fn the_result_is_append_only_when_the_left_table_is_and_the_right_cannot_modify_
     assert!(!result.is_failed());
 }
 
+/// Behavior: io.deephaven.engine.table.impl.NaturalJoinHelper#naturalJoin, which copies the
+/// attributes of the left table only, by io.deephaven.engine.table.impl.BaseTable#copyAttributes
+/// with `CopyAttributeOperation.Join`; `INPUT_TABLE_ATTRIBUTE` is one of them.
+#[test]
+fn the_result_has_the_input_table_of_the_left_table_only() {
+    let graph = graph();
+    let left = append_only(
+        &graph,
+        &[("K", ColumnType::Int), ("Tag", ColumnType::String)],
+    );
+    let right = append_only(&graph, &[("K", ColumnType::Int), ("V", ColumnType::Long)]);
+    append(
+        &right,
+        &[
+            ("K", ColumnType::Int, ints([1, 7])),
+            ("V", ColumnType::Long, longs([10, 70])),
+        ],
+    );
+    let (fixed_left, fixed_right) = int_tables(&[Some(1)], &[Some(1), Some(2)]);
+    let writes_to = |result: &Arc<dyn Table>, input: &Arc<dyn Table>| {
+        let (found, own) = (result.input_table(), input.input_table().unwrap());
+        found.is_some_and(|found| {
+            std::ptr::eq(
+                Arc::as_ptr(&found) as *const (),
+                Arc::as_ptr(&own) as *const (),
+            )
+        })
+    };
+    let join = |left: &Arc<dyn Table>, right: &Arc<dyn Table>, join_type| {
+        natural_join(left, right, &on(&["K"]), &add(&["V"]), join_type).unwrap()
+    };
+    for join_type in [ErrorOnDuplicate, FirstMatch, LastMatch] {
+        assert!(writes_to(&join(&left, &right, join_type), &left));
+        assert!(writes_to(&join(&left, &fixed_right, join_type), &left));
+        assert!(join(&fixed_left, &right, join_type).input_table().is_none());
+        assert!(join(&fixed_left, &fixed_right, join_type)
+            .input_table()
+            .is_none());
+    }
+    let exact = exact_join(&left, &right, &on(&["K"]), &add(&["V"])).unwrap();
+    assert!(writes_to(&exact, &left));
+    assert!(exact_join(&fixed_left, &right, &on(&["K"]), &add(&["V"]))
+        .unwrap()
+        .input_table()
+        .is_none());
+    // A join of a join still writes to the first left table.
+    let again = natural_join(
+        &exact,
+        &right,
+        &on(&["K"]),
+        &[JoinAddition::renamed("V2", "V")],
+        FirstMatch,
+    )
+    .unwrap();
+    assert!(writes_to(&again, &left));
+
+    // A row written through the result's input table arrives in the result.
+    let checker = ConsistencyChecker::attach(exact.clone());
+    append(&exact, &left_columns(&[7], &["g"]));
+    checker.assert_consistent();
+    assert_eq!(column(&*exact, "V"), ["70"]);
+}
+
 #[test]
 fn the_result_of_a_blink_left_table_is_a_blink_table() {
     let graph = graph();
