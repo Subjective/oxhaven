@@ -10,7 +10,10 @@
 //! operation, the operation must be refused here with the same status code. The tolerance
 //! of PARITY.md A1 for `cum_sum` is not used: the sums are taken in Java's order.
 
-use super::{update_by, UpdateByError, UpdateByOperation, UpdateBySpec};
+use super::{
+    update_by, DeltaControl, EmSpec, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
+    WindowScale,
+};
 use crate::graph::SteppedUpdateGraph;
 use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
 use arrow::array::{
@@ -210,7 +213,9 @@ fn load(graph: &Arc<dyn UpdateGraph>, input: &Value) -> Input {
 
 /// What became of one table of a scenario.
 enum Built {
-    Table(Arc<dyn Table>),
+    /// The table, and the result columns of Java's table that it leaves out: those of the
+    /// operations left `unported!`.
+    Table(Arc<dyn Table>, Vec<String>),
     /// The operation was refused; the gRPC status code Java reports for this refusal.
     Refused(&'static str),
     /// The table needs an operation of another task.
@@ -218,12 +223,101 @@ enum Built {
 }
 
 /// The gRPC status code the Java server answers a refused `update_by` with, as recorded in
-/// `error_types_and_matches` (a cumulative sum of a string column).
+/// `error_types_and_matches` (a cumulative sum of a string column) and
+/// `update_by_rolling_tick` (`string_sum`, and `empty_window`, whose first computation fails
+/// Java's assertion). A table whose first computation throws is answered like a refusal:
+/// io.deephaven.server.session.SessionService.ObfuscatingErrorTransformer#transform maps any
+/// exception that is not a status to INVALID_ARGUMENT.
 fn code(error: &UpdateByError) -> &'static str {
     match error {
-        UpdateByError::InvalidArgument(_) => "INVALID_ARGUMENT",
-        other => panic!("no recorded status code for {other}"),
+        UpdateByError::InvalidArgument(_) | UpdateByError::Failed(_) => "INVALID_ARGUMENT",
     }
+}
+
+/// A duration of whole seconds, `PT<n>S`, in nanoseconds. Other spellings are parsed by the
+/// gRPC handler, which is not part of this module.
+fn nanos(text: &str) -> Option<i64> {
+    let seconds: i64 = text.strip_prefix("PT")?.strip_suffix('S')?.parse().ok()?;
+    Some(seconds * 1_000_000_000)
+}
+
+/// The operation a scenario names by its `pydeephaven.updateby` function and arguments
+/// (`oracle/harness/runner.py`, `_update_by`), or `None` when it is not ported or needs the
+/// gRPC handler to parse an argument.
+fn spec(op: &str, args: &Value) -> Option<UpdateBySpec> {
+    let ticks = |key: &str| Some(WindowScale::Ticks(args[key].as_f64()?));
+    let time = |key: &str| {
+        Some(WindowScale::Time {
+            column: text(&args["ts_col"]).to_string(),
+            nanos: nanos(args[key].as_str()?)?,
+        })
+    };
+    let window = || {
+        Some(if op.ends_with("_time") {
+            RollingWindow {
+                rev: time("rev_time")?,
+                fwd: time("fwd_time")?,
+            }
+        } else {
+            RollingWindow {
+                rev: ticks("rev_ticks")?,
+                fwd: ticks("fwd_ticks")?,
+            }
+        })
+    };
+    let em = || {
+        Some(EmSpec {
+            window: if op.ends_with("_time") {
+                time("decay_time")?
+            } else {
+                ticks("decay_ticks")?
+            },
+            on_null: None,
+            on_nan: None,
+        })
+    };
+    let family = op.trim_end_matches("_tick").trim_end_matches("_time");
+    Some(match family {
+        "cum_sum" => UpdateBySpec::CumSum,
+        "cum_prod" => UpdateBySpec::CumProd,
+        "cum_min" => UpdateBySpec::CumMin,
+        "cum_max" => UpdateBySpec::CumMax,
+        "forward_fill" => UpdateBySpec::ForwardFill,
+        "delta" => UpdateBySpec::Delta(match args["delta_control"].as_str() {
+            None | Some("NULL_DOMINATES") => DeltaControl::NullDominates,
+            Some("VALUE_DOMINATES") => DeltaControl::ValueDominates,
+            Some("ZERO_DOMINATES") => DeltaControl::ZeroDominates,
+            Some(other) => panic!("no delta control {other}"),
+        }),
+        "rolling_sum" => UpdateBySpec::RollingSum(window()?),
+        "rolling_avg" => UpdateBySpec::RollingAvg(window()?),
+        "rolling_min" => UpdateBySpec::RollingMin(window()?),
+        "rolling_max" => UpdateBySpec::RollingMax(window()?),
+        "rolling_count" => UpdateBySpec::RollingCount(window()?),
+        "rolling_prod" => UpdateBySpec::RollingProduct(window()?),
+        "ema" => UpdateBySpec::Ema(em()?),
+        "ems" => UpdateBySpec::Ems(em()?),
+        "emmin" => UpdateBySpec::EmMin(em()?),
+        "emmax" => UpdateBySpec::EmMax(em()?),
+        family if unported(family) => return None,
+        other => panic!("no update_by operation {other}"),
+    })
+}
+
+/// Whether the operation of `op`, a `pydeephaven.updateby` function, is left `unported!` in
+/// this module.
+fn unported(op: &str) -> bool {
+    let family = op.trim_end_matches("_tick").trim_end_matches("_time");
+    matches!(
+        family,
+        "emstd"
+            | "rolling_std"
+            | "rolling_wavg"
+            | "rolling_group"
+            | "rolling_formula"
+            | "rolling_count_where"
+            | "cum_count_where"
+    )
 }
 
 /// Defines the table of `operation` from `tables`.
@@ -232,25 +326,35 @@ fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
         return Built::NotRun;
     }
     let parent = match &tables[text(&operation["source"])] {
-        Built::Table(table) => table.clone(),
+        // An operation of another `update_by` is not left out of a table built from it.
+        Built::Table(table, left_out) if left_out.is_empty() => table.clone(),
+        Built::Table(..) => return Built::NotRun,
         // A table defined from a refused table is refused the same way.
         Built::Refused(code) => return Built::Refused(code),
         Built::NotRun => return Built::NotRun,
     };
-    let operations: Vec<UpdateByOperation> = list(&operation["ops"])
-        .iter()
-        .map(|op| {
-            let spec = match text(&op["op"]) {
-                "cum_sum" => UpdateBySpec::CumSum,
-                other => panic!("no update_by operation {other} in the scenario format"),
-            };
-            let columns: Vec<&str> = list(&op["columns"]).iter().map(text).collect();
-            UpdateByOperation::new(spec, &columns)
-        })
-        .collect();
+    let mut operations = Vec::new();
+    let mut left_out = Vec::new();
+    for op in list(&operation["ops"]) {
+        let columns: Vec<&str> = list(&op["columns"]).iter().map(text).collect();
+        match spec(text(&op["op"]), &op["args"]) {
+            Some(spec) => operations.push(UpdateByOperation::new(spec, &columns)),
+            // Java computes the result columns of each operation on their own, so the other
+            // operations are compared without it.
+            None if unported(text(&op["op"])) => left_out.extend(
+                columns
+                    .iter()
+                    .map(|pair| pair.split('=').next().expect("a name").trim().to_string()),
+            ),
+            None => return Built::NotRun,
+        }
+    }
+    if operations.is_empty() {
+        return Built::NotRun;
+    }
     let by: Vec<&str> = list(&operation["by"]).iter().map(text).collect();
     match update_by(&parent, &operations, &by) {
-        Ok(table) => Built::Table(table),
+        Ok(table) => Built::Table(table, left_out),
         Err(error) => Built::Refused(code(&error)),
     }
 }
@@ -326,8 +430,23 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
 }
 
 /// Compares `table` with what Java returned.
-fn compare(place: &str, recording: &Recording, entry: &Value, table: &dyn Table) {
+fn compare(
+    place: &str,
+    recording: &Recording,
+    entry: &Value,
+    table: &dyn Table,
+    left_out: &[String],
+) {
     let (expected, attributes) = recording.table(entry);
+    let kept: Vec<usize> = (0..expected.num_columns())
+        .filter(|&index| !left_out.contains(expected.schema().field(index).name()))
+        .collect();
+    assert_eq!(
+        kept.len() + left_out.len(),
+        expected.num_columns(),
+        "{place}: Java has every column left out"
+    );
+    let expected = expected.project(&kept).expect("the columns kept");
     let schema = expected.schema();
     let columns = table.definition().columns();
     let names = |fields: Vec<(&str, DataType)>| format!("{fields:?}");
@@ -395,7 +514,7 @@ fn run(path: &Path, tally: &mut Tally) {
     for input in list(&scenario["inputs"]) {
         let loaded = load(&graph, input);
         let name = text(&input["name"]).to_string();
-        tables.insert(name.clone(), Built::Table(loaded.table.clone()));
+        tables.insert(name.clone(), Built::Table(loaded.table.clone(), Vec::new()));
         inputs.insert(name, loaded);
     }
     for operation in list(&scenario["operations"]) {
@@ -412,6 +531,10 @@ fn run(path: &Path, tally: &mut Tally) {
     for result in &results {
         match &tables[*result] {
             Built::NotRun => tally.not_run.push(format!("{name}/{result}")),
+            Built::Table(_, left_out) if !left_out.is_empty() => {
+                let place = format!("{name}/{result} without {}", left_out.join(", "));
+                tally.compared.push(place);
+            }
             _ => tally.compared.push(format!("{name}/{result}")),
         }
     }
@@ -426,10 +549,10 @@ fn run(path: &Path, tally: &mut Tally) {
                     assert!(!failure.is_null(), "{place}: refused, but Java has a table");
                     assert_eq!(*code, text(&failure["code"]), "{place}: status code");
                 }
-                Built::Table(table) => {
+                Built::Table(table, left_out) => {
                     assert!(failure.is_null(), "{place}: Java fails with {failure}");
                     assert!(!table.is_failed(), "{place}: the table has failed");
-                    compare(&place, &recording, entry, &**table);
+                    compare(&place, &recording, entry, &**table, left_out);
                 }
             }
             tally.comparisons += 1;
@@ -467,19 +590,56 @@ fn results_match_the_recorded_java_results() {
     }
     tally.compared.sort();
 
-    // Every result table of the corpus that is an `update_by` of an input. Everything else
-    // needs another operation.
+    // Every result table of the corpus that is an `update_by` of an input, without the
+    // result columns of the operators left `unported!` (a rolling group, standard deviation,
+    // weighted average, formula or count where, an exponential standard deviation, a
+    // cumulative count where). Everything else needs another operation or, for
+    // `update_by_time_and_ema/bad_duration`, the gRPC handler's parse of a duration.
     let expected = [
         "empty_table_ops/ub",
         "error_types_and_matches/cum_sum_bool",
         "error_types_and_matches/cum_sum_string",
         "ticking_update_by_append/keyed",
         "ticking_update_by_append/whole",
+        "ticking_update_by_full/cumulative",
+        "ticking_update_by_full/cumulative_all",
+        "ticking_update_by_full/ema",
+        "ticking_update_by_full/log_cumulative",
+        "ticking_update_by_full/log_rolling",
+        "ticking_update_by_full/rolling without GroupI",
         "update_by_cum_sum/keyed",
         "update_by_cum_sum/whole",
+        "update_by_cumulative/by_key without Pos",
+        "update_by_cumulative/in_place",
+        "update_by_cumulative/no_key without Pos",
+        "update_by_cumulative/of_empty without Pos",
+        "update_by_cumulative/of_special without Pos",
+        "update_by_cumulative/string_fill",
+        "update_by_cumulative/string_min",
+        "update_by_cumulative/string_sum",
+        "update_by_cumulative/time_delta",
+        "update_by_cumulative/unknown_column",
+        "update_by_cumulative/unknown_key",
+        "update_by_rolling_tick/by_key without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/empty_window",
+        "update_by_rolling_tick/negative_window",
+        "update_by_rolling_tick/no_key without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/of_empty without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/of_special without StdI, StdD, GroupI, GroupD, WavgD",
+        "update_by_rolling_tick/one_row_window",
+        "update_by_rolling_tick/string_sum",
+        "update_by_time_and_ema/ema_by_key without EmstdD, EmstdTimeD",
+        "update_by_time_and_ema/ema_no_key without EmstdD, EmstdTimeD",
+        "update_by_time_and_ema/ema_null_timestamp",
+        "update_by_time_and_ema/ema_special_ticks without EmstdD",
+        "update_by_time_and_ema/int_timestamp",
+        "update_by_time_and_ema/null_timestamp",
+        "update_by_time_and_ema/timed_by_key without GroupI, StdD, WavgD, Pos, FormI",
+        "update_by_time_and_ema/timed_empty without GroupI, StdD, WavgD, Pos, FormI, EmstdD, EmstdTimeD",
+        "update_by_time_and_ema/timed_no_key without GroupI, StdD, WavgD, Pos, FormI",
     ];
     assert_eq!(tally.compared, expected);
-    // 5 tables of static scenarios at one step, and 2 ticking ones at 6 steps.
-    assert_eq!(tally.comparisons, 5 + 2 * 6);
-    assert_eq!(tally.not_run.len(), 180, "{:#?}", tally.not_run);
+    // 33 tables of static scenarios at one step, 2 ticking ones at 6 steps and 6 at 8.
+    assert_eq!(tally.comparisons, 33 + 2 * 6 + 6 * 8);
+    assert_eq!(tally.not_run.len(), 710, "{:#?}", tally.not_run);
 }
