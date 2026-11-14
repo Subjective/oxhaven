@@ -2,7 +2,7 @@
 //! parent.
 
 use super::keys::{self, required_base};
-use super::sources::{ArrayColumn, Bases, Elements, Repeated};
+use super::sources::{Bases, Elements, Lists, Repeated};
 use super::UngroupError;
 use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
@@ -24,7 +24,7 @@ const CHUNK_SIZE: usize = 1 << 10;
 pub(super) struct Ungrouped {
     /// Its place in the parent's definition.
     pub(super) index: usize,
-    pub(super) arrays: Arc<dyn ArrayColumn>,
+    pub(super) arrays: Arc<Lists>,
 }
 
 /// One `ungroup`.

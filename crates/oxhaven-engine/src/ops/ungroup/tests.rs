@@ -1,84 +1,73 @@
-//! `ungroup` with stand-ins for array columns: the contracts have no array-valued column
-//! type, so the arrays of these tests are made from the values of an `Int` column.
+//! `ungroup` of tables with vector and array columns.
+//!
+//! Most tests write an array as a count: [`counted`] makes the cell of the count `n` the
+//! array of the `|n|` longs `100 * n`, `100 * n + 1` and so on, and of no count a null
+//! cell, so that a result shows which row and which place an element came from.
 
 use super::keys::MINIMUM_BASE;
-use super::operator::{ungroup_arrays, Ungrouped};
-use super::sources::ArrayColumn;
-use super::{ungroup, UngroupError};
+use super::{ungroup, ungroup_with_base, UngroupError};
 use crate::ops::sort::testing::{
     blink_table, cells, frozen, graph, keys, keys_of, scripted, shifts, static_table, Columns,
 };
 use crate::table::holds_values;
 use crate::update::modified_pre_shift;
-use arrow::array::{Array, ArrayRef, Int32Array, Int64Array};
+use arrow::array::{Array, ArrayRef, Int64Array, ListArray};
+use arrow::datatypes::Int64Type;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
+use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, ints, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
+    definition, ints, list_of, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
     TableChange,
 };
 use std::sync::Arc;
 
-/// The arrays of an `Int` column, for tests. The array of a row whose value is `n` has
-/// `|n|` elements, the longs `100 * n`, `100 * n + 1` and so on; a null value is a null
-/// array. So the arrays change exactly when the column does, and their previous values
-/// are the column's.
-struct Counted {
-    column: Arc<dyn ColumnSource>,
+/// The type of the column `A` of these tests, a vector as `group_by` makes one.
+fn vector() -> ColumnType {
+    ColumnType::vector(ColumnType::Long)
 }
 
-fn counts(values: &ArrayRef) -> &Int32Array {
-    values.as_any().downcast_ref().expect("an Int column")
+/// The type of the columns `B` and `C` of these tests, a Java array.
+fn array() -> ColumnType {
+    ColumnType::array(ColumnType::Long)
 }
 
-impl ArrayColumn for Counted {
-    fn element_type(&self) -> &ColumnType {
-        &ColumnType::Long
-    }
-
-    fn sizes(&self, rows: &RowSet, previous: bool) -> Result<Vec<u64>, TableFailure> {
-        let values = if previous {
-            self.column.prev_chunk(rows)?
-        } else {
-            self.column.chunk(rows)?
-        };
-        let sizes = counts(&values).iter();
-        Ok(sizes
-            .map(|n| n.map_or(0, |n| u64::from(n.unsigned_abs())))
-            .collect())
-    }
-
-    fn elements(&self, cells: &[(RowKey, u64)], previous: bool) -> Result<ArrayRef, TableFailure> {
-        let rows: Vec<RowKey> = cells.iter().map(|(row, _)| *row).collect();
-        let values = self.column.chunk_by_keys(&rows, previous)?;
-        let elements = counts(&values).iter().zip(cells).map(|(n, (_, offset))| {
-            let n = n.filter(|n| *offset < u64::from(n.unsigned_abs()))?;
-            Some(100 * i64::from(n) + *offset as i64)
-        });
-        Ok(Arc::new(elements.collect::<Int64Array>()))
-    }
+/// Cells of `column_type`, a vector or an array of longs, one for each count: for the
+/// count `n` the `|n|` elements `100 * n`, `100 * n + 1` and so on, and for no count a
+/// null cell.
+fn counted(column_type: &ColumnType, counts: impl IntoIterator<Item = Option<i32>>) -> ArrayRef {
+    let counts: Vec<Option<i32>> = counts.into_iter().collect();
+    let elements = counts.iter().flatten().flat_map(|&n| {
+        let size = i64::from(n.unsigned_abs());
+        (0..size).map(move |offset| 100 * i64::from(n) + offset)
+    });
+    let elements: Int64Array = elements.collect::<Vec<i64>>().into();
+    let lengths = counts.iter().map(|n| n.map(|n| n.unsigned_abs() as usize));
+    list_of(column_type, lengths, Arc::new(elements))
 }
 
-/// `source` with the `Int` columns `names` ungrouped as [`Counted`] arrays.
+/// Cells of the vector column `A`.
+fn a<const N: usize>(counts: [i32; N]) -> ArrayRef {
+    counted(&vector(), counts.map(Some))
+}
+
+/// Cells of the array column `B`.
+fn b<const N: usize>(counts: [i32; N]) -> ArrayRef {
+    counted(&array(), counts.map(Some))
+}
+
+/// `source` with the columns `names` ungrouped, with slots of at least
+/// `1 << minimum_base` keys.
 fn ungrouped(
     source: &Arc<dyn Table>,
     null_fill: bool,
     names: &[&str],
     minimum_base: u32,
 ) -> Result<Arc<dyn Table>, UngroupError> {
-    let columns = names.iter().map(|name| {
-        let index = source.definition().index_of(name).expect("a column");
-        Ungrouped {
-            index,
-            arrays: Arc::new(Counted {
-                column: source.column(index),
-            }),
-        }
-    });
-    ungroup_arrays(source, null_fill, columns.collect(), minimum_base)
+    let names: Vec<String> = names.iter().map(|name| name.to_string()).collect();
+    ungroup_with_base(source, null_fill, &names, minimum_base)
 }
 
 /// The rows of `table` in order, the cells of a row joined by `|`.
@@ -94,22 +83,19 @@ fn rows(table: &dyn Table) -> Vec<String> {
         .collect()
 }
 
-fn some_ints(values: &[Option<i32>]) -> ArrayRef {
-    Arc::new(values.iter().copied().collect::<Int32Array>())
-}
-
-/// `K`, a string that is not ungrouped, and `A`, the sizes of the arrays.
+/// `K`, a string that is not ungrouped, and `A`, a vector column of the counts `a`.
 fn one(k: &[&str], a: &[i32]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
+    let counts = a.iter().copied().map(Some);
     vec![
         ("K", ColumnType::String, strings(k.iter().copied())),
-        ("A", ColumnType::Int, ints(a.iter().copied())),
+        ("A", vector(), counted(&vector(), counts)),
     ]
 }
 
-/// `K` and the sizes of two array columns, `A` and `B`.
+/// `K`, the vector column `A` and the array column `B`.
 fn two(k: &[&str], a: &[i32], b: &[Option<i32>]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
     let mut columns = one(k, a);
-    columns.push(("B", ColumnType::Int, some_ints(b)));
+    columns.push(("B", array(), counted(&array(), b.iter().copied())));
     columns
 }
 
@@ -241,7 +227,10 @@ impl Shown {
 // the operation as a client calls it
 
 fn plain() -> Arc<dyn Table> {
-    static_table(&one(&["x", "y"], &[1, 2]))
+    static_table(&[
+        ("K", ColumnType::String, strings(["x", "y"])),
+        ("A", ColumnType::Int, ints([1, 2])),
+    ])
 }
 
 fn names(names: &[&str]) -> Vec<String> {
@@ -299,8 +288,8 @@ fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
         ("K", ColumnType::String, strings(["x", "y", "z", "w"])),
         (
             "A",
-            ColumnType::Int,
-            some_ints(&[Some(2), None, Some(0), Some(-3)]),
+            vector(),
+            counted(&vector(), [Some(2), None, Some(0), Some(-3)]),
         ),
     ]);
     let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
@@ -320,6 +309,18 @@ fn a_row_for_every_element_in_the_order_of_rows_and_arrays() {
         types,
         [("K", &ColumnType::String), ("A", &ColumnType::Long)]
     );
+    // An array column gives the same.
+    let array_source = static_table(&[
+        ("K", ColumnType::String, strings(["x", "y", "z", "w"])),
+        (
+            "A",
+            array(),
+            counted(&array(), [Some(2), None, Some(0), Some(-3)]),
+        ),
+    ]);
+    let of_array = ungrouped(&array_source, false, &["A"], MINIMUM_BASE).unwrap();
+    assert_eq!(rows(&*of_array), rows(&*result));
+    assert_eq!(keys_of(&*of_array), keys_of(&*result));
     assert!(!result.is_refreshing() && !result.is_flat());
     assert_eq!(result.attributes(), Default::default());
     // Neither kind of column holds its values.
@@ -363,11 +364,15 @@ fn arrays_of_one_row_have_one_size() {
     let columns = two(&["x", "y"], &[2, 1], &[Some(5), Some(0)]);
     let source = static_table(&columns);
     let result = ungrouped(&source, false, &["A"], MINIMUM_BASE).unwrap();
-    assert_eq!(rows(&*result), ["x|200|5", "x|201|5", "y|100|0"]);
     assert_eq!(
-        result.definition().columns()[B].column_type,
-        ColumnType::Int
+        rows(&*result),
+        [
+            "x|200|[500, 501, 502, 503, 504]",
+            "x|201|[500, 501, 502, 503, 504]",
+            "y|100|[]"
+        ]
     );
+    assert_eq!(result.definition().columns()[B].column_type, array());
 }
 
 #[test]
@@ -410,12 +415,16 @@ fn the_difference_reported_is_the_first_of_the_first_chunk() {
         let size = 3000;
         let sizes = |differs: usize| {
             let sizes = (0..size).map(move |row| if row == differs { 2 } else { 1 });
-            ints(sizes)
+            counted(&array(), sizes.map(Some))
         };
         static_table(&[
-            ("A", ColumnType::Int, ints((0..size).map(|_| 1))),
-            ("B", ColumnType::Int, sizes(b_differs)),
-            ("C", ColumnType::Int, sizes(c_differs)),
+            (
+                "A",
+                vector(),
+                counted(&vector(), (0..size).map(|_| Some(1))),
+            ),
+            ("B", array(), sizes(b_differs)),
+            ("C", array(), sizes(c_differs)),
         ])
     };
     let differs =
@@ -486,8 +495,8 @@ fn rig(keys: &[RowKey], k: &[&str], a: &[i32]) -> Rig {
     Rig::new(keys, &one(k, a), false, &["A"], 1)
 }
 
-fn row(k: &str, a: i32) -> Vec<ArrayRef> {
-    vec![strings([k]), ints([a])]
+fn row(k: &str, count: i32) -> Vec<ArrayRef> {
+    vec![strings([k]), a([count])]
 }
 
 #[test]
@@ -528,7 +537,7 @@ fn a_modified_array_keeps_adds_and_removes_elements() {
     let rig = rig(&[0, 1, 2, 3], &["x", "y", "z", "w"], &[2, 2, 1, 0]);
     assert_eq!(keys_of(&*rig.result), [0, 1, 2, 3, 4]);
     // Row 0 keeps its size, row 1 shrinks, row 2 grows, row 3 gets its first element.
-    let change = TableChange::new().modify([0, 1, 2, 3], [(A, ints([-2, 1, 2, 1]))]);
+    let change = TableChange::new().modify([0, 1, 2, 3], [(A, a([-2, 1, 2, 1]))]);
     let shown = rig.changed(change);
     assert_eq!(shown, Shown::of(&[5, 6], &[3], &[0, 1, 2, 4]).columns(&[A]));
     assert_eq!(
@@ -536,7 +545,7 @@ fn a_modified_array_keeps_adds_and_removes_elements() {
         ["x|-200", "x|-199", "y|100", "z|200", "z|201", "w|100"]
     );
     // And loses its last.
-    let change = TableChange::new().modify([1, 2], [(A, ints([0, 2]))]);
+    let change = TableChange::new().modify([1, 2], [(A, a([0, 2]))]);
     let shown = rig.changed(change);
     assert_eq!(shown, Shown::of(&[], &[2], &[4, 5]).columns(&[A]));
 }
@@ -553,7 +562,7 @@ fn a_shifted_row_moves_its_elements() {
         .remove([0])
         .shift(5, 6, -4)
         .add([0], row("v", 1))
-        .modify([1, 2], [(A, ints([2, 2]))]);
+        .modify([1, 2], [(A, a([2, 2]))]);
     let shown = rig.changed(change);
     let expected = Shown::of(&[0, 3, 4, 5], &[0, 1], &[2])
         .shifted(&[(10, 10, -8)])
@@ -591,7 +600,7 @@ fn an_added_array_that_does_not_fit_moves_every_slot() {
 #[test]
 fn a_modified_array_that_does_not_fit_moves_every_slot() {
     let rig = rig(&[0, 1], &["x", "y"], &[1, 2]);
-    let shown = rig.changed(TableChange::new().modify([0], [(A, ints([3]))]));
+    let shown = rig.changed(TableChange::new().modify([0], [(A, a([3]))]));
     let expected = Shown::of(&[1, 2], &[], &[0])
         .shifted(&[(2, 3, 2)])
         .columns(&[A]);
@@ -607,7 +616,7 @@ fn every_change_at_once_with_slots_that_grow() {
         .remove([0])
         .shift(4, 4, -1)
         .add([6], row("v", 1))
-        .modify([1, 3], [(K, strings(["q", "r"])), (A, ints([3, -2]))]);
+        .modify([1, 3], [(K, strings(["q", "r"])), (A, a([3, -2]))]);
     let shown = rig.changed(change);
     // The removed keys and the old places of the shifts are of slots of two keys, the
     // rest of slots of four.
@@ -686,7 +695,7 @@ fn an_added_row_is_checked_before_modified_rows_grow_the_slots() {
     let last = RowKey::MAX >> 1;
     let change = TableChange::new()
         .add([last], row("y", 0))
-        .modify([0], [(A, ints([3]))]);
+        .modify([0], [(A, a([3]))]);
     assert_eq!(
         rig.fails(change),
         "Key overflow detected, perhaps you should flatten your table before calling \
@@ -702,7 +711,7 @@ fn a_row_can_move_into_the_last_slot_but_not_be_removed_from_it() {
     let rig = rig(&[0, 5], &["x", "y"], &[1, 0]);
     let last = RowKey::MAX >> 1;
     assert_eq!(rig.step(TableChange::new().shift(5, 5, last - 5)), None);
-    let shown = rig.changed(TableChange::new().modify([last], [(A, ints([1]))]));
+    let shown = rig.changed(TableChange::new().modify([last], [(A, a([1]))]));
     // No element was modified, so no column is reported as modified.
     assert_eq!(shown, Shown::of(&[RowKey::MAX - 1], &[], &[]));
     assert_eq!(rig.rows(), ["x|100", "y|100"]);
@@ -721,25 +730,25 @@ fn pair(keys: &[RowKey], k: &[&str], a: &[i32], b: &[Option<i32>], null_fill: bo
     Rig::new(keys, &two(k, a, b), null_fill, &["A", "B"], 1)
 }
 
-fn row_of_two(k: &str, a: i32, b: i32) -> Vec<ArrayRef> {
-    vec![strings([k]), ints([a]), ints([b])]
+fn row_of_two(k: &str, count: i32, other: i32) -> Vec<ArrayRef> {
+    vec![strings([k]), a([count]), b([other])]
 }
 
 #[test]
 fn an_array_modified_alone_must_keep_its_size() {
     let rig = pair(&[4, 7], &["x", "y"], &[2, 1], &[Some(-2), Some(-1)], false);
-    let shown = rig.changed(TableChange::new().modify([4], [(B, ints([2]))]));
+    let shown = rig.changed(TableChange::new().modify([4], [(B, b([2]))]));
     assert_eq!(shown, Shown::of(&[], &[], &[8, 9]).columns(&[B]));
     assert_eq!(rig.rows(), ["x|200|200", "x|201|201", "y|100|-100"]);
     // The column that was not modified is the one it is compared with, whichever
     // comes first.
-    let failure = rig.fails(TableChange::new().modify([7], [(B, ints([2]))]));
+    let failure = rig.fails(TableChange::new().modify([7], [(B, b([2]))]));
     assert_eq!(
         failure,
         "Array sizes differ at row key 7 (position 1), A has size 1, B has size 2"
     );
     let rig = pair(&[4, 7], &["x", "y"], &[2, 1], &[Some(-2), Some(-1)], false);
-    let failure = rig.fails(TableChange::new().modify([7], [(A, ints([0]))]));
+    let failure = rig.fails(TableChange::new().modify([7], [(A, a([0]))]));
     assert_eq!(
         failure,
         "Array sizes differ at row key 7 (position 1), B has size 1, A has size 0"
@@ -749,10 +758,10 @@ fn an_array_modified_alone_must_keep_its_size() {
 #[test]
 fn arrays_modified_together_change_their_size_together() {
     let rig = pair(&[4, 7], &["x", "y"], &[2, 1], &[Some(-2), Some(-1)], false);
-    let change = TableChange::new().modify([7], [(A, ints([2])), (B, ints([2]))]);
+    let change = TableChange::new().modify([7], [(A, a([2])), (B, b([2]))]);
     let shown = rig.changed(change);
     assert_eq!(shown, Shown::of(&[15], &[], &[14]).columns(&[A, B]));
-    let change = TableChange::new().modify([7], [(A, ints([2])), (B, ints([1]))]);
+    let change = TableChange::new().modify([7], [(A, a([2])), (B, b([1]))]);
     assert_eq!(
         rig.fails(change),
         "Array sizes differ at row key 7 (position 1), A has size 2, B has size 1"
@@ -779,7 +788,7 @@ fn an_array_modified_alone_goes_unchecked_when_added_rows_grow_the_slots() {
     let rig = Rig::build(&[0, 1], &columns, false, &["A", "B"], 1, false);
     let change = TableChange::new()
         .add([2], row_of_two("z", 3, 3))
-        .modify([1], [(B, ints([2]))]);
+        .modify([1], [(B, b([2]))]);
     let shown = rig.changed(change);
     let expected = Shown::of(&[8, 9, 10], &[], &[4])
         .shifted(&[(2, 2, 2)])
@@ -803,7 +812,7 @@ fn null_fill_reads_every_array_when_one_is_modified() {
     let rig = pair(&[0, 1], &["x", "y"], &[2, 1], &[Some(1), None], true);
     assert_eq!(rig.rows(), ["x|200|100", "x|201|null", "y|100|null"]);
     // The array of `B` outgrows the one of `A`, and the slots.
-    let shown = rig.changed(TableChange::new().modify([1], [(B, ints([3]))]));
+    let shown = rig.changed(TableChange::new().modify([1], [(B, b([3]))]));
     let expected = Shown::of(&[5, 6], &[], &[4])
         .shifted(&[(2, 2, 2)])
         .columns(&[B]);
@@ -819,7 +828,7 @@ fn null_fill_reads_every_array_when_one_is_modified() {
         ]
     );
     // It shrinks below the one of `A`, which was not modified.
-    let shown = rig.changed(TableChange::new().modify([1], [(B, ints([0]))]));
+    let shown = rig.changed(TableChange::new().modify([1], [(B, b([0]))]));
     assert_eq!(shown, Shown::of(&[], &[5, 6], &[4]).columns(&[B]));
     assert_eq!(rig.rows(), ["x|200|100", "x|201|null", "y|100|null"]);
 }
@@ -830,14 +839,14 @@ fn null_fill_reads_every_array_when_one_is_modified() {
 #[test]
 fn a_blink_table_starts_again_every_cycle() {
     let graph = graph();
-    let columns = [("K", ColumnType::String), ("A", ColumnType::Int)];
+    let columns = [("K", ColumnType::String), ("A", vector())];
     let (source, blink) = blink_table(&graph, &columns);
     let result = ungrouped(&source, false, &["A"], 1).unwrap();
     assert!(result.attributes().blink);
     let recorder = Recorder::attach(result.clone());
     let checker = ConsistencyChecker::attach(result.clone());
-    blink.push(vec![strings(["x", "y"]), ints([5, 1])]);
-    blink.push(vec![strings(["z"]), ints([2])]);
+    blink.push(vec![strings(["x", "y"]), a([5, 1])]);
+    blink.push(vec![strings(["z"]), a([2])]);
     let mut seen = Vec::new();
     for _ in 0..3 {
         graph.run_cycle();
@@ -864,46 +873,47 @@ fn a_blink_table_starts_again_every_cycle() {
 // ---------------------------------------------------------------------------------------
 // random changes
 
+/// Cells of `column_type` with the sizes of the cells of `other`: the longs of `other`,
+/// negated, a null cell where `other` has one.
+fn sized_as(other: &ArrayRef, column_type: &ColumnType) -> ArrayRef {
+    let lists = other.as_any().downcast_ref::<ListArray>().expect("lists");
+    let lengths = (0..lists.len()).map(|row| lists.is_valid(row).then(|| lists.value(row).len()));
+    let lengths: Vec<Option<usize>> = lengths.collect();
+    let cells = (0..lists.len()).filter(|row| lists.is_valid(*row));
+    let elements = cells.flat_map(|row| {
+        let cell = lists.value(row);
+        let cell = arrow::array::AsArray::as_primitive::<Int64Type>(&*cell);
+        cell.iter().map(|e| e.map(|e| -e)).collect::<Vec<_>>()
+    });
+    let elements: Int64Array = elements.collect();
+    list_of(column_type, lengths, Arc::new(elements))
+}
+
 /// Rewrites `change` so that the arrays of `A` and `B` keep one size for every row: `B`
 /// gets the sizes of `A` where both change, and a column that changes alone gets the
 /// sizes the other has.
 fn keep_sizes_equal(source: &dyn Table, change: &mut TableChange) {
-    let negated = |values: &ArrayRef| -> ArrayRef {
-        let negated = counts(values).iter().map(|n| n.map(|n| -n));
-        Arc::new(negated.collect::<Int32Array>())
-    };
-    // The values of `signs` with the sizes of `sizes`.
-    let sized = |signs: &ArrayRef, sizes: &ArrayRef| -> ArrayRef {
-        let values = counts(signs).iter().zip(counts(sizes).iter());
-        let values = values.map(|(sign, size)| {
-            let size = size?.abs();
-            Some(if sign.is_some_and(|sign| sign < 0) {
-                -size
-            } else {
-                size
-            })
-        });
-        Arc::new(values.collect::<Int32Array>())
-    };
     if !change.added_values.is_empty() {
-        change.added_values[B] = negated(&change.added_values[A]);
+        change.added_values[B] = sized_as(&change.added_values[A], &array());
     }
     let a = change.modified_values.get(&A).cloned();
-    let b = change.modified_values.get(&B).cloned();
+    let b = change.modified_values.contains_key(&B);
     let before = modified_pre_shift(&change.update).unwrap();
     match (a, b) {
-        (Some(a), Some(_)) => {
-            change.modified_values.insert(B, negated(&a));
+        (Some(a), true) => {
+            change.modified_values.insert(B, sized_as(&a, &array()));
         }
-        (Some(a), None) => {
+        (Some(_), false) => {
             let other = source.column(B).chunk(&before).unwrap();
-            change.modified_values.insert(A, sized(&a, &other));
+            change
+                .modified_values
+                .insert(A, sized_as(&other, &vector()));
         }
-        (None, Some(b)) => {
+        (None, true) => {
             let other = source.column(A).chunk(&before).unwrap();
-            change.modified_values.insert(B, sized(&b, &other));
+            change.modified_values.insert(B, sized_as(&other, &array()));
         }
-        (None, None) => {}
+        (None, false) => {}
     }
 }
 
@@ -917,11 +927,7 @@ fn check_random(
     minimum_base: u32,
     equal_sizes: bool,
 ) -> u64 {
-    let types = [
-        ("K", ColumnType::String),
-        ("A", ColumnType::Int),
-        ("B", ColumnType::Int),
-    ];
+    let types = [("K", ColumnType::String), ("A", vector()), ("B", array())];
     let mut updates = 0;
     for seed in seeds {
         let graph = graph();
@@ -932,7 +938,7 @@ fn check_random(
             .map(|(_, column_type)| random.values(column_type, size))
             .collect();
         if equal_sizes {
-            values[B] = values[A].clone();
+            values[B] = sized_as(&values[A], &array());
         }
         let script = ScriptedTable::new(
             graph.clone(),
@@ -968,7 +974,7 @@ fn check_random(
 
 #[test]
 fn random_changes_of_one_array_column() {
-    // Sizes up to ten: the slots start with two keys and grow to sixteen.
+    // Up to three elements: the slots start with two keys and grow to four.
     assert!(check_random(0..150, false, &["A"], 1, false) > 3000);
     // With Java's slots, which never grow here.
     assert!(check_random(150..200, false, &["A"], MINIMUM_BASE, false) > 1000);

@@ -6,23 +6,15 @@
 //! value. The arrays of one row must have one size, unless `null_fill` is set, which
 //! gives the row the size of its largest array and fills the others with nulls.
 //!
-//! # What is here and what is not
+//! # Layout
 //!
-//! This module was written before the contracts had array-valued column types
-//! (`ColumnType::Vector`, `ColumnType::Array`), and does not read their list cells yet.
-//! [`ungroup`] answers the two cases that need no arrays, as Java does: without named
-//! columns it returns a source without array columns as it is, and a named column that
-//! does not exist or is not an array is refused. A vector or array column is recognized
-//! and then stops at [`arrays_of`], which is `unported!`.
-//!
-//! Everything behind that is built against a private stand-in for an array column
-//! ([`sources::ArrayColumn`]: the sizes of the arrays of some rows, and elements by row and
-//! offset) and tested with stand-ins made of ordinary columns: the row keys of the result
-//! ([`keys`]), its columns ([`sources`]), the initial result and the change of the result
-//! for every change of the source ([`operator`]). What is left is the one function
-//! [`arrays_of`], an [`sources::ArrayColumn`] over the list arrays that
-//! `ColumnSource::chunk` returns, and the comparison with the recorded Java results, which
-//! need `group_by`.
+//! [`ungroup`] is the operation: it decides which columns are ungrouped and refuses a
+//! named column that does not exist or is not an array, as Java does. The rest is built
+//! on [`sources::Lists`], which reads the Arrow list cells of a vector or array column
+//! (`ColumnType::Vector`, `ColumnType::Array`) as the sizes of the arrays of some rows
+//! and as elements by row and offset, now or as of the previous cycle: the row keys of
+//! the result ([`keys`]), its columns ([`sources`]), the initial result and the change of
+//! the result for every change of the source ([`operator`]).
 
 mod keys;
 mod operator;
@@ -38,7 +30,7 @@ use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
-use sources::ArrayColumn;
+use sources::Lists;
 use std::fmt;
 use std::sync::Arc;
 
@@ -168,18 +160,10 @@ fn is_array(column_type: &ColumnType) -> bool {
 
 /// The arrays of column `index` of `source`, which [`is_array`].
 ///
-/// `unported!`: reading the list cells of a vector or array column as an [`ArrayColumn`]
-/// is not written yet.
-///
 /// Behavior: io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource
-fn arrays_of(source: &dyn Table, index: usize) -> Arc<dyn ArrayColumn> {
-    let column = &source.definition().columns()[index];
-    unported!(
-        "io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource",
-        "column {} of type {:?}",
-        column.name,
-        column.column_type
-    )
+fn arrays_of(source: &dyn Table, index: usize) -> Arc<Lists> {
+    let arrays = Lists::of(source.column(index));
+    Arc::new(arrays.expect("a vector or array column"))
 }
 
 /// `source` with each of `columns` replaced by the elements of its arrays; without
@@ -199,6 +183,20 @@ pub fn ungroup(
     source: &Arc<dyn Table>,
     null_fill: bool,
     columns: &[String],
+) -> Result<Arc<dyn Table>, UngroupError> {
+    ungroup_with_base(source, null_fill, columns, keys::MINIMUM_BASE)
+}
+
+/// [`ungroup`] with slots of at least `1 << minimum_base` row keys for each row of the
+/// source, which Java reads from a property that its tests set to 1 or 2 so that small
+/// arrays make the slots grow.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#minimumUngroupBase
+fn ungroup_with_base(
+    source: &Arc<dyn Table>,
+    null_fill: bool,
+    columns: &[String],
+    minimum_base: u32,
 ) -> Result<Arc<dyn Table>, UngroupError> {
     let declared = source.definition().columns();
     let indices: Vec<usize> = if columns.is_empty() {
@@ -228,5 +226,5 @@ pub fn ungroup(
         index,
         arrays: arrays_of(&**source, index),
     });
-    operator::ungroup_arrays(source, null_fill, ungrouped.collect(), keys::MINIMUM_BASE)
+    operator::ungroup_arrays(source, null_fill, ungrouped.collect(), minimum_base)
 }
