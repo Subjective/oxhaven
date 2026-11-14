@@ -269,9 +269,10 @@ async fn windows_decays_and_options_reach_the_engine_as_java_adapts_them() {
     let source = c.table(1);
     let cases: Vec<(&str, Spec, UpdateBySpec)> = vec![
         (
+            // more nanoseconds than a window may have rows
             "rolling sum over a duration string",
-            rolling_sum(duration("L", "PT2S"), duration("L", "PT0S")),
-            rolling(UpdateBySpec::RollingSum, in_time(2 * SECOND), in_time(0)),
+            rolling_sum(duration("L", "PT3S"), duration("L", "PT0S")),
+            rolling(UpdateBySpec::RollingSum, in_time(3 * SECOND), in_time(0)),
         ),
         (
             "rolling sum over a clock duration string",
@@ -505,6 +506,13 @@ async fn update_by_requests_are_checked_as_java_checks_them() {
                 ..Default::default()
             }),
             "UpdateByControl.chunkCapacity() must be greater than 0, is 0",
+        ),
+        (
+            options(UpdateByOptions {
+                initial_hash_table_size: Some(0),
+                ..Default::default()
+            }),
+            "UpdateByControl.initialHashTableSize() must be greater than 0, is 0",
         ),
         (
             options(UpdateByOptions {
