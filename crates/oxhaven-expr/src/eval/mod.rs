@@ -1,7 +1,7 @@
 //! Evaluation of a type-checked formula over Arrow arrays, one batch of rows at a time.
 
 mod compare;
-mod numeric;
+pub(crate) mod numeric;
 mod text;
 
 use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
@@ -14,7 +14,7 @@ use arrow::datatypes::{
     TimestampNanosecondType, UInt16Type,
 };
 use numeric::{with_null_values, without_null_value, JavaPrimitive};
-use oxhaven_contracts::expr::{Formula, Literal};
+use oxhaven_contracts::expr::{Formula, Literal, RowVariable};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
@@ -34,6 +34,10 @@ fn arrow_failure(error: arrow::error::ArrowError) -> TableFailure {
 struct Batch {
     /// One array per entry of [`Checked::columns`], each `rows` long.
     columns: Vec<ArrayRef>,
+    /// The position of each row in the table, when the formula uses `i` or `ii`.
+    positions: Option<Int64Array>,
+    /// The key of each row, when the formula uses `k`.
+    keys: Option<Int64Array>,
     rows: usize,
 }
 
@@ -45,8 +49,20 @@ impl Batch {
             .iter()
             .map(|column| arrow::compute::filter(column, keep).map_err(arrow_failure))
             .collect::<Result<_, _>>()?;
+        let longs = |values: &Option<Int64Array>| {
+            values
+                .as_ref()
+                .map(|values| {
+                    arrow::compute::filter(values, keep)
+                        .map(|kept| kept.as_primitive::<Int64Type>().clone())
+                        .map_err(arrow_failure)
+                })
+                .transpose()
+        };
         Ok(Batch {
             columns,
+            positions: longs(&self.positions)?,
+            keys: longs(&self.keys)?,
             rows: keep.true_count(),
         })
     }
@@ -77,7 +93,7 @@ impl Formula for CompiledFormula {
     }
 
     fn uses_row_variables(&self) -> bool {
-        false
+        self.checked.positions || self.checked.keys
     }
 
     fn evaluate(
@@ -112,10 +128,31 @@ impl Formula for CompiledFormula {
                 Ok(without_null_values(values))
             })
             .collect::<Result<_, _>>()?;
+        // Behavior: `DhFormulaColumn#generateFillChunkHelper`: the positions are those of
+        // the rows in the table's row set, the previous one for previous values.
+        let positions = if self.checked.positions {
+            let all = if use_prev {
+                table.prev_row_set()
+            } else {
+                table.row_set()
+            };
+            let positions = all
+                .invert(rows)
+                .map_err(|_| failure("a formula with i or ii was given rows the table lacks"))?;
+            Some(positions.iter().collect::<Int64Array>())
+        } else {
+            None
+        };
+        let keys = self
+            .checked
+            .keys
+            .then(|| rows.iter().collect::<Int64Array>());
         evaluate(
             &self.checked.root,
             &Batch {
                 columns,
+                positions,
+                keys,
                 rows: size,
             },
         )
@@ -219,6 +256,33 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
     let numeric = Numeric::of(&expr.column_type);
     match &expr.node {
         Node::Column(slot) => Ok(batch.columns[*slot].clone()),
+        Node::RowVariable(variable) => {
+            let positions = || {
+                batch
+                    .positions
+                    .as_ref()
+                    .expect("the checker asked for them")
+            };
+            match variable {
+                // Behavior: `DhFormulaColumn#generateIntSize`: `i` is the position as an
+                // `int`, and a position beyond the `int` range fails.
+                RowVariable::I => positions()
+                    .iter()
+                    .map(|position| {
+                        i32::try_from(position.expect("no nulls"))
+                            .map(Some)
+                            .map_err(|_| {
+                                failure("FormulaColumn i usage: size exceeds Integer.MAX_VALUE")
+                            })
+                    })
+                    .collect::<Result<Int32Array, _>>()
+                    .map(erase),
+                RowVariable::Ii => Ok(erase(positions().clone())),
+                RowVariable::K => Ok(erase(
+                    batch.keys.clone().expect("the checker asked for them"),
+                )),
+            }
+        }
         Node::Literal(literal) => Ok(constant(literal, batch.rows)),
         Node::Null => Ok(new_null_array(&expr.column_type.arrow_type(), batch.rows)),
         Node::Negate(operand) => {
@@ -292,6 +356,13 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             let left = evaluate(left, batch)?;
             let right = evaluate(right, batch)?;
             text::concat(left.as_ref(), right.as_ref()).map(erase)
+        }
+        Node::Call { kernel, arguments } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::functions::eval::evaluate(*kernel, &arguments)
         }
         Node::StringMethod {
             method,

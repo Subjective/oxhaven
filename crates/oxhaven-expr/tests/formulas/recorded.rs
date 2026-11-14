@@ -1,15 +1,19 @@
 //! Formulas checked against what the Java reference server answered for them.
 //!
-//! `tests/data/java_formulas.txt` lists the formulas, `tests/data/record_java_formulas.py`
-//! ran each one on Deephaven 42.9 over one input table and wrote
-//! `tests/data/java_formulas.json`: the result column, or whether Java failed to compile the
-//! formula or failed while evaluating it.
+//! `tests/data/java_formulas.txt` lists formulas of the operators and
+//! `tests/data/java_functions.txt` calls of the function library and its constants.
+//! `tests/data/record_java_formulas.py` ran each one on Deephaven 42.9 over one input table
+//! and wrote the `.json` file of the same name: the result column, or whether Java failed
+//! to compile the formula or failed while evaluating it.
 //!
 //! Every recorded formula must do here what it did in Java, or be refused as unsupported.
-//! The refused ones are listed, with the construct each names, in
-//! `tests/data/java_formulas_refused.txt`, and the test fails when that list and the
-//! compiler disagree, so the accepted subset cannot change unnoticed. Run the test with
-//! `OXHAVEN_WRITE_REFUSED=1` to rewrite the list.
+//! The refused ones are listed, with the construct each names, in the `_refused.txt` file
+//! of the same name, and the test fails when that list and the compiler disagree, so the
+//! accepted subset cannot change unnoticed. Run the test with `OXHAVEN_WRITE_REFUSED=1` to
+//! rewrite the lists.
+//!
+//! Results are compared exactly, except those of the functions PARITY.md A1 lets differ by
+//! a tolerance.
 
 use super::*;
 use serde_json::Value;
@@ -58,7 +62,7 @@ fn int_cell<T: TryFrom<i64>>(cell: &Value) -> Option<T> {
 }
 
 /// A column of the recording's type `kind` from JSON cells.
-fn column_of(kind: &str, cells: &[Value]) -> Column {
+pub(super) fn column_of(kind: &str, cells: &[Value]) -> Column {
     let cells = cells.iter();
     match kind {
         "bool" => (
@@ -116,7 +120,7 @@ fn column_of(kind: &str, cells: &[Value]) -> Column {
 
 /// The recording's type name for a Java column type, or `None` for a type Oxhaven has no
 /// column type for.
-fn kind_of(java_type: &str) -> Option<&'static str> {
+pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
     Some(match java_type {
         "java.lang.Boolean" => "bool",
         "byte" => "int8",
@@ -132,7 +136,7 @@ fn kind_of(java_type: &str) -> Option<&'static str> {
     })
 }
 
-fn cells(value: &Value) -> &[Value] {
+pub(super) fn cells(value: &Value) -> &[Value] {
     value.as_array().expect("a list")
 }
 
@@ -163,13 +167,13 @@ enum Outcome {
 
 /// What Oxhaven does with a formula: an error from parsing or type checking, a failure of
 /// the evaluation, or the result column.
-enum Ours {
+pub(super) enum Ours {
     Rejected(FormulaError),
     Failed(TableFailure),
     Column(Column),
 }
 
-fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
+pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
     let compiled = Compiler
         .parse(formula)
         .and_then(|expr| Compiler.compile(&expr, &table.definition));
@@ -216,7 +220,14 @@ fn compare(table: &TestTable, case: &Value) -> Outcome {
 
     if let Some(error) = case.get("error") {
         let cause = error["cause"].as_str().unwrap_or_default();
-        return match (error["when"].as_str().expect("when"), ours) {
+        let mut when = error["when"].as_str().expect("when");
+        // The recorder takes a failure for one of compilation when its message does not
+        // name the formula's evaluation. An `Instant` out of range is such a failure,
+        // although it arises from the values.
+        if cause.contains("DateTimeOverflowException") {
+            when = "evaluate";
+        }
+        return match (when, ours) {
             ("compile", Ours::Rejected(_)) | ("evaluate", Ours::Failed(_)) => Outcome::Agrees,
             // Java's `where` throws for a null `Boolean`; the formula only reports it.
             ("evaluate", Ours::Column((ColumnType::Boolean, values)))
@@ -288,17 +299,32 @@ fn compare(table: &TestTable, case: &Value) -> Outcome {
             "Java returns {java_type}; Oxhaven returns {column_type:?}"
         ));
     }
-    let (actual, expected) = (render(&values), render(&expected.1));
-    if actual == expected {
+    if super::tagged::same_values(formula, &expected.1, &values) {
         Outcome::Agrees
     } else {
+        let (actual, expected) = (render(&values), render(&expected.1));
         Outcome::Differs(format!("Java returns {expected:?}, Oxhaven {actual:?}"))
     }
 }
 
 #[test]
 fn every_recorded_formula_does_what_java_did_or_is_refused_by_name() {
-    let text = fs::read_to_string(data("java_formulas.json")).expect("the recording");
+    check_recording("java_formulas", 1000);
+}
+
+#[test]
+fn every_recorded_function_call_does_what_java_did_or_is_refused_by_name() {
+    check_recording("java_functions", 3000);
+}
+
+#[test]
+fn every_formula_recorded_later_does_what_java_did_or_is_refused_by_name() {
+    check_recording("java_additions", 20);
+}
+
+/// Compares the recording `name` with the compiler; at least `least` formulas must agree.
+fn check_recording(name: &str, least: usize) {
+    let text = fs::read_to_string(data(&format!("{name}.json"))).expect("the recording");
     let document: Value = serde_json::from_str(&text).expect("JSON");
     let table = input(&document);
 
@@ -346,7 +372,7 @@ fn every_recorded_formula_does_what_java_did_or_is_refused_by_name() {
         differences.join("\n")
     );
 
-    let path = data("java_formulas_refused.txt");
+    let path = data(&format!("{name}_refused.txt"));
     if std::env::var_os("OXHAVEN_WRITE_REFUSED").is_some() {
         fs::write(&path, &refused).expect("a writable list");
     }
@@ -358,5 +384,5 @@ fn every_recorded_formula_does_what_java_did_or_is_refused_by_name() {
         path.display()
     );
     // Guards against a recording that silently lists nothing.
-    assert!(agreed > 1000, "only {agreed} formulas agree");
+    assert!(agreed > least, "only {agreed} formulas agree");
 }
