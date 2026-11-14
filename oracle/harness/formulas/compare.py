@@ -1,12 +1,11 @@
 """Compares the outcome of a case on a server with its recorded Java outcome.
 
-No Java counterpart: harness code. Values are compared by `harness.rules.compare_tables`, so the
-rules are the ones every other oracle comparison uses (exact for booleans, integers, strings and
-timestamps; the float tolerance; null equals only null; the engine type in `deephaven:type` is
-part of the column type). What this module adds, because a formula outcome is not always a table:
+No Java counterpart: harness code. Everything is decided by `harness.rules`: failures by its
+rule 0 (same gRPC status code, message not compared), values by `rules.compare_tables` (exact
+cells, floats as bit patterns with NaN equal to NaN, the engine type in `deephaven:type` part of
+the column type), and the A1 tolerance only for a formula that calls a function in
+`rules.INEXACT_FUNCTIONS`. What this module adds, because a formula outcome is stored as JSON:
 
-- Errors. PARITY.md "Must match" item 7 and allowed difference A5: whether a case fails and the
-  gRPC status code are compared; the message text is not.
 - `char` columns. They travel as Arrow `uint16`, which `rules.comparison_class` does not know.
   After the Arrow type and the engine type have been compared exactly, the code units are
   compared as integers.
@@ -26,10 +25,6 @@ from .. import rules
 from .. import scenario as sc
 from .corpus import POSITION, Case
 
-EXPECTED_ERROR = "expected_error"  # Java fails, the server under test does not
-UNEXPECTED_ERROR = "unexpected_error"  # Java succeeds, the server under test fails
-ERROR_STATUS = "error_status"  # both fail, with different gRPC status codes
-
 _ARROW = {
     "bool": pa.bool_(), "int8": pa.int8(), "int16": pa.int16(), "int32": pa.int32(),
     "int64": pa.int64(), "float": pa.float32(), "double": pa.float64(), "string": pa.string(),
@@ -48,9 +43,12 @@ def _column(outcome: dict[str, Any]) -> pa.Table:
     return pa.Table.from_arrays([pa.array(values, kind)], schema=pa.schema([field]))
 
 
-def compare(case: Case, expected: dict[str, Any], actual: dict[str, Any]
+def compare(case: Case, expected: dict[str, Any], actual: dict[str, Any], values: bool = True
             ) -> tuple[list[rules.Mismatch], bool]:
-    """Returns the differences, and whether part of the outcome could not be compared."""
+    """Returns the differences, and whether part of the outcome could not be compared.
+
+    With `values` false only failure, status code and result type are compared.
+    """
 
     def mismatch(kind: str, **fields: Any) -> rules.Mismatch:
         return rules.Mismatch(scenario=case.id, table=case.kind, step=0, kind=kind, **fields)
@@ -59,16 +57,19 @@ def compare(case: Case, expected: dict[str, Any], actual: dict[str, Any]
     if e_error or a_error:
         if e_error and a_error:
             if e_error["status"] != a_error["status"]:
-                return [mismatch(ERROR_STATUS, expected=e_error["status"],
+                return [mismatch(rules.FAILURE_CODE, expected=e_error["status"],
                                  actual=a_error["status"])], False
             return [], False
         if e_error:
-            return [mismatch(EXPECTED_ERROR, expected=e_error["status"], actual="no error",
+            return [mismatch(rules.FAILURE_EXPECTED, expected=e_error["status"],
+                             actual="no failure",
                              note=e_error.get("cause") or e_error.get("message"))], False
-        return [mismatch(UNEXPECTED_ERROR, expected="no error", actual=a_error["status"],
-                         note=f"stage {a_error['stage']}")], False
+        return [mismatch(rules.FAILURE_UNEXPECTED, expected="no failure",
+                         actual=a_error["status"], note=f"stage {a_error['stage']}")], False
 
     if case.kind == "where":
+        if expected.get("nondeterministic"):
+            return [], False
         e_table = pa.table({POSITION: pa.array(expected["rows"], pa.int64())})
         a_table = pa.table({POSITION: pa.array(actual["rows"], pa.int64())})
         return rules.compare_tables(case.id, "where", 0, e_table, a_table), False
@@ -81,7 +82,7 @@ def compare(case: Case, expected: dict[str, Any], actual: dict[str, Any]
                                 actual=actual.get(key), note=key))
     if out:
         return out, False
-    if expected.get("nondeterministic"):
+    if expected.get("nondeterministic") or not values:
         return [], False
     if expected["arrow"] not in _ARROW:
         e_values, a_values = expected["values"], actual["values"]
@@ -97,4 +98,8 @@ def compare(case: Case, expected: dict[str, Any], actual: dict[str, Any]
                 out.append(mismatch(rules.VALUE, column="R", row=row, expected=e_cell,
                                     actual=a_cell, note="type unknown to rules.py, exact form"))
         return out[: rules.DEFAULT_RULES.max_value_mismatches_per_table], True
-    return rules.compare_tables(case.id, "update", 0, _column(expected), _column(actual)), False
+    # A1: a formula that calls a library function that is not correctly rounded is computed.
+    operation = {"name": "r", "op": "update", "source": "t", "formulas": [f"R = {case.formula}"]}
+    computed = rules.computed_columns([operation])["r"]
+    return rules.compare_tables(case.id, "update", 0, _column(expected), _column(actual),
+                                computed=computed), False

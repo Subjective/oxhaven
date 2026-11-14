@@ -331,16 +331,6 @@
         ["Zoey", "Art", 96, 95]
       ]
     },
-    "table_1dce40e202": {
-      "columns": [
-        {"name": "Date", "type": "string"}
-      ],
-      "rows": [
-        ["1/1/23"],
-        ["1/2/23"],
-        ["1/3/23"]
-      ]
-    },
     "table_2e011332e4": {
       "columns": [
         {"name": "Type", "type": "string"},
@@ -369,26 +359,6 @@
         [4],
         [5],
         [6]
-      ]
-    },
-    "table_385f75d001": {
-      "columns": [
-        {"name": "Timestamp", "type": "string"}
-      ],
-      "rows": [
-        ["20230101-12:30:01 CST"],
-        ["20230101-12:30:02 CST"],
-        ["20230101-12:30:03 CST"]
-      ]
-    },
-    "table_3c79370cd3": {
-      "columns": [
-        {"name": "Time", "type": "string"}
-      ],
-      "rows": [
-        ["12.30.00"],
-        ["12.30.01"],
-        ["12.30.02"]
       ]
     },
     "table_3c7b1ac6ba": {
@@ -540,16 +510,6 @@
         ["Da"]
       ]
     },
-    "table_6b8a264b59": {
-      "columns": [
-        {"name": "Date", "type": "int32"}
-      ],
-      "rows": [
-        [230101],
-        [230102],
-        [230103]
-      ]
-    },
     "table_71248e67ba": {
       "columns": [
         {"name": "A", "type": "string"},
@@ -628,16 +588,6 @@
         [7.7],
         [8.8],
         [9.9]
-      ]
-    },
-    "table_9529a81dca": {
-      "columns": [
-        {"name": "Timestamp", "type": "string"}
-      ],
-      "rows": [
-        ["01/01/2023 12:30:01 CT"],
-        ["01/01/2023 12:30:02 CT"],
-        ["01/01/2023 12:30:03 CT"]
       ]
     },
     "table_992a67d7fe": {
@@ -762,16 +712,6 @@
       "rows": [
         ["zebra"],
         ["bear"]
-      ]
-    },
-    "table_d88b98caae": {
-      "columns": [
-        {"name": "Strings", "type": "string"}
-      ],
-      "rows": [
-        ["A"],
-        ["B"],
-        ["C"]
       ]
     },
     "table_dc564d3a15": {

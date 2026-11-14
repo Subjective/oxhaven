@@ -29,11 +29,13 @@ A case is one JSON object:
 The outcome of an `update` case is the result column: `{"type": <deephaven:type>, "arrow":
 <Arrow type>, "values": [cell per input row]}`, with `"component"` when the column has a
 `deephaven:componentType`. Values that are not deterministic are left out and the outcome says
-`"nondeterministic": true`; `"values": null` means the pinned pyarrow cannot read the column's
+`"nondeterministic": true` (a `where` outcome then has no `rows`); `"values": null` means the pinned pyarrow cannot read the column's
 Arrow type. The outcome of a `where` case is `{"rows": [positions kept]}`, the
 positions counted from 0 in the table the filter was applied to. A failed case is
 `{"error": {"status": <gRPC status name>, "stage": "formula" | "setup" | "snapshot",
-"message": <first line of the Java exception>, "cause": <first line of its root cause>}}`.
+"message": <first line of the Java exception>, "cause": <first line of its root cause>}}`;
+for a root cause in `java.lang` only the class is kept, because the JVM does not always give
+its message.
 """
 
 from __future__ import annotations

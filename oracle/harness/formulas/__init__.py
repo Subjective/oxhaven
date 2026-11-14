@@ -1,8 +1,9 @@
 """The formula corpus: formula and filter strings with their recorded Java outcome.
 
 No Java counterpart: harness code. `oracle/README.md` ("Formula corpus") describes the format and
-the commands; they are run as `python -m harness.formulas <command>` from the `oracle/` directory.
+the commands; they are the `formulas` command of the harness (`oracle/bin/harness formulas`).
 
+    cli.py       the command: compare, --check, --record, --stats, --generate
     corpus.py    the on-disk format: fixtures, cases, cell encoding
     tags.py      the lexer and the classifier (accepted subset, feature tags)
     engine.py    runs cases on a server through pydeephaven; reads error details from a Java log

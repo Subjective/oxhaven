@@ -34,7 +34,8 @@ Tags:
     row-var          `i`, `ii` or `k`
     type:<type>      the type of a column the formula reads (byte, short, int, long, float,
                      double, char, Boolean, String, Instant, or the fixture type for others)
-    nondeterministic a function whose result changes between runs (random numbers, the clock)
+    nondeterministic the formula, or one in its setup, calls a function whose result changes
+                     between runs (random numbers, the clock); only the type is recorded
     minimal          accepted, and uses only column references, numeric, boolean, string and
                      char literals, + - * / %, comparisons, && || !, parentheses and `isNull`
     filter:match     (where only) `Col == literal`, `Col != literal`, or an `in` filter
@@ -60,6 +61,9 @@ from pathlib import Path
 
 PRIMITIVES = ("byte", "short", "int", "long", "float", "double", "char", "boolean")
 ROW_VARS = ("i", "ii", "k")
+# A lowercase name before a dot is a package only when it starts a well-known one; otherwise it
+# is a variable the formula does not define.
+PACKAGE_ROOTS = ("java", "javax", "io", "org", "com")
 # Casting to these two classes stays inside the subset.
 ACCEPTED_CAST_CLASSES = ("String", "Boolean")
 
@@ -73,6 +77,15 @@ TYPE_TAGS = {
 NONDETERMINISTIC = re.compile(
     r"^(random\w*|now\w*|today\w*|currentClock|timeZone|nowSystem\w*|todaySystem\w*)$"
 )
+
+_NONDETERMINISTIC_CALL = re.compile(
+    r"\b(?:random\w*|now\w*|today\w*|currentClock|nanoTime|currentTimeMillis)\s*\(")
+
+
+def nondeterministic(texts: list[str]) -> bool:
+    """True when a formula, or one before it in its setup, reads the clock or a random source."""
+    return any(_NONDETERMINISTIC_CALL.search(text) for text in texts)
+
 
 _TOKEN = re.compile(
     r"""
@@ -316,7 +329,8 @@ def classify(formula: str, kind: str, columns: dict[str, str], builtins: Builtin
             if name not in ACCEPTED_CAST_CLASSES or previous == ".":
                 outside.add("cast-object")
             continue
-        if following == "." or (name[:1].isupper() and following in ("[", "<")):
+        if (following == "." and (name[:1].isupper() or name in PACKAGE_ROOTS)) or (
+                name[:1].isupper() and following in ("[", "<")):
             outside.add("class-ref")
             continue
         outside.add("unknown-variable")

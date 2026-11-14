@@ -28,7 +28,7 @@ from pydeephaven.table import Table
 
 from .. import scenario as sc
 from ..connect import open_session, parse_url
-from ..runner import _import
+from ..runner import _do_get_code, _import, failure_code
 from .corpus import POSITION, Case, Corpus, Fixture
 
 RESULT = "OxR"  # result columns of a batch are OxR0, OxR1, ...
@@ -113,6 +113,10 @@ def _parse_record(record: list[str]) -> tuple[str | None, str | None]:
         cause = f"{cause.rstrip(':').strip()}: {kind}: {detail['Exception message']}"
     elif cause.endswith(":") and following:
         cause = f"{cause} {following[0]}"
+    if cause.startswith("java.lang."):
+        # The JVM drops the message of an implicit exception it has thrown often
+        # (-XX:+OmitStackTraceInFastThrow), so only the class is the same on every run.
+        cause = cause.split(":", 1)[0]
     return message, cause
 
 
@@ -126,18 +130,18 @@ def default_log(url: str) -> Path | None:
 
 def _status(error: BaseException) -> tuple[str, str]:
     """The gRPC status name and details of a failed call, from the exception chain."""
-    seen = set()
+    code = failure_code(error)
+    seen: set[int] = set()
     while error is not None and id(error) not in seen:
         seen.add(id(error))
-        code = getattr(error, "code", None)
-        if callable(code):
+        details = getattr(error, "details", None)
+        if callable(details):
             try:
-                details = error.details() if callable(getattr(error, "details", None)) else ""
-                return code().name, details or ""
+                return code or "UNKNOWN", details() or ""
             except Exception:  # noqa: BLE001 - not a gRPC error after all
                 pass
         error = error.__cause__ or error.__context__
-    return "UNKNOWN", ""
+    return code or "UNKNOWN", ""
 
 
 def encode_value(value: Any) -> Any:
@@ -183,6 +187,9 @@ class Engine:
         self._log = log
         self._session = open_session(url)
         self._tables: dict[str, Table | dict[str, Any]] = {}
+        # Every table made, kept until the session closes: releasing a pydeephaven table from
+        # the garbage collector while the session is inside another call can block the client.
+        self._keep: list[Table] = []
         self._progress = progress or (lambda _text: None)
         self.calls = 0
 
@@ -191,8 +198,12 @@ class Engine:
 
     # ------------------------------------------------------------------ errors
 
-    def _error(self, error: BaseException, stage: str) -> dict[str, Any]:
+    def _error(self, error: BaseException, stage: str, table: Table | None = None
+               ) -> dict[str, Any]:
         status, details = _status(error)
+        if table is not None and status == "UNKNOWN":
+            # pyarrow.flight hides the status of a failed DoGet; ask again over plain gRPC.
+            status = _do_get_code(self._session, table) or "UNKNOWN"
         out: dict[str, Any] = {"status": status, "stage": stage}
         if self._log is not None:
             logged = _DETAILS_ID.search(details)
@@ -221,13 +232,16 @@ class Engine:
         fixture = self._corpus.fixtures[case.fixture]
         try:
             table = self._base(fixture)
+            self._keep.append(table)
             for op, strings in case.setup:
                 self.calls += 1
                 table = getattr(table, op)(strings)
+                self._keep.append(table)
             if fixture.empty is not None or case.setup:
                 # No uploaded position column survives here for certain; number the rows.
                 self.calls += 1
                 table = table.update([f"{POSITION} = ii"])
+                self._keep.append(table)
             self._tables[key] = table
         except Exception as error:  # noqa: BLE001 - any failure is the outcome
             self._tables[key] = self._error(error, "setup")
@@ -273,6 +287,7 @@ class Engine:
         self.calls += 1
         try:
             result = table.update(formulas)
+            self._keep.append(result)
         except Exception as error:  # noqa: BLE001
             if len(cases) == 1:
                 outcomes[cases[0].id] = self._error(error, "formula")
@@ -285,7 +300,7 @@ class Engine:
             data = result.to_arrow()
         except Exception as error:  # noqa: BLE001
             if len(cases) == 1:
-                outcomes[cases[0].id] = self._error(error, "snapshot")
+                outcomes[cases[0].id] = self._error(error, "snapshot", result)
                 return
             middle = len(cases) // 2
             self._update(table, cases[:middle], outcomes)
@@ -303,10 +318,13 @@ class Engine:
         self.calls += 1
         try:
             result = table.where([case.formula])
+            self._keep.append(result)
         except Exception as error:  # noqa: BLE001
             return self._error(error, "formula")
         try:
             data = result.to_arrow()
         except Exception as error:  # noqa: BLE001
-            return self._error(error, "snapshot")
+            return self._error(error, "snapshot", result)
+        if "nondeterministic" in case.tags:
+            return {"nondeterministic": True}
         return {"rows": data.column(POSITION).to_pylist()}

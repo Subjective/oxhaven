@@ -146,15 +146,14 @@ class Extractor:
                strings: list[str]) -> Lineage | None:
         """Emits the cases of one operation and returns the table it produces."""
         if op == "where":
-            good = True
             for number, text in enumerate(strings):
                 before = lineage.then("where", strings[:number], lineage.columns) \
                     if number else lineage
-                good &= self._emit(group, f"{name}.{number}", "where", text, source, before)
-            return lineage.then("where", strings, lineage.columns) if good and strings else None
+                if not self._emit(group, f"{name}.{number}", "where", text, source, before):
+                    return None  # what follows would be filtered by something unknown
+            return lineage.then("where", strings, lineage.columns) if strings else None
         columns = dict(lineage.columns)
         result = {} if op in ("select", "view") else columns
-        good = True
         for number, text in enumerate(strings):
             bare = _BARE_COLUMN.match(text)
             if bare and bare.group(1) in columns:
@@ -166,11 +165,12 @@ class Extractor:
             before = Lineage(lineage.fixture, lineage.setup, dict(columns))
             if number:
                 before = before.then(op, strings[:number], dict(columns))
-            good &= self._emit(group, f"{name}.{number}", "update", assignment.group(2), source,
-                               before)
+            if not self._emit(group, f"{name}.{number}", "update", assignment.group(2), source,
+                              before):
+                return None  # later formulas may read a column the corpus cannot rebuild
             columns[assignment.group(1)] = "?"
             result[assignment.group(1)] = "?"
-        if not good or not strings:
+        if not strings:
             return None
         return lineage.then(op, strings, dict(result))
 

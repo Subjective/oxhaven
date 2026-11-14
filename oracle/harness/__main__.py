@@ -8,6 +8,7 @@ No Java counterpart: harness entry point.
     fuzz          generate scenarios from seeds, compare two servers, shrink the first difference
     client-smoke  exercise one area of the client protocol against one server
     show          run scenarios and print their results
+    formulas      record the formula corpus from Java, or compare one server with it
 
 Exit status: 0 when no difference was found, 1 when there are differences, 2 when a scenario
 could not be run, a recording could not be used, or the arguments select nothing.
@@ -309,6 +310,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("area", choices=["session", "tables", "flight", "barrage", "inputtable"])
     p.add_argument("--url", required=True)
     p.set_defaults(run=cmd_client_smoke)
+
+    from .formulas import cli as formulas  # imported here: only this command needs it
+
+    formulas.configure(sub.add_parser(
+        "formulas", help="record or compare the formula corpus (corpus/formulas)"))
 
     args = parser.parse_args(argv)
     try:
