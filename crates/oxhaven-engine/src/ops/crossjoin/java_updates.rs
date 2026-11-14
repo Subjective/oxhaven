@@ -49,9 +49,11 @@ fn row_keys(values: &Value) -> Vec<RowKey> {
 }
 
 fn ranges(values: &Value) -> RowSet {
-    RowSet::from_ranges(list(values).iter().map(|range| {
-        RowRange::new(range[0].as_i64().unwrap(), range[1].as_i64().unwrap())
-    }))
+    RowSet::from_ranges(
+        list(values)
+            .iter()
+            .map(|range| RowRange::new(range[0].as_i64().unwrap(), range[1].as_i64().unwrap())),
+    )
 }
 
 fn names(values: &Value) -> Vec<String> {
@@ -152,16 +154,24 @@ fn java_moves(prev: &RowSet, removed: &RowSet, shifts: &Value) -> Vec<(RowKey, R
         .map(|s| [0, 1, 2].map(|i| s[i].as_i64().unwrap()))
         .collect();
     let moved = |key: RowKey| {
-        let shift = shifts.iter().find(|[first, last, _]| *first <= key && key <= *last);
+        let shift = shifts
+            .iter()
+            .find(|[first, last, _]| *first <= key && key <= *last);
         key + shift.map_or(0, |[_, _, delta]| *delta)
     };
-    prev.minus(removed).iter().map(|key| (key, moved(key))).collect()
+    prev.minus(removed)
+        .iter()
+        .map(|key| (key, moved(key)))
+        .collect()
 }
 
 fn our_moves(prev: &RowSet, update: &TableUpdate) -> Vec<(RowKey, RowKey)> {
     let survivors = prev.minus(&update.removed);
     let shifted = &update.shifted;
-    survivors.iter().map(|key| (key, shifted.apply_to_key(key))).collect()
+    survivors
+        .iter()
+        .map(|key| (key, shifted.apply_to_key(key)))
+        .collect()
 }
 
 fn modified_names(table: &dyn Table, update: &TableUpdate) -> Vec<String> {
@@ -262,12 +272,19 @@ fn run(name: &str) -> usize {
             let events = &events[seen.get(&joined.name).copied().unwrap_or(events.len())..];
             assert!(events.len() <= 1, "{at}: more than one update");
             if java_failed {
-                assert!(joined.result.is_failed(), "{at}: Java failed: {}", recorded["update"]);
+                assert!(
+                    joined.result.is_failed(),
+                    "{at}: Java failed: {}",
+                    recorded["update"]
+                );
                 assert!(matches!(events, [Err(_)]), "{at}: no failure delivered");
                 failed.insert(joined.name.clone(), true);
                 continue;
             }
-            assert!(!joined.result.is_failed(), "{at}: failed here only: {events:?}");
+            assert!(
+                !joined.result.is_failed(),
+                "{at}: failed here only: {events:?}"
+            );
             joined.checker.assert_consistent();
             let rows = (*joined.result.row_set()).clone();
             assert_eq!(rows, ranges(&recorded["rows"]), "{at}: rows");
@@ -286,7 +303,11 @@ fn run(name: &str) -> usize {
                 } else {
                     let update = update.unwrap_or_else(|| panic!("{at}: no update delivered"));
                     assert_eq!(update.added, ranges(&java_update["added"]), "{at}: added");
-                    assert_eq!(update.removed, ranges(&java_update["removed"]), "{at}: removed");
+                    assert_eq!(
+                        update.removed,
+                        ranges(&java_update["removed"]),
+                        "{at}: removed"
+                    );
                     let modified = ranges(&java_update["modified"]);
                     assert_eq!(update.modified, modified, "{at}: modified");
                     assert_eq!(
