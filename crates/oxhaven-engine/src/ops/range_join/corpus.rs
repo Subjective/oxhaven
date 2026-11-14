@@ -18,7 +18,7 @@
 //! which is checked of the recordings, since the seam has no attributes to compare.
 
 use super::grouped::{join, Column, Joined};
-use super::{RangeAggregation, RangeJoinError, RangeJoinMatch};
+use super::{RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule};
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
 use crate::ops::oracle::{replay_all, Built};
@@ -164,17 +164,56 @@ fn aggregation(spec: &Value) -> RangeAggregation {
     RangeAggregation::group(pairs)
 }
 
+/// The scenario whose range matches `testdata/record.py` sends as the separate fields of
+/// the request, because the text cannot name every pair of rules.
+const BY_FIELDS: &str = "range_join_rule_pairs";
+
+/// The range match that `range_join_by_fields` of `testdata/record.py` sends for `text`,
+/// which is a match as io.deephaven.api.Strings#of(RangeJoinMatch) writes it. The request
+/// becomes a match in io.deephaven.server.table.ops.RangeJoinGrpcImpl#adaptRangeMatch.
+fn match_of_fields(text: &str) -> Result<RangeJoinMatch, RangeJoinError> {
+    let mut words: Vec<&str> = text.split(' ').collect();
+    let preceding = words.first() == Some(&"<-");
+    let following = words.last() == Some(&"->");
+    if preceding {
+        words.remove(0);
+    }
+    if following {
+        words.pop();
+    }
+    let [start, start_sign, value, end_sign, end] = words[..] else {
+        panic!("not a range match: {text}");
+    };
+    let start_rule = match (preceding, start_sign) {
+        (true, _) => RangeStartRule::LessThanOrEqualAllowPreceding,
+        (false, "<") => RangeStartRule::LessThan,
+        (false, _) => RangeStartRule::LessThanOrEqual,
+    };
+    let end_rule = match (following, end_sign) {
+        (true, _) => RangeEndRule::GreaterThanOrEqualAllowFollowing,
+        (false, "<") => RangeEndRule::GreaterThan,
+        (false, _) => RangeEndRule::GreaterThanOrEqual,
+    };
+    RangeJoinMatch::new(start, start_rule, value, end_rule, end)
+}
+
 /// The `range_join` of `operation`, as `run_operation` in `oracle/harness/runner.py` sends
-/// it: the last entry of `on` is the range match, the others are exact matches.
+/// it: the last entry of `on` is the range match, the others are exact matches. With
+/// `by_fields` the range match is the one `testdata/record.py` sends as separate fields.
 fn joined(
     operation: &Value,
     left: &Arc<dyn Table>,
     right: &Arc<dyn Table>,
+    by_fields: bool,
 ) -> Result<Joined, RangeJoinError> {
     let on = list(&operation["on"]);
     let (range, exact) = on.split_last().expect("a range match");
     let exact: Vec<JoinMatch> = exact.iter().map(|m| exact_match(text(m))).collect();
-    let range = RangeJoinMatch::parse(text(range))?;
+    let range = if by_fields {
+        match_of_fields(text(range))?
+    } else {
+        RangeJoinMatch::parse(text(range))?
+    };
     let aggregations: Vec<RangeAggregation> =
         list(&operation["aggs"]).iter().map(aggregation).collect();
     join(left, right, &exact, &range, &aggregations)
@@ -362,7 +401,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
             .find(|entry| entry["step"] == 0 && entry["table"] == table)
             .unwrap_or_else(|| panic!("no recording of {place}"));
         let failure = &entry["failure"];
-        let difference = match joined(operation, left, right) {
+        let difference = match joined(operation, left, right, name == BY_FIELDS) {
             Err(error) if failure.is_null() => Some(format!("refused ({error}), Java has a table")),
             // Every refusal of a range join is `INVALID_ARGUMENT`.
             Err(_) => (failure["code"] != "INVALID_ARGUMENT")
@@ -384,6 +423,7 @@ fn every_refusal_of_the_oracle_scenarios_is_a_refusal_here() {
         operation,
         &parents[0],
         &parents[1],
+        false,
     ) {
         Err(_) => Built::Refused("INVALID_ARGUMENT"),
         Ok(_) => Built::NotRun("array-valued columns".to_string()),
@@ -441,7 +481,7 @@ fn the_ranges_of_the_recorded_scenarios_are_those_of_java() {
         paths.push(entry.expect("a scenario").path());
     }
     paths.sort();
-    assert_eq!(paths.len(), 6, "the scenarios of this directory");
+    assert_eq!(paths.len(), 7, "the scenarios of this directory");
     let mut tally = Tally::default();
     for path in &paths {
         run(path, &testdata().join("corpus"), &mut tally);
@@ -449,5 +489,5 @@ fn the_ranges_of_the_recorded_scenarios_are_those_of_java() {
     assert_eq!(tally.differences, Vec::<String>::new());
     // Its left table is the result of a range join.
     assert_eq!(tally.not_run, ["range_join_refusals/of_a_range_join"]);
-    assert_eq!((tally.tables, tally.refused), (68, 35));
+    assert_eq!((tally.tables, tally.refused), (79, 37));
 }

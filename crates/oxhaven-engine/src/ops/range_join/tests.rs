@@ -9,7 +9,11 @@ use super::{
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
 use crate::ops::sort::testing::{graph, scripted, static_table, Columns};
-use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, UInt16Array};
+use crate::table::in_memory_table;
+use arrow::array::{
+    Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, RecordBatch, UInt16Array,
+};
+use arrow::datatypes::{Field, Schema};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -794,6 +798,25 @@ fn without_aggregations_the_result_is_the_left_table_s_columns_as_a_static_table
         );
         assert_eq!(ours.columns, theirs.columns);
     }
+
+    // The result is a table of its own over the left table's rows: it is not flat even
+    // where the left table is.
+    let columns = left_columns(&[("a", Some(1), Some(5)), ("b", Some(0), Some(9))]);
+    let fields: Vec<Field> = columns
+        .iter()
+        .map(|(name, column_type, _)| Field::new(*name, column_type.arrow_type(), true))
+        .collect();
+    let names: Vec<(&str, ColumnType)> = columns
+        .iter()
+        .map(|(name, column_type, _)| (*name, column_type.clone()))
+        .collect();
+    let arrays = columns.iter().map(|(_, _, values)| values.clone());
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays.collect()).unwrap();
+    let flat: Arc<dyn Table> = in_memory_table(definition(&names), &[batch]).unwrap();
+    assert!(flat.is_flat());
+    let result = range_join(&flat, &right(), &on(&["K"]), &inclusive(), &[]).unwrap();
+    assert!(!result.is_flat());
+    assert_eq!(*result.row_set(), RowSet::flat(2));
 }
 
 #[test]
