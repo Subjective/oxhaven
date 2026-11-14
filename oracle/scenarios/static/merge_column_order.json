@@ -1,0 +1,243 @@
+{
+ "format": 1,
+ "name": "merge_column_order",
+ "description": "merge of tables that have the same columns in another order, a subset of them, another type under the same name, or nothing in common; merge of a table with itself and with an empty table.",
+ "inputs": [
+  {
+   "name": "a",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     2,
+     null,
+     "NaN"
+    ]
+   ]
+  },
+  {
+   "name": "b",
+   "columns": [
+    {
+     "name": "V",
+     "type": "float64"
+    },
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     2.5,
+     3,
+     "c"
+    ],
+    [
+     null,
+     null,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "c",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     5,
+     "e"
+    ]
+   ]
+  },
+  {
+   "name": "d",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     6,
+     "f",
+     6.5
+    ]
+   ]
+  },
+  {
+   "name": "e",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "reordered",
+   "op": "merge",
+   "sources": [
+    "a",
+    "b"
+   ]
+  },
+  {
+   "name": "reordered_first",
+   "op": "merge",
+   "sources": [
+    "b",
+    "a"
+   ]
+  },
+  {
+   "name": "fewer_columns",
+   "op": "merge",
+   "sources": [
+    "a",
+    "c"
+   ]
+  },
+  {
+   "name": "other_type",
+   "op": "merge",
+   "sources": [
+    "a",
+    "d"
+   ]
+  },
+  {
+   "name": "with_itself",
+   "op": "merge",
+   "sources": [
+    "a",
+    "a",
+    "a"
+   ]
+  },
+  {
+   "name": "with_empty",
+   "op": "merge",
+   "sources": [
+    "e",
+    "a",
+    "e"
+   ]
+  },
+  {
+   "name": "only_empty",
+   "op": "merge",
+   "sources": [
+    "e",
+    "e"
+   ]
+  },
+  {
+   "name": "one_table",
+   "op": "merge",
+   "sources": [
+    "a"
+   ]
+  },
+  {
+   "name": "b_as_a",
+   "op": "view",
+   "source": "b",
+   "formulas": [
+    "K",
+    "S",
+    "V"
+   ]
+  },
+  {
+   "name": "after_view",
+   "op": "merge",
+   "sources": [
+    "a",
+    "b_as_a"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "reordered"
+  },
+  {
+   "table": "reordered_first"
+  },
+  {
+   "table": "fewer_columns"
+  },
+  {
+   "table": "other_type"
+  },
+  {
+   "table": "with_itself"
+  },
+  {
+   "table": "with_empty"
+  },
+  {
+   "table": "only_empty"
+  },
+  {
+   "table": "one_table"
+  },
+  {
+   "table": "b_as_a"
+  },
+  {
+   "table": "after_view"
+  }
+ ]
+}

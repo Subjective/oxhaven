@@ -111,6 +111,68 @@ pub(crate) fn constant(name: &str) -> Option<(ColumnType, Literal)> {
     })
 }
 
+/// The value and type of the static field `class.field` of a boxed numeric class of
+/// `java.lang`, given as [`constant`] gives a constant.
+///
+/// `java.lang` is a default-imported package, so a formula names these classes by their
+/// simple names, and the field keeps its declared primitive type: `Long.MIN_VALUE` is a
+/// `long`, the value Deephaven reserves for null, and so is null in a column, as recorded
+/// for `FC/grid-function.jsonl: java.27`. `TYPE` is a `Class` and is not given, nor is
+/// `PRECISION`, which exists only from JDK 19 on.
+///
+/// Behavior: the `public static final` fields of `java.lang.Byte`, `Short`, `Integer`,
+/// `Long`, `Float` and `Double`, resolved by `QueryLanguageParser#visit(FieldAccessExpr)`
+/// through `QueryLibraryImportsDefaults#packages`.
+pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Literal)> {
+    let byte = |value: i8| (ColumnType::Byte, Literal::Int(value.into()));
+    let short = |value: i16| (ColumnType::Short, Literal::Int(value.into()));
+    let int = |value: i32| (ColumnType::Int, Literal::Int(value));
+    let long = |value: i64| (ColumnType::Long, Literal::Long(value));
+    let float = |value: f32| (ColumnType::Float, Literal::Float(value));
+    let double = |value: f64| (ColumnType::Double, Literal::Double(value));
+    Some(match (class, field) {
+        ("Byte", "MIN_VALUE") => byte(i8::MIN),
+        ("Byte", "MAX_VALUE") => byte(i8::MAX),
+        ("Byte", "SIZE") => int(8),
+        ("Byte", "BYTES") => int(1),
+        ("Short", "MIN_VALUE") => short(i16::MIN),
+        ("Short", "MAX_VALUE") => short(i16::MAX),
+        ("Short", "SIZE") => int(16),
+        ("Short", "BYTES") => int(2),
+        ("Integer", "MIN_VALUE") => int(i32::MIN),
+        ("Integer", "MAX_VALUE") => int(i32::MAX),
+        ("Integer", "SIZE") => int(32),
+        ("Integer", "BYTES") => int(4),
+        ("Long", "MIN_VALUE") => long(i64::MIN),
+        ("Long", "MAX_VALUE") => long(i64::MAX),
+        ("Long", "SIZE") => int(64),
+        ("Long", "BYTES") => int(8),
+        ("Float", "POSITIVE_INFINITY") => float(f32::INFINITY),
+        ("Float", "NEGATIVE_INFINITY") => float(f32::NEG_INFINITY),
+        ("Float", "NaN") => float(f32::NAN),
+        // 0x1.fffffeP+127f, 0x1.0p-126f and 0x0.000002P-126f.
+        ("Float", "MAX_VALUE") => float(f32::MAX),
+        ("Float", "MIN_NORMAL") => float(f32::MIN_POSITIVE),
+        ("Float", "MIN_VALUE") => float(f32::from_bits(1)),
+        ("Float", "MAX_EXPONENT") => int(127),
+        ("Float", "MIN_EXPONENT") => int(-126),
+        ("Float", "SIZE") => int(32),
+        ("Float", "BYTES") => int(4),
+        ("Double", "POSITIVE_INFINITY") => double(f64::INFINITY),
+        ("Double", "NEGATIVE_INFINITY") => double(f64::NEG_INFINITY),
+        ("Double", "NaN") => double(f64::NAN),
+        // 0x1.fffffffffffffP+1023, 0x1.0p-1022 and 0x0.0000000000001P-1022.
+        ("Double", "MAX_VALUE") => double(f64::MAX),
+        ("Double", "MIN_NORMAL") => double(f64::MIN_POSITIVE),
+        ("Double", "MIN_VALUE") => double(f64::from_bits(1)),
+        ("Double", "MAX_EXPONENT") => int(1023),
+        ("Double", "MIN_EXPONENT") => int(-1022),
+        ("Double", "SIZE") => int(64),
+        ("Double", "BYTES") => int(8),
+        _ => return None,
+    })
+}
+
 /// Whether `name` is a default-imported constant that [`constant`] does not give: one whose
 /// type is not a column type here.
 pub(crate) fn is_other_constant(name: &str) -> bool {

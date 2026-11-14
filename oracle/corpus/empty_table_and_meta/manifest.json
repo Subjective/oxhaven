@@ -1,0 +1,86 @@
+{
+  "format": 2,
+  "scenario": "empty_table_and_meta",
+  "scenario_sha256": "ea63536edaa4b2e5dc223872b0654763d1d01fa7668018cb318a4aed41ae25b5",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "none",
+      "file": "step000.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "five",
+      "file": "step000.five.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "five_columns",
+      "file": "step000.five_columns.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "none_columns",
+      "file": "step000.none_columns.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "five_view",
+      "file": "step000.five_view.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "five_tail",
+      "file": "step000.five_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "meta",
+      "file": "step000.meta.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "meta_narrow",
+      "file": "step000.meta_narrow.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "meta_computed",
+      "file": "step000.meta_computed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "meta_empty_table",
+      "file": "step000.meta_empty_table.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "meta_grouped",
+      "file": "step000.meta_grouped.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "meta_of_meta",
+      "file": "step000.meta_of_meta.arrow",
+      "rows": 4
+    }
+  ]
+}

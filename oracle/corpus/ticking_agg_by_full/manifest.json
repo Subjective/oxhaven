@@ -1,0 +1,386 @@
+{
+  "format": 2,
+  "scenario": "ticking_agg_by_full",
+  "scenario_sha256": "726a1b3f7cf84e67e53eb28a43cfeebf21dce9e0902b55a517adf09bf0289694",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "all_sum",
+      "file": "step000.all_sum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "all_avg",
+      "file": "step000.all_avg.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "all_max",
+      "file": "step000.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "all_last",
+      "file": "step000.all_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "all_group",
+      "file": "step000.all_group.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "by_key",
+      "file": "step001.by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "no_key",
+      "file": "step001.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "all_sum",
+      "file": "step001.all_sum.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "all_avg",
+      "file": "step001.all_avg.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "all_max",
+      "file": "step001.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "all_last",
+      "file": "step001.all_last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "all_group",
+      "file": "step001.all_group.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "by_key",
+      "file": "step002.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "no_key",
+      "file": "step002.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "all_sum",
+      "file": "step002.all_sum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "all_avg",
+      "file": "step002.all_avg.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "all_max",
+      "file": "step002.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "all_last",
+      "file": "step002.all_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "all_group",
+      "file": "step002.all_group.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "by_key",
+      "file": "step003.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "no_key",
+      "file": "step003.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "all_sum",
+      "file": "step003.all_sum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "all_avg",
+      "file": "step003.all_avg.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "all_max",
+      "file": "step003.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "all_last",
+      "file": "step003.all_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "all_group",
+      "file": "step003.all_group.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "by_key",
+      "file": "step004.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "no_key",
+      "file": "step004.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "all_sum",
+      "file": "step004.all_sum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "all_avg",
+      "file": "step004.all_avg.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "all_max",
+      "file": "step004.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "all_last",
+      "file": "step004.all_last.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "all_group",
+      "file": "step004.all_group.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "by_key",
+      "file": "step005.by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "no_key",
+      "file": "step005.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "all_sum",
+      "file": "step005.all_sum.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "all_avg",
+      "file": "step005.all_avg.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "all_max",
+      "file": "step005.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "all_last",
+      "file": "step005.all_last.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "all_group",
+      "file": "step005.all_group.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "by_key",
+      "file": "step006.by_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "no_key",
+      "file": "step006.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "all_sum",
+      "file": "step006.all_sum.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "all_avg",
+      "file": "step006.all_avg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "all_max",
+      "file": "step006.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "all_last",
+      "file": "step006.all_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "all_group",
+      "file": "step006.all_group.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "by_key",
+      "file": "step007.by_key.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "no_key",
+      "file": "step007.no_key.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "all_sum",
+      "file": "step007.all_sum.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "all_avg",
+      "file": "step007.all_avg.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "all_max",
+      "file": "step007.all_max.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "all_last",
+      "file": "step007.all_last.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "all_group",
+      "file": "step007.all_group.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_key",
+      "file": "step008.by_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "no_key",
+      "file": "step008.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "all_sum",
+      "file": "step008.all_sum.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "all_avg",
+      "file": "step008.all_avg.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "all_max",
+      "file": "step008.all_max.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "all_last",
+      "file": "step008.all_last.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "all_group",
+      "file": "step008.all_group.arrow",
+      "rows": 1
+    }
+  ]
+}

@@ -42,6 +42,14 @@ FLOATS = ("float32", "float64")
 NUMERIC = INTS + FLOATS
 ORDERED_STAMPS = ("int32", "int64", "float64", "timestamp")  # as-of match columns
 JOINS = ("natural_join", "exact_join", "join", "aj")
+# The operations the generator can build. The scenario for a seed depends on the set asked
+# for, so adding an operation here changes no scenario that did not ask for it.
+OPERATIONS = frozenset({
+    "where", "sort", "head", "tail", "view", "select", "update", "drop_columns", "merge",
+    "agg_by", "natural_join", "exact_join", "join", "aj", "update_by",
+    "lazy_update", "update_view", "slice", "flatten", "reverse", "filter", "select_distinct",
+    "head_by", "tail_by",
+})
 MAX_ROWS = 400  # a generated table is never expected to grow beyond this
 
 _STRINGS = ["", "a", "b", "A", "aa", "ab", "z", "é", "ß", "\U0001d11e"]
@@ -285,6 +293,39 @@ class _Generator:
             return f"{column} {compare} {other} || {other} > 0"
         return f"{column} {compare} {other}"
 
+    def condition(self, table: _Table, depth: int = 0) -> dict[str, Any] | None:
+        """A structured filter condition of the kinds Java takes on every column type.
+
+        Left out because Java refuses them: a string or boolean literal in a range
+        comparison, NaN and infinite literals, and the NaN test.
+        """
+        rng = self.rng
+        columns = table.usable()
+        if not columns:
+            return None
+        roll = rng.random()
+        if depth < 2 and roll < 0.2:
+            inner = self.condition(table, depth + 1)
+            return {"not": inner} if inner else None
+        if depth < 2 and roll < 0.4:
+            both = [c for c in (self.condition(table, depth + 1) for _ in range(2)) if c]
+            return {rng.choice(["and", "or"]): both} if both else None
+        column = rng.choice(columns)
+        kind = table.type_of(column)
+        if kind not in NUMERIC or roll < 0.5:
+            return {"is_null": column}
+        if kind in INT_BITS:
+            literal = lambda: {"long": rng.randrange(-2, 5)}  # noqa: E731
+        else:
+            literal = lambda: {"literal": rng.choice([0.0, 1.0, -1.0, 0.5, 1.5])}  # noqa: E731
+        if kind in INT_BITS and roll < 0.65:
+            return {"in": {"target": {"column": column},
+                           "candidates": [literal() for _ in range(rng.randrange(1, 4))]}}
+        same = [c for c in columns if c != column and table.type_of(c) == kind]
+        other = {"column": rng.choice(same)} if same and roll > 0.9 else literal()
+        return {"compare": {"op": rng.choice(["<", "<=", ">", ">="]),
+                            "lhs": {"column": column}, "rhs": other}}
+
     def formula(self, table: _Table) -> tuple[str, str] | None:
         """One formula `(expression, predicted type)` over the usable columns of `table`."""
         rng = self.rng
@@ -376,8 +417,40 @@ class _Generator:
             dropped = rng.sample(names, rng.randrange(1, min(3, len(names) - 1) + 1))
             self.add({**base, "columns": dropped},
                      [c for c in source.columns if c[0] not in dropped], source.rows)
-        elif kind in ("view", "select", "update"):
-            formulas, columns = [], ([] if kind != "update" else list(source.columns))
+        elif kind in ("flatten", "reverse"):
+            self.add(base, list(source.columns), source.rows)
+        elif kind == "slice":
+            # Positions from the start, from the end, or one of each. Java refuses a slice
+            # that ends before it starts, and nothing downstream of a refusal is compared.
+            first = rng.randrange(0, 6)
+            last = first + rng.randrange(0, 6)
+            start, stop = rng.choice([(first, last), (-last, -first), (first, -rng.randrange(1, 4))])
+            self.add({**base, "start": start, "stop": stop}, list(source.columns), source.rows)
+        elif kind == "filter":
+            conditions = [c for c in (self.condition(source) for _ in range(rng.randrange(1, 3)))
+                          if c]
+            if not conditions:
+                return False
+            self.add({**base, "conditions": conditions}, list(source.columns), source.rows)
+        elif kind == "select_distinct":
+            usable = source.usable()
+            if not usable:
+                return False
+            chosen = self.keys(source, 1, 2)
+            self.add({**base, "columns": chosen},
+                     [(c, source.type_of(c)) for c in chosen], source.rows)
+        elif kind in ("head_by", "tail_by"):
+            by = self.keys(source, 1, 2)
+            # Java refuses head_by and tail_by when every column is a key column.
+            if not by or len(by) == len(source.columns):
+                return False
+            # Observed on the reference: the key columns come first.
+            columns = ([(c, source.type_of(c)) for c in by]
+                       + [c for c in source.columns if c[0] not in by])
+            self.add({**base, "rows": rng.randrange(1, 4), "by": by}, columns, source.rows)
+        elif kind in ("view", "select", "update", "lazy_update", "update_view"):
+            keeps = kind in ("update", "lazy_update", "update_view")
+            formulas, columns = [], (list(source.columns) if keeps else [])
             for _ in range(rng.randrange(1, 4)):
                 made = self.formula(source)
                 if made is None:
@@ -543,7 +616,12 @@ def generate(seed: int, ops: frozenset[str] | set[str]) -> tuple[dict[str, Any],
 
     `ops` are harness operation names (`scenario.OPERATIONS`).
     """
-    chosen = tuple(sorted(op for op in ops if op in sc.OPERATIONS))
+    unknown = sorted(set(ops) - OPERATIONS)
+    if unknown:
+        raise sc.ScenarioError(
+            f"the fuzzer does not generate {', '.join(unknown)}; it generates "
+            f"{', '.join(sorted(OPERATIONS))}")
+    chosen = tuple(sorted(ops))
     if not chosen:
         raise sc.ScenarioError("fuzz needs at least one table operation")
     # A string seed is hashed by `random` in a way that does not vary between runs.
@@ -585,9 +663,7 @@ def _valid(doc: dict[str, Any]) -> bool:
 
 
 def _references(op: dict[str, Any]) -> set[str]:
-    refs = {op[key] for key in ("source", "left", "right") if key in op}
-    refs.update(op.get("sources", ()))
-    return refs
+    return set(sc.references(op))
 
 
 def _prune(doc: dict[str, Any]) -> dict[str, Any]:

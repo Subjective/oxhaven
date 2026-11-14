@@ -1,0 +1,296 @@
+{
+ "format": 1,
+ "name": "sort_descending_ties",
+ "description": "Descending sorts where many rows tie, with nulls and NaN in every column type: the order of tied rows, and where nulls and NaN go.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "int32"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     2,
+     1.5,
+     "NaN",
+     "b",
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     1,
+     "NaN",
+     1.5,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     2,
+     null,
+     null,
+     "b",
+     false,
+     1700000000000000000
+    ],
+    [
+     4,
+     null,
+     1.5,
+     "NaN",
+     "a",
+     true,
+     1700000000000000001
+    ],
+    [
+     5,
+     1,
+     "NaN",
+     0.0,
+     "",
+     null,
+     1699999999999999999
+    ],
+    [
+     6,
+     2,
+     -0.0,
+     -0.0,
+     "B",
+     false,
+     null
+    ],
+    [
+     7,
+     null,
+     0.0,
+     "Infinity",
+     null,
+     true,
+     1700000000000000000
+    ],
+    [
+     8,
+     1,
+     null,
+     "-Infinity",
+     "b",
+     false,
+     1700000000000000001
+    ],
+    [
+     9,
+     2,
+     1.5,
+     1.5,
+     "a",
+     null,
+     1699999999999999999
+    ],
+    [
+     10,
+     1,
+     "Infinity",
+     null,
+     "\u00e9",
+     true,
+     0
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "int_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "G",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "float_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "F",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "double_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "string_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "S",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "bool_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "B",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "time_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "T",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "two_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "G",
+     "direction": "descending"
+    },
+    {
+     "column": "F",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "down_then_up",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "B",
+     "direction": "descending"
+    },
+    {
+     "column": "D",
+     "direction": "ascending"
+    }
+   ]
+  },
+  {
+   "name": "up_then_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "S",
+     "direction": "ascending"
+    },
+    {
+     "column": "G",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "down_of_down",
+   "op": "sort",
+   "source": "int_down",
+   "by": [
+    {
+     "column": "B",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "reverse_of_down",
+   "op": "reverse",
+   "source": "int_down"
+  }
+ ],
+ "results": [
+  {
+   "table": "int_down"
+  },
+  {
+   "table": "float_down"
+  },
+  {
+   "table": "double_down"
+  },
+  {
+   "table": "string_down"
+  },
+  {
+   "table": "bool_down"
+  },
+  {
+   "table": "time_down"
+  },
+  {
+   "table": "two_down"
+  },
+  {
+   "table": "down_then_up"
+  },
+  {
+   "table": "up_then_down"
+  },
+  {
+   "table": "down_of_down"
+  },
+  {
+   "table": "reverse_of_down"
+  }
+ ]
+}

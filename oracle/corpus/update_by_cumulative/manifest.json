@@ -1,0 +1,77 @@
+{
+  "format": 2,
+  "scenario": "update_by_cumulative",
+  "scenario_sha256": "892495882db573aa7a6b6e3957945e6ca54cc13e97843fd2b2323fe90869287a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "of_special",
+      "file": "step000.of_special.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "in_place",
+      "file": "step000.in_place.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "string_sum",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_min",
+      "file": "step000.string_min.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "string_fill",
+      "file": "step000.string_fill.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "time_delta",
+      "file": "step000.time_delta.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "unknown_column",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unknown_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

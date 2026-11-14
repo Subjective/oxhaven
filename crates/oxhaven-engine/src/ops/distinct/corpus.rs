@@ -1,6 +1,6 @@
-//! `select_distinct` against the results recorded from the Java server in `fixtures/` by
-//! `ops/snapshot/fixtures/record.py`. The oracle's own corpus (`oracle/corpus`) has no
-//! scenario with this operation.
+//! `select_distinct` against the results recorded from the Java server: in `fixtures/` by
+//! `ops/snapshot/fixtures/record.py`, and in the oracle's corpus (`oracle/corpus`) by the
+//! replay of `ops/oracle.rs`.
 
 use super::{select_distinct, DistinctError};
 use crate::ops::snapshot::testing::{replay, text, texts, Built};
@@ -125,4 +125,44 @@ fn keys_of_changed_rows_come_before_keys_of_added_rows_as_in_java() {
             graph.run_cycle();
         }
     }
+}
+
+/// The oracle's scenarios, as far as they can be built from `select_distinct`.
+#[test]
+fn the_results_of_the_oracle_match_java() {
+    use crate::ops::oracle::{self, replay_all};
+    let define = |operation: &Value, sources: &[Arc<dyn Table>]| -> oracle::Built {
+        match define(operation, sources) {
+            Ok(table) => oracle::Built::Table(table),
+            Err(code) => oracle::Built::Refused(code),
+        }
+    };
+    let tally = replay_all(&["select_distinct"], &define);
+    let differences: [&str; 0] = [];
+    assert_eq!(tally.differences, differences, "differences from Java");
+    let compared = [
+        "select_distinct/all_columns",
+        "select_distinct/by_bool",
+        "select_distinct/by_double",
+        "select_distinct/by_float",
+        "select_distinct/by_formula",
+        "select_distinct/by_int",
+        "select_distinct/by_string",
+        "select_distinct/by_time",
+        "select_distinct/by_two",
+        "select_distinct/by_two_swapped",
+        "select_distinct/of_empty",
+        "select_distinct/twice",
+        "select_distinct/unknown",
+        "ticking_column_statistics/distinct_groups",
+        "ticking_select_distinct_where_in/doubles",
+        "ticking_select_distinct_where_in/groups",
+        "ticking_select_distinct_where_in/pairs",
+    ];
+    assert_eq!(tally.compared, compared, "compared");
+    // 13 static results at one step, 1 ticking one at 4 steps and 3 at 9 steps.
+    assert_eq!(tally.comparisons, 13 + 4 + 3 * 9);
+    // Results made from an operation of another test.
+    let not_run = ["select_distinct/all_but_key: drop_columns"];
+    assert_eq!(tally.not_run, not_run, "not run");
 }

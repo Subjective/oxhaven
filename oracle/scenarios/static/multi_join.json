@@ -1,0 +1,470 @@
+{
+ "format": 1,
+ "name": "multi_join",
+ "description": "multi_join of two and three tables: keys missing from some tables, null keys, renamed key and value columns, a subset of the columns, two key columns, an empty table, a single table; duplicate keys within a table and a value column in two tables, which Java refuses.",
+ "inputs": [
+  {
+   "name": "a",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "A",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a1"
+    ],
+    [
+     2,
+     "a2"
+    ],
+    [
+     null,
+     "anull"
+    ],
+    [
+     4,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "b",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     2,
+     2.5
+    ],
+    [
+     3,
+     "NaN"
+    ],
+    [
+     1,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "c",
+   "columns": [
+    {
+     "name": "Key",
+     "type": "int32"
+    },
+    {
+     "name": "C",
+     "type": "int32"
+    },
+    {
+     "name": "Extra",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     3,
+     30,
+     "x"
+    ],
+    [
+     5,
+     50,
+     "y"
+    ],
+    [
+     null,
+     0,
+     "z"
+    ]
+   ]
+  },
+  {
+   "name": "dup",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "A",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "d1"
+    ],
+    [
+     1,
+     "d1again"
+    ]
+   ]
+  },
+  {
+   "name": "e",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "B",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "name": "p",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "J",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "x",
+     10
+    ],
+    [
+     1,
+     "y",
+     11
+    ],
+    [
+     2,
+     "x",
+     20
+    ]
+   ]
+  },
+  {
+   "name": "q",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "J",
+     "type": "string"
+    },
+    {
+     "name": "Q",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "y",
+     100
+    ],
+    [
+     2,
+     "x",
+     200
+    ],
+    [
+     3,
+     "z",
+     300
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "two",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "two_swapped",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "three",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "c",
+     "on": [
+      "K = Key"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "chosen",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ],
+     "joins": [
+      "Name = A"
+     ]
+    },
+    {
+     "table": "c",
+     "on": [
+      "K = Key"
+     ],
+     "joins": [
+      "C"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "no_values",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ],
+     "joins": []
+    },
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ],
+     "joins": []
+    }
+   ]
+  },
+  {
+   "name": "two_keys",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "p",
+     "on": [
+      "K",
+      "J"
+     ]
+    },
+    {
+     "table": "q",
+     "on": [
+      "K",
+      "J"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "with_empty",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "e",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "one",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "duplicate_key",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "dup",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "same_value_column",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "dup",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "key_types",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "K"
+     ]
+    },
+    {
+     "table": "p",
+     "on": [
+      "K = J"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unknown_key",
+   "op": "multi_join",
+   "inputs": [
+    {
+     "table": "a",
+     "on": [
+      "Nope"
+     ]
+    },
+    {
+     "table": "b",
+     "on": [
+      "K"
+     ]
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "two"
+  },
+  {
+   "table": "two_swapped"
+  },
+  {
+   "table": "three"
+  },
+  {
+   "table": "chosen"
+  },
+  {
+   "table": "no_values"
+  },
+  {
+   "table": "two_keys"
+  },
+  {
+   "table": "with_empty"
+  },
+  {
+   "table": "one"
+  },
+  {
+   "table": "duplicate_key"
+  },
+  {
+   "table": "same_value_column"
+  },
+  {
+   "table": "key_types"
+  },
+  {
+   "table": "unknown_key"
+  }
+ ]
+}

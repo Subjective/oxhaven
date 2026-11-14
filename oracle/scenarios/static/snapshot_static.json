@@ -1,0 +1,313 @@
+{
+ "format": 1,
+ "name": "snapshot_static",
+ "description": "snapshot of a static table and of an empty one; snapshot_when with a static trigger, with and without stamp columns, with the initial, incremental and history options, and combinations Java refuses.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     2,
+     null,
+     "NaN"
+    ],
+    [
+     3,
+     "c",
+     null
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "name": "trigger",
+   "columns": [
+    {
+     "name": "N",
+     "type": "int32"
+    },
+    {
+     "name": "Note",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     7,
+     "x"
+    ],
+    [
+     8,
+     "y"
+    ]
+   ]
+  },
+  {
+   "name": "trigger_one",
+   "columns": [
+    {
+     "name": "N",
+     "type": "int32"
+    },
+    {
+     "name": "Note",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     7,
+     "x"
+    ]
+   ]
+  },
+  {
+   "name": "trigger_empty",
+   "columns": [
+    {
+     "name": "N",
+     "type": "int32"
+    },
+    {
+     "name": "Note",
+     "type": "string"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "snap",
+   "op": "snapshot",
+   "source": "t"
+  },
+  {
+   "name": "snap_empty",
+   "op": "snapshot",
+   "source": "empty"
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K > 1"
+   ]
+  },
+  {
+   "name": "snap_of_where",
+   "op": "snapshot",
+   "source": "big"
+  },
+  {
+   "name": "when_plain",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one"
+  },
+  {
+   "name": "when_initial",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "initial": true
+  },
+  {
+   "name": "when_stamp",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "initial": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_stamp_renamed",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "initial": true,
+   "stamp_columns": [
+    "Stamp = N",
+    "Note"
+   ]
+  },
+  {
+   "name": "when_two_rows",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger",
+   "initial": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_no_rows",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_empty",
+   "initial": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_incremental",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "initial": true,
+   "incremental": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_history",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "history": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_history_initial",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "history": true,
+   "initial": true
+  },
+  {
+   "name": "when_history_incremental",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "history": true,
+   "incremental": true
+  },
+  {
+   "name": "when_empty_base",
+   "op": "snapshot_when",
+   "source": "empty",
+   "trigger": "trigger_one",
+   "initial": true,
+   "stamp_columns": [
+    "N"
+   ]
+  },
+  {
+   "name": "when_stamp_clash",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "t",
+   "initial": true,
+   "stamp_columns": [
+    "K"
+   ]
+  },
+  {
+   "name": "when_stamp_unknown",
+   "op": "snapshot_when",
+   "source": "t",
+   "trigger": "trigger_one",
+   "stamp_columns": [
+    "Nope"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "snap"
+  },
+  {
+   "table": "snap_empty"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "snap_of_where"
+  },
+  {
+   "table": "when_plain"
+  },
+  {
+   "table": "when_initial"
+  },
+  {
+   "table": "when_stamp"
+  },
+  {
+   "table": "when_stamp_renamed"
+  },
+  {
+   "table": "when_two_rows"
+  },
+  {
+   "table": "when_no_rows"
+  },
+  {
+   "table": "when_incremental"
+  },
+  {
+   "table": "when_history"
+  },
+  {
+   "table": "when_history_initial"
+  },
+  {
+   "table": "when_history_incremental"
+  },
+  {
+   "table": "when_empty_base"
+  },
+  {
+   "table": "when_stamp_clash"
+  },
+  {
+   "table": "when_stamp_unknown"
+  }
+ ]
+}

@@ -34,7 +34,7 @@ COLUMN_TYPES: dict[str, pa.DataType] = {
     "timestamp": pa.timestamp("ns", tz="UTC"),
 }
 
-_FLOAT_WORDS = {"NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}
+FLOAT_WORDS = {"NaN": math.nan, "Infinity": math.inf, "-Infinity": -math.inf}
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 # Operation name -> (required keys, optional keys), besides "name" and "op".
@@ -54,11 +54,69 @@ OPERATIONS: dict[str, tuple[set[str], set[str]]] = {
     "join": ({"left", "right", "on"}, {"joins"}),
     "aj": ({"left", "right", "on"}, {"joins"}),
     "update_by": ({"source", "ops", "by"}, set()),
+    "slice": ({"source", "start", "stop"}, set()),
+    "flatten": ({"source"}, set()),
+    "reverse": ({"source"}, set()),
+    "lazy_update": ({"source", "formulas"}, set()),
+    "update_view": ({"source", "formulas"}, set()),
+    "select_distinct": ({"source", "columns"}, set()),
+    "where_in": ({"left", "right", "on"}, {"inverted"}),
+    "filter": ({"source", "conditions"}, set()),
+    "left_join": ({"left", "right", "on"}, {"joins"}),
+    "raj": ({"left", "right", "on"}, {"joins"}),
+    "agg_all_by": ({"source", "agg", "by"}, set()),
+    "group_by": ({"source", "by"}, set()),
+    "ungroup": ({"source"}, {"columns", "null_fill"}),
+    "head_by": ({"source", "rows", "by"}, set()),
+    "tail_by": ({"source", "rows", "by"}, set()),
+    "snapshot": ({"source"}, set()),
+    "snapshot_when": ({"source", "trigger"},
+                      {"stamp_columns", "initial", "incremental", "history"}),
+    "range_join": ({"left", "right", "on", "aggs"}, set()),
+    "multi_join": ({"inputs"}, set()),
+    "time_table": ({"period", "start_time"}, {"blink"}),
+    "empty_table": ({"size"}, set()),
+    "meta_table": ({"source"}, set()),
+    "column_statistics": ({"source", "column"}, {"unique_value_limit"}),
 }
-AGGREGATIONS = {"sum", "count", "min", "max", "first", "last", "avg"}
-UPDATE_BY_OPS = {"cum_sum"}
+# Keys of an operation that name the tables it reads.
+TABLE_KEYS = ("source", "left", "right", "trigger")
+
+# Aggregations of `agg_by`, `agg_all_by` and `range_join`. The value is the set of argument
+# names (`args`) the aggregation accepts besides its columns.
+AGGREGATIONS: dict[str, set[str]] = {
+    "sum": set(), "abs_sum": set(), "avg": set(), "min": set(), "max": set(), "first": set(),
+    "last": set(), "std": set(), "var": set(), "group": set(),
+    "count": set(),
+    "count_where": {"filters"},
+    "count_distinct": {"count_nulls"},
+    "distinct": {"include_nulls"},
+    "unique": {"include_nulls", "non_unique_sentinel"},
+    "median": {"average_evenly_divided"},
+    "pct": {"percentile", "average_evenly_divided"},
+    "sorted_first": {"order_by"},
+    "sorted_last": {"order_by"},
+    "weighted_avg": {"wcol"},
+    "weighted_sum": {"wcol"},
+    "formula": {"formula", "formula_param"},
+}
+# Operators of `update_by`, by the name of the pydeephaven.updateby function. The arguments
+# (`args`) are that function's keyword arguments other than `cols`.
+UPDATE_BY_OPS = {
+    "cum_sum", "cum_prod", "cum_min", "cum_max", "cum_count_where", "forward_fill", "delta",
+    "ema_tick", "ema_time", "ems_tick", "ems_time", "emmin_tick", "emmin_time", "emmax_tick",
+    "emmax_time", "emstd_tick", "emstd_time",
+    "rolling_sum_tick", "rolling_sum_time", "rolling_group_tick", "rolling_group_time",
+    "rolling_avg_tick", "rolling_avg_time", "rolling_min_tick", "rolling_min_time",
+    "rolling_max_tick", "rolling_max_time", "rolling_prod_tick", "rolling_prod_time",
+    "rolling_count_tick", "rolling_count_time", "rolling_std_tick", "rolling_std_time",
+    "rolling_wavg_tick", "rolling_wavg_time", "rolling_formula_tick", "rolling_formula_time",
+    "rolling_count_where_tick", "rolling_count_where_time",
+}
 NATURAL_JOIN_TYPES = {"error_on_duplicate", "first_match", "last_match", "exactly_one_match"}
 ACTIONS = {"add", "delete"}
+# Structured filter conditions: the key of a condition object, and for comparisons the operator.
+COMPARE_OPS = {"<", "<=", ">", ">=", "==", "!="}
 
 
 class ScenarioError(ValueError):
@@ -78,6 +136,8 @@ class Input:
     rows: tuple[tuple[Any, ...], ...]
     # None: a static table. Otherwise an input table; an empty tuple means append-only.
     key_columns: tuple[str, ...] | None
+    # A blink input table: rows added in one update cycle are gone in the next.
+    blink: bool = False
 
     @property
     def ticking(self) -> bool:
@@ -162,9 +222,9 @@ def decode_cell(where: str, type_name: str, value: Any) -> Any:
         return value
     if type_name in ("float32", "float64"):
         if isinstance(value, str):
-            if value not in _FLOAT_WORDS:
-                raise _fail(where, f"expected a number or one of {sorted(_FLOAT_WORDS)}")
-            return _FLOAT_WORDS[value]
+            if value not in FLOAT_WORDS:
+                raise _fail(where, f"expected a number or one of {sorted(FLOAT_WORDS)}")
+            return FLOAT_WORDS[value]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise _fail(where, f"expected a number, got {value!r}")
         return float(value)
@@ -238,14 +298,81 @@ def _input(where: str, doc: Any) -> Input:
     key_columns = None
     ticking = doc.get("ticking")
     if ticking is not None:
-        _keys(f"{where}.ticking", ticking, {"key_columns"}, set())
+        _keys(f"{where}.ticking", ticking, {"key_columns"}, {"blink"})
         _strings(f"{where}.ticking.key_columns", ticking["key_columns"])
         unknown = set(ticking["key_columns"]) - set(names)
         if unknown:
             raise _fail(f"{where}.ticking", f"key columns {sorted(unknown)} are not columns")
         key_columns = tuple(ticking["key_columns"])
+        if not isinstance(ticking.get("blink", False), bool):
+            raise _fail(f"{where}.ticking", "blink must be true or false")
+        if ticking.get("blink") and key_columns:
+            raise _fail(f"{where}.ticking", "a blink input table has no key columns")
+        if ticking.get("blink") and doc["rows"]:
+            # Initial rows are added before the operations exist and are gone a cycle later.
+            raise _fail(f"{where}.ticking", "a blink input table starts without rows")
     return Input(doc["name"], tuple(columns), _rows(f"{where}.rows", tuple(columns), doc["rows"]),
-                 key_columns)
+                 key_columns, bool(ticking and ticking.get("blink", False)))
+
+
+def _aggregation(where: str, agg: Any) -> None:
+    if not isinstance(agg, dict) or agg.get("agg") not in AGGREGATIONS:
+        raise _fail(where, f"agg must be one of {sorted(AGGREGATIONS)}")
+    kind = agg["agg"]
+    if kind in ("count", "count_where"):
+        _keys(where, agg, {"agg", "column"} | ({"args"} if kind == "count_where" else set()),
+              set())
+    else:
+        _keys(where, agg, {"agg", "columns"}, {"args"})
+        _strings(f"{where}.columns", agg["columns"])
+    args = agg.get("args", {})
+    if not isinstance(args, dict) or set(args) - AGGREGATIONS[kind]:
+        raise _fail(where, f"args of {kind} may hold {sorted(AGGREGATIONS[kind])}")
+
+
+def _value(where: str, value: Any) -> None:
+    if not isinstance(value, dict) or len(value) != 1 or next(iter(value)) not in (
+            "column", "literal", "long", "nanos"):
+        raise _fail(where, "a value is {\"column\": name}, {\"literal\": string, number or "
+                           "boolean}, {\"long\": integer} or {\"nanos\": integer}")
+
+
+def _condition(where: str, condition: Any) -> None:
+    """A structured filter condition, shaped like the `Condition` message of table.proto."""
+    if not isinstance(condition, dict) or len(condition) != 1:
+        raise _fail(where, "a condition is an object with one key")
+    kind, body = next(iter(condition.items()))
+    if kind in ("and", "or"):
+        if not isinstance(body, list) or not body:
+            raise _fail(where, f"{kind} needs a non-empty list of conditions")
+        for index, item in enumerate(body):
+            _condition(f"{where}.{kind}[{index}]", item)
+    elif kind == "not":
+        _condition(f"{where}.not", body)
+    elif kind == "compare":
+        _keys(where, body, {"op", "lhs", "rhs"}, {"ignore_case"})
+        if body["op"] not in COMPARE_OPS:
+            raise _fail(where, f"op must be one of {sorted(COMPARE_OPS)}")
+        _value(f"{where}.lhs", body["lhs"])
+        _value(f"{where}.rhs", body["rhs"])
+    elif kind == "in":
+        _keys(where, body, {"target", "candidates"}, {"ignore_case", "inverted", "nan_equals"})
+        _value(f"{where}.target", body["target"])
+        for index, item in enumerate(body["candidates"]):
+            _value(f"{where}.candidates[{index}]", item)
+    elif kind in ("is_null", "is_nan"):
+        if not isinstance(body, str):
+            raise _fail(where, f"{kind} names a column")
+    elif kind in ("matches", "contains"):
+        _keys(where, body, {"column", "text"}, {"ignore_case", "inverted"})
+    elif kind == "invoke":
+        _keys(where, body, {"method", "arguments"}, {"target"})
+        for index, item in enumerate(body["arguments"]):
+            _value(f"{where}.arguments[{index}]", item)
+    elif kind == "search":
+        _keys(where, body, {"text"}, {"columns"})
+    else:
+        raise _fail(where, f"unknown condition {kind!r}")
 
 
 def _operation(where: str, doc: Any, known: set[str]) -> None:
@@ -257,57 +384,107 @@ def _operation(where: str, doc: Any, known: set[str]) -> None:
     required, optional = OPERATIONS[op]
     _keys(where, doc, required | {"name", "op"}, optional)
 
-    def source(key: str) -> None:
-        if doc[key] not in known:
-            raise _fail(where, f"{key} {doc[key]!r} is not defined before this operation")
+    def table(name: Any, key: str) -> None:
+        if name not in known:
+            raise _fail(where, f"{key} {name!r} is not defined before this operation")
 
-    for key in ("source", "left", "right"):
+    def count(key: str, negative: bool = False) -> None:
+        value = doc[key]
+        if isinstance(value, bool) or not isinstance(value, int) or (value < 0 and not negative):
+            raise _fail(where, f"{key} must be {'an' if negative else 'a non-negative'} integer")
+
+    def flag(key: str) -> None:
+        if not isinstance(doc.get(key, False), bool):
+            raise _fail(where, f"{key} must be true or false")
+
+    for key in TABLE_KEYS:
         if key in doc:
-            source(key)
+            table(doc[key], key)
     if op == "merge":
         _strings(f"{where}.sources", doc["sources"], allow_empty=False)
         for name in doc["sources"]:
-            if name not in known:
-                raise _fail(where, f"source {name!r} is not defined before this operation")
+            table(name, "source")
+    if op == "multi_join":
+        if not isinstance(doc["inputs"], list) or not doc["inputs"]:
+            raise _fail(where, "inputs must be a non-empty list")
+        for i, item in enumerate(doc["inputs"]):
+            _keys(f"{where}.inputs[{i}]", item, {"table", "on"}, {"joins"})
+            table(item["table"], "table")
+            _strings(f"{where}.inputs[{i}].on", item["on"], allow_empty=False)
+            if item.get("joins") is not None:
+                _strings(f"{where}.inputs[{i}].joins", item["joins"])
     for key in ("filters", "formulas", "columns"):
         if key in doc:
-            _strings(f"{where}.{key}", doc[key], allow_empty=False)
-    for key in ("by", "on"):
+            _strings(f"{where}.{key}", doc[key],
+                     allow_empty=op in ("select_distinct", "ungroup"))
+    for key in ("by", "on", "stamp_columns"):
         if key in doc and op != "sort":
             _strings(f"{where}.{key}", doc[key])
     if doc.get("joins") is not None:
         _strings(f"{where}.joins", doc["joins"])
-    if op in ("head", "tail"):
-        if isinstance(doc["rows"], bool) or not isinstance(doc["rows"], int) or doc["rows"] < 0:
-            raise _fail(where, "rows must be a non-negative integer")
+    if op in ("head", "tail", "head_by", "tail_by"):
+        count("rows")
+    if op == "slice":
+        count("start", negative=True)
+        count("stop", negative=True)
+    if op == "empty_table":
+        count("size")
+    if op == "time_table":
+        for key in ("period", "start_time"):
+            if not isinstance(doc[key], str):
+                raise _fail(where, f"{key} must be a string")
+    if op == "column_statistics":
+        if not isinstance(doc["column"], str):
+            raise _fail(where, "column must be a string")
+        if "unique_value_limit" in doc:
+            count("unique_value_limit")
+    for key in ("inverted", "null_fill", "initial", "incremental", "history", "blink"):
+        flag(key)
     if op == "sort":
         if not isinstance(doc["by"], list) or not doc["by"]:
             raise _fail(where, "by must be a non-empty list")
         for b, by in enumerate(doc["by"]):
-            _keys(f"{where}.by[{b}]", by, {"column", "direction"}, set())
+            _keys(f"{where}.by[{b}]", by, {"column", "direction"}, {"absolute"})
             if by["direction"] not in ("ascending", "descending"):
                 raise _fail(f"{where}.by[{b}]", "direction must be ascending or descending")
-    if op == "agg_by":
+            if not isinstance(by.get("absolute", False), bool):
+                raise _fail(f"{where}.by[{b}]", "absolute must be true or false")
+    if op in ("agg_by", "range_join"):
         if not isinstance(doc["aggs"], list) or not doc["aggs"]:
             raise _fail(where, "aggs must be a non-empty list")
         for a, agg in enumerate(doc["aggs"]):
-            if not isinstance(agg, dict) or agg.get("agg") not in AGGREGATIONS:
-                raise _fail(f"{where}.aggs[{a}]", f"agg must be one of {sorted(AGGREGATIONS)}")
-            if agg["agg"] == "count":
-                _keys(f"{where}.aggs[{a}]", agg, {"agg", "column"}, set())
-            else:
-                _keys(f"{where}.aggs[{a}]", agg, {"agg", "columns"}, set())
-                _strings(f"{where}.aggs[{a}].columns", agg["columns"], allow_empty=False)
+            _aggregation(f"{where}.aggs[{a}]", agg)
+            if agg["agg"] not in ("count", "count_where") and not agg["columns"]:
+                raise _fail(f"{where}.aggs[{a}].columns", "must not be empty")
+    if op == "agg_all_by":
+        _aggregation(f"{where}.agg", doc["agg"])
+        if doc["agg"]["agg"] in ("count", "count_where") or doc["agg"]["columns"]:
+            raise _fail(f"{where}.agg", "agg_all_by takes an aggregation with empty columns")
+    if op == "filter":
+        if not isinstance(doc["conditions"], list) or not doc["conditions"]:
+            raise _fail(where, "conditions must be a non-empty list")
+        for c, condition in enumerate(doc["conditions"]):
+            _condition(f"{where}.conditions[{c}]", condition)
     if op == "update_by":
         if not isinstance(doc["ops"], list) or not doc["ops"]:
             raise _fail(where, "ops must be a non-empty list")
         for o, ub in enumerate(doc["ops"]):
-            _keys(f"{where}.ops[{o}]", ub, {"op", "columns"}, set())
+            _keys(f"{where}.ops[{o}]", ub, {"op", "columns"}, {"args"})
             if ub["op"] not in UPDATE_BY_OPS:
                 raise _fail(f"{where}.ops[{o}]", f"op must be one of {sorted(UPDATE_BY_OPS)}")
             _strings(f"{where}.ops[{o}].columns", ub["columns"], allow_empty=False)
+            if not isinstance(ub.get("args", {}), dict):
+                raise _fail(f"{where}.ops[{o}]", "args must be an object")
     if op == "natural_join" and doc.get("type", "error_on_duplicate") not in NATURAL_JOIN_TYPES:
         raise _fail(where, f"type must be one of {sorted(NATURAL_JOIN_TYPES)}")
+
+
+def references(op: Any) -> list[str]:
+    """The names of the tables an operation reads."""
+    names = [op[key] for key in TABLE_KEYS if key in op]
+    names.extend(op.get("sources", ()))
+    names.extend(item["table"] for item in op.get("inputs", ()))
+    return names
 
 
 def parse(doc: Any) -> Scenario:
@@ -321,8 +498,8 @@ def parse(doc: Any) -> Scenario:
         raise _fail("scenario", f"bad name {name!r}")
     where = f"scenario {name}"
 
-    if not isinstance(doc["inputs"], list) or not doc["inputs"]:
-        raise _fail(where, "needs at least one input")
+    if not isinstance(doc["inputs"], list):
+        raise _fail(where, "inputs must be a list")
     inputs = tuple(_input(f"{where}.inputs[{i}]", d) for i, d in enumerate(doc["inputs"]))
     known: set[str] = set()
     for item in inputs:

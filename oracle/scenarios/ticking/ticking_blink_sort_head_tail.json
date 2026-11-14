@@ -1,0 +1,490 @@
+{
+ "format": 1,
+ "name": "ticking_blink_sort_head_tail",
+ "description": "sort, head, tail, reverse and slice of a blink input table. A blink table holds the rows of one update cycle only. On Java a sort, reverse or filter of it is empty between cycles, while head and tail keep the first and the last rows that ever passed through. Each table is compared, together with an aggregation of it, which Java computes over all the rows the table has held.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [],
+   "ticking": {
+    "key_columns": [],
+    "blink": true
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "sorted_k",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "K",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "first_two",
+   "op": "head",
+   "source": "t",
+   "rows": 2
+  },
+  {
+   "name": "last_two",
+   "op": "tail",
+   "source": "t",
+   "rows": 2
+  },
+  {
+   "name": "none",
+   "op": "head",
+   "source": "t",
+   "rows": 0
+  },
+  {
+   "name": "top_two",
+   "op": "head",
+   "source": "sorted_k",
+   "rows": 2
+  },
+  {
+   "name": "bottom_one",
+   "op": "tail",
+   "source": "sorted_k",
+   "rows": 1
+  },
+  {
+   "name": "rev",
+   "op": "reverse",
+   "source": "t"
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K > 2"
+   ]
+  },
+  {
+   "name": "seen",
+   "op": "agg_by",
+   "source": "t",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_sorted",
+   "op": "agg_by",
+   "source": "sorted_k",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_first_two",
+   "op": "agg_by",
+   "source": "first_two",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_last_two",
+   "op": "agg_by",
+   "source": "last_two",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_none",
+   "op": "agg_by",
+   "source": "none",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_top_two",
+   "op": "agg_by",
+   "source": "top_two",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_bottom_one",
+   "op": "agg_by",
+   "source": "bottom_one",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_rev",
+   "op": "agg_by",
+   "source": "rev",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    },
+    {
+     "agg": "last",
+     "columns": [
+      "LastS = S"
+     ]
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "FirstS = S"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "seen_big_by_s",
+   "op": "agg_by",
+   "source": "big",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "sum",
+     "columns": [
+      "SumK = K"
+     ]
+    }
+   ],
+   "by": [
+    "S"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "sorted_k"
+  },
+  {
+   "table": "first_two"
+  },
+  {
+   "table": "last_two"
+  },
+  {
+   "table": "none"
+  },
+  {
+   "table": "top_two"
+  },
+  {
+   "table": "bottom_one"
+  },
+  {
+   "table": "rev"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "seen"
+  },
+  {
+   "table": "seen_sorted"
+  },
+  {
+   "table": "seen_first_two"
+  },
+  {
+   "table": "seen_last_two"
+  },
+  {
+   "table": "seen_none"
+  },
+  {
+   "table": "seen_top_two"
+  },
+  {
+   "table": "seen_bottom_one"
+  },
+  {
+   "table": "seen_rev"
+  },
+  {
+   "table": "seen_big_by_s"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       3,
+       "c",
+       3.0
+      ],
+      [
+       1,
+       "a",
+       1.0
+      ],
+      [
+       2,
+       "b",
+       2.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       5,
+       "e",
+       "NaN"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       4,
+       "d",
+       null
+      ],
+      [
+       9,
+       "c",
+       9.0
+      ],
+      [
+       null,
+       null,
+       null
+      ],
+      [
+       7,
+       "e",
+       7.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "c",
+       6.0
+      ],
+      [
+       8,
+       "e",
+       8.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}
