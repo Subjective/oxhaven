@@ -55,6 +55,9 @@ use tower::ServiceExt;
 
 use super::{empty_response, Body, GrpcService};
 
+#[cfg(test)]
+mod tests;
+
 /// Behavior: `MultiplexedWebSocketServerStream#GRPC_WEBSOCKETS_MULTIPLEX_PROTOCOL`
 pub(crate) const MULTIPLEX_PROTOCOL: &str = "grpc-websockets-multiplex";
 /// Behavior: `WebSocketServerStream#GRPC_WEBSOCKETS_PROTOCOL`
