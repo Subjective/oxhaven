@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "scenario": "view_arithmetic",
+  "scenario_sha256": "eceb8f9c6ebcd5fd896ea168703561e702600da4c1281df7da4d27c5b5675810",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ints",
+      "file": "step000.ints.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "floats",
+      "file": "step000.floats.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "small",
+      "file": "step000.small.arrow",
+      "rows": 5
+    }
+  ]
+}

@@ -1,0 +1,104 @@
+{
+  "format": 1,
+  "scenario": "ticking_agg_by",
+  "scenario_sha256": "56d5a32dbd677f62f78cf5eb6c109e8cc5f111a0273f424b1dc5a5b9271517f0",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_k",
+      "file": "step000.by_k.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "total",
+      "file": "step000.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "by_k",
+      "file": "step001.by_k.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "total",
+      "file": "step001.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "by_k",
+      "file": "step002.by_k.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "total",
+      "file": "step002.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "by_k",
+      "file": "step003.by_k.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "total",
+      "file": "step003.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "by_k",
+      "file": "step004.by_k.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "total",
+      "file": "step004.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "by_k",
+      "file": "step005.by_k.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "total",
+      "file": "step005.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "by_k",
+      "file": "step006.by_k.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "total",
+      "file": "step006.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "by_k",
+      "file": "step007.by_k.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "total",
+      "file": "step007.total.arrow",
+      "rows": 0
+    }
+  ]
+}

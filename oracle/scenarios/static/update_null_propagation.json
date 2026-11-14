@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "name": "update_null_propagation",
+  "description": "Nulls through arithmetic, comparison and boolean formulas.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "u", "op": "update", "source": "t", "formulas": ["A = I + 1", "C = L * 2", "E = D + 1.0", "G = I + D", "H = I > 0", "J = isNull(I)", "K = isNull(S)", "M = S + `x`"]}
+  ],
+  "results": [
+    {"table": "u"}
+  ]
+}

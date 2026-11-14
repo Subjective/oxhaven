@@ -1,0 +1,86 @@
+{
+  "format": 1,
+  "name": "ticking_natural_join",
+  "description": "natural_join and exact_join with both sides ticking: right rows appear, change and vanish; left rows come and go.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [
+        [1, "a", 10],
+        [2, "b", 20],
+        [3, "a", 30]
+      ]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["K"]},
+      "columns": [{"name": "K", "type": "string"}, {"name": "RV", "type": "float64"}, {"name": "RS", "type": "string"}],
+      "rows": [
+        ["a", 1.5, "ra"],
+        ["b", 2.5, "rb"]
+      ]
+    },
+    {
+      "name": "fixed",
+      "columns": [{"name": "K", "type": "string"}, {"name": "FV", "type": "int64"}],
+      "rows": [
+        ["a", 100],
+        ["b", 200],
+        ["c", 300]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "nj", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["RV", "RS"]},
+    {"name": "nj_static_right", "op": "natural_join", "left": "l", "right": "fixed", "on": ["K"]},
+    {"name": "nj_static_left", "op": "natural_join", "left": "fixed", "right": "r", "on": ["K"], "joins": ["RV"]},
+    {"name": "ej", "op": "exact_join", "left": "l", "right": "fixed", "on": ["K"], "joins": ["FV"]}
+  ],
+  "results": [
+    {"table": "nj"},
+    {"table": "nj_static_right"},
+    {"table": "nj_static_left"},
+    {"table": "ej"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[4, "c", 40]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [["c", 3.5, "rc"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [["a", "NaN", null]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "r", "rows": [["b"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[2, "c", 21]]},
+        {"action": "delete", "table": "l", "rows": [[1]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [["b", 0.0, "rb2"]]},
+        {"action": "add", "table": "l", "rows": [[5, "b", 50]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "l", "rows": [[2], [3], [4], [5]]}
+      ]
+    }
+  ]
+}

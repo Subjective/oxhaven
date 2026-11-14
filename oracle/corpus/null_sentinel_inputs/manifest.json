@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "scenario": "null_sentinel_inputs",
+  "scenario_sha256": "d8c4bd3a8c1b6b637feb6814cbe2d13b72d35938c5d131b9f697ef1aa5ae043b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "as_is",
+      "file": "step000.as_is.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "plus",
+      "file": "step000.plus.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "nulls",
+      "file": "step000.nulls.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 1
+    }
+  ]
+}

@@ -1,0 +1,152 @@
+{
+  "format": 1,
+  "scenario": "ticking_join_merge",
+  "scenario_sha256": "b8c28792ae11d3c7c457452c119f7a44d7b3f098962ac4f6d248988f15804520",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "j",
+      "file": "step000.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "m",
+      "file": "step000.m.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "m_sorted",
+      "file": "step000.m_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "j",
+      "file": "step001.j.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "m",
+      "file": "step001.m.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "m_sorted",
+      "file": "step001.m_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "j",
+      "file": "step002.j.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "m",
+      "file": "step002.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "m_sorted",
+      "file": "step002.m_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "j",
+      "file": "step003.j.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "m",
+      "file": "step003.m.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "m_sorted",
+      "file": "step003.m_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "j",
+      "file": "step004.j.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "m",
+      "file": "step004.m.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "m_sorted",
+      "file": "step004.m_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "j",
+      "file": "step005.j.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "m",
+      "file": "step005.m.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "m_sorted",
+      "file": "step005.m_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "j",
+      "file": "step006.j.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "m",
+      "file": "step006.m.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "m_sorted",
+      "file": "step006.m_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "j",
+      "file": "step007.j.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "m",
+      "file": "step007.m.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "m_sorted",
+      "file": "step007.m_sorted.arrow",
+      "rows": 1
+    }
+  ]
+}

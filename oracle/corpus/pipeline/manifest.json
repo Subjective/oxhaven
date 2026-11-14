@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "scenario": "pipeline",
+  "scenario_sha256": "8df403457fd83186fc95aa3a8f8658d6e4f6953a500d5bfaae7b6eb73d575408",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "valid",
+      "file": "step000.valid.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "priced",
+      "file": "step000.priced.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "located",
+      "file": "step000.located.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "by_region",
+      "file": "step000.by_region.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "ranked",
+      "file": "step000.ranked.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "top",
+      "file": "step000.top.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "slim",
+      "file": "step000.slim.arrow",
+      "rows": 8
+    }
+  ]
+}

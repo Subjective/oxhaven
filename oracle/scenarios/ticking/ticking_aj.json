@@ -1,0 +1,64 @@
+{
+  "format": 1,
+  "name": "ticking_aj",
+  "description": "aj with an append-only left side and a keyed right side whose rows are added, replaced and deleted.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}],
+      "rows": [
+        ["a", 5],
+        ["b", 5]
+      ]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Rid"]},
+      "columns": [{"name": "Rid", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "float64"}],
+      "rows": [
+        [1, "a", 3, 0.3],
+        [2, "b", 7, 0.7]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "j", "op": "aj", "left": "l", "right": "r", "on": ["K", "X >= Y"], "joins": ["Y", "V"]}
+  ],
+  "results": [
+    {"table": "j"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [["a", 10], ["a", 1]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [[3, "a", 4, 0.4], [4, "b", 5, 0.5]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [[1, "a", 6, 0.6]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "r", "rows": [[3]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [["b", 100], [null, 5]]},
+        {"action": "add", "table": "r", "rows": [[5, "a", 10, "NaN"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "r", "rows": [[1], [2], [4], [5]]}
+      ]
+    }
+  ]
+}

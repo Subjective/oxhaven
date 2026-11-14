@@ -1,0 +1,70 @@
+{
+  "format": 1,
+  "name": "ticking_where_sort",
+  "description": "A keyed input table through where, sort, head and tail while rows are added, replaced and deleted.",
+  "inputs": [
+    {
+      "name": "t",
+      "ticking": {"key_columns": ["K"]},
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [1, 1.0, "a"],
+        [2, -2.0, "b"],
+        [3, null, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "positive", "op": "where", "source": "t", "filters": ["V > 0"]},
+    {"name": "by_v", "op": "sort", "source": "t", "by": [{"column": "V", "direction": "descending"}, {"column": "K", "direction": "ascending"}]},
+    {"name": "by_s", "op": "sort", "source": "t", "by": [{"column": "S", "direction": "ascending"}]},
+    {"name": "first2", "op": "head", "source": "t", "rows": 2},
+    {"name": "last2", "op": "tail", "source": "by_v", "rows": 2}
+  ],
+  "results": [
+    {"table": "t"},
+    {"table": "positive"},
+    {"table": "by_v"},
+    {"table": "by_s"},
+    {"table": "first2"},
+    {"table": "last2"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[4, 4.0, "d"], [5, "NaN", "e"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[2, 20.0, "B"], [3, 0.5, "c"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[1], [4]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[1, -1.0, "a"], [6, null, ""]]},
+        {"action": "delete", "table": "t", "rows": [[5]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[99]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[1], [2], [3], [6]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[7, 7.0, "g"]]}
+      ]
+    }
+  ]
+}
