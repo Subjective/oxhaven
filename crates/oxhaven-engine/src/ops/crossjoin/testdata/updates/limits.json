@@ -1,0 +1,29 @@
+{
+ "tables": {
+  "L": {"columns": ["K", "V"], "keys": [0, 1], "values": [[1, 2], [10, 11]], "refreshing": true},
+  "T": {"columns": ["K", "V"], "keys": [0, 1], "values": [[1, 2], [10, 11]]},
+  "Big": {"columns": ["K", "V"], "keys": [0, 4611686018427387904], "values": [[1, 1], [10, 11]]},
+  "BigLive": {"columns": ["K", "V"], "keys": [0, 1152921504606846976], "values": [[1, 1], [10, 11]], "refreshing": true},
+  "R": {"columns": ["K", "W"], "keys": [0, 1, 2], "values": [[1, 1, 1], [100, 101, 102]], "refreshing": true},
+  "S": {"columns": ["K", "W"], "keys": [0, 1, 2], "values": [[1, 1, 1], [100, 101, 102]]}
+ },
+ "joins": [
+  {"name": "keyed_reserve_0", "left": "L", "right": "R", "on": ["K"], "add": ["W"], "reserve": 0},
+  {"name": "keyed_reserve_63", "left": "L", "right": "R", "on": ["K"], "add": ["W"], "reserve": 63},
+  {"name": "keyed_reserve_62", "left": "L", "right": "R", "on": ["K"], "add": ["W"], "reserve": 62},
+  {"name": "keyed_static_reserve_0", "left": "T", "right": "S", "on": ["K"], "add": ["W"], "reserve": 0},
+  {"name": "zero_reserve_0", "left": "L", "right": "R", "add": ["W"], "reserve": 0},
+  {"name": "zero_reserve_63", "left": "L", "right": "R", "add": ["W"], "reserve": 63},
+  {"name": "zero_static_reserve_0", "left": "T", "right": "S", "add": ["W"], "reserve": 0},
+  {"name": "keyed_static_space", "left": "Big", "right": "S", "on": ["K"], "add": ["W"], "reserve": 1},
+  {"name": "zero_static_space", "left": "Big", "right": "S", "add": ["W"], "reserve": 1},
+  {"name": "keyed_live_space", "left": "BigLive", "right": "R", "on": ["K"], "add": ["W"], "reserve": 10},
+  {"name": "keyed_live_grows", "left": "BigLive", "right": "R", "on": ["K"], "add": ["W"], "reserve": 2},
+  {"name": "zero_live_grows", "left": "BigLive", "right": "R", "add": ["W"], "reserve": 2}
+ ],
+ "steps": [
+  {"R": {"added": {"keys": [3, 4], "values": [[2, 2], [103, 104]]}}},
+  {"R": {"added": {"keys": [5, 6, 7, 8, 9, 10], "values": [[1, 1, 1, 1, 1, 1], [1, 2, 3, 4, 5, 6]]}}},
+  {"R": {"added": {"keys": [4096], "values": [[2], [13]]}}}
+ ]
+}

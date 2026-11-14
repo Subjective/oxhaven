@@ -1,0 +1,932 @@
+{
+  "format": 2,
+  "scenario": "ticking_cross_join",
+  "scenario_sha256": "2ae33055555fb3777882a049f972e6b332c52e3f0ab343a1a369d5b30c29f759",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "both",
+      "file": "step000.both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "both_zero",
+      "file": "step000.both_zero.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "left_ticks",
+      "file": "step000.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "left_ticks_zero",
+      "file": "step000.left_ticks_zero.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "left_ticks_empty_zero",
+      "file": "step000.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "right_ticks",
+      "file": "step000.right_ticks.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "right_ticks_zero",
+      "file": "step000.right_ticks_zero.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "append_only",
+      "file": "step000.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "append_only_zero",
+      "file": "step000.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "append_only_static_right",
+      "file": "step000.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "chained",
+      "file": "step000.chained.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "both",
+      "file": "step001.both.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "both_zero",
+      "file": "step001.both_zero.arrow",
+      "rows": 15
+    },
+    {
+      "step": 1,
+      "table": "left_ticks",
+      "file": "step001.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "left_ticks_zero",
+      "file": "step001.left_ticks_zero.arrow",
+      "rows": 12
+    },
+    {
+      "step": 1,
+      "table": "left_ticks_empty_zero",
+      "file": "step001.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "right_ticks",
+      "file": "step001.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "right_ticks_zero",
+      "file": "step001.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 1,
+      "table": "append_only",
+      "file": "step001.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "append_only_zero",
+      "file": "step001.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "append_only_static_right",
+      "file": "step001.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "chained",
+      "file": "step001.chained.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "both",
+      "file": "step002.both.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "both_zero",
+      "file": "step002.both_zero.arrow",
+      "rows": 25
+    },
+    {
+      "step": 2,
+      "table": "left_ticks",
+      "file": "step002.left_ticks.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "left_ticks_zero",
+      "file": "step002.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 2,
+      "table": "left_ticks_empty_zero",
+      "file": "step002.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "right_ticks",
+      "file": "step002.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "right_ticks_zero",
+      "file": "step002.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 2,
+      "table": "append_only",
+      "file": "step002.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "append_only_zero",
+      "file": "step002.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "append_only_static_right",
+      "file": "step002.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "chained",
+      "file": "step002.chained.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "both",
+      "file": "step003.both.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "both_zero",
+      "file": "step003.both_zero.arrow",
+      "rows": 25
+    },
+    {
+      "step": 3,
+      "table": "left_ticks",
+      "file": "step003.left_ticks.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "left_ticks_zero",
+      "file": "step003.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 3,
+      "table": "left_ticks_empty_zero",
+      "file": "step003.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "right_ticks",
+      "file": "step003.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "right_ticks_zero",
+      "file": "step003.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 3,
+      "table": "append_only",
+      "file": "step003.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "append_only_zero",
+      "file": "step003.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "append_only_static_right",
+      "file": "step003.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "chained",
+      "file": "step003.chained.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "both",
+      "file": "step004.both.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "both_zero",
+      "file": "step004.both_zero.arrow",
+      "rows": 25
+    },
+    {
+      "step": 4,
+      "table": "left_ticks",
+      "file": "step004.left_ticks.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "left_ticks_zero",
+      "file": "step004.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 4,
+      "table": "left_ticks_empty_zero",
+      "file": "step004.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "right_ticks",
+      "file": "step004.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "right_ticks_zero",
+      "file": "step004.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 4,
+      "table": "append_only",
+      "file": "step004.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "append_only_zero",
+      "file": "step004.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "append_only_static_right",
+      "file": "step004.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "chained",
+      "file": "step004.chained.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "both",
+      "file": "step005.both.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "both_zero",
+      "file": "step005.both_zero.arrow",
+      "rows": 25
+    },
+    {
+      "step": 5,
+      "table": "left_ticks",
+      "file": "step005.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "left_ticks_zero",
+      "file": "step005.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 5,
+      "table": "left_ticks_empty_zero",
+      "file": "step005.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "right_ticks",
+      "file": "step005.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "right_ticks_zero",
+      "file": "step005.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 5,
+      "table": "append_only",
+      "file": "step005.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "append_only_zero",
+      "file": "step005.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "append_only_static_right",
+      "file": "step005.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "chained",
+      "file": "step005.chained.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "both",
+      "file": "step006.both.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "both_zero",
+      "file": "step006.both_zero.arrow",
+      "rows": 25
+    },
+    {
+      "step": 6,
+      "table": "left_ticks",
+      "file": "step006.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "left_ticks_zero",
+      "file": "step006.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 6,
+      "table": "left_ticks_empty_zero",
+      "file": "step006.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "right_ticks",
+      "file": "step006.right_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "right_ticks_zero",
+      "file": "step006.right_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 6,
+      "table": "append_only",
+      "file": "step006.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "append_only_zero",
+      "file": "step006.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "append_only_static_right",
+      "file": "step006.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "chained",
+      "file": "step006.chained.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "both",
+      "file": "step007.both.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "both_zero",
+      "file": "step007.both_zero.arrow",
+      "rows": 15
+    },
+    {
+      "step": 7,
+      "table": "left_ticks",
+      "file": "step007.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "left_ticks_zero",
+      "file": "step007.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 7,
+      "table": "left_ticks_empty_zero",
+      "file": "step007.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "right_ticks",
+      "file": "step007.right_ticks.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "right_ticks_zero",
+      "file": "step007.right_ticks_zero.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "append_only",
+      "file": "step007.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "append_only_zero",
+      "file": "step007.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "append_only_static_right",
+      "file": "step007.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "chained",
+      "file": "step007.chained.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "both",
+      "file": "step008.both.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "both_zero",
+      "file": "step008.both_zero.arrow",
+      "rows": 40
+    },
+    {
+      "step": 8,
+      "table": "left_ticks",
+      "file": "step008.left_ticks.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "left_ticks_zero",
+      "file": "step008.left_ticks_zero.arrow",
+      "rows": 20
+    },
+    {
+      "step": 8,
+      "table": "left_ticks_empty_zero",
+      "file": "step008.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "right_ticks",
+      "file": "step008.right_ticks.arrow",
+      "rows": 8
+    },
+    {
+      "step": 8,
+      "table": "right_ticks_zero",
+      "file": "step008.right_ticks_zero.arrow",
+      "rows": 32
+    },
+    {
+      "step": 8,
+      "table": "append_only",
+      "file": "step008.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "append_only_zero",
+      "file": "step008.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "append_only_static_right",
+      "file": "step008.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "chained",
+      "file": "step008.chained.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "both",
+      "file": "step009.both.arrow",
+      "rows": 9
+    },
+    {
+      "step": 9,
+      "table": "both_zero",
+      "file": "step009.both_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 9,
+      "table": "left_ticks",
+      "file": "step009.left_ticks.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "left_ticks_zero",
+      "file": "step009.left_ticks_zero.arrow",
+      "rows": 16
+    },
+    {
+      "step": 9,
+      "table": "left_ticks_empty_zero",
+      "file": "step009.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "right_ticks",
+      "file": "step009.right_ticks.arrow",
+      "rows": 9
+    },
+    {
+      "step": 9,
+      "table": "right_ticks_zero",
+      "file": "step009.right_ticks_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 9,
+      "table": "append_only",
+      "file": "step009.append_only.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "append_only_zero",
+      "file": "step009.append_only_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "append_only_static_right",
+      "file": "step009.append_only_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "chained",
+      "file": "step009.chained.arrow",
+      "rows": 9
+    },
+    {
+      "step": 10,
+      "table": "both",
+      "file": "step010.both.arrow",
+      "rows": 9
+    },
+    {
+      "step": 10,
+      "table": "both_zero",
+      "file": "step010.both_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 10,
+      "table": "left_ticks",
+      "file": "step010.left_ticks.arrow",
+      "rows": 4
+    },
+    {
+      "step": 10,
+      "table": "left_ticks_zero",
+      "file": "step010.left_ticks_zero.arrow",
+      "rows": 16
+    },
+    {
+      "step": 10,
+      "table": "left_ticks_empty_zero",
+      "file": "step010.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 10,
+      "table": "right_ticks",
+      "file": "step010.right_ticks.arrow",
+      "rows": 9
+    },
+    {
+      "step": 10,
+      "table": "right_ticks_zero",
+      "file": "step010.right_ticks_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 10,
+      "table": "append_only",
+      "file": "step010.append_only.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "append_only_zero",
+      "file": "step010.append_only_zero.arrow",
+      "rows": 9
+    },
+    {
+      "step": 10,
+      "table": "append_only_static_right",
+      "file": "step010.append_only_static_right.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "chained",
+      "file": "step010.chained.arrow",
+      "rows": 9
+    },
+    {
+      "step": 11,
+      "table": "both",
+      "file": "step011.both.arrow",
+      "rows": 9
+    },
+    {
+      "step": 11,
+      "table": "both_zero",
+      "file": "step011.both_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 11,
+      "table": "left_ticks",
+      "file": "step011.left_ticks.arrow",
+      "rows": 4
+    },
+    {
+      "step": 11,
+      "table": "left_ticks_zero",
+      "file": "step011.left_ticks_zero.arrow",
+      "rows": 16
+    },
+    {
+      "step": 11,
+      "table": "left_ticks_empty_zero",
+      "file": "step011.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 11,
+      "table": "right_ticks",
+      "file": "step011.right_ticks.arrow",
+      "rows": 9
+    },
+    {
+      "step": 11,
+      "table": "right_ticks_zero",
+      "file": "step011.right_ticks_zero.arrow",
+      "rows": 36
+    },
+    {
+      "step": 11,
+      "table": "append_only",
+      "file": "step011.append_only.arrow",
+      "rows": 6
+    },
+    {
+      "step": 11,
+      "table": "append_only_zero",
+      "file": "step011.append_only_zero.arrow",
+      "rows": 15
+    },
+    {
+      "step": 11,
+      "table": "append_only_static_right",
+      "file": "step011.append_only_static_right.arrow",
+      "rows": 5
+    },
+    {
+      "step": 11,
+      "table": "chained",
+      "file": "step011.chained.arrow",
+      "rows": 9
+    },
+    {
+      "step": 12,
+      "table": "both",
+      "file": "step012.both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 12,
+      "table": "both_zero",
+      "file": "step012.both_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 12,
+      "table": "left_ticks",
+      "file": "step012.left_ticks.arrow",
+      "rows": 4
+    },
+    {
+      "step": 12,
+      "table": "left_ticks_zero",
+      "file": "step012.left_ticks_zero.arrow",
+      "rows": 16
+    },
+    {
+      "step": 12,
+      "table": "left_ticks_empty_zero",
+      "file": "step012.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 12,
+      "table": "right_ticks",
+      "file": "step012.right_ticks.arrow",
+      "rows": 0
+    },
+    {
+      "step": 12,
+      "table": "right_ticks_zero",
+      "file": "step012.right_ticks_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 12,
+      "table": "append_only",
+      "file": "step012.append_only.arrow",
+      "rows": 6
+    },
+    {
+      "step": 12,
+      "table": "append_only_zero",
+      "file": "step012.append_only_zero.arrow",
+      "rows": 15
+    },
+    {
+      "step": 12,
+      "table": "append_only_static_right",
+      "file": "step012.append_only_static_right.arrow",
+      "rows": 5
+    },
+    {
+      "step": 12,
+      "table": "chained",
+      "file": "step012.chained.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "both",
+      "file": "step013.both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "both_zero",
+      "file": "step013.both_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "left_ticks",
+      "file": "step013.left_ticks.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "left_ticks_zero",
+      "file": "step013.left_ticks_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "left_ticks_empty_zero",
+      "file": "step013.left_ticks_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "right_ticks",
+      "file": "step013.right_ticks.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "right_ticks_zero",
+      "file": "step013.right_ticks_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 13,
+      "table": "append_only",
+      "file": "step013.append_only.arrow",
+      "rows": 6
+    },
+    {
+      "step": 13,
+      "table": "append_only_zero",
+      "file": "step013.append_only_zero.arrow",
+      "rows": 15
+    },
+    {
+      "step": 13,
+      "table": "append_only_static_right",
+      "file": "step013.append_only_static_right.arrow",
+      "rows": 5
+    },
+    {
+      "step": 13,
+      "table": "chained",
+      "file": "step013.chained.arrow",
+      "rows": 0
+    }
+  ]
+}

@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "name": "cross_join_key_types",
+  "description": "Static cross joins on keys of each type, with nulls, NaN, -0.0 and 0.0, duplicate keys on both sides, keys present on one side only, and two match columns.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [
+        {"name": "I", "type": "int32"},
+        {"name": "S", "type": "string"},
+        {"name": "D", "type": "float64"},
+        {"name": "F", "type": "float32"},
+        {"name": "B", "type": "bool"},
+        {"name": "T", "type": "timestamp"},
+        {"name": "X", "type": "int8"},
+        {"name": "Tag", "type": "string"}
+      ],
+      "rows": [
+        [1, "a", 1.5, 1.5, true, 1000, 1, "l0"],
+        [2, "b", "NaN", "NaN", false, 2000, 2, "l1"],
+        [null, null, null, null, null, null, null, "l2"],
+        [1, "a", -0.0, -0.0, true, 1000, 1, "l3"],
+        [3, "c", 0.0, 0.0, false, 3000, 3, "l4"],
+        [9, "z", 9.0, 9.0, true, 9000, 9, "l5"]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [
+        {"name": "I", "type": "int32"},
+        {"name": "S", "type": "string"},
+        {"name": "D", "type": "float64"},
+        {"name": "F", "type": "float32"},
+        {"name": "B", "type": "bool"},
+        {"name": "T", "type": "timestamp"},
+        {"name": "X", "type": "int8"},
+        {"name": "V", "type": "int64"}
+      ],
+      "rows": [
+        [1, "a", 0.0, 0.0, true, 1000, 1, 100],
+        [null, null, "NaN", "NaN", null, null, null, 101],
+        [2, "b", null, null, false, 2000, 2, 102],
+        [1, "a", 1.5, 1.5, false, 1000, 1, 103],
+        [3, "c", -0.0, -0.0, true, 3000, 3, 104],
+        [1, "b", "NaN", "NaN", true, 2000, 1, 105],
+        [7, "y", 7.0, 7.0, null, 7000, 7, 106]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "on_i", "op": "join", "left": "l", "right": "r", "on": ["I"], "joins": ["V"]},
+    {"name": "on_s", "op": "join", "left": "l", "right": "r", "on": ["S"], "joins": ["V"]},
+    {"name": "on_d", "op": "join", "left": "l", "right": "r", "on": ["D"], "joins": ["V"]},
+    {"name": "on_f", "op": "join", "left": "l", "right": "r", "on": ["F"], "joins": ["V"]},
+    {"name": "on_b", "op": "join", "left": "l", "right": "r", "on": ["B"], "joins": ["V"]},
+    {"name": "on_t", "op": "join", "left": "l", "right": "r", "on": ["T"], "joins": ["V"]},
+    {"name": "on_x", "op": "join", "left": "l", "right": "r", "on": ["X"], "joins": ["V"]},
+    {"name": "on_i_s", "op": "join", "left": "l", "right": "r", "on": ["I", "S"], "joins": ["V", "RD=D"]},
+    {"name": "on_s_b_d", "op": "join", "left": "l", "right": "r", "on": ["S", "B", "D"], "joins": ["V"]},
+    {"name": "self_on_b", "op": "join", "left": "r", "right": "r", "on": ["B"], "joins": ["V2=V", "S2=S"]},
+    {"name": "chained", "op": "join", "left": "on_i", "right": "r", "on": ["S"], "joins": ["V2=V"]}
+  ],
+  "results": [
+    {"table": "on_i"},
+    {"table": "on_s"},
+    {"table": "on_d"},
+    {"table": "on_f"},
+    {"table": "on_b"},
+    {"table": "on_t"},
+    {"table": "on_x"},
+    {"table": "on_i_s"},
+    {"table": "on_s_b_d"},
+    {"table": "self_on_b"},
+    {"table": "chained"}
+  ]
+}

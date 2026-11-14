@@ -40,6 +40,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Filter(r) => c.client.filter(c.auth(r)).await,
         Op::Aggregate(r) => c.client.aggregate(c.auth(r)).await,
         Op::AggregateAll(r) => c.client.aggregate_all(c.auth(r)).await,
+        Op::ComboAggregate(r) => c.client.combo_aggregate(c.auth(r)).await,
         Op::SelectDistinct(r) => c.client.select_distinct(c.auth(r)).await,
         Op::NaturalJoin(r) => c.client.natural_join_tables(c.auth(r)).await,
         Op::ExactJoin(r) => c.client.exact_join_tables(c.auth(r)).await,
@@ -854,6 +855,378 @@ async fn aggregate_groups_rows_and_aggregates_columns() {
     assert_eq!(values(table.as_ref(), "N"), ints(&[3, 2]));
 }
 
+fn unique(
+    sentinel: Option<proto::agg_spec::agg_spec_non_unique_sentinel::Type>,
+) -> proto::agg_spec::Type {
+    proto::agg_spec::Type::Unique(proto::agg_spec::AggSpecUnique {
+        include_nulls: false,
+        non_unique_sentinel: Some(proto::agg_spec::AggSpecNonUniqueSentinel { r#type: sentinel }),
+    })
+}
+
+#[tokio::test]
+async fn aggregate_has_the_specs_beyond_the_basic_set() {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    use proto::agg_spec::{AggSpecSorted, AggSpecSortedColumn, AggSpecWeighted, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let weighted = |column: &str| AggSpecWeighted {
+        weight_column: column.to_string(),
+    };
+    let by_n = AggSpecSorted {
+        columns: vec![AggSpecSortedColumn {
+            column_name: "N".to_string(),
+        }],
+    };
+    // S = a has I = 0, 2, 4 and N = 3, 1, -1; S = b has I = 1, 3, 5 and N = 2, 0, -2.
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(Type::AbsSum(Default::default()), &["A = N"]),
+            agg_columns(Type::Var(Default::default()), &["V = I"]),
+            agg_columns(Type::Std(Default::default()), &["SD = I"]),
+            agg_columns(Type::Median(Default::default()), &["M = I"]),
+            agg_columns(
+                Type::Percentile(proto::agg_spec::AggSpecPercentile {
+                    percentile: 0.0,
+                    average_evenly_divided: false,
+                }),
+                &["P = N"],
+            ),
+            agg_columns(Type::CountDistinct(Default::default()), &["CD = N"]),
+            agg_columns(unique(Some(Sentinel::NullValue(0))), &["U = I"]),
+            agg_columns(Type::WeightedSum(weighted("N")), &["WS = I"]),
+            agg_columns(Type::WeightedAvg(weighted("I")), &["WA = N"]),
+            agg_columns(Type::SortedFirst(by_n.clone()), &["SF = I"]),
+            agg_columns(Type::SortedLast(by_n), &["SL = I"]),
+        ],
+        &["S"],
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(2);
+    let column = |name: &str| values(table.as_ref(), name);
+    assert_eq!(column("A"), ints(&[5, 4]));
+    assert_eq!(column("V"), texts(&["4.0", "4.0"]));
+    assert_eq!(column("SD"), texts(&["2.0", "2.0"]));
+    assert_eq!(column("M"), ints(&[2, 3]));
+    assert_eq!(column("P"), ints(&[-1, -2]));
+    assert_eq!(column("CD"), ints(&[3, 3]));
+    assert_eq!(column("U"), texts(&["", ""]));
+    // the weight and the value are integers: a long sum
+    assert_eq!(column("WS"), ints(&[-2, -8]));
+    // (3 * 0 + 1 * 2 - 1 * 4) / 6 and (2 * 1 + 0 * 3 - 2 * 5) / 9
+    assert_eq!(
+        column("WA"),
+        texts(&["-0.3333333333333333", "-0.8888888888888888"])
+    );
+    assert_eq!(column("SF"), ints(&[4, 5]));
+    assert_eq!(column("SL"), ints(&[0, 1]));
+
+    // every column but the group-by columns and the weight
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(3),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(Type::WeightedSum(weighted("N")))),
+        group_by_columns: texts(&["S"]),
+    });
+    call(&mut c, all).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(column_names(table.as_ref()), ["S", "I"]);
+    assert_eq!(values(table.as_ref(), "I"), ints(&[-2, -8]));
+}
+
+fn combo(
+    result: i32,
+    aggregates: Vec<proto::combo_aggregate_request::Aggregate>,
+    group_by: &[&str],
+    force_combo: bool,
+) -> Op {
+    Op::ComboAggregate(proto::ComboAggregateRequest {
+        result_id: ticket(result),
+        source_id: by_ticket(1),
+        aggregates,
+        group_by_columns: texts(group_by),
+        force_combo,
+    })
+}
+
+fn combo_part(
+    kind: proto::combo_aggregate_request::AggType,
+    pairs: &[&str],
+    column: &str,
+) -> proto::combo_aggregate_request::Aggregate {
+    proto::combo_aggregate_request::Aggregate {
+        r#type: kind as i32,
+        match_pairs: texts(pairs),
+        column_name: column.to_string(),
+        percentile: 0.0,
+        avg_median: false,
+    }
+}
+
+#[tokio::test]
+async fn combo_aggregate_runs_one_aggregation_by_itself_or_several_together() {
+    use proto::combo_aggregate_request::AggType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+
+    // one aggregate, the table operation of its own: every column but S
+    call(
+        &mut c,
+        combo(2, vec![combo_part(AggType::Median, &[], "")], &["S"], false),
+    )
+    .await
+    .unwrap();
+    let table = c.table(2);
+    assert_eq!(column_names(table.as_ref()), ["S", "I", "N"]);
+    // AggSpec#median() averages: an int column gives a double
+    assert_eq!(values(table.as_ref(), "I"), texts(&["2.0", "3.0"]));
+
+    // several, with match pairs, a count, a weighted average of every other column and a
+    // percentile
+    let mut percentile = combo_part(AggType::Percentile, &["P = N"], "");
+    percentile.percentile = 0.5;
+    percentile.avg_median = true;
+    let request = combo(
+        3,
+        vec![
+            combo_part(AggType::Sum, &["Total = N"], ""),
+            combo_part(AggType::Count, &[], "Rows"),
+            combo_part(AggType::WeightedAvg, &[], "I"),
+            percentile,
+        ],
+        &["S"],
+        false,
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(
+        column_names(table.as_ref()),
+        ["S", "Total", "Rows", "N", "P"]
+    );
+    assert_eq!(values(table.as_ref(), "Total"), ints(&[3, 0]));
+    assert_eq!(values(table.as_ref(), "Rows"), ints(&[3, 3]));
+    assert_eq!(
+        values(table.as_ref(), "N"),
+        texts(&["-0.3333333333333333", "-0.8888888888888888"])
+    );
+    assert_eq!(values(table.as_ref(), "P"), texts(&["1.0", "0.0"]));
+
+    // force_combo: one aggregate, but as aggBy
+    let request = combo(
+        4,
+        vec![combo_part(AggType::Max, &["Top = I"], "")],
+        &["S"],
+        true,
+    );
+    call(&mut c, request).await.unwrap();
+    assert_eq!(column_names(c.table(4).as_ref()), ["S", "Top"]);
+}
+
+#[tokio::test]
+async fn combo_aggregate_refuses_what_java_refuses() {
+    use proto::combo_aggregate_request::AggType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let with = |kind: AggType, edit: &dyn Fn(&mut proto::combo_aggregate_request::Aggregate)| {
+        let mut part = combo_part(kind, &[], "");
+        edit(&mut part);
+        part
+    };
+    let cases: Vec<(
+        Vec<proto::combo_aggregate_request::Aggregate>,
+        &[&str],
+        bool,
+        &str,
+    )> = vec![
+        (
+            vec![],
+            &["S"],
+            false,
+            "ComboAggregateRequest incorrectly has zero aggregates provided",
+        ),
+        (
+            vec![combo_part(AggType::Sum, &[], "")],
+            &["bad name"],
+            false,
+            "ComboAggregateRequest group by",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.avg_median = true)],
+            &["S"],
+            false,
+            "force_combo is false and only one aggregate provided, but avg_median is specified",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.percentile = 0.5)],
+            &["S"],
+            false,
+            "force_combo is false and only one aggregate provided, but percentile is specified",
+        ),
+        (
+            vec![with(AggType::Sum, &|p| p.percentile = 0.5)],
+            &["S"],
+            true,
+            "percentile is specified for type SUM",
+        ),
+        (
+            vec![with(AggType::Max, &|p| p.avg_median = true)],
+            &["S"],
+            true,
+            "avg_median is specified for type MAX",
+        ),
+        (
+            vec![combo_part(AggType::Count, &["I"], "Rows")],
+            &["S"],
+            true,
+            "match_pairs is specified for type COUNT",
+        ),
+        (
+            vec![combo_part(AggType::Min, &["I"], "W")],
+            &["S"],
+            true,
+            "column_name is specified for type MIN",
+        ),
+    ];
+    for (index, (aggregates, group_by, force, message)) in cases.into_iter().enumerate() {
+        let refused = call(&mut c, combo(2 + index as i32, aggregates, group_by, force))
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+    }
+
+    // group is not ported, whichever way it is asked for
+    for (result, force) in [(20, false), (21, true)] {
+        let refused = call(
+            &mut c,
+            combo(
+                result,
+                vec![combo_part(AggType::Group, &[], "")],
+                &["S"],
+                force,
+            ),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
+    }
+    // what Java refuses with an exception: COUNT by itself, whose column name must be empty
+    // to be by itself; a type it does not know; no column left to aggregate
+    let unknown = proto::combo_aggregate_request::Aggregate {
+        r#type: 99,
+        ..combo_part(AggType::Sum, &[], "")
+    };
+    for (result, aggregates, group_by) in [
+        (30, vec![combo_part(AggType::Count, &[], "")], &["S"][..]),
+        (31, vec![unknown], &["S"]),
+        (
+            32,
+            vec![
+                combo_part(AggType::Sum, &[], ""),
+                combo_part(AggType::Count, &[], "N"),
+            ],
+            &["I", "N", "S"],
+        ),
+    ] {
+        assert_internal(
+            &call(&mut c, combo(result, aggregates, group_by, false))
+                .await
+                .unwrap_err(),
+        );
+    }
+}
+
+#[tokio::test]
+async fn aggregate_refuses_the_options_java_refuses() {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    use proto::agg_spec::{AggSpecWeighted, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+
+    let no_sentinel = Type::Unique(proto::agg_spec::AggSpecUnique {
+        include_nulls: false,
+        non_unique_sentinel: None,
+    });
+    let refusals = [
+        (
+            no_sentinel,
+            "io.deephaven.proto.backplane.grpc.AggSpec.AggSpecUnique must have field non_unique_sentinel (2)",
+        ),
+        (
+            unique(None),
+            "io.deephaven.proto.backplane.grpc.AggSpec.AggSpecNonUniqueSentinel must have oneof type. Note: this may also indicate that the server is older than the client and doesn't know about this new oneof option.",
+        ),
+        (
+            unique(Some(Sentinel::NullValue(1))),
+            "AggSpecNonUniqueSentinel null_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::ByteValue(128))),
+            "AggSpecNonUniqueSentinel byte_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::ShortValue(-32769))),
+            "AggSpecNonUniqueSentinel short_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::CharValue(-1))),
+            "AggSpecNonUniqueSentinel char_value out of range",
+        ),
+    ];
+    for (index, (kind, message)) in refusals.into_iter().enumerate() {
+        let request = aggregated(
+            2 + index as i32,
+            vec![agg_columns(kind, &["U = I"])],
+            &["S"],
+        );
+        let refused = call(&mut c, request).await.unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+    }
+    // in range
+    for (result, sentinel) in [
+        (10, Sentinel::ByteValue(-128)),
+        (11, Sentinel::CharValue(65535)),
+    ] {
+        let request = aggregated(
+            result,
+            vec![agg_columns(unique(Some(sentinel)), &["U = I"])],
+            &["S"],
+        );
+        let refused = call(&mut c, request).await.unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
+    }
+
+    // what the engine refuses
+    let weight = |column: &str| {
+        Type::WeightedAvg(AggSpecWeighted {
+            weight_column: column.to_string(),
+        })
+    };
+    let percentile = Type::Percentile(proto::agg_spec::AggSpecPercentile {
+        percentile: 1.5,
+        average_evenly_divided: false,
+    });
+    for (result, kind) in [
+        (20, percentile),
+        (21, weight("Missing")),
+        (22, weight("S")),
+        (23, Type::Var(Default::default())),
+    ] {
+        let pairs: &[&str] = if result == 23 { &["V = S"] } else { &["X = I"] };
+        let request = aggregated(result, vec![agg_columns(kind, pairs)], &[]);
+        assert_internal(&call(&mut c, request).await.unwrap_err());
+    }
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(30),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(weight("Missing"))),
+        group_by_columns: texts(&["S"]),
+    });
+    assert_internal(&call(&mut c, all).await.unwrap_err());
+}
+
 #[tokio::test]
 async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     use proto::agg_spec::Type;
@@ -926,14 +1299,14 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     let all_by_itself = Op::AggregateAll(AggregateAllRequest {
         result_id: ticket(22),
         source_id: by_ticket(1),
-        spec: Some(agg_spec(Type::Median(Default::default()))),
+        spec: Some(agg_spec(Type::Group(Default::default()))),
         group_by_columns: texts(&["S"]),
     });
     let refused = call(&mut c, all_by_itself).await.unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation median"
+        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation group"
     );
     let row_key = proto::Aggregation {
         r#type: Some(proto::aggregation::Type::FirstRowKey(Default::default())),

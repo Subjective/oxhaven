@@ -260,3 +260,25 @@ Barrage merged as PR 30. On main at f8b121a, `oxhaven-server --demo-tables --web
 with `node oracle/ide/ide-test.js` gave `PASSED: panels, iframe, jsapi`: the IDE loads from
 Oxhaven, logs in, opens `ide_static` with matching cells and `ide_ticking` advances. The console
 route is not run because there is no Python or Groovy console. Join engine work is PR 31.
+
+## 19:55 State after the restart wave, and the contract decision on list types
+
+Merged since the restart: PRs 29 to 37 and 39 (Barrage, joins with handlers and attribute fix,
+snapshot and distinct, the 83-scenario corpus, formula constants, update_by, cross join). Open:
+38 (full aggregations, rerunning checks on current main), 40 (ungroup). The replay gate branch
+is ready with a baseline at 47 clean of 83; it lands after PR 38 because that changes replay
+outcomes, and will need one more regeneration.
+
+Josh reset the usage limit at 19:05 and asked for agents on the primary model again; agents
+started after that use it. Replacement agents briefed from branch state finished interrupted
+work in 9 to 60 minutes each, which suggests a fresh agent with a precise brief and a branch is
+a cheap way to recover; the cost was the six and a half hours nobody was awake to restart.
+
+Two agents independently reported the same blocker: no array-valued column type in the
+contracts. Using the standing authority to change contracts, an architect agent is adding vector
+and array types across the workspace as one change (contracts plus what must change to compile),
+for Josh's review afterwards. Operators stay out of that change.
+
+Sizing so far: operator tasks that bundle the engine operator, its handler and a contract change
+are consistently too large. Engine operator alone, handler alone and contract change alone each
+fit one context. Applied from here on.

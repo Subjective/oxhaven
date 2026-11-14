@@ -1,0 +1,87 @@
+{
+  "format": 1,
+  "name": "ticking_cross_join",
+  "description": "Cross joins with match columns and without, of ticking tables on either or both sides: rows added, deleted, and replaced with the same or another match key, groups that grow past the reserved bits and shrink, and the attributes of joins of append-only tables.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [[1, "a", 10], [2, "b", 20], [3, "a", 30]]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "RV", "type": "int64"}],
+      "rows": [[1, "a", 100], [2, "a", 101], [3, "c", 102]]
+    },
+    {
+      "name": "la",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "AV", "type": "int32"}],
+      "rows": [["a", 1]]
+    },
+    {
+      "name": "ra",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "BV", "type": "int32"}],
+      "rows": [["a", 5], ["b", 6]]
+    },
+    {
+      "name": "fl",
+      "columns": [{"name": "K", "type": "string"}, {"name": "FV", "type": "int32"}],
+      "rows": [["a", 1], ["b", 2], ["c", 3], [null, 4]]
+    },
+    {
+      "name": "fr",
+      "columns": [{"name": "K", "type": "string"}, {"name": "GV", "type": "int64"}],
+      "rows": [["a", 7], ["a", 8], ["b", 9], [null, 10]]
+    },
+    {
+      "name": "fe",
+      "columns": [{"name": "K", "type": "string"}, {"name": "GV", "type": "int64"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "both", "op": "join", "left": "l", "right": "r", "on": ["K"], "joins": ["RId=Id", "RV"]},
+    {"name": "both_zero", "op": "join", "left": "l", "right": "r", "on": [], "joins": ["RId=Id", "RK=K", "RV"]},
+    {"name": "left_ticks", "op": "join", "left": "l", "right": "fr", "on": ["K"], "joins": ["GV"]},
+    {"name": "left_ticks_zero", "op": "join", "left": "l", "right": "fr", "on": [], "joins": ["RK=K", "GV"]},
+    {"name": "left_ticks_empty_zero", "op": "join", "left": "l", "right": "fe", "on": [], "joins": ["GV"]},
+    {"name": "right_ticks", "op": "join", "left": "fl", "right": "r", "on": ["K"], "joins": ["RId=Id", "RV"]},
+    {"name": "right_ticks_zero", "op": "join", "left": "fl", "right": "r", "on": [], "joins": ["RId=Id", "RK=K", "RV"]},
+    {"name": "append_only", "op": "join", "left": "la", "right": "ra", "on": ["K"], "joins": ["BV"]},
+    {"name": "append_only_zero", "op": "join", "left": "la", "right": "ra", "on": [], "joins": ["BV"]},
+    {"name": "append_only_static_right", "op": "join", "left": "la", "right": "fr", "on": ["K"], "joins": ["GV"]},
+    {"name": "chained", "op": "join", "left": "both", "right": "r", "on": ["RId=Id"], "joins": ["RV2=RV"]}
+  ],
+  "results": [
+    {"table": "both"},
+    {"table": "both_zero"},
+    {"table": "left_ticks"},
+    {"table": "left_ticks_zero"},
+    {"table": "left_ticks_empty_zero"},
+    {"table": "right_ticks"},
+    {"table": "right_ticks_zero"},
+    {"table": "append_only"},
+    {"table": "append_only_zero"},
+    {"table": "append_only_static_right"},
+    {"table": "chained"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "r", "rows": [[4, "a", 103], [5, "b", 104]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[4, "c", 40], [5, null, 50]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[1, "b", 105]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[2, "a", 106]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[3, "b", 31]]}]},
+    {"actions": [{"action": "add", "table": "l", "rows": [[1, "a", 11]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[2], [3]]}]},
+    {"actions": [{"action": "add", "table": "r", "rows": [[6, "a", 107], [7, "a", 108], [8, "a", 109], [9, "a", 110], [10, null, 111]]}]},
+    {"actions": [{"action": "delete", "table": "l", "rows": [[2]]}, {"action": "add", "table": "r", "rows": [[11, "c", 112]]}]},
+    {"actions": [{"action": "add", "table": "la", "rows": [["b", 2], ["a", 3]]}, {"action": "add", "table": "ra", "rows": [["a", 7]]}]},
+    {"actions": [{"action": "add", "table": "ra", "rows": [["c", 8], ["b", 9]]}]},
+    {"actions": [{"action": "delete", "table": "r", "rows": [[1], [4], [5], [6], [7], [8], [9], [10], [11]]}]},
+    {"actions": [{"action": "delete", "table": "l", "rows": [[1], [3], [4], [5]]}]}
+  ]
+}
