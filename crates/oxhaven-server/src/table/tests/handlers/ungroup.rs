@@ -227,7 +227,10 @@ async fn ungroup_refuses_as_java_does() {
     for (index, (source, columns)) in refused.into_iter().enumerate() {
         let result = 10 + i32::try_from(index).unwrap();
         let status = call(&mut c, ungrouped(source, result, false, columns)).await;
-        assert_internal(&status.expect_err(&format!("{columns:?} of {source}")));
+        match status {
+            Ok(response) => panic!("{columns:?} of {source}: {response:?}"),
+            Err(status) => assert_internal(&status),
+        }
         // and in a batch, which answers for the operation and then ends with the failure
         let request = ungrouped(source, result + 100, false, columns);
         let (responses, status) = c.batch(vec![Op::Ungroup(request)]).await.unwrap();
@@ -236,7 +239,8 @@ async fn ungroup_refuses_as_java_does() {
         let info = &responses[0].error_info;
         let cause = " cause: INVALID_ARGUMENT: Details Logged w/ID '";
         assert!(info.contains(cause), "{columns:?}: {info}");
-        assert_internal(&status.expect(&format!("{columns:?} of {source} in a batch")));
+        let status = status.unwrap_or_else(|| panic!("{columns:?} of {source} in a batch"));
+        assert_internal(&status);
     }
     // With null fill the sizes may differ; the other refusals stay.
     assert!(call(&mut c, ungrouped(1, 30, true, &["A", "B"]))
