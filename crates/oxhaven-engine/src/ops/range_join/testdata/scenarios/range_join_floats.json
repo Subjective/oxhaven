@@ -1,0 +1,131 @@
+{
+  "format": 1,
+  "name": "range_join_floats",
+  "description": "float32 range values: NaN and null bounds, NaN and null right values (bucket w is in order only without them, bucket nan has nothing else), infinities, and both zeros on either side, as the first right value of a bucket and after others.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "Lo", "type": "float32"}, {"name": "Hi", "type": "float32"}],
+      "rows": [
+        [1, "a", 0.0, 1.5],
+        [2, "a", -0.0, 1.5],
+        [3, "a", -1.0, 0.0],
+        [4, "a", -1.0, -0.0],
+        [5, "a", 0.0, 0.0],
+        [6, "a", -0.0, -0.0],
+        [7, "a", -0.0, 0.0],
+        [8, "a", 0.0, -0.0],
+        [9, "a", "NaN", 1.5],
+        [10, "a", 0.0, "NaN"],
+        [11, "a", "NaN", "NaN"],
+        [12, "a", null, "NaN"],
+        [13, "a", "NaN", null],
+        [14, "a", 1.5, "Infinity"],
+        [15, "a", "-Infinity", "Infinity"],
+        [16, "a", "Infinity", "Infinity"],
+        [17, "a", "-Infinity", "-Infinity"],
+        [18, "a", 2.0, 3.0],
+        [19, "a", null, null],
+        [20, "a", 1.0, null],
+        [21, "a", null, 2.0],
+        [22, "z", 0.0, 0.5],
+        [23, "z", -0.0, 0.5],
+        [24, "z", -1.0, 0.0],
+        [25, "z", -1.0, -0.0],
+        [26, "z", 0.5, 2.0],
+        [27, "m", 0.0, 1.0],
+        [28, "m", -0.0, 1.0],
+        [29, "m", -1.0, 0.0],
+        [30, "m", -1.0, -0.0],
+        [31, "m", "-Infinity", -1.0],
+        [32, "m", -5.0, 0.0],
+        [33, "m", -0.5, 0.0],
+        [34, "m", -0.5, -0.0],
+        [35, "m", 0.0, 5.0],
+        [36, "n", -0.0, 1.0],
+        [37, "n", 0.0, 1.0],
+        [38, "n", -3.0, -0.0],
+        [39, "n", -3.0, 0.0],
+        [40, "n", -1.0, -0.0],
+        [41, "n", -1.0, 0.0],
+        [42, "nan", 0.0, 1.0],
+        [43, "nan", null, null],
+        [44, "nan", "NaN", 1.0],
+        [45, "nan", 2.0, 1.0],
+        [46, "w", 0.0, 10.0],
+        [47, "w", 5.5, 5.75],
+        [48, "w", null, null]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "float32"}, {"name": "R", "type": "int32"}],
+      "rows": [
+        ["a", -0.0, 1],
+        ["a", 0.0, 2],
+        ["a", "NaN", 3],
+        ["a", 1.5, 4],
+        ["a", null, 5],
+        ["a", 2.5, 6],
+        ["a", "Infinity", 7],
+        ["z", 0.0, 8],
+        ["z", -0.0, 9],
+        ["z", 1.0, 10],
+        ["m", "-Infinity", 11],
+        ["m", -1.0, 12],
+        ["m", -0.0, 13],
+        ["m", 3.0, 14],
+        ["n", -2.0, 15],
+        ["n", 0.0, 16],
+        ["n", 4.0, 17],
+        ["nan", "NaN", 18],
+        ["nan", null, 19],
+        ["w", 1.0, 20],
+        ["w", "NaN", 21],
+        ["w", 5.0, 22],
+        ["w", null, 23],
+        ["w", 6.0, 24]
+      ]
+    },
+    {
+      "name": "r_disorder",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "float32"}, {"name": "R", "type": "int32"}],
+      "rows": [
+        ["w", 5.0, 1],
+        ["w", "NaN", 2],
+        ["w", 1.0, 3]
+      ]
+    },
+    {
+      "name": "r_zeros_then_less",
+      "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "float32"}, {"name": "R", "type": "int32"}],
+      "rows": [
+        ["a", 0.0, 1],
+        ["a", -0.0, 2],
+        ["a", -1.0, 3]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "lt_gt", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo < P < Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "leq_gt", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P < Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "lt_geq", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo < P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "leq_geq", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "leqap_geq", "op": "range_join", "left": "l", "right": "r", "on": ["K", "<- Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "leq_geqaf", "op": "range_join", "left": "l", "right": "r", "on": ["K", "Lo <= P <= Hi ->"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "leqap_geqaf", "op": "range_join", "left": "l", "right": "r", "on": ["K", "<- Lo <= P <= Hi ->"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "disorder_around_nan", "op": "range_join", "left": "l", "right": "r_disorder", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]},
+    {"name": "less_after_zeros", "op": "range_join", "left": "l", "right": "r_zeros_then_less", "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Rs = R"]}]}
+  ],
+  "results": [
+    {"table": "lt_gt"},
+    {"table": "leq_gt"},
+    {"table": "lt_geq"},
+    {"table": "leq_geq"},
+    {"table": "leqap_geq"},
+    {"table": "leq_geqaf"},
+    {"table": "leqap_geqaf"},
+    {"table": "disorder_around_nan"},
+    {"table": "less_after_zeros"}
+  ]
+}

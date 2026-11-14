@@ -25,6 +25,7 @@ mod wire;
 #[cfg(test)]
 pub(crate) mod tests;
 
+pub(crate) use encode::has_sentinel;
 pub use encode::{
     encode_batch, record_batch_messages, record_batch_messages_with, schema_message, BatchOptions,
     EncodeError, EncodedBatch,

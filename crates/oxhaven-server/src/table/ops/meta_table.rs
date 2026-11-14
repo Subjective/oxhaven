@@ -45,7 +45,7 @@ pub fn meta_table(definition: &TableDefinition) -> Result<Arc<QueryTable>, Table
     let names: StringArray = described.iter().map(|c| Some(c.name.as_str())).collect();
     let data_types: StringArray = described
         .iter()
-        .map(|c| Some(java_type_name(&c.column_type)))
+        .map(|c| Some(java_type_name(&c.column_type).into_owned()))
         .collect();
     let column_types: StringArray = described.iter().map(|_| Some("Normal")).collect();
     let partitioning: BooleanArray = described.iter().map(|_| Some(false)).collect();

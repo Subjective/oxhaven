@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "range_join_chunks",
+  "scenario_sha256": "d363c3bf02d0108c80af65cc2030603d872325100a4a45141c04c15fb0fbe6ba",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "following",
+      "file": "step000.following.arrow",
+      "rows": 2050
+    },
+    {
+      "step": 0,
+      "table": "both",
+      "file": "step000.both.arrow",
+      "rows": 2050
+    },
+    {
+      "step": 0,
+      "table": "plain",
+      "file": "step000.plain.arrow",
+      "rows": 2050
+    }
+  ]
+}

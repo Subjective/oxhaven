@@ -9,7 +9,6 @@
 //!
 //! - A request that is not the flatbuffer it claims to be, or whose viewport is not an
 //!   encoded row set, is answered `INVALID_ARGUMENT`. Java reads such bytes unchecked.
-//! - `preview_list_length_limit` has nothing to apply to, as no column type is a list.
 //! - A call that never sent a request is completed when the client closes its side. Java
 //!   leaves it open.
 
@@ -139,6 +138,7 @@ impl TableRequest {
             options: options.map_or_else(WireOptions::default, |options| WireOptions {
                 use_deephaven_nulls: options.use_deephaven_nulls(),
                 columns_as_list: options.columns_as_list(),
+                preview_list_length_limit: options.preview_list_length_limit(),
                 batch: batch_options(options.batch_size(), options.max_message_size()),
             }),
             // Behavior: BarrageRequestHelpers#getMinUpdateIntervalMs
@@ -166,6 +166,7 @@ impl TableRequest {
             options: options.map_or_else(WireOptions::default, |options| WireOptions {
                 use_deephaven_nulls: options.use_deephaven_nulls(),
                 columns_as_list: false,
+                preview_list_length_limit: options.preview_list_length_limit(),
                 batch: batch_options(options.batch_size(), options.max_message_size()),
             }),
             min_update_interval_ms: DEFAULT_MIN_UPDATE_INTERVAL_MS,

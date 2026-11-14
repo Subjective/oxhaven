@@ -258,7 +258,7 @@ handlers! {
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll, ComboAggregate => ComboAggregate }
     create_input_table { CreateInputTable => Handler }
     crossjoin { CrossJoin => Handler }
-    distinct { SelectDistinct => Handler }
+    distinct { SelectDistinct => Handler, WhereIn => WhereIn }
     drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }
@@ -280,4 +280,5 @@ handlers! {
     sort { Sort => Handler }
     time_table { TimeTable => Handler }
     unstructured_filter { UnstructuredFilter => Handler }
+    update_by { UpdateBy => Handler }
 }

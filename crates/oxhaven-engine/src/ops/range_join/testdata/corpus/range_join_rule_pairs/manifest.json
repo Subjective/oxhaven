@@ -1,0 +1,88 @@
+{
+  "format": 2,
+  "scenario": "range_join_rule_pairs",
+  "scenario_sha256": "c806284de131c46cf3e29337672e2732bb57c5079e670aa4841d42e15986a1f8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lt_gt",
+      "file": "step000.lt_gt.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leq_gt",
+      "file": "step000.leq_gt.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leqap_gt",
+      "file": "step000.leqap_gt.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "lt_geq",
+      "file": "step000.lt_geq.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leq_geq",
+      "file": "step000.leq_geq.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leqap_geq",
+      "file": "step000.leqap_geq.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "lt_geqaf",
+      "file": "step000.lt_geqaf.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leq_geqaf",
+      "file": "step000.leq_geqaf.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "leqap_geqaf",
+      "file": "step000.leqap_geqaf.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "all_leqap_gt",
+      "file": "step000.all_leqap_gt.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "all_lt_geqaf",
+      "file": "step000.all_lt_geqaf.arrow",
+      "rows": 43
+    },
+    {
+      "step": 0,
+      "table": "same_bounds",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "same_bounds_strict",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

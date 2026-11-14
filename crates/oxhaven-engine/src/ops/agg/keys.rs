@@ -26,6 +26,14 @@ pub(super) struct KeyTable {
 
 impl KeyTable {
     pub fn new(key_types: &[ColumnType]) -> Result<KeyTable, TableFailure> {
+        // Java hashes a vector or an array key as an object; when two of them are one
+        // key, and what a NaN or a `-0.0` element does to that, is not ported.
+        if let Some(list) = key_types.iter().find(|t| t.list_element().is_some()) {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#make",
+                "a group key column of type {list:?}"
+            );
+        }
         let fields = key_types
             .iter()
             .map(|key_type| SortField::new(key_type.arrow_type()))

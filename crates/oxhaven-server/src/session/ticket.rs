@@ -56,7 +56,7 @@ pub fn ticket_to_export_id(ticket: &[u8], log_id: &str) -> Result<i32, Status> {
 }
 
 /// Reads the export id out of a Flight path descriptor `["export", "<id>"]`. The first path
-/// element is not checked here: the caller has already used it to choose the export route.
+/// element is not checked here: the caller has already used it to choose the route.
 ///
 /// Behavior: `io.deephaven.proto.flight.util.FlightExportTicketHelper#descriptorToExportId`
 pub fn descriptor_to_export_id(descriptor: &FlightDescriptor, log_id: &str) -> Result<i32, Status> {
@@ -68,15 +68,26 @@ pub fn descriptor_to_export_id(descriptor: &FlightDescriptor, log_id: &str) -> R
     if descriptor.path.len() != 2 {
         return Err(Status::failed_precondition(format!(
             "Could not resolve descriptor '{log_id}': unexpected path length (found: {}, expected: 2)",
-            descriptor.path.len()
+            descriptor_log_name(descriptor)
         )));
     }
     descriptor.path[1].parse::<i32>().map_err(|_| {
         Status::failed_precondition(format!(
             "Could not resolve descriptor '{log_id}': export id not numeric (found: {})",
-            descriptor.path[1]
+            descriptor_log_name(descriptor)
         ))
     })
+}
+
+/// The path of a descriptor as text: each element after a slash.
+///
+/// Behavior: `io.deephaven.proto.flight.util.TicketRouterHelper#getLogNameFor`
+pub fn descriptor_log_name(descriptor: &FlightDescriptor) -> String {
+    descriptor
+        .path
+        .iter()
+        .map(|element| format!("/{element}"))
+        .collect()
 }
 
 /// Behavior: `io.deephaven.proto.util.ExportTicketHelper#toReadableString`
