@@ -137,3 +137,27 @@ Lesson for the retrospective: scouting the acceptance test against the reference
 PRs 20, 21 and 22 were each green against an older main and merged within two minutes of each
 other. Checked the combined main locally: fmt, clippy and all workspace tests pass. PR 23's CI ran
 on the combined tree as well. PR 23 (IDE acceptance test) merged.
+
+## 10:58 First end-to-end replay against Oxhaven
+
+With the handlers (PR 25), the recorded Java corpus replays against a running Oxhaven server for
+the first time. Of 26 scenarios that use only exposed operations, 17 are clean. 400 differential
+fuzz seeds against live Java found one new difference. Row data matched everywhere; every
+difference is an attribute or metadata rule, or a missing function:
+
+1. static where result lacks AddOnly/AppendOnly;
+2. input-table column metadata is lost on derived tables;
+3. isNaN/isInf missing from the function library;
+4. select of a non-flat static table is not marked flat.
+
+What this says about the gates: the engine corpus tests compared rows and the attributes each
+agent chose to compare, and three of four causes are attributes that those tests did not cover.
+The wire-level replay is the stronger gate and should have existed earlier; from now on an
+operator is not done until its handler exists and replay is clean for its scenarios. Putting
+replay into CI is the next infrastructure task (needs a Java-free replay of recorded results,
+which `harness replay` already is).
+
+Fixes 1, 2 and 4 go to the where agent (87k tokens, lowest context among operator agents), 3 and
+row variables to the expr agent already working on the function library. `fuzz` stops at the first
+difference, which hides later ones once a known difference exists: the oracle agent should add a
+keep-going mode with grouping of known causes (the handler agent wrote a driver for this).
