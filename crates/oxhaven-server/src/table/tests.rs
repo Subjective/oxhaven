@@ -243,6 +243,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "FLATTEN",
             "UNSTRUCTURED_FILTER",
             "FILTER",
+            "UPDATE_BY",
         ]
         .into_iter()
         .map(String::from)

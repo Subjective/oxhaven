@@ -8,6 +8,8 @@ use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
+mod update_by;
+
 /// What the Java server answers for any exception out of the engine.
 fn assert_internal(status: &Status) {
     assert_eq!(status.code(), Code::InvalidArgument, "{status:?}");
@@ -44,6 +46,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::LeftJoin(r) => c.client.left_join_tables(c.auth(r)).await,
         Op::Snapshot(r) => c.client.snapshot(c.auth(r)).await,
         Op::SnapshotWhen(r) => c.client.snapshot_when(c.auth(r)).await,
+        Op::UpdateBy(r) => c.client.update_by(c.auth(r)).await,
         other => panic!("no call for {}", op_name(&other)),
     };
     response.map(Response::into_inner)
