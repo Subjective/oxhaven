@@ -106,7 +106,7 @@
  },
  "client-smoke session": {
   "a closed session's token is dead": {"state": "clean"},
-  "a shared ticket crosses sessions": {"state": "differs", "kinds": ["failed"], "why": "shared tickets are not ported: publishing an export to a shared ticket is refused"},
+  "a shared ticket crosses sessions": {"state": "clean"},
   "an export used before it is defined": {"state": "clean"},
   "bearer token and refresh": {"state": "clean"},
   "connect and read the configuration": {"state": "clean"},

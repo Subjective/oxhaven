@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use oxhaven_contracts::table::Table;
 use oxhaven_proto::barrage::{BarrageMessageType, BarrageMessageWrapper, MAGIC as BARRAGE_MAGIC};
-use oxhaven_proto::flight::flight_descriptor::DescriptorType;
 use oxhaven_proto::flight::flight_service_server::FlightService;
 use oxhaven_proto::flight::{
     Action, ActionType, Criteria, Empty, FlightData, FlightDescriptor, FlightEndpoint, FlightInfo,
@@ -23,9 +22,8 @@ use super::wire::wire_schema;
 use crate::barrage::{snapshot_request_messages, Barrage, WireOptions};
 use crate::schema::schema_ipc_bytes;
 use crate::session::{
-    current_session, descriptor_to_export_id, export_id_to_bytes, handshake, optional_session,
-    Export, ExportBuilder, ExportError, ExportValue, HandshakeStream, Reply, Session, SessionStore,
-    TicketRouter, EXPORT_DESCRIPTOR_ROUTE,
+    current_session, handshake, optional_session, DescribedFlight, Export, ExportBuilder,
+    ExportError, ExportValue, HandshakeStream, Reply, Session, SessionStore, TicketRouter,
 };
 
 type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
@@ -40,27 +38,6 @@ fn boxed<T: Send + 'static>(
     receiver: mpsc::UnboundedReceiver<Result<T, Status>>,
 ) -> Response<BoxStream<T>> {
     Response::new(Box::pin(UnboundedReceiverStream::new(receiver)))
-}
-
-/// The id of the export a path descriptor names. Only exports can be named by a path so
-/// far; the scope, application and shared ticket resolvers will add their routes.
-///
-/// Behavior: `io.deephaven.server.session.TicketRouter#getResolver(FlightDescriptor, String)`,
-/// `TicketRouter#getPathResolver`, `TicketRouter#getCommandResolver`
-fn export_id_of(descriptor: &FlightDescriptor, log_id: &str) -> Result<i32, Status> {
-    let unresolved =
-        |why: &str| Status::failed_precondition(format!("Could not resolve '{log_id}': {why}"));
-    if descriptor.r#type == DescriptorType::Cmd as i32 {
-        return Err(unresolved("no resolver for command"));
-    }
-    if descriptor.r#type != DescriptorType::Path as i32 {
-        return Err(unresolved("unexpected type"));
-    }
-    match descriptor.path.first().map(String::as_str) {
-        None => Err(unresolved("flight descriptor does not have route path")),
-        Some(EXPORT_DESCRIPTOR_ROUTE) => descriptor_to_export_id(descriptor, log_id),
-        Some(route) => Err(unresolved(&format!("no resolver for path route '{route}'"))),
-    }
 }
 
 /// What `GetFlightInfo` answers for a table: its schema, one endpoint with the ticket to
@@ -110,10 +87,12 @@ impl FlightGrpc {
     }
 
     /// Answers a unary call with something computed from the flight info of the table a
-    /// descriptor names, once that table is exported.
+    /// descriptor names, once that table is exported. Exports and shared tickets can be
+    /// named by a descriptor; the scope and application resolvers have no route yet.
     ///
     /// Behavior: `FlightServiceGrpcImpl#getFlightInfo`, `#getSchema`, and
-    /// `io.deephaven.server.session.ExportTicketResolver#flightInfoFor`
+    /// `flightInfoFor` of `io.deephaven.server.session.ExportTicketResolver` and
+    /// `SharedTicketResolver`
     async fn with_flight_info<T: Send + 'static>(
         &self,
         request: Request<FlightDescriptor>,
@@ -122,13 +101,16 @@ impl FlightGrpc {
         let session = optional_session(&request);
         let descriptor = request.into_inner();
         let log_id = "request";
-        let export_id = export_id_of(&descriptor, log_id)?;
-        let session = session.ok_or_else(|| {
-            Status::unauthenticated(format!(
-                "Could not resolve '{log_id}': no exports can exist without a session to search"
-            ))
-        })?;
-        let export = session.get_export(export_id)?;
+        let DescribedFlight {
+            export,
+            ticket,
+            not_a_table,
+        } = self
+            .router
+            .flight_for(session.as_ref(), &descriptor, log_id)?;
+        // a resolver that answers without a session has refused the call above
+        let session = session
+            .ok_or_else(|| Status::unauthenticated("Could not resolve 'request': no session"))?;
         let reply = Reply::new();
         let (on_error, on_success) = (reply.completer(), reply.completer());
         session
@@ -137,12 +119,9 @@ impl FlightGrpc {
             .on_error(move |status| on_error(Err(status)))
             .submit(move |inputs| {
                 let Some(table) = inputs[0].as_table() else {
-                    return Err(Status::not_found(format!(
-                        "Could not resolve '{log_id}': flight '{descriptor:?}' not found"
-                    ))
-                    .into());
+                    return Err(not_a_table.into());
                 };
-                let info = flight_info(table, descriptor, export_id_to_bytes(export_id));
+                let info = flight_info(table, descriptor, ticket?);
                 on_success(Ok(answer(info)));
                 Ok(ExportValue::unit())
             })?;
@@ -183,6 +162,7 @@ pub fn do_get_messages(table: &Arc<dyn Table>) -> Result<Vec<FlightData>, Export
 /// What a `DoPut` call has received so far.
 struct Put {
     session: Arc<Session>,
+    router: Arc<TicketRouter>,
     descriptor: Option<FlightDescriptor>,
     /// The definition of the export the table goes to, until it is submitted.
     builder: Option<ExportBuilder>,
@@ -203,14 +183,16 @@ impl Put {
                 }
                 Some(_) => {}
                 None => {
-                    // Behavior: TicketRouter#publish(SessionState, FlightDescriptor, ..),
-                    // ExportTicketResolver#publish(SessionState, FlightDescriptor, ..)
-                    let export_id = export_id_of(&descriptor, "Flight.Descriptor")?;
+                    // Behavior: TicketRouter#publish(SessionState, FlightDescriptor, ..)
+                    let builder = self.router.publish_descriptor(
+                        &self.session,
+                        &descriptor,
+                        "Flight.Descriptor",
+                    )?;
                     let responses = self.responses.clone();
-                    self.builder =
-                        Some(self.session.new_export(export_id)?.on_error(move |status| {
-                            let _ = responses.send(Err(status));
-                        }));
+                    self.builder = Some(builder.on_error(move |status| {
+                        let _ = responses.send(Err(status));
+                    }));
                     self.descriptor = Some(descriptor);
                 }
             }
@@ -430,6 +412,7 @@ impl FlightService for FlightGrpc {
 
         let mut put = Put {
             session: session.clone(),
+            router: self.router.clone(),
             descriptor: None,
             builder: None,
             upload: TableUpload::default(),
