@@ -1,0 +1,156 @@
+{
+ "name": "asof_refusals",
+ "description": "What the Java server refuses of aj and raj, and what it lets through: columns that do not exist, added columns named like left columns, stamp columns and exact-match columns of different types, the wrong rule for the operation; each also with a static left table without rows, for which Java checks less.",
+ "inputs": [
+  {"name": "l", "columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}], "rows": [
+   ["a", 1, 1.5, 10, true, 1.5],
+   ["b", 5, 2.5, 20, false, 2.5],
+   ["a", 9, null, 30, null, null]
+  ]},
+  {"name": "l_empty", "columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}], "rows": [
+  ]},
+  {"name": "r", "columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "E", "type": "float64"}, {"name": "RL", "type": "int64"}, {"name": "RI8", "type": "int8"}, {"name": "V", "type": "string"}], "rows": [
+   ["a", 0, 1.0, 5, 0, "r0"],
+   ["a", 4, 2.0, 15, 1, "r1"],
+   ["b", 5, 3.0, 25, null, "r2"]
+  ]},
+  {"name": "r_empty", "columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "E", "type": "float64"}, {"name": "RL", "type": "int64"}, {"name": "RI8", "type": "int8"}, {"name": "V", "type": "string"}], "rows": [
+  ]}
+ ],
+ "operations": [
+  {"name": "unknown_left_key", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["Nope = K", "X >= Y"], "joins": ["V"]},
+  {"name": "unknown_right_key", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K = Nope", "X >= Y"], "joins": ["V"]},
+  {"name": "unknown_left_stamp", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "Nope >= Y"], "joins": ["V"]},
+  {"name": "unknown_right_stamp", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= Nope"], "joins": ["V"]},
+  {"name": "unknown_add", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= Y"], "joins": ["Nope"]},
+  {"name": "unknown_add_source", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= Y"], "joins": ["Z = Nope"]},
+  {"name": "name_clash", "op": "aj", "left": "l", "right": "l", "source": "l", "set": "l", "on": ["K", "X"]},
+  {"name": "name_clash_renamed", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X <= Y"], "joins": ["D = E"]},
+  {"name": "stamp_int_double", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= E"], "joins": ["V"]},
+  {"name": "stamp_int_long", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= RL"], "joins": ["V"]},
+  {"name": "stamp_float_double", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["F <= E"], "joins": ["V"]},
+  {"name": "stamp_time_long", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "T >= RL"], "joins": ["V"]},
+  {"name": "stamp_bool_byte", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "B >= RI8"], "joins": ["V"]},
+  {"name": "stamp_string_int", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K >= Y"], "joins": ["V"]},
+  {"name": "key_int_long", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["X = RL", "D >= E"], "joins": ["V"]},
+  {"name": "key_string_int", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K = Y", "D >= E"], "joins": ["V"]},
+  {"name": "key_time_long", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["T = RL", "D >= E"], "joins": ["V"]},
+  {"name": "key_bool_byte", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["B = RI8", "D >= E"], "joins": ["V"]},
+  {"name": "key_float_double", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["F = E", "X >= Y"], "joins": ["V"]},
+  {"name": "unknown_left_key_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["Nope = K", "X >= Y"], "joins": ["V"]},
+  {"name": "unknown_right_key_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K = Nope", "X >= Y"], "joins": ["V"]},
+  {"name": "unknown_left_stamp_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "Nope >= Y"], "joins": ["V"]},
+  {"name": "unknown_right_stamp_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X >= Nope"], "joins": ["V"]},
+  {"name": "unknown_add_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X >= Y"], "joins": ["Nope"]},
+  {"name": "unknown_add_source_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X >= Y"], "joins": ["Z = Nope"]},
+  {"name": "name_clash_empty_left", "op": "aj", "left": "l_empty", "right": "l_empty", "source": "l_empty", "set": "l_empty", "on": ["K", "X"]},
+  {"name": "name_clash_renamed_empty_left", "op": "raj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X <= Y"], "joins": ["D = E"]},
+  {"name": "stamp_int_double_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X >= E"], "joins": ["V"]},
+  {"name": "stamp_int_long_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "X >= RL"], "joins": ["V"]},
+  {"name": "stamp_float_double_empty_left", "op": "raj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["F <= E"], "joins": ["V"]},
+  {"name": "stamp_time_long_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "T >= RL"], "joins": ["V"]},
+  {"name": "stamp_bool_byte_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K", "B >= RI8"], "joins": ["V"]},
+  {"name": "stamp_string_int_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K >= Y"], "joins": ["V"]},
+  {"name": "key_int_long_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["X = RL", "D >= E"], "joins": ["V"]},
+  {"name": "key_string_int_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["K = Y", "D >= E"], "joins": ["V"]},
+  {"name": "key_time_long_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["T = RL", "D >= E"], "joins": ["V"]},
+  {"name": "key_bool_byte_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["B = RI8", "D >= E"], "joins": ["V"]},
+  {"name": "key_float_double_empty_left", "op": "aj", "left": "l_empty", "right": "r", "source": "l_empty", "set": "r", "on": ["F = E", "X >= Y"], "joins": ["V"]},
+  {"name": "key_int_long_empty_right", "op": "aj", "left": "l", "right": "r_empty", "source": "l", "set": "r_empty", "on": ["X = RL", "D >= E"], "joins": ["V"]},
+  {"name": "key_string_int_empty_right", "op": "aj", "left": "l", "right": "r_empty", "source": "l", "set": "r_empty", "on": ["K = Y", "D >= E"], "joins": ["V"]},
+  {"name": "stamp_int_double_empty_right", "op": "aj", "left": "l", "right": "r_empty", "source": "l", "set": "r_empty", "on": ["K", "X >= E"], "joins": ["V"]},
+  {"name": "aj_less_equal", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X <= Y"], "joins": ["V"]},
+  {"name": "aj_less", "op": "aj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X < Y"], "joins": ["V"]},
+  {"name": "raj_greater_equal", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X >= Y"], "joins": ["V"]},
+  {"name": "raj_greater", "op": "raj", "left": "l", "right": "r", "source": "l", "set": "r", "on": ["K", "X > Y"], "joins": ["V"]}
+ ],
+ "results": ["unknown_left_key", "unknown_right_key", "unknown_left_stamp", "unknown_right_stamp", "unknown_add", "unknown_add_source", "name_clash", "name_clash_renamed", "stamp_int_double", "stamp_int_long", "stamp_float_double", "stamp_time_long", "stamp_bool_byte", "stamp_string_int", "key_int_long", "key_string_int", "key_time_long", "key_bool_byte", "key_float_double", "unknown_left_key_empty_left", "unknown_right_key_empty_left", "unknown_left_stamp_empty_left", "unknown_right_stamp_empty_left", "unknown_add_empty_left", "unknown_add_source_empty_left", "name_clash_empty_left", "name_clash_renamed_empty_left", "stamp_int_double_empty_left", "stamp_int_long_empty_left", "stamp_float_double_empty_left", "stamp_time_long_empty_left", "stamp_bool_byte_empty_left", "stamp_string_int_empty_left", "key_int_long_empty_left", "key_string_int_empty_left", "key_time_long_empty_left", "key_bool_byte_empty_left", "key_float_double_empty_left", "key_int_long_empty_right", "key_string_int_empty_right", "stamp_int_double_empty_right", "aj_less_equal", "aj_less", "raj_greater_equal", "raj_greater"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "unknown_left_key": {"failure": "INVALID_ARGUMENT"},
+   "unknown_right_key": {"failure": "INVALID_ARGUMENT"},
+   "unknown_left_stamp": {"failure": "INVALID_ARGUMENT"},
+   "unknown_right_stamp": {"failure": "INVALID_ARGUMENT"},
+   "unknown_add": {"failure": "INVALID_ARGUMENT"},
+   "unknown_add_source": {"failure": "INVALID_ARGUMENT"},
+   "name_clash": {"failure": "INVALID_ARGUMENT"},
+   "name_clash_renamed": {"failure": "INVALID_ARGUMENT"},
+   "stamp_int_double": {"failure": "INVALID_ARGUMENT"},
+   "stamp_int_long": {"failure": "INVALID_ARGUMENT"},
+   "stamp_float_double": {"failure": "INVALID_ARGUMENT"},
+   "stamp_time_long": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, 5, "r0"],
+    ["b", 5, 2.5, 20, false, 2.5, null, null],
+    ["a", 9, null, 30, null, null, 15, "r1"]
+   ]},
+   "stamp_bool_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RI8", "type": "int8"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, 1, "r1"],
+    ["b", 5, 2.5, 20, false, 2.5, null, "r2"],
+    ["a", 9, null, 30, null, null, null, null]
+   ]},
+   "stamp_string_int": {"failure": "INVALID_ARGUMENT"},
+   "key_int_long": {"failure": "INVALID_ARGUMENT"},
+   "key_string_int": {"failure": "INVALID_ARGUMENT"},
+   "key_time_long": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, null, null, null],
+    ["b", 5, 2.5, 20, false, 2.5, null, null, null],
+    ["a", 9, null, 30, null, null, null, null, null]
+   ]},
+   "key_bool_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RI8", "type": "int8"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, null, null, null],
+    ["b", 5, 2.5, 20, false, 2.5, 0, 1.0, "r0"],
+    ["a", 9, null, 30, null, null, null, null, null]
+   ]},
+   "key_float_double": {"failure": "INVALID_ARGUMENT"},
+   "unknown_left_key_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "unknown_right_key_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "unknown_left_stamp_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "unknown_right_stamp_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "unknown_add_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "unknown_add_source_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "name_clash_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "name_clash_renamed_empty_left": {"failure": "INVALID_ARGUMENT"},
+   "stamp_int_double_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_int_long_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_float_double_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_time_long_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_bool_byte_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RI8", "type": "int8"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "stamp_string_int_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_int_long_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_string_int_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "Y", "type": "int32"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_time_long_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_bool_byte_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RI8", "type": "int8"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_float_double_empty_left": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "E", "type": "float64"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_int_long_empty_right": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "RL", "type": "int64"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, null, null, null],
+    ["b", 5, 2.5, 20, false, 2.5, null, null, null],
+    ["a", 9, null, 30, null, null, null, null, null]
+   ]},
+   "key_string_int_empty_right": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "B", "type": "bool"}, {"name": "F", "type": "float32"}, {"name": "Y", "type": "int32"}, {"name": "E", "type": "float64"}, {"name": "V", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5, 10, true, 1.5, null, null, null],
+    ["b", 5, 2.5, 20, false, 2.5, null, null, null],
+    ["a", 9, null, 30, null, null, null, null, null]
+   ]},
+   "stamp_int_double_empty_right": {"failure": "INVALID_ARGUMENT"},
+   "aj_less_equal": {"failure": "INVALID_ARGUMENT"},
+   "aj_less": {"failure": "INVALID_ARGUMENT"},
+   "raj_greater_equal": {"failure": "INVALID_ARGUMENT"},
+   "raj_greater": {"failure": "INVALID_ARGUMENT"}
+  }
+ ]}
+}

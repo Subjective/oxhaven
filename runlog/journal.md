@@ -293,3 +293,22 @@ progress measure and cannot silently go down.
 
 Watch: the engine test suite took 365 s locally under load. If it keeps growing, the random
 tests should take their seed counts from an environment variable with a smaller default in CI.
+
+## 20:58 List types and range join in review
+
+PR 43 adds vector and array column types to the contracts (my decision under the standing
+approval; for Josh's review). PR 44 adds range join behind a seam that PR 43 removes the need
+for. PR 42 (as-of join) is waiting on its rust job.
+
+Proposed PARITY.md text for list columns, from the architect agent. Not applied: it needs
+Josh's sign-off, like every change to what counts as equal.
+
+> Array and vector columns: a null cell and an empty cell are different values. Elements
+> compare in order under the rules of the element type (null equals only null; any NaN equals
+> any NaN). Whether a column is a vector or an array is part of its type and must match
+> `deephaven:type`. On the wire the offsets start at 0 and a null cell contributes no elements.
+> `deephaven:isSortable` is absent for an array whose element type has no registered comparator.
+
+Range join finding: Java's results for `->` depend on left table size and order (the 2048-row
+read and the equality shortcut), and the shortcut treats -0.0 and 0.0 as equal while the binary
+search does not. Reproduced, not corrected.
