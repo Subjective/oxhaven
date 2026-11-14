@@ -1095,6 +1095,9 @@ dependencies = [
 [[package]]
 name = "oxhaven-rowset"
 version = "0.0.0"
+dependencies = [
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "oxhaven-server"
