@@ -111,18 +111,28 @@ impl StampColumn {
     }
 
     /// Reads `Name` or `Name=Source`, as the gRPC request carries stamp columns. Each side is
-    /// trimmed and must be a legal column name.
+    /// trimmed as Java trims and must be a legal column name.
     ///
     /// Behavior: io.deephaven.api.JoinAddition#parse and io.deephaven.api.ColumnName#parse
     pub fn parse(text: &str) -> Result<Self, SnapshotError> {
         let (name, source) = match text.split_once('=') {
-            Some((name, source)) => (name.trim(), source.trim()),
-            None => (text.trim(), text.trim()),
+            Some((name, source)) => (java_trim(name), java_trim(source)),
+            None => (java_trim(text), java_trim(text)),
         };
         validate_name(name)?;
         validate_name(source)?;
         Ok(Self::new(name, source))
     }
+}
+
+/// `text` without the characters at either end that Java's `String#trim` removes: those up
+/// to and including the space, U+0020. That is every ASCII control character, which Rust's
+/// `str::trim` mostly keeps, and no whitespace beyond U+0020, as the no-break space or the
+/// next line character, which `str::trim` removes.
+///
+/// Behavior: java.lang.String#trim, as io.deephaven.api.ColumnName#parse calls it
+fn java_trim(text: &str) -> &str {
+    text.trim_matches(|c: char| c <= ' ')
 }
 
 /// Behavior: io.deephaven.api.util.NameValidator#validateColumnName: not empty, not a

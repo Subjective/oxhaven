@@ -1,0 +1,123 @@
+{
+  "format": 2,
+  "scenario": "cross_join_arguments",
+  "scenario_sha256": "1f49450e1f3a517a526e5890ffc6d168f46f178f8dee66438e60f079dff6211a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "defaults",
+      "file": "step000.defaults.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "renamed_match",
+      "file": "step000.renamed_match.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "renamed_match_defaults",
+      "file": "step000.renamed_match_defaults.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "renamed_added",
+      "file": "step000.renamed_added.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "zero_keys",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "zero_keys_renamed",
+      "file": "step000.zero_keys_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "zero_keys_empty_left",
+      "file": "step000.zero_keys_empty_left.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "zero_keys_empty_right",
+      "file": "step000.zero_keys_empty_right.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "keyed_empty_left",
+      "file": "step000.keyed_empty_left.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "keyed_empty_right",
+      "file": "step000.keyed_empty_right.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "two_matches",
+      "file": "step000.two_matches.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "clash_default",
+      "file": "step000.clash_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "clash_added",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "clash_zero_keys",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "missing_left",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "missing_right",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "missing_added",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "mismatched",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

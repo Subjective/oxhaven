@@ -15,6 +15,10 @@
 //! `AddOnly`, `AppendOnly` and `BlinkTable`. Where Java refused the operation, the
 //! operation must be refused here.
 //!
+//! The `InputTable` attribute is compared too, by what Java sends of it: whether the result
+//! has it, and which columns are marked as its key and value columns. Here that is the
+//! input of the scenario whose write side the result has.
+//!
 //! A Java table that fails in an update cycle still answers a snapshot, with the rows it
 //! had. `testdata/record.py` therefore also records, in `failed.json`, the steps after
 //! which each result table had failed. A table must have failed here after exactly those
@@ -343,8 +347,8 @@ impl Recording {
             .unwrap_or_else(|| panic!("no recording of {table} at step {step}"))
     }
 
-    /// The recorded table, and the attributes in its schema.
-    fn table(&self, entry: &Value) -> (RecordBatch, [bool; 4]) {
+    /// The recorded table, the attributes in its schema, and its input table.
+    fn table(&self, entry: &Value) -> (RecordBatch, [bool; 4], InputColumns) {
         let path = self.directory.join(text(&entry["file"]));
         let file = File::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         let reader = FileReader::try_new(file, None).expect("an Arrow IPC file");
@@ -355,7 +359,80 @@ impl Recording {
             let key = format!("deephaven:attribute.{name}");
             schema.metadata().get(&key).is_some_and(|v| v == "true")
         });
-        (table, attributes)
+        let marked = |role: &str| -> Vec<String> {
+            let key = format!("deephaven:inputtable.{role}");
+            let marked = schema
+                .fields()
+                .iter()
+                .filter(|field| field.metadata().get(&key).is_some_and(|v| v == "true"));
+            marked.map(|field| field.name().clone()).collect()
+        };
+        let input = InputColumns {
+            attribute: schema
+                .metadata()
+                .contains_key("deephaven:unsent.attribute.InputTable"),
+            keys: marked("isKey"),
+            values: marked("isValue"),
+        };
+        (table, attributes, input)
+    }
+}
+
+/// What a schema says of a table's `InputTable` attribute.
+///
+/// Behavior: `BarrageUtil#attributesToMetadata`, which names an attribute it cannot send, as
+/// the input table's updater, under `deephaven:unsent.attribute.<name>`, and
+/// `BarrageUtil#columnDefinitionsToFields`, which marks a column that
+/// `InputTableUpdater#getKeyNames` has with `deephaven:inputtable.isKey` and one that
+/// `InputTableUpdater#getValueNames` has with `deephaven:inputtable.isValue`. A column the
+/// input table does not have is marked with neither.
+#[derive(PartialEq, Eq, Debug)]
+struct InputColumns {
+    /// Whether the table has the attribute.
+    attribute: bool,
+    /// The columns marked as keys, in the table's order.
+    keys: Vec<String>,
+    /// The columns marked as values, in the table's order.
+    values: Vec<String>,
+}
+
+impl InputColumns {
+    /// Those of `table`, whose input table, if it has one, is that of one of `inputs`.
+    fn of(table: &dyn Table, inputs: &BTreeMap<String, Input>) -> Self {
+        let Some(found) = table.input_table() else {
+            return Self {
+                attribute: false,
+                keys: Vec::new(),
+                values: Vec::new(),
+            };
+        };
+        let writes_to = |input: &&Input| {
+            input.table.input_table().is_some_and(|own| {
+                std::ptr::eq(
+                    Arc::as_ptr(&own) as *const (),
+                    Arc::as_ptr(&found) as *const (),
+                )
+            })
+        };
+        let input = inputs
+            .values()
+            .find(writes_to)
+            .expect("the input table of an input of the scenario");
+        let keys = found.key_columns();
+        let has = |name: &str| input.columns.iter().any(|(column, _)| column == name);
+        let (mut key_columns, mut value_columns) = (Vec::new(), Vec::new());
+        for column in table.definition().columns() {
+            if keys.contains(&column.name) {
+                key_columns.push(column.name.clone());
+            } else if has(&column.name) {
+                value_columns.push(column.name.clone());
+            }
+        }
+        Self {
+            attribute: true,
+            keys: key_columns,
+            values: value_columns,
+        }
     }
 }
 
@@ -391,8 +468,14 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
 }
 
 /// Compares `table` with what Java returned.
-fn compare(place: &str, recording: &Recording, entry: &Value, table: &dyn Table) {
-    let (expected, attributes) = recording.table(entry);
+fn compare(
+    place: &str,
+    recording: &Recording,
+    entry: &Value,
+    table: &dyn Table,
+    inputs: &BTreeMap<String, Input>,
+) {
+    let (expected, attributes, input) = recording.table(entry);
     let schema = expected.schema();
     let columns = table.definition().columns();
     let names = |fields: Vec<(&str, DataType)>| format!("{fields:?}");
@@ -437,6 +520,11 @@ fn compare(place: &str, recording: &Recording, entry: &Value, table: &dyn Table)
         ],
         attributes,
         "{place}: the attributes IsFlat, AddOnly, AppendOnly, BlinkTable"
+    );
+    assert_eq!(
+        InputColumns::of(table, inputs),
+        input,
+        "{place}: the InputTable attribute and its key and value columns"
     );
 }
 
@@ -523,7 +611,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
                         tally.failures += 1;
                     } else {
                         assert!(!table.is_failed(), "{place}: the table has failed");
-                        compare(&place, &recording, entry, &**table);
+                        compare(&place, &recording, entry, &**table, &inputs);
                         tally.comparisons += 1;
                     }
                 }

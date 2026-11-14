@@ -16,5 +16,5 @@ regex.workspace = true
 
 [dev-dependencies]
 oxhaven-expr = { path = "../oxhaven-expr" }
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["float_roundtrip"] }
 oxhaven-testkit = { path = "../oxhaven-testkit" }

@@ -412,6 +412,10 @@ impl Checker<'_> {
     }
 
     fn column(&mut self, name: &str) -> Result<Typed, FormulaError> {
+        // The parser writes `Class.FIELD` as one qualified name; a column name has no `.`.
+        if let Some((scope, field)) = name.split_once('.') {
+            return self.static_field(scope, field);
+        }
         let Some(index) = self.definition.index_of(name) else {
             let array_of = name
                 .strip_suffix('_')
@@ -453,6 +457,21 @@ impl Checker<'_> {
             }
         };
         Ok(typed(column_type, Node::Column(slot)))
+    }
+
+    /// `scope.field`, where `scope` is a simple name.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)`, which types the scope with
+    /// `#resolveName`, where a column comes before a class, and then takes the type of the
+    /// field `Class#getField` finds on it. No column type has a field the language reads,
+    /// so a column scope stays refused, as does every field [`functions::static_field`]
+    /// does not give.
+    fn static_field(&self, scope: &str, field: &str) -> Result<Typed, FormulaError> {
+        let class = self.definition.index_of(scope).is_none();
+        match functions::static_field(scope, field).filter(|_| class) {
+            Some((column_type, literal)) => Ok(constant(column_type, literal)),
+            None => Err(unsupported(format!("field access .{field}"))),
+        }
     }
 
     /// Behavior: `QueryLanguageParser#visit(UnaryExpr)`: `-` resolves to
@@ -913,7 +932,8 @@ fn library_call(call: functions::Call, arguments: Vec<Typed>) -> Typed {
     )
 }
 
-/// A default-imported constant. A `byte` or `short` one is an `int` literal converted.
+/// A default-imported constant or a static field. A `byte` or `short` one is an `int`
+/// literal converted.
 fn constant(column_type: ColumnType, literal: Literal) -> Typed {
     match (&column_type, &literal) {
         (_, Literal::Null) => typed(column_type, Node::Null),

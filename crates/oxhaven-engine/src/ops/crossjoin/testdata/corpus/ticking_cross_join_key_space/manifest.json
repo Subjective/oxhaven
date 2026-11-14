@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "ticking_cross_join_key_space",
+  "scenario_sha256": "960db8f80d2469b7de640211d0f8648de1218ae5c400c3d08a965d1b1ac48bb8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "z6",
+      "file": "step000.z6.arrow",
+      "rows": 128
+    },
+    {
+      "step": 0,
+      "table": "z7",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "k7",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "k6",
+      "file": "step000.k6.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "k7b",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "z6",
+      "file": "step001.z6.arrow",
+      "rows": 2187
+    },
+    {
+      "step": 1,
+      "table": "z7",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "k7",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "k6",
+      "file": "step001.k6.arrow",
+      "rows": 129
+    },
+    {
+      "step": 1,
+      "table": "k7b",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

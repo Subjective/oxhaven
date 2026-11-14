@@ -222,3 +222,128 @@ fn row_variables_are_positions_in_the_table_and_row_keys() {
     let outside = compile(&table, "i").evaluate(&table, &RowSet::from_keys([1]), false);
     assert!(outside.is_err(), "row 1 is not in the table");
 }
+
+/// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)` on the boxed numeric classes of
+/// `java.lang`: each field has its declared type and value, and a value Deephaven reserves
+/// for null is null (`FC/grid-function.jsonl: java.27`).
+#[test]
+fn fields_of_the_boxed_numeric_classes_are_constants() {
+    let table = TestTable::new([("X", ints([Some(1)]))]);
+    table.assert("Byte.MIN_VALUE", bytes([None]));
+    table.assert("Byte.MAX_VALUE", bytes([Some(i8::MAX)]));
+    table.assert("Short.MIN_VALUE", shorts([None]));
+    table.assert("Short.MAX_VALUE", shorts([Some(i16::MAX)]));
+    table.assert("Integer.MIN_VALUE", ints([None]));
+    table.assert("Integer.MAX_VALUE", ints([Some(i32::MAX)]));
+    table.assert("Long.MIN_VALUE", longs([None]));
+    table.assert("Long.MAX_VALUE", longs([Some(i64::MAX)]));
+    for (class, size) in [
+        ("Byte", 1),
+        ("Short", 2),
+        ("Integer", 4),
+        ("Long", 8),
+        ("Float", 4),
+        ("Double", 8),
+    ] {
+        table.assert(&format!("{class}.BYTES"), ints([Some(size)]));
+        table.assert(&format!("{class}.SIZE"), ints([Some(8 * size)]));
+    }
+
+    table.assert("Float.NaN", floats([Some(f32::NAN)]));
+    table.assert("Float.POSITIVE_INFINITY", floats([Some(f32::INFINITY)]));
+    table.assert("Float.NEGATIVE_INFINITY", floats([Some(f32::NEG_INFINITY)]));
+    table.assert("Float.MAX_VALUE", floats([Some(3.4028235e38)]));
+    table.assert("Float.MIN_NORMAL", floats([Some(1.1754944e-38)]));
+    table.assert("Float.MIN_VALUE", floats([Some(1.4e-45)]));
+    table.assert("Float.MAX_EXPONENT", ints([Some(127)]));
+    table.assert("Float.MIN_EXPONENT", ints([Some(-126)]));
+    table.assert("Double.NaN", doubles([Some(f64::NAN)]));
+    table.assert("Double.POSITIVE_INFINITY", doubles([Some(f64::INFINITY)]));
+    table.assert(
+        "Double.NEGATIVE_INFINITY",
+        doubles([Some(f64::NEG_INFINITY)]),
+    );
+    table.assert("Double.MAX_VALUE", doubles([Some(1.7976931348623157e308)]));
+    table.assert(
+        "Double.MIN_NORMAL",
+        doubles([Some(2.2250738585072014e-308)]),
+    );
+    table.assert("Double.MIN_VALUE", doubles([Some(4.9e-324)]));
+    table.assert("Double.MAX_EXPONENT", ints([Some(1023)]));
+    table.assert("Double.MIN_EXPONENT", ints([Some(-1022)]));
+
+    // They are operands like any other value: `QueryLanguageFunctionUtils#negate(double)`
+    // of `MAX_VALUE` is the null value, and `#plus(int, int)` promotes a `byte`.
+    table.assert("-Double.MAX_VALUE", doubles([None]));
+    table.assert("-Float.MAX_VALUE", floats([None]));
+    table.assert("Byte.MAX_VALUE + X", ints([Some(128)]));
+    table.assert("Long.MAX_VALUE - X", longs([Some(i64::MAX - 1)]));
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#eq(double, double)`, which compares with Java's
+/// `==` once neither side is null, so no row equals `Double.NaN`; the recorded
+/// `filter_structured.double_equal_nan` keeps no row of a table with a NaN.
+#[test]
+fn a_column_compared_with_a_non_finite_field() {
+    let table = TestTable::new([
+        (
+            "D",
+            doubles([
+                Some(1.5),
+                Some(f64::NAN),
+                None,
+                Some(f64::INFINITY),
+                Some(f64::NEG_INFINITY),
+            ]),
+        ),
+        (
+            "F",
+            floats([
+                Some(1.5),
+                Some(f32::NAN),
+                None,
+                Some(f32::INFINITY),
+                Some(f32::NEG_INFINITY),
+            ]),
+        ),
+    ]);
+    table.assert("D == Double.NaN", flags([false; 5]));
+    table.assert("D != Double.NaN", flags([true; 5]));
+    table.assert("F == Float.NaN", flags([false; 5]));
+    table.assert(
+        "D == Double.POSITIVE_INFINITY",
+        flags([false, false, false, true, false]),
+    );
+    table.assert(
+        "D == Double.NEGATIVE_INFINITY",
+        flags([false, false, false, false, true]),
+    );
+    table.assert(
+        "F == Float.POSITIVE_INFINITY",
+        flags([false, false, false, true, false]),
+    );
+    table.assert("isNaN(Double.NaN)", flags([true; 5]));
+}
+
+/// Behavior: `QueryLanguageParser#resolveName` finds a column before a class, and the
+/// column's type has no such field; `#visit(FieldAccessExpr)` fails for a field the class
+/// does not have. Neither is read here, and no other field access is.
+#[test]
+fn other_field_accesses_stay_unsupported() {
+    let table = TestTable::new([("Double", doubles([Some(1.0)])), ("X", ints([Some(1)]))]);
+    for (formula, construct) in [
+        ("Double.NaN", "field access .NaN"),
+        ("Float.FOO", "field access .FOO"),
+        ("Integer.TYPE", "field access .TYPE"),
+        ("Double.PRECISION", "field access .PRECISION"),
+        ("Math.PI", "field access .PI"),
+        ("X.MAX_VALUE", "field access .MAX_VALUE"),
+        ("(Long).MAX_VALUE", "field access .MAX_VALUE"),
+    ] {
+        assert_eq!(
+            table.compile_error(formula),
+            FormulaError::Unsupported(construct.into()),
+            "{formula}"
+        );
+    }
+}
