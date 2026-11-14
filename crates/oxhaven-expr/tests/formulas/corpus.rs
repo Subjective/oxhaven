@@ -106,6 +106,15 @@ fn input(scenario: &Value, name: &str) -> TestTable {
                     ColumnType::String,
                     Arc::new(cells.map(Value::as_str).collect::<StringArray>()),
                 ),
+                "timestamp" => (
+                    ColumnType::Instant,
+                    Arc::new(
+                        cells
+                            .map(int_cell)
+                            .collect::<TimestampNanosecondArray>()
+                            .with_data_type(ColumnType::Instant.arrow_type()),
+                    ),
+                ),
                 other => panic!("no column of type {other}"),
             };
             (column["name"].as_str().expect("a name"), values)
@@ -243,6 +252,7 @@ fn condition_filters_match_the_recorded_java_results() {
     assert_filters("where_int", "is_null");
     assert_filters("where_string_bool", "null_b");
     assert_filters("null_sentinel_inputs", "nulls");
+    assert_filters("timestamps", "not_null");
 }
 
 /// Java evaluates these with `MatchFilter` and `RangeFilter`, not as formulas (PARITY.md,
@@ -258,4 +268,6 @@ fn match_and_range_filters_agree_with_the_formula_operators_on_the_recorded_inpu
     for operation in ["eq", "ne", "null_s", "empty_s", "lt", "is_true", "is_false"] {
         assert_filters("where_string_bool", operation);
     }
+    // A time literal, `T > '2023-11-14T22:13:20 UTC'`.
+    assert_filters("timestamps", "after");
 }
