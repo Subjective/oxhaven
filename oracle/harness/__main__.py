@@ -5,6 +5,8 @@ No Java counterpart: harness entry point.
     diff          run scenarios on two servers (or twice on one) and compare the results
     record        run scenarios on the Java reference and store the results under corpus/
     replay        run scenarios on one server and compare with the recordings; needs no Java
+    gate          replay every scenario and run every client smoke check against one server,
+                  and compare the outcome with replay-baseline.json; needs no Java
     fuzz          generate scenarios from seeds, compare two servers, shrink the first difference
     client-smoke  exercise one area of the client protocol against one server
     show          run scenarios and print their results
@@ -32,6 +34,7 @@ from .runner import RunError, open_target
 ORACLE = Path(__file__).resolve().parent.parent
 SCENARIOS = ORACLE / "scenarios"
 CORPUS = ORACLE / "corpus"
+BASELINE = ORACLE / "replay-baseline.json"
 FUZZ_OUT = ORACLE / ".fuzz"
 REFERENCE = "42.9"  # oracle/REFERENCE.md
 
@@ -318,6 +321,13 @@ def cmd_client_smoke(args: argparse.Namespace) -> int:
     return smoke.run(args.area, args.url)
 
 
+def cmd_gate(args: argparse.Namespace) -> int:
+    from . import gate
+
+    return gate.run(args.url, Path(args.scenarios), Path(args.corpus), Path(args.baseline),
+                    Path(args.report) if args.report else None)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m harness", description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -350,6 +360,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--corpus", default=str(CORPUS))
     common(p)
     p.set_defaults(run=cmd_replay)
+
+    p = sub.add_parser("gate", help="replay and client smokes against the checked-in baseline")
+    p.add_argument("--url", required=True, help="URL of the server under test")
+    p.add_argument("--scenarios", default=str(SCENARIOS))
+    p.add_argument("--corpus", default=str(CORPUS))
+    p.add_argument("--baseline", default=str(BASELINE))
+    p.add_argument("--report", help="file to write what was observed to, as JSON")
+    p.set_defaults(run=cmd_gate)
 
     p = sub.add_parser("show", help="run scenarios and print their results")
     p.add_argument("--url", required=True)
