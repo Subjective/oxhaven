@@ -845,6 +845,176 @@ async fn aggregate_groups_rows_and_aggregates_columns() {
     assert_eq!(values(table.as_ref(), "N"), ints(&[3, 2]));
 }
 
+fn unique(
+    sentinel: Option<proto::agg_spec::agg_spec_non_unique_sentinel::Type>,
+) -> proto::agg_spec::Type {
+    proto::agg_spec::Type::Unique(proto::agg_spec::AggSpecUnique {
+        include_nulls: false,
+        non_unique_sentinel: Some(proto::agg_spec::AggSpecNonUniqueSentinel { r#type: sentinel }),
+    })
+}
+
+#[tokio::test]
+async fn aggregate_has_the_specs_beyond_the_basic_set() {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    use proto::agg_spec::{AggSpecSorted, AggSpecSortedColumn, AggSpecWeighted, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let weighted = |column: &str| AggSpecWeighted {
+        weight_column: column.to_string(),
+    };
+    let by_n = AggSpecSorted {
+        columns: vec![AggSpecSortedColumn {
+            column_name: "N".to_string(),
+        }],
+    };
+    // S = a has I = 0, 2, 4 and N = 3, 1, -1; S = b has I = 1, 3, 5 and N = 2, 0, -2.
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(Type::AbsSum(Default::default()), &["A = N"]),
+            agg_columns(Type::Var(Default::default()), &["V = I"]),
+            agg_columns(Type::Std(Default::default()), &["SD = I"]),
+            agg_columns(Type::Median(Default::default()), &["M = I"]),
+            agg_columns(
+                Type::Percentile(proto::agg_spec::AggSpecPercentile {
+                    percentile: 0.0,
+                    average_evenly_divided: false,
+                }),
+                &["P = N"],
+            ),
+            agg_columns(Type::CountDistinct(Default::default()), &["CD = N"]),
+            agg_columns(unique(Some(Sentinel::NullValue(0))), &["U = I"]),
+            agg_columns(Type::WeightedSum(weighted("N")), &["WS = I"]),
+            agg_columns(Type::WeightedAvg(weighted("I")), &["WA = N"]),
+            agg_columns(Type::SortedFirst(by_n.clone()), &["SF = I"]),
+            agg_columns(Type::SortedLast(by_n), &["SL = I"]),
+        ],
+        &["S"],
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(2);
+    let column = |name: &str| values(table.as_ref(), name);
+    assert_eq!(column("A"), ints(&[5, 4]));
+    assert_eq!(column("V"), texts(&["4.0", "4.0"]));
+    assert_eq!(column("SD"), texts(&["2.0", "2.0"]));
+    assert_eq!(column("M"), ints(&[2, 3]));
+    assert_eq!(column("P"), ints(&[-1, -2]));
+    assert_eq!(column("CD"), ints(&[3, 3]));
+    assert_eq!(column("U"), texts(&["", ""]));
+    // the weight and the value are integers: a long sum
+    assert_eq!(column("WS"), ints(&[-2, -8]));
+    // (3 * 0 + 1 * 2 - 1 * 4) / 6 and (2 * 1 + 0 * 3 - 2 * 5) / 9
+    assert_eq!(
+        column("WA"),
+        texts(&["-0.3333333333333333", "-0.8888888888888888"])
+    );
+    assert_eq!(column("SF"), ints(&[4, 5]));
+    assert_eq!(column("SL"), ints(&[0, 1]));
+
+    // every column but the group-by columns and the weight
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(3),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(Type::WeightedSum(weighted("N")))),
+        group_by_columns: texts(&["S"]),
+    });
+    call(&mut c, all).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(column_names(table.as_ref()), ["S", "I"]);
+    assert_eq!(values(table.as_ref(), "I"), ints(&[-2, -8]));
+}
+
+#[tokio::test]
+async fn aggregate_refuses_the_options_java_refuses() {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    use proto::agg_spec::{AggSpecWeighted, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+
+    let no_sentinel = Type::Unique(proto::agg_spec::AggSpecUnique {
+        include_nulls: false,
+        non_unique_sentinel: None,
+    });
+    let refusals = [
+        (
+            no_sentinel,
+            "io.deephaven.proto.backplane.grpc.AggSpec.AggSpecUnique must have field non_unique_sentinel (2)",
+        ),
+        (
+            unique(None),
+            "io.deephaven.proto.backplane.grpc.AggSpec.AggSpecNonUniqueSentinel must have oneof type. Note: this may also indicate that the server is older than the client and doesn't know about this new oneof option.",
+        ),
+        (
+            unique(Some(Sentinel::NullValue(1))),
+            "AggSpecNonUniqueSentinel null_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::ByteValue(128))),
+            "AggSpecNonUniqueSentinel byte_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::ShortValue(-32769))),
+            "AggSpecNonUniqueSentinel short_value out of range",
+        ),
+        (
+            unique(Some(Sentinel::CharValue(-1))),
+            "AggSpecNonUniqueSentinel char_value out of range",
+        ),
+    ];
+    for (index, (kind, message)) in refusals.into_iter().enumerate() {
+        let request = aggregated(
+            2 + index as i32,
+            vec![agg_columns(kind, &["U = I"])],
+            &["S"],
+        );
+        let refused = call(&mut c, request).await.unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+    }
+    // in range
+    for (result, sentinel) in [
+        (10, Sentinel::ByteValue(-128)),
+        (11, Sentinel::CharValue(65535)),
+    ] {
+        let request = aggregated(
+            result,
+            vec![agg_columns(unique(Some(sentinel)), &["U = I"])],
+            &["S"],
+        );
+        let refused = call(&mut c, request).await.unwrap_err();
+        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
+    }
+
+    // what the engine refuses
+    let weight = |column: &str| {
+        Type::WeightedAvg(AggSpecWeighted {
+            weight_column: column.to_string(),
+        })
+    };
+    let percentile = Type::Percentile(proto::agg_spec::AggSpecPercentile {
+        percentile: 1.5,
+        average_evenly_divided: false,
+    });
+    for (result, kind) in [
+        (20, percentile),
+        (21, weight("Missing")),
+        (22, weight("S")),
+        (23, Type::Var(Default::default())),
+    ] {
+        let pairs: &[&str] = if result == 23 { &["V = S"] } else { &["X = I"] };
+        let request = aggregated(result, vec![agg_columns(kind, pairs)], &[]);
+        assert_internal(&call(&mut c, request).await.unwrap_err());
+    }
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(30),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(weight("Missing"))),
+        group_by_columns: texts(&["S"]),
+    });
+    assert_internal(&call(&mut c, all).await.unwrap_err());
+}
+
 #[tokio::test]
 async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     use proto::agg_spec::Type;
@@ -917,14 +1087,14 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     let all_by_itself = Op::AggregateAll(AggregateAllRequest {
         result_id: ticket(22),
         source_id: by_ticket(1),
-        spec: Some(agg_spec(Type::Median(Default::default()))),
+        spec: Some(agg_spec(Type::Group(Default::default()))),
         group_by_columns: texts(&["S"]),
     });
     let refused = call(&mut c, all_by_itself).await.unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation median"
+        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation group"
     );
     let row_key = proto::Aggregation {
         r#type: Some(proto::aggregation::Type::FirstRowKey(Default::default())),

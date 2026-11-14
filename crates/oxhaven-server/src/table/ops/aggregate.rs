@@ -1,8 +1,9 @@
 //! `Aggregate` and `AggregateAll`: one row per group of rows, with aggregated columns.
 //!
-//! The engine has sum, avg, min, max, first, last and count. A request for any other
-//! aggregation, or for initial groups, is refused with `UNIMPLEMENTED` and the name of
-//! what is missing.
+//! The engine has sum, abs_sum, avg, min, max, first, last, var, std, median, percentile,
+//! count_distinct, unique (with a null non-unique sentinel), weighted_avg, weighted_sum,
+//! sorted_first, sorted_last and count. A request for any other aggregation, or for initial
+//! groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
 
 use super::prelude::*;
 use oxhaven_engine::ops::agg::{aggregate, AggSpec, AggregateError, Aggregation, Pair};
@@ -41,24 +42,78 @@ fn missing_one_of(message: &str) -> Status {
     ))
 }
 
-/// Behavior: `io.deephaven.server.table.ops.AggSpecAdapter#validate(AggSpec)`, without the
-/// checks of the options of specs that are not ported
+/// Behavior: `io.deephaven.server.table.ops.AggSpecAdapter#validate(AggSpec)`, whose only
+/// check beyond the oneof is that of `unique`
 fn validate_spec(spec: &proto::AggSpec) -> Result<(), Status> {
-    if spec.r#type.is_none() {
-        return Err(missing_one_of("AggSpec"));
+    match &spec.r#type {
+        None => Err(missing_one_of("AggSpec")),
+        Some(SpecType::Unique(unique)) => validate_unique(unique),
+        Some(_) => Ok(()),
     }
-    Ok(())
+}
+
+/// Behavior: `AggSpecAdapter#validate(AggSpecUnique)` and
+/// `AggSpecAdapter#validate(AggSpecNonUniqueSentinel)`
+fn validate_unique(unique: &proto::agg_spec::AggSpecUnique) -> Result<(), Status> {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    let Some(sentinel) = &unique.non_unique_sentinel else {
+        return Err(missing_field(
+            "AggSpec.AggSpecUnique",
+            "non_unique_sentinel",
+            2,
+        ));
+    };
+    let out_of_range = |field: &str| {
+        Err(Status::invalid_argument(format!(
+            "AggSpecNonUniqueSentinel {field} out of range"
+        )))
+    };
+    match sentinel.r#type {
+        None => Err(missing_one_of("AggSpec.AggSpecNonUniqueSentinel")),
+        Some(Sentinel::NullValue(value)) if value != proto::NullValue::NullValue as i32 => {
+            out_of_range("null_value")
+        }
+        Some(Sentinel::ByteValue(value)) if i8::try_from(value).is_err() => {
+            out_of_range("byte_value")
+        }
+        Some(Sentinel::ShortValue(value)) if i16::try_from(value).is_err() => {
+            out_of_range("short_value")
+        }
+        Some(Sentinel::CharValue(value)) if u16::try_from(value).is_err() => {
+            out_of_range("char_value")
+        }
+        Some(_) => Ok(()),
+    }
+}
+
+/// A column name that a spec gives, which Java takes as it is, without trimming.
+///
+/// Behavior: `io.deephaven.api.ColumnName#of`
+fn spec_column(text: &str) -> Result<String, ExportError> {
+    validate_column_name(text).map_err(ExportError::Internal)?;
+    Ok(text.to_string())
 }
 
 /// The engine's aggregation for a spec, or the status that names what is not ported.
 ///
 /// Behavior: `io.deephaven.server.table.ops.AggSpecAdapter#adapt`
-fn spec(spec: &proto::AggSpec) -> Result<AggSpec, Status> {
+fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
     let missing = |name: &str| {
         Err(not_ported(
             "io.deephaven.server.table.ops.AggSpecAdapter#adapt",
             format!("the aggregation {name}"),
-        ))
+        )
+        .into())
+    };
+    // Behavior: `AggSpecAdapter#adaptFirst`, `#adaptLast` and `#adapt(AggSpecSortedColumn)`,
+    // which sort every column ascending.
+    let sorted = |sorted: &proto::agg_spec::AggSpecSorted| {
+        sorted
+            .columns
+            .iter()
+            .map(|column| spec_column(&column.column_name))
+            .collect::<Result<Vec<_>, _>>()
     };
     match &spec.r#type {
         Some(SpecType::Sum(_)) => Ok(AggSpec::Sum),
@@ -67,24 +122,92 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, Status> {
         Some(SpecType::Max(_)) => Ok(AggSpec::Max),
         Some(SpecType::First(_)) => Ok(AggSpec::First),
         Some(SpecType::Last(_)) => Ok(AggSpec::Last),
-        Some(SpecType::AbsSum(_)) => missing("abs_sum"),
+        Some(SpecType::AbsSum(_)) => Ok(AggSpec::AbsSum),
+        Some(SpecType::Std(_)) => Ok(AggSpec::Std),
+        Some(SpecType::Var(_)) => Ok(AggSpec::Var),
+        Some(SpecType::Median(median)) => Ok(AggSpec::Median {
+            average_evenly_divided: median.average_evenly_divided,
+        }),
+        Some(SpecType::Percentile(percentile)) => Ok(AggSpec::Percentile {
+            percentile: percentile.percentile,
+            average_evenly_divided: percentile.average_evenly_divided,
+        }),
+        Some(SpecType::CountDistinct(count)) => Ok(AggSpec::CountDistinct {
+            count_nulls: count.count_nulls,
+        }),
+        Some(SpecType::Unique(unique)) => {
+            let sentinel = unique.non_unique_sentinel.as_ref().and_then(|s| s.r#type.as_ref());
+            match sentinel {
+                Some(Sentinel::NullValue(_)) => Ok(AggSpec::Unique {
+                    include_nulls: unique.include_nulls,
+                }),
+                Some(_) => Err(not_ported(
+                    "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#visit(AggSpecUnique)",
+                    "a non-unique sentinel other than null",
+                )
+                .into()),
+                None => Err(missing_one_of("AggSpec.AggSpecNonUniqueSentinel").into()),
+            }
+        }
+        Some(SpecType::WeightedAvg(weighted)) => Ok(AggSpec::WeightedAvg {
+            weight: spec_column(&weighted.weight_column)?,
+        }),
+        Some(SpecType::WeightedSum(weighted)) => Ok(AggSpec::WeightedSum {
+            weight: spec_column(&weighted.weight_column)?,
+        }),
+        Some(SpecType::SortedFirst(first)) => Ok(AggSpec::SortedFirst {
+            columns: sorted(first)?,
+        }),
+        Some(SpecType::SortedLast(last)) => Ok(AggSpec::SortedLast {
+            columns: sorted(last)?,
+        }),
         Some(SpecType::ApproximatePercentile(_)) => missing("approximate_percentile"),
-        Some(SpecType::CountDistinct(_)) => missing("count_distinct"),
         Some(SpecType::Distinct(_)) => missing("distinct"),
         Some(SpecType::Formula(_)) => missing("formula"),
         Some(SpecType::Freeze(_)) => missing("freeze"),
         Some(SpecType::Group(_)) => missing("group"),
-        Some(SpecType::Median(_)) => missing("median"),
-        Some(SpecType::Percentile(_)) => missing("percentile"),
-        Some(SpecType::SortedFirst(_)) => missing("sorted_first"),
-        Some(SpecType::SortedLast(_)) => missing("sorted_last"),
-        Some(SpecType::Std(_)) => missing("std"),
         Some(SpecType::TDigest(_)) => missing("t_digest"),
-        Some(SpecType::Unique(_)) => missing("unique"),
-        Some(SpecType::WeightedAvg(_)) => missing("weighted_avg"),
-        Some(SpecType::WeightedSum(_)) => missing("weighted_sum"),
-        Some(SpecType::Var(_)) => missing("var"),
-        None => Err(missing_one_of("AggSpec")),
+        None => Err(missing_one_of("AggSpec").into()),
+    }
+}
+
+/// The columns besides the group-by columns that `aggAllBy` leaves out for `spec`: the
+/// weight of a weighted spec, and for the specs that compute a new value the formatting
+/// columns.
+///
+/// Behavior: `io.deephaven.api.agg.spec.AggregateAllExclusions#of`,
+/// `io.deephaven.api.agg.spec.AggAllByExcludeFormattingColumns`,
+/// `io.deephaven.engine.util.ColumnFormatting#isFormattingColumn`
+fn excluded_by_agg_all(spec: &AggSpec, column: &str) -> bool {
+    let formatting = ["__TABLE_STYLE_FORMAT", "__TABLE_NUMBER_FORMAT", "__TABLE_DATE_FORMAT"]
+        .iter()
+        .any(|suffix| column.ends_with(suffix));
+    match spec {
+        AggSpec::WeightedAvg { weight } | AggSpec::WeightedSum { weight } => {
+            weight == column || formatting
+        }
+        AggSpec::Min
+        | AggSpec::Max
+        | AggSpec::First
+        | AggSpec::Last
+        | AggSpec::Unique { .. }
+        | AggSpec::SortedFirst { .. }
+        | AggSpec::SortedLast { .. } => false,
+        // Sum, abs_sum, avg, var, std, median, percentile and count_distinct.
+        _ => formatting,
+    }
+}
+
+/// The columns a spec names, which `aggAllBy` requires to exist.
+///
+/// Behavior: `io.deephaven.api.agg.spec.AggSpecColumnReferences`
+fn spec_references(spec: &AggSpec) -> Vec<&str> {
+    match spec {
+        AggSpec::WeightedAvg { weight } | AggSpec::WeightedSum { weight } => vec![weight],
+        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => {
+            columns.iter().map(String::as_str).collect()
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -280,7 +403,13 @@ impl TableOp for AggregateAll {
         )?;
         let group_by = &request.group_by_columns;
         let definition = parent.definition();
-        if let Some(unknown) = group_by.iter().find(|name| definition.index_of(name).is_none()) {
+        let references = spec_references(&kind);
+        if let Some(unknown) = group_by
+            .iter()
+            .map(String::as_str)
+            .chain(references)
+            .find(|name| definition.index_of(name).is_none())
+        {
             return Err(ExportError::Internal(format!(
                 "aggAllBy spec references column that does not exist: {unknown}"
             )));
@@ -288,7 +417,9 @@ impl TableOp for AggregateAll {
         let pairs: Vec<Pair> = definition
             .columns()
             .iter()
-            .filter(|column| !group_by.contains(&column.name))
+            .filter(|column| {
+                !group_by.contains(&column.name) && !excluded_by_agg_all(&kind, &column.name)
+            })
             .map(|column| Pair::of(column.name.as_str()))
             .collect();
         if pairs.is_empty() {
