@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 /// The number of (table, step) results the fixtures must compare, and of operations Java
 /// refused. An operation that silently stops being run shows as a different count.
-const COMPARED: usize = 27;
+const COMPARED: usize = 388;
 const REFUSED: usize = 15;
 
 fn fixtures() -> PathBuf {
