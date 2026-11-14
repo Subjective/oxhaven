@@ -24,7 +24,7 @@ impl From<JoinError> for ExportError {
 }
 
 /// Java's `\s`: the characters the patterns of `MatchPairFactory` skip.
-fn is_space(c: char) -> bool {
+pub(super) fn is_space(c: char) -> bool {
     matches!(c, ' ' | '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r')
 }
 
@@ -32,7 +32,7 @@ fn is_space(c: char) -> bool {
 /// letter, `_` or `$` followed by those or digits; zero if there is none.
 ///
 /// Behavior: `io.deephaven.api.expression.SelectFactoryConstants#ID_PTRN`
-fn name_length(text: &str) -> usize {
+pub(super) fn name_length(text: &str) -> usize {
     let mut bytes = text.bytes();
     match bytes.next() {
         Some(b) if b.is_ascii_alphabetic() || b == b'_' || b == b'$' => {}
@@ -94,7 +94,7 @@ fn match_pair(text: &str) -> Result<(String, String), Status> {
 ///
 /// Behavior: `JoinTablesGrpcImpl#validateRequest` and the same reading in
 /// `JoinTablesGrpcImpl#create`
-fn parse(
+pub(super) fn parse(
     columns_to_match: &[String],
     columns_to_add: &[String],
 ) -> Result<(Vec<JoinMatch>, Vec<JoinAddition>), Status> {
