@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "scenario": "where_int",
+  "scenario_sha256": "6e1bbb0472d6aad3ea46769bde30d107e4af147290247b7687afbc864712ce7b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "gt",
+      "file": "step000.gt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "le",
+      "file": "step000.le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "eq",
+      "file": "step000.eq.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "is_null",
+      "file": "step000.is_null.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "not_null_long",
+      "file": "step000.not_null_long.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "none",
+      "file": "step000.none.arrow",
+      "rows": 0
+    }
+  ]
+}

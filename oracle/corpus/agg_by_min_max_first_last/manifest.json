@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "agg_by_min_max_first_last",
+  "scenario_sha256": "6bc3c9d9f9d48d05e76cfee472f121c54f440e8a3a57cd306f5402b21f6222be",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "min_max",
+      "file": "step000.min_max.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "first_last",
+      "file": "step000.first_last.arrow",
+      "rows": 5
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "agg_by_int_overflow",
+  "description": "Sums of bytes, shorts, ints and longs at the edges of their ranges, and of large doubles.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "By", "type": "int8"}, {"name": "Sh", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "F", "type": "float32"}],
+      "rows": [
+        ["a", 127, 32767, 2147483647, 9223372036854775807, 1e+308, 3e+38],
+        ["a", 127, 32767, 2147483647, 1, 1e+308, 3e+38],
+        ["b", -127, -32767, -2147483647, -9223372036854775807, -1e+308, -3e+38],
+        ["b", -127, -32767, -2147483647, -1, -1e+308, -3e+38],
+        ["c", 127, 32767, 2147483647, 9223372036854775807, 1.0, 1.0],
+        ["c", -127, -32767, -2147483647, -9223372036854775807, -1.0, -1.0],
+        ["d", 1, 1, 1, 9223372036854775807, 0.1, 0.1],
+        ["d", 1, 1, 1, 9223372036854775807, 0.2, 0.2]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "sums", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["By", "Sh", "I", "L", "D", "F"]}], "by": ["K"]},
+    {"name": "avgs", "op": "agg_by", "source": "t", "aggs": [{"agg": "avg", "columns": ["By", "Sh", "I", "L", "D", "F"]}], "by": ["K"]},
+    {"name": "total", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["By", "Sh", "I", "L"]}], "by": []}
+  ],
+  "results": [
+    {"table": "sums"},
+    {"table": "avgs"},
+    {"table": "total"}
+  ]
+}

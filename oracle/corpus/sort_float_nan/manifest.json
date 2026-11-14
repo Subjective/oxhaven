@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "scenario": "sort_float_nan",
+  "scenario_sha256": "d0fb5084ce977a8586c9782c31770c80a242e208027882fb41f920b8ab692343",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "d_up",
+      "file": "step000.d_up.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "d_down",
+      "file": "step000.d_down.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "f_up",
+      "file": "step000.f_up.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "f_down",
+      "file": "step000.f_down.arrow",
+      "rows": 11
+    }
+  ]
+}

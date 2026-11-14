@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "timestamps",
+  "description": "Timestamps through where, sort, min/max/first/last and merge, with nulls and values before the epoch.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "T", "type": "timestamp"}],
+      "rows": [
+        ["a", 1700000000000000000],
+        ["b", 1700000000000000001],
+        ["a", null],
+        ["b", -1],
+        ["a", 0],
+        ["c", 1699999999000000000],
+        ["a", 1700000000000000000],
+        ["c", null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "after", "op": "where", "source": "t", "filters": ["T > '2023-11-14T22:13:20 UTC'"]},
+    {"name": "not_null", "op": "where", "source": "t", "filters": ["!isNull(T)"]},
+    {"name": "up", "op": "sort", "source": "t", "by": [{"column": "T", "direction": "ascending"}]},
+    {"name": "down", "op": "sort", "source": "t", "by": [{"column": "T", "direction": "descending"}, {"column": "K", "direction": "ascending"}]},
+    {"name": "range", "op": "agg_by", "source": "t", "aggs": [{"agg": "min", "columns": ["MinT = T"]}, {"agg": "max", "columns": ["MaxT = T"]}, {"agg": "first", "columns": ["FirstT = T"]}, {"agg": "last", "columns": ["LastT = T"]}, {"agg": "count", "column": "N"}], "by": ["K"]},
+    {"name": "twice", "op": "merge", "sources": ["t", "up"]}
+  ],
+  "results": [
+    {"table": "after"},
+    {"table": "not_null"},
+    {"table": "up"},
+    {"table": "down"},
+    {"table": "range"},
+    {"table": "twice"}
+  ]
+}

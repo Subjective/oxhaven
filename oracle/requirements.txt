@@ -1,0 +1,26 @@
+# Pinned environment of the oracle harness (Python 3.13). The reference pin is REFERENCE.md.
+# Direct dependencies:
+deephaven-server==42.9
+pydeephaven==42.9
+pyarrow==26.0.1
+pytest==9.2.0
+# What they resolved to, pinned so that a recording can be reproduced:
+click==8.5.1
+deephaven-core==42.9
+deephaven-plugin==0.8.0
+docstring_parser==0.18.0
+grpcio==1.85.1
+iniconfig==2.3.1
+java-utilities==0.3.0
+jedi==0.19.1
+jpy==2.2.0
+numpy==2.5.4
+packaging==26.3
+pandas==3.1.1
+parso==0.8.7
+pluggy==1.7.0
+protobuf==7.36.2
+Pygments==2.21.0
+python-dateutil==4.0.0
+typing_extensions==4.16.0
+tzdata==2026.6

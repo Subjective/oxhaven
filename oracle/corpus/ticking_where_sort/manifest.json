@@ -1,0 +1,296 @@
+{
+  "format": 1,
+  "scenario": "ticking_where_sort",
+  "scenario_sha256": "25061fb934103adbfc248014262815987e85a9a76257720297ee322b4db57733",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "t",
+      "file": "step000.t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "positive",
+      "file": "step000.positive.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "by_v",
+      "file": "step000.by_v.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "by_s",
+      "file": "step000.by_s.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "first2",
+      "file": "step000.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "last2",
+      "file": "step000.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "t",
+      "file": "step001.t.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "positive",
+      "file": "step001.positive.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "by_v",
+      "file": "step001.by_v.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "by_s",
+      "file": "step001.by_s.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "first2",
+      "file": "step001.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "last2",
+      "file": "step001.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "t",
+      "file": "step002.t.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "positive",
+      "file": "step002.positive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "by_v",
+      "file": "step002.by_v.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "by_s",
+      "file": "step002.by_s.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "first2",
+      "file": "step002.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "last2",
+      "file": "step002.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "t",
+      "file": "step003.t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "positive",
+      "file": "step003.positive.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "by_v",
+      "file": "step003.by_v.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "by_s",
+      "file": "step003.by_s.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "first2",
+      "file": "step003.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "last2",
+      "file": "step003.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "t",
+      "file": "step004.t.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "positive",
+      "file": "step004.positive.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "by_v",
+      "file": "step004.by_v.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "by_s",
+      "file": "step004.by_s.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "first2",
+      "file": "step004.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "last2",
+      "file": "step004.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "t",
+      "file": "step005.t.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "positive",
+      "file": "step005.positive.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "by_v",
+      "file": "step005.by_v.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "by_s",
+      "file": "step005.by_s.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "first2",
+      "file": "step005.first2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "last2",
+      "file": "step005.last2.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "t",
+      "file": "step006.t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "positive",
+      "file": "step006.positive.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "by_v",
+      "file": "step006.by_v.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "by_s",
+      "file": "step006.by_s.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "first2",
+      "file": "step006.first2.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "last2",
+      "file": "step006.last2.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "t",
+      "file": "step007.t.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "positive",
+      "file": "step007.positive.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "by_v",
+      "file": "step007.by_v.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "by_s",
+      "file": "step007.by_s.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "first2",
+      "file": "step007.first2.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "last2",
+      "file": "step007.last2.arrow",
+      "rows": 1
+    }
+  ]
+}

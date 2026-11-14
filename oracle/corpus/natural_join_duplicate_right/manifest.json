@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "natural_join_duplicate_right",
+  "scenario_sha256": "ea67f1c3165f27738fd9b395a6f5075ba4556a261e4d5c2f53a5c3bb2ace7406",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "file": "step000.last.arrow",
+      "rows": 6
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "update_by_cum_sum",
+  "description": "Cumulative sum over the whole table and per key, for small ints, ints, longs, floats and doubles with nulls and NaN.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "By", "type": "int8"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}],
+      "rows": [
+        ["a", 1, 1, 1, 0.5, 0.1],
+        ["b", 2, 10, 10, 1.5, 0.2],
+        ["a", null, null, null, null, null],
+        ["a", 3, 2147483647, 9223372036854775806, 2.5, 0.3],
+        ["b", -5, -20, -20, "NaN", "NaN"],
+        [null, 7, 7, 7, 7.0, 7.0],
+        ["a", 127, 1, 1, 1.0, 1e-17],
+        ["b", 1, 1, 1, 1.0, 1.0],
+        ["c", null, null, null, null, null],
+        [null, 1, 1, 1, 1.0, 1.0]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "whole", "op": "update_by", "source": "t", "ops": [{"op": "cum_sum", "columns": ["CBy = By", "CI = I", "CL = L", "CF = F", "CD = D"]}], "by": []},
+    {"name": "keyed", "op": "update_by", "source": "t", "ops": [{"op": "cum_sum", "columns": ["CBy = By", "CI = I", "CL = L", "CF = F", "CD = D"]}], "by": ["K"]}
+  ],
+  "results": [
+    {"table": "whole"},
+    {"table": "keyed"}
+  ]
+}

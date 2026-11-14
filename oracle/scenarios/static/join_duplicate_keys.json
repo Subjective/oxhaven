@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "name": "join_duplicate_keys",
+  "description": "join with duplicate keys on both sides, unmatched rows on both sides, null keys, an empty side, and no key columns.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "LV", "type": "string"}],
+      "rows": [
+        [1, "l0"],
+        [2, "l1"],
+        [2, "l2"],
+        [null, "l3"],
+        [3, "l4"],
+        [1, "l5"]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "RV", "type": "string"}],
+      "rows": [
+        [2, "r0"],
+        [1, "r1"],
+        [2, "r2"],
+        [null, "r3"],
+        [8, "r4"],
+        [null, "r5"],
+        [2, "r6"]
+      ]
+    },
+    {
+      "name": "e",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "RV", "type": "string"}],
+      "rows": []
+    },
+    {
+      "name": "small",
+      "columns": [{"name": "X", "type": "int32"}],
+      "rows": [
+        [100],
+        [200],
+        [null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "on_k", "op": "join", "left": "l", "right": "r", "on": ["K"]},
+    {"name": "renamed", "op": "join", "left": "l", "right": "r", "on": ["K"], "joins": ["Other = RV"]},
+    {"name": "empty_right", "op": "join", "left": "l", "right": "e", "on": ["K"]},
+    {"name": "empty_left", "op": "join", "left": "e", "right": "l", "on": ["K"], "joins": ["LV"]},
+    {"name": "cross", "op": "join", "left": "l", "right": "small", "on": []}
+  ],
+  "results": [
+    {"table": "on_k"},
+    {"table": "renamed"},
+    {"table": "empty_right"},
+    {"table": "empty_left"},
+    {"table": "cross"}
+  ]
+}

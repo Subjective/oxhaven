@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "where_int",
+  "description": "Integer comparisons, null tests and conjunction on int and long columns.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "gt", "op": "where", "source": "t", "filters": ["I > 1"]},
+    {"name": "le", "op": "where", "source": "t", "filters": ["I <= 0"]},
+    {"name": "eq", "op": "where", "source": "t", "filters": ["I == 2"]},
+    {"name": "is_null", "op": "where", "source": "t", "filters": ["isNull(I)"]},
+    {"name": "not_null_long", "op": "where", "source": "t", "filters": ["!isNull(L)", "L >= 7"]},
+    {"name": "none", "op": "where", "source": "t", "filters": ["I > 5", "I < 5"]}
+  ],
+  "results": [
+    {"table": "gt"},
+    {"table": "le"},
+    {"table": "eq"},
+    {"table": "is_null"},
+    {"table": "not_null_long"},
+    {"table": "none"}
+  ]
+}

@@ -1,0 +1,93 @@
+{
+  "format": 1,
+  "name": "ticking_join_merge",
+  "description": "join with duplicate keys and merge while both inputs tick.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "LV", "type": "string"}],
+      "rows": [
+        [1, 1, "l1"],
+        [2, 2, "l2"],
+        [3, 2, "l3"]
+      ]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Rid"]},
+      "columns": [{"name": "Rid", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "RV", "type": "string"}],
+      "rows": [
+        [1, 2, "r1"],
+        [2, 2, "r2"],
+        [3, 9, "r3"]
+      ]
+    },
+    {
+      "name": "a",
+      "ticking": {"key_columns": ["X"]},
+      "columns": [{"name": "X", "type": "int32"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [1, "a1"]
+      ]
+    },
+    {
+      "name": "b",
+      "ticking": {"key_columns": ["X"]},
+      "columns": [{"name": "X", "type": "int32"}, {"name": "S", "type": "string"}],
+      "rows": []
+    }
+  ],
+  "operations": [
+    {"name": "j", "op": "join", "left": "l", "right": "r", "on": ["K"], "joins": ["Rid", "RV"]},
+    {"name": "m", "op": "merge", "sources": ["a", "b"]},
+    {"name": "m_sorted", "op": "sort", "source": "m", "by": [{"column": "X", "direction": "ascending"}, {"column": "S", "direction": "ascending"}]}
+  ],
+  "results": [
+    {"table": "j"},
+    {"table": "m"},
+    {"table": "m_sorted"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [[4, 1, "r4"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[4, 2, "l4"]]},
+        {"action": "add", "table": "b", "rows": [[1, "b1"], [2, "b2"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "r", "rows": [[1]]},
+        {"action": "add", "table": "a", "rows": [[0, "a0"], [1, "a1x"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [[2, 1, "r2x"]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "l", "rows": [[2], [3]]},
+        {"action": "delete", "table": "a", "rows": [[1]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[1, null, "l1n"]]},
+        {"action": "add", "table": "r", "rows": [[5, null, "r5n"]]},
+        {"action": "delete", "table": "b", "rows": [[1], [2]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "l", "rows": [[1], [4]]}
+      ]
+    }
+  ]
+}
