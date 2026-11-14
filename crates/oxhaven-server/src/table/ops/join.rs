@@ -94,7 +94,7 @@ fn match_pair(text: &str) -> Result<(String, String), Status> {
 ///
 /// Behavior: `JoinTablesGrpcImpl#validateRequest` and the same reading in
 /// `JoinTablesGrpcImpl#create`
-fn parse(
+pub(super) fn parse(
     columns_to_match: &[String],
     columns_to_add: &[String],
 ) -> Result<(Vec<JoinMatch>, Vec<JoinAddition>), Status> {

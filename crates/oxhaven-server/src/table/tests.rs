@@ -219,6 +219,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "AGGREGATE_ALL",
             "COMBO_AGGREGATE",
             "CREATE_INPUT_TABLE",
+            "CROSS_JOIN",
             "SELECT_DISTINCT",
             "NATURAL_JOIN",
             "EXACT_JOIN",

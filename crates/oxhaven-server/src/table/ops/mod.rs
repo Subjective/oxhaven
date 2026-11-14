@@ -257,6 +257,7 @@ handlers! {
     apply_preview_columns { ApplyPreviewColumns => Handler }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll, ComboAggregate => ComboAggregate }
     create_input_table { CreateInputTable => Handler }
+    crossjoin { CrossJoin => Handler }
     distinct { SelectDistinct => Handler }
     drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
