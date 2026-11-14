@@ -8,6 +8,7 @@ use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
+mod range_join;
 mod update_by;
 
 /// What the Java server answers for any exception out of the engine.
@@ -46,6 +47,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::NaturalJoin(r) => c.client.natural_join_tables(c.auth(r)).await,
         Op::ExactJoin(r) => c.client.exact_join_tables(c.auth(r)).await,
         Op::LeftJoin(r) => c.client.left_join_tables(c.auth(r)).await,
+        Op::RangeJoin(r) => c.client.range_join_tables(c.auth(r)).await,
         Op::Snapshot(r) => c.client.snapshot(c.auth(r)).await,
         Op::SnapshotWhen(r) => c.client.snapshot_when(c.auth(r)).await,
         Op::UpdateBy(r) => c.client.update_by(c.auth(r)).await,
