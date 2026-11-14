@@ -41,7 +41,7 @@ fn every_aggregation() -> Vec<Aggregation> {
             specs.push(AggSpec::Avg);
         }
         for spec in specs {
-            aggregations.push(agg(spec, &[&format!("{spec:?}{name} = {name}")]));
+            aggregations.push(agg(spec.clone(), &[&format!("{spec:?}{name} = {name}")]));
         }
     }
     aggregations

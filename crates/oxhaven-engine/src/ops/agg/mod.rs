@@ -11,7 +11,11 @@
 //! | `keys` | The slot of each key, in first-seen order |
 //! | [`AggOperator`] | What one aggregation implements |
 //! | [`Run`], [`Values`], [`Scalar`] | Column values as an operator sees them, whatever the column type |
-//! | `sum`, `min_max`, `first_last` | The operators: count, sum, avg; min, max; first, last |
+//! | `sum`, `min_max`, `first_last` | The operators: count, sum, abs sum, avg; min, max; first, last |
+//! | `var` | Variance and standard deviation |
+//! | `distinct` | Count distinct, unique, median and percentile, over a sorted multiset per group |
+//! | `weighted` | Weighted average and weighted sum, which read a weight column too |
+//! | `sorted` | Sorted first and sorted last, which read sort columns and an output column |
 //!
 //! # Adding an aggregation
 //!
@@ -26,30 +30,44 @@
 //!    aggregation asks.
 //! 3. Add a variant to [`AggSpec`] and an arm to `make_operator`, where the operator for
 //!    the input column's type and the kind of parent is chosen and unsupported types are
-//!    refused.
+//!    refused. An operator that reads a second column gets it as the weight of its
+//!    [`Run`]s; one that reads columns itself names them in `Planned::reads`, so that it is
+//!    told when they are modified.
 //!
-//! Not here yet, for task 4.1: aggregations with several inputs or outputs per operator,
-//! and `initialGroups`.
+//! Not here: the aggregations whose results are arrays, tables or formulas over arrays
+//! (`AggSpecGroup`, `AggSpecDistinct`, `AggSpecFormula`, `Formula`, `Partition`), since the
+//! contracts have no column type for them, and so neither `headBy` and `tailBy`, which Java
+//! builds from a group-by; `CountWhere`, `FirstRowKey`, `LastRowKey`, the approximate
+//! percentile, t-digest and freeze; a non-null non-unique sentinel; and `initialGroups`.
+//! The gRPC handler refuses each of them by name.
 
 mod aggregator;
+mod distinct;
 mod first_last;
 mod keys;
 mod min_max;
 mod operator;
+mod sorted;
 mod sum;
 mod values;
+mod var;
+mod weighted;
 
 #[cfg(test)]
 mod tests;
 
+pub use distinct::{SetMode, SortedValues};
 pub use first_last::{FirstLast, FirstLastMode};
 pub use min_max::MinMax;
 pub use operator::{AggOperator, Effect, GroupReader};
+pub use sorted::{SortColumn, SortedFirstLast};
 pub use sum::{BooleanSum, Count, FloatAvg, FloatSum, LongAvg, LongSum};
 pub use values::{build, Run, Scalar, Shape, Values};
+pub use var::Var;
+pub use weighted::{WeightedFloat, WeightedLongSum};
 
 use crate::table::{QueryTable, TableSpec};
-use aggregator::Aggregator;
+use aggregator::{Aggregator, Planned};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
@@ -60,11 +78,14 @@ use std::sync::{Arc, Mutex, PoisonError};
 /// An aggregation of one input column into one output column.
 ///
 /// Behavior: the `io.deephaven.api.agg.spec.AggSpec` implementations of the same names.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[non_exhaustive]
 pub enum AggSpec {
     /// The sum of the non-null values. See [`LongSum`], [`FloatSum`], [`BooleanSum`].
     Sum,
+    /// The sum of the absolute values of the non-null values. See [`LongSum`],
+    /// [`FloatSum`], [`BooleanSum`].
+    AbsSum,
     /// The mean of the non-null values. See [`LongAvg`], [`FloatAvg`].
     Avg,
     /// The least non-null value. See [`MinMax`].
@@ -75,6 +96,31 @@ pub enum AggSpec {
     First,
     /// The value in the group's last row. See [`FirstLast`].
     Last,
+    /// The sample variance of the non-null values. See [`Var`].
+    Var,
+    /// The sample standard deviation of the non-null values. See [`Var`].
+    Std,
+    /// The median of the non-null values. See [`SortedValues`].
+    Median { average_evenly_divided: bool },
+    /// A percentile, between 0 and 1, of the non-null values. See [`SortedValues`].
+    Percentile {
+        percentile: f64,
+        average_evenly_divided: bool,
+    },
+    /// The number of distinct values. See [`SortedValues`].
+    CountDistinct { count_nulls: bool },
+    /// The only distinct value, or null. See [`SortedValues`].
+    Unique { include_nulls: bool },
+    /// The average weighted by another column. See [`WeightedFloat`].
+    WeightedAvg { weight: String },
+    /// The sum weighted by another column. See [`WeightedFloat`], [`WeightedLongSum`].
+    WeightedSum { weight: String },
+    /// The value in the row that sorts first by the columns given, ascending. See
+    /// [`SortedFirstLast`].
+    SortedFirst { columns: Vec<String> },
+    /// The value in the row that sorts last by the columns given, ascending. See
+    /// [`SortedFirstLast`].
+    SortedLast { columns: Vec<String> },
 }
 
 /// An input column and the output column aggregated from it.
@@ -105,7 +151,7 @@ impl Pair {
 ///
 /// Behavior: io.deephaven.api.agg.Aggregation, of which this is
 /// io.deephaven.api.agg.ColumnAggregation / ColumnAggregations and io.deephaven.api.agg.Count.
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 #[non_exhaustive]
 pub enum Aggregation {
     /// `spec` applied to each pair.
@@ -132,7 +178,7 @@ impl Aggregation {
 /// Why an aggregation could not be made. Java reports all but `Failed` as an
 /// `IllegalArgumentException` or a `NoSuchColumnException`, which a client sees as
 /// `INVALID_ARGUMENT`.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum AggregateError {
     /// No aggregation was given.
     NoAggregations,
@@ -146,6 +192,10 @@ pub enum AggregateError {
         column: String,
         column_type: ColumnType,
     },
+    /// A percentile outside `[0, 1]`.
+    InvalidPercentile(String),
+    /// A sorted first or last without sort columns.
+    NoSortColumns,
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -171,6 +221,10 @@ impl fmt::Display for AggregateError {
                 f,
                 "{spec:?} is not supported for column {column} of type {column_type:?}"
             ),
+            AggregateError::InvalidPercentile(percentile) => {
+                write!(f, "percentile {percentile} is not between 0 and 1")
+            }
+            AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
             AggregateError::Failed(failure) => failure.fmt(f),
         }
     }
@@ -211,52 +265,180 @@ impl ParentKind {
     }
 }
 
-/// The operator for `spec` on a column of `input` type, or `None` if Java has none.
-///
-/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor's `Converter`:
-/// `visit(AggSpecSum)` / `makeSumOperator`, `visit(AggSpecAvg)` / `makeAvgOperator`,
-/// `visit(AggSpecMin)`, `visit(AggSpecMax)` / `makeMinOrMaxOperator`, and
-/// `visit(AggSpecFirst)`, `visit(AggSpecLast)` / `makeFirstOrLastOperator`.
-fn make_operator(
-    spec: AggSpec,
-    input: &ColumnType,
-    parent: ParentKind,
-) -> Option<Box<dyn AggOperator>> {
-    let integer = matches!(
-        input,
+fn is_integer(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
         ColumnType::Byte
             | ColumnType::Char
             | ColumnType::Short
             | ColumnType::Int
             | ColumnType::Long
-    );
-    Some(match spec {
-        AggSpec::Sum => match input {
-            ColumnType::Boolean => Box::<BooleanSum>::default(),
-            ColumnType::Float => Box::new(FloatSum::new(true)),
-            ColumnType::Double => Box::new(FloatSum::new(false)),
-            _ if integer => Box::<LongSum>::default(),
-            _ => return None,
-        },
-        AggSpec::Avg => match input {
-            ColumnType::Float | ColumnType::Double => Box::<FloatAvg>::default(),
+    )
+}
+
+fn is_floating(column_type: &ColumnType) -> bool {
+    matches!(column_type, ColumnType::Float | ColumnType::Double)
+}
+
+/// The operator for `spec` on column `input` of `parent`, or `None` if Java has none for
+/// the column's type.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor's `NormalConverter`:
+/// `visit(AggSpecSum)`, `visit(AggSpecAbsSum)` / `makeSumOperator`, `visit(AggSpecAvg)` /
+/// `makeAvgOperator`, `visit(AggSpecMin)`, `visit(AggSpecMax)` / `makeMinOrMaxOperator`,
+/// `visit(AggSpecFirst)`, `visit(AggSpecLast)` / `addFirstOrLastOperators`,
+/// `visit(AggSpecVar)`, `visit(AggSpecStd)` / `makeVarOrStdOperator`,
+/// `visit(AggSpecMedian)`, `visit(AggSpecPercentile)`, `visit(AggSpecCountDistinct)` /
+/// `makeCountDistinctOperator`, `visit(AggSpecUnique)` / `makeUniqueOperator`,
+/// `visit(AggSpecWAvg)`, `visit(AggSpecWSum)` / `addWeightedAvgOrSumOperator`, and
+/// `visit(AggSpecSortedFirst)`, `visit(AggSpecSortedLast)` / `addSortedFirstOrLastOperator`
+fn make_operator(
+    spec: &AggSpec,
+    parent: &Arc<dyn Table>,
+    input: usize,
+    kind: ParentKind,
+) -> Result<Option<Planned>, AggregateError> {
+    let definition = parent.definition();
+    let column = |name: &str| {
+        definition
+            .index_of(name)
+            .ok_or_else(|| AggregateError::UnknownColumn(name.to_string()))
+    };
+    let input_type = &definition.columns()[input].column_type;
+    let integer = is_integer(input_type);
+    let floating = is_floating(input_type);
+    let op: Box<dyn AggOperator> = match spec {
+        AggSpec::Sum | AggSpec::AbsSum => {
+            let absolute = *spec == AggSpec::AbsSum;
+            match input_type {
+                ColumnType::Boolean => Box::<BooleanSum>::default(),
+                ColumnType::Float => Box::new(FloatSum::new(true, absolute)),
+                ColumnType::Double => Box::new(FloatSum::new(false, absolute)),
+                _ if integer => Box::new(LongSum::new(absolute)),
+                _ => return Ok(None),
+            }
+        }
+        AggSpec::Avg => match input_type {
+            _ if floating => Box::<FloatAvg>::default(),
             _ if integer => Box::<LongAvg>::default(),
-            _ => return None,
+            _ => return Ok(None),
         },
         AggSpec::Min | AggSpec::Max => Box::new(MinMax::new(
-            input.clone(),
-            spec == AggSpec::Min,
-            parent == ParentKind::General,
+            input_type.clone(),
+            *spec == AggSpec::Min,
+            kind == ParentKind::General,
         )),
         AggSpec::First | AggSpec::Last => {
-            let mode = match parent {
+            let mode = match kind {
                 ParentKind::Static | ParentKind::AddOnly => FirstLastMode::ByRowKey,
                 ParentKind::Blink => FirstLastMode::Arrival,
                 ParentKind::General => FirstLastMode::Tracked,
             };
-            Box::new(FirstLast::new(input.clone(), spec == AggSpec::First, mode))
+            Box::new(FirstLast::new(
+                input_type.clone(),
+                *spec == AggSpec::First,
+                mode,
+            ))
         }
-    })
+        AggSpec::Var | AggSpec::Std if integer || floating => {
+            Box::new(Var::new(*spec == AggSpec::Std, floating))
+        }
+        AggSpec::Var | AggSpec::Std => return Ok(None),
+        AggSpec::Median {
+            average_evenly_divided,
+        } => Box::new(SortedValues::percentile(
+            input_type.clone(),
+            0.5,
+            *average_evenly_divided,
+        )),
+        AggSpec::Percentile {
+            percentile,
+            average_evenly_divided,
+        } => {
+            // Behavior: io.deephaven.api.agg.spec.AggSpecPercentile#checkPercentile
+            if !(0.0..=1.0).contains(percentile) {
+                return Err(AggregateError::InvalidPercentile(percentile.to_string()));
+            }
+            Box::new(SortedValues::percentile(
+                input_type.clone(),
+                *percentile,
+                *average_evenly_divided,
+            ))
+        }
+        AggSpec::CountDistinct { count_nulls } => Box::new(SortedValues::count_distinct(
+            input_type.clone(),
+            *count_nulls,
+        )),
+        AggSpec::Unique { include_nulls } => Box::new(SortedValues::unique(
+            input_type.clone(),
+            *include_nulls,
+            Scalar::Null,
+        )),
+        AggSpec::WeightedAvg { weight } | AggSpec::WeightedSum { weight } => {
+            let weight = column(weight)?;
+            let weight_type = &definition.columns()[weight].column_type;
+            if !(is_integer(weight_type) || is_floating(weight_type)) {
+                return Err(AggregateError::UnsupportedType {
+                    spec: spec.clone(),
+                    column: definition.columns()[weight].name.clone(),
+                    column_type: weight_type.clone(),
+                });
+            }
+            if !(integer || floating) {
+                return Ok(None);
+            }
+            let sum = matches!(spec, AggSpec::WeightedSum { .. });
+            let op: Box<dyn AggOperator> = if sum && integer && is_integer(weight_type) {
+                Box::<WeightedLongSum>::default()
+            } else {
+                Box::new(WeightedFloat::new(!sum))
+            };
+            return Ok(Some(Planned {
+                weight: Some(weight),
+                ..Planned::new(op, Some(input))
+            }));
+        }
+        AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => {
+            // Behavior: io.deephaven.api.agg.spec.AggSpecSortedFirst#nonEmptyColumns
+            if columns.is_empty() {
+                return Err(AggregateError::NoSortColumns);
+            }
+            if columns.len() > 3 {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#addSortedFirstOrLastOperator",
+                    "more than three sort columns, which Java compares as an ArrayTuple"
+                );
+            }
+            if kind == ParentKind::Blink {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.DoubleBlinkSortedFirstOrLastChunkedOperator",
+                    "sorted first or last of a blink table"
+                );
+            }
+            let mut sort = Vec::with_capacity(columns.len());
+            let mut reads = Vec::with_capacity(columns.len() + 1);
+            for name in columns {
+                let index = column(name)?;
+                sort.push(SortColumn {
+                    source: parent.column(index),
+                    column_type: definition.columns()[index].column_type.clone(),
+                });
+                reads.push(index);
+            }
+            reads.push(input);
+            let op = Box::new(SortedFirstLast::new(
+                matches!(spec, AggSpec::SortedFirst { .. }),
+                sort,
+                parent.column(input),
+                input_type.clone(),
+            ));
+            return Ok(Some(Planned {
+                reads,
+                ..Planned::new(op, None)
+            }));
+        }
+    };
+    Ok(Some(Planned::new(op, Some(input))))
 }
 
 /// Groups the rows of `parent` by the `group_by` columns and aggregates each group.
@@ -305,31 +487,30 @@ pub fn aggregate(
         .collect();
 
     let kind = ParentKind::of(&**parent);
-    let mut operators: Vec<(Box<dyn AggOperator>, Option<usize>)> = Vec::new();
+    let mut operators: Vec<Planned> = Vec::new();
     let mut outputs: Vec<&str> = Vec::new();
-    let mut planned: Vec<(&str, Box<dyn AggOperator>, Option<usize>)> = Vec::new();
+    let mut planned: Vec<(&str, Planned)> = Vec::new();
     for aggregation in aggregations {
         match aggregation {
             Aggregation::Count { column } => {
-                planned.push((column, Box::<Count>::default(), None));
+                planned.push((column, Planned::new(Box::<Count>::default(), None)));
             }
             Aggregation::Columns { spec, pairs } => {
                 for pair in pairs {
                     let index = column(&pair.input)?;
-                    let input_type = &definition.columns()[index].column_type;
-                    let operator = make_operator(*spec, input_type, kind).ok_or_else(|| {
+                    let operator = make_operator(spec, parent, index, kind)?.ok_or_else(|| {
                         AggregateError::UnsupportedType {
-                            spec: *spec,
+                            spec: spec.clone(),
                             column: pair.input.clone(),
-                            column_type: input_type.clone(),
+                            column_type: definition.columns()[index].column_type.clone(),
                         }
                     })?;
-                    planned.push((&pair.output, operator, Some(index)));
+                    planned.push((&pair.output, operator));
                 }
             }
         }
     }
-    for (name, operator, input) in planned {
+    for (name, operator) in planned {
         if outputs.contains(&name) {
             return Err(AggregateError::DuplicateOutput(name.to_string()));
         }
@@ -340,8 +521,8 @@ pub fn aggregate(
                 "aggregation output {name} has the name of a group-by column"
             );
         }
-        result_columns.push(ColumnDefinition::new(name, operator.result_type()));
-        operators.push((operator, input));
+        result_columns.push(ColumnDefinition::new(name, operator.op.result_type()));
+        operators.push(operator);
     }
     let result_definition = TableDefinition::new(result_columns)
         .map_err(|duplicate| AggregateError::DuplicateOutput(duplicate.0))?;
