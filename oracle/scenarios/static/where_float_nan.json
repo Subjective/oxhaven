@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "name": "where_float_nan",
+  "description": "Double comparisons against NaN, infinities, zero and null.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "gt", "op": "where", "source": "t", "filters": ["D > 0.0"]},
+    {"name": "lt", "op": "where", "source": "t", "filters": ["D < 0.0"]},
+    {"name": "ge", "op": "where", "source": "t", "filters": ["D >= 0.0"]},
+    {"name": "eq_self", "op": "where", "source": "t", "filters": ["D == D"]},
+    {"name": "is_nan", "op": "where", "source": "t", "filters": ["isNaN(D)"]},
+    {"name": "is_null", "op": "where", "source": "t", "filters": ["isNull(D)"]},
+    {"name": "is_inf", "op": "where", "source": "t", "filters": ["isInf(D)"]}
+  ],
+  "results": [
+    {"table": "gt"},
+    {"table": "lt"},
+    {"table": "ge"},
+    {"table": "eq_self"},
+    {"table": "is_nan"},
+    {"table": "is_null"},
+    {"table": "is_inf"}
+  ]
+}

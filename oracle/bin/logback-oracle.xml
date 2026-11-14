@@ -1,0 +1,24 @@
+<configuration debug="false">
+  <!-- The embedded server's own configuration logs only to its in-memory log buffer. The oracle
+       also writes to stderr, so that the error behind a gRPC "Details Logged w/ID" status can be
+       found in the server log file. -->
+  <contextListener class="ch.qos.logback.classic.jul.LevelChangePropagator"/>
+
+  <appender name="LOGBUFFER" class="io.deephaven.logback.LogBufferAppender">
+    <encoder>
+      <pattern>%-20.20thread | %-25.25logger{25} | %m</pattern>
+    </encoder>
+  </appender>
+
+  <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+    <target>System.err</target>
+    <encoder>
+      <pattern>%d{HH:mm:ss.SSS} %-5level %-25.25logger{25} | %m%n</pattern>
+    </encoder>
+  </appender>
+
+  <root level="info">
+    <appender-ref ref="LOGBUFFER" />
+    <appender-ref ref="STDERR" />
+  </root>
+</configuration>

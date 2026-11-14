@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "sort_int_nulls",
+  "description": "Ascending and descending sort of ints with nulls and duplicates; ties keep input order.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "Tag", "type": "string"}],
+      "rows": [
+        [3, "r0"],
+        [null, "r1"],
+        [1, "r2"],
+        [3, "r3"],
+        [2147483647, "r4"],
+        [-2147483647, "r5"],
+        [null, "r6"],
+        [1, "r7"],
+        [-1, "r8"],
+        [0, "r9"]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "up", "op": "sort", "source": "t", "by": [{"column": "I", "direction": "ascending"}]},
+    {"name": "down", "op": "sort", "source": "t", "by": [{"column": "I", "direction": "descending"}]}
+  ],
+  "results": [
+    {"table": "up"},
+    {"table": "down"}
+  ]
+}

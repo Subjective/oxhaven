@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "name": "aj_int_keys",
+  "description": "aj on an int column with and without an exact-match key; left values below, between and above the right values.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "int32"}],
+      "rows": [
+        ["a", 5],
+        ["a", 1],
+        ["b", 10],
+        ["a", 100],
+        ["b", 0],
+        [null, 5],
+        ["a", null],
+        ["c", 5]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int32"}, {"name": "V", "type": "int64"}],
+      "rows": [
+        ["a", 2, 20],
+        ["a", 5, 50],
+        ["a", 50, 500],
+        ["b", 10, 1000],
+        ["b", 11, 1100],
+        [null, 4, 4]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "keyed", "op": "aj", "left": "l", "right": "r", "on": ["K", "X >= Y"], "joins": ["Y", "V"]},
+    {"name": "strict", "op": "aj", "left": "l", "right": "r", "on": ["K", "X > Y"], "joins": ["Y", "V"]},
+    {"name": "unkeyed", "op": "aj", "left": "l", "right": "r", "on": ["X >= Y"], "joins": ["RK = K", "V"]}
+  ],
+  "results": [
+    {"table": "keyed"},
+    {"table": "strict"},
+    {"table": "unkeyed"}
+  ]
+}

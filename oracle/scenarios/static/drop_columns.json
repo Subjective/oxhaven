@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "name": "drop_columns",
+  "description": "Dropping one, several and all but one column.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}],
+      "rows": [
+        [1, 10, 1.5, "a", true],
+        [null, null, null, null, null],
+        [-3, -30, "NaN", "", false],
+        [0, 0, 0.0, "b", true],
+        [2, 9223372036854775807, "Infinity", "a", null],
+        [2147483647, -9223372036854775807, "-Infinity", "B", false],
+        [-2147483647, 7, -2.25, "aa", true],
+        [2, 7, 1e-300, "a", false]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "one", "op": "drop_columns", "source": "t", "columns": ["D"]},
+    {"name": "some", "op": "drop_columns", "source": "t", "columns": ["S", "I"]},
+    {"name": "most", "op": "drop_columns", "source": "t", "columns": ["I", "L", "D", "S"]}
+  ],
+  "results": [
+    {"table": "one"},
+    {"table": "some"},
+    {"table": "most"}
+  ]
+}

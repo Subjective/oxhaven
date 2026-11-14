@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "scenario": "join_duplicate_keys",
+  "scenario_sha256": "42fefc6e1225653f0ff36786a4aa4e77865e2e10cb1a139fe896d14e3b964ee9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "on_k",
+      "file": "step000.on_k.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "empty_right",
+      "file": "step000.empty_right.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "empty_left",
+      "file": "step000.empty_left.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "cross",
+      "file": "step000.cross.arrow",
+      "rows": 18
+    }
+  ]
+}

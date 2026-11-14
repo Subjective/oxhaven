@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "name": "sort_float_nan",
+  "description": "Sort of doubles and floats with NaN, null, infinities and signed zero.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "D", "type": "float64"}, {"name": "F", "type": "float32"}, {"name": "Tag", "type": "string"}],
+      "rows": [
+        [1.5, 1.5, "r0"],
+        ["NaN", "NaN", "r1"],
+        [null, null, "r2"],
+        ["-Infinity", "-Infinity", "r3"],
+        ["Infinity", "Infinity", "r4"],
+        [0.0, 0.0, "r5"],
+        [-0.0, -0.0, "r6"],
+        [-2.5, -2.5, "r7"],
+        ["NaN", "NaN", "r8"],
+        [1.5, 1.5, "r9"],
+        [null, null, "r10"]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "d_up", "op": "sort", "source": "t", "by": [{"column": "D", "direction": "ascending"}]},
+    {"name": "d_down", "op": "sort", "source": "t", "by": [{"column": "D", "direction": "descending"}]},
+    {"name": "f_up", "op": "sort", "source": "t", "by": [{"column": "F", "direction": "ascending"}]},
+    {"name": "f_down", "op": "sort", "source": "t", "by": [{"column": "F", "direction": "descending"}]}
+  ],
+  "results": [
+    {"table": "d_up"},
+    {"table": "d_down"},
+    {"table": "f_up"},
+    {"table": "f_down"}
+  ]
+}

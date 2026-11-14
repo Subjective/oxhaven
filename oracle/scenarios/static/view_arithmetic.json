@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "name": "view_arithmetic",
+  "description": "view with integer and floating point arithmetic; result types of mixed operands.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "F", "type": "float32"}, {"name": "Sh", "type": "int16"}, {"name": "By", "type": "int8"}],
+      "rows": [
+        [1, 10, 1.5, 0.5, 100, 10],
+        [-7, -70, -2.25, -0.25, -100, -10],
+        [0, 0, 0.0, 0.0, 0, 0],
+        [3, 4, 0.1, 0.1, 32767, 127],
+        [null, null, null, null, null, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "ints", "op": "view", "source": "t", "formulas": ["A = I + 1", "B = I * 2", "C = I - L", "D2 = I / 2", "E = I % 3", "G = -I"]},
+    {"name": "floats", "op": "view", "source": "t", "formulas": ["A = D + 1", "B = D * F", "C = D / 3", "E = F + F", "G = I * D", "H = L + F"]},
+    {"name": "small", "op": "view", "source": "t", "formulas": ["A = Sh + By", "B = By * By", "C = Sh + 1", "E = By + L"]}
+  ],
+  "results": [
+    {"table": "ints"},
+    {"table": "floats"},
+    {"table": "small"}
+  ]
+}

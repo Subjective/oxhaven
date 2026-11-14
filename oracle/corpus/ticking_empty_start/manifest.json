@@ -1,0 +1,278 @@
+{
+  "format": 1,
+  "scenario": "ticking_empty_start",
+  "scenario_sha256": "edc68980f8bfab5ded63b6c7da6bf9a0f55aa97f1bfb2afcf54e54d02a81eb36",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "t",
+      "file": "step000.t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "w",
+      "file": "step000.w.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "u",
+      "file": "step000.u.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s",
+      "file": "step000.s.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "by_g",
+      "file": "step000.by_g.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "total",
+      "file": "step000.total.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "d",
+      "file": "step000.d.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "v",
+      "file": "step000.v.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "sel",
+      "file": "step000.sel.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "t",
+      "file": "step001.t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "w",
+      "file": "step001.w.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "u",
+      "file": "step001.u.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "s",
+      "file": "step001.s.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "by_g",
+      "file": "step001.by_g.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "total",
+      "file": "step001.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "d",
+      "file": "step001.d.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "v",
+      "file": "step001.v.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "sel",
+      "file": "step001.sel.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "t",
+      "file": "step002.t.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "w",
+      "file": "step002.w.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "u",
+      "file": "step002.u.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "s",
+      "file": "step002.s.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "by_g",
+      "file": "step002.by_g.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "total",
+      "file": "step002.total.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "d",
+      "file": "step002.d.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "v",
+      "file": "step002.v.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "sel",
+      "file": "step002.sel.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "t",
+      "file": "step003.t.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "w",
+      "file": "step003.w.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "u",
+      "file": "step003.u.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "s",
+      "file": "step003.s.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "by_g",
+      "file": "step003.by_g.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "total",
+      "file": "step003.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "d",
+      "file": "step003.d.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "v",
+      "file": "step003.v.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "sel",
+      "file": "step003.sel.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "t",
+      "file": "step004.t.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "w",
+      "file": "step004.w.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "u",
+      "file": "step004.u.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "s",
+      "file": "step004.s.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "by_g",
+      "file": "step004.by_g.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "total",
+      "file": "step004.total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "d",
+      "file": "step004.d.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "v",
+      "file": "step004.v.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "sel",
+      "file": "step004.sel.arrow",
+      "rows": 3
+    }
+  ]
+}

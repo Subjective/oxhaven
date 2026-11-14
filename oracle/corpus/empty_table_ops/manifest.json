@@ -1,0 +1,74 @@
+{
+  "format": 1,
+  "scenario": "empty_table_ops",
+  "scenario_sha256": "a3cee65a08b51fbfed75d1d69f16817213f373cc5ba9856df126754f9cb53730",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "w",
+      "file": "step000.w.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "s",
+      "file": "step000.s.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "h",
+      "file": "step000.h.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "tl",
+      "file": "step000.tl.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "u",
+      "file": "step000.u.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "v",
+      "file": "step000.v.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "d",
+      "file": "step000.d.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "m",
+      "file": "step000.m.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "a_keyed",
+      "file": "step000.a_keyed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "a_all",
+      "file": "step000.a_all.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "ub",
+      "file": "step000.ub.arrow",
+      "rows": 0
+    }
+  ]
+}

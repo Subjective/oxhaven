@@ -1,0 +1,20 @@
+{
+  "format": 1,
+  "scenario": "update_by_cum_sum",
+  "scenario_sha256": "5e71f81fa90c9da482e26c789cc904cc282463a56b6da4bed119117cfab86b03",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 10
+    }
+  ]
+}

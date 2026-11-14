@@ -1,0 +1,50 @@
+{
+  "format": 1,
+  "scenario": "where_float_nan",
+  "scenario_sha256": "0c027b54534d7d1e6d05ca52c173f720852985289c5b689f0b44a4699fc27324",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "gt",
+      "file": "step000.gt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lt",
+      "file": "step000.lt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ge",
+      "file": "step000.ge.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "eq_self",
+      "file": "step000.eq_self.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "is_nan",
+      "file": "step000.is_nan.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "is_null",
+      "file": "step000.is_null.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "is_inf",
+      "file": "step000.is_inf.arrow",
+      "rows": 2
+    }
+  ]
+}

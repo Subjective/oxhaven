@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "scenario": "merge_tables",
+  "scenario_sha256": "c4d19ce244b453e6ed1afc1d651922e9392cf8d4ec7e43fc3b8c0d86b70705fc",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ab",
+      "file": "step000.ab.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "ba",
+      "file": "step000.ba.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "aa",
+      "file": "step000.aa.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "aeb",
+      "file": "step000.aeb.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "ee",
+      "file": "step000.ee.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "abab",
+      "file": "step000.abab.arrow",
+      "rows": 10
+    }
+  ]
+}

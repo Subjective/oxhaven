@@ -1,0 +1,26 @@
+{
+  "format": 1,
+  "scenario": "drop_columns",
+  "scenario_sha256": "aae5576be726cbaf076a6e9f6ce49673fac88e9f99eef7999c0651290bb7caf1",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "one",
+      "file": "step000.one.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "some",
+      "file": "step000.some.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "most",
+      "file": "step000.most.arrow",
+      "rows": 8
+    }
+  ]
+}

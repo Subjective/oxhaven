@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "name": "ticking_agg_by",
+  "description": "Aggregations by key and over the whole table while groups gain rows, change, empty out and come back.",
+  "inputs": [
+    {
+      "name": "t",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}],
+      "rows": [
+        [1, "x", 5, 0.5],
+        [2, "y", -2, 1.5],
+        [3, "x", null, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "by_k", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["SumI = I", "SumD = D"]}, {"agg": "count", "column": "N"}, {"agg": "min", "columns": ["MinI = I"]}, {"agg": "max", "columns": ["MaxD = D"]}, {"agg": "avg", "columns": ["AvgI = I", "AvgD = D"]}, {"agg": "first", "columns": ["FirstId = Id"]}, {"agg": "last", "columns": ["LastId = Id"]}], "by": ["K"]},
+    {"name": "total", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["SumI = I", "SumD = D"]}, {"agg": "count", "column": "N"}, {"agg": "min", "columns": ["MinI = I"]}, {"agg": "max", "columns": ["MaxI = I"]}, {"agg": "avg", "columns": ["AvgD = D"]}], "by": []}
+  ],
+  "results": [
+    {"table": "by_k"},
+    {"table": "total"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[4, "y", 8, 0.25], [5, "z", 1, 1.0], [6, null, 2, 2.0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[1, "y", 50, 5.0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[5]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[7, "z", 3, "NaN"], [3, "x", 2147483647, 1e+300]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[3]]},
+        {"action": "add", "table": "t", "rows": [[8, "x", -4, -0.5]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "t", "rows": [[7, "z", 3, 3.0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "t", "rows": [[1], [2], [4], [6], [7], [8]]}
+      ]
+    }
+  ]
+}
