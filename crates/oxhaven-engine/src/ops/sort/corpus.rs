@@ -3,9 +3,9 @@
 //! Java server (`oracle/corpus`, see `oracle/README.md`).
 //!
 //! Every scenario is loaded. A table of a scenario is built when its operation is one of
-//! these and every table it is defined from could be built; the other tables need
-//! operations of other tasks, or an input this test cannot make, and are counted as not
-//! run. Every result that could be built is compared with its recording at every step by
+//! these and every table it is defined from could be built, or when it is a `time_table`,
+//! built on a fixed clock; the other tables need operations of other tasks, or an input
+//! this test cannot make, and are counted as not run. Every result that could be built is compared with its recording at every step by
 //! the rules of `oracle/harness/rules.py` that apply here: column names, order and types,
 //! the row count, the cells by position (floats bit for bit, every NaN equal to every NaN),
 //! and the attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`. Where Java refused
@@ -14,7 +14,10 @@
 use super::testing::graph;
 use super::{head, reverse, slice, sort, tail, SortColumn, SortError};
 use crate::ops::merge::{flatten, merge, MergeError};
-use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
+use crate::table::{
+    append_only_input_table, in_memory_table, keyed_input_table, time_table, TimeSource,
+    TimeTableOptions,
+};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
     Int8Array, RecordBatch, StringArray, TimestampNanosecondArray,
@@ -254,8 +257,91 @@ fn sorted_or_refused(result: Result<Arc<dyn Table>, SortError>) -> Built {
 
 /// Defines the table of `operation` from `tables`. An operation this test does not know
 /// is not run, whatever its keys are.
-fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
+/// The clock of the scenarios' time tables. Every scenario reads rows of a time table that
+/// are due long before this time, so any later time gives the same results; Java ran at the
+/// time of the recording.
+const NOW: &str = "2025-01-01T00:00:00Z";
+
+struct FixedClock(i64);
+
+impl TimeSource for FixedClock {
+    fn now_nanos(&self) -> i64 {
+        self.0
+    }
+}
+
+/// The nanoseconds of a period written as hours, minutes or seconds (`PT1H`), or `None`
+/// for any other text, which the gRPC handler parses.
+fn period_nanos(text: &str) -> Option<i64> {
+    let digits = text.strip_prefix("PT")?;
+    let (number, unit) = digits.split_at(digits.len().checked_sub(1)?);
+    let seconds = match unit {
+        "H" => 3600,
+        "M" => 60,
+        "S" => 1,
+        _ => return None,
+    };
+    Some(number.parse::<i64>().ok()? * seconds * 1_000_000_000)
+}
+
+/// The nanoseconds since the epoch of a UTC time written `YYYY-MM-DDTHH:MM:SSZ`, or `None`
+/// for any other text, which the gRPC handler parses.
+fn instant_nanos(text: &str) -> Option<i64> {
+    let bytes = text.as_bytes();
+    let separators = [
+        (4, b'-'),
+        (7, b'-'),
+        (10, b'T'),
+        (13, b':'),
+        (16, b':'),
+        (19, b'Z'),
+    ];
+    if bytes.len() != 20 || separators.iter().any(|&(at, byte)| bytes[at] != byte) {
+        return None;
+    }
+    let field = |range: std::ops::Range<usize>| text[range].parse::<i64>().ok();
+    let (year, month, day) = (field(0..4)?, field(5..7)?, field(8..10)?);
+    // Days from 1970-01-01 to the date, in the proleptic Gregorian calendar.
+    let (year, month) = if month <= 2 {
+        (year - 1, month + 9)
+    } else {
+        (year, month - 3)
+    };
+    let era = year.div_euclid(400);
+    let of_era = year - era * 400;
+    let of_year = (153 * month + 2) / 5 + day - 1;
+    let of_cycle = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    let days = era * 146_097 + of_cycle - 719_468;
+    let seconds = days * 86_400 + field(11..13)? * 3600 + field(14..16)? * 60 + field(17..19)?;
+    Some(seconds * 1_000_000_000)
+}
+
+/// A `time_table` of a scenario on the clock [`NOW`], or why it is not made.
+fn time_table_of(graph: &Arc<dyn UpdateGraph>, operation: &Value) -> Built {
+    let period = period_nanos(text(&operation["period"]));
+    let start = instant_nanos(text(&operation["start_time"]));
+    let (Some(period_nanos), Some(start)) = (period, start) else {
+        return Built::NotRun("a time the gRPC handler parses".to_string());
+    };
+    let options = TimeTableOptions {
+        start_nanos: Some(start),
+        period_nanos,
+        blink: operation["blink"] == true,
+    };
+    let clock = Arc::new(FixedClock(instant_nanos(NOW).expect("a time")));
+    let table = time_table(graph.clone(), clock, options).expect("a time table");
+    Built::Table(table)
+}
+
+fn define(
+    graph: &Arc<dyn UpdateGraph>,
+    tables: &BTreeMap<String, Built>,
+    operation: &Value,
+) -> Built {
     let kind = text(&operation["op"]);
+    if kind == "time_table" {
+        return time_table_of(graph, operation);
+    }
     let sources: Vec<&str> = match kind {
         "merge" => list(&operation["sources"]).iter().map(text).collect(),
         kind if OURS.contains(&kind) => vec![text(&operation["source"])],
@@ -458,7 +544,7 @@ fn run(path: &Path, tally: &mut Tally) {
         inputs.insert(name, loaded);
     }
     for operation in list(&scenario["operations"]) {
-        let built = define(&tables, operation);
+        let built = define(&graph, &tables, operation);
         let table = text(&operation["name"]).to_string();
         made_by.insert(table.clone(), text(&operation["op"]));
         tables.insert(table, built);
@@ -703,6 +789,10 @@ fn results_match_the_recorded_java_results() {
         "ticking_sort_absolute_descending/double_down",
         "ticking_sort_absolute_descending/int_down",
         "ticking_sort_absolute_descending/string_down_int_up",
+        "ticking_time_table/blinking_none",
+        "ticking_time_table/first_half_days",
+        "ticking_time_table/first_hours",
+        "ticking_time_table/some_hours",
         "ticking_update_by_append/first3",
         "ticking_where_sort/by_s",
         "ticking_where_sort/by_v",
@@ -714,8 +804,8 @@ fn results_match_the_recorded_java_results() {
     ];
     assert_eq!(tally.compared, expected);
     // 101 tables of static scenarios at one step, and the ticking ones at every step:
-    // 1 at 5 steps, 1 at 6 steps, 22 at 8 steps, 26 at 9 steps.
-    assert_eq!(tally.comparisons, 101 + 1 * 5 + 1 * 6 + 22 * 8 + 26 * 9);
+    // 4 at 3 steps, 1 at 5 steps, 1 at 6 steps, 22 at 8 steps, 26 at 9 steps.
+    assert_eq!(tally.comparisons, 101 + 4 * 3 + 5 + 6 + 22 * 8 + 26 * 9);
     // Results of this test's operations that need an operation of another task, or an
     // input this test cannot make.
     let not_run = [
@@ -741,10 +831,6 @@ fn results_match_the_recorded_java_results() {
         "ticking_merge_refreshing/derived: where",
         "ticking_slice_flatten_reverse/flat_big: where",
         "ticking_slice_flatten_reverse/rev_big: where",
-        "ticking_time_table/first_hours: time_table",
-        "ticking_time_table/some_hours: time_table",
-        "ticking_time_table/first_half_days: time_table",
-        "ticking_time_table/blinking_none: time_table",
         "ticking_update_by_append/last3: update_by",
     ];
     assert_eq!(tally.not_run, not_run, "not run");
