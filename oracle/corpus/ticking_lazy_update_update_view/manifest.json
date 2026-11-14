@@ -1,0 +1,344 @@
+{
+  "format": 2,
+  "scenario": "ticking_lazy_update_update_view",
+  "scenario_sha256": "b687b1c82b9a44450a8a453b6d85bf2cecf21ea5913b62d3df2c334f55f48037",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lazy",
+      "file": "step000.lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lazy_replace",
+      "file": "step000.lazy_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uv",
+      "file": "step000.uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uv_replace",
+      "file": "step000.uv_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uv_of_lazy",
+      "file": "step000.uv_of_lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lazy_of_uv",
+      "file": "step000.lazy_of_uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uv_big",
+      "file": "step000.uv_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "lazy_sorted",
+      "file": "step000.lazy_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "lazy",
+      "file": "step001.lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "lazy_replace",
+      "file": "step001.lazy_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "uv",
+      "file": "step001.uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "uv_replace",
+      "file": "step001.uv_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "uv_of_lazy",
+      "file": "step001.uv_of_lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "lazy_of_uv",
+      "file": "step001.lazy_of_uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "uv_big",
+      "file": "step001.uv_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "lazy_sorted",
+      "file": "step001.lazy_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "lazy",
+      "file": "step002.lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "lazy_replace",
+      "file": "step002.lazy_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "uv",
+      "file": "step002.uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "uv_replace",
+      "file": "step002.uv_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "uv_of_lazy",
+      "file": "step002.uv_of_lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "lazy_of_uv",
+      "file": "step002.lazy_of_uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "uv_big",
+      "file": "step002.uv_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "lazy_sorted",
+      "file": "step002.lazy_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "lazy",
+      "file": "step003.lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "lazy_replace",
+      "file": "step003.lazy_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "uv",
+      "file": "step003.uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "uv_replace",
+      "file": "step003.uv_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "uv_of_lazy",
+      "file": "step003.uv_of_lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "lazy_of_uv",
+      "file": "step003.lazy_of_uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "uv_big",
+      "file": "step003.uv_big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "lazy_sorted",
+      "file": "step003.lazy_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "lazy",
+      "file": "step004.lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "lazy_replace",
+      "file": "step004.lazy_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "uv",
+      "file": "step004.uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "uv_replace",
+      "file": "step004.uv_replace.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "uv_of_lazy",
+      "file": "step004.uv_of_lazy.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "lazy_of_uv",
+      "file": "step004.lazy_of_uv.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "uv_big",
+      "file": "step004.uv_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "lazy_sorted",
+      "file": "step004.lazy_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "lazy",
+      "file": "step005.lazy.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "lazy_replace",
+      "file": "step005.lazy_replace.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "uv",
+      "file": "step005.uv.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "uv_replace",
+      "file": "step005.uv_replace.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "uv_of_lazy",
+      "file": "step005.uv_of_lazy.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "lazy_of_uv",
+      "file": "step005.lazy_of_uv.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "uv_big",
+      "file": "step005.uv_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "lazy_sorted",
+      "file": "step005.lazy_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "lazy",
+      "file": "step006.lazy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "lazy_replace",
+      "file": "step006.lazy_replace.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "uv",
+      "file": "step006.uv.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "uv_replace",
+      "file": "step006.uv_replace.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "uv_of_lazy",
+      "file": "step006.uv_of_lazy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "lazy_of_uv",
+      "file": "step006.lazy_of_uv.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "uv_big",
+      "file": "step006.uv_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "lazy_sorted",
+      "file": "step006.lazy_sorted.arrow",
+      "rows": 1
+    }
+  ]
+}

@@ -1,0 +1,75 @@
+{
+  "format": 2,
+  "scenario": "sort_absolute",
+  "scenario_sha256": "baa027faa6dd1de484cf685eeb1ebbc3738735a8ebcb7a77c316f02059381dd3",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "abs_int",
+      "file": "step000.abs_int.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_int_down",
+      "file": "step000.abs_int_down.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_long",
+      "file": "step000.abs_long.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_byte_down",
+      "file": "step000.abs_byte_down.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_float",
+      "file": "step000.abs_float.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_float_down",
+      "file": "step000.abs_float_down.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_double",
+      "file": "step000.abs_double.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_double_down",
+      "file": "step000.abs_double_down.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_then_plain",
+      "file": "step000.abs_then_plain.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "plain_then_abs",
+      "file": "step000.plain_then_abs.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "abs_string",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

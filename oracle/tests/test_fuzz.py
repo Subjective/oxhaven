@@ -20,7 +20,7 @@ from harness import scenario as sc
 from harness.results import ResultSet
 
 ORACLE = Path(__file__).resolve().parent.parent
-ALL_OPS = frozenset(sc.OPERATIONS)
+ALL_OPS = fuzz.OPERATIONS
 SEEDS = range(200)
 GENERATED = {seed: fuzz.generate(seed, ALL_OPS)[0] for seed in SEEDS}
 
@@ -39,7 +39,7 @@ def test_generation_is_deterministic():
 def test_generation_is_the_same_in_another_process():
     """Python randomizes string hashes per process; the generator must not depend on them."""
     code = ("import json; from harness import fuzz, scenario as sc; "
-            "print(json.dumps(fuzz.generate(5, frozenset(sc.OPERATIONS))[0], sort_keys=True))")
+            "print(json.dumps(fuzz.generate(5, fuzz.OPERATIONS)[0], sort_keys=True))")
     for hash_seed in ("1", "2"):
         out = subprocess.run(
             [sys.executable, "-c", code], cwd=ORACLE, check=True, capture_output=True,

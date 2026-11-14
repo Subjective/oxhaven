@@ -42,6 +42,12 @@ FLOATS = ("float32", "float64")
 NUMERIC = INTS + FLOATS
 ORDERED_STAMPS = ("int32", "int64", "float64", "timestamp")  # as-of match columns
 JOINS = ("natural_join", "exact_join", "join", "aj")
+# The operations the generator can build. The scenario for a seed depends on the set asked
+# for, so adding an operation here changes no scenario that did not ask for it.
+OPERATIONS = frozenset({
+    "where", "sort", "head", "tail", "view", "select", "update", "drop_columns", "merge",
+    "agg_by", "natural_join", "exact_join", "join", "aj", "update_by",
+})
 MAX_ROWS = 400  # a generated table is never expected to grow beyond this
 
 _STRINGS = ["", "a", "b", "A", "aa", "ab", "z", "é", "ß", "\U0001d11e"]
@@ -543,7 +549,12 @@ def generate(seed: int, ops: frozenset[str] | set[str]) -> tuple[dict[str, Any],
 
     `ops` are harness operation names (`scenario.OPERATIONS`).
     """
-    chosen = tuple(sorted(op for op in ops if op in sc.OPERATIONS))
+    unknown = sorted(set(ops) - OPERATIONS)
+    if unknown:
+        raise sc.ScenarioError(
+            f"the fuzzer does not generate {', '.join(unknown)}; it generates "
+            f"{', '.join(sorted(OPERATIONS))}")
+    chosen = tuple(sorted(ops))
     if not chosen:
         raise sc.ScenarioError("fuzz needs at least one table operation")
     # A string seed is hashed by `random` in a way that does not vary between runs.
@@ -585,9 +596,7 @@ def _valid(doc: dict[str, Any]) -> bool:
 
 
 def _references(op: dict[str, Any]) -> set[str]:
-    refs = {op[key] for key in ("source", "left", "right") if key in op}
-    refs.update(op.get("sources", ()))
-    return refs
+    return set(sc.references(op))
 
 
 def _prune(doc: dict[str, Any]) -> dict[str, Any]:

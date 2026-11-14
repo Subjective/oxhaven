@@ -1,0 +1,86 @@
+{
+  "format": 2,
+  "scenario": "flatten_reverse",
+  "scenario_sha256": "c252d9c3d97c0601d9941c1448c179ef7100e52082521a210765f926a2bc1b40",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "flat",
+      "file": "step000.flat.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "flat_big",
+      "file": "step000.flat_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "flat_empty",
+      "file": "step000.flat_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "rev",
+      "file": "step000.rev.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "rev_big",
+      "file": "step000.rev_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "rev_empty",
+      "file": "step000.rev_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "rev_rev",
+      "file": "step000.rev_rev.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "rev_head",
+      "file": "step000.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "rev_tail",
+      "file": "step000.rev_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "flat_rev",
+      "file": "step000.flat_rev.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "sorted_s",
+      "file": "step000.sorted_s.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "rev_sorted",
+      "file": "step000.rev_sorted.arrow",
+      "rows": 6
+    }
+  ]
+}

@@ -60,16 +60,16 @@ class Fault:
 
 
 def _cells(table: pa.Table, index: int) -> list[Any]:
-    column = table.column(index)
-    if pat.is_timestamp(column.type):
-        column = column.cast(pa.int64())
-    return column.to_pylist()
+    return r._cells(table.column(index))  # noqa: SLF001
 
 
 def _with_cells(table: pa.Table, index: int, cells: list[Any]) -> pa.Table:
     field = table.schema.field(index)
     if pat.is_timestamp(field.type):
         array = pa.array(cells, pa.int64()).cast(field.type)
+    elif (pat.is_list(field.type) or pat.is_large_list(field.type)) and pat.is_timestamp(
+            field.type.value_type):
+        array = pa.array(cells, pa.list_(pa.int64())).cast(field.type)
     else:
         array = pa.array(cells, field.type)
     return table.set_column(index, field, array)
@@ -81,7 +81,7 @@ def _supported(table: pa.Table) -> list[int]:
 
 def _tolerance(table: pa.Table, index: int, ctx: Context) -> r.Tolerance | None:
     field = table.schema.field(index)
-    if pat.is_floating(field.type) and field.name in ctx.computed:
+    if pat.is_floating(field.type) and r.is_computed(ctx.computed, field.name):
         return ctx.rules.tolerance(field.type)
     return None
 
@@ -98,6 +98,8 @@ def _different_value(arrow_type: pa.DataType, value: Any) -> Any:
         return not value
     if pat.is_string(arrow_type):
         return value + "x"
+    if pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
+        return list(value) + [None]
     if pat.is_floating(arrow_type):
         if math.isnan(value) or math.isinf(value):
             return 0.0
@@ -114,6 +116,8 @@ def _default_value(arrow_type: pa.DataType) -> Any:
         return ""
     if pat.is_floating(arrow_type):
         return 0.0
+    if pat.is_list(arrow_type) or pat.is_large_list(arrow_type):
+        return []
     return 0
 
 
@@ -270,7 +274,7 @@ def _float_shift(arrow_type: pa.DataType, inside: bool) -> Callable[[pa.Table, C
         tolerance = ctx.rules.tolerance(arrow_type)
         factor = 0.5 if inside else 2.0
         for index, field in enumerate(table.schema):
-            if field.type != arrow_type or field.name not in ctx.computed:
+            if field.type != arrow_type or not r.is_computed(ctx.computed, field.name):
                 continue
             for row, cell in enumerate(_cells(table, index)):
                 if cell is None or math.isnan(cell) or math.isinf(cell):
@@ -291,7 +295,7 @@ def _float_shift(arrow_type: pa.DataType, inside: bool) -> Callable[[pa.Table, C
 def _exact_float_cell(table: pa.Table, ctx: Context,
                       want: Callable[[float], bool]) -> tuple[int, int, float]:
     for index, field in enumerate(table.schema):
-        if not pat.is_floating(field.type) or field.name in ctx.computed:
+        if not pat.is_floating(field.type) or r.is_computed(ctx.computed, field.name):
             continue
         for row, cell in enumerate(_cells(table, index)):
             if cell is not None and want(cell):
@@ -322,7 +326,7 @@ def exact_float_zero_sign(table: pa.Table, ctx: Context) -> Change:
 def computed_float_zero_sign(table: pa.Table, ctx: Context) -> Change:
     """Flips the sign of a zero in a computed float column: within tolerance, so accepted."""
     for index, field in enumerate(table.schema):
-        if not pat.is_floating(field.type) or field.name not in ctx.computed:
+        if not pat.is_floating(field.type) or not r.is_computed(ctx.computed, field.name):
             continue
         for row, cell in enumerate(_cells(table, index)):
             if cell is not None and cell == 0.0:

@@ -357,8 +357,73 @@ def test_field_metadata_parity_lists_as_compared(key):
 
 
 def test_unsupported_types_are_reported_not_passed():
-    a = table(X=pa.array([[1, 2]], pa.list_(pa.int32())))
-    assert kinds(diff(a, a)) == [rules.UNSUPPORTED_TYPE]
+    for unknown in (pa.array([{"a": 1}], pa.struct([("a", pa.int32())])),
+                    pa.array([b"x"], pa.binary()),
+                    pa.array([[{"a": 1}]], pa.list_(pa.struct([("a", pa.int32())])))):
+        a = table(X=unknown)
+        assert kinds(diff(a, a)) == [rules.UNSUPPORTED_TYPE]
+
+
+def test_array_cells_are_compared_element_by_element():
+    ints = pa.list_(pa.int32())
+    a = table(X=pa.array([[1, 2], [], None, [None, 3]], ints))
+    assert diff(a, a) == []
+    for other in ([[1, 2], [], None, [None, 4]],      # an element
+                  [[1, 2], [], None, [None]],         # a length
+                  [[1, 2], None, None, [None, 3]],    # empty array against null
+                  [[2, 1], [], None, [None, 3]],      # the order of the elements
+                  [[1, 2], [], [], [None, 3]]):       # null against empty array
+        found = diff(a, table(X=pa.array(other, ints)))
+        assert kinds(found) == [rules.VALUE], other
+    wrong_type = table(X=pa.array([[1, 2], [], None, [None, 3]], pa.list_(pa.int64())))
+    assert kinds(diff(a, wrong_type)) == [rules.COLUMN_TYPE]
+
+
+def test_float_arrays_are_exact_unless_the_column_is_computed():
+    doubles = pa.list_(pa.float64())
+    a = table(X=pa.array([[1.0, math.nan, None], [0.0]], doubles))
+    close = table(X=pa.array([[1.0 + 1e-12, math.nan, None], [0.0]], doubles))
+    far = table(X=pa.array([[1.0 + 1e-6, math.nan, None], [0.0]], doubles))
+    zero = table(X=pa.array([[1.0, math.nan, None], [-0.0]], doubles))
+    nan_null = table(X=pa.array([[1.0, None, None], [0.0]], doubles))
+    assert diff(a, a) == []
+    assert kinds(diff(a, close)) == [rules.VALUE]
+    assert kinds(diff(a, zero)) == [rules.VALUE]
+    assert diff(a, close, computed={"X"}) == []
+    assert diff(a, zero, computed={"X"}) == []
+    assert kinds(diff(a, far, computed={"X"})) == [rules.VALUE]
+    assert kinds(diff(a, nan_null, computed={"X"})) == [rules.VALUE]
+
+
+def test_unordered_comparison_orders_array_cells():
+    ints = pa.list_(pa.int32())
+    a = table(X=pa.array([[2], [1, 5], None, []], ints))
+    b = table(X=pa.array([None, [], [1, 5], [2]], ints))
+    assert kinds(diff(a, b)) == [rules.VALUE] * 4
+    assert diff(a, b, ordered=False) == []
+
+
+def test_every_column_marker_of_agg_all_by():
+    operations = [
+        {"name": "s", "op": "agg_all_by", "source": "t", "agg": {"agg": "sum", "columns": []},
+         "by": ["K"]},
+        {"name": "m", "op": "agg_all_by", "source": "t", "agg": {"agg": "max", "columns": []},
+         "by": ["K"]},
+        {"name": "m_of_s", "op": "agg_all_by", "source": "s",
+         "agg": {"agg": "max", "columns": []}, "by": ["K"]},
+        {"name": "v", "op": "view", "source": "s", "formulas": ["K", "Y = X"]},
+    ]
+    computed = rules.computed_columns(operations)
+    assert rules.is_computed(computed["s"], "X") and not rules.is_computed(computed["s"], "K")
+    assert not rules.is_computed(computed["m"], "X")
+    assert rules.is_computed(computed["m_of_s"], "X")
+    assert not rules.is_computed(computed["m_of_s"], "K")
+    assert computed["v"] == {"Y"}
+    a = table(K=pa.array([1.0]), X=pa.array([2.0]))
+    b = table(K=pa.array([1.0]), X=pa.array([2.0 + 1e-12]))
+    c = table(K=pa.array([1.0 + 1e-13]), X=pa.array([2.0]))
+    assert diff(a, b, computed=computed["s"]) == []
+    assert kinds(diff(a, c, computed=computed["s"])) == [rules.VALUE]
 
 
 def test_long_lists_of_mismatches_are_truncated_with_a_count():
