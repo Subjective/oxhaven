@@ -384,10 +384,12 @@ struct Input {
 }
 
 impl Input {
-    /// Queues a change and runs update cycles until it has been applied.
+    /// Queues a change and waits until an update cycle has applied it.
     ///
     /// Java queues the change, asks its periodic graph for a refresh and waits for it.
-    /// This graph has no timer, so the writer drives the cycle itself.
+    /// `run_cycle` is that request and wait: a graph with its own driver thread, as the
+    /// server's has, runs the cycle there and wakes this thread when it has finished; a
+    /// stepped graph runs the cycle on this thread.
     ///
     /// Behavior: BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#add, #delete,
     /// #checkBlockingEditSafety and #waitForSequence
@@ -443,8 +445,8 @@ impl InputTable for Input {
     }
 
     /// # Panics
-    /// If the calling thread holds the graph's shared lock: the change could never be
-    /// applied.
+    /// If the calling thread holds the graph's shared lock: the cycle that applies the
+    /// change could never run.
     fn add(&self, rows: RecordBatch) -> Result<(), TableFailure> {
         self.submit(false, self.writer.arrange_rows(&rows)?)
     }

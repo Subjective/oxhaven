@@ -1,0 +1,9 @@
+Add to a keyed input table: OK
+Add to a table that is not an input table: INVALID_ARGUMENT
+Add a table of other columns: INVALID_ARGUMENT
+Add without an input table: INVALID_ARGUMENT
+Add an export that does not exist: DEADLINE_EXCEEDED
+Delete from a keyed input table: OK
+Delete from an append-only input table: INVALID_ARGUMENT
+Delete with a column that is not a key: INVALID_ARGUMENT
+Delete from a table that is not an input table: INVALID_ARGUMENT

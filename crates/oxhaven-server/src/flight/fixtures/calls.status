@@ -1,0 +1,15 @@
+DoGet unknown export: DEADLINE_EXCEEDED
+DoGet empty ticket: INVALID_ARGUMENT
+DoGet unknown route: FAILED_PRECONDITION
+DoGet malformed export ticket: FAILED_PRECONDITION
+GetSchema unknown export: DEADLINE_EXCEEDED
+GetSchema unknown route: FAILED_PRECONDITION
+GetSchema empty path: FAILED_PRECONDITION
+GetSchema command: FAILED_PRECONDITION
+GetSchema unknown type: FAILED_PRECONDITION
+GetSchema export id not a number: FAILED_PRECONDITION
+GetSchema export path too long: FAILED_PRECONDITION
+GetFlightInfo unknown export: DEADLINE_EXCEEDED
+GetFlightInfo unknown route: FAILED_PRECONDITION
+ListFlights: OK
+ListFlights with an expression: INVALID_ARGUMENT

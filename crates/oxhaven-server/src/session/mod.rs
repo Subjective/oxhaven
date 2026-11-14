@@ -32,9 +32,10 @@ pub use auth::{
 };
 pub use executor::{Executor, Job, TokioExecutor};
 pub use export::{
-    is_failure, is_terminal, Export, ExportBuilder, ExportError, ExportState, ExportValue,
+    is_failure, is_terminal, Export, ExportBuilder, ExportError, ExportFailure, ExportState,
+    ExportValue,
 };
-pub use flight::{handshake, HandshakeOnlyFlight, HandshakeStream};
+pub use flight::{handshake, HandshakeStream};
 pub use grpc::{Reply, SessionGrpc};
 pub use interceptor::{current_session, optional_session, SessionLayer, SessionMiddleware};
 pub use router::{ExportTicketResolver, TicketResolver, TicketRouter};

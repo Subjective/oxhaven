@@ -1,8 +1,13 @@
 //! The Oxhaven server binary.
 
+use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
+use std::time::Duration;
 
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
+use oxhaven_server::update_graph::DEFAULT_TARGET_CYCLE_DURATION;
+use oxhaven_server::web::WebRoot;
 use oxhaven_server::{serve, ServerConfig, ServerState};
 use tokio::net::TcpListener;
 
@@ -14,6 +19,9 @@ Usage: oxhaven-server [options]
   --auth <handlers>         comma-separated list of psk and anonymous (default psk)
   --psk <key>               pre-shared key; also read from OXHAVEN_PSK; random if absent
   --token-expire-ms <ms>    session token lifetime (default 300000)
+  --cycle-ms <ms>           target update graph cycle duration (default 1000)
+  --web-root <directory>    the web IDE's files, served at /ide/, /iframe/ and /jsapi/;
+                            scripts/extract-web-root.sh makes the directory (default: none)
 ";
 
 struct Args {
@@ -22,6 +30,8 @@ struct Args {
     auth: String,
     psk: Option<String>,
     token_expire_ms: i64,
+    cycle: Duration,
+    web_root: Option<PathBuf>,
 }
 
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -31,6 +41,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         auth: "psk".to_string(),
         psk: std::env::var("OXHAVEN_PSK").ok(),
         token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
+        cycle: DEFAULT_TARGET_CYCLE_DURATION,
+        web_root: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -47,6 +59,13 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .parse()
                     .map_err(|e| format!("--token-expire-ms: {e}"))?
             }
+            "--cycle-ms" => {
+                parsed.cycle = value()?
+                    .parse()
+                    .map(Duration::from_millis)
+                    .map_err(|e| format!("--cycle-ms: {e}"))?
+            }
+            "--web-root" => parsed.web_root = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
@@ -79,10 +98,16 @@ fn auth_handlers(args: &Args) -> Result<AuthHandlers, String> {
 }
 
 async fn run(args: Args) -> Result<(), String> {
-    let state = ServerState::new(ServerConfig {
+    let web_root = match &args.web_root {
+        Some(dir) => Some(Arc::new(WebRoot::open(dir)?)),
+        None => None,
+    };
+    let mut state = ServerState::new(ServerConfig {
         auth_handlers: auth_handlers(&args)?,
         token_expire_ms: args.token_expire_ms,
+        target_cycle_duration: Some(args.cycle),
     })?;
+    state.web_root = web_root;
     let listener = TcpListener::bind((args.host.as_str(), args.port))
         .await
         .map_err(|e| format!("cannot listen on {}:{}: {e}", args.host, args.port))?;

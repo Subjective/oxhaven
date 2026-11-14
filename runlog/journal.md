@@ -77,3 +77,120 @@ PR 17 (formula corpus) merged. PR 18 opened for the PARITY.md corrections (facts
 Formula language and the PARITY.md corrections are on main. The expr agent is resumed in its own
 context for the tagged corpus test and the function library (5.4), with an explicit exit after the
 corpus test if its context is nearly full. Column arrays (5.5) stay separate.
+
+## 10:25 Flight branch waits for the table service; oracle agent resumed
+
+The Flight and input-table branch is pushed but depends on the table service branch for `schema.rs`
+and for the config service its input-table gate needs. It is held until 2.2 merges, then takes main
+and gets its PR. Lesson: two service tasks sharing one file should have had that file merged first
+as its own small PR. Next time a shared file is split out before the fan-out.
+
+The oracle agent is resumed to add recordings for operations the corpus lacks (slice, flatten,
+reverse, absolute sort, blink) and harness support for the remaining batch operations, because two
+operator agents reported verifying against the Java source alone for those. Agents now get a
+private scratch directory after one overwrote another's script in the shared scratchpad.
+
+## 10:22 PR 19 merged; M4 started with two fresh agents
+
+Sort and merge are on main. Two operator slots were free, so M4 starts now rather than waiting for
+the M3 gate: natural/exact/left join (4.2), and snapshot plus select_distinct (4.9 and half of 4.8).
+Both are fresh agents because the finished operator agents ended near 250k tokens. They may record
+their own Java fixtures, since the oracle extension is still in progress. Eight agents are running;
+load average is about 7 on 4 cores, so no more are added until one finishes.
+
+## 10:27 Wave 2 landing: where and the table service merged; handlers and replay start
+
+PRs 20 (table service, config, cycle driver) and 21 (where) merged; PR 22 (basic aggregation) is in
+CI. All four wave-2 operator and service runs finished within 50 to 60 minutes of each other and
+all judged themselves too large or only just right, with 87k to 339k tokens each. None parked.
+
+Next: the table service agent (98k tokens used, knows the registry) is resumed to expose the merged
+operators over gRPC and run the first oracle replay against Oxhaven. This is the first check of the
+engine through the wire, so mismatches go back to operator owners rather than being patched in
+handlers. The Flight agent is resumed to bring its branch onto main and wire CreateInputTable.
+
+Guard added to the handler task: an `unported!` reachable from a client must be rejected with a
+status before it reaches the engine (found in the aggregation report).
+
+## 10:35 IDE acceptance test exists; the IDE path is re-planned from its findings
+
+The scout's test passes against Java and its fault matrix replaces my guesses about the IDE path.
+Corrections to the plan:
+
+- Task 2.6 assumed gRPC-web. Over plain http the browser uses one multiplexed websocket for every
+  call, so the websocket transport is on the critical path and gRPC-web is not.
+- Login is GetConfigurationConstants with an authorization header; no Flight handshake.
+- ApplyPreviewColumns (4.10) is fatal for every route, not optional.
+- No console is needed: GetConsoleTypes may return an empty list.
+
+Three pieces now run in parallel toward the acceptance test: browser transport and static files
+(scout resumed, it holds the traces), application fields with startup tables plus the console,
+storage and preview calls (fresh agent, task 6.1), and Barrage DoExchange, which starts when the
+Flight branch is on main because it reuses the Flight encoder. Static web files are not checked in;
+the server takes a web root extracted from the reference wheel (licensing stays an owner question).
+
+Lesson for the retrospective: scouting the acceptance test against the reference first was cheap
+(101k tokens) and removed a wrong task (gRPC-web first) before anyone built it.
+
+## 10:40 Main verified after stacked merges
+
+PRs 20, 21 and 22 were each green against an older main and merged within two minutes of each
+other. Checked the combined main locally: fmt, clippy and all workspace tests pass. PR 23's CI ran
+on the combined tree as well. PR 23 (IDE acceptance test) merged.
+
+## 10:58 First end-to-end replay against Oxhaven
+
+With the handlers (PR 25), the recorded Java corpus replays against a running Oxhaven server for
+the first time. Of 26 scenarios that use only exposed operations, 17 are clean. 400 differential
+fuzz seeds against live Java found one new difference. Row data matched everywhere; every
+difference is an attribute or metadata rule, or a missing function:
+
+1. static where result lacks AddOnly/AppendOnly;
+2. input-table column metadata is lost on derived tables;
+3. isNaN/isInf missing from the function library;
+4. select of a non-flat static table is not marked flat.
+
+What this says about the gates: the engine corpus tests compared rows and the attributes each
+agent chose to compare, and three of four causes are attributes that those tests did not cover.
+The wire-level replay is the stronger gate and should have existed earlier; from now on an
+operator is not done until its handler exists and replay is clean for its scenarios. Putting
+replay into CI is the next infrastructure task (needs a Java-free replay of recorded results,
+which `harness replay` already is).
+
+Fixes 1, 2 and 4 go to the where agent (87k tokens, lowest context among operator agents), 3 and
+row variables to the expr agent already working on the function library. `fuzz` stops at the first
+difference, which hides later ones once a known difference exists: the oracle agent should add a
+keep-going mode with grouping of known causes (the handler agent wrote a driver for this).
+
+## 11:06 PR 25 merged; replay gate for CI started
+
+Operator handlers are on main. A fresh agent builds the CI gate: start Oxhaven, replay the whole
+corpus and the client smokes, compare with a checked-in baseline that ratchets in both directions
+(a clean scenario that breaks fails; a differing scenario that becomes clean must be promoted in
+the same pull request). Ten agents are running.
+
+## 11:12 Browser transport pushed (PR 26); disk watch
+
+The web IDE now loads from Oxhaven and logs in over the websocket. Remaining for the acceptance
+test: application fields and console stubs (6.1, running), ApplyPreviewColumns (6.1), Barrage
+(2.4, running).
+
+Disk: 11 GB free with ten agents building (each target directory 1 to 3 GB; each worktree is
+0.7 GB since the formula corpus was checked in). Removed four clean worktrees of retired agents.
+If free space drops below 5 GB, the next agent to finish is not replaced until space recovers.
+
+## 11:20 Corpus doubled; integration is its own task
+
+The oracle extension is pushed but cannot merge alone: engine corpus tests pin the scenario count
+and the lists of compared results, so new scenarios move pins in four operator test suites. A fresh
+agent merges main into the oracle branch, classifies every new recorded result per operator
+(matches, cannot run, differs) and reports the differences. Differences become a pinned list per
+test that fails when it changes in either direction, not a silent skip.
+
+Design note for the retrospective: pinned lists in every operator test make corpus growth cost an
+integration task each time. A single shared classification file read by all corpus tests would cut
+that; worth doing once the operator set settles.
+
+New Java facts from the recordings that PARITY.md does not state (left_join unimplemented, range
+join restrictions, head_by/tail_by refusals, sum of a single -0.0 is 0.0 which bears on A2) are
+collected for a second PARITY corrections pass after integration.
