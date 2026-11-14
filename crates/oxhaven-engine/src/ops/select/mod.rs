@@ -341,15 +341,20 @@ fn computed_on_read<S: AsRef<str>>(
     }
     let columns = sources.all(&plan.published);
     let table = QueryTable::derive(parent, || {
-        Ok((
-            spec(
-                parent,
-                plan.definition(),
-                columns,
-                result_attributes(&**parent),
-            ),
-            passes_changes_through(&plan, flavor),
-        ))
+        let mut result = spec(
+            parent,
+            plan.definition(),
+            columns,
+            result_attributes(&**parent),
+        );
+        // Behavior: QueryTable#viewOrUpdateView copies attributes with
+        // `CopyAttributeOperation.UpdateView` or `.View`, and QueryTable#lazyUpdate with
+        // `.UpdateView`. BaseTable#attributeToCopySet lists `INPUT_TABLE_ATTRIBUTE` for
+        // `UpdateView` and not for `View`.
+        if flavor != Flavor::View {
+            result = result.with_input_table_of(&**parent);
+        }
+        Ok((result, passes_changes_through(&plan, flavor)))
     })?;
     Ok(table)
 }

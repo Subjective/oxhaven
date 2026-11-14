@@ -220,3 +220,36 @@ For the retrospective: corpus tests compare table contents per step, not update 
 shape errors surface only through downstream consumers or Barrage. A recorded update-shape check
 (Barrage deltas from Java are exactly that) would close this hole; the Barrage fixtures may give
 it for free.
+
+## 11:48 Merge order for the pieces that touch the replay baseline
+
+Four branches interact: the function library (PR 28, changes filter corpus pins), the attribute
+fixes (PR 29, changes filter corpus comparisons), the 83-scenario corpus integration, and the CI
+gate whose baseline lists every scenario. Order: 28, then 29 updated with main, then the corpus
+integration, then the gate with its baseline regenerated on the result. The gate lands last so its
+first baseline is the strictest true one; after that every pull request that changes replay
+outcomes must edit its baseline lines, and the rules job allows only stricter edits without the
+orchestrator's label.
+
+Started full aggregations (4.1) in a freed slot after load fell to 8 and disk recovered to 16 GB
+(removed worktrees of six finished agents).
+
+## 18:35 Usage limit stopped the run for about six and a half hours
+
+At about 11:50 the account hit its usage limit on the primary model. Five agents stopped mid-task
+(joins, update_by, the sort fix on the snapshot branch, corpus integration, full aggregations) and
+the orchestrator did not get another turn until 18:29, after a container restart. The stated reset
+is 17 November 08:00 UTC.
+
+State found on return: PR 29 was green and is merged. The Barrage branch is PR 30. Committed work
+survived in every worktree, and uncommitted edits survived in four of them. The full-aggregation
+agent had committed nothing and its worktree was gone, so that run is lost.
+
+Decision: continue on the next model down for agents, since resuming the stopped agents would send
+requests to the limited model. Three replacement agents were started in the existing worktrees
+(corpus integration, sort fix, update_by), each briefed from the branch state, not from the old
+agent's context. The orchestrator finishes the join branch itself.
+
+For the retrospective: agents should commit work in progress at least every 30 minutes so a stop
+costs minutes, not a run; and the limit should have been anticipated when eight to ten agents
+were running at once.

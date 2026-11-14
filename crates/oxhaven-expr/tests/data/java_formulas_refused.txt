@@ -20,9 +20,6 @@ java-fails	update	T > I	ordering comparison of Instant with int
 java-accepts	update	S < null	null literal as an operand of <
 java-accepts	update	null == null	comparison of null with null
 java-accepts	update	null != null	comparison of null with null
-java-accepts	update	T + 1	arithmetic on Instant values
-java-accepts	update	T - T	arithmetic on Instant values
-java-rejects	update	T + T	arithmetic on Instant values
 java-accepts	update	1.5F	float literal with an uppercase F suffix 1.5F
 java-accepts	update	1F	float literal with an uppercase F suffix 1F
 java-accepts	update	1e3F	float literal with an uppercase F suffix 1e3F
@@ -62,8 +59,6 @@ java-rejects	update	`'x y'`	time literal inside a string literal
 java-rejects	update	'\'' + SN + 'a'	time literal ' + SN + '
 java-accepts	update	T + 'PT1H'	time literal 'PT1H'
 java-accepts	update	T - 'PT1H'	time literal 'PT1H'
-java-accepts	update	T - T2	arithmetic on Instant values
-java-accepts	update	T + 1000000000L	arithmetic on Instant values
 java-accepts	update	SN.startsWith(`a`, 1)	method call String.startsWith() with 2 arguments
 java-accepts	update	SN.indexOf(C)	method call String.indexOf() with an argument of type char
 java-accepts	update	SN.indexOf(I)	method call String.indexOf() with an argument of type int
@@ -71,7 +66,6 @@ java-accepts	update	SN.indexOf('l')	method call String.indexOf() with an argumen
 java-accepts	update	SN.indexOf(`l`, 3)	method call String.indexOf() with 2 arguments
 java-accepts	update	SN.equals(I)	method call String.equals() with an argument of type int
 java-accepts	update	SN.equals(B)	method call String.equals() with an argument of type Boolean
-java-accepts	update	SN.equalsIgnoreCase(SM)	method call String.equalsIgnoreCase()
 java-accepts	update	SN.replace(`a`, `b`)	method call String.replace()
 java-accepts	update	SN.replace('a', 'b')	method call String.replace()
 java-accepts	update	SN.hashCode()	method call String.hashCode()
@@ -97,11 +91,6 @@ java-rejects	update	Math.abs(I)	static method call Math.abs()
 java-accepts	update	String.valueOf(I)	static method call String.valueOf()
 java-accepts	update	Integer.toString(I)	static method call Integer.toString()
 java-accepts	update	Math.PI	field access .PI
-java-accepts	update	abs(I)	function abs()
-java-accepts	update	isNull(null)	null literal outside ==, !=, ?:, a cast and string concatenation
-java-accepts	update	i	row variable I
-java-accepts	update	ii	row variable Ii
-java-accepts	update	k	row variable K
 java-accepts	update	I_[i - 1]	column array access I_[...]
 java-accepts	update	I_	column array I_
 java-accepts	update	I_[0]	column array access I_[...]

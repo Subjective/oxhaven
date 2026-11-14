@@ -187,3 +187,38 @@ fn string_and_instant_literals_are_constants() {
     assert_eq!(values.data_type(), &ColumnType::Instant.arrow_type());
     assert_eq!(render(&values), render(&instants([None, None]).1));
 }
+
+/// Behavior: `DhFormulaColumn#generateFillChunkHelper`: `i` and `ii` are the positions of
+/// the rows in the table's row set and `k` their keys.
+#[test]
+fn row_variables_are_positions_in_the_table_and_row_keys() {
+    let mut table = quotes();
+    table.rows = Arc::new(RowSet::from_keys([0, 2, 3]));
+    let rows = RowSet::from_keys([2, 3]);
+    let value = |formula: &str| {
+        let formula = compile(&table, formula);
+        assert!(formula.uses_row_variables());
+        let values = formula.evaluate(&table, &rows, false).unwrap();
+        (formula.result_type().clone(), render(&values))
+    };
+    let int = |values| (ColumnType::Int, render(&ints(values).1));
+    let long = |values| (ColumnType::Long, render(&longs(values).1));
+    assert_eq!(value("i"), int([Some(1), Some(2)]));
+    assert_eq!(value("ii"), long([Some(1), Some(2)]));
+    assert_eq!(value("k"), long([Some(2), Some(3)]));
+    assert_eq!(value("(int) i + Size"), int([Some(301), Some(402)]));
+    assert_eq!(value("k * 10 + ii"), long([Some(21), Some(32)]));
+    // The right operand sees the rows the left one leaves.
+    assert_eq!(
+        value("i > 1 && k == 3"),
+        (ColumnType::Boolean, render(&flags([false, true]).1))
+    );
+    assert_eq!(
+        value("k < 3"),
+        (ColumnType::Boolean, render(&flags([true, false]).1))
+    );
+    assert!(!compile(&table, "Size + 1").uses_row_variables());
+
+    let outside = compile(&table, "i").evaluate(&table, &RowSet::from_keys([1]), false);
+    assert!(outside.is_err(), "row 1 is not in the table");
+}
