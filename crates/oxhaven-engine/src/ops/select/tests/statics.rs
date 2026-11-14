@@ -1,7 +1,9 @@
 //! Results on static tables, what is shared and what is stored, and refused requests.
 
 use super::*;
-use crate::table::{empty_table, in_memory_table};
+use crate::ops::merge::merge;
+use crate::ops::sort::{reverse, tail};
+use crate::table::{empty_table, in_memory_table, uploaded_table};
 use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::RecordBatch;
 use oxhaven_testkit::{definition, longs, strings};
@@ -557,4 +559,68 @@ fn static_results_carry_no_attributes_except_through_drop_columns() {
         drop_columns(&parent, &["B"]).unwrap().attributes(),
         attributes
     );
+}
+
+fn batch(size: usize) -> RecordBatch {
+    let fields: Vec<Field> = sym_a_b()
+        .columns()
+        .iter()
+        .map(|c| Field::new(&c.name, c.column_type.arrow_type(), true))
+        .collect();
+    RecordBatch::try_new(Arc::new(Schema::new(fields)), columns(size)).unwrap()
+}
+
+#[test]
+fn static_select_of_uploaded_rows_shares_no_column_and_so_gets_new_row_keys() {
+    // The last two rows of an uploaded table, through a view that renames its columns.
+    let uploaded: Arc<dyn Table> = uploaded_table(sym_a_b(), &[batch(5)]).unwrap();
+    assert!(uploaded.is_flat());
+    let renamed = view(&uploaded, &["X2 = B", "X3 = Sym"], &Compiler).unwrap();
+    let last = tail(&renamed, 2).unwrap();
+    assert_eq!(keys(&*last), [3, 4]);
+    assert!(!last.is_flat());
+
+    let result = select(&last, &["X7 = X3 + `x`", "X9 = X2"], &Compiler).unwrap();
+    assert_eq!(keys(&*result), [0, 1]);
+    assert!(result.is_flat());
+    assert_eq!(values(&*result, "X7"), ["ax", "bx"]);
+    assert_eq!(values(&*result, "X9"), ["4", "5"]);
+    assert!(!same_source(&column(&result, "X9"), &column(&last, "X2")));
+
+    // `update` keeps the parent's columns and so its row keys.
+    let updated = update(&last, &["X9 = X2"], &Compiler).unwrap();
+    assert_eq!(keys(&*updated), [3, 4]);
+    assert!(!updated.is_flat());
+    assert_eq!(values(&*updated, "X9"), ["4", "5"]);
+
+    // The same rows of a table that holds its values in memory are shared, not copied.
+    let held: Arc<dyn Table> = in_memory_table(sym_a_b(), &[batch(5)]).unwrap();
+    let last = tail(&held, 2).unwrap();
+    let result = select(&last, &["X = A + 1", "B2 = B"], &Compiler).unwrap();
+    assert_eq!(keys(&*result), [3, 4]);
+    assert!(!result.is_flat());
+    assert!(same_source(&column(&result, "B2"), &column(&held, "B")));
+    assert_eq!(values(&*result, "B2"), ["4", "5"]);
+}
+
+#[test]
+fn static_select_copies_the_columns_of_a_merge_and_of_a_reversed_table() {
+    let held: Arc<dyn Table> = in_memory_table(sym_a_b(), &[batch(2)]).unwrap();
+
+    let merged = merge(&[held.clone(), held.clone()]).unwrap();
+    assert!(!merged.is_flat());
+    let result = select(&merged, &["B2 = B"], &Compiler).unwrap();
+    assert_eq!(keys(&*result), [0, 1, 2, 3]);
+    assert!(result.is_flat());
+    assert_eq!(values(&*result, "B2"), ["1", "2", "1", "2"]);
+
+    let reversed = reverse(&held).unwrap();
+    assert!(!reversed.is_flat());
+    let result = select(&reversed, &["B2 = B"], &Compiler).unwrap();
+    assert!(result.is_flat());
+    assert!(!same_source(
+        &column(&result, "B2"),
+        &column(&reversed, "B")
+    ));
+    assert_eq!(values(&*result, "B2"), ["2", "1"]);
 }

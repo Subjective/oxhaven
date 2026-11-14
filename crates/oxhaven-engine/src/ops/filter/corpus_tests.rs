@@ -202,6 +202,40 @@ fn assert_matches_recording(context: &str, table: &dyn Table, expected: &RecordB
     }
 }
 
+/// The attributes Java sent with a recorded table: `IsFlat`, `AddOnly`, `AppendOnly`,
+/// `BlinkTable`, and whether it has the `InputTable` attribute.
+///
+/// Behavior: `BarrageUtil#attributesToMetadata`, which sends a boolean attribute as
+/// `deephaven:attribute.<name>` and names one it cannot send, as the input table's updater,
+/// under `deephaven:unsent.attribute.<name>`.
+fn recorded_attributes(expected: &RecordBatch) -> [bool; 5] {
+    let schema = expected.schema();
+    let metadata = schema.metadata();
+    let flag = |name: &str| {
+        metadata
+            .get(&format!("deephaven:attribute.{name}"))
+            .is_some_and(|value| value == "true")
+    };
+    [
+        flag("IsFlat"),
+        flag("AddOnly"),
+        flag("AppendOnly"),
+        flag("BlinkTable"),
+        metadata.contains_key("deephaven:unsent.attribute.InputTable"),
+    ]
+}
+
+fn attributes_of(table: &dyn Table) -> [bool; 5] {
+    let attributes = table.attributes();
+    [
+        table.is_flat(),
+        attributes.add_only,
+        attributes.append_only,
+        attributes.blink,
+        table.input_table().is_some(),
+    ]
+}
+
 fn filters_of(operation: &Json) -> Vec<&str> {
     let filters = operation["filters"].as_array().expect("filters");
     filters
@@ -254,7 +288,14 @@ fn check_static_scenario(name: &str, not_run: &[&str]) -> usize {
             continue;
         }
         match (result, recorded(name, 0, operation_name)) {
-            (Ok(table), Some(expected)) => assert_matches_recording(&context, &*table, &expected),
+            (Ok(table), Some(expected)) => {
+                assert_matches_recording(&context, &*table, &expected);
+                assert_eq!(
+                    attributes_of(&*table),
+                    recorded_attributes(&expected),
+                    "{context}: IsFlat, AddOnly, AppendOnly, BlinkTable, InputTable"
+                );
+            }
             (Err(FilterError::Invalid(_)), None) => {}
             (Ok(_), None) => panic!("{context}: Java refused this"),
             (Err(e), _) => panic!("{context}: {e}"),
@@ -342,6 +383,11 @@ fn check_ticking_scenario(name: &str) -> usize {
                 assert_matches_recording(&format!("{context}: input"), &*source, &input);
             }
             assert_matches_recording(&context, &*result, &expected);
+            assert_eq!(
+                attributes_of(&*result),
+                recorded_attributes(&expected),
+                "{context}: IsFlat, AddOnly, AppendOnly, BlinkTable, InputTable"
+            );
         };
         compare(0);
         checked += 1;

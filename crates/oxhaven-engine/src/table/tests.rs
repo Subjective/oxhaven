@@ -1,5 +1,10 @@
 use super::*;
 use crate::graph::SteppedUpdateGraph;
+use crate::ops::agg::{aggregate, Aggregation};
+use crate::ops::filter::unstructured_filter;
+use crate::ops::merge::{flatten, merge};
+use crate::ops::select::{drop_columns, lazy_update, select, update, update_view, view};
+use crate::ops::sort::{head, reverse, sort, tail, SortColumn};
 use crate::update::ModifiedColumnTransformer;
 use arrow::array::{Array, Int64Array, StringArray, TimestampNanosecondArray};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -1669,4 +1674,95 @@ fn an_operator_follows_a_time_table() {
         checker.assert_consistent();
         assert_eq!(result.row_set().size(), now as u64 + 1);
     }
+}
+
+// ---------------------------------------------------------------------------------------
+// The input table attribute
+// ---------------------------------------------------------------------------------------
+
+#[test]
+fn the_input_table_attribute_passes_through_the_operations_java_copies_it_for() {
+    use oxhaven_expr::Compiler;
+    let (_stepper, graph) = graph();
+    let table: Arc<dyn Table> =
+        keyed_input_table(graph.clone(), sym_qty(), &["Sym"], None).unwrap();
+    let other: Arc<dyn Table> = keyed_input_table(graph, sym_qty(), &["Sym"], None).unwrap();
+    let input = table.input_table().unwrap();
+    let writes_to_table = |derived: &Arc<dyn Table>| {
+        derived.input_table().is_some_and(|found| {
+            std::ptr::eq(
+                Arc::as_ptr(&found) as *const (),
+                Arc::as_ptr(&input) as *const (),
+            )
+        })
+    };
+    assert!(!table.is_flat());
+
+    let filtered = unstructured_filter(&table, &["Qty > 0"], &Compiler).unwrap();
+    let sorted = sort(&table, &[SortColumn::descending("Qty")]).unwrap();
+    let kept = [
+        ("where", filtered.clone()),
+        ("sort", sorted.clone()),
+        ("flatten", flatten(&table).unwrap()),
+        (
+            "update_view",
+            update_view(&table, &["X = Qty + 1"], &Compiler).unwrap(),
+        ),
+        (
+            "lazy_update",
+            lazy_update(&table, &["X = Qty + 1"], &Compiler).unwrap(),
+        ),
+        ("where of sort", {
+            unstructured_filter(&sorted, &["Qty > 0"], &Compiler).unwrap()
+        }),
+        ("merge of one", merge(std::slice::from_ref(&table)).unwrap()),
+        (
+            "merge of its own results",
+            merge(&[filtered.clone(), sorted.clone()]).unwrap(),
+        ),
+    ];
+    for (operation, derived) in &kept {
+        assert!(writes_to_table(derived), "{operation}");
+        assert_eq!(derived.input_table().unwrap().key_columns(), ["Sym"]);
+    }
+
+    let dropped = [
+        ("view", view(&table, &["Sym", "Qty"], &Compiler).unwrap()),
+        (
+            "select",
+            select(&table, &["Sym", "Qty"], &Compiler).unwrap(),
+        ),
+        (
+            "update",
+            update(&table, &["X = Qty + 1"], &Compiler).unwrap(),
+        ),
+        ("drop_columns", drop_columns(&table, &["Qty"]).unwrap()),
+        ("head", head(&table, 2).unwrap()),
+        ("tail", tail(&table, 2).unwrap()),
+        ("reverse", reverse(&table).unwrap()),
+        (
+            "aggregate",
+            aggregate(&table, &[Aggregation::count("N")], false, &["Sym"]).unwrap(),
+        ),
+        ("head of where", head(&filtered, 2).unwrap()),
+        // Two input tables have two updaters.
+        (
+            "merge of two input tables",
+            merge(&[table.clone(), other.clone()]).unwrap(),
+        ),
+        (
+            "merge with a result that lost it",
+            merge(&[filtered.clone(), head(&table, 2).unwrap()]).unwrap(),
+        ),
+    ];
+    for (operation, derived) in &dropped {
+        assert!(derived.input_table().is_none(), "{operation}");
+    }
+
+    // A write through a derived table is a write to the input table.
+    let rows = sym_qty_batch(["a", "b"], [1, -2]);
+    filtered.input_table().unwrap().add(rows).unwrap();
+    assert_eq!(longs_of(&*table, 1), [Some(1), Some(-2)]);
+    assert_eq!(longs_of(&*filtered, 1), [Some(1)]);
+    assert!(other.row_set().is_empty());
 }

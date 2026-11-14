@@ -8,7 +8,7 @@
 use super::keys::{KeyEncoder, SortKey};
 use super::{SortColumn, SortError};
 use crate::ops::merge::flattened_shift_data;
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -56,10 +56,10 @@ fn redirected_columns(
     let redirection: Arc<dyn RowRedirection> = redirection.clone();
     (0..parent.definition().columns().len())
         .map(|index| {
-            Arc::new(RedirectedSource::new(
+            reads_through(RedirectedSource::new(
                 redirection.clone(),
                 parent.column(index),
-            )) as Arc<dyn ColumnSource>
+            ))
         })
         .collect()
 }
@@ -82,7 +82,8 @@ fn remap(
     }
 }
 
-/// Only the blink attribute passes through a sort.
+/// Of the add-only, append-only and blink attributes, only blink passes through a sort. The
+/// input table of the parent does too, and is given with `TableSpec::with_input_table_of`.
 ///
 /// Behavior: the `Sort` entries of the attribute table in
 /// io.deephaven.engine.table.impl.BaseTable
@@ -133,6 +134,7 @@ fn static_sort(
         redirected_columns(parent, &redirection),
     )
     .with_attributes(sort_attributes(&**parent))
+    .with_input_table_of(&**parent)
     .flat();
     Ok(QueryTable::new_static(spec))
 }
@@ -158,6 +160,7 @@ fn blink_sort(
             redirected_columns(parent, &redirection),
         )
         .with_attributes(sort_attributes(&**parent))
+        .with_input_table_of(&**parent)
         .flat();
 
         let parent = parent.clone();
@@ -349,7 +352,8 @@ fn incremental_sort(
             RowSet::flat(entries.len() as u64),
             redirected_columns(parent, &redirection),
         )
-        .with_attributes(sort_attributes(&**parent));
+        .with_attributes(sort_attributes(&**parent))
+        .with_input_table_of(&**parent);
         let operator = SortOperator {
             parent: parent.clone(),
             sort_columns: encoder.column_indices(),
