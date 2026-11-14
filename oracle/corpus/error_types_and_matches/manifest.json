@@ -1,0 +1,128 @@
+{
+  "format": 2,
+  "scenario": "error_types_and_matches",
+  "scenario_sha256": "20c153fc9fd4e45c399a4f7c16e4bc0397d0ee2f9ee59d70b1bb34745ce5857f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "sum_string",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "avg_string",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "sum_bool",
+      "file": "step000.sum_bool.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "avg_bool",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "sum_timestamp",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "avg_timestamp",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "min_all",
+      "file": "step000.min_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "cum_sum_string",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "cum_sum_bool",
+      "file": "step000.cum_sum_bool.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merge_different",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "duplicate_output",
+      "file": "step000.duplicate_output.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "nj_duplicate_right",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "nj_first",
+      "file": "step000.nj_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "nj_exactly_one",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "ej_missing_and_duplicate",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "join_name_clash",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "join_key_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "aj_bool_stamp",
+      "file": "step000.aj_bool_stamp.arrow",
+      "rows": 3
+    }
+  ]
+}

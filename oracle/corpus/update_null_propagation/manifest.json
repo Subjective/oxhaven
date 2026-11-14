@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "update_null_propagation",
   "scenario_sha256": "d80655e1996cc8b657c373d50be6d25e3ec0b77885a6f0bfbe7a3ea3b3c67fa0",
   "reference": "42.9",

@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "aj_timestamps",
   "scenario_sha256": "064d489be47ac07cb0daa223627ba7ccea14105e4c2a7679f6f139f5a530b391",
   "reference": "42.9",

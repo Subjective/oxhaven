@@ -1,0 +1,70 @@
+{
+  "format": 2,
+  "scenario": "error_unknown_column",
+  "scenario_sha256": "d2f761a7f87f6041eeb5aeadf9efc29a25d32410c8b81a4c55fb53196ca6dce4",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "bad_where",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_sort",
+      "failure": {
+        "code": "FAILED_PRECONDITION"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_drop",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_view",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_agg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "after_bad_where",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "after_bad_sort",
+      "failure": {
+        "code": "FAILED_PRECONDITION"
+      }
+    },
+    {
+      "step": 0,
+      "table": "good",
+      "file": "step000.good.arrow",
+      "rows": 1
+    }
+  ]
+}

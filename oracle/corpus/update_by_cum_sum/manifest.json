@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "update_by_cum_sum",
   "scenario_sha256": "5e71f81fa90c9da482e26c789cc904cc282463a56b6da4bed119117cfab86b03",
   "reference": "42.9",

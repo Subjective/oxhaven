@@ -1,0 +1,81 @@
+{
+  "format": 2,
+  "scenario": "ticking_error_after_step",
+  "scenario_sha256": "7c9c600e70b63155b6e675d1095767d3c38e80f3a7d0886126232fefb3a363a3",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "remainder_view",
+      "file": "step000.remainder_view.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "healthy",
+      "file": "step000.healthy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "remainder_view",
+      "file": "step001.remainder_view.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "healthy",
+      "file": "step001.healthy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "remainder_view",
+      "file": "step002.remainder_view.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "healthy",
+      "file": "step002.healthy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "remainder_view",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "healthy",
+      "file": "step003.healthy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "remainder_view",
+      "file": "step004.remainder_view.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "healthy",
+      "file": "step004.healthy.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "remainder_view",
+      "file": "step005.remainder_view.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "healthy",
+      "file": "step005.healthy.arrow",
+      "rows": 1
+    }
+  ]
+}

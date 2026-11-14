@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "natural_join_duplicate_right",
   "scenario_sha256": "ea67f1c3165f27738fd9b395a6f5075ba4556a261e4d5c2f53a5c3bb2ace7406",
   "reference": "42.9",
