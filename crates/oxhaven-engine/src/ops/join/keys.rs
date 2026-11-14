@@ -22,7 +22,7 @@ use oxhaven_contracts::unported;
 /// io.deephaven.engine.table.impl.naturaljoin.typed; `Instant` is compared as its
 /// nanoseconds and `Boolean` as its byte (io.deephaven.engine.table.impl.BucketingContext).
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub(super) enum Cell {
+pub(crate) enum Cell {
     Null,
     Bool(bool),
     Int(i64),
@@ -33,7 +33,7 @@ pub(super) enum Cell {
 
 /// The match column values of one row, in the order of the match columns. Empty for a join
 /// without match columns, where every row has the same key.
-pub(super) type Key = Vec<Cell>;
+pub(crate) type Key = Vec<Cell>;
 
 fn float_cell(value: f64) -> Cell {
     let canonical = if value.is_nan() {
@@ -95,15 +95,15 @@ fn append(keys: &mut [Key], values: &ArrayRef) {
 }
 
 /// The match columns of one side of a join.
-pub(super) struct KeyColumns {
+pub(crate) struct KeyColumns {
     /// Indices of the match columns in the table's definition, in match order.
-    pub(super) columns: Vec<usize>,
+    pub(crate) columns: Vec<usize>,
 }
 
 impl KeyColumns {
     /// The key of each row of `rows`, in row order; with `use_prev`, as of the end of the
     /// previous cycle for `rows` of the previous key space.
-    pub(super) fn read(
+    pub(crate) fn read(
         &self,
         table: &dyn Table,
         rows: &RowSet,
