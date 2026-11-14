@@ -1,13 +1,13 @@
 //! Aggregations of the oracle's scenarios, checked against the results recorded from the
 //! Java server (`oracle/corpus`, see `oracle/README.md`).
 //!
-//! Every `agg_by` operation whose source is an input table of its scenario, or a `merge`
-//! of input tables, is run, in every scenario, and compared at every recorded step by the
-//! rules of `PARITY.md` as `oracle/harness/rules.py` applies them. An `agg_by` over the
-//! result of another operation or over a blink input, and one with an aggregation this
-//! crate does not have, cannot be run here and is listed in `NOT_RUN`.
+//! Every `agg_by` and `group_by` operation whose source is an input table of its scenario,
+//! or a `merge` of input tables, is run, in every scenario, and compared at every recorded
+//! step by the rules of `PARITY.md` as `oracle/harness/rules.py` applies them. One over the
+//! result of another operation or over a blink input, and an `agg_by` with an aggregation
+//! this crate does not have, cannot be run here and is listed in `NOT_RUN`.
 
-use super::super::AggregateError;
+use super::super::{group_by, AggregateError};
 use super::*;
 use crate::graph::SteppedUpdateGraph;
 use crate::ops::merge::merge;
@@ -25,7 +25,7 @@ use std::fs::File;
 use std::path::PathBuf;
 
 /// The `agg_by` operations that are not run, as `scenario.operation: why`.
-const NOT_RUN: [&str; 41] = [
+const NOT_RUN: [&str; 39] = [
     "agg_by_no_keys.all_d: the source is made by where",
     "agg_by_sets.by_key: the source is made by update_view",
     "agg_by_sets.no_key: the source is made by update_view",
@@ -34,7 +34,6 @@ const NOT_RUN: [&str; 41] = [
     "agg_by_sets.of_empty_by_key: the source is made by update_view",
     "agg_by_sets.sorted_by_double: no aggregation sorted_first",
     "agg_by_sets.unique_sentinel: no aggregation unique",
-    "agg_by_sets.group_strings: no aggregation group",
     "agg_by_sets.count_where_unknown: no aggregation count_where",
     "agg_by_sets.formula_bad: no aggregation formula",
     "agg_by_sets.sorted_unknown: no aggregation sorted_first",
@@ -52,7 +51,6 @@ const NOT_RUN: [&str; 41] = [
     "agg_by_statistics.bool_var: no aggregation var",
     "agg_by_statistics.pct_out_of_range: no aggregation pct",
     "agg_by_statistics.string_weight: no aggregation weighted_avg",
-    "group_by_ungroup.agg_group: no aggregation group",
     "pipeline.by_region: the source is made by natural_join",
     "ticking_agg_by_full.by_key: no aggregation abs_sum",
     "ticking_agg_by_full.no_key: no aggregation abs_sum",
@@ -75,7 +73,7 @@ const AGG_ALL_BY: usize = 43;
 
 /// The results the test must compare, as `scenario.table xN` for a table compared at N
 /// recorded steps. A scenario or operation that silently stops being run is missing here.
-const COMPARED: [&str; 22] = [
+const COMPARED: [&str; 34] = [
     "agg_by_avg.avg_g x1",
     "agg_by_avg.avg_k x1",
     "agg_by_int_overflow.avgs x1",
@@ -84,24 +82,36 @@ const COMPARED: [&str; 22] = [
     "agg_by_min_max_first_last.first_last x1",
     "agg_by_min_max_first_last.min_max x1",
     "agg_by_no_keys.all x1",
+    "agg_by_sets.group_strings x1",
     "agg_by_sum_count.by_k x1",
     "agg_by_sum_count.by_k_g x1",
+    "empty_table_and_meta.grouped x1",
     "empty_table_ops.a_all x1",
     "empty_table_ops.a_keyed x1",
     "error_types_and_matches.min_all x1",
     "error_types_and_matches.sum_bool x1",
+    "group_by_ungroup.agg_group x1",
+    "group_by_ungroup.ga x1",
+    "group_by_ungroup.gb x1",
+    "group_by_ungroup.grouped x1",
+    "group_by_ungroup.grouped_all x1",
+    "group_by_ungroup.grouped_empty x1",
+    "group_by_ungroup.grouped_empty_all x1",
+    "group_by_ungroup.grouped_two x1",
     "null_sentinel_inputs.counted x1",
     "ticking_agg_by.by_k x8",
     "ticking_agg_by.total x8",
     "ticking_empty_start.by_g x5",
     "ticking_empty_start.total x5",
     "ticking_error_after_step.healthy x6",
+    "ticking_group_ungroup_head_by.grouped x9",
+    "ticking_group_ungroup_head_by.grouped_all x9",
     "ticking_merge_refreshing.merged_count x8",
     "timestamps.range x1",
 ];
 
 /// The number of operations that must be refused, as Java refused them.
-const REFUSED: usize = 7;
+const REFUSED: usize = 8;
 
 fn oracle() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oracle")
@@ -146,10 +156,43 @@ fn narrow<T: TryFrom<i64>>(cell: &Value) -> Option<T> {
 
 /// A column of a scenario's type from its cells. A cell holding Java's null value of the
 /// type becomes null, as it does when the table is sent to a server.
+///
+/// `vector<T>` and `array<T>` are types of the fixtures in `ops/agg/fixtures` only: a
+/// cell is a list of cells of `T`, or null.
 pub(super) fn column<'a>(
     type_name: &str,
     cells: impl Iterator<Item = &'a Value>,
 ) -> (ColumnType, ArrayRef) {
+    column_of(type_name, &cells.collect::<Vec<_>>())
+}
+
+fn column_of(type_name: &str, cells: &[&Value]) -> (ColumnType, ArrayRef) {
+    let list_type = [("vector<", true), ("array<", false)]
+        .into_iter()
+        .find_map(|(prefix, vector)| {
+            let element = type_name.strip_prefix(prefix)?.strip_suffix('>')?;
+            Some((vector, element))
+        });
+    if let Some((vector, element)) = list_type {
+        let lengths: Vec<Option<usize>> = cells
+            .iter()
+            .map(|cell| cell.as_array().map(Vec::len))
+            .collect();
+        let items: Vec<&Value> = cells
+            .iter()
+            .filter_map(|cell| cell.as_array())
+            .flatten()
+            .collect();
+        let (element_type, elements) = column_of(element, &items);
+        let column_type = if vector {
+            ColumnType::vector(element_type)
+        } else {
+            ColumnType::array(element_type)
+        };
+        let values = oxhaven_testkit::list_of(&column_type, lengths, elements);
+        return (column_type, values);
+    }
+    let cells = cells.iter().copied();
     let (column_type, values): (ColumnType, ArrayRef) = match type_name {
         "bool" => (
             ColumnType::Boolean,
@@ -319,6 +362,7 @@ fn aggregations(operation: &Value) -> Result<Vec<Aggregation>, String> {
                 "max" => AggSpec::Max,
                 "first" => AggSpec::First,
                 "last" => AggSpec::Last,
+                "group" => AggSpec::Group,
                 other => return Err(format!("no aggregation {other}")),
             };
             let pairs: Vec<&str> = list(&entry["columns"], "columns")
@@ -447,9 +491,17 @@ pub(super) fn run_step(
     graph: &Arc<SteppedUpdateGraph>,
 ) {
     for action in list(&step["actions"], "actions") {
+        apply_action(action, inputs);
+    }
+    graph.run_cycle();
+}
+
+/// Applies one action of a step to its input. The change shows in the next cycle.
+pub(super) fn apply_action(action: &Value, inputs: &BTreeMap<String, Input>) {
+    {
         // An input that was not made takes no actions.
         let Some(input) = inputs.get(text(&action["table"], "table")) else {
-            continue;
+            return;
         };
         let writer = input.table.input_table().expect("an input table");
         let rows = list(&action["rows"], "rows");
@@ -476,7 +528,6 @@ pub(super) fn run_step(
             other => panic!("no action {other}"),
         }
     }
-    graph.run_cycle();
 }
 
 #[derive(Default)]
@@ -498,10 +549,9 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
         .filter(|operation| operation["op"] == "agg_all_by")
         .filter(|operation| results.iter().any(|r| r["table"] == operation["name"]))
         .count();
-    if !operations
-        .iter()
-        .any(|operation| operation["op"] == "agg_by")
-    {
+    let grouping =
+        |operation: &&Value| operation["op"] == "agg_by" || operation["op"] == "group_by";
+    if !operations.iter().any(|operation| grouping(&operation)) {
         return;
     }
     let manifest = json(&oracle().join(format!("corpus/{name}/manifest.json")));
@@ -511,14 +561,20 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
 
     // The tables to compare at each step, with their computed columns.
     let mut tables: Vec<(&str, Arc<dyn Table>, Vec<String>)> = Vec::new();
-    for operation in operations
-        .iter()
-        .filter(|operation| operation["op"] == "agg_by")
-    {
+    for operation in operations.iter().filter(grouping) {
         let table_name = text(&operation["name"], "name");
         let context = format!("{name}.{table_name}");
+        let is_group_by = operation["op"] == "group_by";
         let parent = source(text(&operation["source"], "source"), &scenario, &inputs);
-        let (parent, aggregations) = match parent.and_then(|p| Ok((p, aggregations(operation)?))) {
+        let made = parent.and_then(|parent| {
+            let aggregations = if is_group_by {
+                Vec::new()
+            } else {
+                aggregations(operation)?
+            };
+            Ok((parent, aggregations))
+        });
+        let (parent, aggregations) = match made {
             Ok(made) => made,
             Err(why) => {
                 tally.not_run.push(format!("{context}: {why}"));
@@ -529,7 +585,11 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
             .iter()
             .map(|column| text(column, "by"))
             .collect();
-        let result = aggregate(&parent, &aggregations, false, &by);
+        let result = if is_group_by {
+            group_by(&parent, &by)
+        } else {
+            aggregate(&parent, &aggregations, false, &by)
+        };
         let initial = entries
             .iter()
             .find(|entry| entry["step"] == 0 && entry["table"] == table_name);

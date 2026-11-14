@@ -1,0 +1,809 @@
+{
+ "name": "group_ticking",
+ "description": "The group aggregation and group_by of a keyed input table and of its natural join with a second one, with the updates Java delivered: rows that join and leave groups, modified values, key changes, groups that empty and refill, a table that empties and refills, and changes of one grouped column only (through the join).",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}], "ticking": {"key_columns": ["Id"]}, "rows": [
+   [1, "a", 10, "x", 1.5, 1700000000000000001],
+   [2, "b", 20, null, "NaN", 1700000000000000002],
+   [3, "a", null, "", -0.0, null],
+   [4, "b", 40, "y", null, 4],
+   [5, "a", 50, "z", 5.5, 5]
+  ]},
+  {"name": "r", "columns": [{"name": "Id", "type": "int32"}, {"name": "V", "type": "int64"}], "ticking": {"key_columns": ["Id"]}, "rows": [
+   [1, 100],
+   [3, 300]
+  ]}
+ ],
+ "operations": [
+  {"name": "by_k", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "by_none", "op": "group_by", "source": "t", "by": []},
+  {"name": "by_k_s", "op": "group_by", "source": "t", "by": ["K", "S"]},
+  {"name": "mixed", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["GI=I"]}, {"agg": "sum", "cols": ["SI=I"]}, {"agg": "group", "cols": ["GS=S"]}, {"agg": "count", "column": "N"}]},
+  {"name": "no_key_mixed", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count", "column": "N"}, {"agg": "group", "cols": ["GD=D"]}, {"agg": "last", "cols": ["LI=I"]}]},
+  {"name": "j", "op": "natural_join", "left": "t", "right": "r", "on": ["Id"], "joins": ["V"]},
+  {"name": "j_by_k", "op": "agg", "source": "j", "by": ["K"], "aggs": [{"agg": "group", "cols": ["GI=I"]}, {"agg": "max", "cols": ["MI=I"]}, {"agg": "group", "cols": ["GV=V"]}]},
+  {"name": "j_none", "op": "agg", "source": "j", "by": [], "aggs": [{"agg": "group", "cols": ["GV=V", "GI=I"]}]}
+ ],
+ "results": ["by_k", "by_none", "by_k_s", "mixed", "no_key_mixed", "j", "j_by_k", "j_none"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, "a", 60, "w", 6.5, 6]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[7, "c", 70, "c1", 7.5, 7], [8, "c", 80, "c2", 8.5, 8]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[3, "a", 33, "", -0.0, null]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[1, "b", 10, "x", 1.5, 1700000000000000001]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[5]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[7], [8]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[9, "c", 90, "c3", 9.5, 9]]}]},
+  {"actions": [{"action": "add", "table": "r", "rows": [[2, 200]]}]},
+  {"actions": [{"action": "add", "table": "r", "rows": [[2, 201]]}]},
+  {"actions": [{"action": "delete", "table": "r", "rows": [[2]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[4, "b", 40, "y", null, 4]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[2, "d", 20, null, "NaN", 1700000000000000002], [10, "a", 110, "q", 0.0, 10]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[11, null, null, null, null, null], [12, "e", 120, "e", 12.5, 12]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[12]]}, {"action": "add", "table": "t", "rows": [[13, "a", 130, "r", 13.5, 13]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[1], [2], [3], [4], [6], [9], [10], [11], [13]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[3, "b", 3, "back", 3.5, 3]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[1, "a", 1, "again", 1.5, 1], [20, "b", 2, "more", 2.5, 2]]}]}
+ ],
+ "updates": ["by_k", "by_none", "by_k_s", "mixed", "no_key_mixed", "j_by_k", "j_none"],
+ "java": {"steps": [
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 3, 5], [10, null, 50], ["x", "", "z"], [1.5, -0.0, 5.5], [1700000000000000001, null, 5]],
+    ["b", [2, 4], [20, 40], [null, "y"], ["NaN", null], [1700000000000000002, 4]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 5], ["a", "b", "a", "b", "a"], [10, 20, null, 40, 50], ["x", null, "", "y", "z"], [1.5, "NaN", -0.0, null, 5.5], [1700000000000000001, 1700000000000000002, null, 4, 5]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [null], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "z", [5], [50], [5.5], [5]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50], 60, ["x", "", "z"], 3],
+    ["b", [20, 40], 60, [null, "y"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, [1.5, "NaN", -0.0, null, 5.5], 50]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", null, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [5, "a", 50, "z", 5.5, 5, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50], 50, [100, 300, null]],
+    ["b", [20, 40], 40, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null], [10, 20, null, 40, 50]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 3, 5, 6], [10, null, 50, 60], ["x", "", "z", "w"], [1.5, -0.0, 5.5, 6.5], [1700000000000000001, null, 5, 6]],
+    ["b", [2, 4], [20, 40], [null, "y"], ["NaN", null], [1700000000000000002, 4]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 5, 6], ["a", "b", "a", "b", "a", "a"], [10, 20, null, 40, 50, 60], ["x", null, "", "y", "z", "w"], [1.5, "NaN", -0.0, null, 5.5, 6.5], [1700000000000000001, 1700000000000000002, null, 4, 5, 6]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [null], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "z", [5], [50], [5.5], [5]],
+    ["a", "w", [6], [60], [6.5], [6]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50, 60], 120, ["x", "", "z", "w"], 4],
+    ["b", [20, 40], 60, [null, "y"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 5.5, 6.5], 60]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", null, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [5, "a", 50, "z", 5.5, 5, null],
+    [6, "a", 60, "w", 6.5, 6, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50, 60], 60, [100, 300, null, null]],
+    ["b", [20, 40], 40, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null], [10, 20, null, 40, 50, 60]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 3, 5, 6], [10, null, 50, 60], ["x", "", "z", "w"], [1.5, -0.0, 5.5, 6.5], [1700000000000000001, null, 5, 6]],
+    ["b", [2, 4], [20, 40], [null, "y"], ["NaN", null], [1700000000000000002, 4]],
+    ["c", [7, 8], [70, 80], ["c1", "c2"], [7.5, 8.5], [7, 8]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 5, 6, 7, 8], ["a", "b", "a", "b", "a", "a", "c", "c"], [10, 20, null, 40, 50, 60, 70, 80], ["x", null, "", "y", "z", "w", "c1", "c2"], [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], [1700000000000000001, 1700000000000000002, null, 4, 5, 6, 7, 8]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [null], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "z", [5], [50], [5.5], [5]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["c", "c1", [7], [70], [7.5], [7]],
+    ["c", "c2", [8], [80], [8.5], [8]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50, 60], 120, ["x", "", "z", "w"], 4],
+    ["b", [20, 40], 60, [null, "y"], 2],
+    ["c", [70, 80], 150, ["c1", "c2"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8, [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], 80]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", null, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [5, "a", 50, "z", 5.5, 5, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [7, "c", 70, "c1", 7.5, 7, null],
+    [8, "c", 80, "c2", 8.5, 8, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, null, 50, 60], 60, [100, 300, null, null]],
+    ["b", [20, 40], 40, [null, null]],
+    ["c", [70, 80], 80, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null, null], [10, 20, null, 40, 50, 60, 70, 80]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 3, 5, 6], [10, 33, 50, 60], ["x", "", "z", "w"], [1.5, -0.0, 5.5, 6.5], [1700000000000000001, null, 5, 6]],
+    ["b", [2, 4], [20, 40], [null, "y"], ["NaN", null], [1700000000000000002, 4]],
+    ["c", [7, 8], [70, 80], ["c1", "c2"], [7.5, 8.5], [7, 8]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 5, 6, 7, 8], ["a", "b", "a", "b", "a", "a", "c", "c"], [10, 20, 33, 40, 50, 60, 70, 80], ["x", null, "", "y", "z", "w", "c1", "c2"], [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], [1700000000000000001, 1700000000000000002, null, 4, 5, 6, 7, 8]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "z", [5], [50], [5.5], [5]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["c", "c1", [7], [70], [7.5], [7]],
+    ["c", "c2", [8], [80], [8.5], [8]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 33, 50, 60], 153, ["x", "", "z", "w"], 4],
+    ["b", [20, 40], 60, [null, "y"], 2],
+    ["c", [70, 80], 150, ["c1", "c2"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8, [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], 80]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [5, "a", 50, "z", 5.5, 5, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [7, "c", 70, "c1", 7.5, 7, null],
+    [8, "c", 80, "c2", 8.5, 8, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 33, 50, 60], 60, [100, 300, null, null]],
+    ["b", [20, 40], 40, [null, null]],
+    ["c", [70, 80], 80, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null, null], [10, 20, 33, 40, 50, 60, 70, 80]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 5, 6], [33, 50, 60], ["", "z", "w"], [-0.0, 5.5, 6.5], [null, 5, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [7, 8], [70, 80], ["c1", "c2"], [7.5, 8.5], [7, 8]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 5, 6, 7, 8], ["b", "b", "a", "b", "a", "a", "c", "c"], [10, 20, 33, 40, 50, 60, 70, 80], ["x", null, "", "y", "z", "w", "c1", "c2"], [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], [1700000000000000001, 1700000000000000002, null, 4, 5, 6, 7, 8]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "z", [5], [50], [5.5], [5]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["c", "c1", [7], [70], [7.5], [7]],
+    ["c", "c2", [8], [80], [8.5], [8]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 50, 60], 143, ["", "z", "w"], 3],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [70, 80], 150, ["c1", "c2"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8, [1.5, "NaN", -0.0, null, 5.5, 6.5, 7.5, 8.5], 80]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [5, "a", 50, "z", 5.5, 5, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [7, "c", 70, "c1", 7.5, 7, null],
+    [8, "c", 80, "c2", 8.5, 8, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 50, 60], 60, [300, null, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]],
+    ["c", [70, 80], 80, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null, null], [10, 20, 33, 40, 50, 60, 70, 80]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [7, 8], [70, 80], ["c1", "c2"], [7.5, 8.5], [7, 8]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 7, 8], ["b", "b", "a", "b", "a", "c", "c"], [10, 20, 33, 40, 60, 70, 80], ["x", null, "", "y", "w", "c1", "c2"], [1.5, "NaN", -0.0, null, 6.5, 7.5, 8.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 7, 8]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["c", "c1", [7], [70], [7.5], [7]],
+    ["c", "c2", [8], [80], [8.5], [8]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [70, 80], 150, ["c1", "c2"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, [1.5, "NaN", -0.0, null, 6.5, 7.5, 8.5], 80]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [7, "c", 70, "c1", 7.5, 7, null],
+    [8, "c", 80, "c2", 8.5, 8, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]],
+    ["c", [70, 80], 80, [null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null], [10, 20, 33, 40, 60, 70, 80]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6], ["b", "b", "a", "b", "a"], [10, 20, 33, 40, 60], ["x", null, "", "y", "w"], [1.5, "NaN", -0.0, null, 6.5], [1700000000000000001, 1700000000000000002, null, 4, 6]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, [1.5, "NaN", -0.0, null, 6.5], 60]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null], [10, 20, 33, 40, 60]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9], ["b", "b", "a", "b", "a", "c"], [10, 20, 33, 40, 60, 90], ["x", null, "", "y", "w", "c3"], [1.5, "NaN", -0.0, null, 6.5, 9.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [90], 90, ["c3"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 6.5, 9.5], 90]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]],
+    ["c", [90], 90, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null], [10, 20, 33, 40, 60, 90]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9], ["b", "b", "a", "b", "a", "c"], [10, 20, 33, 40, 60, 90], ["x", null, "", "y", "w", "c3"], [1.5, "NaN", -0.0, null, 6.5, 9.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [90], 90, ["c3"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 6.5, 9.5], 90]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, 200],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, 200, null]],
+    ["c", [90], 90, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, 200, 300, null, null, null], [10, 20, 33, 40, 60, 90]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9], ["b", "b", "a", "b", "a", "c"], [10, 20, 33, 40, 60, 90], ["x", null, "", "y", "w", "c3"], [1.5, "NaN", -0.0, null, 6.5, 9.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [90], 90, ["c3"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 6.5, 9.5], 90]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, 201],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, 201, null]],
+    ["c", [90], 90, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, 201, 300, null, null, null], [10, 20, 33, 40, 60, 90]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9], ["b", "b", "a", "b", "a", "c"], [10, 20, 33, 40, 60, 90], ["x", null, "", "y", "w", "c3"], [1.5, "NaN", -0.0, null, 6.5, 9.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [90], 90, ["c3"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 6.5, 9.5], 90]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]],
+    ["c", [90], 90, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null], [10, 20, 33, 40, 60, 90]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6], [33, 60], ["", "w"], [-0.0, 6.5], [null, 6]],
+    ["b", [1, 2, 4], [10, 20, 40], ["x", null, "y"], [1.5, "NaN", null], [1700000000000000001, 1700000000000000002, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9], ["b", "b", "a", "b", "a", "c"], [10, 20, 33, 40, 60, 90], ["x", null, "", "y", "w", "c3"], [1.5, "NaN", -0.0, null, 6.5, 9.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 93, ["", "w"], 2],
+    ["b", [10, 20, 40], 70, ["x", null, "y"], 3],
+    ["c", [90], 90, ["c3"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, [1.5, "NaN", -0.0, null, 6.5, 9.5], 90]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "b", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60], 60, [300, null]],
+    ["b", [10, 20, 40], 40, [100, null, null]],
+    ["c", [90], 90, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null], [10, 20, 33, 40, 60, 90]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6, 10], [33, 60, 110], ["", "w", "q"], [-0.0, 6.5, 0.0], [null, 6, 10]],
+    ["b", [1, 4], [10, 40], ["x", "y"], [1.5, null], [1700000000000000001, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]],
+    ["d", [2], [20], [null], ["NaN"], [1700000000000000002]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9, 10], ["b", "d", "a", "b", "a", "c", "a"], [10, 20, 33, 40, 60, 90, 110], ["x", null, "", "y", "w", "c3", "q"], [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0], [1700000000000000001, 1700000000000000002, null, 4, 6, 9, 10]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]],
+    ["d", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "q", [10], [110], [0.0], [10]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110], 203, ["", "w", "q"], 3],
+    ["b", [10, 40], 50, ["x", "y"], 2],
+    ["c", [90], 90, ["c3"], 1],
+    ["d", [20], 20, [null], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7, [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0], 110]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "d", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null],
+    [10, "a", 110, "q", 0.0, 10, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110], 110, [300, null, null]],
+    ["b", [10, 40], 40, [100, null]],
+    ["c", [90], 90, [null]],
+    ["d", [20], 20, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null], [10, 20, 33, 40, 60, 90, 110]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6, 10], [33, 60, 110], ["", "w", "q"], [-0.0, 6.5, 0.0], [null, 6, 10]],
+    ["b", [1, 4], [10, 40], ["x", "y"], [1.5, null], [1700000000000000001, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]],
+    ["d", [2], [20], [null], ["NaN"], [1700000000000000002]],
+    [null, [11], [null], [null], [null], [null]],
+    ["e", [12], [120], ["e"], [12.5], [12]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9, 10, 11, 12], ["b", "d", "a", "b", "a", "c", "a", null, "e"], [10, 20, 33, 40, 60, 90, 110, null, 120], ["x", null, "", "y", "w", "c3", "q", null, "e"], [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0, null, 12.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9, 10, null, 12]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]],
+    ["d", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "q", [10], [110], [0.0], [10]],
+    [null, null, [11], [null], [null], [null]],
+    ["e", "e", [12], [120], [12.5], [12]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110], 203, ["", "w", "q"], 3],
+    ["b", [10, 40], 50, ["x", "y"], 2],
+    ["c", [90], 90, ["c3"], 1],
+    ["d", [20], 20, [null], 1],
+    [null, [null], null, [null], 1],
+    ["e", [120], 120, ["e"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0, null, 12.5], 120]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "d", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null],
+    [10, "a", 110, "q", 0.0, 10, null],
+    [11, null, null, null, null, null, null],
+    [12, "e", 120, "e", 12.5, 12, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110], 110, [300, null, null]],
+    ["b", [10, 40], 40, [100, null]],
+    ["c", [90], 90, [null]],
+    ["d", [20], 20, [null]],
+    [null, [null], null, [null]],
+    ["e", [120], 120, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null, null, null], [10, 20, 33, 40, 60, 90, 110, null, 120]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [3, 6, 10, 13], [33, 60, 110, 130], ["", "w", "q", "r"], [-0.0, 6.5, 0.0, 13.5], [null, 6, 10, 13]],
+    ["b", [1, 4], [10, 40], ["x", "y"], [1.5, null], [1700000000000000001, 4]],
+    ["c", [9], [90], ["c3"], [9.5], [9]],
+    ["d", [2], [20], [null], ["NaN"], [1700000000000000002]],
+    [null, [11], [null], [null], [null], [null]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3, 4, 6, 9, 10, 11, 13], ["b", "d", "a", "b", "a", "c", "a", null, "a"], [10, 20, 33, 40, 60, 90, 110, null, 130], ["x", null, "", "y", "w", "c3", "q", null, "r"], [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0, null, 13.5], [1700000000000000001, 1700000000000000002, null, 4, 6, 9, 10, null, 13]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "", [3], [33], [-0.0], [null]],
+    ["b", "y", [4], [40], [null], [4]],
+    ["a", "w", [6], [60], [6.5], [6]],
+    ["b", "x", [1], [10], [1.5], [1700000000000000001]],
+    ["c", "c3", [9], [90], [9.5], [9]],
+    ["d", null, [2], [20], ["NaN"], [1700000000000000002]],
+    ["a", "q", [10], [110], [0.0], [10]],
+    [null, null, [11], [null], [null], [null]],
+    ["a", "r", [13], [130], [13.5], [13]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110, 130], 333, ["", "w", "q", "r"], 4],
+    ["b", [10, 40], 50, ["x", "y"], 2],
+    ["c", [90], 90, ["c3"], 1],
+    ["d", [20], 20, [null], 1],
+    [null, [null], null, [null], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, [1.5, "NaN", -0.0, null, 6.5, 9.5, 0.0, null, 13.5], 130]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "b", 10, "x", 1.5, 1700000000000000001, 100],
+    [2, "d", 20, null, "NaN", 1700000000000000002, null],
+    [3, "a", 33, "", -0.0, null, 300],
+    [4, "b", 40, "y", null, 4, null],
+    [6, "a", 60, "w", 6.5, 6, null],
+    [9, "c", 90, "c3", 9.5, 9, null],
+    [10, "a", 110, "q", 0.0, 10, null],
+    [11, null, null, null, null, null, null],
+    [13, "a", 130, "r", 13.5, 13, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [33, 60, 110, 130], 130, [300, null, null, null]],
+    ["b", [10, 40], 40, [100, null]],
+    ["c", [90], 90, [null]],
+    ["d", [20], 20, [null]],
+    [null, [null], null, [null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, null, 300, null, null, null, null, null, null], [10, 20, 33, 40, 60, 90, 110, null, 130]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", [3], [3], ["back"], [3.5], [3]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[3], ["b"], [3], ["back"], [3.5], [3]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", "back", [3], [3], [3.5], [3]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", [3], 3, ["back"], 1]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, [3.5], 3]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, "b", 3, "back", 3.5, 3, 300]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", [3], 3, [300]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[300], [3]]
+   ]}
+  },
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1], [1], ["again"], [1.5], [1]],
+    ["b", [3, 20], [3, 2], ["back", "more"], [3.5, 2.5], [3, 2]]
+   ]},
+   "by_none": {"columns": [{"name": "Id", "type": "vector<int32>"}, {"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 3, 20], ["a", "b", "b"], [1, 3, 2], ["again", "back", "more"], [1.5, 3.5, 2.5], [1, 3, 2]]
+   ]},
+   "by_k_s": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", "back", [3], [3], [3.5], [3]],
+    ["a", "again", [1], [1], [1.5], [1]],
+    ["b", "more", [20], [2], [2.5], [2]]
+   ]},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1], 1, ["again"], 1],
+    ["b", [3, 2], 5, ["back", "more"], 2]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "N", "type": "int64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "LI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, [1.5, 3.5, 2.5], 2]
+   ]},
+   "j": {"columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "a", 1, "again", 1.5, 1, 100],
+    [3, "b", 3, "back", 3.5, 3, 300],
+    [20, "b", 2, "more", 2.5, 2, null]
+   ]},
+   "j_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "MI", "type": "int32"}, {"name": "GV", "type": "vector<int64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1], 1, [100]],
+    ["b", [3, 2], 3, [300, null]]
+   ]},
+   "j_none": {"columns": [{"name": "GV", "type": "vector<int64>"}, {"name": "GI", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, 300, null], [1, 3, 2]]
+   ]}
+  }
+ ],
+ "updates": [
+  {"by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [5], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "MI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [6, 7], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Id", "I", "D", "T"]}], "mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "SI", "GS"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GD"]}], "j_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI"]}]},
+  {"by_k": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [7], "removed": [0], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GD"]}], "j_by_k": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["GI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI"]}]},
+  {"by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [], "removed": [3], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD"]}], "j_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [], "removed": [4, 5], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [5], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [], "by_none": [], "by_k_s": [], "mixed": [], "no_key_mixed": [], "j_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV"]}]},
+  {"by_k": [], "by_none": [], "by_k_s": [], "mixed": [], "no_key_mixed": [], "j_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV"]}]},
+  {"by_k": [], "by_none": [], "by_k_s": [], "mixed": [], "no_key_mixed": [], "j_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV"]}]},
+  {"by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Id", "I", "D", "T"]}], "mixed": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["GI", "GS"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GD"]}], "j_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["GI"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GI"]}]},
+  {"by_k": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [5, 6], "removed": [0], "modified": [], "modified_columns": []}], "mixed": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["GI", "MI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [7, 8], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [], "removed": [8], "modified": [], "modified_columns": []}, {"added": [8], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["GI", "MI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]},
+  {"by_k": [{"added": [], "removed": [0, 1, 2, 3, 4], "modified": [], "modified_columns": []}], "by_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "by_k_s": [{"added": [], "removed": [0, 1, 2, 3, 4, 5, 6, 7, 8], "modified": [], "modified_columns": []}], "mixed": [{"added": [], "removed": [0, 1, 2, 3, 4], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "j_by_k": [{"added": [], "removed": [0, 1, 2, 3, 4], "modified": [], "modified_columns": []}], "j_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}]},
+  {"by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "by_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "by_k_s": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "no_key_mixed": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "j_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "j_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}]},
+  {"by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["Id", "I", "S", "D", "T"]}], "by_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Id", "K", "I", "S", "D", "T"]}], "by_k_s": [{"added": [1, 2], "removed": [], "modified": [], "modified_columns": []}], "mixed": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["GI", "SI", "GS", "N"]}], "no_key_mixed": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N", "GD", "LI"]}], "j_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["GI", "MI", "GV"]}], "j_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["GV", "GI"]}]}
+ ]}
+}
