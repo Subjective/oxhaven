@@ -1146,6 +1146,7 @@ dependencies = [
  "oxhaven-engine",
  "oxhaven-expr",
  "oxhaven-proto",
+ "oxhaven-testkit",
  "prost",
  "tokio",
  "tokio-stream",

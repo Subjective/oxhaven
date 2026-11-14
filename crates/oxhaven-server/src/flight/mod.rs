@@ -7,7 +7,8 @@
 //! | `GetSchema`, `GetFlightInfo` | Describe the table a path descriptor `export/<id>` names |
 //! | `DoGet` | Sends the schema of a table and a consistent snapshot of its rows |
 //! | `DoPut` | Makes a static table from the record batches a client sends |
-//! | `DoExchange`, `DoAction`, `ListActions` | Not ported; `DoExchange` carries Barrage |
+//! | `DoExchange` | Barrage: subscriptions and snapshots; see [`crate::barrage`] |
+//! | `DoAction`, `ListActions` | Not ported |
 //!
 //! For the Barrage subscription code: [`wire_schema`] is the schema a client is told,
 //! [`snapshot`] reads a table consistently, and [`record_batch_messages`] writes rows the

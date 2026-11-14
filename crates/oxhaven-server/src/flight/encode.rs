@@ -219,6 +219,13 @@ impl BatchWriter {
 
 /// Writes rows `offset..offset + rows` of `columns` as one record batch. `nullable` says,
 /// per column, whether the field is nullable in the schema the client was sent.
+///
+/// A column that ends before `offset + rows` gives the rows it has, and none if it has no
+/// data at all: a Barrage update carries a column the subscriber did not ask for as an
+/// empty column, and its modified columns each have their own number of rows.
+///
+/// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl#appendAddColumns`,
+/// `#appendModColumns`
 pub fn encode_batch(
     columns: &[ArrayRef],
     nullable: &[bool],
@@ -227,7 +234,9 @@ pub fn encode_batch(
 ) -> Result<EncodedBatch, EncodeError> {
     let mut writer = BatchWriter::default();
     for (column, &nullable) in columns.iter().zip(nullable) {
-        writer.column(&column.slice(offset, rows), nullable)?;
+        let start = offset.min(column.len());
+        let count = rows.min(column.len() - start);
+        writer.column(&column.slice(start, count), nullable)?;
     }
     Ok(writer.finish(rows))
 }

@@ -1821,10 +1821,7 @@ mod wire {
         server.session(&bearer);
 
         let err = FlightServiceClient::new(server.channel.clone())
-            .do_exchange(with_auth(
-                tokio_stream::iter(Vec::<oxhaven_proto::flight::FlightData>::new()),
-                &bearer,
-            ))
+            .do_action(with_auth(oxhaven_proto::flight::Action::default(), &bearer))
             .await
             .unwrap_err();
         assert_eq!(err.code(), Code::Unimplemented);
