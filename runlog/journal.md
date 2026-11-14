@@ -27,3 +27,6 @@ Times are UTC.
 - **08:30** First wave started: six agents on 1.2+1.3, 1.4, 1.5+1.6, 1.7+0.12, 2.1, 3.1, each in its own worktree with a shared build directory.
 - **08:29** Oracle merged (PR 5) after a `.gitignore` conflict with main. Its tests are not run in CI (they need a JVM); the pass is the implementing agent's observation.
 - **08:31** Context reuse: the oracle agent was resumed for 0.8 (fuzzer with shrinking, per-operation filter, error comparison, client smoke scripts, task gate alignment) instead of briefing a new agent.
+- **08:41** Column sources merged (PR 6). Row-set work delivered (PR 7).
+- **08:47** First contract bug found by ported tests: `sub_set_by_key_range` panicked for negative bounds. Fixed by the orchestrator as a contract change (PR 8). The differential approach working as intended: the Java test, not a reviewer, found it.
+- **08:47** Open question recorded: Java keys previous values on the step only, so writes made while idle are treated differently from the contract's "previous equals current while idle". Two agents noticed independently. No observable difference identified yet; revisit when base tables (1.8) land.
