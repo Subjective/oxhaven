@@ -2,6 +2,7 @@
 //! and remembered by input value, and constants; and the table a formula is evaluated against.
 
 use super::failure;
+use crate::table::{forget_reads_through, register_reads_through};
 use arrow::array::{new_empty_array, ArrayRef, UInt32Array};
 use arrow::row::{RowConverter, SortField};
 use oxhaven_column::RowRedirection;
@@ -12,45 +13,11 @@ use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{
     ColumnSource, Table, TableAttributes, TableFailure, UpdateListener,
 };
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
-/// The addresses of the live sources of this module that compute their values on read.
-///
-/// The `ColumnSource` contract cannot say whether a source holds its values in memory, which
-/// is what `select` asks before it reuses a source instead of copying it. Until it can, the
-/// sources made here are the only ones known not to, and they are recognized by address: a
-/// source registers when it is created and leaves when it is dropped, so an address in the
-/// set always belongs to a live computed source.
-static COMPUTED: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
-
-fn register<T: ColumnSource + 'static>(source: T) -> Arc<dyn ColumnSource> {
-    let source = Arc::new(source);
-    COMPUTED
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .insert(Arc::as_ptr(&source) as usize);
-    source
-}
-
-fn unregister<T>(source: &T) {
-    COMPUTED
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .remove(&(source as *const T as usize));
-}
-
-/// Whether `source` holds its values, so that `select` passes it through instead of copying
-/// it. Every source is taken to, except the computed sources of this module.
-///
-/// Behavior: io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer#shouldPreserve
-pub(super) fn holds_values(source: &Arc<dyn ColumnSource>) -> bool {
-    let address = Arc::as_ptr(source) as *const () as usize;
-    !COMPUTED
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .contains(&address)
-}
+// The sources of this module that compute their values on read are registered as sources
+// that do not hold their values, so that `select` copies them: see `crate::table::holds_values`.
 
 /// Whose rows a formula sees when it asks for row positions and keys.
 #[derive(Clone)]
@@ -165,13 +132,13 @@ pub(super) struct FormulaSource {
 
 impl FormulaSource {
     pub(super) fn shared(formula: Arc<dyn Formula>, input: FormulaInput) -> Arc<dyn ColumnSource> {
-        register(Self { formula, input })
+        register_reads_through(Self { formula, input })
     }
 }
 
 impl Drop for FormulaSource {
     fn drop(&mut self) {
-        unregister(self);
+        forget_reads_through(self);
     }
 }
 
@@ -243,7 +210,7 @@ impl LazySource {
                 .collect();
             Some(RowConverter::new(fields).map_err(|e| failure(e.to_string()))?)
         };
-        Ok(register(Self {
+        Ok(register_reads_through(Self {
             formula,
             input,
             reads,
@@ -325,7 +292,7 @@ impl LazySource {
 
 impl Drop for LazySource {
     fn drop(&mut self) {
-        unregister(self);
+        forget_reads_through(self);
     }
 }
 

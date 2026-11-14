@@ -1,15 +1,21 @@
 //! gRPC services, sessions, tickets, and Barrage.
 
+pub mod app;
+pub mod barrage;
 pub mod config;
+pub mod console;
 pub mod flight;
 pub mod inputtable;
 pub mod schema;
 pub mod session;
+pub mod storage;
 pub mod table;
 pub mod transport;
 pub mod update_graph;
 pub mod web;
 
+#[cfg(test)]
+mod ide;
 #[cfg(test)]
 pub(crate) mod test_support;
 
@@ -19,13 +25,17 @@ use std::time::Duration;
 
 use oxhaven_engine::table::WallClock;
 use oxhaven_proto::flight::flight_service_server::FlightServiceServer;
+use oxhaven_proto::grpc::application_service_server::ApplicationServiceServer;
 use oxhaven_proto::grpc::config_service_server::ConfigServiceServer;
 use oxhaven_proto::grpc::input_table_service_server::InputTableServiceServer;
 use oxhaven_proto::grpc::session_service_server::SessionServiceServer;
+use oxhaven_proto::grpc::storage_service_server::StorageServiceServer;
 use oxhaven_proto::grpc::table_service_server::TableServiceServer;
+use oxhaven_proto::script::console_service_server::ConsoleServiceServer;
 use tokio::net::TcpListener;
 use tonic::service::Routes;
 
+use app::{ApplicationGrpc, ApplicationTicketResolver, Applications, Scope, ScopeTicketResolver};
 use flight::FlightGrpc;
 use inputtable::InputTableGrpc;
 use session::{
@@ -60,6 +70,11 @@ pub struct ServerState {
     /// The update graph of every refreshing table the server creates. It runs its own
     /// cycles; see [`PeriodicUpdateGraph`].
     pub graph: Arc<PeriodicUpdateGraph>,
+    /// The applications of the server: what the process itself offers to clients, listed by
+    /// `ApplicationService/ListFields` and named by tickets `a/<application>/f/<field>`.
+    pub applications: Arc<Applications>,
+    /// The variables that tickets `s/<name>` name.
+    pub scope: Arc<Scope>,
     /// The static files of the web IDE, if the server has them. `None` after
     /// [`ServerState::new`]; set it before [`serve`].
     pub web_root: Option<Arc<web::WebRoot>>,
@@ -78,12 +93,20 @@ impl ServerState {
         )?;
         sessions.spawn_cleanup();
         // a service that owns another kind of ticket adds its resolver here
-        let tickets = Arc::new(TicketRouter::new(vec![Arc::new(ExportTicketResolver)])?);
+        let applications = Applications::new();
+        let scope = Scope::new();
+        let tickets = Arc::new(TicketRouter::new(vec![
+            Arc::new(ExportTicketResolver),
+            Arc::new(ApplicationTicketResolver::new(applications.clone())),
+            Arc::new(ScopeTicketResolver::new(scope.clone())),
+        ])?);
         let graph = PeriodicUpdateGraph::start(config.target_cycle_duration);
         Ok(Self {
             sessions,
             tickets,
             graph,
+            applications,
+            scope,
             web_root: None,
         })
     }
@@ -120,6 +143,11 @@ impl ServerState {
             self.tickets.clone(),
             self.op_context(),
         )))
+        .add_service(ApplicationServiceServer::new(ApplicationGrpc::new(
+            self.applications.clone(),
+        )))
+        .add_service(ConsoleServiceServer::new(console::ConsoleGrpc))
+        .add_service(StorageServiceServer::new(storage::StorageGrpc))
     }
 }
 

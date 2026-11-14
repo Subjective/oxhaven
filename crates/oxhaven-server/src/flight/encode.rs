@@ -219,17 +219,51 @@ impl BatchWriter {
 
 /// Writes rows `offset..offset + rows` of `columns` as one record batch. `nullable` says,
 /// per column, whether the field is nullable in the schema the client was sent.
+///
+/// A column that ends before `offset + rows` gives the rows it has, and none if it has no
+/// data at all: a Barrage update carries a column the subscriber did not ask for as an
+/// empty column, and its modified columns each have their own number of rows.
+///
+/// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl#appendAddColumns`,
+/// `#appendModColumns`
 pub fn encode_batch(
     columns: &[ArrayRef],
     nullable: &[bool],
     offset: usize,
     rows: usize,
 ) -> Result<EncodedBatch, EncodeError> {
+    encode_batch_with(columns, nullable, offset, rows, false)
+}
+
+/// [`encode_batch`], with each column as the one element of a list if `as_lists`: the
+/// batch then has one row, and every column is preceded by the field node and the
+/// buffers of a list of one element that holds the column's rows. A Barrage client asks
+/// for this when it cannot read columns of different lengths.
+///
+/// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl#setRecordBatchLength`,
+/// `io.deephaven.extensions.barrage.chunk.SingleElementListHeaderWriter`
+fn encode_batch_with(
+    columns: &[ArrayRef],
+    nullable: &[bool],
+    offset: usize,
+    rows: usize,
+    as_lists: bool,
+) -> Result<EncodedBatch, EncodeError> {
     let mut writer = BatchWriter::default();
     for (column, &nullable) in columns.iter().zip(nullable) {
-        writer.column(&column.slice(offset, rows), nullable)?;
+        let start = offset.min(column.len());
+        let count = rows.min(column.len() - start);
+        if as_lists {
+            let end = i32::try_from(count)
+                .map_err(|_| EncodeError("too many rows for one list".to_owned()))?;
+            writer.nodes.push(ipc::FieldNode::new(1, 0));
+            // no validity buffer, then the offsets of the one element
+            writer.buffer(&[]);
+            writer.buffer(&[0i32.to_le_bytes(), end.to_le_bytes()].concat());
+        }
+        writer.column(&column.slice(start, count), nullable)?;
     }
-    Ok(writer.finish(rows))
+    Ok(writer.finish(if as_lists { 1 } else { rows }))
 }
 
 /// A Flight message that carries a schema.
@@ -270,10 +304,32 @@ pub fn record_batch_messages(
     app_metadata: Vec<u8>,
     send_empty: bool,
 ) -> Result<Vec<FlightData>, EncodeError> {
+    record_batch_messages_with(
+        columns,
+        nullable,
+        rows,
+        options,
+        app_metadata,
+        send_empty,
+        false,
+    )
+}
+
+/// [`record_batch_messages`], with each column of a batch as the one element of a list if
+/// `as_lists`; see `encode_batch_with`.
+pub fn record_batch_messages_with(
+    columns: &[ArrayRef],
+    nullable: &[bool],
+    rows: usize,
+    options: BatchOptions,
+    app_metadata: Vec<u8>,
+    send_empty: bool,
+    as_lists: bool,
+) -> Result<Vec<FlightData>, EncodeError> {
     if rows == 0 {
         return Ok(if send_empty {
             vec![flight_data(
-                encode_batch(columns, nullable, 0, 0)?,
+                encode_batch_with(columns, nullable, 0, 0, as_lists)?,
                 app_metadata,
             )]
         } else {
@@ -294,7 +350,7 @@ pub fn record_batch_messages(
     let mut offset = 0;
     while offset < rows {
         let count = batch_size.min(rows - offset);
-        let batch = encode_batch(columns, nullable, offset, count)?;
+        let batch = encode_batch_with(columns, nullable, offset, count, as_lists)?;
         let size =
             batch.header.len() + batch.body.len() + app_metadata.as_ref().map_or(0, Vec::len);
         if size < max_message_size || batch_size == 1 {

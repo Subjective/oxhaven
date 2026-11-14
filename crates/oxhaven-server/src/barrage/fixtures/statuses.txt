@@ -1,0 +1,15 @@
+a message type that is not a request: INVALID_ARGUMENT: DoExchangeMarshaller{#}: received a message with unhandled BarrageMessageType: 4
+no metadata, then a subscription: open until the client closes, then never ended
+no metadata twice: INVALID_ARGUMENT: DoExchangeMarshaller{#}: failed to receive Barrage request metadata
+metadata with another magic number: INVALID_ARGUMENT: DoExchangeMarshaller{#}: failed to receive Barrage request metadata
+a subscription without a payload: INVALID_ARGUMENT: Subscription request not supplied
+a subscription without a ticket: INVALID_ARGUMENT: Ticket not specified.
+a subscription to an export that does not exist: open until the client closes, then OK: 
+a subscription with a ticket of no known kind: FAILED_PRECONDITION: Could not resolve 'table': no resolver for route '63' (byte)
+a subscription, then a snapshot request: INVALID_ARGUMENT: Request type cannot be changed after initialization, expected BarrageSubscriptionRequest metadata
+a subscription, then no metadata: INVALID_ARGUMENT: Details Logged w/ID '#'
+a subscription to the whole table, then a viewport: INVALID_ARGUMENT: cannot change from full subscription to viewport or vice versa
+a viewport, then the whole table: open until the client closes, then never ended
+a snapshot, then a subscription: INVALID_ARGUMENT: Request type cannot be changed after initialization, expected BarrageSnapshotRequest metadata
+a snapshot of an export that does not exist: open until the client closes, then never ended
+two snapshots: OK: 

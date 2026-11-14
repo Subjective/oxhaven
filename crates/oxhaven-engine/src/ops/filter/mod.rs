@@ -26,11 +26,11 @@ pub use condition::{
     Value,
 };
 
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{is_add_only, is_append_only, QueryTable, TableSpec};
 use filters::{FilterSpec, Resolved};
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use std::collections::BTreeSet;
 use std::fmt;
@@ -165,9 +165,26 @@ impl WhereOperator {
     }
 }
 
+/// The attributes of a `where` result. The blink attribute is copied. The result is add-only
+/// when the parent is add-only or static, and append-only when the parent is append-only or
+/// static: the filters here never change, so a row never leaves or enters on its own.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#whereInternal, which copies the
+/// attributes that io.deephaven.engine.table.impl.BaseTable#attributeToCopySet lists for
+/// `CopyAttributeOperation.Filter` (of the three here, `BLINK_TABLE_ATTRIBUTE` only) and
+/// then sets `ADD_ONLY_TABLE_ATTRIBUTE` and `APPEND_ONLY_TABLE_ATTRIBUTE` from
+/// `BaseTable#isAddOnly` and `#isAppendOnly`, which are true of every static table.
+fn where_attributes(parent: &dyn Table) -> TableAttributes {
+    let mut attributes = TableAttributes::default();
+    attributes.blink = parent.attributes().blink;
+    attributes.add_only = is_add_only(parent);
+    attributes.append_only = is_append_only(parent);
+    attributes
+}
+
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#whereInternal. The result has the
-/// parent's column sources and attributes (`BaseTable#copyAttributes` with
-/// `CopyAttributeOperation.Filter`, and the add-only and append-only propagation).
+/// parent's column sources, the attributes of [`where_attributes`], and the parent's input
+/// table (`INPUT_TABLE_ATTRIBUTE` is copied for `CopyAttributeOperation.Filter`).
 fn where_resolved(
     parent: &Arc<dyn Table>,
     filters: Vec<Resolved>,
@@ -200,7 +217,9 @@ fn where_resolved(
         let columns = (0..definition.columns().len())
             .map(|index| parent.column(index))
             .collect();
-        let spec = TableSpec::new(definition, rows, columns).with_attributes(parent.attributes());
+        let spec = TableSpec::new(definition, rows, columns)
+            .with_attributes(where_attributes(&**parent))
+            .with_input_table_of(&**parent);
         Ok((spec, move |result: &QueryTable, upstream: &TableUpdate| {
             operator.on_update(result, upstream)
         }))

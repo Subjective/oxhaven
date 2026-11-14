@@ -22,6 +22,8 @@ pub struct TableSpec {
     pub attributes: TableAttributes,
     /// Whether the row set is `0..size` now and after every update. Port of `Table#isFlat`.
     pub flat: bool,
+    /// The write side of the input table this table has the `InputTable` attribute of.
+    pub input: Option<Arc<dyn InputTable>>,
 }
 
 impl TableSpec {
@@ -37,7 +39,20 @@ impl TableSpec {
             columns,
             attributes: TableAttributes::default(),
             flat: false,
+            input: None,
         }
+    }
+
+    /// Gives the table the `InputTable` attribute of `parent`, if it has one. For the
+    /// operations whose result is still written through its parent's input table.
+    ///
+    /// Behavior: the `INPUT_TABLE_ATTRIBUTE` entry of
+    /// io.deephaven.engine.table.impl.BaseTable#attributeToCopySet, which lists the
+    /// operations `Flatten`, `Sort`, `UpdateView`, `Join` and `Filter`. The attribute's
+    /// value is the parent's `InputTableUpdater` itself.
+    pub fn with_input_table_of(mut self, parent: &dyn Table) -> Self {
+        self.input = parent.input_table();
+        self
     }
 
     pub fn with_attributes(mut self, attributes: TableAttributes) -> Self {
@@ -164,11 +179,12 @@ pub struct QueryTable {
 
 impl QueryTable {
     fn build(
-        spec: TableSpec,
+        mut spec: TableSpec,
         graph: Option<Arc<dyn UpdateGraph>>,
         feed: Feed,
         input: Option<Arc<dyn InputTable>>,
     ) -> QueryTable {
+        let input = input.or(spec.input.take());
         let declared = spec.definition.columns();
         assert_eq!(
             declared.len(),
