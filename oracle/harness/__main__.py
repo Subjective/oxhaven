@@ -12,6 +12,9 @@ No Java counterpart: harness entry point.
     show          run scenarios and print their results
     formulas      record the formula corpus from Java, or compare one server with it
 
+With `ORACLE_STACKS_AFTER=<seconds>` in the environment, a command that is still running after
+that time writes the stack of every thread to stderr, once, and carries on.
+
 Exit status: 0 when no difference was found, 1 when there are differences, 2 when a scenario
 could not be run, a recording could not be used, or the arguments select nothing.
 """
@@ -19,7 +22,9 @@ could not be run, a recording could not be used, or the arguments select nothing
 from __future__ import annotations
 
 import argparse
+import faulthandler
 import json
+import os
 import sys
 from collections import Counter
 from pathlib import Path
@@ -401,6 +406,10 @@ def main(argv: list[str] | None = None) -> int:
         "formulas", help="record or compare the formula corpus (corpus/formulas)"))
 
     args = parser.parse_args(argv)
+    stacks_after = os.environ.get("ORACLE_STACKS_AFTER")
+    if stacks_after:
+        # a command still running after that many seconds has stalled: show where
+        faulthandler.dump_traceback_later(float(stacks_after), exit=False)
     try:
         return args.run(args)
     except (sc.ScenarioError, ValueError) as error:
