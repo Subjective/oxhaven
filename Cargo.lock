@@ -1088,6 +1088,11 @@ dependencies = [
 [[package]]
 name = "oxhaven-expr"
 version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-contracts",
+ "serde_json",
+]
 
 [[package]]
 name = "oxhaven-proto"
