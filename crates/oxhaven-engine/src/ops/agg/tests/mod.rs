@@ -2,6 +2,7 @@
 
 mod corpus;
 mod fixtures;
+mod group;
 mod incremental;
 mod random;
 mod static_tables;
