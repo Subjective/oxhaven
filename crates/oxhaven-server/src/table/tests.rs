@@ -222,6 +222,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "RAJ",
             "AS_OF_JOIN",
             "CREATE_INPUT_TABLE",
+            "CROSS_JOIN",
             "SELECT_DISTINCT",
             "WHERE_IN",
             "NATURAL_JOIN",

@@ -24,9 +24,9 @@
 //! `ColumnSource::chunk` returns, and the comparison with the recorded Java results, which
 //! need `group_by`.
 
-mod keys;
-mod operator;
-mod sources;
+pub(crate) mod keys;
+pub(crate) mod operator;
+pub(crate) mod sources;
 
 #[cfg(test)]
 mod corpus;
