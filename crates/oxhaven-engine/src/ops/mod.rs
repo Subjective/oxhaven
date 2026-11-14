@@ -1,6 +1,7 @@
 //! Table operations, one module per operation family.
 
 pub mod agg;
+pub mod asof;
 pub mod distinct;
 pub mod filter;
 pub mod join;
