@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "exact_join",
   "scenario_sha256": "6547efe94d0953f1ad425c5bb0a122fd2129766cbadd4fde32d4691597fa84ac",
   "reference": "42.9",

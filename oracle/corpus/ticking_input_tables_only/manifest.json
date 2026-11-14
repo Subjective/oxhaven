@@ -1,0 +1,116 @@
+{
+  "format": 2,
+  "scenario": "ticking_input_tables_only",
+  "scenario_sha256": "e47ec247c134ae8dffe9ae34d6585aee45e75da96da7e34da80308c2ad503c26",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "appended",
+      "file": "step000.appended.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "two_keys",
+      "file": "step000.two_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "appended",
+      "file": "step001.appended.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "two_keys",
+      "file": "step001.two_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "appended",
+      "file": "step002.appended.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "two_keys",
+      "file": "step002.two_keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "keyed",
+      "file": "step003.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "appended",
+      "file": "step003.appended.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "two_keys",
+      "file": "step003.two_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "keyed",
+      "file": "step004.keyed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "appended",
+      "file": "step004.appended.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "two_keys",
+      "file": "step004.two_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "keyed",
+      "file": "step005.keyed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "appended",
+      "file": "step005.appended.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "two_keys",
+      "file": "step005.two_keys.arrow",
+      "rows": 3
+    }
+  ]
+}

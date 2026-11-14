@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "empty_table_ops",
   "scenario_sha256": "a3cee65a08b51fbfed75d1d69f16817213f373cc5ba9856df126754f9cb53730",
   "reference": "42.9",

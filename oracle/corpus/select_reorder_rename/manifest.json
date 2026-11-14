@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "select_reorder_rename",
   "scenario_sha256": "3b9531a0be6c46b00e14e57a31975579288ae9bfc751225b860f423b128a8510",
   "reference": "42.9",

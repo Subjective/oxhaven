@@ -6,36 +6,53 @@ A recording of one scenario is a directory:
 
     corpus/<scenario>/manifest.json            what was recorded, from which scenario content
     corpus/<scenario>/step<NNN>.<table>.arrow  one Arrow IPC file per result table per step
+
+A result that the server failed to produce has no file; the manifest holds its gRPC status code.
 """
 
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.ipc as ipc
 
 MANIFEST = "manifest.json"
-MANIFEST_FORMAT = 1
+MANIFEST_FORMAT = 2
 
 
 class RecordingError(RuntimeError):
     """A recording is missing, incomplete, or was made from different scenario content."""
 
 
+@dataclass(frozen=True)
+class Failure:
+    """The server failed to produce a result; `code` is the gRPC status code name."""
+
+    code: str
+
+
 class ResultSet:
-    """The result tables of one scenario run, keyed by (step, table), in the order produced."""
+    """The results of one scenario run, keyed by (step, table), in the order produced.
+
+    A result is the table's content, or a `Failure` when the server refused the operation that
+    defines the table (or one it depends on) or failed to deliver its snapshot.
+    """
 
     def __init__(self, scenario: str):
         self.scenario = scenario
-        self._tables: dict[tuple[int, str], pa.Table] = {}
+        self._tables: dict[tuple[int, str], pa.Table | Failure] = {}
 
-    def put(self, step: int, table: str, data: pa.Table) -> None:
+    def put(self, step: int, table: str, data: pa.Table | Failure) -> None:
         self._tables[(step, table)] = data
 
-    def get(self, step: int, table: str) -> pa.Table:
+    def get(self, step: int, table: str) -> pa.Table | Failure:
         return self._tables[(step, table)]
+
+    def failures(self) -> int:
+        return sum(1 for value in self._tables.values() if isinstance(value, Failure))
 
     def keys(self) -> list[tuple[int, str]]:
         return list(self._tables)
@@ -61,6 +78,9 @@ def save(results: ResultSet, directory: Path, scenario_digest: str, reference: s
     entries = []
     for step, table in results.keys():
         data = results.get(step, table)
+        if isinstance(data, Failure):
+            entries.append({"step": step, "table": table, "failure": {"code": data.code}})
+            continue
         name = _file_name(step, table)
         with ipc.new_file(directory / name, data.schema) as writer:
             writer.write_table(data)
@@ -93,6 +113,9 @@ def load(directory: Path, scenario: str, scenario_digest: str) -> ResultSet:
         )
     results = ResultSet(scenario)
     for entry in manifest["entries"]:
+        if "failure" in entry:
+            results.put(entry["step"], entry["table"], Failure(entry["failure"]["code"]))
+            continue
         with ipc.open_file(directory / entry["file"]) as reader:
             results.put(entry["step"], entry["table"], reader.read_all())
     return results

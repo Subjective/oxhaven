@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "merge_tables",
   "scenario_sha256": "c4d19ce244b453e6ed1afc1d651922e9392cf8d4ec7e43fc3b8c0d86b70705fc",
   "reference": "42.9",

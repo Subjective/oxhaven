@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "join_duplicate_keys",
   "scenario_sha256": "42fefc6e1225653f0ff36786a4aa4e77865e2e10cb1a139fe896d14e3b964ee9",
   "reference": "42.9",

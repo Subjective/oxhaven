@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "pipeline",
   "scenario_sha256": "8df403457fd83186fc95aa3a8f8658d6e4f6953a500d5bfaae7b6eb73d575408",
   "reference": "42.9",

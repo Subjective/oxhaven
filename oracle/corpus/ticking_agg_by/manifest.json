@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "ticking_agg_by",
   "scenario_sha256": "56d5a32dbd677f62f78cf5eb6c109e8cc5f111a0273f424b1dc5a5b9271517f0",
   "reference": "42.9",

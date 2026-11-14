@@ -1,0 +1,37 @@
+{
+  "format": 1,
+  "name": "error_unknown_column",
+  "description": "Operations that name a column the table does not have fail; a table defined from a failed table fails the same way; other tables are unaffected.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [1, "a"],
+        [2, "b"]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "bad_where", "op": "where", "source": "t", "filters": ["Nope > 1"]},
+    {"name": "bad_sort", "op": "sort", "source": "t", "by": [{"column": "Nope", "direction": "ascending"}]},
+    {"name": "bad_drop", "op": "drop_columns", "source": "t", "columns": ["Nope"]},
+    {"name": "bad_view", "op": "view", "source": "t", "formulas": ["X = Nope + 1"]},
+    {"name": "bad_agg", "op": "agg_by", "source": "t", "aggs": [{"agg": "sum", "columns": ["Nope"]}], "by": []},
+    {"name": "bad_key", "op": "agg_by", "source": "t", "aggs": [{"agg": "count", "column": "N"}], "by": ["Nope"]},
+    {"name": "after_bad_where", "op": "head", "source": "bad_where", "rows": 1},
+    {"name": "after_bad_sort", "op": "update", "source": "bad_sort", "formulas": ["X = I + 1"]},
+    {"name": "good", "op": "where", "source": "t", "filters": ["I > 1"]}
+  ],
+  "results": [
+    {"table": "bad_where"},
+    {"table": "bad_sort"},
+    {"table": "bad_drop"},
+    {"table": "bad_view"},
+    {"table": "bad_agg"},
+    {"table": "bad_key"},
+    {"table": "after_bad_where"},
+    {"table": "after_bad_sort"},
+    {"table": "good"}
+  ]
+}

@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "ticking_update_by_append",
   "scenario_sha256": "c7e728e40335b9a2e066a0b0e990701962038fd001b4fdbf0f134b2a5c749291",
   "reference": "42.9",

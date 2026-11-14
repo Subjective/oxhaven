@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "view_arithmetic",
   "scenario_sha256": "eceb8f9c6ebcd5fd896ea168703561e702600da4c1281df7da4d27c5b5675810",
   "reference": "42.9",
