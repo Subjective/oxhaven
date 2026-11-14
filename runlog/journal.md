@@ -320,3 +320,37 @@ column types, so the first green run did not cover the combination). PRs 42, 44 
 Baseline is 51 of 83 clean. Running: cross join handler, as-of join handler, shared tickets,
 head_by and tail_by. Next, now unblocked: group_by with the group aggregation, ungroup reading
 real array columns, range join result tables.
+
+## 22:28 As-of join: Java's ticking result differs from its own static result
+
+The as-of handler made `harness fuzz --ops aj` possible. 3000 seeds against live Java 42.9:
+2985 clean, 15 differ, all after a ticking step. In every case Oxhaven equals a static
+recompute of the same tables and Java's incremental result does not.
+
+- NaN stamps, both sides the same ticking table, rule `>`: seeds 39, 257, 1319, 2619 (1774
+  probably). Java joins a NaN left row to a newly added NaN right row; statically it does not.
+- Chains of 3 to 4 `aj` whose last left table depends on its right table: seeds 2, 465, 540,
+  675, 1371, 1427, 1735, 2110, 2669, 2873. After the right table changes Java keeps the match
+  it had (no row after an add, a deleted row's values after a delete).
+
+Reproduce with `oracle/bin/harness fuzz --a java --b oxhaven --ops aj --seeds 1 --seed <n>`.
+
+Owner question for Josh: reproduce Java's incremental answers, or keep the answer that agrees
+with Java's static path and record it in PARITY.md as an allowed difference. Nothing is changed
+until he decides; the engine keeps the static-consistent answer, and the fuzz for `aj` is not
+part of the CI gate. The second family may also be an artifact of how the fuzzer builds a left
+table from the right one within one cycle; worth one look before deciding.
+
+Also seen: a `Batch` operation with an unset table reference ends Java's stream with CANCELLED
+where Oxhaven answers INVALID_ARGUMENT (generic batch path; follow-up).
+
+## 22:40 Follow-ups found by the handler work
+
+- Engine: `CrossJoinHelper#zeroKeyColumnsJoin` returns a static table when one side is static
+  and empty; ours is refreshing and never changes. Small fix in `ops/crossjoin`.
+- Joins: a match or addition that is empty or ends in a space reaches a Java client as
+  CANCELLED (the message ends in a space and the transport rejects the header); we send
+  INVALID_ARGUMENT with the message. Candidate for PARITY.md, owner decision.
+- Session: an export id defined twice has Java's "Details Logged w/ID" text and our own text.
+- Watch: one of ten local gate runs hung 900 s in the client smoke "input table from an
+  initial table" with an idle server. Not reproduced. If CI shows it, it is a real hang.
