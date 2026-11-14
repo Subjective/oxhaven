@@ -16,7 +16,7 @@
   "empty_table_and_meta": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["grouped", "meta_grouped"], "why": "no gRPC adapter for the aggregation group"},
   "empty_table_ops": {"state": "clean"},
   "error_formula": {"state": "clean"},
-  "error_types_and_matches": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED", "failure_unexpected:UNIMPLEMENTED"], "tables": ["aj_bool_stamp", "join_name_clash"], "why": "no handler for aj and cross join"},
+  "error_types_and_matches": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED"], "tables": ["join_name_clash"], "why": "no handler for aj and cross join"},
   "error_unknown_column": {"state": "clean"},
   "exact_join": {"state": "clean"},
   "filter_structured": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["search", "search_columns"], "why": "quick filters (search) are not ported"},
