@@ -1,0 +1,78 @@
+# Source map
+
+Where each part of the Java reference lands in Oxhaven. Paths on the left are in
+`deephaven/deephaven-core` at the tag pinned in `oracle/REFERENCE.md`. Task ids refer to `tasks/`.
+
+"Not ported" means Rust needs no counterpart: the code exists to serve the JVM, or is generated
+per primitive type and replaced by one generic implementation.
+
+## Engine
+
+| Java | Oxhaven | Tasks |
+| --- | --- | --- |
+| `engine/rowset` (`RowSet`, `WritableRowSet`, `RowSetShiftData`) | `oxhaven-contracts::rowset`, `::shift` | 0.4, 1.2 |
+| `engine/rowset` (`TrackingRowSet`, builders) | `oxhaven-rowset` | 1.3 |
+| `engine/rowset/impl/rsp`, `sortedranges`, `singlerange` | `oxhaven-rowset` internals, later | 7.7 |
+| `engine/chunk` | Arrow arrays; not ported | |
+| `engine/table/.../impl/sources` | `oxhaven-column` | 1.4 |
+| `engine/api` (`TableUpdate`, `ModifiedColumnSet`, `TableDefinition`) | `oxhaven-contracts::update`, `::schema` | 0.4, 1.5 |
+| `engine/api` (`Table`, `ColumnSource`, `TableUpdateListener`) | `oxhaven-contracts::table` | 0.4 |
+| `engine/updategraph`, `PeriodicUpdateGraph`, `MergedListener` | `oxhaven-contracts::graph`, `oxhaven-engine::graph` | 0.4, 1.6 |
+| `QueryTable`, `BaseTable`, `InMemoryTable`, `TimeTable`, input tables | `oxhaven-engine::table` | 1.8 |
+| `TableUpdateValidator`, `EvalNugget`, `TstUtils` | `oxhaven-testkit` | 1.7 |
+| `WhereListener`, `select/*Filter` | `oxhaven-engine::ops::filter` | 3.2 |
+| `SortOperation`, `SortListener`, `SliceLikeOperation` | `oxhaven-engine::ops::sort` | 3.3 |
+| `impl/sort`, `impl/ssa`, `impl/ssms` (generated kernels) | generic code inside the operators; not ported file by file | 3.3, 4.4 |
+| `SelectOrUpdateListener`, `select/analyzers` | `oxhaven-engine::ops::select` | 3.4 |
+| `TableToolsMergeHelper`, `Union*`, `FlattenOperation` | `oxhaven-engine::ops::merge` | 3.5 |
+| `impl/by` | `oxhaven-engine::ops::agg` | 3.6, 4.1 |
+| `NaturalJoinHelper`, `impl/naturaljoin`, `impl/multijoin` | `oxhaven-engine::ops::join` | 4.2 |
+| `CrossJoinHelper`, `impl/join` | `oxhaven-engine::ops::crossjoin` | 4.3 |
+| `AsOfJoinHelper`, `impl/asofjoin` | `oxhaven-engine::ops::asof` | 4.4 |
+| `impl/rangejoin` | `oxhaven-engine::ops::rangejoin` | 4.5 |
+| `impl/updateby` | `oxhaven-engine::ops::updateby` | 4.6 |
+| `UngroupOperation`, `engine/vector` | `oxhaven-engine::ops::ungroup` | 4.7 |
+| `DynamicWhereFilter`, select-distinct | `oxhaven-engine::ops::distinct` | 4.8 |
+| `impl/snapshot` | `oxhaven-engine::ops::snapshot` | 4.9 |
+| `impl/hierarchical` (rollup, tree) | `oxhaven-engine::ops::hierarchical` | 6.10, 6.11 |
+| `impl/partitioned` | `oxhaven-engine::ops::partitioned` | 6.12 |
+| `impl/lang/QueryLanguageParser`, `select/DhFormulaColumn`, `ConditionFilter` | `oxhaven-expr` | 3.1, 5.2, 5.3, 5.5 |
+| `engine/function`, `engine/time` | `oxhaven-expr::functions` | 5.4 |
+| `engine/tuple`, `engine/tuplesource` | Rust tuples and generic keys; not ported | |
+| `QueryCompiler*`, formula class generation, `engine/context` | not ported | |
+| `impl/locations`, `impl/dataindex`, `PartitionAwareSourceTable` | table-provider trait | 7.1 |
+
+## Server and wire
+
+| Java | Oxhaven | Tasks |
+| --- | --- | --- |
+| `proto/proto-backplane-grpc`, Barrage schema | `oxhaven-proto` | 0.6 |
+| `server/session`, `server/auth` | `oxhaven-server::session` | 2.1 |
+| `server/table/ops` | `oxhaven-server::table` | 2.2, then one handler per operator task |
+| `server/arrow` (Flight) | `oxhaven-server::flight` | 2.3 |
+| `server/barrage`, `extensions/barrage` | `oxhaven-server::barrage` | 2.4 |
+| `server/table/inputtables` | `oxhaven-server::inputtable` | 2.5 |
+| `server/config`, `server/browserstreaming` | `oxhaven-server::config`, `::transport` | 2.6 |
+| `server/console` | `oxhaven-server::console` | 6.2 |
+| `server/object`, `plugin/` | `oxhaven-server::object` | 6.8 |
+| `server/notebook` (storage service) | `oxhaven-server::storage` | 6.9 |
+| `server/hierarchicaltable` | `oxhaven-server::hierarchical` | 6.10, 6.11 |
+| `server/partitionedtable` | `oxhaven-server::partitioned` | 6.12 |
+| `server/appmode` | `oxhaven-server::application` | 6.13 |
+| `py/server/deephaven` (Python API over jpy) | `deephaven` package over PyO3 | 6.1, 6.3 to 6.7 |
+| Dagger modules, `Configuration`, `Base`, `Util`, `IO`, `log-factory` | standard crates; not ported | |
+
+## Extensions
+
+| Java | Oxhaven | Tasks |
+| --- | --- | --- |
+| `extensions/parquet` | Parquet provider | 7.1, 7.2 |
+| `extensions/csv` | CSV provider | 7.3 |
+| `extensions/kafka` | Kafka provider | 7.4, 7.5 |
+| `extensions/iceberg`, `jdbc`, `flight-sql`, `protobuf`, `json`, `s3` | out of scope for now | |
+| `engine/sql`, `sql/`, `Plot`, Groovy, Java plugins | out of scope | |
+
+## Clients
+
+Not ported. The Python, Java, C++, Go, R and JS clients and the web IDE run unmodified against
+Oxhaven and serve as test drivers.
