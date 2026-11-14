@@ -1,0 +1,140 @@
+{
+ "name": "group_static",
+ "description": "The group aggregation and group_by of static tables: every column type, null keys and null elements, NaN and signed zeros, no keys, an empty table, groups of arrays and of vectors, group among other aggregations, and what Java refuses.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "T", "type": "timestamp"}], "rows": [
+   ["a", 1, true, 1, 65, 100, 1000, 10000000000, 1.5, 1.25, "x", 1700000000000000001],
+   ["b", 1, false, -2, 66, -200, -2000, -20000000000, -2.5, -0.0, "", 1700000000000000002],
+   ["a", 2, null, null, null, null, null, null, null, null, null, null],
+   [null, 1, true, 3, 97, 300, 3000, 30000000000, "NaN", "NaN", "z", 0],
+   ["b", 1, false, 4, 0, 400, 4000, 40000000000, "Infinity", "-Infinity", "x", -1],
+   ["a", 1, true, 127, 65535, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "a b", 1700000000000000003],
+   [null, null, null, -127, 1, -32767, -2147483647, -9223372036854775807, -0.0, 1e+300, "x", 5],
+   ["c", 2, false, 0, 67, 0, 0, 0, 3.4028235e+38, 5e-324, "c", 6],
+   ["a", 2, true, 5, 68, 5, 5, 5, 5.5, 5.5, "x", 7]
+  ]},
+  {"name": "e", "columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}], "rows": [
+  ]},
+  {"name": "a", "columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "array<int32>"}, {"name": "SA", "type": "array<string>"}, {"name": "DA", "type": "array<float64>"}], "rows": [
+   ["a", [1, null, 3], ["x", null, ""], [1.5, "NaN", null, -0.0]],
+   ["b", null, null, null],
+   ["a", [], [], []],
+   ["b", [7], ["y"], ["Infinity"]],
+   ["a", null, ["z"], [0.0]]
+  ]},
+  {"name": "n", "columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}], "rows": [
+   ["a", 1, 1, 1.5],
+   ["b", 1, 2, null],
+   ["a", 2, null, "NaN"],
+   ["a", 1, 4, -0.0],
+   ["b", 2, 5, 5.5]
+  ]}
+ ],
+ "operations": [
+  {"name": "by_k", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "by_none", "op": "group_by", "source": "t", "by": []},
+  {"name": "by_k_g", "op": "group_by", "source": "t", "by": ["K", "G"]},
+  {"name": "by_d", "op": "group_by", "source": "t", "by": ["D"]},
+  {"name": "by_all", "op": "group_by", "source": "t", "by": ["K", "G", "B", "Y", "C", "H", "I", "L", "F", "D", "S", "T"]},
+  {"name": "by_unknown", "op": "group_by", "source": "t", "by": ["Nope"]},
+  {"name": "mixed", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["GI=I"]}, {"agg": "sum", "cols": ["SI=I"]}, {"agg": "group", "cols": ["GS=S"]}, {"agg": "count", "column": "N"}, {"agg": "first", "cols": ["FD=D"]}, {"agg": "group", "cols": ["GD=D", "GT=T"]}]},
+  {"name": "renamed_twice", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["A=I", "B=I"]}]},
+  {"name": "group_key", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["X=K"]}]},
+  {"name": "no_key_mixed", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "group", "cols": ["I"]}, {"agg": "count", "column": "N"}, {"agg": "last", "cols": ["LS=S"]}]},
+  {"name": "unknown_input", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["X=Nope"]}]},
+  {"name": "same_output", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["X=I"]}, {"agg": "group", "cols": ["X=L"]}]},
+  {"name": "e_by_k", "op": "group_by", "source": "e", "by": ["K"]},
+  {"name": "e_none", "op": "group_by", "source": "e", "by": []},
+  {"name": "e_agg", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "group", "cols": ["I"]}, {"agg": "count", "column": "N"}]},
+  {"name": "arrays_by_k", "op": "group_by", "source": "a", "by": ["K"]},
+  {"name": "arrays_none", "op": "group_by", "source": "a", "by": []},
+  {"name": "nested_inner", "op": "group_by", "source": "n", "by": ["K", "G"]},
+  {"name": "nested", "op": "group_by", "source": "nested_inner", "by": ["K"]},
+  {"name": "nested_none", "op": "agg", "source": "nested_inner", "by": [], "aggs": [{"agg": "group", "cols": ["I", "D"]}, {"agg": "count", "column": "N"}]}
+ ],
+ "results": ["by_k", "by_none", "by_k_g", "by_d", "by_all", "by_unknown", "mixed", "renamed_twice", "group_key", "no_key_mixed", "unknown_input", "same_output", "e_by_k", "e_none", "e_agg", "arrays_by_k", "arrays_none", "nested_inner", "nested", "nested_none"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "vector<int32>"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 2, 1, 2], [true, null, true, true], [1, null, 127, 5], [65, null, null, 68], [100, null, 32767, 5], [1000, null, 2147483647, 5], [10000000000, null, 9223372036854775807, 5], [1.5, null, 0.0, 5.5], [1.25, null, 0.0, 5.5], ["x", null, "a b", "x"], [1700000000000000001, null, 1700000000000000003, 7]],
+    ["b", [1, 1], [false, false], [-2, 4], [66, 0], [-200, 400], [-2000, 4000], [-20000000000, 40000000000], [-2.5, "Infinity"], [-0.0, "-Infinity"], ["", "x"], [1700000000000000002, -1]],
+    [null, [1, null], [true, null], [3, -127], [97, 1], [300, -32767], [3000, -2147483647], [30000000000, -9223372036854775807], ["NaN", -0.0], ["NaN", 1e+300], ["z", "x"], [0, 5]],
+    ["c", [2], [false], [0], [67], [0], [0], [0], [3.4028234663852886e+38], [5e-324], ["c"], [6]]
+   ]},
+   "by_none": {"columns": [{"name": "K", "type": "vector<string>"}, {"name": "G", "type": "vector<int32>"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [["a", "b", "a", null, "b", "a", null, "c", "a"], [1, 1, 2, 1, 1, 1, null, 2, 2], [true, false, null, true, false, true, null, false, true], [1, -2, null, 3, 4, 127, -127, 0, 5], [65, 66, null, 97, 0, null, 1, 67, 68], [100, -200, null, 300, 400, 32767, -32767, 0, 5], [1000, -2000, null, 3000, 4000, 2147483647, -2147483647, 0, 5], [10000000000, -20000000000, null, 30000000000, 40000000000, 9223372036854775807, -9223372036854775807, 0, 5], [1.5, -2.5, null, "NaN", "Infinity", 0.0, -0.0, 3.4028234663852886e+38, 5.5], [1.25, -0.0, null, "NaN", "-Infinity", 0.0, 1e+300, 5e-324, 5.5], ["x", "", null, "z", "x", "a b", "x", "c", "x"], [1700000000000000001, 1700000000000000002, null, 0, -1, 1700000000000000003, 5, 6, 7]]
+   ]},
+   "by_k_g": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, [true, true], [1, 127], [65, null], [100, 32767], [1000, 2147483647], [10000000000, 9223372036854775807], [1.5, 0.0], [1.25, 0.0], ["x", "a b"], [1700000000000000001, 1700000000000000003]],
+    ["b", 1, [false, false], [-2, 4], [66, 0], [-200, 400], [-2000, 4000], [-20000000000, 40000000000], [-2.5, "Infinity"], [-0.0, "-Infinity"], ["", "x"], [1700000000000000002, -1]],
+    ["a", 2, [null, true], [null, 5], [null, 68], [null, 5], [null, 5], [null, 5], [null, 5.5], [null, 5.5], [null, "x"], [null, 7]],
+    [null, 1, [true], [3], [97], [300], [3000], [30000000000], ["NaN"], ["NaN"], ["z"], [0]],
+    [null, null, [null], [-127], [1], [-32767], [-2147483647], [-9223372036854775807], [-0.0], [1e+300], ["x"], [5]],
+    ["c", 2, [false], [0], [67], [0], [0], [0], [3.4028234663852886e+38], [5e-324], ["c"], [6]]
+   ]},
+   "by_d": {"columns": [{"name": "D", "type": "float64"}, {"name": "K", "type": "vector<string>"}, {"name": "G", "type": "vector<int32>"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.25, ["a"], [1], [true], [1], [65], [100], [1000], [10000000000], [1.5], ["x"], [1700000000000000001]],
+    [-0.0, ["b", "a"], [1, 1], [false, true], [-2, 127], [66, null], [-200, 32767], [-2000, 2147483647], [-20000000000, 9223372036854775807], [-2.5, 0.0], ["", "a b"], [1700000000000000002, 1700000000000000003]],
+    [null, ["a"], [2], [null], [null], [null], [null], [null], [null], [null], [null], [null]],
+    ["NaN", [null], [1], [true], [3], [97], [300], [3000], [30000000000], ["NaN"], ["z"], [0]],
+    ["-Infinity", ["b"], [1], [false], [4], [0], [400], [4000], [40000000000], ["Infinity"], ["x"], [-1]],
+    [1e+300, [null], [null], [null], [-127], [1], [-32767], [-2147483647], [-9223372036854775807], [-0.0], ["x"], [5]],
+    [5e-324, ["c"], [2], [false], [0], [67], [0], [0], [0], [3.4028234663852886e+38], ["c"], [6]],
+    [5.5, ["a"], [2], [true], [5], [68], [5], [5], [5], [5.5], ["x"], [7]]
+   ]},
+   "by_all": {"failure": "INVALID_ARGUMENT"},
+   "by_unknown": {"failure": "INVALID_ARGUMENT"},
+   "mixed": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "SI", "type": "int64"}, {"name": "GS", "type": "vector<string>"}, {"name": "N", "type": "int64"}, {"name": "FD", "type": "float64"}, {"name": "GD", "type": "vector<float64>"}, {"name": "GT", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1000, null, 2147483647, 5], 2147484652, ["x", null, "a b", "x"], 4, 1.25, [1.25, null, 0.0, 5.5], [1700000000000000001, null, 1700000000000000003, 7]],
+    ["b", [-2000, 4000], 2000, ["", "x"], 2, -0.0, [-0.0, "-Infinity"], [1700000000000000002, -1]],
+    [null, [3000, -2147483647], -2147480647, ["z", "x"], 2, "NaN", ["NaN", 1e+300], [0, 5]],
+    ["c", [0], 0, ["c"], 1, 5e-324, [5e-324], [6]]
+   ]},
+   "renamed_twice": {"columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "vector<int32>"}, {"name": "B", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1000, null, 2147483647, 5], [1000, null, 2147483647, 5]],
+    ["b", [-2000, 4000], [-2000, 4000]],
+    [null, [3000, -2147483647], [3000, -2147483647]],
+    ["c", [0], [0]]
+   ]},
+   "group_key": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", ["a", "a", "a", "a"]],
+    ["b", ["b", "b"]],
+    [null, [null, null]],
+    ["c", ["c"]]
+   ]},
+   "no_key_mixed": {"columns": [{"name": "I", "type": "vector<int32>"}, {"name": "N", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1000, -2000, null, 3000, 4000, 2147483647, -2147483647, 0, 5], 9, "x"]
+   ]},
+   "unknown_input": {"failure": "INVALID_ARGUMENT"},
+   "same_output": {"failure": "INVALID_ARGUMENT"},
+   "e_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "e_none": {"columns": [{"name": "K", "type": "vector<string>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "e_agg": {"columns": [{"name": "I", "type": "vector<int32>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "arrays_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "vector<array<int32>>"}, {"name": "SA", "type": "vector<array<string>>"}, {"name": "DA", "type": "vector<array<float64>>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [[1, null, 3], [], null], [["x", null, ""], [], ["z"]], [[1.5, "NaN", null, -0.0], [], [0.0]]],
+    ["b", [null, [7]], [null, ["y"]], [null, ["Infinity"]]]
+   ]},
+   "arrays_none": {"columns": [{"name": "K", "type": "vector<string>"}, {"name": "A", "type": "vector<array<int32>>"}, {"name": "SA", "type": "vector<array<string>>"}, {"name": "DA", "type": "vector<array<float64>>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [["a", "b", "a", "b", "a"], [[1, null, 3], null, [], [7], null], [["x", null, ""], null, [], ["y"], ["z"]], [[1.5, "NaN", null, -0.0], null, [], ["Infinity"], [0.0]]]
+   ]},
+   "nested_inner": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, [1, 4], [1.5, -0.0]],
+    ["b", 1, [2], [null]],
+    ["a", 2, [null], ["NaN"]],
+    ["b", 2, [5], [5.5]]
+   ]},
+   "nested": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "vector<int32>"}, {"name": "I", "type": "vector<vector<int32>>"}, {"name": "D", "type": "vector<vector<float64>>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, 2], [[1, 4], [null]], [[1.5, -0.0], ["NaN"]]],
+    ["b", [1, 2], [[2], [5]], [[null], [5.5]]]
+   ]},
+   "nested_none": {"columns": [{"name": "I", "type": "vector<vector<int32>>"}, {"name": "D", "type": "vector<vector<float64>>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[[1, 4], [2], [null], [5]], [[1.5, -0.0], [null], ["NaN"], [5.5]], 4]
+   ]}
+  }
+ ]}
+}

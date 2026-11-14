@@ -1104,21 +1104,6 @@ async fn combo_aggregate_refuses_what_java_refuses() {
         assert_eq!(refused.message(), message);
     }
 
-    // group is not ported, whichever way it is asked for
-    for (result, force) in [(20, false), (21, true)] {
-        let refused = call(
-            &mut c,
-            combo(
-                result,
-                vec![combo_part(AggType::Group, &[], "")],
-                &["S"],
-                force,
-            ),
-        )
-        .await
-        .unwrap_err();
-        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
-    }
     // what Java refuses with an exception: COUNT by itself, whose column name must be empty
     // to be by itself; a type it does not know; no column left to aggregate
     let unknown = proto::combo_aggregate_request::Aggregate {
@@ -1307,14 +1292,14 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     let all_by_itself = Op::AggregateAll(AggregateAllRequest {
         result_id: ticket(22),
         source_id: by_ticket(1),
-        spec: Some(agg_spec(Type::Group(Default::default()))),
+        spec: Some(agg_spec(Type::Distinct(Default::default()))),
         group_by_columns: texts(&["S"]),
     });
     let refused = call(&mut c, all_by_itself).await.unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation group"
+        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation distinct"
     );
     let row_key = proto::Aggregation {
         r#type: Some(proto::aggregation::Type::FirstRowKey(Default::default())),
@@ -1336,6 +1321,118 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
         .unwrap();
     assert_eq!(values(c.table(30).as_ref(), "Rows"), ints(&[6]));
     assert_eq!(served.size, 1);
+}
+
+/// The columns of a table as `name: type`.
+fn column_types(table: &dyn Table) -> Vec<String> {
+    let columns = table.definition().columns();
+    columns
+        .iter()
+        .map(|c| format!("{}: {:?}", c.name, c.column_type))
+        .collect()
+}
+
+#[tokio::test]
+async fn group_gives_vectors_through_each_of_the_three_requests() {
+    use proto::agg_spec::Type;
+    use proto::combo_aggregate_request::AggType;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let group = || Type::Group(Default::default());
+
+    // Aggregate: among other aggregations, in the order given
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(group(), &["Is = I"]),
+            agg_count("Rows"),
+            agg_columns(group(), &["N"]),
+        ],
+        &["S"],
+    );
+    let response = call(&mut c, request).await.unwrap();
+    assert_eq!(response.size, 2);
+    let table = c.table(2);
+    assert_eq!(
+        column_types(table.as_ref()),
+        [
+            "S: String",
+            "Is: Vector(Int)",
+            "Rows: Long",
+            "N: Vector(Int)"
+        ]
+    );
+    assert_eq!(
+        values(table.as_ref(), "Is"),
+        texts(&["[0, 2, 4]", "[1, 3, 5]"])
+    );
+    assert_eq!(
+        values(table.as_ref(), "N"),
+        texts(&["[3, 1, -1]", "[2, 0, -2]"])
+    );
+
+    // AggregateAll, and ComboAggregate by itself, which is Table#groupBy: every column
+    // that is not grouped by
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(3),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(group())),
+        group_by_columns: texts(&["S"]),
+    });
+    call(&mut c, all).await.unwrap();
+    let by_itself = combo(4, vec![combo_part(AggType::Group, &[], "")], &["S"], false);
+    call(&mut c, by_itself).await.unwrap();
+    for result in [3, 4] {
+        let table = c.table(result);
+        assert_eq!(
+            column_types(table.as_ref()),
+            ["S: String", "I: Vector(Int)", "N: Vector(Int)"]
+        );
+        assert_eq!(
+            values(table.as_ref(), "I"),
+            texts(&["[0, 2, 4]", "[1, 3, 5]"])
+        );
+    }
+
+    // without keys, and with nothing left to group
+    call(
+        &mut c,
+        combo(5, vec![combo_part(AggType::Group, &[], "")], &[], false),
+    )
+    .await
+    .unwrap();
+    let table = c.table(5);
+    assert_eq!(
+        column_types(table.as_ref()),
+        ["I: Vector(Int)", "N: Vector(Int)", "S: Vector(String)"]
+    );
+    assert_eq!(values(table.as_ref(), "S"), texts(&["[a, b, a, b, a, b]"]));
+    let nothing = combo(
+        6,
+        vec![combo_part(AggType::Group, &[], "")],
+        &["I", "N", "S"],
+        false,
+    );
+    assert_internal(&call(&mut c, nothing).await.unwrap_err());
+
+    // ComboAggregate with other aggregates, and with match pairs
+    let request = combo(
+        7,
+        vec![
+            combo_part(AggType::Group, &["Ns = N"], ""),
+            combo_part(AggType::Sum, &["Total = N"], ""),
+        ],
+        &["S"],
+        false,
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(7);
+    assert_eq!(column_names(table.as_ref()), ["S", "Ns", "Total"]);
+    assert_eq!(
+        values(table.as_ref(), "Ns"),
+        texts(&["[3, 1, -1]", "[2, 0, -2]"])
+    );
+    assert_eq!(values(table.as_ref(), "Total"), ints(&[3, 0]));
 }
 
 #[tokio::test]
