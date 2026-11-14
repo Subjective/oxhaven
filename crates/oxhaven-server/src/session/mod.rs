@@ -10,6 +10,8 @@
 //!   receives their values. [`Reply`] turns the two handlers into the response of a unary call.
 //! - Inputs come from [`TicketRouter::resolve`], which accepts every kind of ticket that has
 //!   a registered [`TicketResolver`].
+//! - A session hands an export to other sessions by publishing it under a shared ticket
+//!   (`PublishFromTicket`); see [`SharedTicketResolver`].
 //! - A value is an [`ExportValue`]: a table, or any other object.
 
 mod auth;
@@ -19,10 +21,13 @@ mod flight;
 mod grpc;
 mod interceptor;
 mod router;
+mod shared;
 mod state;
 mod store;
 mod ticket;
 
+#[cfg(test)]
+mod shared_tests;
 #[cfg(test)]
 mod tests;
 
@@ -33,18 +38,22 @@ pub use auth::{
 pub use executor::{Executor, Job, TokioExecutor};
 pub use export::{
     is_failure, is_terminal, Export, ExportBuilder, ExportError, ExportFailure, ExportState,
-    ExportValue,
+    ExportValue, WeakExport,
 };
 pub use flight::{handshake, HandshakeStream};
 pub use grpc::{Reply, SessionGrpc};
 pub use interceptor::{current_session, optional_session, SessionLayer, SessionMiddleware};
-pub use router::{ExportTicketResolver, TicketResolver, TicketRouter};
+pub use router::{DescribedFlight, ExportTicketResolver, TicketResolver, TicketRouter};
+pub use shared::{
+    shared_id_to_bytes, SharedTicketResolver, SHARED_DESCRIPTOR_ROUTE, SHARED_TICKET_ROUTE,
+};
 pub use state::{Clock, ExportNotifications, OnCloseId, Session, TokenExpiration};
 pub use store::{
     system_clock, AuthenticationFailed, SessionStore, TerminationNotifications,
     DEFAULT_TOKEN_EXPIRE_MS, MIN_TOKEN_EXPIRE_MS,
 };
 pub use ticket::{
-    descriptor_to_export_id, export_id_to_bytes, export_id_to_ticket, export_log_name,
-    ticket_to_export_id, EXPORT_DESCRIPTOR_ROUTE, EXPORT_TICKET_ROUTE, NON_EXPORT_ID,
+    descriptor_log_name, descriptor_to_export_id, export_id_to_bytes, export_id_to_ticket,
+    export_log_name, ticket_to_export_id, EXPORT_DESCRIPTOR_ROUTE, EXPORT_TICKET_ROUTE,
+    NON_EXPORT_ID,
 };
