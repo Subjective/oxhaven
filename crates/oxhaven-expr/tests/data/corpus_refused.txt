@@ -1,0 +1,1821 @@
+docs-python/conceptual.arrays-vs-vectors.L26.9.0	java-accepts	object creation (new)
+docs-python/conceptual.arrays-vs-vectors.L26.9.1	java-accepts	setup: object creation (new)
+docs-python/conceptual.arrays-vs-vectors.L26.9.2	java-accepts	setup: object creation (new)
+docs-python/conceptual.arrays-vs-vectors.L45.9.0	java-accepts	row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L45.9.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L60.9.0	java-accepts	row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L62.9.0	java-accepts	setup: row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L62.9.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L75.9.0	java-accepts	row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L90.9.0	java-accepts	row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L92.9.0	java-accepts	setup: row variable Ii
+docs-python/conceptual.arrays-vs-vectors.L92.9.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.column-types.L95.5.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L95.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L95.5.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L95.5.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L95.5.4	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L95.5.5	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L116.5.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L116.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L116.5.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L129.5.0	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L132.5.0	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L142.5.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L142.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L142.5.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L142.5.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L142.5.4	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L142.5.5	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L167.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L167.5.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L177.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L206.5.0	java-accepts	function now()
+docs-python/conceptual.column-types.L206.5.1	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L206.5.2	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L222.5.0	java-accepts	function now()
+docs-python/conceptual.column-types.L222.5.1	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L222.5.2	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L222.5.3	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L239.6.0	java-accepts	function now()
+docs-python/conceptual.column-types.L239.6.1	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L239.6.2	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L239.6.3	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L239.6.4	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L257.6.1	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L257.6.2	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L257.6.3	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L257.6.4	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L278.6.0	java-accepts	function now()
+docs-python/conceptual.column-types.L278.6.1	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L300.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L300.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L300.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L317.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.4	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.5	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L317.6.6	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L338.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L343.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L357.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L357.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L357.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L357.6.4	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L395.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L395.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L395.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L395.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L411.6.0	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L411.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L411.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L411.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L428.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L428.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L428.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L447.6.0	java-accepts	object creation (new)
+docs-python/conceptual.column-types.L447.6.1	java-accepts	setup: object creation (new)
+docs-python/conceptual.column-types.L447.6.2	java-accepts	setup: object creation (new)
+docs-python/conceptual.column-types.L447.6.3	java-accepts	setup: object creation (new)
+docs-python/conceptual.column-types.L447.6.4	java-accepts	setup: object creation (new)
+docs-python/conceptual.column-types.L447.6.5	java-accepts	setup: object creation (new)
+docs-python/conceptual.column-types.L468.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L468.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L468.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L468.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L468.6.4	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L488.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L488.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L488.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L488.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L505.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L505.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L505.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L524.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L524.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L544.9.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L544.9.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L544.9.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L573.7.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L573.7.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L574.8.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L586.8.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L597.7.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L598.8.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L601.6.0	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L612.6.0	java-accepts	row variable I
+docs-python/conceptual.column-types.L612.6.1	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L612.6.2	java-accepts	setup: row variable I
+docs-python/conceptual.column-types.L612.6.3	java-accepts	setup: row variable I
+docs-python/conceptual.deephaven-design.L284.9.0	java-accepts	row variable Ii
+docs-python/conceptual.deephaven-design.L284.9.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.deephaven-design.L284.9.2	java-accepts	setup: row variable Ii
+docs-python/conceptual.deephaven-design.L287.9.0	java-accepts	setup: row variable Ii
+docs-python/conceptual.ninja.L20.9.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.ninja.L29.10.1	java-accepts	row variable Ii
+docs-python/conceptual.ninja.L42.9.0	java-accepts	time literal '2019-01-23T12:15 ET'
+docs-python/conceptual.ninja.L42.9.1	java-accepts	setup: time literal '2019-01-23T12:15 ET'
+docs-python/conceptual.ninja.L42.9.2	java-accepts	setup: time literal '2019-01-23T12:15 ET'
+docs-python/conceptual.ninja.L42.9.3	java-accepts	setup: time literal '2019-01-23T12:15 ET'
+docs-python/conceptual.ninja.L132.4.0	java-accepts	row variable I
+docs-python/conceptual.ninja.L132.4.1	java-accepts	setup: row variable I
+docs-python/conceptual.ninja.L138.5.0	java-accepts	setup: row variable I
+docs-python/conceptual.ninja.L154.5.0	java-accepts	row variable I
+docs-python/conceptual.ninja.L154.5.1	java-accepts	setup: row variable I
+docs-python/conceptual.ninja.L177.9.0	java-accepts	row variable I
+docs-python/conceptual.ninja.L177.9.1	java-accepts	setup: row variable I
+docs-python/conceptual.ninja.L178.9.0	java-accepts	setup: row variable I
+docs-python/conceptual.ninja.L192.5.0	java-fails	field access .lang
+docs-python/conceptual.ninja.L223.4.1	java-accepts	setup: row variable I
+docs-python/conceptual.python-java-boundary.L35.9.0	java-accepts	row variable Ii
+docs-python/conceptual.python-java-boundary.L39.21.0	java-accepts	setup: row variable Ii
+docs-python/conceptual.query-engine.parallelization.L113.4.1	java-accepts	setup: row variable I
+docs-python/conceptual.table-types.L86.4.1	java-accepts	setup: row variable I
+docs-python/conceptual.time-in-deephaven.L39.4.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.time-in-deephaven.L39.4.2	java-fails	setup: row variable Ii
+docs-python/conceptual.time-in-deephaven.L70.4.0	java-accepts	function now()
+docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	setup: row variable Ii
+docs-python/conceptual.time-in-deephaven.L91.4.0	java-accepts	function now()
+docs-python/conceptual.time-in-deephaven.L91.4.1	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L91.4.2	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L91.4.3	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L91.4.4	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L91.4.5	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	setup: row variable Ii
+docs-python/conceptual.time-in-deephaven.L135.4.1	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L135.4.2	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L135.4.3	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L135.4.4	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L135.4.5	java-accepts	setup: function now()
+docs-python/conceptual.time-in-deephaven.L162.4.0	java-accepts	time literal 'PT24h'
+docs-python/conceptual.time-in-deephaven.L162.4.1	java-accepts	setup: time literal 'PT24h'
+docs-python/conceptual.time-in-deephaven.L177.5.0	java-accepts	function parseDuration()
+docs-python/conceptual.time-in-deephaven.L181.5.0	java-accepts	time literal 'PT24h'
+docs-python/conceptual.time-in-deephaven.L197.5.0	java-accepts	time literal 'GMT'
+docs-python/conceptual.time-in-deephaven.L197.5.1	java-accepts	setup: time literal 'GMT'
+docs-python/conceptual.time-in-deephaven.L203.5.0	java-accepts	time literal '2022-03-28'
+docs-python/conceptual.time-in-deephaven.L203.5.1	java-accepts	setup: time literal '2022-03-28'
+docs-python/conceptual.time-in-deephaven.L209.5.0	java-accepts	time literal '10:15:30.46'
+docs-python/conceptual.time-in-deephaven.L209.5.1	java-accepts	setup: time literal '10:15:30.46'
+docs-python/conceptual.time-in-deephaven.L215.5.1	java-accepts	function parseInstant()
+docs-python/conceptual.time-in-deephaven.L226.5.0	java-accepts	function parseZonedDateTime()
+docs-python/conceptual.time-in-deephaven.L226.5.1	java-accepts	setup: function parseZonedDateTime()
+docs-python/conceptual.time-in-deephaven.L236.5.0	java-accepts	time literal 'PT6H30M30S'
+docs-python/conceptual.time-in-deephaven.L236.5.1	java-accepts	setup: time literal 'PT6H30M30S'
+docs-python/conceptual.time-in-deephaven.L243.5.0	java-accepts	time literal 'P2Y3M10D'
+docs-python/conceptual.time-in-deephaven.L243.5.1	java-accepts	setup: time literal 'P2Y3M10D'
+docs-python/conceptual.time-in-deephaven.L256.4.0	java-accepts	time literal '2025-10-15T13:23 ET'
+docs-python/conceptual.time-in-deephaven.L256.4.1	java-fails	setup: time literal '2025-10-15T13:23 ET'
+docs-python/conceptual.time-in-deephaven.L612.4.0	java-accepts	time literal '2017-04-29T10:30:00 America/Chicago'
+docs-python/conceptual.time-in-deephaven.L612.4.1	java-accepts	setup: time literal '2017-04-29T10:30:00 America/Chicago'
+docs-python/conceptual.time-in-deephaven.L627.4.0	java-fails	time literal '2017-04-29T10:30:00 IST'
+docs-python/getting-started.crash-course.create-tables.L22.16.1	java-accepts	setup: row variable I
+docs-python/getting-started.crash-course.create-tables.L22.16.2	java-accepts	setup: row variable I
+docs-python/getting-started.crash-course.export-data.L267.11.0	java-accepts	function randomInt()
+docs-python/getting-started.crash-course.export-data.L267.11.1	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.export-data.L267.11.2	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.export-data.L267.11.3	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.py-integrations.L16.4.0	java-fails	time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.py-integrations.L54.4.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.py-integrations.L54.4.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.py-integrations.L56.21.0	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.py-integrations.L80.4.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.py-integrations.L80.4.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L29.11.6	java-accepts	time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L29.11.7	java-accepts	setup: time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L29.11.8	java-accepts	setup: time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L29.11.9	java-accepts	setup: time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L29.11.10	java-accepts	setup: time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L66.15.1	java-accepts	setup: row variable I
+docs-python/getting-started.crash-course.query-strings.L77.14.0	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.1	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.2	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.3	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.4	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.5	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.6	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.7	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L77.14.8	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
+docs-python/getting-started.crash-course.query-strings.L101.11.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L101.11.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L121.11.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.query-strings.L121.11.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L121.11.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L121.11.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L138.14.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L138.14.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L138.14.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L151.14.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.query-strings.L151.14.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L151.14.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L151.14.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L167.13.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L167.13.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L167.13.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.4	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.5	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.6	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L188.17.7	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L207.12.0	java-accepts	function randomInt()
+docs-python/getting-started.crash-course.query-strings.L207.12.1	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.query-strings.L207.12.2	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.query-strings.L207.12.3	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.query-strings.L207.12.4	java-accepts	setup: function randomInt()
+docs-python/getting-started.crash-course.query-strings.L221.17.0	java-accepts	function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.1	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L249.23.0	java-accepts	function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L249.23.1	java-accepts	setup: function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L249.23.2	java-accepts	setup: function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L249.23.3	java-accepts	setup: function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L249.23.4	java-accepts	setup: function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	setup: function parseInstant()
+docs-python/getting-started.crash-course.query-strings.L267.20.0	java-accepts	function now()
+docs-python/getting-started.crash-course.query-strings.L267.20.1	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L267.20.2	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L267.20.3	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L300.15.0	java-accepts	method call .getEpochSecond() on a value of type Instant
+docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
+docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
+docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	object creation (new)
+docs-python/getting-started.crash-course.query-strings.L370.4.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.query-strings.L370.4.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.4	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.5	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.query-strings.L418.18.6	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.table-ops.L23.4.0	java-accepts	time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L37.12.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L37.12.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L37.12.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L53.18.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L66.17.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L66.17.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L78.13.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L86.11.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L115.13.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L211.4.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L211.4.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L211.4.3	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L211.4.4	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.table-ops.L365.5.1	java-accepts	function randomDouble()
+docs-python/getting-started.crash-course.table-ops.L365.5.2	java-accepts	setup: function randomDouble()
+docs-python/getting-started.crash-course.table-ops.L368.5.1	java-accepts	row variable I
+docs-python/getting-started.crash-course.table-ops.L368.5.2	java-accepts	setup: row variable I
+docs-python/getting-started.crash-course.table-ops.L369.5.1	java-accepts	row variable I
+docs-python/getting-started.crash-course.table-ops.L369.5.2	java-accepts	setup: row variable I
+docs-python/getting-started.crash-course.time-calendars.L57.22.1	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.time-calendars.L57.22.2	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.time-calendars.L73.24.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L73.24.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L73.24.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L73.24.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L73.24.4	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L73.24.5	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.0	java-accepts	row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.4	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.5	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L102.29.6	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.1	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.2	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.3	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.4	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.5	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.6	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.7	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L121.4.8	java-accepts	setup: row variable Ii
+docs-python/getting-started.crash-course.time-calendars.L231.14.0	java-accepts	time literal '2024-01-01T09:00:00 ET'
+docs-python/getting-started.crash-course.time-calendars.L231.14.1	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
+docs-python/getting-started.crash-course.time-calendars.L231.14.2	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
+docs-python/getting-started.crash-course.time-calendars.L231.14.3	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
+docs-python/getting-started.docker-install.L304.8.0	java-fails	field access .example
+docs-python/how-to-guides.built-in-constants.L123.9.1	java-accepts	row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.5	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.6	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-constants.L123.9.7	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-functions.L22.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.built-in-functions.L22.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-functions.L61.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.built-in-functions.L61.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	object creation (new)
+docs-python/how-to-guides.built-in-functions.L103.9.0	java-accepts	function randomDouble()
+docs-python/how-to-guides.built-in-functions.L103.9.1	java-fails	setup: function randomDouble()
+docs-python/how-to-guides.built-in-variables.L47.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.built-in-variables.L47.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.built-in-variables.L68.14.0	java-accepts	row variable I
+docs-python/how-to-guides.built-in-variables.L68.14.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.built-in-variables.L111.13.0	java-accepts	row variable I
+docs-python/how-to-guides.built-in-variables.L111.13.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.built-in-variables.L150.10.0	java-accepts	row variable I
+docs-python/how-to-guides.built-in-variables.L150.10.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.business-calendar.L52.9.0	java-accepts	time literal '2024-01-01T00:00:00 ET'
+docs-python/how-to-guides.casting.L122.9.0	java-fails	static method call MyClass.change_value()
+docs-python/how-to-guides.data-import-export.csv-export.L29.9.0	java-accepts	row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L29.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L29.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L29.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L65.20.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L65.20.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.csv-export.L65.20.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L188.14.1	java-accepts	row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L188.14.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L188.14.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L191.14.1	java-accepts	row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L191.14.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-import-export.iceberg.L191.14.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-indexes.L54.9.0	java-accepts	row variable I
+docs-python/how-to-guides.data-indexes.L64.9.0	java-accepts	row variable I
+docs-python/how-to-guides.data-indexes.L64.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.data-indexes.L77.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.data-indexes.L77.9.1	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.data-indexes.L99.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.data-indexes.L99.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L99.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L99.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L99.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L159.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L159.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L159.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L159.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L169.15.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L169.15.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L329.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L329.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.data-indexes.L329.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	time literal 'PT5H2M1.2S'
+docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: time literal 'PT5H2M1.2S'
+docs-python/how-to-guides.date-time-literals.L55.9.1	java-accepts	time literal '2025-01-23T15:21:48 ET'
+docs-python/how-to-guides.date-time-literals.L85.9.0	java-accepts	time literal '2025-04-01'
+docs-python/how-to-guides.date-time-literals.L106.9.0	java-accepts	time literal '14:30:00.12345'
+docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	time literal 'PT5H2M1.2S'
+docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	time literal 'P1Y4M5D'
+docs-python/how-to-guides.dedicated-aggregations.L110.4.0	java-accepts	row variable Ii
+docs-python/how-to-guides.dedicated-aggregations.L119.4.0	java-accepts	static method call Long.toString()
+docs-python/how-to-guides.dedicated-aggregations.L119.4.1	java-accepts	setup: static method call Long.toString()
+docs-python/how-to-guides.dedicated-aggregations.L130.4.1	java-accepts	setup: static method call Long.toString()
+docs-python/how-to-guides.dedicated-aggregations.L130.4.2	java-accepts	setup: static method call Long.toString()
+docs-python/how-to-guides.deephaven-python-package.L19.12.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.deephaven-python-package.L112.4.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.deephaven-python-package.L112.4.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.deephaven-python-package.L131.4.0	java-accepts	row variable I
+docs-python/how-to-guides.deephaven-python-package.L131.4.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.deephaven-python-package.L131.4.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.deephaven-python-package.L198.4.0	java-accepts	function randomDouble()
+docs-python/how-to-guides.extract-table-value.L15.9.0	java-accepts	row variable I
+docs-python/how-to-guides.extract-table-value.L59.18.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.extract-table-value.L59.18.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.filters.L23.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L25.15.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L26.14.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L107.15.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L108.17.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L132.34.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L134.22.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L226.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.filters.L229.18.0	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.filters.L244.9.0	java-accepts	function randomDouble()
+docs-python/how-to-guides.filters.L244.9.1	java-accepts	setup: function randomDouble()
+docs-python/how-to-guides.filters.L262.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.filters.L262.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L277.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.filters.L277.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.filters.L285.18.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.formulas.L90.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.formulas.L91.9.0	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.function-generated-tables.L34.11.0	java-accepts	function randomInt()
+docs-python/how-to-guides.function-generated-tables.L34.11.1	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.generate-query-strings.L12.9.0	java-accepts	row variable I
+docs-python/how-to-guides.generate-query-strings.L14.9.0	java-accepts	setup: row variable I
+docs-python/how-to-guides.generate-query-strings.L14.9.0-r2	java-accepts	setup: row variable I
+docs-python/how-to-guides.generate-query-strings.L61.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.generate-query-strings.L87.9.0	java-accepts	time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L87.9.1	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L87.9.2	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.0	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.1	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.2	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.3	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.4	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.5	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.6	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.7	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L95.9.8	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.generate-query-strings.L142.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.generate-query-strings.L142.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.grouping-data.L120.4.1	java-accepts	setup: object creation (new)
+docs-python/how-to-guides.grouping-data.L147.4.1	java-accepts	setup: object creation (new)
+docs-python/how-to-guides.grouping-data.L175.4.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.grouping-data.L185.4.0	java-accepts	cast to int[]
+docs-python/how-to-guides.input-tables.L82.9.0	java-accepts	row variable I
+docs-python/how-to-guides.input-tables.L82.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.input-tables.L82.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.input-tables.L82.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.input-tables.L124.11.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.input-tables.L124.11.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	field access .codehaus
+docs-python/how-to-guides.iterate-table-data.L28.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.iterate-table-data.L28.9.1	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.iterate-table-data.L74.9.0	java-accepts	row variable I
+docs-python/how-to-guides.iterate-table-data.L74.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.iterate-table-data.L74.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.iterate-table-data.L87.9.2	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.iterate-table-data.L125.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.java-classes.L37.9.0	java-accepts	field access .MAX_VALUE
+docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	setup: field access .MAX_VALUE
+docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: field access .MAX_VALUE
+docs-python/how-to-guides.java-classes.L66.9.0	java-fails	static method call Math.random()
+docs-python/how-to-guides.java-classes.L88.9.0	java-accepts	time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.java-classes.L88.9.4	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.joins-exact-relational.L262.7.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-exact-relational.L263.8.0	java-accepts	row variable Ii
+docs-python/how-to-guides.joins-exact-relational.L263.8.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-exact-relational.L263.8.2	java-fails	setup: row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L108.7.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.joins-timeseries-range.L109.8.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.joins-timeseries-range.L254.7.0	java-accepts	row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L254.7.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L254.7.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L257.8.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L257.8.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.joins-timeseries-range.L285.7.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
+docs-python/how-to-guides.joins-timeseries-range.L285.7.1	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
+docs-python/how-to-guides.joins-timeseries-range.L285.7.2	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
+docs-python/how-to-guides.joins-timeseries-range.L285.7.3	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
+docs-python/how-to-guides.joins-timeseries-range.L294.8.0	java-accepts	time literal '2024-01-01T08:00:03 ET'
+docs-python/how-to-guides.joins-timeseries-range.L294.8.1	java-accepts	setup: time literal '2024-01-01T08:00:03 ET'
+docs-python/how-to-guides.joins-timeseries-range.L294.8.2	java-accepts	setup: time literal '2024-01-01T08:00:03 ET'
+docs-python/how-to-guides.keyed-transpose.L229.10.0	java-accepts	method call String.replace()
+docs-python/how-to-guides.metadata.L129.5.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.metadata.L129.5.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.metadata.L130.5.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.metadata.L130.5.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.ml-ai-no-learn.L34.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.new-and-empty-table.L27.8.0	java-accepts	setup: row variable I
+docs-python/how-to-guides.new-and-empty-table.L37.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.new-and-empty-table.L37.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.null-inf-nan.L146.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.5	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.6	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L146.9.7	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.5	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.6	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L167.9.7	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L188.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L195.18.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L196.17.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L225.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.null-inf-nan.L225.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.operators.L25.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.operators.L25.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.operators.L25.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.operators.L25.9.4	java-accepts	setup: row variable I
+docs-python/how-to-guides.operators.L25.9.5	java-accepts	setup: row variable I
+docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	field access .lang
+docs-python/how-to-guides.performance.garbage-collection.L31.7.0	java-accepts	row variable I
+docs-python/how-to-guides.plotting.api-plotting.L72.15.0	java-accepts	row variable I
+docs-python/how-to-guides.plotting.api-plotting.L72.15.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L72.15.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L261.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L261.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L261.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L750.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.plotting.api-plotting.L763.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.predicate-pushdown.L39.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.predicate-pushdown.L55.9.1	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.predicate-pushdown.L81.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.predicate-pushdown.L120.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.predicate-pushdown.L120.9.1	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.pyobjects.L147.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.python-classes.L45.9.0	java-fails	field access .a
+docs-python/how-to-guides.python-classes.L66.9.0	java-fails	field access .a
+docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call MyClass.change_value()
+docs-python/how-to-guides.python-errors.L214.4.0	java-accepts	row variable I
+docs-python/how-to-guides.python-errors.L436.11.0	java-accepts	setup: row variable I
+docs-python/how-to-guides.query-string-overview.L40.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.query-string-overview.L40.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L40.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L40.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L40.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L62.21.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.3	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.4	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.5	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L102.9.6	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L207.9.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.query-string-overview.L207.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
+docs-python/how-to-guides.read-javadocs.L136.9.0	java-accepts	function randomDouble()
+docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	setup: function randomDouble()
+docs-python/how-to-guides.read-javadocs.L151.9.0	java-accepts	row variable I
+docs-python/how-to-guides.read-javadocs.L151.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.read-javadocs.L151.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.read-javadocs.L151.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.replay-data.L96.11.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L26.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L26.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L46.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L83.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.rolling-aggregations.L97.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L115.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L115.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L115.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L148.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L148.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L196.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L214.4.0	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L257.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L366.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L366.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L499.9.0	java-accepts	time literal '2023-01-13T12:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L499.9.1	java-accepts	setup: time literal '2023-01-13T12:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L499.9.2	java-accepts	setup: time literal '2023-01-13T12:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L721.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L721.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L733.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L733.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.rolling-aggregations.L757.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L778.9.0	java-accepts	time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L778.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L778.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L810.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L826.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L826.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L933.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
+docs-python/how-to-guides.rolling-aggregations.L1019.9.0	java-accepts	row variable I
+docs-python/how-to-guides.rolling-aggregations.L1019.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.rolling-aggregations.L1019.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.tree-table.L44.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.tree-table.L59.5.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.tree-table.L93.9.0	java-accepts	row variable I
+docs-python/how-to-guides.tree-table.L93.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.triage-errors.L351.9.0	java-accepts	function randomInt()
+docs-python/how-to-guides.triage-errors.L353.9.0	java-accepts	setup: function randomInt()
+docs-python/how-to-guides.use-deephaven-learn.L99.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-jpy.L536.4.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-jpy.L536.4.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-jpy.L536.4.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-jpy.L666.4.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.use-numba.L312.4.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.use-numpy.L30.9.0	java-accepts	function randomDouble()
+docs-python/how-to-guides.use-numpy.L30.9.1	java-accepts	setup: function randomDouble()
+docs-python/how-to-guides.use-numpy.L80.9.0	java-accepts	row variable I
+docs-python/how-to-guides.use-numpy.L136.9.0	java-accepts	field access .PI
+docs-python/how-to-guides.use-select-view-update.L21.9.0	java-accepts	row variable I
+docs-python/how-to-guides.use-select-view-update.L25.15.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L28.13.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L32.15.0	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L62.9.0	java-accepts	row variable I
+docs-python/how-to-guides.use-select-view-update.L62.9.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L62.9.2	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-select-view-update.L93.11.0	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-uris.L205.11.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.use-uris.L259.11.1	java-accepts	setup: row variable I
+docs-python/how-to-guides.work-with-arrays.L57.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.work-with-arrays.L147.9.0	java-accepts	row variable Ii
+docs-python/how-to-guides.work-with-arrays.L147.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.work-with-arrays.L166.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.work-with-arrays.L204.9.1	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.work-with-arrays.L204.9.2	java-accepts	setup: row variable Ii
+docs-python/how-to-guides.work-with-arrays.L280.9.0	java-accepts	object creation (new)
+docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
+docs-python/how-to-guides.work-with-strings.L113.9.2	java-accepts	setup: function parseFloat()
+docs-python/how-to-guides.work-with-strings.L113.9.3	java-accepts	setup: function parseFloat()
+docs-python/reference.arrow.to-arrow.L41.9.1	java-accepts	setup: row variable I
+docs-python/reference.arrow.to-arrow.L41.9.2	java-accepts	setup: row variable I
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.1	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.2	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.3	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.4	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L41.18.1	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L41.18.2	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.cheat-sheet.L41.18.3	java-accepts	setup: row variable Ii
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.0	java-accepts	time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.1	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.2	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.3	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.4	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.5	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.6	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L75.16.0	java-fails	time literal 'PT24h'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L115.5.0	java-accepts	function parseInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.0	java-accepts	function parseInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	setup: function parseInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L223.5.0	java-accepts	time literal 'CT'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L241.5.0	java-accepts	function parseLocalDate()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L293.5.0	java-accepts	function parseLocalTime()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L340.12.0	java-accepts	function epochSecondsToInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L350.5.0	java-accepts	time literal 'P1d'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	setup: function now()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function now()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.0	java-accepts	time literal 'ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.1	java-accepts	setup: time literal 'ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.2	java-accepts	setup: time literal 'ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	setup: time literal 'ET'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L716.4.1	java-accepts	setup: function now()
+docs-python/reference.community-questions.convert-array-types.L14.4.1	java-accepts	setup: row variable I
+docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.3	java-accepts	static method call String.format()
+docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.4	java-accepts	setup: static method call String.format()
+docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	time literal 'ET'
+docs-python/reference.community-questions.extract-values-from-tables.L26.9.0	java-accepts	function randomInt()
+docs-python/reference.community-questions.extract-values-from-tables.L46.9.0	java-accepts	row variable I
+docs-python/reference.community-questions.extract-values-from-tables.L46.9.1	java-accepts	setup: row variable I
+docs-python/reference.community-questions.extract-values-from-tables.L92.9.1	java-accepts	setup: row variable I
+docs-python/reference.community-questions.hash-table-exceeds-maximum-size.L16.4.0	java-accepts	function randomInt()
+docs-python/reference.community-questions.hash-table-exceeds-maximum-size.L31.4.0	java-accepts	setup: function randomInt()
+docs-python/reference.community-questions.how-do-i-get-data-out-of-a-deephaven-table.L15.8.1	java-accepts	setup: row variable Ii
+docs-python/reference.community-questions.how-to-delete-historical-data.L24.19.0	java-accepts	row variable I
+docs-python/reference.community-questions.how-to-delete-historical-data.L24.19.1	java-accepts	setup: row variable I
+docs-python/reference.community-questions.python-vs-query-language-time-ops.L38.9.0	java-accepts	function parseInstant()
+docs-python/reference.community-questions.python-vs-query-language-time-ops.L39.9.0	java-accepts	setup: function parseInstant()
+docs-python/reference.community-questions.why-do-my-python-type-hints-error.L25.4.0	java-accepts	row variable I
+docs-python/reference.community-questions.why-table-ops-producing-incorrect-results.L16.5.0	java-accepts	setup: function randomInt()
+docs-python/reference.data-import-export.iterate.iter-chunk-dict.L41.9.0	java-accepts	function randomInt()
+docs-python/reference.data-import-export.iterate.iter-chunk-dict.L41.9.1	java-accepts	setup: function randomInt()
+docs-python/reference.data-import-export.iterate.iter-chunk-dict.L55.9.2	java-accepts	setup: function randomInt()
+docs-python/reference.engine.data-index.L68.9.0	java-accepts	function randomInt()
+docs-python/reference.engine.data-index.L68.9.1	java-accepts	setup: function randomInt()
+docs-python/reference.engine.has-data-index.L40.9.1	java-accepts	setup: row variable I
+docs-python/reference.engine.has-data-index.L40.9.2	java-accepts	setup: row variable I
+docs-python/reference.iceberg.iceberg-table-writer.L23.9.1	java-accepts	setup: row variable I
+docs-python/reference.iceberg.iceberg-table-writer.L23.9.2	java-fails	setup: row variable I
+docs-python/reference.iceberg.iceberg-write-instructions.L59.11.0	java-accepts	row variable I
+docs-python/reference.iceberg.iceberg-write-instructions.L59.11.1	java-accepts	setup: row variable I
+docs-python/reference.iceberg.iceberg-write-instructions.L59.11.2	java-accepts	setup: row variable I
+docs-python/reference.iceberg.table-parquet-writer-options.L91.9.2	java-accepts	setup: row variable I
+docs-python/reference.numpy.to-numpy.L46.9.1	java-accepts	setup: row variable I
+docs-python/reference.query-language.control-flow.casting.L55.9.1	java-accepts	setup: row variable I
+docs-python/reference.query-language.control-flow.casting.L55.9.2	java-accepts	setup: row variable I
+docs-python/reference.query-language.types.NaNs.L29.9.0	java-fails	field access .lang
+docs-python/reference.query-language.types.arrays.L21.9.0	java-accepts	column array access Values_[...]
+docs-python/reference.query-language.types.arrays.L36.9.0	java-accepts	column array Values_
+docs-python/reference.query-language.types.arrays.L76.9.0	java-accepts	column array X_
+docs-python/reference.query-language.types.arrays.L76.9.1	java-accepts	setup: column array X_
+docs-python/reference.query-language.types.arrays.L76.9.2	java-accepts	setup: column array X_
+docs-python/reference.query-language.types.arrays.L76.9.3	java-accepts	setup: column array X_
+docs-python/reference.query-language.types.periods.L28.9.0	java-accepts	time literal 'P1d'
+docs-python/reference.query-language.variables.special-variables.L53.9.1	java-accepts	setup: row variable I
+docs-python/reference.query-language.variables.special-variables.L53.9.2	java-accepts	setup: row variable I
+docs-python/reference.query-language.variables.special-variables.L68.9.0	java-accepts	setup: row variable I
+docs-python/reference.query-language.variables.special-variables.L68.9.1	java-accepts	setup: row variable I
+docs-python/reference.query-language.variables.special-variables.L68.9.2	java-accepts	setup: row variable I
+docs-python/reference.query-language.variables.special-variables.L68.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.Replayer.L81.11.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
+docs-python/reference.table-operations.create.TableDefinitionLike.L38.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.TableDefinitionLike.L38.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.TableDefinitionLike.L38.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.input-table.L91.11.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.rollup.L116.7.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.create.rollup.L116.7.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggAbsSum.L42.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggAbsSum.L42.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggFormula.L60.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggFormula.L60.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggFormula.L60.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.group-and-aggregate.AggPartition.L42.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.join.full-outer-join.L69.7.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L69.7.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L70.8.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L70.8.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L70.8.2	java-fails	setup: row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L93.7.1	java-fails	setup: row variable Ii
+docs-python/reference.table-operations.join.full-outer-join.L94.8.1	java-fails	setup: row variable Ii
+docs-python/reference.table-operations.join.natural-join.L210.7.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.join.natural-join.L210.7.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.natural-join.L211.8.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.join.natural-join.L211.8.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.range-join.L133.5.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.range-join.L133.5.2	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.range-join.L133.5.3	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.join.range-join.L136.5.2	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.metadata.update_graph.L26.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.from-constituent-tables.L43.10.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.from-constituent-tables.L44.10.0	java-accepts	row variable I
+docs-python/reference.table-operations.partitioned-tables.from-constituent-tables.L44.10.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.from-partitioned-table.L81.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.from-partitioned-table.L81.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.get-constituent.L34.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.get-constituent.L45.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.partitioned-tables.get-constituent.L45.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.get-constituent.L45.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.keys.L26.9.1	java-accepts	setup: function randomInt()
+docs-python/reference.table-operations.partitioned-tables.keys.L26.9.2	java-accepts	setup: function randomInt()
+docs-python/reference.table-operations.partitioned-tables.metadata-methods.L13.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.partitioned-table-merge.L28.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.partitioned-tables.partitioned-table-merge.L28.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.partitioned-table-sort.L46.9.0	java-accepts	function randomInt()
+docs-python/reference.table-operations.partitioned-tables.partitioned-table-sort.L46.9.1	java-accepts	setup: function randomInt()
+docs-python/reference.table-operations.partitioned-tables.partitioned-transform.L54.5.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.partitioned-transform.L55.5.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.partitioned-tables.proxy.L98.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.partitioned-tables.proxy.L98.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.OperationControl.L73.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.update-by-operations.OperationControl.L73.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.OperationControl.L121.9.0	java-accepts	row variable I
+docs-python/reference.table-operations.update-by-operations.cum-count-where.L48.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-count-where.L48.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-max.L35.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-max.L61.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-min.L61.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-min.L78.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-prod.L35.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-prod.L57.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-sum.L35.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-sum.L57.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-sum.L70.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.cum-sum.L70.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.delta.L42.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.delta.L72.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.delta.L72.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.ema-tick.L90.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.ema-tick.L90.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.0	java-accepts	time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.1	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.2	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.2	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.3	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.4	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.emmax-tick.L64.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.emmax-tick.L96.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.emmax-tick.L96.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.emmax-time.L72.9.0	java-accepts	time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.emmax-time.L72.9.1	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
+docs-python/reference.table-operations.update-by-operations.forward-fill.L38.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.forward-fill.L78.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.forward-fill.L78.9.3	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.rolling-avg-tick.L54.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.rolling-count-where-tick.L67.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L79.9.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L79.9.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L79.9.2	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.0	java-accepts	time literal '2024-02-23T09:30:00 ET'
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.1	java-accepts	setup: time literal '2024-02-23T09:30:00 ET'
+docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.2	java-accepts	setup: time literal '2024-02-23T09:30:00 ET'
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.2	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.3	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L137.9.0	java-accepts	row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L137.9.1	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L137.9.2	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L137.9.3	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L137.9.4	java-accepts	setup: row variable Ii
+docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L50.9.1	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L50.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.updateBy.L107.9.2	java-accepts	setup: row variable I
+docs-python/reference.table-operations.update-by-operations.updateBy.L139.9.3	java-accepts	setup: row variable I
+docs-python/reference.time.calendar.calendar.L55.9.0	java-accepts	time literal '2024-01-05T00:08:00 ET'
+grid-array/previous.byte	java-accepts	column array access B1_[...]
+grid-array/next.byte	java-accepts	column array access B2_[...]
+grid-array/previous.short	java-accepts	column array access S1_[...]
+grid-array/next.short	java-accepts	column array access S2_[...]
+grid-array/previous.int	java-accepts	column array access I1_[...]
+grid-array/next.int	java-accepts	column array access I2_[...]
+grid-array/previous.long	java-accepts	column array access L1_[...]
+grid-array/next.long	java-accepts	column array access L2_[...]
+grid-array/previous.float	java-accepts	column array access F1_[...]
+grid-array/next.float	java-accepts	column array access F2_[...]
+grid-array/previous.double	java-accepts	column array access D1_[...]
+grid-array/next.double	java-accepts	column array access D2_[...]
+grid-array/previous.char	java-accepts	column array access C1_[...]
+grid-array/next.char	java-accepts	column array access C2_[...]
+grid-array/previous.boolean	java-accepts	column array access Z1_[...]
+grid-array/next.boolean	java-accepts	column array access Z2_[...]
+grid-array/previous.string	java-accepts	column array access T1_[...]
+grid-array/next.string	java-accepts	column array access T2_[...]
+grid-array/extra.00	java-accepts	row variable I
+grid-array/extra.01	java-accepts	row variable Ii
+grid-array/extra.02	java-accepts	row variable K
+grid-array/extra.03	java-accepts	row variable I
+grid-array/extra.04	java-accepts	row variable Ii
+grid-array/extra.05	java-accepts	row variable I
+grid-array/extra.06	java-accepts	row variable I
+grid-array/extra.07	java-accepts	row variable I
+grid-array/extra.08	java-accepts	row variable I
+grid-array/extra.09	java-accepts	row variable I
+grid-array/extra.10	java-accepts	row variable K
+grid-array/extra.11	java-accepts	column array access I1_[...]
+grid-array/extra.12	java-accepts	column array access I1_[...]
+grid-array/extra.13	java-accepts	column array access I2_[...]
+grid-array/extra.14	java-accepts	column array access I2_[...]
+grid-array/extra.15	java-accepts	column array access I2_[...]
+grid-array/extra.16	java-accepts	column array access I2_[...]
+grid-array/extra.17	java-accepts	column array access I2_[...]
+grid-array/extra.18	java-accepts	column array access I2_[...]
+grid-array/extra.19	java-accepts	column array access I2_[...]
+grid-array/extra.20	java-accepts	column array access I2_[...]
+grid-array/extra.21	java-accepts	column array access I2_[...]
+grid-array/extra.22	java-accepts	column array access D2_[...]
+grid-array/extra.23	java-accepts	column array access I2_[...]
+grid-array/extra.24	java-accepts	column array access I2_[...]
+grid-array/extra.25	java-accepts	column array access I2_[...]
+grid-array/extra.26	java-accepts	column array access I2_[...]
+grid-array/extra.27	java-accepts	column array I2_
+grid-array/extra.28	java-accepts	column array I2_
+grid-array/extra.29	java-accepts	column array I2_
+grid-array/extra.30	java-accepts	column array I2_
+grid-array/extra.31	java-accepts	column array I2_
+grid-array/extra.32	java-accepts	column array D2_
+grid-array/extra.33	java-accepts	column array I2_
+grid-array/extra.34	java-accepts	column array D2_
+grid-array/extra.35	java-accepts	column array I2_
+grid-array/extra.36	java-accepts	column array I2_
+grid-array/extra.37	java-accepts	column array I2_
+grid-array/extra.38	java-accepts	column array I2_
+grid-array/extra.39	java-accepts	column array I2_
+grid-array/extra.40	java-accepts	column array access T2_[...]
+grid-array/extra.41	java-accepts	column array access T2_[...]
+grid-array/extra.42	java-fails	column array access Z2_[...]
+grid-array/extra.43	java-accepts	column array access C2_[...]
+grid-binary/lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-binary/lt.byte.string	java-fails	ordering comparison of byte with String
+grid-binary/lt.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-binary/lt.short.string	java-fails	ordering comparison of short with String
+grid-binary/lt.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-binary/lt.int.string	java-fails	ordering comparison of int with String
+grid-binary/lt.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-binary/lt.long.string	java-fails	ordering comparison of long with String
+grid-binary/lt.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-binary/lt.float.string	java-fails	ordering comparison of float with String
+grid-binary/lt.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-binary/lt.double.string	java-fails	ordering comparison of double with String
+grid-binary/lt.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-binary/lt.char.string	java-fails	ordering comparison of char with String
+grid-binary/lt.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-binary/lt.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-binary/lt.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-binary/lt.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-binary/lt.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-binary/lt.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-binary/lt.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-binary/lt.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-binary/lt.string.byte	java-fails	ordering comparison of String with byte
+grid-binary/lt.string.short	java-fails	ordering comparison of String with short
+grid-binary/lt.string.int	java-fails	ordering comparison of String with int
+grid-binary/lt.string.long	java-fails	ordering comparison of String with long
+grid-binary/lt.string.float	java-fails	ordering comparison of String with float
+grid-binary/lt.string.double	java-fails	ordering comparison of String with double
+grid-binary/lt.string.char	java-fails	ordering comparison of String with char
+grid-binary/lt.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-binary/le.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-binary/le.byte.string	java-fails	ordering comparison of byte with String
+grid-binary/le.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-binary/le.short.string	java-fails	ordering comparison of short with String
+grid-binary/le.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-binary/le.int.string	java-fails	ordering comparison of int with String
+grid-binary/le.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-binary/le.long.string	java-fails	ordering comparison of long with String
+grid-binary/le.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-binary/le.float.string	java-fails	ordering comparison of float with String
+grid-binary/le.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-binary/le.double.string	java-fails	ordering comparison of double with String
+grid-binary/le.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-binary/le.char.string	java-fails	ordering comparison of char with String
+grid-binary/le.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-binary/le.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-binary/le.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-binary/le.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-binary/le.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-binary/le.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-binary/le.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-binary/le.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-binary/le.string.byte	java-fails	ordering comparison of String with byte
+grid-binary/le.string.short	java-fails	ordering comparison of String with short
+grid-binary/le.string.int	java-fails	ordering comparison of String with int
+grid-binary/le.string.long	java-fails	ordering comparison of String with long
+grid-binary/le.string.float	java-fails	ordering comparison of String with float
+grid-binary/le.string.double	java-fails	ordering comparison of String with double
+grid-binary/le.string.char	java-fails	ordering comparison of String with char
+grid-binary/le.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-binary/gt.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-binary/gt.byte.string	java-fails	ordering comparison of byte with String
+grid-binary/gt.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-binary/gt.short.string	java-fails	ordering comparison of short with String
+grid-binary/gt.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-binary/gt.int.string	java-fails	ordering comparison of int with String
+grid-binary/gt.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-binary/gt.long.string	java-fails	ordering comparison of long with String
+grid-binary/gt.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-binary/gt.float.string	java-fails	ordering comparison of float with String
+grid-binary/gt.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-binary/gt.double.string	java-fails	ordering comparison of double with String
+grid-binary/gt.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-binary/gt.char.string	java-fails	ordering comparison of char with String
+grid-binary/gt.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-binary/gt.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-binary/gt.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-binary/gt.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-binary/gt.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-binary/gt.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-binary/gt.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-binary/gt.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-binary/gt.string.byte	java-fails	ordering comparison of String with byte
+grid-binary/gt.string.short	java-fails	ordering comparison of String with short
+grid-binary/gt.string.int	java-fails	ordering comparison of String with int
+grid-binary/gt.string.long	java-fails	ordering comparison of String with long
+grid-binary/gt.string.float	java-fails	ordering comparison of String with float
+grid-binary/gt.string.double	java-fails	ordering comparison of String with double
+grid-binary/gt.string.char	java-fails	ordering comparison of String with char
+grid-binary/gt.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-binary/ge.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-binary/ge.byte.string	java-fails	ordering comparison of byte with String
+grid-binary/ge.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-binary/ge.short.string	java-fails	ordering comparison of short with String
+grid-binary/ge.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-binary/ge.int.string	java-fails	ordering comparison of int with String
+grid-binary/ge.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-binary/ge.long.string	java-fails	ordering comparison of long with String
+grid-binary/ge.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-binary/ge.float.string	java-fails	ordering comparison of float with String
+grid-binary/ge.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-binary/ge.double.string	java-fails	ordering comparison of double with String
+grid-binary/ge.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-binary/ge.char.string	java-fails	ordering comparison of char with String
+grid-binary/ge.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-binary/ge.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-binary/ge.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-binary/ge.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-binary/ge.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-binary/ge.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-binary/ge.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-binary/ge.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-binary/ge.string.byte	java-fails	ordering comparison of String with byte
+grid-binary/ge.string.short	java-fails	ordering comparison of String with short
+grid-binary/ge.string.int	java-fails	ordering comparison of String with int
+grid-binary/ge.string.long	java-fails	ordering comparison of String with long
+grid-binary/ge.string.float	java-fails	ordering comparison of String with float
+grid-binary/ge.string.double	java-fails	ordering comparison of String with double
+grid-binary/ge.string.char	java-fails	ordering comparison of String with char
+grid-binary/ge.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-cast/byte.from-string	java-fails	cast of String to byte
+grid-cast/short.from-string	java-fails	cast of String to short
+grid-cast/int.from-string	java-fails	cast of String to int
+grid-cast/long.from-string	java-fails	cast of String to long
+grid-cast/float.from-string	java-fails	cast of String to float
+grid-cast/double.from-string	java-fails	cast of String to double
+grid-cast/char.from-string	java-fails	cast of String to char
+grid-cast/constant.058	java-fails	cast of String to int
+grid-function/inRange.boolean	java-fails	function inRange() on values that are not numbers
+grid-function/inRange.string	java-fails	function inRange() on values that are not numbers
+grid-function/operator-name.10	java-accepts	function compareTo()
+grid-function/operator-name.11	java-accepts	function compareTo()
+grid-function/java.14	java-fails	method call String.replace()
+grid-function/java-guarded.14	java-accepts	method call String.replace()
+grid-function/java.16	java-fails	method call String.hashCode()
+grid-function/java-guarded.16	java-accepts	method call String.hashCode()
+grid-function/java.18	java-accepts	static method call String.valueOf()
+grid-function/java.19	java-accepts	static method call Integer.parseInt()
+grid-function/java.20	java-fails	static method call Math.abs()
+grid-function/java.21	java-fails	static method call Math.max()
+grid-function/java.22	java-fails	static method call Math.sqrt()
+grid-function/java.23	java-fails	static method call Math.floorMod()
+grid-function/java.24	java-accepts	field access .MAX_VALUE
+grid-function/java.25	java-accepts	field access .NaN
+grid-function/java.26	java-accepts	static method call Double.isNaN()
+grid-function/java.27	java-accepts	field access .MIN_VALUE
+grid-function/java.28	java-accepts	object creation (new)
+grid-function/java.29	java-accepts	object creation (new)
+grid-literal/plus.boolean.null	java-fails	null literal as an operand of +
+grid-literal/plus.null.boolean	java-fails	null literal as an operand of +
+grid-literal/minus.boolean.null	java-fails	null literal as an operand of -
+grid-literal/minus.null.boolean	java-fails	null literal as an operand of -
+grid-literal/minus.string.null	java-fails	null literal as an operand of -
+grid-literal/minus.null.string	java-fails	null literal as an operand of -
+grid-literal/times.boolean.null	java-fails	null literal as an operand of *
+grid-literal/times.null.boolean	java-fails	null literal as an operand of *
+grid-literal/times.string.null	java-fails	null literal as an operand of *
+grid-literal/times.null.string	java-fails	null literal as an operand of *
+grid-literal/divide.boolean.null	java-fails	null literal as an operand of /
+grid-literal/divide.null.boolean	java-fails	null literal as an operand of /
+grid-literal/divide.string.null	java-fails	null literal as an operand of /
+grid-literal/divide.null.string	java-fails	null literal as an operand of /
+grid-literal/remainder.boolean.null	java-fails	null literal as an operand of %
+grid-literal/remainder.null.boolean	java-fails	null literal as an operand of %
+grid-literal/remainder.string.null	java-fails	null literal as an operand of %
+grid-literal/remainder.null.string	java-fails	null literal as an operand of %
+grid-literal/lt.boolean.null	java-accepts	null literal as an operand of <
+grid-literal/lt.null.boolean	java-accepts	null literal as an operand of <
+grid-literal/lt.string.null	java-accepts	null literal as an operand of <
+grid-literal/lt.null.string	java-accepts	null literal as an operand of <
+grid-literal/le.boolean.null	java-accepts	null literal as an operand of <=
+grid-literal/le.null.boolean	java-accepts	null literal as an operand of <=
+grid-literal/le.string.null	java-accepts	null literal as an operand of <=
+grid-literal/le.null.string	java-accepts	null literal as an operand of <=
+grid-literal/gt.boolean.null	java-accepts	null literal as an operand of >
+grid-literal/gt.null.boolean	java-accepts	null literal as an operand of >
+grid-literal/gt.string.null	java-accepts	null literal as an operand of >
+grid-literal/gt.null.string	java-accepts	null literal as an operand of >
+grid-literal/ge.boolean.null	java-accepts	null literal as an operand of >=
+grid-literal/ge.null.boolean	java-accepts	null literal as an operand of >=
+grid-literal/ge.string.null	java-accepts	null literal as an operand of >=
+grid-literal/ge.null.string	java-accepts	null literal as an operand of >=
+grid-literal/band.boolean.null	java-accepts	null literal as an operand of &
+grid-literal/band.null.boolean	java-accepts	null literal as an operand of &
+grid-literal/band.string.null	java-fails	null literal as an operand of &
+grid-literal/band.null.string	java-fails	null literal as an operand of &
+grid-literal/bor.boolean.null	java-accepts	null literal as an operand of |
+grid-literal/bor.null.boolean	java-accepts	null literal as an operand of |
+grid-literal/bor.string.null	java-fails	null literal as an operand of |
+grid-literal/bor.null.string	java-fails	null literal as an operand of |
+grid-literal/xor.boolean.null	java-accepts	null literal as an operand of ^
+grid-literal/xor.null.boolean	java-accepts	null literal as an operand of ^
+grid-literal/xor.string.null	java-fails	null literal as an operand of ^
+grid-literal/xor.null.string	java-fails	null literal as an operand of ^
+grid-literal/lt.byte.literal-boolean	java-fails	ordering comparison of byte with Boolean
+grid-literal/lt.byte.literal-string	java-fails	ordering comparison of byte with String
+grid-literal/lt.short.literal-boolean	java-fails	ordering comparison of short with Boolean
+grid-literal/lt.short.literal-string	java-fails	ordering comparison of short with String
+grid-literal/lt.int.literal-boolean	java-fails	ordering comparison of int with Boolean
+grid-literal/lt.int.literal-string	java-fails	ordering comparison of int with String
+grid-literal/lt.long.literal-boolean	java-fails	ordering comparison of long with Boolean
+grid-literal/lt.long.literal-string	java-fails	ordering comparison of long with String
+grid-literal/lt.float.literal-boolean	java-fails	ordering comparison of float with Boolean
+grid-literal/lt.float.literal-string	java-fails	ordering comparison of float with String
+grid-literal/lt.double.literal-boolean	java-fails	ordering comparison of double with Boolean
+grid-literal/lt.double.literal-string	java-fails	ordering comparison of double with String
+grid-literal/lt.char.literal-boolean	java-fails	ordering comparison of char with Boolean
+grid-literal/lt.char.literal-string	java-fails	ordering comparison of char with String
+grid-literal/lt.boolean.literal-int	java-fails	ordering comparison of Boolean with int
+grid-literal/lt.boolean.literal-long	java-fails	ordering comparison of Boolean with long
+grid-literal/lt.boolean.literal-double	java-fails	ordering comparison of Boolean with double
+grid-literal/lt.boolean.literal-float	java-fails	ordering comparison of Boolean with float
+grid-literal/lt.boolean.literal-char	java-fails	ordering comparison of Boolean with char
+grid-literal/lt.boolean.literal-string	java-fails	ordering comparison of Boolean with String
+grid-literal/lt.string.literal-int	java-fails	ordering comparison of String with int
+grid-literal/lt.string.literal-long	java-fails	ordering comparison of String with long
+grid-literal/lt.string.literal-double	java-fails	ordering comparison of String with double
+grid-literal/lt.string.literal-float	java-fails	ordering comparison of String with float
+grid-literal/lt.string.literal-char	java-fails	ordering comparison of String with char
+grid-literal/lt.string.literal-boolean	java-fails	ordering comparison of String with Boolean
+grid-literal/constant.093	java-accepts	null literal as an operand of >
+grid-literal/constant.117	java-accepts	null in both branches of ?:
+grid-literal/constant.123	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
+grid-literal/constant.124	java-accepts	comparison of null with null
+grid-literal/constant.127	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
+grid-literal/constant.128	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
+grid-literal/constant.133	java-fails	ordering comparison of Boolean with int
+grid-where/columns.lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-where/columns.lt.byte.string	java-fails	ordering comparison of byte with String
+grid-where/columns.lt.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-where/columns.lt.short.string	java-fails	ordering comparison of short with String
+grid-where/columns.lt.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-where/columns.lt.int.string	java-fails	ordering comparison of int with String
+grid-where/columns.lt.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-where/columns.lt.long.string	java-fails	ordering comparison of long with String
+grid-where/columns.lt.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-where/columns.lt.float.string	java-fails	ordering comparison of float with String
+grid-where/columns.lt.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-where/columns.lt.double.string	java-fails	ordering comparison of double with String
+grid-where/columns.lt.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-where/columns.lt.char.string	java-fails	ordering comparison of char with String
+grid-where/columns.lt.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-where/columns.lt.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-where/columns.lt.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-where/columns.lt.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-where/columns.lt.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-where/columns.lt.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-where/columns.lt.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-where/columns.lt.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-where/columns.lt.string.byte	java-fails	ordering comparison of String with byte
+grid-where/columns.lt.string.short	java-fails	ordering comparison of String with short
+grid-where/columns.lt.string.int	java-fails	ordering comparison of String with int
+grid-where/columns.lt.string.long	java-fails	ordering comparison of String with long
+grid-where/columns.lt.string.float	java-fails	ordering comparison of String with float
+grid-where/columns.lt.string.double	java-fails	ordering comparison of String with double
+grid-where/columns.lt.string.char	java-fails	ordering comparison of String with char
+grid-where/columns.lt.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-where/columns.le.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-where/columns.le.byte.string	java-fails	ordering comparison of byte with String
+grid-where/columns.le.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-where/columns.le.short.string	java-fails	ordering comparison of short with String
+grid-where/columns.le.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-where/columns.le.int.string	java-fails	ordering comparison of int with String
+grid-where/columns.le.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-where/columns.le.long.string	java-fails	ordering comparison of long with String
+grid-where/columns.le.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-where/columns.le.float.string	java-fails	ordering comparison of float with String
+grid-where/columns.le.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-where/columns.le.double.string	java-fails	ordering comparison of double with String
+grid-where/columns.le.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-where/columns.le.char.string	java-fails	ordering comparison of char with String
+grid-where/columns.le.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-where/columns.le.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-where/columns.le.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-where/columns.le.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-where/columns.le.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-where/columns.le.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-where/columns.le.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-where/columns.le.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-where/columns.le.string.byte	java-fails	ordering comparison of String with byte
+grid-where/columns.le.string.short	java-fails	ordering comparison of String with short
+grid-where/columns.le.string.int	java-fails	ordering comparison of String with int
+grid-where/columns.le.string.long	java-fails	ordering comparison of String with long
+grid-where/columns.le.string.float	java-fails	ordering comparison of String with float
+grid-where/columns.le.string.double	java-fails	ordering comparison of String with double
+grid-where/columns.le.string.char	java-fails	ordering comparison of String with char
+grid-where/columns.le.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-where/columns.gt.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-where/columns.gt.byte.string	java-fails	ordering comparison of byte with String
+grid-where/columns.gt.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-where/columns.gt.short.string	java-fails	ordering comparison of short with String
+grid-where/columns.gt.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-where/columns.gt.int.string	java-fails	ordering comparison of int with String
+grid-where/columns.gt.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-where/columns.gt.long.string	java-fails	ordering comparison of long with String
+grid-where/columns.gt.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-where/columns.gt.float.string	java-fails	ordering comparison of float with String
+grid-where/columns.gt.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-where/columns.gt.double.string	java-fails	ordering comparison of double with String
+grid-where/columns.gt.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-where/columns.gt.char.string	java-fails	ordering comparison of char with String
+grid-where/columns.gt.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-where/columns.gt.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-where/columns.gt.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-where/columns.gt.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-where/columns.gt.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-where/columns.gt.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-where/columns.gt.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-where/columns.gt.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-where/columns.gt.string.byte	java-fails	ordering comparison of String with byte
+grid-where/columns.gt.string.short	java-fails	ordering comparison of String with short
+grid-where/columns.gt.string.int	java-fails	ordering comparison of String with int
+grid-where/columns.gt.string.long	java-fails	ordering comparison of String with long
+grid-where/columns.gt.string.float	java-fails	ordering comparison of String with float
+grid-where/columns.gt.string.double	java-fails	ordering comparison of String with double
+grid-where/columns.gt.string.char	java-fails	ordering comparison of String with char
+grid-where/columns.gt.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-where/columns.ge.byte.boolean	java-fails	ordering comparison of byte with Boolean
+grid-where/columns.ge.byte.string	java-fails	ordering comparison of byte with String
+grid-where/columns.ge.short.boolean	java-fails	ordering comparison of short with Boolean
+grid-where/columns.ge.short.string	java-fails	ordering comparison of short with String
+grid-where/columns.ge.int.boolean	java-fails	ordering comparison of int with Boolean
+grid-where/columns.ge.int.string	java-fails	ordering comparison of int with String
+grid-where/columns.ge.long.boolean	java-fails	ordering comparison of long with Boolean
+grid-where/columns.ge.long.string	java-fails	ordering comparison of long with String
+grid-where/columns.ge.float.boolean	java-fails	ordering comparison of float with Boolean
+grid-where/columns.ge.float.string	java-fails	ordering comparison of float with String
+grid-where/columns.ge.double.boolean	java-fails	ordering comparison of double with Boolean
+grid-where/columns.ge.double.string	java-fails	ordering comparison of double with String
+grid-where/columns.ge.char.boolean	java-fails	ordering comparison of char with Boolean
+grid-where/columns.ge.char.string	java-fails	ordering comparison of char with String
+grid-where/columns.ge.boolean.byte	java-fails	ordering comparison of Boolean with byte
+grid-where/columns.ge.boolean.short	java-fails	ordering comparison of Boolean with short
+grid-where/columns.ge.boolean.int	java-fails	ordering comparison of Boolean with int
+grid-where/columns.ge.boolean.long	java-fails	ordering comparison of Boolean with long
+grid-where/columns.ge.boolean.float	java-fails	ordering comparison of Boolean with float
+grid-where/columns.ge.boolean.double	java-fails	ordering comparison of Boolean with double
+grid-where/columns.ge.boolean.char	java-fails	ordering comparison of Boolean with char
+grid-where/columns.ge.boolean.string	java-fails	ordering comparison of Boolean with String
+grid-where/columns.ge.string.byte	java-fails	ordering comparison of String with byte
+grid-where/columns.ge.string.short	java-fails	ordering comparison of String with short
+grid-where/columns.ge.string.int	java-fails	ordering comparison of String with int
+grid-where/columns.ge.string.long	java-fails	ordering comparison of String with long
+grid-where/columns.ge.string.float	java-fails	ordering comparison of String with float
+grid-where/columns.ge.string.double	java-fails	ordering comparison of String with double
+grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
+grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
+grid-where/extra.018	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
+grid-where/extra.104	java-accepts	column array access I1_[...]
+grid-where/extra.105	java-accepts	row variable I
+grid-where/extra.106	java-accepts	row variable Ii
+grid-where/extra.107	java-accepts	row variable K
+grid-where/extra.108	java-accepts	row variable I
+java-engine/DeferredViewTableTest.L104.0.0	java-accepts	static method call DateTimeUtils.now()
+java-engine/DeferredViewTableTest.L127.0.0	java-accepts	row variable Ii
+java-engine/DeferredViewTableTest.L149.0.0	java-accepts	row variable Ii
+java-engine/PartitionedTableTest.L1031.0.0	java-accepts	row variable Ii
+java-engine/PartitionedTableTest.L1121.0.0	java-accepts	row variable Ii
+java-engine/PartitionedTableTest.L1121.0.1	java-accepts	setup: row variable Ii
+java-engine/PartitionedTableTest.L1220.0.0	java-accepts	row variable Ii
+java-engine/PartitionedTableTest.L1220.0.1	java-accepts	setup: row variable Ii
+java-engine/PartitionedTableTest.L1221.0.0	java-accepts	row variable Ii
+java-engine/PartitionedTableTest.L1221.0.1	java-accepts	setup: row variable Ii
+java-engine/PartitionedTableTest.L1224.0.0	java-accepts	setup: row variable Ii
+java-engine/PartitionedTableTest.L1225.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableAggregationTest.L163.0.0	java-accepts	static method call Integer.toString()
+java-engine/QueryTableAggregationTest.L163.0.1	java-accepts	setup: static method call Integer.toString()
+java-engine/QueryTableAggregationTest.L164.0.0	java-accepts	static method call Integer.toString()
+java-engine/QueryTableAggregationTest.L164.0.1	java-accepts	setup: static method call Integer.toString()
+java-engine/QueryTableAggregationTest.L187.0.0	java-accepts	row variable I
+java-engine/QueryTableAggregationTest.L187.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L187.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L188.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L188.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L189.0.0	java-accepts	row variable I
+java-engine/QueryTableAggregationTest.L190.0.0	java-accepts	row variable I
+java-engine/QueryTableAggregationTest.L191.0.0	java-accepts	row variable Ii
+java-engine/QueryTableAggregationTest.L192.0.3	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L206.0.2	java-accepts	setup: static method call Integer.toString()
+java-engine/QueryTableAggregationTest.L231.1.0	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L231.1.1	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: row variable I
+java-engine/QueryTableAggregationTest.L424.0.0	java-accepts	static method call Long.toString()
+java-engine/QueryTableAggregationTest.L424.0.1	java-accepts	setup: static method call Long.toString()
+java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
+java-engine/QueryTableAggregationTest.L4022.0.0	java-accepts	row variable Ii
+java-engine/QueryTableAggregationTest.L4022.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableAggregationTest.L4244.0.0	java-accepts	function random()
+java-engine/QueryTableNaturalJoinTest.L2270.0.0	java-accepts	row variable Ii
+java-engine/QueryTableNaturalJoinTest.L2270.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableNaturalJoinTest.L2270.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableNaturalJoinTest.L2420.0.0	java-accepts	row variable I
+java-engine/QueryTableNaturalJoinTest.L2420.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableNaturalJoinTest.L2422.0.0	java-accepts	row variable I
+java-engine/QueryTableNaturalJoinTest.L2422.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableRangeJoinTest.L69.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L69.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L69.0.3	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L70.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L132.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L132.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L132.0.3	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L133.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L160.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L183.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L185.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L185.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L186.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableRangeJoinTest.L284.0.0	java-accepts	row variable I
+java-engine/QueryTableRangeJoinTest.L284.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableRangeJoinTest.L284.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableSelectBarrierTest.L654.0.0	java-accepts	row variable Ii
+java-engine/QueryTableSelectBarrierTest.L654.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectBarrierTest.L654.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectBarrierTest.L654.0.3	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L177.0.0	java-accepts	row variable I
+java-engine/QueryTableSelectUpdateTest.L177.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableSelectUpdateTest.L180.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableSelectUpdateTest.L180.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableSelectUpdateTest.L180.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableSelectUpdateTest.L926.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L934.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L942.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L948.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L999.0.0	java-accepts	row variable K
+java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: row variable K
+java-engine/QueryTableSelectUpdateTest.L1000.0.1	java-accepts	setup: row variable K
+java-engine/QueryTableSelectUpdateTest.L1057.1.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1059.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1060.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1074.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1074.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1075.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1081.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1081.1.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1091.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1094.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1095.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1109.0.1	java-accepts	row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1109.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1110.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1110.0.1	java-fails	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1121.1.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1122.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1122.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1122.0.2	java-fails	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1141.1.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1142.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1142.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1142.0.2	java-fails	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1166.0.1	java-fails	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1192.1.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1193.2.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1196.0.0	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1196.0.1	java-fails	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableSelectUpdateTest.L1675.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableSelectUpdateTest.L1675.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableSortTest.L1055.0.0	java-accepts	row variable I
+java-engine/QueryTableTest.L184.0.0	java-accepts	row variable I
+java-engine/QueryTableTest.L184.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L185.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L185.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L186.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L194.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L194.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L195.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L203.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L278.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L282.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L282.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L282.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L408.0.0	java-accepts	row variable I
+java-engine/QueryTableTest.L408.1.0	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L452.0.0	java-accepts	row variable Ii
+java-engine/QueryTableTest.L452.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableTest.L467.0.0	java-accepts	row variable I
+java-engine/QueryTableTest.L2800.0.0	java-accepts	row variable I
+java-engine/QueryTableTest.L2801.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableTest.L2801.0.2	java-accepts	setup: row variable I
+java-engine/QueryTableWhereInTest.L160.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereInTest.L160.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableWhereInTest.L160.0.2	java-accepts	setup: row variable Ii
+java-engine/QueryTableWhereInTest.L162.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableWhereTest.L207.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L207.0.1	java-accepts	setup: row variable Ii
+java-engine/QueryTableWhereTest.L209.0.1	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L515.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1104.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1108.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1109.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1115.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1116.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1122.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1123.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1129.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1130.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1136.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1137.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1145.0.1	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1149.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1153.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1158.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1162.0.0	java-accepts	setup: row variable I
+java-engine/QueryTableWhereTest.L1170.0.0	java-fails	setup: row variable I
+java-engine/QueryTableWhereTest.L1180.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1199.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1218.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1237.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1256.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1275.0.0	java-accepts	row variable Ii
+java-engine/QueryTableWhereTest.L1296.0.0	java-fails	row variable Ii
+java-engine/QueryTableWhereTest.L1322.0.0	java-fails	row variable Ii
+java-engine/QueryTableWhereTest.L3130.0.0	java-accepts	static method call Long.toString()
+java-engine/QueryTableWhereTest.L3130.0.1	java-accepts	setup: static method call Long.toString()
+java-engine/QueryTableWhereTest.L3135.0.1	java-accepts	setup: row variable Ii
+java-engine/TestAggBy.L394.0.0	java-accepts	static method call DateTimeUtils.epochNanosToInstant()
+java-engine/TestAggBy.L1441.0.0	java-accepts	static method call Long.toHexString()
+java-engine/TestAggBy.L1441.0.1	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1441.0.2	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1441.0.3	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1441.0.4	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.0	java-accepts	static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.1	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.2	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.3	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.4	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestAggBy.L1458.0.5	java-accepts	setup: static method call Long.toHexString()
+java-engine/TestBlinkTableTools.L92.0.0	java-accepts	row variable K
+java-engine/TestBlinkTableTools.L97.0.0	java-accepts	row variable K
+java-engine/TestBlinkTableTools.L118.0.0	java-accepts	row variable K
+java-engine/TestBlinkTableTools.L140.0.0	java-accepts	row variable K
+java-engine/TestBlinkTableTools.L172.0.0	java-accepts	row variable K
+java-engine/TestClockFilterParallelism.L78.0.0	java-accepts	time literal '2026-01-20T09:30:00 America/New_York'
+java-engine/TestClockFilterParallelism.L78.0.1	java-accepts	setup: time literal '2026-01-20T09:30:00 America/New_York'
+java-engine/TestClockFilterParallelism.L78.0.2	java-accepts	setup: time literal '2026-01-20T09:30:00 America/New_York'
+java-engine/TestRollupTable.L616.0.0	java-accepts	row variable I
+java-engine/TestRollupTable.L616.0.1	java-accepts	setup: row variable I
+java-engine/TestRollupTable.L616.0.2	java-accepts	setup: row variable I
+java-engine/TestRollupTable.L1283.0.0	java-accepts	row variable I
+java-engine/TestRollupTable.L1283.0.1	java-accepts	setup: row variable I
+java-engine/TestTreeTable.L118.0.1	java-accepts	setup: row variable Ii
+java-engine/TestFormulaColumnGeneration.L72.0.1	java-accepts	setup: row variable I
+java-engine/TestObjectVectorUngroup.L43.0.0	java-accepts	row variable I
+java-engine/TestObjectVectorUngroup.L43.0.1	java-accepts	setup: row variable I
+java-engine/TestObjectVectorUngroup.L43.0.2	java-accepts	setup: row variable I
+java-engine/TestCumCountWhere.L207.0.0	java-accepts	row variable Ii
+java-engine/TestRollingFormula.L1645.0.1	java-accepts	setup: row variable I
+java-engine/TestUpdateByGeneral.L334.0.0	java-accepts	row variable Ii
+java-engine/TestUpdateByGeneral.L383.0.0	java-accepts	setup: row variable Ii
+java-engine/TestOuterJoinTools.L249.0.0	java-accepts	row variable I
+java-engine/TestOuterJoinTools.L249.0.1	java-accepts	setup: row variable I
+java-engine/TestOuterJoinTools.L250.0.1	java-accepts	setup: row variable I
+java-engine/TestOuterJoinTools.L269.0.0	java-accepts	setup: row variable I
+java-engine/TestOuterJoinTools.L368.0.1	java-accepts	setup: row variable I
+java-engine/TestOuterJoinTools.L371.0.0	java-accepts	setup: row variable I
+java-engine/TestOuterJoinTools.L371.0.1	java-accepts	setup: row variable I
+java-engine/TestWindowCheck.L308.0.0	java-fails	time literal '2022-07-01T00:00 NY'
+java-formula-column/L94.0	java-fails	time literal '2019-04-11T09:30 NY'
+java-formula-column/L99.0	java-accepts	row variable I
+java-formula-column/L103.0	java-accepts	row variable Ii
+java-formula-column/L137.0	java-accepts	object creation (new)
+java-formula-column/L138.0	java-accepts	object creation (new)
+java-formula-column/L139.0	java-accepts	object creation (new)
+java-formula-column/L140.0	java-accepts	object creation (new)
+java-formula-column/L141.0	java-accepts	object creation (new)
+java-formula-column/L142.0	java-accepts	object creation (new)
+java-formula-column/L143.0	java-accepts	object creation (new)
+java-formula-column/L170.0	java-accepts	column array access ByteCol_[...]
+java-formula-column/L171.0	java-accepts	column array access ShortCol_[...]
+java-formula-column/L172.0	java-accepts	column array access CharCol_[...]
+java-formula-column/L173.0	java-accepts	column array access IntCol_[...]
+java-formula-column/L174.0	java-accepts	column array access LongCol_[...]
+java-formula-column/L175.0	java-accepts	column array access FloatCol_[...]
+java-formula-column/L176.0	java-accepts	column array access DoubleCol_[...]
+java-formula-column/L177.0	java-accepts	column array access BooleanCol_[...]
+java-formula-column/L179.0	java-accepts	column array access ByteCol_[...]
+java-formula-column/L180.0	java-accepts	column array access ShortCol_[...]
+java-formula-column/L181.0	java-accepts	column array access CharCol_[...]
+java-formula-column/L182.0	java-accepts	column array access IntCol_[...]
+java-formula-column/L183.0	java-accepts	column array access LongCol_[...]
+java-formula-column/L184.0	java-accepts	column array access FloatCol_[...]
+java-formula-column/L185.0	java-accepts	column array access DoubleCol_[...]
+java-formula-column/L186.0	java-accepts	column array access BooleanCol_[...]
+java-formula-column/L329.0	java-fails	cast to Object
+java-formula-column/L330.0	java-fails	static method call Long.parseLong()
+java-formula-column/L215.e	java-fails	static method call Math.sqrt()
+java-formula-column/L219.e	java-fails	static method call Math.sqrt()
+java-formula-column/L226.e	java-fails	field access .util
+java-formula-column/L230.e	java-fails	static method call Arrays.asList()
+java-formula-column/L234.e	java-accepts	field access .deephaven
+java-formula-column/L238.e	java-fails	field access .class
+java-formula-column/L242.e	java-accepts	field access .JANUARY
+java-formula-column/L246.e	java-fails	static method call Calendar.getAvailableCalendarTypes()
+java-formula-column/L254.e	java-fails	static method call Math.sqrt()
+java-formula-column/L258.e	java-fails	static method call Math.sqrt()
+java-formula-column/L297.e	java-accepts	static method call Integer.toString()
+java-formula-column/L301.e	java-accepts	object creation (new)
+java-formula-column/L305.e	java-accepts	object creation (new)
+java-formula-column/L309.e	java-fails	object creation (new)
+java-formula-column/L317.e	java-accepts	static method call DateTimeUtils.epochNanosToInstant()
+java-parser/L158.0	java-accepts	fixture column of type int32[]
+java-parser/L162.0	java-accepts	fixture column of type int32[]
+java-parser/L166.0	java-accepts	fixture column of type int32[]
+java-parser/L170.0	java-accepts	fixture column of type int32[]
+java-parser/L174.0	java-accepts	fixture column of type int32[]
+java-parser/L178.0	java-accepts	fixture column of type int32[]
+java-parser/L182.0	java-accepts	fixture column of type int32[]
+java-parser/L186.0	java-accepts	fixture column of type int32[]
+java-parser/L190.0	java-accepts	fixture column of type int32[]
+java-parser/L194.0	java-accepts	fixture column of type int32[]
+java-parser/L198.0	java-accepts	fixture column of type int32[]
+java-parser/L202.0	java-accepts	fixture column of type int32[]
+java-parser/L206.0	java-accepts	fixture column of type int32[]
+java-parser/L210.0	java-accepts	fixture column of type int32[]
+java-parser/L214.0	java-accepts	fixture column of type int32[]
+java-parser/L218.0	java-accepts	fixture column of type int32[]
+java-parser/L222.0	java-accepts	fixture column of type int32[]
+java-parser/L226.0	java-accepts	fixture column of type int32[]
+java-parser/L230.0	java-accepts	fixture column of type int32[]
+java-parser/L234.0	java-accepts	fixture column of type int32[]
+java-parser/L246.0	java-accepts	fixture column of type int32[]
+java-parser/L250.0	java-accepts	fixture column of type int32[]
+java-parser/L254.0	java-accepts	fixture column of type int32[]
+java-parser/L258.0	java-accepts	fixture column of type int32[]
+java-parser/L262.0	java-accepts	fixture column of type int32[]
+java-parser/L266.0	java-accepts	fixture column of type int32[]
+java-parser/L270.0	java-accepts	fixture column of type int32[]
+java-parser/L285.0	java-accepts	fixture column of type int32[]
+java-parser/L289.0	java-accepts	fixture column of type int32[]
+java-parser/L293.0	java-accepts	fixture column of type int32[]
+java-parser/L297.0	java-accepts	fixture column of type int32[]
+java-parser/L301.0	java-accepts	fixture column of type int32[]
+java-parser/L310.0	java-accepts	fixture column of type int32[]
+java-parser/L314.0	java-accepts	fixture column of type int32[]
+java-parser/L318.0	java-accepts	fixture column of type int32[]
+java-parser/L322.0	java-accepts	fixture column of type int32[]
+java-parser/L326.0	java-accepts	fixture column of type int32[]
+java-parser/L330.0	java-accepts	fixture column of type int32[]
+java-parser/L334.0	java-accepts	fixture column of type int32[]
+java-parser/L338.0	java-accepts	fixture column of type int32[]
+java-parser/L342.0	java-accepts	fixture column of type int32[]
+java-parser/L352.0	java-accepts	fixture column of type int32[]
+java-parser/L356.0	java-accepts	fixture column of type int32[]
+java-parser/L360.0	java-accepts	fixture column of type int32[]
+java-parser/L369.0	java-accepts	fixture column of type int32[]
+java-parser/L373.0	java-accepts	fixture column of type int32[]
+java-parser/L377.0	java-accepts	fixture column of type int32[]
+java-parser/L381.0	java-accepts	fixture column of type int32[]
+java-parser/L386.0	java-accepts	fixture column of type int32[]
+java-parser/L398.0	java-accepts	fixture column of type int32[]
+java-parser/L403.0	java-accepts	fixture column of type int32[]
+java-parser/L407.0	java-accepts	fixture column of type int32[]
+java-parser/L413.0	java-accepts	fixture column of type int32[]
+java-parser/L417.0	java-accepts	fixture column of type int32[]
+java-parser/L421.0	java-accepts	fixture column of type int32[]
+java-parser/L425.0	java-accepts	fixture column of type int32[]
+java-parser/L431.0	java-accepts	fixture column of type int32[]
+java-parser/L435.0	java-accepts	fixture column of type int32[]
+java-parser/L439.0	java-accepts	fixture column of type int32[]
+java-parser/L443.0	java-accepts	fixture column of type int32[]
+java-parser/L448.0	java-fails	fixture column of type int32[]
+java-parser/L585.0	java-accepts	fixture column of type int32[]
+java-parser/L593.0	java-accepts	fixture column of type int32[]
+java-parser/L597.0	java-accepts	fixture column of type int32[]
+java-parser/L618.0	java-fails	fixture column of type int32[]
+java-parser/L955.0	java-accepts	fixture column of type int32[]
+java-parser/L959.0	java-accepts	fixture column of type int32[]
+java-parser/L963.0	java-accepts	fixture column of type int32[]
+java-parser/L967.0	java-accepts	fixture column of type int32[]
+java-parser/L971.0	java-accepts	fixture column of type int32[]
+java-parser/L975.0	java-fails	fixture column of type int32[]
+java-parser/L979.0	java-accepts	fixture column of type int32[]
+java-parser/L983.0	java-accepts	fixture column of type int32[]
+java-parser/L991.0	java-fails	fixture column of type int32[]
+java-parser/L995.0	java-accepts	fixture column of type int32[]
+java-parser/L999.0	java-accepts	fixture column of type int32[]
+java-parser/L1007.0	java-accepts	fixture column of type int32[]
+java-parser/L1011.0	java-accepts	fixture column of type int32[]
+java-parser/L1017.0	java-accepts	fixture column of type int32[]
+java-parser/L1021.0	java-accepts	fixture column of type int32[]
+java-parser/L1025.0	java-accepts	fixture column of type int32[]
+java-parser/L1029.0	java-accepts	fixture column of type int32[]
+java-parser/L1033.0	java-accepts	fixture column of type int32[]
+java-parser/L1037.0	java-accepts	fixture column of type int32[]
+java-parser/L1041.0	java-accepts	fixture column of type int32[]
+java-parser/L1047.0	java-accepts	fixture column of type int32[]
+java-parser/L1051.0	java-accepts	fixture column of type int32[]
+java-parser/L1055.0	java-accepts	fixture column of type int32[]
+java-parser/L1059.0	java-accepts	fixture column of type int32[]
+java-parser/L1063.0	java-accepts	fixture column of type int32[]
+java-parser/L1075.0	java-accepts	fixture column of type int32[]
+java-parser/L1079.0	java-accepts	fixture column of type int32[]
+java-parser/L1083.0	java-accepts	fixture column of type int32[]
+java-parser/L1087.0	java-accepts	fixture column of type int32[]
+java-parser/L1091.0	java-accepts	fixture column of type int32[]
+java-parser/L1095.0	java-accepts	fixture column of type int32[]
+java-parser/L1099.0	java-accepts	fixture column of type int32[]
+java-parser/L1103.0	java-accepts	fixture column of type int32[]
+java-parser/L1107.0	java-accepts	fixture column of type int32[]
+java-parser/L1111.0	java-accepts	fixture column of type int32[]
+java-parser/L1115.0	java-accepts	fixture column of type int32[]
+java-parser/L1119.0	java-accepts	fixture column of type int32[]
+java-parser/L1125.0	java-accepts	fixture column of type int32[]
+java-parser/L1129.0	java-accepts	fixture column of type int32[]
+java-parser/L1133.0	java-accepts	fixture column of type int32[]
+java-parser/L1137.0	java-accepts	fixture column of type int32[]
+java-parser/L1141.0	java-accepts	fixture column of type int32[]
+java-parser/L1153.0	java-accepts	fixture column of type int32[]
+java-parser/L1157.0	java-accepts	fixture column of type int32[]
+java-parser/L1161.0	java-accepts	fixture column of type int32[]
+java-parser/L1165.0	java-accepts	fixture column of type int32[]
+java-parser/L1169.0	java-accepts	fixture column of type int32[]
+java-parser/L1173.0	java-accepts	fixture column of type int32[]
+java-parser/L1177.0	java-accepts	fixture column of type int32[]
+java-parser/L1181.0	java-accepts	fixture column of type int32[]
+java-parser/L1185.0	java-accepts	fixture column of type int32[]
+java-parser/L1189.0	java-accepts	fixture column of type int32[]
+java-parser/L1193.0	java-accepts	fixture column of type int32[]
+java-parser/L1197.0	java-accepts	fixture column of type int32[]
+java-parser/L1215.0	java-accepts	fixture column of type int32[]
+java-parser/L1219.0	java-accepts	fixture column of type int32[]
+java-parser/L1233.0	java-fails	fixture column of type int32[]
+java-parser/L1241.0	java-accepts	fixture column of type int32[]
+java-parser/L1245.0	java-accepts	fixture column of type int32[]
+java-parser/L1249.0	java-fails	fixture column of type int32[]
+java-parser/L1255.0	java-accepts	fixture column of type int32[]
+java-parser/L1259.0	java-accepts	fixture column of type int32[]
+java-parser/L1263.0	java-accepts	fixture column of type int32[]
+java-parser/L1267.0	java-accepts	fixture column of type int32[]
+java-parser/L1271.0	java-accepts	fixture column of type int32[]
+java-parser/L1275.0	java-accepts	fixture column of type int32[]
+java-parser/L1279.0	java-accepts	fixture column of type int32[]
+java-parser/L1283.0	java-accepts	fixture column of type int32[]
+java-parser/L1287.0	java-accepts	fixture column of type int32[]
+java-parser/L1321.0	java-fails	fixture column of type int32[]
+java-parser/L1329.0	java-fails	fixture column of type int32[]
+java-parser/L1355.0	java-fails	fixture column of type int32[]
+java-parser/L1359.0	java-fails	fixture column of type int32[]
+java-parser/L1363.0	java-accepts	fixture column of type int32[]
+java-parser/L1367.0	java-fails	fixture column of type int32[]
+java-parser/L1371.0	java-accepts	fixture column of type int32[]
+java-parser/L1375.0	java-fails	fixture column of type int32[]
+java-parser/L1379.0	java-fails	fixture column of type int32[]
+java-parser/L1383.0	java-fails	fixture column of type int32[]
+java-parser/L1387.0	java-accepts	fixture column of type int32[]
+java-parser/L1391.0	java-fails	fixture column of type int32[]
+java-parser/L1395.0	java-fails	fixture column of type int32[]
+java-parser/L1799.0	java-fails	fixture column of type int32[]
+java-parser/L1809.0	java-accepts	fixture column of type int32[]
+java-parser/L1815.0	java-fails	fixture column of type int32[]
+java-parser/L1825.0	java-accepts	fixture column of type int32[]
+java-parser/L1886.0	java-fails	fixture column of type int32[]
+java-parser/L1890.0	java-accepts	fixture column of type int32[]
+java-parser/L1950.0	java-fails	fixture column of type int32[]
+java-parser/L2099.0	java-accepts	fixture column of type int32[]
+java-parser/L2109.0	java-accepts	fixture column of type int32[]
+java-parser/L2241.0	java-accepts	fixture column of type int32[]
+java-parser/L2245.0	java-accepts	fixture column of type int32[]
+java-parser/L2249.0	java-accepts	fixture column of type int32[]
+java-parser/L2253.0	java-accepts	fixture column of type int32[]
+java-parser/L2257.0	java-accepts	fixture column of type int32[]
+java-parser/L2261.0	java-accepts	fixture column of type int32[]
+java-parser/L2306.0	java-accepts	fixture column of type int32[]
+java-parser/L2310.0	java-accepts	fixture column of type int32[]
+java-parser/L2314.0	java-accepts	fixture column of type int32[]
+java-parser/L2318.0	java-fails	fixture column of type int32[]
+java-parser/L2350.0	java-accepts	fixture column of type int32[]
+java-parser/L2356.0	java-accepts	fixture column of type int32[]
+java-parser/L2360.0	java-accepts	fixture column of type int32[]
+java-parser/L2515.0	java-accepts	fixture column of type int32[]
+java-parser/L2552.0	java-accepts	fixture column of type int32[]
+java-parser/L2556.0	java-accepts	fixture column of type int32[]
+java-parser/L2840.0	java-accepts	fixture column of type int32[]
+java-parser/L2844.0	java-accepts	fixture column of type int32[]
+java-parser/L3078.0	java-fails	fixture column of type int32[]
+java-parser/L3081.0	java-fails	fixture column of type int32[]
+java-parser/L3084.0	java-fails	fixture column of type int32[]
+java-parser/L3087.0	java-fails	fixture column of type int32[]
+java-parser/L3090.0	java-fails	fixture column of type int32[]
+java-parser/L3093.0	java-fails	fixture column of type int32[]
+java-parser/L3096.0	java-fails	fixture column of type int32[]
+java-parser/L3099.0	java-fails	fixture column of type int32[]
+java-parser/L3103.0	java-fails	fixture column of type int32[]
+py-server/test_arrow.L445.17.0	java-accepts	row variable I
+py-server/test_arrow.L445.17.1	java-accepts	setup: row variable I
+py-server/test_arrow.L445.17.2	java-accepts	setup: row variable I
+py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
+py-server/test_data_index.L15.21.0	java-accepts	function now()
+py-server/test_data_index.L15.21.1	java-accepts	setup: function now()
+py-server/test_data_index.L15.21.2	java-accepts	setup: function now()
+py-server/test_data_index.L15.21.3	java-accepts	setup: function now()
+py-server/test_experiments.L28.17.0	java-accepts	row variable I
+py-server/test_experiments.L28.17.1	java-accepts	setup: row variable I
+py-server/test_experiments.L38.17.0	java-accepts	row variable I
+py-server/test_experiments.L38.17.1	java-accepts	setup: row variable I
+py-server/test_filters.L46.25.0	java-accepts	static method call String.valueOf()
+py-server/test_filters.L54.25.0	java-accepts	setup: static method call String.valueOf()
+py-server/test_filters.L111.12.1	java-accepts	setup: row variable I
+py-server/test_filters.L137.13.0	java-accepts	setup: row variable I
+py-server/test_filters.L137.13.0-r2	java-accepts	setup: row variable I
+py-server/test_filters.L144.12.2	java-accepts	setup: row variable I
+py-server/test_function_generated_table.L31.19.0	java-fails	field access .deephaven
+py-server/test_learn_gather.L22.26.2	java-accepts	row variable I
+py-server/test_learn_gather.L29.26.0	java-accepts	row variable I
+py-server/test_learn_gather.L29.26.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L29.26.2	java-accepts	setup: row variable I
+py-server/test_learn_gather.L36.27.0	java-accepts	row variable I
+py-server/test_learn_gather.L36.27.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L36.27.2	java-accepts	setup: row variable I
+py-server/test_learn_gather.L43.25.0	java-accepts	row variable I
+py-server/test_learn_gather.L43.25.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L43.25.2	java-accepts	setup: row variable I
+py-server/test_learn_gather.L50.26.0	java-accepts	row variable I
+py-server/test_learn_gather.L50.26.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L50.26.2	java-accepts	setup: row variable I
+py-server/test_learn_gather.L57.27.0	java-accepts	row variable I
+py-server/test_learn_gather.L57.27.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L57.27.2	java-accepts	setup: row variable I
+py-server/test_learn_gather.L64.28.0	java-accepts	row variable I
+py-server/test_learn_gather.L64.28.1	java-accepts	setup: row variable I
+py-server/test_learn_gather.L64.28.2	java-accepts	setup: row variable I
+py-server/test_numba_guvectorize.L26.12.0	java-accepts	row variable I
+py-server/test_numba_guvectorize.L26.12.1	java-accepts	setup: row variable I
+py-server/test_numba_guvectorize.L37.12.1	java-accepts	setup: row variable I
+py-server/test_numba_guvectorize.L120.16.1	java-accepts	setup: row variable I
+py-server/test_numba_guvectorize.L137.12.0	java-accepts	row variable Ii
+py-server/test_numba_guvectorize.L137.12.1	java-accepts	setup: row variable Ii
+py-server/test_numba_vectorized_column.L25.16.0	java-accepts	row variable Ii
+py-server/test_numba_vectorized_column.L25.16.1	java-accepts	setup: row variable Ii
+py-server/test_parquet.L59.16.0	java-accepts	row variable I
+py-server/test_parquet.L59.16.1	java-accepts	setup: row variable I
+py-server/test_parquet.L59.16.2	java-accepts	setup: row variable I
+py-server/test_parquet.L107.16.1	java-accepts	setup: row variable I
+py-server/test_parquet.L107.16.2	java-accepts	setup: row variable I
+py-server/test_parquet.L221.19.1	java-accepts	static method call DateTimeUtils.now()
+py-server/test_parquet.L252.19.0	java-accepts	row variable I
+py-server/test_parquet.L252.19.1	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.2	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.3	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.4	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.5	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.6	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.7	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.8	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.9	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.10	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.11	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.12	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.13	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.14	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.15	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.16	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.17	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.18	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.19	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.20	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.21	java-accepts	setup: row variable I
+py-server/test_parquet.L252.19.22	java-accepts	setup: row variable I
+py-server/test_parquet.L424.19.0	java-accepts	row variable I
+py-server/test_parquet.L424.19.1	java-accepts	setup: row variable I
+py-server/test_parquet.L424.19.2	java-accepts	setup: row variable I
+py-server/test_parquet.L466.19.0	java-accepts	field access .time
+py-server/test_parquet.L466.19.1	java-accepts	setup: field access .time
+py-server/test_parquet.L466.19.2	java-accepts	setup: field access .time
+py-server/test_parquet.L466.19.3	java-accepts	setup: field access .time
+py-server/test_parquet.L520.19.0	java-accepts	field access .time
+py-server/test_parquet.L679.16.0	java-accepts	row variable I
+py-server/test_parquet.L679.16.1	java-accepts	setup: row variable I
+py-server/test_parquet.L679.16.2	java-accepts	setup: row variable I
+py-server/test_parquet.L710.16.0	java-accepts	row variable I
+py-server/test_parquet.L710.16.1	java-accepts	setup: row variable I
+py-server/test_parquet.L710.16.2	java-accepts	setup: row variable I
+py-server/test_parquet.L710.16.3	java-accepts	setup: row variable I
+py-server/test_parquet.L921.22.0	java-accepts	row variable I
+py-server/test_parquet.L921.22.1	java-accepts	setup: row variable I
+py-server/test_parquet.L921.22.2	java-accepts	setup: row variable I
+py-server/test_parquet.L931.23.0	java-accepts	row variable I
+py-server/test_parquet.L931.23.1	java-accepts	setup: row variable I
+py-server/test_parquet.L931.23.2	java-accepts	setup: row variable I
+py-server/test_parquet.L947.16.1	java-accepts	setup: row variable I
+py-server/test_parquet.L947.16.2	java-accepts	setup: row variable I
+py-server/test_parquet.L947.16.3	java-accepts	setup: row variable I
+py-server/test_parquet.L1150.17.0	java-accepts	row variable I
+py-server/test_parquet.L1150.17.1	java-accepts	setup: row variable I
+py-server/test_parquet.L1150.17.2	java-accepts	setup: row variable I
+py-server/test_partitioned_table.L298.13.0	java-accepts	row variable I
+py-server/test_pt_proxy.L554.20.0	java-accepts	row variable I
+py-server/test_pt_proxy.L554.20.1	java-accepts	setup: row variable I
+py-server/test_rollup_tree_table.L45.21.0	java-accepts	row variable I
+py-server/test_rollup_tree_table.L45.21.1	java-accepts	setup: row variable I
+py-server/test_rollup_tree_table.L45.21.2	java-accepts	setup: row variable I
+py-server/test_table.L267.25.0	java-accepts	row variable Ii
+py-server/test_table.L428.21.1	java-accepts	setup: row variable I
+py-server/test_table.L431.26.0	java-accepts	row variable I
+py-server/test_table.L431.26.1	java-accepts	setup: row variable I
+py-server/test_table.L649.21.0	java-accepts	row variable I
+py-server/test_table.L649.21.1	java-accepts	setup: row variable I
+py-server/test_table.L649.21.2	java-accepts	setup: row variable I
+py-server/test_table.L664.21.0	java-accepts	row variable Ii
+py-server/test_table.L664.21.1	java-accepts	setup: row variable Ii
+py-server/test_table.L695.26.0	java-accepts	setup: row variable I
+py-server/test_table.L867.16.0	java-accepts	row variable I
+py-server/test_table.L867.16.1	java-accepts	setup: row variable I
+py-server/test_table.L1041.16.0	java-accepts	row variable I
+py-server/test_table.L1278.12.0	java-accepts	row variable I
+py-server/test_table.L1278.12.1	java-accepts	setup: row variable I
+py-server/test_table.L1289.12.1	java-accepts	setup: row variable I
+py-server/test_table.L1300.12.1	java-accepts	setup: row variable I
+py-server/test_table.L1307.13.1	java-accepts	setup: row variable I
+py-server/test_table.L1308.13.1	java-accepts	setup: row variable I
+py-server/test_table.L1354.13.0	java-fails	field access .ATTR
+py-server/test_table.L1357.13.0	java-fails	field access .ATTR
+py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()
+py-server/test_table.L1442.12.1	java-accepts	setup: row variable I
+py-server/test_table.L1442.12.2	java-accepts	setup: row variable I
+py-server/test_table.L1555.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1555.17.2	java-accepts	setup: row variable I
+py-server/test_table.L1556.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1556.17.2	java-accepts	setup: row variable I
+py-server/test_table.L1568.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1569.17.0	java-accepts	row variable I
+py-server/test_table.L1569.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1574.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1579.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1580.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1592.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1593.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1601.17.1	java-accepts	setup: row variable I
+py-server/test_table.L1642.19.1	java-accepts	setup: row variable I
+py-server/test_table_factory.L151.13.0	java-accepts	function nowSystem()
+py-server/test_table_factory.L558.12.0	java-accepts	function nowSystem()
+py-server/test_udf_array_args.L141.16.0	java-accepts	row variable I
+py-server/test_udf_array_args.L181.16.1	java-accepts	setup: row variable I
+py-server/test_udf_array_args.L203.16.1	java-accepts	setup: row variable I
+py-server/test_udf_array_args.L225.16.1	java-accepts	setup: row variable I
+py-server/test_udf_array_args.L232.16.1	java-accepts	setup: row variable I
+py-server/test_udf_array_args.L272.24.1	java-accepts	setup: row variable I
+py-server/test_udf_array_args.L343.16.1	java-accepts	setup: row variable I
+py-server/test_udf_return.L73.24.1	java-accepts	setup: row variable I
+py-server/test_udf_return.L225.12.1	java-accepts	setup: row variable I
+py-server/test_udf_scalar_args.L711.12.0	java-accepts	row variable I
+py-server/test_udf_type_alias.L57.12.1	java-accepts	setup: row variable I
+py-server/test_updateby.L61.28.0	java-accepts	function now()
+py-server/test_updateby.L631.21.0	java-accepts	row variable Ii
+py-server/test_updateby.L631.21.1	java-accepts	setup: row variable Ii
+py-server/test_vectorization.L261.12.0	java-accepts	row variable I
+py-server/test_vectorization.L410.12.1	java-accepts	setup: row variable I

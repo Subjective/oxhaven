@@ -1,15 +1,18 @@
-"""Records what the Java reference server answers for each formula of java_formulas.txt.
+"""Records what the Java reference server answers for each formula of a list.
 
-No Java counterpart: this produces java_formulas.json, which the test
-`tests/formulas/recorded.rs` compares Oxhaven's formula compiler against.
+No Java counterpart: this produces java_formulas.json and java_functions.json, which the
+test `tests/formulas/recorded.rs` compares Oxhaven's formula compiler against.
 
 Run it from the `oracle/` directory, with the oracle's Python environment and a Java
 reference server that `oracle/bin/start-java.sh` started (see `oracle/README.md`):
 
     .venv/bin/python ../crates/oxhaven-expr/tests/data/record_java_formulas.py \
-        dh+psk://oxhaven@127.0.0.1:10000 .run/java-10000.log
+        dh+psk://oxhaven@127.0.0.1:10000 .run/java-10000.log [java_functions]
 
-Each line of java_formulas.txt is `update <expression>` or `where <expression>`; a line that
+The last argument names the list: `<name>.txt` is read and `<name>.json` written. Without it
+the list is java_formulas.
+
+Each line of the list is `update <expression>` or `where <expression>`; a line that
 starts with `#` is a comment. An `update` line is recorded as the type and values of the
 column `Result = <expression>`, a `where` line as the values of column `R` in the rows the
 filter keeps. When the server refuses the request, the record says whether the formula
@@ -87,6 +90,8 @@ def decode(value):
 
 def encode(value):
     """A cell as JSON: the float values JSON lacks are spelled as strings."""
+    if isinstance(value, list):
+        return [encode(v) for v in value]
     if isinstance(value, float):
         if math.isnan(value):
             return "NaN"
@@ -142,10 +147,11 @@ def failure(log_path, offset):
 
 def main():
     url, log_path = sys.argv[1:3]
+    name = sys.argv[3] if len(sys.argv) > 3 else "java_formulas"
     session = open_session(url)
     source = session.import_table(input_table())
     cases = []
-    for line in (HERE / "java_formulas.txt").read_text(encoding="utf-8").splitlines():
+    for line in (HERE / f"{name}.txt").read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         op, formula = line.split(" ", 1)
@@ -165,7 +171,7 @@ def main():
                 case["kept"] = result.column("R").to_pylist()
         cases.append(case)
     columns = [{"name": name, "type": kind, "values": values} for name, kind, values in COLUMNS]
-    with open(HERE / "java_formulas.json", "w", encoding="utf-8") as out:
+    with open(HERE / f"{name}.json", "w", encoding="utf-8") as out:
         out.write('{\n"columns": [\n')
         out.write(",\n".join(json.dumps(c) for c in columns))
         out.write('\n],\n"cases": [\n')
