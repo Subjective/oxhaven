@@ -1,0 +1,70 @@
+{
+  "format": 2,
+  "scenario": "update_by_time_and_ema",
+  "scenario_sha256": "3dd30ab822ef5cab51a5d49e129f3e7b841468ad99ff564411a302bdd95f36df",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "timed_by_key",
+      "file": "step000.timed_by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timed_no_key",
+      "file": "step000.timed_no_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "ema_by_key",
+      "file": "step000.ema_by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "ema_no_key",
+      "file": "step000.ema_no_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "timed_empty",
+      "file": "step000.timed_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "ema_special_ticks",
+      "file": "step000.ema_special_ticks.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "null_timestamp",
+      "file": "step000.null_timestamp.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "ema_null_timestamp",
+      "file": "step000.ema_null_timestamp.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "int_timestamp",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_duration",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

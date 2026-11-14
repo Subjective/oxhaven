@@ -1,0 +1,114 @@
+{
+  "format": 2,
+  "scenario": "snapshot_static",
+  "scenario_sha256": "1452122096488bf85760a4e4e796fa8262485a7d2e6f68ed8b4286c4d4cdb8ff",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "snap",
+      "file": "step000.snap.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "snap_empty",
+      "file": "step000.snap_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "snap_of_where",
+      "file": "step000.snap_of_where.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "when_plain",
+      "file": "step000.when_plain.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "when_initial",
+      "file": "step000.when_initial.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_stamp",
+      "file": "step000.when_stamp.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_stamp_renamed",
+      "file": "step000.when_stamp_renamed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_two_rows",
+      "file": "step000.when_two_rows.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_no_rows",
+      "file": "step000.when_no_rows.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_incremental",
+      "file": "step000.when_incremental.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_history",
+      "file": "step000.when_history.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_history_initial",
+      "failure": {
+        "code": "UNIMPLEMENTED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "when_history_incremental",
+      "failure": {
+        "code": "UNIMPLEMENTED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "when_empty_base",
+      "file": "step000.when_empty_base.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "when_stamp_clash",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "when_stamp_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

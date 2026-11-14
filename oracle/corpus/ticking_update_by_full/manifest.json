@@ -1,0 +1,296 @@
+{
+  "format": 2,
+  "scenario": "ticking_update_by_full",
+  "scenario_sha256": "cd5e3267bb2b7fb3f6351afe38ac4352d5d4c458750ff98e32120a34b6074d89",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "cumulative",
+      "file": "step000.cumulative.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "cumulative_all",
+      "file": "step000.cumulative_all.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "rolling",
+      "file": "step000.rolling.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "ema",
+      "file": "step000.ema.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "log_cumulative",
+      "file": "step000.log_cumulative.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "log_rolling",
+      "file": "step000.log_rolling.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "cumulative",
+      "file": "step001.cumulative.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "cumulative_all",
+      "file": "step001.cumulative_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "rolling",
+      "file": "step001.rolling.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "ema",
+      "file": "step001.ema.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "log_cumulative",
+      "file": "step001.log_cumulative.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "log_rolling",
+      "file": "step001.log_rolling.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "cumulative",
+      "file": "step002.cumulative.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "cumulative_all",
+      "file": "step002.cumulative_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "rolling",
+      "file": "step002.rolling.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "ema",
+      "file": "step002.ema.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "log_cumulative",
+      "file": "step002.log_cumulative.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "log_rolling",
+      "file": "step002.log_rolling.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "cumulative",
+      "file": "step003.cumulative.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "cumulative_all",
+      "file": "step003.cumulative_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "rolling",
+      "file": "step003.rolling.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "ema",
+      "file": "step003.ema.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "log_cumulative",
+      "file": "step003.log_cumulative.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "log_rolling",
+      "file": "step003.log_rolling.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "cumulative",
+      "file": "step004.cumulative.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "cumulative_all",
+      "file": "step004.cumulative_all.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "rolling",
+      "file": "step004.rolling.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "ema",
+      "file": "step004.ema.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "log_cumulative",
+      "file": "step004.log_cumulative.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "log_rolling",
+      "file": "step004.log_rolling.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "cumulative",
+      "file": "step005.cumulative.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "cumulative_all",
+      "file": "step005.cumulative_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "rolling",
+      "file": "step005.rolling.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "ema",
+      "file": "step005.ema.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "log_cumulative",
+      "file": "step005.log_cumulative.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "log_rolling",
+      "file": "step005.log_rolling.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "cumulative",
+      "file": "step006.cumulative.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "cumulative_all",
+      "file": "step006.cumulative_all.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "rolling",
+      "file": "step006.rolling.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "ema",
+      "file": "step006.ema.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "log_cumulative",
+      "file": "step006.log_cumulative.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "log_rolling",
+      "file": "step006.log_rolling.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "cumulative",
+      "file": "step007.cumulative.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "cumulative_all",
+      "file": "step007.cumulative_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "rolling",
+      "file": "step007.rolling.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "ema",
+      "file": "step007.ema.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "log_cumulative",
+      "file": "step007.log_cumulative.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "log_rolling",
+      "file": "step007.log_rolling.arrow",
+      "rows": 7
+    }
+  ]
+}

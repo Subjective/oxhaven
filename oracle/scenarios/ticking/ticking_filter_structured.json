@@ -1,0 +1,489 @@
+{
+ "format": 1,
+ "name": "ticking_filter_structured",
+ "description": "Structured filters of a keyed input table (comparisons, and, or, not, in, null test, regular expression, column against column) through adds, replaced rows that enter and leave the result, and deletes.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN"
+    ],
+    [
+     4,
+     null,
+     2,
+     -0.0
+    ],
+    [
+     5,
+     "b",
+     7,
+     2.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "positive",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 0
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "small",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "D"
+      },
+      "rhs": {
+       "literal": 2
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "a_or_null",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "or": [
+      {
+       "compare": {
+        "op": "==",
+        "lhs": {
+         "column": "G"
+        },
+        "rhs": {
+         "literal": "a"
+        }
+       }
+      },
+      {
+       "is_null": "G"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "not_a",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "not": {
+      "compare": {
+       "op": "==",
+       "lhs": {
+        "column": "G"
+       },
+       "rhs": {
+        "literal": "a"
+       }
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "both",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": ">",
+      "lhs": {
+       "column": "I"
+      },
+      "rhs": {
+       "long": 0
+      }
+     }
+    },
+    {
+     "compare": {
+      "op": "!=",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "b"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_list",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "I"
+      },
+      "candidates": [
+       {
+        "long": 1
+       },
+       {
+        "long": 2
+       },
+       {
+        "long": 5
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "letters",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "matches": {
+      "column": "G",
+      "text": "[ab]"
+     }
+    }
+   ]
+  },
+  {
+   "name": "id_below_i",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "compare": {
+      "op": "<",
+      "lhs": {
+       "column": "Id"
+      },
+      "rhs": {
+       "column": "I"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "name": "in_doubles",
+   "op": "filter",
+   "source": "t",
+   "conditions": [
+    {
+     "in": {
+      "target": {
+       "column": "D"
+      },
+      "candidates": [
+       {
+        "literal": 1.5
+       },
+       {
+        "literal": 2.5
+       },
+       {
+        "literal": 0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "name": "filter_of_filter",
+   "op": "filter",
+   "source": "positive",
+   "conditions": [
+    {
+     "compare": {
+      "op": "==",
+      "lhs": {
+       "column": "G"
+      },
+      "rhs": {
+       "literal": "a"
+      }
+     }
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "positive"
+  },
+  {
+   "table": "small"
+  },
+  {
+   "table": "a_or_null"
+  },
+  {
+   "table": "not_a"
+  },
+  {
+   "table": "both"
+  },
+  {
+   "table": "in_list"
+  },
+  {
+   "table": "letters"
+  },
+  {
+   "table": "id_below_i"
+  },
+  {
+   "table": "in_doubles"
+  },
+  {
+   "table": "filter_of_filter"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "a",
+       1,
+       0.5
+      ],
+      [
+       7,
+       "c",
+       4,
+       "Infinity"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       3,
+       3.5
+      ],
+      [
+       4,
+       "b",
+       2,
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       "c",
+       0,
+       0.0
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       null,
+       null,
+       "NaN"
+      ],
+      [
+       9,
+       "b",
+       6,
+       6.5
+      ],
+      [
+       10,
+       "a",
+       -1,
+       -1.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       "a",
+       1,
+       1.0
+      ],
+      [
+       12,
+       "a",
+       2,
+       2.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,259 @@
+{
+ "format": 1,
+ "name": "slice_positions",
+ "description": "slice with positions from the start, from the end, mixed, empty ranges, ranges beyond the table, an empty source, and argument pairs that Java refuses.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null
+    ],
+    [
+     3,
+     null,
+     "NaN"
+    ],
+    [
+     4,
+     "d",
+     -0.0
+    ],
+    [
+     5,
+     "e",
+     "Infinity"
+    ],
+    [
+     6,
+     "f",
+     6.0
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "middle",
+   "op": "slice",
+   "source": "t",
+   "start": 1,
+   "stop": 4
+  },
+  {
+   "name": "none",
+   "op": "slice",
+   "source": "t",
+   "start": 0,
+   "stop": 0
+  },
+  {
+   "name": "same",
+   "op": "slice",
+   "source": "t",
+   "start": 3,
+   "stop": 3
+  },
+  {
+   "name": "all",
+   "op": "slice",
+   "source": "t",
+   "start": 0,
+   "stop": 6
+  },
+  {
+   "name": "beyond",
+   "op": "slice",
+   "source": "t",
+   "start": 4,
+   "stop": 100
+  },
+  {
+   "name": "past_end",
+   "op": "slice",
+   "source": "t",
+   "start": 10,
+   "stop": 20
+  },
+  {
+   "name": "from_end",
+   "op": "slice",
+   "source": "t",
+   "start": -3,
+   "stop": -1
+  },
+  {
+   "name": "last_two",
+   "op": "slice",
+   "source": "t",
+   "start": -2,
+   "stop": 0
+  },
+  {
+   "name": "start_to_from_end",
+   "op": "slice",
+   "source": "t",
+   "start": 1,
+   "stop": -2
+  },
+  {
+   "name": "start_to_from_end_empty",
+   "op": "slice",
+   "source": "t",
+   "start": 5,
+   "stop": -2
+  },
+  {
+   "name": "before_start",
+   "op": "slice",
+   "source": "t",
+   "start": -100,
+   "stop": -4
+  },
+  {
+   "name": "backwards",
+   "op": "slice",
+   "source": "t",
+   "start": 4,
+   "stop": 2
+  },
+  {
+   "name": "end_then_start",
+   "op": "slice",
+   "source": "t",
+   "start": -2,
+   "stop": 3
+  },
+  {
+   "name": "of_empty",
+   "op": "slice",
+   "source": "empty",
+   "start": 0,
+   "stop": 5
+  },
+  {
+   "name": "of_empty_from_end",
+   "op": "slice",
+   "source": "empty",
+   "start": -2,
+   "stop": 0
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K > 2"
+   ]
+  },
+  {
+   "name": "of_filtered",
+   "op": "slice",
+   "source": "big",
+   "start": 1,
+   "stop": 3
+  },
+  {
+   "name": "slice_of_slice",
+   "op": "slice",
+   "source": "middle",
+   "start": -2,
+   "stop": 0
+  }
+ ],
+ "results": [
+  {
+   "table": "middle"
+  },
+  {
+   "table": "none"
+  },
+  {
+   "table": "same"
+  },
+  {
+   "table": "all"
+  },
+  {
+   "table": "beyond"
+  },
+  {
+   "table": "past_end"
+  },
+  {
+   "table": "from_end"
+  },
+  {
+   "table": "last_two"
+  },
+  {
+   "table": "start_to_from_end"
+  },
+  {
+   "table": "start_to_from_end_empty"
+  },
+  {
+   "table": "before_start"
+  },
+  {
+   "table": "backwards"
+  },
+  {
+   "table": "end_then_start"
+  },
+  {
+   "table": "of_empty"
+  },
+  {
+   "table": "of_empty_from_end"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "of_filtered"
+  },
+  {
+   "table": "slice_of_slice"
+  }
+ ]
+}

@@ -1,8 +1,9 @@
 //! The results recorded from the Java server (`oracle/corpus`, see `oracle/README.md`).
 //!
 //! Every scenario of the oracle is replayed as far as this module's operations reach: a
-//! result is compared when it is made by `view`, `select`, `update` or `drop_columns` from
-//! an input table or from another such result. The comparison follows `oracle/harness/rules.py`:
+//! result is compared when it is made by `view`, `update_view`, `lazy_update`, `select`,
+//! `update` or `drop_columns` from an input table, from `empty_table` or from another such
+//! result. The comparison follows `oracle/harness/rules.py`:
 //! whether the result fails, column names, order and types, the `IsFlat`, `AddOnly`,
 //! `AppendOnly` and `BlinkTable` attributes, the row count, and every cell by position, with
 //! floats bit for bit except that every NaN equals every NaN. The status code of a failure
@@ -10,7 +11,7 @@
 
 use super::*;
 use crate::graph::SteppedUpdateGraph;
-use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
+use crate::table::{append_only_input_table, empty_table, in_memory_table, keyed_input_table};
 use arrow::array::{
     BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int8Array, RecordBatch,
     StringArray, TimestampNanosecondArray,
@@ -23,7 +24,21 @@ use oxhaven_testkit::ConsistencyChecker;
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs::File;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::PathBuf;
+
+/// Results that differ from what Java recorded, each with the first difference found.
+const KNOWN_DIFFERENCES: [&str; 0] = [];
+
+/// The operations of this module.
+const OURS: [&str; 6] = [
+    "view",
+    "update_view",
+    "lazy_update",
+    "select",
+    "update",
+    "drop_columns",
+];
 
 fn oracle() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oracle")
@@ -150,7 +165,8 @@ enum Made {
     Result(Arc<dyn Table>),
     /// One of this module's operations refused the request.
     Refused(String),
-    /// Made by an operation of another module, or from such a table.
+    /// Made by an operation of another module, or from such a table, or an input this
+    /// replay cannot make.
     NotRun(String),
 }
 
@@ -258,7 +274,11 @@ fn names_of(value: &Value) -> Vec<&str> {
 /// Runs one operation of a scenario on the tables made so far.
 fn apply(operation: &Value, tables: &BTreeMap<String, Made>) -> Made {
     let kind = text(&operation["op"]);
-    if !matches!(kind, "view" | "select" | "update" | "drop_columns") {
+    if kind == "empty_table" {
+        let size = operation["size"].as_u64().expect("a size");
+        return Made::Result(empty_table(size));
+    }
+    if !OURS.contains(&kind) {
         return Made::NotRun(kind.to_string());
     }
     let source = match &tables[text(&operation["source"])] {
@@ -267,11 +287,28 @@ fn apply(operation: &Value, tables: &BTreeMap<String, Made>) -> Made {
         Made::Refused(why) => return Made::Refused(why.clone()),
         Made::NotRun(why) => return Made::NotRun(why.clone()),
     };
-    let result = match kind {
+    // An operation may report a construct that is not ported yet by panicking.
+    let result = catch_unwind(AssertUnwindSafe(|| match kind {
         "view" => view(source, &names_of(&operation["formulas"]), &Compiler),
+        "update_view" => update_view(source, &names_of(&operation["formulas"]), &Compiler),
+        "lazy_update" => lazy_update(source, &names_of(&operation["formulas"]), &Compiler),
         "select" => select(source, &names_of(&operation["formulas"]), &Compiler),
         "update" => update(source, &names_of(&operation["formulas"]), &Compiler),
         _ => drop_columns(source, &names_of(&operation["columns"])),
+    }));
+    let result = match result {
+        Ok(result) => result,
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| panic.downcast_ref::<&str>().copied())
+                .unwrap_or("a panic");
+            match message.strip_prefix("unported: ") {
+                Some(construct) => return Made::NotRun(format!("unported {construct}")),
+                None => std::panic::resume_unwind(panic),
+            }
+        }
     };
     match result {
         Ok(table) => Made::Result(table),
@@ -297,6 +334,12 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
     let mut tables: BTreeMap<String, Made> = BTreeMap::new();
     for input in list(&scenario["inputs"]) {
+        if input["ticking"]["blink"] == true {
+            // The engine has no blink input table.
+            let made = Made::NotRun("blink input".to_string());
+            tables.insert(text(&input["name"]).to_string(), made);
+            continue;
+        }
         let columns: Vec<(String, ColumnType)> = list(&input["columns"])
             .iter()
             .map(|c| (text(&c["name"]).to_string(), column_type(text(&c["type"]))))
@@ -329,10 +372,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
     for operation in list(&scenario["operations"]) {
         let made = apply(operation, &tables);
         let table_name = text(&operation["name"]).to_string();
-        if matches!(
-            text(&operation["op"]),
-            "view" | "select" | "update" | "drop_columns"
-        ) {
+        if OURS.contains(&text(&operation["op"])) {
             ours.push(table_name.clone());
         }
         tables.insert(table_name, made);
@@ -355,8 +395,11 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
     for step in 0..=steps.len() {
         if step > 0 {
             for action in list(&steps[step - 1]["actions"]) {
-                let Made::Input(table, columns, keys) = &tables[text(&action["table"])] else {
-                    panic!("{name}: an action on a table that is not an input");
+                let (table, columns, keys) = match &tables[text(&action["table"])] {
+                    Made::Input(table, columns, keys) => (table, columns, keys),
+                    // An input that was not made; what is made from it is not run either.
+                    Made::NotRun(_) => continue,
+                    _ => panic!("{name}: an action on a table that is not an input"),
                 };
                 let input = table.input_table().expect("an input table");
                 let rows = list(&action["rows"]);
@@ -418,14 +461,13 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 42);
+    assert_eq!(scenarios.len(), 83);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
-    assert!(
-        outcome.differences.is_empty(),
-        "{}",
-        outcome.differences.join("\n")
+    assert_eq!(
+        outcome.differences, KNOWN_DIFFERENCES,
+        "differences from Java"
     );
 
     let compared: Vec<String> = outcome
@@ -440,6 +482,9 @@ fn results_match_the_ones_recorded_from_java() {
             "drop_columns.most x1",
             "drop_columns.one x1",
             "drop_columns.some x1",
+            "empty_table_and_meta.five_columns x1",
+            "empty_table_and_meta.five_view x1",
+            "empty_table_and_meta.none_columns x1",
             "empty_table_ops.d x1",
             "empty_table_ops.u x1",
             "empty_table_ops.v x1",
@@ -454,8 +499,27 @@ fn results_match_the_ones_recorded_from_java() {
             "error_types_and_matches.duplicate_output x1",
             "error_unknown_column.bad_drop x1",
             "error_unknown_column.bad_view x1",
+            "lazy_update_update_view.lazy x1",
+            "lazy_update_update_view.lazy_chain x1",
+            "lazy_update_update_view.lazy_empty x1",
+            "lazy_update_update_view.lazy_of_uv x1",
+            "lazy_update_update_view.lazy_remainder x1",
+            "lazy_update_update_view.lazy_replace x1",
+            "lazy_update_update_view.lazy_strings x1",
+            "lazy_update_update_view.lazy_unknown x1",
+            "lazy_update_update_view.uv x1",
+            "lazy_update_update_view.uv_chain x1",
+            "lazy_update_update_view.uv_duplicate x1",
+            "lazy_update_update_view.uv_empty x1",
+            "lazy_update_update_view.uv_of_lazy x1",
+            "lazy_update_update_view.uv_remainder x1",
+            "lazy_update_update_view.uv_replace x1",
+            "lazy_update_update_view.uv_strings x1",
+            "lazy_update_update_view.uv_unknown x1",
+            "merge_column_order.b_as_a x1",
             "null_sentinel_inputs.as_is x1",
             "null_sentinel_inputs.plus x1",
+            "select_distinct.without_key x1",
             "select_reorder_rename.chain x1",
             "select_reorder_rename.sel x1",
             "select_reorder_rename.upd_replace x1",
@@ -465,6 +529,12 @@ fn results_match_the_ones_recorded_from_java() {
             "ticking_empty_start.u x5",
             "ticking_empty_start.v x5",
             "ticking_error_after_step.remainder_view x6",
+            "ticking_lazy_update_update_view.lazy x7",
+            "ticking_lazy_update_update_view.lazy_of_uv x7",
+            "ticking_lazy_update_update_view.lazy_replace x7",
+            "ticking_lazy_update_update_view.uv x7",
+            "ticking_lazy_update_update_view.uv_of_lazy x7",
+            "ticking_lazy_update_update_view.uv_replace x7",
             "ticking_update_by_append.computed x6",
             "update_float_special.u x1",
             "update_int_overflow.u x1",
@@ -475,8 +545,8 @@ fn results_match_the_ones_recorded_from_java() {
         ],
         "compared"
     );
-    // Results of this module's operations that need an operation of another module, or a
-    // formula the compiler does not support yet.
+    // Results of this module's operations that need an operation of another module, the
+    // one named (`ticking_time_table.numbered` is made from a `head` of a `time_table`).
     assert_eq!(
         outcome.not_run,
         [
@@ -484,6 +554,7 @@ fn results_match_the_ones_recorded_from_java() {
             "error_unknown_column.after_bad_sort: sort",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",
+            "ticking_time_table.numbered: head",
         ],
         "not run"
     );

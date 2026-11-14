@@ -1,0 +1,276 @@
+{
+ "format": 1,
+ "name": "ticking_lazy_update_update_view",
+ "description": "lazy_update and update_view of a keyed input table and of each other, through adds, replaced rows and deletes.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     1,
+     0.5,
+     "a"
+    ],
+    [
+     2,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     3,
+     "NaN",
+     "c"
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "lazy",
+   "op": "lazy_update",
+   "source": "t",
+   "formulas": [
+    "X = I + 1",
+    "Y = D * 2"
+   ]
+  },
+  {
+   "name": "lazy_replace",
+   "op": "lazy_update",
+   "source": "t",
+   "formulas": [
+    "I = I * 2",
+    "Z = I + 1"
+   ]
+  },
+  {
+   "name": "uv",
+   "op": "update_view",
+   "source": "t",
+   "formulas": [
+    "X = I + 1",
+    "Y = D * 2"
+   ]
+  },
+  {
+   "name": "uv_replace",
+   "op": "update_view",
+   "source": "t",
+   "formulas": [
+    "I = I * 2",
+    "Z = I + 1"
+   ]
+  },
+  {
+   "name": "uv_of_lazy",
+   "op": "update_view",
+   "source": "lazy",
+   "formulas": [
+    "W = X + Y",
+    "U = S + `!`"
+   ]
+  },
+  {
+   "name": "lazy_of_uv",
+   "op": "lazy_update",
+   "source": "uv",
+   "formulas": [
+    "W = X + Y",
+    "U = S + `!`"
+   ]
+  },
+  {
+   "name": "uv_big",
+   "op": "where",
+   "source": "uv",
+   "filters": [
+    "X > 2"
+   ]
+  },
+  {
+   "name": "lazy_sorted",
+   "op": "sort",
+   "source": "lazy",
+   "by": [
+    {
+     "column": "Y",
+     "direction": "descending"
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "lazy"
+  },
+  {
+   "table": "lazy_replace"
+  },
+  {
+   "table": "uv"
+  },
+  {
+   "table": "uv_replace"
+  },
+  {
+   "table": "uv_of_lazy"
+  },
+  {
+   "table": "lazy_of_uv"
+  },
+  {
+   "table": "uv_big"
+  },
+  {
+   "table": "lazy_sorted"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       4,
+       2147483647,
+       -0.0,
+       ""
+      ],
+      [
+       5,
+       -4,
+       "Infinity",
+       "a"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       10,
+       2.5,
+       "a2"
+      ],
+      [
+       2,
+       2,
+       1.0,
+       "b"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ],
+      [
+       4
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       3,
+       null,
+       null,
+       null
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       6,
+       6.0,
+       "f"
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

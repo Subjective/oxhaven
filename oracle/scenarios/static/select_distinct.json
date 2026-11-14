@@ -1,0 +1,334 @@
+{
+ "format": 1,
+ "name": "select_distinct",
+ "description": "select_distinct of one column, several, all columns and a formula, over values with duplicates, nulls, NaN and signed zeros; of an empty table; of a column the table lacks.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "by_string",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "G"
+   ]
+  },
+  {
+   "name": "by_int",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "I"
+   ]
+  },
+  {
+   "name": "by_double",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "D"
+   ]
+  },
+  {
+   "name": "by_float",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "F"
+   ]
+  },
+  {
+   "name": "by_bool",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "B"
+   ]
+  },
+  {
+   "name": "by_time",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "T"
+   ]
+  },
+  {
+   "name": "by_two",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "G",
+    "I"
+   ]
+  },
+  {
+   "name": "by_two_swapped",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "I",
+    "G"
+   ]
+  },
+  {
+   "name": "all_columns",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": []
+  },
+  {
+   "name": "without_key",
+   "op": "drop_columns",
+   "source": "t",
+   "columns": [
+    "K"
+   ]
+  },
+  {
+   "name": "all_but_key",
+   "op": "select_distinct",
+   "source": "without_key",
+   "columns": []
+  },
+  {
+   "name": "by_formula",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "Odd = K % 2",
+    "G"
+   ]
+  },
+  {
+   "name": "of_empty",
+   "op": "select_distinct",
+   "source": "empty",
+   "columns": [
+    "G"
+   ]
+  },
+  {
+   "name": "unknown",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "Nope"
+   ]
+  },
+  {
+   "name": "twice",
+   "op": "select_distinct",
+   "source": "by_two",
+   "columns": [
+    "G"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "by_string"
+  },
+  {
+   "table": "by_int"
+  },
+  {
+   "table": "by_double"
+  },
+  {
+   "table": "by_float"
+  },
+  {
+   "table": "by_bool"
+  },
+  {
+   "table": "by_time"
+  },
+  {
+   "table": "by_two"
+  },
+  {
+   "table": "by_two_swapped"
+  },
+  {
+   "table": "all_columns"
+  },
+  {
+   "table": "without_key"
+  },
+  {
+   "table": "all_but_key"
+  },
+  {
+   "table": "by_formula"
+  },
+  {
+   "table": "of_empty"
+  },
+  {
+   "table": "unknown"
+  },
+  {
+   "table": "twice"
+  }
+ ]
+}

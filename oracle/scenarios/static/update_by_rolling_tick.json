@@ -1,0 +1,962 @@
+{
+ "format": 1,
+ "name": "update_by_rolling_tick",
+ "description": "Rolling sum, avg, min, max, prod, count, std, group, weighted avg, count_where and formula over windows counted in rows: behind, around and ahead of the row, per key and over the whole table, with nulls; with NaN and infinities; of an empty table; windows Java refuses.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     10,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "b",
+     2,
+     null,
+     2.5,
+     null,
+     1700000000000000000
+    ],
+    [
+     "a",
+     null,
+     30,
+     null,
+     2.5,
+     1700000001000000000
+    ],
+    [
+     "a",
+     3,
+     -40,
+     -0.5,
+     -1.5,
+     1700000002000000000
+    ],
+    [
+     "b",
+     -4,
+     50,
+     0.0,
+     0.0,
+     1700000002000000000
+    ],
+    [
+     null,
+     5,
+     60,
+     4.0,
+     4.0,
+     1700000005000000000
+    ],
+    [
+     "a",
+     0,
+     0,
+     1.0,
+     1.0,
+     1700000006000000000
+    ],
+    [
+     "b",
+     null,
+     null,
+     null,
+     null,
+     1700000007000000000
+    ],
+    [
+     "a",
+     7,
+     70,
+     7.5,
+     7.5,
+     1700000007000000000
+    ],
+    [
+     "b",
+     8,
+     80,
+     -8.0,
+     -8.0,
+     1700000020000000000
+    ]
+   ]
+  },
+  {
+   "name": "special",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1,
+     1.5,
+     0.5,
+     1700000000000000000
+    ],
+    [
+     "a",
+     2,
+     9223372036854775807,
+     "NaN",
+     "NaN",
+     1700000001000000000
+    ],
+    [
+     "a",
+     2147483647,
+     2,
+     2.5,
+     2.5,
+     1700000002000000000
+    ],
+    [
+     "a",
+     3,
+     3,
+     "Infinity",
+     "Infinity",
+     1700000003000000000
+    ],
+    [
+     "a",
+     null,
+     null,
+     null,
+     null,
+     1700000004000000000
+    ],
+    [
+     "a",
+     4,
+     4,
+     -0.0,
+     -0.0,
+     null
+    ],
+    [
+     "a",
+     5,
+     5,
+     "-Infinity",
+     1.0,
+     1700000006000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "by_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "AvgI = I",
+      "AvgD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "MinI = I",
+      "MinD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_prod_tick",
+     "columns": [
+      "ProdI = I",
+      "ProdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CountI = I",
+      "CountD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_std_tick",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "GroupI = I",
+      "GroupD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "AroundGroupI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AheadI = I"
+     ],
+     "args": {
+      "rev_ticks": 0,
+      "fwd_ticks": 2
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "BehindI = I"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": -1
+     }
+    },
+    {
+     "op": "rolling_count_where_tick",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_formula_tick",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "sum(x)",
+      "formula_param": "x",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "no_key",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "AvgI = I",
+      "AvgD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "MinI = I",
+      "MinD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_prod_tick",
+     "columns": [
+      "ProdI = I",
+      "ProdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CountI = I",
+      "CountD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_std_tick",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "GroupI = I",
+      "GroupD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "AroundGroupI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AheadI = I"
+     ],
+     "args": {
+      "rev_ticks": 0,
+      "fwd_ticks": 2
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "BehindI = I"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": -1
+     }
+    },
+    {
+     "op": "rolling_count_where_tick",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_formula_tick",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "sum(x)",
+      "formula_param": "x",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_special",
+   "op": "update_by",
+   "source": "special",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "AvgI = I",
+      "AvgD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "MinI = I",
+      "MinD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_prod_tick",
+     "columns": [
+      "ProdI = I",
+      "ProdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CountI = I",
+      "CountD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_std_tick",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "GroupI = I",
+      "GroupD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "of_empty",
+   "op": "update_by",
+   "source": "empty",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "AvgI = I",
+      "AvgD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_min_tick",
+     "columns": [
+      "MinI = I",
+      "MinD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "MaxI = I",
+      "MaxD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_prod_tick",
+     "columns": [
+      "ProdI = I",
+      "ProdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CountI = I",
+      "CountD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_std_tick",
+     "columns": [
+      "StdI = I",
+      "StdD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "GroupI = I",
+      "GroupD = D"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_wavg_tick",
+     "columns": [
+      "WavgD = D"
+     ],
+     "args": {
+      "wcol": "L",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AroundI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "AroundGroupI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "AheadI = I"
+     ],
+     "args": {
+      "rev_ticks": 0,
+      "fwd_ticks": 2
+     }
+    },
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "BehindI = I"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": -1
+     }
+    },
+    {
+     "op": "rolling_count_where_tick",
+     "columns": [
+      "Pos"
+     ],
+     "args": {
+      "filters": [
+       "I > 0"
+      ],
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_formula_tick",
+     "columns": [
+      "FormI = I"
+     ],
+     "args": {
+      "formula": "sum(x)",
+      "formula_param": "x",
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "one_row_window",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "X = I"
+     ],
+     "args": {
+      "rev_ticks": 1,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "empty_window",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "X = I"
+     ],
+     "args": {
+      "rev_ticks": 0,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "negative_window",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "X = I"
+     ],
+     "args": {
+      "rev_ticks": -1,
+      "fwd_ticks": -1
+     }
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "string_sum",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "X = G"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": []
+  }
+ ],
+ "results": [
+  {
+   "table": "by_key"
+  },
+  {
+   "table": "no_key"
+  },
+  {
+   "table": "of_special"
+  },
+  {
+   "table": "of_empty"
+  },
+  {
+   "table": "one_row_window"
+  },
+  {
+   "table": "empty_window"
+  },
+  {
+   "table": "negative_window"
+  },
+  {
+   "table": "string_sum"
+  }
+ ]
+}
