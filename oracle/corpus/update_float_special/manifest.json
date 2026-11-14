@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "update_float_special",
   "scenario_sha256": "a4706388a9d3794f590259b25111a5b3660e18370597a5fd959446338c533b84",
   "reference": "42.9",

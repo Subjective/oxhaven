@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "ticking_aj",
   "scenario_sha256": "fdc984b7ffcbcde71353fd0a76711994add228c88ee063fded4a311767b38437",
   "reference": "42.9",

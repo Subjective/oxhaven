@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Runs the oracle harness from any directory, in the oracle's own Python environment.
+#
+#   oracle/bin/harness <command> [arguments]     the same as `python -m harness` in oracle/
+#
+# See oracle/README.md for the commands.
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+oracle="$(dirname "$here")"
+python="$oracle/.venv/bin/python"
+
+if [[ ! -x "$python" ]]; then
+  echo "no Python environment at $oracle/.venv; see oracle/README.md, Set up" >&2
+  exit 2
+fi
+PYTHONPATH="$oracle${PYTHONPATH:+:$PYTHONPATH}" exec "$python" -m harness "$@"

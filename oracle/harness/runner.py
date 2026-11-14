@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import grpc
 import pyarrow as pa
 import pyarrow.flight as paflight
 from pydeephaven import NaturalJoinType, Session, SortDirection, agg, updateby
@@ -16,7 +17,7 @@ from pydeephaven.table import InputTable, Table
 
 from . import scenario as sc
 from .connect import open_session
-from .results import ResultSet
+from .results import Failure, ResultSet
 
 
 class RunError(RuntimeError):
@@ -154,9 +155,82 @@ class _Barrier:
             self._table.add(self._session.import_table(row))
 
 
-def _snapshot(scenario: sc.Scenario, tables: dict[str, Table], step: int, out: ResultSet) -> None:
+def failure_code(error: BaseException | None) -> str | None:
+    """The gRPC status code name behind a client exception, if there is one."""
+    while error is not None:
+        if isinstance(error, grpc.RpcError):
+            return error.code().name
+        error = error.__cause__ or error.__context__
+    return None
+
+
+def _do_get_code(session: Session, table: Table) -> str | None:
+    """Repeats a DoGet over plain gRPC and returns the status code name it fails with.
+
+    pyarrow.flight turns a failed call into one of a few exception classes and does not expose
+    the status code, so the request is sent again without it. The request is the Flight
+    `Ticket` message: field 1, length-delimited.
+    """
+    ticket = table.ticket.bytes
+    if len(ticket) > 127:
+        raise RunError("ticket too long for the single-byte length this helper writes")
+    call = session.grpc_channel.unary_stream(
+        "/arrow.flight.protocol.FlightService/DoGet",
+        request_serializer=lambda message: message,
+        response_deserializer=lambda message: message,
+    )
+    try:
+        for _ in call(b"\x0a" + bytes([len(ticket)]) + ticket, metadata=session.grpc_metadata):
+            pass
+    except grpc.RpcError as error:
+        return error.code().name
+    return None
+
+
+def _snapshot(
+    session: Session,
+    scenario: sc.Scenario,
+    tables: dict[str, Table | Failure],
+    step: int,
+    out: ResultSet,
+) -> None:
     for result in scenario.results:
-        out.put(step, result.table, tables[result.table].to_arrow())
+        table = tables[result.table]
+        if isinstance(table, Failure):
+            out.put(step, result.table, table)
+            continue
+        try:
+            out.put(step, result.table, table.to_arrow())
+        except Exception as error:  # noqa: BLE001 - classified just below
+            code = _do_get_code(session, table)
+            if code is None:
+                raise RunError(
+                    f"snapshot of {result.table} failed in the client, not on the server"
+                ) from error
+            out.put(step, result.table, Failure(code))
+
+
+def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, Any]) -> None:
+    """Applies one operation; a server refusal becomes the table's `Failure`.
+
+    A table defined from a failed table fails the same way: the request is not sent, as the
+    server would refuse it for the missing dependency.
+    """
+    for key in ("source", "left", "right"):
+        if key in op and isinstance(tables[op[key]], Failure):
+            tables[op["name"]] = tables[op[key]]
+            return
+    for name in op.get("sources", ()):
+        if isinstance(tables[name], Failure):
+            tables[op["name"]] = tables[name]
+            return
+    try:
+        tables[op["name"]] = apply_operation(session, tables, op)
+    except Exception as error:  # noqa: BLE001 - classified just below
+        code = failure_code(error)
+        if code is None:
+            raise
+        tables[op["name"]] = Failure(code)
 
 
 def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
@@ -166,9 +240,12 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
     is the state after the k-th entry of `steps`.
     """
     out = ResultSet(scenario.name)
-    session = open_session(url)
     try:
-        tables: dict[str, Table] = {}
+        session = open_session(url)
+    except Exception as error:  # noqa: BLE001
+        raise RunError(f"cannot connect to {url}: {_describe(error)}") from error
+    try:
+        tables: dict[str, Table | Failure] = {}
         inputs: dict[str, InputTable] = {}
         for item in scenario.inputs:
             if not item.ticking:
@@ -187,11 +264,11 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
                 inputs[item.name].add(_import(session, sc.arrow_table(item.columns, item.rows)))
 
         for op in scenario.operations:
-            tables[op["name"]] = apply_operation(session, tables, op)
+            _define(session, tables, op)
 
         if barrier:
             barrier.wait()
-        _snapshot(scenario, tables, 0, out)
+        _snapshot(session, scenario, tables, 0, out)
 
         for number, actions in enumerate(scenario.steps, start=1):
             for action in actions:
@@ -204,7 +281,7 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
                     inputs[action.table].delete(_import(session, data))
             assert barrier is not None
             barrier.wait()
-            _snapshot(scenario, tables, number, out)
+            _snapshot(session, scenario, tables, number, out)
     except Exception as error:
         raise RunError(f"scenario {scenario.name} failed on {url}: {_describe(error)}") from error
     finally:
@@ -220,3 +297,27 @@ def _describe(error: BaseException) -> str:
             parts.append(text)
         error = error.__cause__
     return " <- ".join(parts)
+
+
+class Target:
+    """Something a scenario can be run against. The plain one is a server URL."""
+
+    def __init__(self, url: str):
+        self.url = url
+
+    def __str__(self) -> str:
+        return self.url
+
+    def run(self, scenario: sc.Scenario) -> ResultSet:
+        return run_scenario(scenario, self.url)
+
+
+def open_target(url: str) -> Target:
+    """`dh://...` and `dh+psk://...` name a server; `faulty:<fault>@<url>` wraps one so that
+    its results come back damaged (see faults.FaultyTarget)."""
+    if url.startswith("faulty:"):
+        from .faults import FaultyTarget
+
+        fault, _, inner = url[len("faulty:"):].partition("@")
+        return FaultyTarget(fault, open_target(inner))
+    return Target(url)

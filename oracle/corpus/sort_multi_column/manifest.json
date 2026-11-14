@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "sort_multi_column",
   "scenario_sha256": "4c2d4bffb716009e5a42fd8b1445b962d95366bc762c6c1240a1b7047daf83d4",
   "reference": "42.9",

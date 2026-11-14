@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "name": "error_types_and_matches",
+  "description": "Aggregations and cumulative sums over string, bool and timestamp columns (Java rejects some and accepts others, such as sum and cum_sum of bool), a merge of tables with different columns, an update that assigns one column twice, and joins whose match rules or key types are violated.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}, {"name": "T", "type": "timestamp"}],
+      "rows": [
+        [1, "a", true, 1700000000000000000],
+        [2, "b", false, null],
+        [3, "c", null, 0]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "float64"}],
+      "rows": [
+        [1, 1.5],
+        [2, 2.5],
+        [2, 2.75]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "sum_string", "op": "agg_by", "source": "l", "aggs": [{"agg": "sum", "columns": ["S"]}], "by": []},
+    {"name": "avg_string", "op": "agg_by", "source": "l", "aggs": [{"agg": "avg", "columns": ["S"]}], "by": []},
+    {"name": "sum_bool", "op": "agg_by", "source": "l", "aggs": [{"agg": "sum", "columns": ["B"]}], "by": []},
+    {"name": "avg_bool", "op": "agg_by", "source": "l", "aggs": [{"agg": "avg", "columns": ["B"]}], "by": []},
+    {"name": "sum_timestamp", "op": "agg_by", "source": "l", "aggs": [{"agg": "sum", "columns": ["T"]}], "by": []},
+    {"name": "avg_timestamp", "op": "agg_by", "source": "l", "aggs": [{"agg": "avg", "columns": ["T"]}], "by": []},
+    {"name": "min_all", "op": "agg_by", "source": "l", "aggs": [{"agg": "min", "columns": ["S", "B", "T"]}], "by": []},
+    {"name": "cum_sum_string", "op": "update_by", "source": "l", "ops": [{"op": "cum_sum", "columns": ["S"]}], "by": []},
+    {"name": "cum_sum_bool", "op": "update_by", "source": "l", "ops": [{"op": "cum_sum", "columns": ["B"]}], "by": []},
+    {"name": "merge_different", "op": "merge", "sources": ["l", "r"]},
+    {"name": "duplicate_output", "op": "update", "source": "l", "formulas": ["X = 1", "X = 2"]},
+    {"name": "nj_duplicate_right", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["V"]},
+    {"name": "nj_first", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["V"], "type": "first_match"},
+    {"name": "nj_exactly_one", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["V"], "type": "exactly_one_match"},
+    {"name": "ej_missing_and_duplicate", "op": "exact_join", "left": "l", "right": "r", "on": ["K"], "joins": ["V"]},
+    {"name": "join_name_clash", "op": "join", "left": "l", "right": "l", "on": ["K"]},
+    {"name": "join_key_types", "op": "natural_join", "left": "l", "right": "r", "on": ["S = K"], "joins": ["V"]},
+    {"name": "aj_bool_stamp", "op": "aj", "left": "l", "right": "l", "on": ["B >= B"], "joins": ["Other = S"]}
+  ],
+  "results": [
+    {"table": "sum_string"},
+    {"table": "avg_string"},
+    {"table": "sum_bool"},
+    {"table": "avg_bool"},
+    {"table": "sum_timestamp"},
+    {"table": "avg_timestamp"},
+    {"table": "min_all"},
+    {"table": "cum_sum_string"},
+    {"table": "cum_sum_bool"},
+    {"table": "merge_different"},
+    {"table": "duplicate_output"},
+    {"table": "nj_duplicate_right"},
+    {"table": "nj_first"},
+    {"table": "nj_exactly_one"},
+    {"table": "ej_missing_and_duplicate"},
+    {"table": "join_name_clash"},
+    {"table": "join_key_types"},
+    {"table": "aj_bool_stamp"}
+  ]
+}

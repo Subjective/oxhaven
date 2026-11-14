@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "name": "ticking_error_after_step",
+  "description": "Tables that are valid at first and break when a later step delivers a duplicate right key or a zero divisor. The broken tables stay defined but are not compared: Java keeps answering snapshots of a failed table with inconsistent contents. Compared are a view whose formula fails only while the zero divisor is present, and an unrelated aggregation that must keep updating.",
+  "inputs": [
+    {
+      "name": "l",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}],
+      "rows": [
+        [1, 1, 10],
+        [2, 2, 20]
+      ]
+    },
+    {
+      "name": "r",
+      "ticking": {"key_columns": ["Rid"]},
+      "columns": [{"name": "Rid", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "W", "type": "int32"}],
+      "rows": [
+        [1, 1, 100],
+        [2, 2, 200]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "joined", "op": "natural_join", "left": "l", "right": "r", "on": ["K"], "joins": ["W"]},
+    {"name": "after_joined", "op": "where", "source": "joined", "filters": ["W > 0"]},
+    {"name": "exact", "op": "exact_join", "left": "l", "right": "r", "on": ["K"], "joins": ["W"]},
+    {"name": "remainder", "op": "update", "source": "l", "formulas": ["X = 100 % V"]},
+    {"name": "remainder_view", "op": "view", "source": "l", "formulas": ["Id", "X = 100 % V"]},
+    {"name": "healthy", "op": "agg_by", "source": "l", "aggs": [{"agg": "sum", "columns": ["V"]}, {"agg": "count", "column": "N"}], "by": []}
+  ],
+  "results": [
+    {"table": "remainder_view"},
+    {"table": "healthy"}
+  ],
+  "steps": [
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[3, 1, 30]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "r", "rows": [[3, 1, 300]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[4, 2, 0]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "delete", "table": "r", "rows": [[3]]},
+        {"action": "add", "table": "l", "rows": [[4, 2, 40]]}
+      ]
+    },
+    {
+      "actions": [
+        {"action": "add", "table": "l", "rows": [[5, 9, 50]]}
+      ]
+    }
+  ]
+}

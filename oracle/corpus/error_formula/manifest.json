@@ -1,0 +1,83 @@
+{
+  "format": 2,
+  "scenario": "error_formula",
+  "scenario_sha256": "2f1f3dde830c43709765a62308496072564bb40fc14b77845ca17813d932a130",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rem_update",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "rem_select",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "rem_view",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "rem_long",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "rem_ok",
+      "file": "step000.rem_ok.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "div_ok",
+      "file": "step000.div_ok.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "syntax",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "syntax_filter",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unknown_function",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "type_error",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "filter_not_boolean",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

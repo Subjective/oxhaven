@@ -8,3 +8,15 @@ publish = false
 workspace = true
 
 [dependencies]
+base64.workspace = true
+http.workspace = true
+oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-proto = { path = "../oxhaven-proto" }
+prost.workspace = true
+tokio.workspace = true
+tokio-stream.workspace = true
+tonic.workspace = true
+tower.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+uuid.workspace = true

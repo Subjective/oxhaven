@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "sort_int_nulls",
   "scenario_sha256": "0bcb2dc3716a234d0702f800842b649ad67fb2a293ac110d58a3f9c59cb5fd63",
   "reference": "42.9",

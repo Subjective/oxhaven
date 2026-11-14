@@ -419,9 +419,64 @@ def load(path: Path) -> Scenario:
     return scenario
 
 
+# Other names for the harness operations: the TableService request each one is sent as, which is
+# how the task ledger names operations. `input_table` is not an operation: it selects the
+# scenarios that drive input tables (InputTableService), that is, the ticking ones.
+OP_ALIASES = {
+    "unstructured_filter": "where",
+    "aggregate": "agg_by",
+    "cross_join": "join",
+    "aj_tables": "aj",
+}
+INPUT_TABLE = "input_table"
+
+
+def resolve_ops(names: list[str]) -> frozenset[str]:
+    """Checks a list of operation names from the command line and resolves aliases."""
+    resolved = set()
+    for name in names:
+        name = OP_ALIASES.get(name, name)
+        if name not in OPERATIONS and name != INPUT_TABLE:
+            known = sorted(set(OPERATIONS) | set(OP_ALIASES) | {INPUT_TABLE})
+            raise ScenarioError(
+                f"the harness has no operation {name!r}; it knows: {', '.join(known)}"
+            )
+        resolved.add(name)
+    return frozenset(resolved)
+
+
+def ops_of(scenario: Scenario) -> frozenset[str]:
+    """The operations a scenario exercises, plus `input_table` when it has ticking inputs."""
+    ops = {op["op"] for op in scenario.operations}
+    if scenario.ticking:
+        ops.add(INPUT_TABLE)
+    return frozenset(ops)
+
+
+def select(
+    scenarios: list[Scenario],
+    ops: frozenset[str] | None = None,
+    within: frozenset[str] | None = None,
+) -> list[Scenario]:
+    """Scenarios that use at least one of `ops` and nothing outside `within`."""
+    out = []
+    for scenario in scenarios:
+        used = ops_of(scenario)
+        if ops is not None and not used & ops:
+            continue
+        if within is not None and not used <= within:
+            continue
+        out.append(scenario)
+    return out
+
+
 def load_all(directory: Path, names: list[str] | None = None) -> list[Scenario]:
-    """Loads every scenario under `directory`, sorted by name; `names` narrows the set."""
-    scenarios = sorted((load(p) for p in directory.rglob("*.json")), key=lambda s: s.name)
+    """Loads every scenario under `directory`, sorted by name; `names` narrows the set.
+
+    `directory` may also be a single scenario file.
+    """
+    paths = [directory] if directory.is_file() else directory.rglob("*.json")
+    scenarios = sorted((load(p) for p in paths), key=lambda s: s.name)
     seen: set[str] = set()
     for scenario in scenarios:
         if scenario.name in seen:

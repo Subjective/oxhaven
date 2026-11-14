@@ -1,0 +1,43 @@
+{
+  "format": 1,
+  "name": "error_formula",
+  "description": "Formulas that fail: integer remainder by zero (eagerly in update and select, on first read in view), a syntax error, an unknown function, a type error. Integer division by zero does not fail.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "S", "type": "string"}],
+      "rows": [
+        [3, 30, "a"],
+        [0, 0, "b"],
+        [null, null, null]
+      ]
+    }
+  ],
+  "operations": [
+    {"name": "rem_update", "op": "update", "source": "t", "formulas": ["X = 7 % I"]},
+    {"name": "rem_select", "op": "select", "source": "t", "formulas": ["X = L % I"]},
+    {"name": "rem_view", "op": "view", "source": "t", "formulas": ["X = 7 % I"]},
+    {"name": "rem_long", "op": "update", "source": "t", "formulas": ["X = 7 % L"]},
+    {"name": "nonzero", "op": "where", "source": "t", "filters": ["I != 0"]},
+    {"name": "rem_ok", "op": "update", "source": "nonzero", "formulas": ["X = 7 % I"]},
+    {"name": "div_ok", "op": "update", "source": "t", "formulas": ["X = 7 / I"]},
+    {"name": "syntax", "op": "update", "source": "t", "formulas": ["X = I +"]},
+    {"name": "syntax_filter", "op": "where", "source": "t", "filters": ["I >"]},
+    {"name": "unknown_function", "op": "update", "source": "t", "formulas": ["X = noSuchFunction(I)"]},
+    {"name": "type_error", "op": "update", "source": "t", "formulas": ["X = S * 2"]},
+    {"name": "filter_not_boolean", "op": "where", "source": "t", "filters": ["I + 1"]}
+  ],
+  "results": [
+    {"table": "rem_update"},
+    {"table": "rem_select"},
+    {"table": "rem_view"},
+    {"table": "rem_long"},
+    {"table": "rem_ok"},
+    {"table": "div_ok"},
+    {"table": "syntax"},
+    {"table": "syntax_filter"},
+    {"table": "unknown_function"},
+    {"table": "type_error"},
+    {"table": "filter_not_boolean"}
+  ]
+}
