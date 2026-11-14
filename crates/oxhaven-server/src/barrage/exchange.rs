@@ -190,7 +190,7 @@ enum Kind {
 enum HalfClosed {
     #[default]
     DontClose,
-    ClientHalfClosed,
+    ClientClosed,
     FinishedSending,
     Closed,
 }
@@ -463,7 +463,7 @@ impl Exchange {
             }
             Some(Kind::Snapshot) => {
                 state.half_closed = match state.half_closed {
-                    HalfClosed::DontClose => HalfClosed::ClientHalfClosed,
+                    HalfClosed::DontClose => HalfClosed::ClientClosed,
                     HalfClosed::FinishedSending => HalfClosed::Closed,
                     other => other,
                 };
