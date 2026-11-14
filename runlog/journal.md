@@ -362,3 +362,12 @@ table"; the group_by agent saw three hangs in "inputtable: rejected changes" on 
 5e50fcb, also with a server built from that main alone. Client waits for response headers of
 `input_table_service.add`, server idle. Not seen in Actions so far. Two independent sightings
 make this a real intermittent hang in the server, not a flake. An agent is assigned to find it.
+
+## 23:40 The stall reached Actions
+
+PR 51's oracle-replay job hung in the client smokes after the tables smoke and hit the 300 s
+timeout (run 43651067945). No baseline line was involved; the next head passed with no code
+change. Third independent sighting, first in CI. The debugging agent has the CI server log.
+Until it is found, a red oracle-replay job with "did not finish within 300 seconds" and no
+PROMOTE/TIGHTEN/REGRESSED line is this stall; it gets one comment on the pull request and the
+merge waits for a green run on the head, never a merge over red.

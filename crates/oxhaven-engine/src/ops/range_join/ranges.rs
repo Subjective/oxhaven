@@ -104,6 +104,12 @@ pub(super) fn match_columns(
     else {
         return Err(RangeJoinError::InvalidRangeMatch(issues));
     };
+    // A vector and an array are neither primitive nor `Comparable` in Java. Every other
+    // column type is one or the other.
+    let range_type = &left_columns[left_start].column_type;
+    if range_type.list_element().is_some() {
+        return Err(RangeJoinError::InvalidRangeValueType(range_type.clone()));
+    }
     Ok(MatchColumns {
         left_exact: KeyColumns {
             columns: left_exact,
@@ -174,8 +180,6 @@ fn values(column_type: &ColumnType, array: &ArrayRef) -> Values {
 }
 
 /// The range of every left row.
-// Read only by `GroupColumn::chunk`, which only tests call until a table can hold the column.
-#[cfg_attr(not(test), allow(dead_code))]
 pub(super) struct Ranges {
     /// For each left row, by position: the bucket of its range and, as positions in that
     /// bucket, the first row of the range and the row after its last. `None` for a row
