@@ -279,4 +279,5 @@ handlers! {
     sort { Sort => Handler }
     time_table { TimeTable => Handler }
     unstructured_filter { UnstructuredFilter => Handler }
+    update_by { UpdateBy => Handler }
 }
