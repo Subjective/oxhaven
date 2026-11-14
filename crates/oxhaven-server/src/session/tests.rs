@@ -1125,6 +1125,7 @@ mod wire {
                 ])
                 .unwrap(),
                 token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
+                target_cycle_duration: None,
             })
             .unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1804,13 +1805,13 @@ mod wire {
 
     #[tokio::test]
     async fn services_not_ported_answer_unimplemented_and_still_authenticate() {
-        use oxhaven_proto::grpc::config_service_client::ConfigServiceClient;
-        use oxhaven_proto::grpc::ConfigurationConstantsRequest;
+        use oxhaven_proto::grpc::application_service_client::ApplicationServiceClient;
+        use oxhaven_proto::grpc::ListFieldsRequest;
 
         let server = Server::start().await;
-        let err = ConfigServiceClient::new(server.channel.clone())
-            .get_configuration_constants(with_auth(
-                ConfigurationConstantsRequest {},
+        let err = ApplicationServiceClient::new(server.channel.clone())
+            .list_fields(with_auth(
+                ListFieldsRequest {},
                 &format!("{PSK_AUTH_TYPE} {PSK}"),
             ))
             .await
@@ -1820,10 +1821,8 @@ mod wire {
         server.session(&bearer);
 
         let err = FlightServiceClient::new(server.channel.clone())
-            .do_get(with_auth(
-                oxhaven_proto::flight::Ticket {
-                    ticket: export_id_to_bytes(1).into(),
-                },
+            .do_exchange(with_auth(
+                tokio_stream::iter(Vec::<oxhaven_proto::flight::FlightData>::new()),
                 &bearer,
             ))
             .await

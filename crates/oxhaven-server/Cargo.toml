@@ -8,9 +8,14 @@ publish = false
 workspace = true
 
 [dependencies]
+arrow.workspace = true
 base64.workspace = true
+flatbuffers.workspace = true
 http.workspace = true
+oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-engine = { path = "../oxhaven-engine" }
+oxhaven-expr = { path = "../oxhaven-expr" }
 oxhaven-proto = { path = "../oxhaven-proto" }
 prost.workspace = true
 tokio.workspace = true

@@ -1099,6 +1099,7 @@ dependencies = [
  "oxhaven-expr",
  "oxhaven-rowset",
  "oxhaven-testkit",
+ "regex",
  "serde_json",
 ]
 
@@ -1136,9 +1137,14 @@ dependencies = [
 name = "oxhaven-server"
 version = "0.0.0"
 dependencies = [
+ "arrow",
  "base64 0.22.1",
+ "flatbuffers",
  "http",
+ "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-engine",
+ "oxhaven-expr",
  "oxhaven-proto",
  "prost",
  "tokio",
