@@ -115,6 +115,10 @@ Oxhaven reproduces.
 
 ### A2. Sign of zero where Java treats `-0.0` and `0.0` as one value
 
+**Proposed, not in force.** The owner has not approved this difference. Until Q4 is answered the
+harness compares the sign of zero exactly in these columns too, and a mismatch is recorded as a
+finding, not waived.
+
 Java's engine comparisons treat `-0.0` and `0.0` as equal (`UC/DoubleComparisons.java:
 DoubleComparisons#compare`, `#eq`, `#hashCode`). Where an operation collapses equal values, the
 surviving bit pattern is whichever Java happened to keep.
