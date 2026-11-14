@@ -257,7 +257,7 @@ handlers! {
     apply_preview_columns { ApplyPreviewColumns => Handler }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll }
     create_input_table { CreateInputTable => Handler }
-    distinct { SelectDistinct => Handler }
+    distinct { SelectDistinct => Handler, WhereIn => WhereIn }
     drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }

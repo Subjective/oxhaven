@@ -219,6 +219,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "AGGREGATE_ALL",
             "CREATE_INPUT_TABLE",
             "SELECT_DISTINCT",
+            "WHERE_IN",
             "NATURAL_JOIN",
             "EXACT_JOIN",
             "LEFT_JOIN",
