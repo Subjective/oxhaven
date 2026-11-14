@@ -44,3 +44,15 @@ Times are UTC.
 - **09:28** Operator wave started: where; sort with head, tail, slice, merge and flatten; select and update family; basic aggregation.
 - **09:31** Session service merged (PR 14). Services split so no task repeats its size: the session agent continues with the table service shell, config constants and the periodic cycle driver; a new agent takes Flight (schema, DoGet, DoPut) with the input-table service. They share one schema module, owned by the table-service task and pushed early; this is the first deliberate cross-agent dependency inside a wave and is a drift risk to watch. Eight agents now running.
 - **09:33** Owner set the acceptance criterion: open the web IDE served by Oxhaven, connect, and see a table. Made an explicit end-to-end test (task 6.0): a headless-browser test built and proven against Java first, plus a recorded list of exactly what the IDE calls. The minimal IDE path (static IDE files, gRPC-web, application fields or scope tickets, Barrage viewports, tables defined at startup without a console) is pulled ahead of the Python console work.
+
+### Checkpoint 1, 09:40 (after wave one, 107 minutes in)
+
+Written after each wave from here on: pace, bottlenecks, what changed.
+
+- **Pace.** 14 pull requests merged. 11 agent runs finished: 13 to 57 minutes each, 155k to 356k tokens each, no CI failure on any agent pull request. Median run about 24 minutes.
+- **Bottleneck 1, the machine.** 4 cores and about 18 GB of free disk cap this thread near nine agents. Load has stayed under 3, so disk for build directories is the tighter limit.
+- **Bottleneck 2, the dependency chain.** Operators cannot run the live oracle gate until the table service and Flight exist. That chain (session, table service, Flight) is the critical path, and the session task was the slowest run.
+- **Bottleneck 3, the orchestrator.** Each delivery costs a few minutes of serial work here: open the pull request, wait for CI, merge, log. Agents have not waited on this so far, but it will not scale to 40 agents.
+- **Not a bottleneck.** CI takes one to two minutes. Rate limits have not been hit.
+- **Changed because of this.** Merged small neighbours into one task five times. Resumed four agents for related follow-ups; base tables cost fewer tokens that way than the agent's first task. Split the service work after the 57-minute session run. Gave each agent a private build directory after the shared one produced wrong results. Pre-declared operator modules so branches do not collide. Started operators before the server exists, checked against the recorded Java corpus. Pulled the IDE path forward.
+- **Next.** Move to one thread per track before the M4 fan-out. Run the oracle replay in CI once the server answers it, since today its results are observed by agents only.
