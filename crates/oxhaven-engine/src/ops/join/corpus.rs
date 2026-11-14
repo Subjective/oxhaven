@@ -225,8 +225,9 @@ enum Built {
     Table(Arc<dyn Table>),
     /// The operation was refused; the gRPC status code Java reports for this refusal.
     Refused(&'static str),
-    /// The table needs an operation of another task.
-    NotRun,
+    /// The table needs an operation of another task, or an input this test cannot make: the
+    /// operation, or the input's kind.
+    NotRun(String),
 }
 
 /// The gRPC status code the Java server answers with for each refusal, as recorded in
@@ -255,16 +256,17 @@ fn pair(spec: &Value) -> (&str, &str) {
 
 /// Defines the table of `operation` from `tables`.
 fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
-    let Some("natural_join" | "exact_join") = operation["op"].as_str() else {
-        return Built::NotRun;
-    };
+    let op = text(&operation["op"]);
+    if !matches!(op, "natural_join" | "exact_join") {
+        return Built::NotRun(op.to_string());
+    }
     let mut parents = Vec::with_capacity(2);
     for side in ["left", "right"] {
         match &tables[text(&operation[side])] {
             Built::Table(table) => parents.push(table.clone()),
             // A table defined from a refused table is refused the same way.
             Built::Refused(code) => return Built::Refused(code),
-            Built::NotRun => return Built::NotRun,
+            Built::NotRun(why) => return Built::NotRun(why.clone()),
         }
     }
     let on: Vec<JoinMatch> = list(&operation["on"])
@@ -442,13 +444,18 @@ fn compare(place: &str, recording: &Recording, entry: &Value, table: &dyn Table)
 #[derive(Default)]
 struct Tally {
     compared: Vec<String>,
+    /// `scenario/table: why`, for the joins that are not built.
     not_run: Vec<String>,
+    /// The number of results of each other operation; none of them is built.
+    others: BTreeMap<String, usize>,
     /// The number of tables compared with a recorded table, over all steps.
     comparisons: usize,
     /// The number of refusals found where Java refused.
     refusals: usize,
     /// The number of failed tables found where Java's table had failed, over all steps.
     failures: usize,
+    /// The number of scenarios run.
+    scenarios: usize,
 }
 
 fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
@@ -460,25 +467,40 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
     let mut inputs: BTreeMap<String, Input> = BTreeMap::new();
     let mut tables: BTreeMap<String, Built> = BTreeMap::new();
     for input in list(&scenario["inputs"]) {
-        let loaded = load(&graph, input);
         let name = text(&input["name"]).to_string();
+        if input["ticking"]["blink"] == true {
+            // The engine has no blink input table.
+            tables.insert(name, Built::NotRun("blink input".to_string()));
+            continue;
+        }
+        let loaded = load(&graph, input);
         tables.insert(name.clone(), Built::Table(loaded.table.clone()));
         inputs.insert(name, loaded);
     }
+    // The operation that makes each table; an input has none.
+    let mut made_by: BTreeMap<String, &str> = BTreeMap::new();
     for operation in list(&scenario["operations"]) {
         let built = define(&tables, operation);
-        tables.insert(text(&operation["name"]).to_string(), built);
+        let table = text(&operation["name"]).to_string();
+        made_by.insert(table.clone(), text(&operation["op"]));
+        tables.insert(table, built);
     }
 
     let results: Vec<&str> = list(&scenario["results"])
         .iter()
         .map(|result| text(&result["table"]))
         // A result that is an input involves neither join.
-        .filter(|result| !inputs.contains_key(*result))
+        .filter(|result| made_by.contains_key(*result))
         .collect();
     for result in &results {
         match &tables[*result] {
-            Built::NotRun => tally.not_run.push(format!("{name}/{result}")),
+            Built::NotRun(_) if !matches!(made_by[*result], "natural_join" | "exact_join") => {
+                *tally
+                    .others
+                    .entry(made_by[*result].to_string())
+                    .or_default() += 1;
+            }
+            Built::NotRun(why) => tally.not_run.push(format!("{name}/{result}: {why}")),
             _ => tally.compared.push(format!("{name}/{result}")),
         }
     }
@@ -488,7 +510,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
             let entry = recording.entry(step, result);
             let failure = &entry["failure"];
             match &tables[*result] {
-                Built::NotRun => {}
+                Built::NotRun(_) => {}
                 Built::Refused(code) => {
                     assert!(!failure.is_null(), "{place}: refused, but Java has a table");
                     assert_eq!(*code, text(&failure["code"]), "{place}: status code");
@@ -512,7 +534,10 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
     check(0);
     for (index, step) in list(&scenario["steps"]).iter().enumerate() {
         for action in list(&step["actions"]) {
-            let input = &inputs[text(&action["table"])];
+            // An input that was not made takes no actions.
+            let Some(input) = inputs.get(text(&action["table"])) else {
+                continue;
+            };
             let rows = list(&action["rows"]);
             match text(&action["action"]) {
                 "add" => input.add(rows),
@@ -535,6 +560,7 @@ fn run_all(scenarios: &[PathBuf], corpus: &Path) -> Tally {
     let mut tally = Tally::default();
     for path in &paths {
         run(path, corpus, &mut tally);
+        tally.scenarios += 1;
     }
     tally.compared.sort();
     tally
@@ -547,6 +573,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         &[scenarios.join("static"), scenarios.join("ticking")],
         &oracle().join("corpus"),
     );
+    assert_eq!(tally.scenarios, 83);
 
     // Every result table of the corpus that is a natural or exact join of tables that are
     // themselves inputs or such results. Everything else needs another operation.
@@ -575,7 +602,57 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         (tally.comparisons, tally.refusals, tally.failures),
         (9 + 32, 4, 0)
     );
-    assert_eq!(tally.not_run.len(), 170, "{:#?}", tally.not_run);
+    // The joins that need an operation of another task, or an input this test cannot make.
+    let not_run = [
+        "group_by_ungroup/uneven: group_by",
+        "pipeline/located: update",
+    ];
+    assert_eq!(tally.not_run, not_run, "not run");
+    // The results of every other operation, none of which is built here.
+    let others: Vec<(&str, usize)> = tally
+        .others
+        .iter()
+        .map(|(operation, results)| (operation.as_str(), *results))
+        .collect();
+    let expected = [
+        ("agg_all_by", 43),
+        ("agg_by", 70),
+        ("aj", 12),
+        ("column_statistics", 19),
+        ("drop_columns", 8),
+        ("empty_table", 2),
+        ("filter", 76),
+        ("flatten", 7),
+        ("group_by", 11),
+        ("head", 29),
+        ("head_by", 14),
+        ("join", 7),
+        ("lazy_update", 11),
+        ("left_join", 2),
+        ("merge", 25),
+        ("meta_table", 9),
+        ("multi_join", 14),
+        ("raj", 12),
+        ("range_join", 20),
+        ("reverse", 10),
+        ("select", 4),
+        ("select_distinct", 18),
+        ("slice", 24),
+        ("snapshot", 4),
+        ("snapshot_when", 20),
+        ("sort", 57),
+        ("tail", 26),
+        ("tail_by", 10),
+        ("time_table", 2),
+        ("ungroup", 15),
+        ("update", 20),
+        ("update_by", 42),
+        ("update_view", 13),
+        ("view", 12),
+        ("where", 44),
+        ("where_in", 20),
+    ];
+    assert_eq!(others, expected, "results of other operations");
 }
 
 #[test]
