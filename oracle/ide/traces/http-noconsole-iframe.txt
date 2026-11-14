@@ -1,0 +1,168 @@
+    13ms GET http://127.0.0.1:10565/iframe/table/?name=ide_static&psk=oxhaven -> 200 http/1.1 text/html cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"////tbCQoyI/////6ZNNoQ"' encoding=None
+    74ms GET http://127.0.0.1:10565/iframe/widget/?name=ide_static&psk=oxhaven -> 200 http/1.1 text/html cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"////tfhzODg/////+6urt8"' encoding=None
+   112ms GET http://127.0.0.1:10565/iframe/widget/assets/index-Z4iF_HWC.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASn8q8zUAAAAAGn+sKc--gzip"' encoding='gzip'
+   112ms GET http://127.0.0.1:10565/iframe/widget/assets/index-kemtREHZ.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASllfVLEAAAAAE+GXl8--gzip"' encoding='gzip'
+   436ms GET http://127.0.0.1:10565/jsapi/dh-core.js -> 200 http/1.1 text/javascript cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"AAAASho+Jj4AAAAAAyeclU--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/index-B9lj_zsY.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tf+JzGs/////+lFOQw--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/index-C3bT2K8P.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASnpXFY4AAAAAGyCQmg--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/LogPanel-kYQF3orl.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tZxLfEw/////4qboD0--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/LogPanel-CMm1eZwG.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASjcQRHoAAAAACHPPeM--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/index-DWk_NqMG.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASnqXV48AAAAAGxKLQk--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGridContextProvider-DpDjFtjc.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAAShGWaF0AAAAAAdHdHA--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/useResizeObserver-C0KdNdKE.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASljwKmoAAAAAE4tlvI--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/useResizeObserver-XUvfkgDZ.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASjGplisAAAAACd0MI8--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/useMergeRef-B9eUZWKc.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tcBwOfU/////9atrHI"' encoding=None
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/index-BQ5IbGbl.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tc6deu8/////9hA42o--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGridContextProvider-CHm4xgd3.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tetcTwA//////2DOOI--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/LocalWorkspaceStorage-CjmzMqAZ.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////taNWAE8/////7WKnd4--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/LocalWorkspaceStorage-MIiZLUc-.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tdL+CWw/////8QjgkI--gzip"' encoding='gzip'
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/DownsamplingError--AAvWHv_.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tZ/Q6Ys/////4kNf9E"' encoding=None
+   817ms GET http://127.0.0.1:10565/iframe/widget/assets/index-Drt7Lu8R.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASno0hJ8AAAAAGzvGEo--gzip"' encoding='gzip'
+  1286ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-sans-latin-400-normal-DqUVgETp.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"////teGzh34//////duTjY--gzip"' encoding='gzip'
+  1286ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-sans-latin-600-normal-BjYBD9kW.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"AAAAShI7iooAAAAAATmf64--gzip"' encoding='gzip'
+  1286ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-mono-latin-400-normal-DKjLVgQi.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"AAAASgs7lZgAAAAAB3mPgQ--gzip"' encoding='gzip'
+  1306ms GET http://127.0.0.1:10565/js-plugins/manifest.json -> 200 http/1.1 application/json cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"///+Xm7uIAA/////7dpgXY"' encoding=None
+  1486ms GET http://127.0.0.1:10565/iframe/widget/assets/App-C0VbuCy4.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASmaNDK4AAAAAHBQkkg--gzip"' encoding='gzip'
+  1486ms GET http://127.0.0.1:10565/iframe/widget/assets/App-CU5B7yW3.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tchiHRk/////96/iHE"' encoding=None
+  1678ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGrid-CRG0XZBr.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASiLJNdQAAAAADQXZO4--gzip"' encoding='gzip'
+  1678ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGrid-Bki4N1kL.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASkb3kqYAAAAAFAqoNg--gzip"' encoding='gzip'
+  2118ms GET http://127.0.0.1:10565/iframe/table/?name=ide_ticking&psk=oxhaven -> 200 http/1.1 text/html cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"////tbCQoyI/////6ZNNoQ"' encoding=None
+  2139ms GET http://127.0.0.1:10565/iframe/widget/?name=ide_ticking&psk=oxhaven -> 200 http/1.1 text/html cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"////tfhzODg/////+6urt8"' encoding=None
+  2151ms GET http://127.0.0.1:10565/iframe/widget/assets/index-Z4iF_HWC.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASn8q8zUAAAAAGn+sKc--gzip"' encoding='gzip'
+  2151ms GET http://127.0.0.1:10565/iframe/widget/assets/index-kemtREHZ.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASllfVLEAAAAAE+GXl8--gzip"' encoding='gzip'
+  2178ms GET http://127.0.0.1:10565/jsapi/dh-core.js -> 304 http/1.1 None cache-control=None etag='W/"AAAASho+Jj4AAAAAAyeclU--gzip"' encoding=None
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/index-B9lj_zsY.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tf+JzGs/////+lFOQw--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/index-C3bT2K8P.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASnpXFY4AAAAAGyCQmg--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/LogPanel-kYQF3orl.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tZxLfEw/////4qboD0--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/LogPanel-CMm1eZwG.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASjcQRHoAAAAACHPPeM--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/index-DWk_NqMG.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASnqXV48AAAAAGxKLQk--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGridContextProvider-DpDjFtjc.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAAShGWaF0AAAAAAdHdHA--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/useResizeObserver-C0KdNdKE.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASljwKmoAAAAAE4tlvI--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/useResizeObserver-XUvfkgDZ.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASjGplisAAAAACd0MI8--gzip"' encoding='gzip'
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/useMergeRef-B9eUZWKc.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tcBwOfU/////9atrHI"' encoding=None
+  2376ms GET http://127.0.0.1:10565/iframe/widget/assets/index-BQ5IbGbl.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tc6deu8/////9hA42o--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGridContextProvider-CHm4xgd3.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tetcTwA//////2DOOI--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/LocalWorkspaceStorage-CjmzMqAZ.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////taNWAE8/////7WKnd4--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/LocalWorkspaceStorage-MIiZLUc-.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tdL+CWw/////8QjgkI--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/DownsamplingError--AAvWHv_.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"////tZ/Q6Ys/////4kNf9E"' encoding=None
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/index-Drt7Lu8R.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASno0hJ8AAAAAGzvGEo--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-mono-latin-400-normal-DKjLVgQi.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"AAAASgs7lZgAAAAAB3mPgQ--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-sans-latin-400-normal-DqUVgETp.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"////teGzh34//////duTjY--gzip"' encoding='gzip'
+  2377ms GET http://127.0.0.1:10565/iframe/widget/assets/fira-sans-latin-600-normal-BjYBD9kW.woff2 -> 200 http/1.1 font/woff2 cache-control='max-age=31536000, public, immutable' etag='W/"AAAAShI7iooAAAAAATmf64--gzip"' encoding='gzip'
+  2546ms GET http://127.0.0.1:10565/js-plugins/manifest.json -> 200 http/1.1 application/json cache-control='no-cache, must-revalidate, pre-check=0, post-check=0' etag='W/"///+Xm7uIAA/////7dpgXY"' encoding=None
+  2598ms GET http://127.0.0.1:10565/iframe/widget/assets/App-C0VbuCy4.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASmaNDK4AAAAAHBQkkg--gzip"' encoding='gzip'
+  2598ms GET http://127.0.0.1:10565/iframe/widget/assets/App-CU5B7yW3.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"////tchiHRk/////96/iHE"' encoding=None
+  2651ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGrid-CRG0XZBr.js -> 200 http/1.1 text/javascript cache-control='max-age=31536000, public, immutable' etag='W/"AAAASiLJNdQAAAAADQXZO4--gzip"' encoding='gzip'
+  2651ms GET http://127.0.0.1:10565/iframe/widget/assets/IrisGrid-Bki4N1kL.css -> 200 http/1.1 text/css cache-control='max-age=31536000, public, immutable' etag='W/"AAAASkb3kqYAAAAAFAqoNg--gzip"' encoding='gzip'
+
+  1343ms WEBSOCKET ws://127.0.0.1:10565/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=61 closed=None error=None
+  2533ms WEBSOCKET ws://127.0.0.1:10565/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=65 closed=None error=None
+
+  1359ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
+         request headers: {'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: AuthenticationConstantsRequest{}
+         response 0: AuthenticationConstantsResponse{config_values { key: "AuthHandlers" value { string_value: "io.deephaven.authentication.psk.PskAuthenticationHandler" } }}
+  1441ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'io.deephaven.authentication.psk.PskAuthenticationHandler <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1461ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: TerminationNotificationRequest{}
+  1461ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExportedTableUpdatesRequest{}
+         response 0: ExportedTableUpdateMessage{export_id { ticket: "e\001\000\000\000" } size: 5}
+         response 1: ExportedTableUpdateMessage{export_id { ticket: "e\002\000\000\000" } size: 5}
+  1465ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1520ms ws-multiplex [stream 5] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{filter_glob: "*.json"}
+         response 0: ListItemsResponse{canonical_path: "/"}
+  1547ms ws-multiplex [stream 6] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListFieldsRequest{}
+         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "a/ide_app/f/ide_static" } type: "Table" } field_name: "ide_static" application_name: "IDE acceptance tables" application_id: "ide_app" } created { typed_ticket { ticket { ticket: "a/ide_app/f/ide_ticking" } type: "Table" } field_name: "ide_ticking" application_name: "IDE acceptance tables" application_id: "ide_app" }}
+  1622ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchTableRequest{source_id { ticket { ticket: "a/ide_app/f/ide_static" } } result_id { ticket: "e\001\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\001\000\000\000" } } success: true is_static: true size: 5} schema_header: arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}
+  1765ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\001\000\000\000" } } result_id { ticket: "e\002\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\002\000\000\000" } } success: true is_static: true size: 5} schema_header: arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}
+  1788ms ws-multiplex [stream 9] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x02\x00\x00\x00' columns=[0, 1, 2] viewport={0-94} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=112 rows=5 nodes=3 buffers=7; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-94} effective_reverse_viewport=False effective_column_set=[0, 1, 2] added_rows={0-4} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=5; data_body=112 bytes}
+
+==== open ticking (at 2109ms) ====
+
+  2551ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
+         request headers: {'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: AuthenticationConstantsRequest{}
+         response 0: AuthenticationConstantsResponse{config_values { key: "AuthHandlers" value { string_value: "io.deephaven.authentication.psk.PskAuthenticationHandler" } }}
+  2580ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'io.deephaven.authentication.psk.PskAuthenticationHandler <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  2588ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: TerminationNotificationRequest{}
+  2588ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExportedTableUpdatesRequest{}
+         response 0: ExportedTableUpdateMessage{export_id { ticket: "e\001\000\000\000" } size: 3}
+         response 1: ExportedTableUpdateMessage{export_id { ticket: "e\002\000\000\000" } size: 3}
+         response 2: ExportedTableUpdateMessage{export_id { ticket: "e\001\000\000\000" } size: 3}
+         response 3: ExportedTableUpdateMessage{export_id { ticket: "e\002\000\000\000" } size: 3}
+  2591ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  2602ms ws-multiplex [stream 5] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{filter_glob: "*.json"}
+         response 0: ListItemsResponse{canonical_path: "/"}
+  2609ms ws-multiplex [stream 6] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListFieldsRequest{}
+         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "a/ide_app/f/ide_static" } type: "Table" } field_name: "ide_static" application_name: "IDE acceptance tables" application_id: "ide_app" } created { typed_ticket { ticket { ticket: "a/ide_app/f/ide_ticking" } type: "Table" } field_name: "ide_ticking" application_name: "IDE acceptance tables" application_id: "ide_app" }}
+  2638ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchTableRequest{source_id { ticket { ticket: "a/ide_app/f/ide_ticking" } } result_id { ticket: "e\001\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\001\000\000\000" } } success: true size: 3} schema_header: arrow Schema bodyLength=0 fields=[Timestamp:java.time.Instant, N:long, Sq:long] metadata={}
+  2679ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\001\000\000\000" } } result_id { ticket: "e\002\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\002\000\000\000" } } success: true size: 3} schema_header: arrow Schema bodyLength=0 fields=[Timestamp:java.time.Instant, N:long, Sq:long] metadata={}
+  2684ms ws-multiplex [stream 9] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x02\x00\x00\x00' columns=[0, 1, 2] viewport={0-94} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Timestamp:java.time.Instant, N:long, Sq:long] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=72 rows=3 nodes=3 buffers=6; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=13 last_seq=13 is_snapshot=True effective_viewport={0-94} effective_reverse_viewport=False effective_column_set=[0, 1, 2] added_rows={0-2} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=3; data_body=72 bytes}
+         response 2: FlightData{arrow RecordBatch bodyLength=48 rows=2 nodes=3 buffers=6; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=14 last_seq=14 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={1-2} removed_rows={0-1} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=3; data_body=48 bytes}

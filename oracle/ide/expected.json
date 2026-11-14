@@ -1,0 +1,43 @@
+{
+  "comment": "What the IDE acceptance test expects. `displayed` is the text the IDE grid paints with its default formats, observed on the Java reference; `rows` is what the JS API returns. app.d/ide_tables.py builds these tables on Java.",
+  "static": {
+    "name": "ide_static",
+    "columns": ["Id", "Sym", "Price"],
+    "types": ["int", "java.lang.String", "double"],
+    "rows": [
+      [1, "AAPL", 101.5],
+      [2, "MSFT", 202.25],
+      [3, "GOOG", 303.125],
+      [4, "AMZN", 404.0],
+      [5, "OXHV", 505.75]
+    ],
+    "displayed": [
+      ["1", "AAPL", "101.5000"],
+      ["2", "MSFT", "202.2500"],
+      ["3", "GOOG", "303.1250"],
+      ["4", "AMZN", "404.0000"],
+      ["5", "OXHV", "505.7500"]
+    ]
+  },
+  "ticking": {
+    "comment": "The last `rows` ticks of a counter: N is consecutive and grows, Sq is N squared. Timestamp is not compared (it is painted in the browser's time zone).",
+    "name": "ide_ticking",
+    "columns": ["Timestamp", "N", "Sq"],
+    "counter": "N",
+    "square": "Sq",
+    "rows": 3
+  },
+  "console": {
+    "comment": "Route (a): the commands typed into the IDE console, per console type. Each creates the two tables under other names.",
+    "python": {
+      "static": "from deephaven import new_table, time_table; from deephaven.column import int_col, string_col, double_col; ide_console_static = new_table([int_col('Id', [1, 2, 3, 4, 5]), string_col('Sym', ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV']), double_col('Price', [101.5, 202.25, 303.125, 404.0, 505.75])])",
+      "ticking": "ide_console_ticking = time_table('PT0.5S').update(['N = ii', 'Sq = ii * ii']).tail(3)"
+    },
+    "groovy": {
+      "static": "ide_console_static = newTable(intCol('Id', 1, 2, 3, 4, 5), stringCol('Sym', 'AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV'), doubleCol('Price', 101.5d, 202.25d, 303.125d, 404.0d, 505.75d))",
+      "ticking": "ide_console_ticking = timeTable('PT0.5S').update('N = ii', 'Sq = ii * ii').tail(3)"
+    },
+    "staticName": "ide_console_static",
+    "tickingName": "ide_console_ticking"
+  }
+}
