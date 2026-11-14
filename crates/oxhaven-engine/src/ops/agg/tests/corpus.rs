@@ -167,12 +167,13 @@ pub(super) fn column<'a>(
 }
 
 fn column_of(type_name: &str, cells: &[&Value]) -> (ColumnType, ArrayRef) {
-    let list_type = [("vector<", true), ("array<", false)]
-        .into_iter()
-        .find_map(|(prefix, vector)| {
-            let element = type_name.strip_prefix(prefix)?.strip_suffix('>')?;
-            Some((vector, element))
-        });
+    let list_type =
+        [("vector<", true), ("array<", false)]
+            .into_iter()
+            .find_map(|(prefix, vector)| {
+                let element = type_name.strip_prefix(prefix)?.strip_suffix('>')?;
+                Some((vector, element))
+            });
     if let Some((vector, element)) = list_type {
         let lengths: Vec<Option<usize>> = cells
             .iter()

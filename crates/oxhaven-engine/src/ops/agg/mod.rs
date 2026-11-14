@@ -368,7 +368,6 @@ fn make_operator(
             // framework need not decode it: it is told when the column is modified.
             return Ok(Some(Planned {
                 reads: vec![input],
-                group: true,
                 ..Planned::new(Box::new(Group::new(parent.column(input), input_type)), None)
             }));
         }
