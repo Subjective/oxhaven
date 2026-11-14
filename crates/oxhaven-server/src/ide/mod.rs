@@ -165,13 +165,13 @@ const DIFFERENCES: &[Difference] = &[
     differs(
         "console_disabled",
         "preview_static_int_not_listed",
-        "INVALID_ARGUMENT: Details Logged w/ID '",
+        "UNIMPLEMENTED: not ported: io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable",
         NO_DISPLAY_WRAPPER,
     ),
     differs(
         "console_disabled",
         "preview_static_one_other_type",
-        "INVALID_ARGUMENT: Details Logged w/ID '",
+        "UNIMPLEMENTED: not ported: io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable",
         NO_DISPLAY_WRAPPER,
     ),
     differs(

@@ -40,6 +40,7 @@ use oxhaven_proto::grpc::{
     SortTableRequest, TableReference, Ticket, TimeTableRequest, UngroupRequest,
     UnstructuredFilterTableRequest, UpdateByRequest, WhereInRequest,
 };
+use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use support::{code_name, OpContext};
@@ -100,9 +101,20 @@ fn run_operation(
         .iter()
         .filter(|source| source.is_refreshing())
         .find_map(|source| source.update_graph());
+    // An operator that meets something it has not ported panics with `unported!`. The
+    // client is told what is missing; any other panic is left to the export, which reports
+    // it as an internal failure.
+    let create = || {
+        catch_unwind(AssertUnwindSafe(|| operation.create(context, &sources))).unwrap_or_else(
+            |panic| match support::unported_status(panic.as_ref()) {
+                Some(status) => Err(ExportError::Status(status)),
+                None => resume_unwind(panic),
+            },
+        )
+    };
     match graph {
-        Some(graph) => locked(graph.as_ref(), || operation.create(context, &sources)),
-        None => operation.create(context, &sources),
+        Some(graph) => locked(graph.as_ref(), create),
+        None => create(),
     }
 }
 

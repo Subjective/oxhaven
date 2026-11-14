@@ -9,7 +9,9 @@ pub mod schema;
 pub mod session;
 pub mod storage;
 pub mod table;
+pub mod transport;
 pub mod update_graph;
+pub mod web;
 
 #[cfg(test)]
 mod ide;
@@ -30,15 +32,14 @@ use oxhaven_proto::grpc::storage_service_server::StorageServiceServer;
 use oxhaven_proto::grpc::table_service_server::TableServiceServer;
 use oxhaven_proto::script::console_service_server::ConsoleServiceServer;
 use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
 use tonic::service::Routes;
 
 use app::{ApplicationGrpc, ApplicationTicketResolver, Applications, Scope, ScopeTicketResolver};
 use flight::FlightGrpc;
 use inputtable::InputTableGrpc;
 use session::{
-    system_clock, AuthHandlers, ExportTicketResolver, SessionGrpc, SessionLayer, SessionStore,
-    TicketRouter, TokioExecutor,
+    system_clock, AuthHandlers, ExportTicketResolver, SessionGrpc, SessionStore, TicketRouter,
+    TokioExecutor,
 };
 use table::support::OpContext;
 use update_graph::PeriodicUpdateGraph;
@@ -73,6 +74,9 @@ pub struct ServerState {
     pub applications: Arc<Applications>,
     /// The variables that tickets `s/<name>` name.
     pub scope: Arc<Scope>,
+    /// The static files of the web IDE, if the server has them. `None` after
+    /// [`ServerState::new`]; set it before [`serve`].
+    pub web_root: Option<Arc<web::WebRoot>>,
 }
 
 impl ServerState {
@@ -102,6 +106,7 @@ impl ServerState {
             graph,
             applications,
             scope,
+            web_root: None,
         })
     }
 
@@ -145,21 +150,14 @@ impl ServerState {
     }
 }
 
-/// Serves gRPC on `listener`, without TLS, until `shutdown` completes. Clients with a
-/// termination subscription are then told, every session is ended, and open calls are given
-/// the chance to finish.
+/// Serves `state` on `listener`, without TLS, until `shutdown` completes: gRPC for native
+/// clients, and for browsers the web IDE's files, gRPC over a websocket and gRPC-web; see
+/// [`transport`]. Clients with a termination subscription are then told, every session is
+/// ended, and open calls are given the chance to finish.
 pub async fn serve(
     state: ServerState,
     listener: TcpListener,
     shutdown: impl Future<Output = ()>,
-) -> Result<(), tonic::transport::Error> {
-    let sessions = state.sessions.clone();
-    tonic::transport::Server::builder()
-        .layer(SessionLayer::new(state.sessions.clone()))
-        .add_routes(state.routes())
-        .serve_with_incoming_shutdown(TcpListenerStream::new(listener), async move {
-            shutdown.await;
-            sessions.on_shutdown();
-        })
-        .await
+) -> std::io::Result<()> {
+    transport::serve(state, listener, shutdown).await
 }

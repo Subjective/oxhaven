@@ -17,6 +17,8 @@ use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::Code;
 
+mod handlers;
+
 type Client = TableServiceClient<Channel>;
 
 fn ticket(id: i32) -> Option<Ticket> {
@@ -213,12 +215,28 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
     assert_eq!(
         implemented,
         [
+            "AGGREGATE",
+            "AGGREGATE_ALL",
             "CREATE_INPUT_TABLE",
             "EMPTY_TABLE",
             "TIME_TABLE",
             "FETCH_TABLE",
             "META_TABLE",
             "APPLY_PREVIEW_COLUMNS",
+            "UPDATE",
+            "LAZY_UPDATE",
+            "VIEW",
+            "UPDATE_VIEW",
+            "SELECT",
+            "DROP_COLUMNS",
+            "SORT",
+            "HEAD",
+            "TAIL",
+            "SLICE",
+            "MERGE",
+            "FLATTEN",
+            "UNSTRUCTURED_FILTER",
+            "FILTER",
         ]
         .into_iter()
         .map(String::from)
@@ -247,27 +265,34 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
 #[tokio::test]
 async fn an_operation_without_a_handler_is_unimplemented_in_both_forms() {
     let mut c = Connected::start().await;
-    let request = SortTableRequest {
+    let request = SelectDistinctRequest {
         result_id: ticket(1),
         source_id: by_ticket(2),
-        sorts: Vec::new(),
+        column_names: Vec::new(),
     };
-    let refused = c.client.sort(c.auth(request.clone())).await.unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
-    assert_eq!(
-        refused.message(),
-        "TableService operation SORT is not implemented"
-    );
-
-    // In a batch the whole call is refused and nothing before it is created.
     let refused = c
-        .batch(vec![Op::EmptyTable(empty(ticket(3), 1)), Op::Sort(request)])
+        .client
+        .select_distinct(c.auth(request.clone()))
         .await
         .unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "TableService operation SORT is not implemented"
+        "TableService operation SELECT_DISTINCT is not implemented"
+    );
+
+    // In a batch the whole call is refused and nothing before it is created.
+    let refused = c
+        .batch(vec![
+            Op::EmptyTable(empty(ticket(3), 1)),
+            Op::SelectDistinct(request),
+        ])
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::Unimplemented);
+    assert_eq!(
+        refused.message(),
+        "TableService operation SELECT_DISTINCT is not implemented"
     );
     let session = c.server.session(&c.bearer);
     let unused = session.get_export(3).unwrap();
