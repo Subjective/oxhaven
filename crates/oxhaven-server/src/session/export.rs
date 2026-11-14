@@ -17,7 +17,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
-use oxhaven_contracts::table::Table;
+use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_proto::grpc::{ExportNotification, Ticket};
 use tonic::Status;
 use uuid::Uuid;
@@ -84,6 +84,28 @@ impl From<Status> for ExportError {
     fn from(status: Status) -> Self {
         ExportError::Status(status)
     }
+}
+
+/// An engine failure is internal: the client is told where the details were logged.
+impl From<TableFailure> for ExportError {
+    fn from(failure: TableFailure) -> Self {
+        ExportError::Internal(failure.message)
+    }
+}
+
+/// See [`Export::failure`].
+#[derive(Clone, Debug)]
+pub struct ExportFailure {
+    /// Identifies the failure in the server log. Dependents share the id of the export
+    /// that failed them.
+    pub error_id: String,
+    /// The log name of the dependency that failed this export, when that dependency had no
+    /// error of its own: it was released or cancelled.
+    pub dependency: Option<String>,
+    /// The status this export failed with, or inherited from the dependency that failed
+    /// it. `None` for an export that was cancelled or whose dependency failed without a
+    /// status for the client.
+    pub cause: Option<Status>,
 }
 
 type Work = Box<dyn FnOnce(Vec<ExportValue>) -> Result<ExportValue, ExportError> + Send>;
@@ -304,6 +326,25 @@ impl Export {
         self.lock().result.clone()
     }
 
+    /// What an error handler in the reference server is told about this export's failure,
+    /// or `None` if the export is not in a failure state. Handlers given to
+    /// [`ExportBuilder::on_error`] receive only the status; one that reports more, as
+    /// `Batch` does, reads the rest here.
+    ///
+    /// Behavior: the arguments of
+    /// `io.deephaven.server.session.SessionState.ExportErrorHandler#onError`
+    pub fn failure(&self) -> Option<ExportFailure> {
+        let slot = self.lock();
+        if !is_failure(slot.state) {
+            return None;
+        }
+        Some(ExportFailure {
+            error_id: slot.error_id.clone().unwrap_or_default(),
+            dependency: slot.failed_dependency.clone(),
+            cause: slot.cause.as_ref().map(|_| self.failure_status(&slot)),
+        })
+    }
+
     /// Releases an exported value; cancels an export that has not completed, which fails the
     /// exports that depend on it. Does nothing to an export already in a terminal state.
     ///
@@ -409,9 +450,10 @@ impl Export {
             }
             if is_terminal(state) {
                 slot.result = None;
-                // a status is kept: dependents defined later still report it
-                if !matches!(slot.cause, Some(ExportError::Status(_))) {
-                    slot.cause = None;
+                // A status is kept: dependents defined later still report it. Of an
+                // internal failure only the fact is kept; its text is in the log.
+                if let Some(ExportError::Internal(text)) = &mut slot.cause {
+                    *text = String::new();
                 }
             }
         }

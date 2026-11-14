@@ -1,1 +1,181 @@
 //! Sort, head, tail and slice. Task 3.3.
+//!
+//! | Function | Result |
+//! | --- | --- |
+//! | [`sort`] | The rows ordered by one or more columns, ties in the parent's order |
+//! | [`reverse`] | The rows in the opposite order |
+//! | [`head`], [`tail`] | The first or last rows |
+//! | [`slice`] | The rows at a range of positions, counted from either end |
+
+mod keys;
+mod slice;
+mod sorted;
+
+#[cfg(test)]
+mod corpus;
+#[cfg(test)]
+pub(crate) mod testing;
+#[cfg(test)]
+mod tests;
+
+use crate::ops::merge::positional;
+use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
+use std::fmt;
+use std::sync::Arc;
+
+/// Behavior: io.deephaven.engine.table.impl.SortingOrder
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SortDirection {
+    /// Least first. Null is the least value of every type and NaN the greatest.
+    Ascending,
+    /// The negated comparison: greatest first, so NaN first and nulls last. Rows that
+    /// compare equal still keep the parent's order.
+    Descending,
+}
+
+/// One column to sort by.
+///
+/// Behavior: io.deephaven.api.SortColumn, and for `absolute` the `is_absolute` flag of the
+/// gRPC `SortDescriptor`, which the Java server implements as a sort by `abs(Column)`
+/// (io.deephaven.server.table.ops.SortTableGrpcImpl#create).
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SortColumn {
+    pub column: String,
+    pub direction: SortDirection,
+    /// Sort by the absolute value. For numeric columns only.
+    pub absolute: bool,
+}
+
+impl SortColumn {
+    pub fn ascending(column: impl Into<String>) -> Self {
+        Self {
+            column: column.into(),
+            direction: SortDirection::Ascending,
+            absolute: false,
+        }
+    }
+
+    pub fn descending(column: impl Into<String>) -> Self {
+        Self {
+            column: column.into(),
+            direction: SortDirection::Descending,
+            absolute: false,
+        }
+    }
+
+    /// The same column and direction, by absolute value.
+    pub fn absolute(mut self) -> Self {
+        self.absolute = true;
+        self
+    }
+}
+
+/// Why an operation of this module was refused. The variants name the kind of Java
+/// exception the reference throws, so that a gRPC handler can map each to the status Java
+/// reports.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum SortError {
+    /// Java's `NoSuchColumnException`: sort columns the table does not have.
+    NoSuchColumn(Vec<String>),
+    /// An absolute sort of a column whose type has no `abs`. In Java the formula
+    /// `abs(Column)` fails to compile.
+    AbsoluteNotSupported {
+        column: String,
+        column_type: ColumnType,
+    },
+    /// Java's `IllegalArgumentException`, and the failed `Require` of a negative size.
+    IllegalArgument(String),
+    /// Java's `UnsupportedOperationException`: the operation does not apply to this kind
+    /// of table.
+    Unsupported(String),
+    /// The parent has failed or could not be read.
+    Table(TableFailure),
+}
+
+impl fmt::Display for SortError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SortError::NoSuchColumn(columns) => {
+                write!(f, "Unknown column names [{}]", columns.join(", "))
+            }
+            SortError::AbsoluteNotSupported {
+                column,
+                column_type,
+            } => write!(
+                f,
+                "cannot sort by the absolute value of {column}, a {column_type:?} column"
+            ),
+            SortError::IllegalArgument(message) | SortError::Unsupported(message) => {
+                f.write_str(message)
+            }
+            SortError::Table(failure) => failure.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for SortError {}
+
+impl From<TableFailure> for SortError {
+    fn from(failure: TableFailure) -> Self {
+        SortError::Table(failure)
+    }
+}
+
+/// The rows of `parent` ordered by `columns`: the first column decides, later columns break
+/// ties, and rows equal in every column keep the parent's order, initially and after every
+/// update. With no columns the result is `parent` itself.
+///
+/// The result of sorting a static table is flat, or `parent` itself when its rows are
+/// already in order. The result of sorting a refreshing table is not flat, except for a
+/// blink table, whose sort is the sorted rows of each cycle.
+///
+/// # Panics
+/// With `unported!` for an absolute sort of a `Char` column.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#sort,
+/// io.deephaven.engine.table.impl.SortOperation and io.deephaven.engine.table.impl.SortListener
+pub fn sort(parent: &Arc<dyn Table>, columns: &[SortColumn]) -> Result<Arc<dyn Table>, SortError> {
+    sorted::sort(parent, columns)
+}
+
+/// The rows of `parent`, last row first. The result is not flat and keeps the blink
+/// attribute of its parent.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#reverse,
+/// io.deephaven.engine.table.impl.ReverseOperation and the `Reverse` entries of the
+/// attribute table in io.deephaven.engine.table.impl.BaseTable
+pub fn reverse(parent: &Arc<dyn Table>) -> Result<Arc<dyn Table>, SortError> {
+    let mut attributes = TableAttributes::default();
+    attributes.blink = parent.attributes().blink;
+    Ok(positional(parent, true, attributes, false)?)
+}
+
+/// The first `size` rows of `parent`, or all of them if it has fewer.
+///
+/// On a blink table: an append-only table of the first `size` rows the blink table ever
+/// shows. A `size` of zero gives a static table without rows.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#head
+pub fn head(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>, SortError> {
+    slice::head(parent, size)
+}
+
+/// The last `size` rows of `parent`, or all of them if it has fewer.
+///
+/// On a blink table: the latest `size` rows the blink table added. A `size` of zero gives
+/// a static table without rows.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#tail
+pub fn tail(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>, SortError> {
+    slice::tail(parent, size)
+}
+
+/// The rows of `parent` at positions `first..last`. A negative position counts back from
+/// the end, and `last == 0` with a negative `first` means the end: `slice(t, -3, 0)` is
+/// `tail(t, 3)`. Not supported on a blink table.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#slice
+pub fn slice(parent: &Arc<dyn Table>, first: i64, last: i64) -> Result<Arc<dyn Table>, SortError> {
+    slice::slice(parent, first, last)
+}

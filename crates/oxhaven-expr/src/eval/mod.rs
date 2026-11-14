@@ -2,8 +2,9 @@
 
 mod compare;
 mod numeric;
+mod text;
 
-use crate::types::{Checked, LogicalOp, Node, Numeric, Typed};
+use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int32Array,
     Int64Array, StringArray, TimestampNanosecondArray, UInt16Array,
@@ -12,7 +13,7 @@ use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
     TimestampNanosecondType, UInt16Type,
 };
-use numeric::{without_null_value, JavaNumber};
+use numeric::{with_null_values, without_null_value, JavaPrimitive};
 use oxhaven_contracts::expr::{Formula, Literal};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -173,6 +174,43 @@ macro_rules! in_numeric_type {
     };
 }
 
+/// Evaluates `$body` with `$t` naming the Rust type of the primitive `$column_type`.
+macro_rules! in_primitive_type {
+    ($column_type:expr, |$t:ident| $body:expr) => {
+        match $column_type {
+            ColumnType::Byte => {
+                type $t = i8;
+                $body
+            }
+            ColumnType::Short => {
+                type $t = i16;
+                $body
+            }
+            ColumnType::Char => {
+                type $t = u16;
+                $body
+            }
+            ColumnType::Int => {
+                type $t = i32;
+                $body
+            }
+            ColumnType::Long => {
+                type $t = i64;
+                $body
+            }
+            ColumnType::Float => {
+                type $t = f32;
+                $body
+            }
+            ColumnType::Double => {
+                type $t = f64;
+                $body
+            }
+            other => unreachable!("the type checker gave a cast the target type {other:?}"),
+        }
+    };
+}
+
 fn erase<A: Array + 'static>(array: A) -> ArrayRef {
     Arc::new(array)
 }
@@ -182,6 +220,7 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
     match &expr.node {
         Node::Column(slot) => Ok(batch.columns[*slot].clone()),
         Node::Literal(literal) => Ok(constant(literal, batch.rows)),
+        Node::Null => Ok(new_null_array(&expr.column_type.arrow_type(), batch.rows)),
         Node::Negate(operand) => {
             let operand = evaluate(operand, batch)?;
             Ok(in_numeric_type!(numeric, |T| erase(numeric::negate::<T>(
@@ -221,6 +260,51 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             )))
         }
         Node::Logical { op, left, right } => logical(*op, left, right, batch),
+        Node::BooleanBitwise { op, left, right } => {
+            let left = evaluate(left, batch)?;
+            let right = evaluate(right, batch)?;
+            Ok(Arc::new(boolean_bitwise(
+                *op,
+                left.as_boolean(),
+                right.as_boolean(),
+            )))
+        }
+        Node::Cast(operand) => {
+            let operand = evaluate(operand, batch)?;
+            Ok(in_primitive_type!(&expr.column_type, |T| erase(
+                numeric::cast::<T>(operand.as_ref())
+            )))
+        }
+        // Java's implicit widening does not look for null: the operand is converted as
+        // the value the generated code holds, which for null is the reserved value.
+        Node::Widen(operand) => {
+            let operand = with_null_values(&evaluate(operand, batch)?);
+            Ok(in_primitive_type!(&expr.column_type, |T| erase(
+                numeric::cast::<T>(operand.as_ref())
+            )))
+        }
+        Node::Ternary {
+            condition,
+            if_true,
+            if_false,
+        } => ternary(condition, if_true, if_false, batch),
+        Node::Concat { left, right } => {
+            let left = evaluate(left, batch)?;
+            let right = evaluate(right, batch)?;
+            text::concat(left.as_ref(), right.as_ref()).map(erase)
+        }
+        Node::StringMethod {
+            method,
+            receiver,
+            arguments,
+        } => {
+            let receiver = evaluate(receiver, batch)?;
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            text::string_method(*method, receiver.as_ref(), &arguments)
+        }
         // `io.deephaven.function.Basic#isNull`.
         Node::IsNull(operand) => {
             let operand = evaluate(operand, batch)?;
@@ -289,10 +373,81 @@ fn logical(
     Ok(Arc::new(result))
 }
 
+/// Evaluates `condition ? if_true : if_false`.
+///
+/// Behavior: `QueryLanguageParser#visit(ConditionalExpr)` prints Java's own operator. Each
+/// row evaluates only the branch its condition selects, so a failure in the other branch
+/// cannot arise, and a null `Boolean` condition throws `NullPointerException` when Java
+/// unboxes it.
+fn ternary(
+    condition: &Typed,
+    if_true: &Typed,
+    if_false: &Typed,
+    batch: &Batch,
+) -> Result<ArrayRef, TableFailure> {
+    let condition = evaluate(condition, batch)?;
+    let condition = condition.as_boolean();
+    if condition.null_count() > 0 {
+        return Err(failure(
+            "java.lang.NullPointerException: null Boolean condition of ?:",
+        ));
+    }
+    let selected = condition.true_count();
+    if selected == batch.rows {
+        return evaluate(if_true, batch);
+    }
+    if selected == 0 {
+        return evaluate(if_false, batch);
+    }
+    let otherwise = arrow::compute::not(condition).map_err(arrow_failure)?;
+    let branches = [
+        evaluate(if_true, &batch.filter(condition)?)?,
+        evaluate(if_false, &batch.filter(&otherwise)?)?,
+    ];
+    // Each row takes the next value of its branch.
+    let mut taken = [0_usize; 2];
+    let rows: Vec<(usize, usize)> = condition
+        .values()
+        .iter()
+        .map(|selected| {
+            let branch = usize::from(!selected);
+            taken[branch] += 1;
+            (branch, taken[branch] - 1)
+        })
+        .collect();
+    arrow::compute::interleave(&[branches[0].as_ref(), branches[1].as_ref()], &rows)
+        .map_err(arrow_failure)
+}
+
+/// `left & right`, `left | right` or `left ^ right` for `Boolean` operands. Both operands
+/// are always evaluated.
+///
+/// Behavior: `QueryLanguageFunctionUtils#binaryAnd(Boolean,Boolean)`,
+/// `#binaryOr(Boolean,Boolean)` and `#xor(Boolean,Boolean)`: null when either operand is
+/// null. For two primitive `boolean` operands `QueryLanguageParser#visit(BinaryExpr)` prints
+/// Java's own operator, which gives the same values.
+fn boolean_bitwise(op: BitwiseOp, left: &BooleanArray, right: &BooleanArray) -> BooleanArray {
+    left.iter()
+        .zip(right.iter())
+        .map(|operands| match operands {
+            (Some(a), Some(b)) => Some(match op {
+                BitwiseOp::And => a & b,
+                BitwiseOp::Or => a | b,
+                BitwiseOp::Xor => a ^ b,
+            }),
+            _ => None,
+        })
+        .collect()
+}
+
 /// `rows` copies of a literal, null where the literal is the value Java reserves for null in
 /// its type.
 fn constant(literal: &Literal, rows: usize) -> ArrayRef {
-    fn number<T: JavaNumber>(value: T, array: impl FnOnce(T) -> ArrayRef, rows: usize) -> ArrayRef {
+    fn number<T: JavaPrimitive>(
+        value: T,
+        array: impl FnOnce(T) -> ArrayRef,
+        rows: usize,
+    ) -> ArrayRef {
         if value == T::NULL {
             new_null_array(
                 &<T::Arrow as arrow::datatypes::ArrowPrimitiveType>::DATA_TYPE,
@@ -303,7 +458,7 @@ fn constant(literal: &Literal, rows: usize) -> ArrayRef {
         }
     }
     match literal {
-        Literal::Null => unreachable!("the type checker accepts null only as isNull"),
+        Literal::Null => unreachable!("the type checker turns a null literal into a typed null"),
         Literal::Boolean(value) => Arc::new(BooleanArray::from(vec![*value; rows])),
         Literal::Char(u16::MAX) => new_null_array(&DataType::UInt16, rows),
         Literal::Char(value) => Arc::new(UInt16Array::from_value(*value, rows)),

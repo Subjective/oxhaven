@@ -12,6 +12,7 @@ arrow.workspace = true
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-rowset = { path = "../oxhaven-rowset" }
+regex.workspace = true
 
 [dev-dependencies]
 oxhaven-expr = { path = "../oxhaven-expr" }

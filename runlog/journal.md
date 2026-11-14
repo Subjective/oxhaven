@@ -42,3 +42,72 @@ Times are UTC.
 - **09:28** Session service delivered (PR 14) after 57 minutes, the longest run and the first judged too large by its agent (I had added the server skeleton and ticket router to the task). It completed without a split, so the lesson is about duration, not failure: service tasks from here are scoped to one service each.
 - **09:28** Owner decision pending: `NewSession` is refused because the reference would hand out an unauthenticated superuser session. Not in PARITY.md's allowed differences; flagged for sign-off.
 - **09:28** Operator wave started: where; sort with head, tail, slice, merge and flatten; select and update family; basic aggregation.
+- **09:31** Session service merged (PR 14). Services split so no task repeats its size: the session agent continues with the table service shell, config constants and the periodic cycle driver; a new agent takes Flight (schema, DoGet, DoPut) with the input-table service. They share one schema module, owned by the table-service task and pushed early; this is the first deliberate cross-agent dependency inside a wave and is a drift risk to watch. Eight agents now running.
+- **09:33** Owner set the acceptance criterion: open the web IDE served by Oxhaven, connect, and see a table. Made an explicit end-to-end test (task 6.0): a headless-browser test built and proven against Java first, plus a recorded list of exactly what the IDE calls. The minimal IDE path (static IDE files, gRPC-web, application fields or scope tickets, Barrage viewports, tables defined at startup without a console) is pulled ahead of the Python console work.
+
+### Checkpoint 1, 09:40 (after wave one, 107 minutes in)
+
+Written after each wave from here on: pace, bottlenecks, what changed.
+
+- **Pace.** 14 pull requests merged. 11 agent runs finished: 13 to 57 minutes each, 155k to 356k tokens each, no CI failure on any agent pull request. Median run about 24 minutes.
+- **Bottleneck 1, the machine.** 4 cores and about 18 GB of free disk cap this thread near nine agents. Load has stayed under 3, so disk for build directories is the tighter limit.
+- **Bottleneck 2, the dependency chain.** Operators cannot run the live oracle gate until the table service and Flight exist. That chain (session, table service, Flight) is the critical path, and the session task was the slowest run.
+- **Bottleneck 3, the orchestrator.** Each delivery costs a few minutes of serial work here: open the pull request, wait for CI, merge, log. Agents have not waited on this so far, but it will not scale to 40 agents.
+- **Not a bottleneck.** CI takes one to two minutes. Rate limits have not been hit.
+- **Changed because of this.** Merged small neighbours into one task five times. Resumed four agents for related follow-ups; base tables cost fewer tokens that way than the agent's first task. Split the service work after the 57-minute session run. Gave each agent a private build directory after the shared one produced wrong results. Pre-declared operator modules so branches do not collide. Started operators before the server exists, checked against the recorded Java corpus. Pulled the IDE path forward.
+- **Next.** Move to one thread per track before the M4 fan-out. Run the oracle replay in CI once the server answers it, since today its results are observed by agents only.
+- **10:00** Select family (PR 15) and the formula language (PR 16) delivered. Two sizing signals: select reported filling more than one context, and the formula task ran 94 minutes. Both finished and matched Java, so the tasks were at the upper edge, not over it. Rule from here: an operator family with more than about four operations, or with both stored and computed modes, is split in two.
+- **10:00** Method finding worth keeping: the formula agent recorded 1,374 cases from a live Java server instead of relying on the source, and reported that the source reading had several behaviors wrong. Future briefs tell agents to record from Java whenever a server is cheap to start.
+- **10:06** Formula corpus delivered (PR 17): 6,309 cases recorded from Java. It contradicts PARITY.md in nine places (written from source reading in M0), for example casts to small integer types and range filters with a NaN literal. The where agent was sent the filter findings mid-task; the corpus agent was resumed to correct PARITY.md's statements of fact, with no change to allowed differences. Lesson: rules written from reading Java source are hypotheses until recorded from a running server.
+- **10:06** Select family merged (PR 15). The formula language pull request (16) was updated with main before merging, because the select tests pin which formulas the compiler refuses and the new compiler accepts more: two green pull requests can still break each other.
+- **10:06** Disk: reclaimed 11 GB of stale build output (old shared directory, default target directory in the main checkout, two finished agents' leftovers).
+
+## 10:15 PR 16 red after select merged, fixed by updating a pin
+
+The select corpus test pins which recorded results it compares and which it does not run. Once the
+formula branch was updated with main, the new compiler accepted string concatenation, so
+`update_null_propagation.u` ran and matched Java, and the pinned lists were out of date. Moved the
+entry from "not run" to "compared" on the formula branch. This was the predicted interaction of two
+parallel branches; the pin did its job. Cost: one CI round, about ten minutes.
+
+PR 17 (formula corpus) merged. PR 18 opened for the PARITY.md corrections (facts only).
+
+## 10:12 PRs 16 and 18 merged; expr agent resumed for 5.4
+
+Formula language and the PARITY.md corrections are on main. The expr agent is resumed in its own
+context for the tagged corpus test and the function library (5.4), with an explicit exit after the
+corpus test if its context is nearly full. Column arrays (5.5) stay separate.
+
+## 10:25 Flight branch waits for the table service; oracle agent resumed
+
+The Flight and input-table branch is pushed but depends on the table service branch for `schema.rs`
+and for the config service its input-table gate needs. It is held until 2.2 merges, then takes main
+and gets its PR. Lesson: two service tasks sharing one file should have had that file merged first
+as its own small PR. Next time a shared file is split out before the fan-out.
+
+The oracle agent is resumed to add recordings for operations the corpus lacks (slice, flatten,
+reverse, absolute sort, blink) and harness support for the remaining batch operations, because two
+operator agents reported verifying against the Java source alone for those. Agents now get a
+private scratch directory after one overwrote another's script in the shared scratchpad.
+
+## 10:22 PR 19 merged; M4 started with two fresh agents
+
+Sort and merge are on main. Two operator slots were free, so M4 starts now rather than waiting for
+the M3 gate: natural/exact/left join (4.2), and snapshot plus select_distinct (4.9 and half of 4.8).
+Both are fresh agents because the finished operator agents ended near 250k tokens. They may record
+their own Java fixtures, since the oracle extension is still in progress. Eight agents are running;
+load average is about 7 on 4 cores, so no more are added until one finishes.
+
+## 10:27 Wave 2 landing: where and the table service merged; handlers and replay start
+
+PRs 20 (table service, config, cycle driver) and 21 (where) merged; PR 22 (basic aggregation) is in
+CI. All four wave-2 operator and service runs finished within 50 to 60 minutes of each other and
+all judged themselves too large or only just right, with 87k to 339k tokens each. None parked.
+
+Next: the table service agent (98k tokens used, knows the registry) is resumed to expose the merged
+operators over gRPC and run the first oracle replay against Oxhaven. This is the first check of the
+engine through the wire, so mismatches go back to operator owners rather than being patched in
+handlers. The Flight agent is resumed to bring its branch onto main and wire CreateInputTable.
+
+Guard added to the handler task: an `unported!` reachable from a client must be rejected with a
+status before it reaches the engine (found in the aggregation report).

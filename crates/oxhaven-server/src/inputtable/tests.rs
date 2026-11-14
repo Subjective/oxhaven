@@ -126,16 +126,6 @@ fn contents(table: &Arc<dyn Table>) -> Vec<(i32, Option<String>)> {
         .collect()
 }
 
-/// Java's schema for a case, without `deephaven:tableMetadata`: the protobuf description of
-/// the key and value columns that `crate::schema` does not write yet (PARITY.md Q8 leaves
-/// open whether it is compared). The same roles are in the field metadata, which is compared.
-fn java_schema_without_table_metadata(case: &str) -> Schema {
-    let schema = fixture_schema(case);
-    let mut metadata = schema.metadata().clone();
-    assert!(metadata.remove("deephaven:tableMetadata").is_some());
-    schema.with_metadata(metadata)
-}
-
 #[test]
 fn input_tables_are_described_and_sent_as_java_does() {
     let keyed_table = create_input_table(graph(), &request(keyed(&["K"])), None).unwrap();
@@ -143,7 +133,7 @@ fn input_tables_are_described_and_sent_as_java_does() {
     assert!(keyed_table.is_refreshing() && appended.is_refreshing());
 
     // without rows a refreshing table still gets one record batch
-    let java = java_schema_without_table_metadata("input_keyed_empty");
+    let java = fixture_schema("input_keyed_empty");
     assert_eq!(wire_schema(&keyed_table), java);
     let messages = do_get_messages(&keyed_table).unwrap();
     assert_eq!(messages.len(), 2);
@@ -154,7 +144,7 @@ fn input_tables_are_described_and_sent_as_java_does() {
         ("input_append_only", &appended),
     ] {
         add_table(&value(table), &value(&captured_rows())).unwrap();
-        let java = java_schema_without_table_metadata(case);
+        let java = fixture_schema(case);
         assert_eq!(wire_schema(table), java, "{case}");
         assert_do_get_matches(case, &do_get_messages(table).unwrap(), &java);
         // the size of a refreshing table is not known
@@ -335,8 +325,10 @@ fn delete_request(input: i32, keys: i32) -> DeleteTableRequest {
 #[tokio::test]
 async fn service_calls_answer_what_java_answers() {
     let server = &Server::start().await;
-    let table = create_input_table(graph(), &request(keyed(&["K"])), None).unwrap();
-    let appended = create_input_table(graph(), &request(append_only()), None).unwrap();
+    let table =
+        create_input_table(server.state.graph.clone(), &request(keyed(&["K"])), None).unwrap();
+    let appended =
+        create_input_table(server.state.graph.clone(), &request(append_only()), None).unwrap();
     // as in `capture.py`: the keyed table already has the rows it is given again
     add_table(&value(&table), &value(&captured_rows())).unwrap();
     let (keyed, rows, only_key, append_only) = (1, 2, 3, 4);
@@ -412,7 +404,7 @@ async fn service_calls_answer_what_java_answers() {
 
     // what the two calls that were accepted left behind, as a client reads it
     assert_eq!(contents(&table), [(1, Some("a".into()))]);
-    let java = java_schema_without_table_metadata("input_keyed_after_delete");
+    let java = fixture_schema("input_keyed_after_delete");
     let sent = server.do_get(keyed).await.unwrap();
     assert_do_get_matches("input_keyed_after_delete", &sent, &java);
     assert!(contents(&appended).is_empty());
@@ -421,8 +413,24 @@ async fn service_calls_answer_what_java_answers() {
 #[tokio::test]
 async fn service_change_is_visible_when_the_call_answers() {
     let server = Server::start().await;
-    let table = create_input_table(graph(), &request(append_only()), None).unwrap();
-    server.export(1, table.clone());
+    // the table comes from the table service, on the server's own update graph
+    let create = CreateInputTableRequest {
+        result_id: Some(export_id_to_ticket(1)),
+        ..request(append_only())
+    };
+    let created =
+        oxhaven_proto::grpc::table_service_client::TableServiceClient::new(server.channel.clone())
+            .create_input_table(server.authorized(create))
+            .await
+            .unwrap()
+            .into_inner();
+    assert!(created.success && !created.is_static, "{created:?}");
+    assert_eq!(
+        crate::flight::tests::support::schema_of_ipc(&created.schema_header),
+        fixture_schema("input_append_only")
+    );
+    let table = server.session().get_export(1).unwrap().value().unwrap();
+    let table = table.as_table().unwrap().clone();
     let mut service = InputTableServiceClient::new(server.channel.clone());
 
     // the call waits for the table it adds
@@ -442,7 +450,7 @@ async fn service_change_is_visible_when_the_call_answers() {
         .await
         .unwrap();
     assert_eq!(contents(&table).len(), 4);
-    let java = java_schema_without_table_metadata("input_append_only");
+    let java = fixture_schema("input_append_only");
     let sent = server.do_get(1).await.unwrap();
     assert_eq!(
         crate::flight::tests::support::schema_of_message(&sent[0]),

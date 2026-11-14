@@ -109,7 +109,11 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     let mut flag = |name: &str, set: bool| {
         if set {
             put(&mut metadata, &format!("attribute.{name}"), TRUE);
-            put(&mut metadata, &format!("attribute_type.{name}"), JAVA_BOOLEAN);
+            put(
+                &mut metadata,
+                &format!("attribute_type.{name}"),
+                JAVA_BOOLEAN,
+            );
         }
     };
     flag("IsFlat", context.is_flat);
@@ -123,14 +127,56 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     metadata
 }
 
+/// The value of `deephaven:tableMetadata` for an input table with these key columns: a
+/// `DeephavenTableMetadata` message, base64 encoded, that says of every column whether it
+/// is a key or a value.
+///
+/// The message is written by hand because its map must list the columns in the table's
+/// order, as Java's does, and a generated map does not keep an order.
+///
+/// Behavior: `BarrageUtil#maybeAddInputTableMetadata`
+fn input_table_metadata(definition: &TableDefinition, keys: &[String]) -> String {
+    use base64::Engine;
+    use oxhaven_proto::grpc::input_table_column_info::Kind;
+    use prost::encoding::encode_varint;
+
+    const LENGTH_DELIMITED: u8 = 2;
+    fn field(number: u8, payload: &[u8], out: &mut Vec<u8>) {
+        out.push(number << 3 | LENGTH_DELIMITED);
+        encode_varint(payload.len() as u64, out);
+        out.extend_from_slice(payload);
+    }
+
+    // InputTableMetadata: `map<string, InputTableColumnInfo> column_info = 1`
+    let mut column_info = Vec::new();
+    for column in definition.columns() {
+        let kind = if keys.contains(&column.name) {
+            Kind::Key
+        } else {
+            Kind::Value
+        };
+        // InputTableColumnInfo: `Kind kind = 1`, a varint
+        let info = [1 << 3, kind as u8];
+        let mut entry = Vec::new();
+        field(1, column.name.as_bytes(), &mut entry);
+        field(2, &info, &mut entry);
+        field(1, &entry, &mut column_info);
+    }
+    // DeephavenTableMetadata: `InputTableMetadata input_table_metadata = 1`
+    let mut message = Vec::new();
+    field(1, &column_info, &mut message);
+    base64::engine::general_purpose::STANDARD.encode(message)
+}
+
 /// The Arrow schema Java sends for a table with this definition.
 ///
 /// Every field is nullable and carries `deephaven:type` and `deephaven:isSortable`; format
 /// columns and input table key and value columns are marked as Java marks them.
 ///
-/// Not emitted: `deephaven:tableMetadata` (the protobuf `DeephavenTableMetadata` Java adds
-/// for input tables), column descriptions, and component types, none of which a table in
-/// this engine can carry yet.
+/// An input table also carries `deephaven:tableMetadata`.
+///
+/// Not emitted: column descriptions, component types, and restrictions on the values of an
+/// input table's columns, none of which a table in this engine can carry yet.
 ///
 /// Behavior: `BarrageUtil#makeSchema`, `BarrageUtil#columnDefinitionsToFields`
 pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Schema {
@@ -177,7 +223,12 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
             Field::new(name, column.column_type.arrow_type(), true).with_metadata(metadata)
         })
         .collect();
-    Schema::new_with_metadata(fields, schema_metadata(context))
+    let mut metadata = schema_metadata(context);
+    if let Some(keys) = &context.input_table_keys {
+        let value = input_table_metadata(definition, keys);
+        put(&mut metadata, "tableMetadata", &value);
+    }
+    Schema::new_with_metadata(fields, metadata)
 }
 
 /// [`arrow_schema`] for a table.
@@ -204,12 +255,16 @@ pub fn schema_message(schema: &Schema) -> Vec<u8> {
 ///
 /// Behavior: `MessageHelper#toIpcBytes`
 pub fn schema_ipc_bytes(schema: &Schema) -> Vec<u8> {
-    let message = schema_message(schema);
+    frame_ipc_message(&schema_message(schema))
+}
+
+/// Frames a flatbuffer `Message` as an encapsulated IPC message.
+fn frame_ipc_message(message: &[u8]) -> Vec<u8> {
     let padded = message.len().div_ceil(8) * 8;
     let mut bytes = Vec::with_capacity(8 + padded);
     bytes.extend_from_slice(&IPC_CONTINUATION_TOKEN);
     bytes.extend_from_slice(&(padded as u32).to_le_bytes());
-    bytes.extend_from_slice(&message);
+    bytes.extend_from_slice(message);
     bytes.resize(8 + padded, 0);
     bytes
 }
@@ -315,9 +370,11 @@ mod tests {
     fn attributes_become_schema_metadata() {
         let mut attributes = TableAttributes::default();
         attributes.blink = true;
-        let mut context = SchemaContext::default();
-        context.attributes = attributes;
-        context.is_flat = true;
+        let context = SchemaContext {
+            attributes,
+            is_flat: true,
+            ..Default::default()
+        };
         let schema = arrow_schema(&definition(&[("X", ColumnType::Long)]), &context);
         assert_eq!(
             schema.metadata(),
@@ -332,8 +389,10 @@ mod tests {
         let mut attributes = TableAttributes::default();
         attributes.add_only = true;
         attributes.append_only = true;
-        let mut context = SchemaContext::default();
-        context.attributes = attributes;
+        let context = SchemaContext {
+            attributes,
+            ..Default::default()
+        };
         let schema = arrow_schema(&definition(&[("X", ColumnType::Long)]), &context);
         assert_eq!(
             schema.metadata(),
@@ -348,8 +407,10 @@ mod tests {
 
     #[test]
     fn input_table_columns_are_marked_key_or_value() {
-        let mut context = SchemaContext::default();
-        context.input_table_keys = Some(vec!["K".to_owned()]);
+        let context = SchemaContext {
+            input_table_keys: Some(vec!["K".to_owned()]),
+            ..Default::default()
+        };
         let schema = arrow_schema(
             &definition(&[("K", ColumnType::String), ("V", ColumnType::Int)]),
             &context,
@@ -372,7 +433,11 @@ mod tests {
         );
         assert_eq!(
             schema.metadata(),
-            &metadata(&[("deephaven:unsent.attribute.InputTable", "")])
+            &metadata(&[
+                ("deephaven:unsent.attribute.InputTable", ""),
+                // DeephavenTableMetadata { input_table_metadata { K: key, V: value } }
+                ("deephaven:tableMetadata", "ChIKBwoBSxICCAEKBwoBVhICCAI="),
+            ])
         );
     }
 
@@ -416,9 +481,27 @@ mod tests {
     }
 
     #[test]
+    fn a_framed_message_is_padded_to_eight_bytes_and_its_length_counts_the_padding() {
+        assert_eq!(
+            frame_ipc_message(&[1, 2, 3, 4, 5]),
+            vec![0xff, 0xff, 0xff, 0xff, 8, 0, 0, 0, 1, 2, 3, 4, 5, 0, 0, 0]
+        );
+        assert_eq!(
+            frame_ipc_message(&[9; 8]),
+            [&[0xff, 0xff, 0xff, 0xff, 8, 0, 0, 0][..], &[9; 8][..]].concat()
+        );
+        assert_eq!(
+            frame_ipc_message(&[]),
+            vec![0xff, 0xff, 0xff, 0xff, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
     fn ipc_bytes_are_one_framed_schema_message_a_stream_reader_decodes() {
-        let mut context = SchemaContext::default();
-        context.is_flat = true;
+        let context = SchemaContext {
+            is_flat: true,
+            ..Default::default()
+        };
         let schema = arrow_schema(
             &definition(&[("A", ColumnType::Int), ("T", ColumnType::Instant)]),
             &context,

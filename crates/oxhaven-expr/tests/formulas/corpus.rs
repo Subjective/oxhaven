@@ -106,6 +106,15 @@ fn input(scenario: &Value, name: &str) -> TestTable {
                     ColumnType::String,
                     Arc::new(cells.map(Value::as_str).collect::<StringArray>()),
                 ),
+                "timestamp" => (
+                    ColumnType::Instant,
+                    Arc::new(
+                        cells
+                            .map(int_cell)
+                            .collect::<TimestampNanosecondArray>()
+                            .with_data_type(ColumnType::Instant.arrow_type()),
+                    ),
+                ),
                 other => panic!("no column of type {other}"),
             };
             (column["name"].as_str().expect("a name"), values)
@@ -223,8 +232,7 @@ fn update_and_view_formulas_match_the_recorded_java_results() {
     let checked = [
         assert_formulas("update_float_special", "u", &[]),
         assert_formulas("update_int_overflow", "u", &[]),
-        // String concatenation is outside the subset.
-        assert_formulas("update_null_propagation", "u", &["M = S + `x`"]),
+        assert_formulas("update_null_propagation", "u", &[]),
         assert_formulas("view_arithmetic", "ints", &[]),
         assert_formulas("view_arithmetic", "floats", &[]),
         assert_formulas("view_arithmetic", "small", &[]),
@@ -232,7 +240,7 @@ fn update_and_view_formulas_match_the_recorded_java_results() {
         assert_formulas("null_sentinel_inputs", "plus", &[]),
     ];
     // Guards against a scenario file that silently lists no formulas.
-    assert_eq!(checked, [8, 8, 7, 6, 6, 4, 4, 4]);
+    assert_eq!(checked, [8, 8, 8, 6, 6, 4, 4, 4]);
 }
 
 /// These filters are formulas in Java too: `ConditionFilter` compiles them through
@@ -244,6 +252,7 @@ fn condition_filters_match_the_recorded_java_results() {
     assert_filters("where_int", "is_null");
     assert_filters("where_string_bool", "null_b");
     assert_filters("null_sentinel_inputs", "nulls");
+    assert_filters("timestamps", "not_null");
 }
 
 /// Java evaluates these with `MatchFilter` and `RangeFilter`, not as formulas (PARITY.md,
@@ -259,4 +268,6 @@ fn match_and_range_filters_agree_with_the_formula_operators_on_the_recorded_inpu
     for operation in ["eq", "ne", "null_s", "empty_s", "lt", "is_true", "is_false"] {
         assert_filters("where_string_bool", operation);
     }
+    // A time literal, `T > '2023-11-14T22:13:20 UTC'`.
+    assert_filters("timestamps", "after");
 }

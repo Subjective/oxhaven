@@ -1,0 +1,779 @@
+{
+  "format": 1,
+  "fixtures": {
+    "empty_0": {"empty": 0},
+    "empty_1": {"empty": 1},
+    "empty_10": {"empty": 10},
+    "empty_11": {"empty": 11},
+    "empty_15": {"empty": 15},
+    "empty_2": {"empty": 2},
+    "empty_20": {"empty": 20},
+    "empty_25": {"empty": 25},
+    "empty_3": {"empty": 3},
+    "empty_30": {"empty": 30},
+    "empty_32": {"empty": 32},
+    "empty_4": {"empty": 4},
+    "empty_5": {"empty": 5},
+    "empty_6": {"empty": 6},
+    "empty_7": {"empty": 7},
+    "empty_8": {"empty": 8},
+    "formula_column": {
+      "columns": [
+        {"name": "BooleanCol", "type": "bool"},
+        {"name": "CharCol", "type": "char"},
+        {"name": "ByteCol", "type": "int8"},
+        {"name": "ShortCol", "type": "int16"},
+        {"name": "IntCol", "type": "int32"},
+        {"name": "LongCol", "type": "int64"},
+        {"name": "FloatCol", "type": "float32"},
+        {"name": "DoubleCol", "type": "float64"}
+      ],
+      "rows": [
+        [false, 0, 0, 0, 0, 0, 0, 0],
+        [true, 65, 65, 65, 65, 65, 65, 65],
+        [null, null, null, null, null, null, null, null]
+      ]
+    },
+    "one": {
+      "columns": [
+        {"name": "X", "type": "int32"}
+      ],
+      "rows": [
+        [1]
+      ]
+    },
+    "pairs": {
+      "columns": [
+        {"name": "B1", "type": "int8"},
+        {"name": "S1", "type": "int16"},
+        {"name": "I1", "type": "int32"},
+        {"name": "L1", "type": "int64"},
+        {"name": "F1", "type": "float32"},
+        {"name": "D1", "type": "float64"},
+        {"name": "C1", "type": "char"},
+        {"name": "Z1", "type": "bool"},
+        {"name": "T1", "type": "string"},
+        {"name": "B2", "type": "int8"},
+        {"name": "S2", "type": "int16"},
+        {"name": "I2", "type": "int32"},
+        {"name": "L2", "type": "int64"},
+        {"name": "F2", "type": "float32"},
+        {"name": "D2", "type": "float64"},
+        {"name": "C2", "type": "char"},
+        {"name": "Z2", "type": "bool"},
+        {"name": "T2", "type": "string"}
+      ],
+      "rows": [
+        [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null, null, -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [null, null, null, null, null, null, null, null, null, -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [null, null, null, null, null, null, null, null, null, -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [null, null, null, null, null, null, null, null, null, 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [null, null, null, null, null, null, null, null, null, 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [null, null, null, null, null, null, null, null, null, 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [null, null, null, null, null, null, null, null, null, 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [null, null, null, null, null, null, null, null, null, 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", null, null, null, null, null, null, null, null, null],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", null, null, null, null, null, null, null, null, null],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", null, null, null, null, null, null, null, null, null],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", null, null, null, null, null, null, null, null, null],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", null, null, null, null, null, null, null, null, null],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", null, null, null, null, null, null, null, null, null],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", null, null, null, null, null, null, null, null, null],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", null, null, null, null, null, null, null, null, null],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, ""],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 0, 0, 0, 0, -0.0, -0.0, 7, false, "ab"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"]
+      ]
+    },
+    "pairs_nz": {
+      "columns": [
+        {"name": "B1", "type": "int8"},
+        {"name": "S1", "type": "int16"},
+        {"name": "I1", "type": "int32"},
+        {"name": "L1", "type": "int64"},
+        {"name": "F1", "type": "float32"},
+        {"name": "D1", "type": "float64"},
+        {"name": "C1", "type": "char"},
+        {"name": "Z1", "type": "bool"},
+        {"name": "T1", "type": "string"},
+        {"name": "B2", "type": "int8"},
+        {"name": "S2", "type": "int16"},
+        {"name": "I2", "type": "int32"},
+        {"name": "L2", "type": "int64"},
+        {"name": "F2", "type": "float32"},
+        {"name": "D2", "type": "float64"},
+        {"name": "C2", "type": "char"},
+        {"name": "Z2", "type": "bool"},
+        {"name": "T2", "type": "string"}
+      ],
+      "rows": [
+        [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+        [null, null, null, null, null, null, null, null, null, -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [null, null, null, null, null, null, null, null, null, -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [null, null, null, null, null, null, null, null, null, -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [null, null, null, null, null, null, null, null, null, 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [null, null, null, null, null, null, null, null, null, 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [null, null, null, null, null, null, null, null, null, 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [null, null, null, null, null, null, null, null, null, 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [null, null, null, null, null, null, null, null, null, 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", null, null, null, null, null, null, null, null, null],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 0, false, "", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", null, null, null, null, null, null, null, null, null],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", null, null, null, null, null, null, null, null, null],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [-1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", null, null, null, null, null, null, null, null, null],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [0, 0, 0, 0, -0.0, -0.0, 7, false, "ab", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", null, null, null, null, null, null, null, null, null],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [1, 1, 1, 1, 0.0, 0.0, 48, true, "b", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", null, null, null, null, null, null, null, null, null],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [2, 2, 2, 2, 1.5, 1.5, 65, null, "10", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", null, null, null, null, null, null, null, null, null],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", null, null, null, null, null, null, null, null, null],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -127, -32767, -2147483647, -9223372036854775807, "NaN", "NaN", 3, false, ""],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -2, -2, -2, -2, "-Infinity", "-Infinity", 1, true, "a"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", -1, -1, -1, -1, "Infinity", "Infinity", 2, null, "A"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 3, 3, 3, 3, -0.0, -0.0, 7, false, "ab"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 1, 1, 1, 1, 0.0, 0.0, 48, true, "b"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 2, 2, 2, 2, 1.5, 1.5, 65, null, "10"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 7, 7, 7, 7, -2.5, -2.5, 97, false, "\ud83d\ude00"],
+        [127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e", 127, 32767, 2147483647, 9223372036854775807, 3.4028234663852886e+38, 1.7976931348623157e+308, 65534, true, "\uff5e"]
+      ]
+    },
+    "parser": {
+      "columns": [
+        {"name": "myByte", "type": "int8"},
+        {"name": "myShort", "type": "int16"},
+        {"name": "myChar", "type": "char"},
+        {"name": "myInt", "type": "int32"},
+        {"name": "myOtherInt", "type": "int32"},
+        {"name": "myLong", "type": "int64"},
+        {"name": "myOtherLong", "type": "int64"},
+        {"name": "myFloat", "type": "float32"},
+        {"name": "myDouble", "type": "float64"},
+        {"name": "myBoolean", "type": "bool"},
+        {"name": "myString", "type": "string"},
+        {"name": "myIntArray", "type": "int32[]"},
+        {"name": "myLongArray", "type": "int64[]"},
+        {"name": "myDoubleArray", "type": "float64[]"},
+        {"name": "myInstant", "type": "timestamp"},
+        {"name": "ExampleQuantity", "type": "int32"},
+        {"name": "ExampleQuantity2", "type": "float64"},
+        {"name": "ExampleQuantity3", "type": "float64"},
+        {"name": "ExampleQuantity4", "type": "float64"},
+        {"name": "ExampleStr", "type": "string"}
+      ],
+      "rows": [
+        [1, 2, 97, 3, 2, 4, 3, 1.5, 2.5, true, "hello", [1, 2, 3], [1, 2, 3], [1.5, 2.5, 3.5], 1554989400000000000, 10, 1.5, 3.5, 5.5, "a"],
+        [-3, -300, 48, -70000, 7, -5000000000, 11, -2.25, -0.125, false, "", [4, null, 6], [4, null, 6], [4.5, null, "NaN"], 0, 20, 2.5, 4.5, 6.5, "b"],
+        [null, null, null, null, null, null, null, null, null, null, null, [7, 8, 9], [7, 8, 9], [7.5, 8.5, 9.5], null, null, null, null, null, null]
+      ]
+    },
+    "py_test_table": {
+      "columns": [
+        {"name": "a", "type": "int32"},
+        {"name": "b", "type": "int32"},
+        {"name": "c", "type": "int32"},
+        {"name": "d", "type": "int32"},
+        {"name": "e", "type": "int32"}
+      ],
+      "rows": [
+        [102, 876, 989, 240, 21],
+        [435, 4, 371, 937, 111],
+        [860, 118, 934, 444, 56],
+        [270, 800, 994, 297, 65],
+        [106, 373, 401, 951, 841],
+        [71, 64, 442, 35, 97],
+        [700, 145, 489, 83, 143],
+        [20, 223, 614, 451, 879],
+        [614, 238, 272, 885, 434],
+        [121, 176, 525, 774, 636],
+        [466, 778, 158, 821, 678],
+        [214, 852, 151, 384, 85],
+        [330, 281, 994, 171, 587],
+        [458, 62, 619, 375, 343],
+        [87, 216, 187, 684, 935],
+        [372, 853, 812, 361, 293],
+        [99, 826, 97, 558, 955],
+        [871, 794, 130, 890, 570],
+        [663, 688, 804, 140, 649],
+        [130, 460, 170, 886, 610]
+      ]
+    },
+    "table_1690b935e2": {
+      "columns": [
+        {"name": "Name", "type": "string"},
+        {"name": "Subject", "type": "string"},
+        {"name": "StudentAverage", "type": "int32"},
+        {"name": "ClassAverage", "type": "int32"}
+      ],
+      "rows": [
+        ["James", "Math", 95, 86],
+        ["James", "Science", 100, 90],
+        ["James", "Art", 90, 95],
+        ["Lauren", "Math", 72, 86],
+        ["Lauren", "Science", 78, 90],
+        ["Lauren", "Art", 92, 95],
+        ["Zoey", "Math", 100, 86],
+        ["Zoey", "Science", 98, 90],
+        ["Zoey", "Art", 96, 95]
+      ]
+    },
+    "table_2e011332e4": {
+      "columns": [
+        {"name": "Type", "type": "string"},
+        {"name": "Color", "type": "string"},
+        {"name": "WeightGrams", "type": "int32"},
+        {"name": "Calories", "type": "int32"}
+      ],
+      "rows": [
+        ["Granny Smith", "Green", 102, 53],
+        ["Granny Smith", "Green", 85, 48],
+        ["Gala", "Red-Green", 79, 51],
+        ["Gala", "Orange-Green", 92, 61],
+        ["Golden Delicious", "Yellow", 78, 46],
+        ["Golden Delicious", "Yellow", 99, 57]
+      ]
+    },
+    "table_37718de64f": {
+      "columns": [
+        {"name": "Value", "type": "int32"}
+      ],
+      "rows": [
+        [0],
+        [1],
+        [2],
+        [3],
+        [4],
+        [5],
+        [6]
+      ]
+    },
+    "table_3c7b1ac6ba": {
+      "columns": [
+        {"name": "Date", "type": "string"},
+        {"name": "Time", "type": "string"}
+      ],
+      "rows": [
+        ["2023-01-01", "12:30:01 CT"],
+        ["2023-01-01", "12:30:02 CT"],
+        ["2023-01-01", "12:30:03 CT"]
+      ]
+    },
+    "table_3f1f5c45c8": {
+      "columns": [
+        {"name": "Items", "type": "string"}
+      ],
+      "rows": [
+        ["A"],
+        ["B"],
+        [null],
+        ["D"]
+      ]
+    },
+    "table_4c49e026db": {
+      "columns": [
+        {"name": "Date", "type": "string"}
+      ],
+      "rows": [
+        ["2023-01-01"],
+        ["2023-01-02"],
+        ["2023-01-03"]
+      ]
+    },
+    "table_4cbdf803c1": {
+      "columns": [
+        {"name": "A", "type": "string"},
+        {"name": "B", "type": "int32"},
+        {"name": "C", "type": "int32"}
+      ],
+      "rows": [
+        ["The", 1, 5],
+        ["At", 2, 6],
+        ["Is", 3, 7],
+        ["On", 4, 8]
+      ]
+    },
+    "table_4d3a93da85": {
+      "columns": [
+        {"name": "X", "type": "string"}
+      ],
+      "rows": [
+        ["Aa"],
+        ["Ba"],
+        ["Bb"],
+        ["Ca"],
+        ["Bc"],
+        ["Ab"],
+        ["Bd"],
+        ["Be"],
+        ["Cb"]
+      ]
+    },
+    "table_4f4afd92aa": {
+      "columns": [
+        {"name": "X", "type": "int32"},
+        {"name": "Y", "type": "string"}
+      ],
+      "rows": [
+        [1, "A/B"],
+        [2, "C/D"],
+        [3, "E/F"]
+      ]
+    },
+    "table_52eb09c490": {
+      "columns": [
+        {"name": "Value", "type": "string"}
+      ],
+      "rows": [
+        ["A"],
+        ["B"],
+        ["C"],
+        ["D"],
+        ["E"]
+      ]
+    },
+    "table_58aaab33d3": {
+      "columns": [
+        {"name": "Timestamp", "type": "string"}
+      ],
+      "rows": [
+        ["2023-01-01T12:30:01.00 CT"],
+        ["2023-01-01T12:30:02.00 CT"],
+        ["2023-01-01T12:30:03.00 CT"]
+      ]
+    },
+    "table_59d5e8810b": {
+      "columns": [
+        {"name": "A", "type": "bool"},
+        {"name": "B", "type": "bool"},
+        {"name": "C", "type": "bool"}
+      ],
+      "rows": [
+        [true, true, true],
+        [true, true, false],
+        [true, false, true]
+      ]
+    },
+    "table_59fb257bb9": {
+      "columns": [
+        {"name": "Open", "type": "float64"},
+        {"name": "High", "type": "float64"},
+        {"name": "Low", "type": "float64"},
+        {"name": "Close", "type": "float64"}
+      ],
+      "rows": [
+        [18.5, 19.0, 18.0, 18.6],
+        [18.9, 19.7, 18.2, 19.1],
+        [17.4, 18.0, 17.0, 17.1],
+        [19.0, 19.5, 18.5, 19.3],
+        [18.8, 19.1, 18.3, 18.4]
+      ]
+    },
+    "table_5f21195437": {
+      "columns": [
+        {"name": "Letter", "type": "string"}
+      ],
+      "rows": [
+        ["A"],
+        ["a"],
+        ["B"],
+        ["b"],
+        ["C"],
+        ["c"],
+        ["AA"],
+        ["Aa"],
+        ["bB"],
+        ["C"]
+      ]
+    },
+    "table_61607211ff": {
+      "columns": [
+        {"name": "Items", "type": "string"}
+      ],
+      "rows": [
+        ["Ai"],
+        ["B"],
+        ["Ci"],
+        ["Da"]
+      ]
+    },
+    "table_71248e67ba": {
+      "columns": [
+        {"name": "A", "type": "string"},
+        {"name": "B", "type": "int32"},
+        {"name": "C", "type": "int32"}
+      ],
+      "rows": [
+        ["The", 1, 5],
+        ["At", 2, 2],
+        ["Is", 3, 5],
+        ["On", 4, 5]
+      ]
+    },
+    "table_73294ee154": {
+      "columns": [
+        {"name": "Time", "type": "string"}
+      ],
+      "rows": [
+        ["12:30:00"],
+        ["12:30:01"],
+        ["12:30:02"]
+      ]
+    },
+    "table_745523601b": {
+      "columns": [
+        {"name": "Date", "type": "string"},
+        {"name": "Category", "type": "string"},
+        {"name": "Value", "type": "int32"}
+      ],
+      "rows": [
+        ["2025-08-05", "Type-A", 10],
+        ["2025-08-05", "Type-B", 20],
+        ["2025-08-06", "Type-A", 15]
+      ]
+    },
+    "table_83fd86e7f4": {
+      "columns": [
+        {"name": "Type", "type": "string"},
+        {"name": "Hardness", "type": "string"},
+        {"name": "Price", "type": "float64"}
+      ],
+      "rows": [
+        ["Pine", "soft", 1.95],
+        ["Fir", "soft", 2.5],
+        ["Cedar", "soft", 3.25],
+        ["Oak", "hard", 3.45],
+        ["Ash", "hard", 4.25],
+        ["Walnut", "hard", 7.95],
+        ["Beech", "hard", 4.1],
+        ["Cherry", "hard", 5.25]
+      ]
+    },
+    "table_8622a4efbe": {
+      "columns": [
+        {"name": "Column_1", "type": "int32"}
+      ],
+      "rows": [
+        [1],
+        [1],
+        [2],
+        [3],
+        [4]
+      ]
+    },
+    "table_878a1a5fdd": {
+      "columns": [
+        {"name": "X", "type": "float64"}
+      ],
+      "rows": [
+        [1.1],
+        [2.2],
+        [3.3],
+        [4.4],
+        [5.5],
+        [6.6],
+        [7.7],
+        [8.8],
+        [9.9]
+      ]
+    },
+    "table_992a67d7fe": {
+      "columns": [
+        {"name": "IntegerColumn", "type": "int32"}
+      ],
+      "rows": [
+        [1],
+        [2],
+        [-2],
+        [-1]
+      ]
+    },
+    "table_aa598d9371": {
+      "columns": [
+        {"name": "Values", "type": "int32"}
+      ],
+      "rows": [
+        [1],
+        [2],
+        [3]
+      ]
+    },
+    "table_ab3f58dfc7": {
+      "columns": [
+        {"name": "Type", "type": "string"},
+        {"name": "Price", "type": "float64"}
+      ],
+      "rows": [
+        ["Pine", 1.95],
+        ["Fir", 3.7],
+        ["Cedar", 3.25],
+        ["Oak", 3.45],
+        ["Ash", 4.25],
+        ["Walnut", 7.95],
+        ["Beech", 4.1],
+        ["Cherry", 5.25]
+      ]
+    },
+    "table_b0f8c1f9a3": {
+      "columns": [
+        {"name": "Group", "type": "string"},
+        {"name": "Data", "type": "int32"}
+      ],
+      "rows": [
+        ["A", 1],
+        ["B", 2],
+        ["A", 3],
+        ["B", 4]
+      ]
+    },
+    "table_b47cd03957": {
+      "columns": [
+        {"name": "Month", "type": "int32"},
+        {"name": "Day", "type": "int32"},
+        {"name": "Year", "type": "int32"},
+        {"name": "Time", "type": "string"},
+        {"name": "Timezone", "type": "string"}
+      ],
+      "rows": [
+        [1, 1, 2023, "12:30:01", "CT"],
+        [1, 1, 2023, "12:30:02", "CT"],
+        [1, 1, 2023, "12:30:03", "CT"]
+      ]
+    },
+    "table_b6b81d9aca": {
+      "columns": [
+        {"name": "X", "type": "string"},
+        {"name": "Y", "type": "int32"},
+        {"name": "Z", "type": "int32"}
+      ],
+      "rows": [
+        ["A", 1, 2],
+        ["B", -2, 3],
+        ["C", 3, 1],
+        ["D", -4, 2],
+        ["E", 5, 3],
+        ["F", -6, 1],
+        ["G", 7, 2]
+      ]
+    },
+    "table_bafb17e1c2": {
+      "columns": [
+        {"name": "Time", "type": "int32"}
+      ],
+      "rows": [
+        [123000],
+        [123001],
+        [123002]
+      ]
+    },
+    "table_caebcecbaa": {
+      "columns": [
+        {"name": "Key", "type": "string"},
+        {"name": "Value", "type": "int32"}
+      ],
+      "rows": [
+        ["Alpha", 10],
+        ["Alpha", 10],
+        ["Alpha", 10],
+        ["Bravo", 20],
+        ["Bravo", 20],
+        ["Charlie", 30],
+        ["Charlie", 30]
+      ]
+    },
+    "table_cc5995ccb0": {
+      "columns": [
+        {"name": "DateInt", "type": "int32"}
+      ],
+      "rows": [
+        [20230101],
+        [20240215],
+        [20250401],
+        [20260630]
+      ]
+    },
+    "table_d63d479773": {
+      "columns": [
+        {"name": "someValue", "type": "string"}
+      ],
+      "rows": [
+        ["zebra"],
+        ["bear"]
+      ]
+    },
+    "table_dc564d3a15": {
+      "columns": [
+        {"name": "Name", "type": "string"},
+        {"name": "Math", "type": "int32"},
+        {"name": "Science", "type": "int32"},
+        {"name": "Art", "type": "int32"}
+      ],
+      "rows": [
+        ["James", 95, 100, 90],
+        ["Lauren", 72, 78, 92],
+        ["Zoey", 100, 98, 96]
+      ]
+    },
+    "table_df0d83074a": {
+      "columns": [
+        {"name": "someValue", "type": "string"}
+      ],
+      "rows": [
+        ["apple"],
+        ["banana"]
+      ]
+    },
+    "table_e056af0698": {
+      "columns": [
+        {"name": "Date", "type": "string"},
+        {"name": "TARGET_NYSE", "type": "bool"},
+        {"name": "TARGET_UTC", "type": "bool"}
+      ],
+      "rows": [
+        ["2020-01-01", false, true],
+        ["2020-01-02", true, true],
+        ["2020-01-03", true, true],
+        ["2020-01-04", false, true],
+        ["2020-01-05", false, true],
+        ["2020-01-06", true, true]
+      ]
+    },
+    "table_e77fb69527": {
+      "columns": [
+        {"name": "Name", "type": "string"},
+        {"name": "StudentID", "type": "int32"},
+        {"name": "TestGrade", "type": "int32"},
+        {"name": "HomeworkGrade", "type": "int32"},
+        {"name": "GPA", "type": "float64"}
+      ],
+      "rows": [
+        ["Andy", 1, 85, 85, 3.0],
+        ["Claire", 2, 95, 95, 4.0],
+        ["Jane", 3, 88, 90, 3.7],
+        ["Steven", 4, 72, 95, 2.8]
+      ]
+    },
+    "table_f4d7d0cf27": {
+      "columns": [
+        {"name": "NaNFloat", "type": "float32"},
+        {"name": "NaNDouble", "type": "float64"}
+      ],
+      "rows": [
+        [-1.0, -1.0]
+      ]
+    }
+  }
+}

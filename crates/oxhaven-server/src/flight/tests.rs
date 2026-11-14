@@ -70,6 +70,7 @@ pub(crate) mod support {
             let state = ServerState::new(ServerConfig {
                 auth_handlers: AuthHandlers::new(vec![AuthHandler::psk(PSK).unwrap()]).unwrap(),
                 token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
+                target_cycle_duration: None,
             })
             .unwrap();
             let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
