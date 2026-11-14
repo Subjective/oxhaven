@@ -9,6 +9,7 @@ use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
 mod asof;
+mod head_by;
 mod update_by;
 
 /// What the Java server answers for any exception out of the engine.
@@ -34,6 +35,8 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Sort(r) => c.client.sort(c.auth(r)).await,
         Op::Head(r) => c.client.head(c.auth(r)).await,
         Op::Tail(r) => c.client.tail(c.auth(r)).await,
+        Op::HeadBy(r) => c.client.head_by(c.auth(r)).await,
+        Op::TailBy(r) => c.client.tail_by(c.auth(r)).await,
         Op::Slice(r) => c.client.slice(c.auth(r)).await,
         Op::Merge(r) => c.client.merge_tables(c.auth(r)).await,
         Op::Flatten(r) => c.client.flatten(c.auth(r)).await,
