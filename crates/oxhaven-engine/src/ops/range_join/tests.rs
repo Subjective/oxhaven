@@ -1,8 +1,7 @@
 //! Unit tests of the range join: the range match as text, every refusal and their order,
-//! and the columns of the result at the seam. The ranges themselves are compared with
+//! and the columns of the result. The ranges themselves are compared with
 //! Java in `corpus.rs`.
 
-use super::grouped::{join, Column, Joined};
 use super::{
     range_join, RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule,
 };
@@ -14,9 +13,9 @@ use arrow::array::{
     Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, RecordBatch, UInt16Array,
 };
 use arrow::datatypes::{Field, Schema};
-use oxhaven_contracts::rowset::{RowKey, RowSet};
+use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_contracts::table::Table;
+use oxhaven_contracts::table::{ColumnSource, Table};
 use oxhaven_testkit::{definition, ints, longs, strings, ReferenceTable, TableSnapshot};
 use std::sync::Arc;
 
@@ -163,17 +162,41 @@ fn refusal(
     }
 }
 
-/// The arrays of the `group` column `name`, at `rows` or at every row: `None` for a null
-/// array, else the elements as text.
-fn arrays(joined: &Joined, name: &str, rows: Option<&RowSet>) -> Vec<Option<Vec<String>>> {
-    let column = joined.columns.iter().find(|(column, _)| column == name);
-    let Some((_, Column::Group(group))) = column else {
-        panic!("no group column {name}");
-    };
-    let all = joined.left.row_set();
-    let lists = group.chunk(rows.unwrap_or(&all)).unwrap();
+fn join(
+    left: &Arc<dyn Table>,
+    right: &Arc<dyn Table>,
+    exact: &[JoinMatch],
+    range: &RangeJoinMatch,
+    aggregations: &[RangeAggregation],
+) -> Result<Arc<dyn Table>, RangeJoinError> {
+    range_join(left, right, exact, range, aggregations)
+}
+
+/// The column `name` of `joined`, which is a `group` column: a vector column.
+fn group_column(joined: &Arc<dyn Table>, name: &str) -> Arc<dyn ColumnSource> {
+    let index = joined.definition().index_of(name).expect("the column");
+    let column = joined.column(index);
+    let declared = &joined.definition().columns()[index].column_type;
+    assert_eq!(column.column_type(), declared);
+    assert!(matches!(declared, ColumnType::Vector(_)), "{declared:?}");
+    column
+}
+
+/// The vectors of the `group` column `name`, at `rows` or at every row: `None` for a null
+/// vector, else the elements as text.
+fn arrays(
+    joined: &Arc<dyn Table>,
+    name: &str,
+    rows: Option<&RowSet>,
+) -> Vec<Option<Vec<String>>> {
+    let group = group_column(joined, name);
+    let all = joined.row_set();
+    let rows = rows.unwrap_or(&all);
+    let lists = group.chunk(rows).unwrap();
+    assert_eq!(lists.data_type(), &group.column_type().arrow_type());
+    // The tables are static: the previous values are the current ones.
+    assert_eq!(&group.prev_chunk(rows).unwrap(), &lists);
     let lists = lists.as_any().downcast_ref::<ListArray>().unwrap();
-    assert_eq!(lists.value_type(), group.element_type().arrow_type());
     (0..lists.len())
         .map(|row| {
             (!lists.is_null(row)).then(|| {
@@ -195,12 +218,9 @@ fn some(elements: &[&str]) -> Option<Vec<String>> {
     Some(elements.iter().map(|element| element.to_string()).collect())
 }
 
-fn names(joined: &Joined) -> Vec<&str> {
-    joined
-        .columns
-        .iter()
-        .map(|(name, _)| name.as_str())
-        .collect()
+fn names(joined: &Arc<dyn Table>) -> Vec<&str> {
+    let columns = joined.definition().columns();
+    columns.iter().map(|column| column.name.as_str()).collect()
 }
 
 #[test]
@@ -622,9 +642,24 @@ fn the_result_has_the_left_columns_then_one_array_column_per_pair() {
     let aggregations = [group(&[("Rs", "R"), ("N", "N")]), group(&[("S", "S")])];
     let joined = join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
     assert_eq!(names(&joined), ["Id", "K", "Lo", "Hi", "F", "Rs", "N", "S"]);
-    for (index, (_, column)) in joined.columns.iter().enumerate().take(5) {
-        assert!(matches!(column, Column::Left(left) if *left == index));
-    }
+    // The left columns are the left table's, with their types and cells.
+    let (ours, theirs) = (
+        TableSnapshot::current(&*joined).unwrap(),
+        TableSnapshot::current(&*left()).unwrap(),
+    );
+    assert_eq!(
+        joined.definition().columns()[..5],
+        left().definition().columns()[..]
+    );
+    assert_eq!(ours.columns[..5], theirs.columns[..]);
+    let types = |from: usize| -> Vec<ColumnType> {
+        let columns = &joined.definition().columns()[from..];
+        columns.iter().map(|c| c.column_type.clone()).collect()
+    };
+    assert_eq!(
+        types(5),
+        [ColumnType::Int, ColumnType::Long, ColumnType::String].map(ColumnType::vector)
+    );
     assert_eq!(
         arrays(&joined, "Rs", None),
         [some(&["1", "2", "3"]), some(&["2"]), some(&["4"])]
@@ -721,9 +756,7 @@ fn arrays_are_read_by_the_left_table_s_row_keys() {
         [some(&["3"]), some(&["2"])]
     );
     assert_eq!(arrays(&joined, "Rs", Some(&RowSet::empty())), []);
-    let Some((_, Column::Group(group))) = joined.columns.last() else {
-        panic!("a group column");
-    };
+    let group = group_column(&joined, "Rs");
     let error = group.chunk(&RowSet::from_keys([9, 10])).unwrap_err();
     assert_eq!(error.message, "row key 10 is not in the table");
 }
@@ -820,10 +853,148 @@ fn without_aggregations_the_result_is_the_left_table_s_columns_as_a_static_table
 }
 
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.sources.aggregate.AggregateColumnSource#forRangeJoin: column Rs holds arrays of Int"
-)]
-fn a_result_with_an_array_column_is_not_a_table_yet() {
+fn the_result_is_a_static_table_over_the_left_rows_that_reads_in_any_order() {
+    let left = table_at(
+        [5, 9, 20],
+        &left_columns(&[
+            ("a", Some(1), Some(5)),
+            ("a", Some(9), Some(3)),
+            ("b", Some(0), Some(9)),
+        ]),
+    );
     let aggregations = [group(&[("Rs", "R")])];
-    let _ = range_join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations);
+    let result = range_join(&left, &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
+    assert_eq!(*result.row_set(), RowSet::from_keys([5, 9, 20]));
+    assert_eq!(*result.prev_row_set(), RowSet::from_keys([5, 9, 20]));
+    assert!(!result.is_refreshing());
+    assert!(!result.is_flat());
+    assert_eq!(result.attributes(), Default::default());
+    assert_eq!(
+        arrays(&result, "Rs", None),
+        [some(&["1", "2", "3"]), None, some(&["4"])]
+    );
+
+    // By keys: repeats, any order, and no row.
+    let group = group_column(&result, "Rs");
+    for use_prev in [false, true] {
+        let cells = group
+            .chunk_by_keys(&[20, NULL_ROW_KEY, 5, 9, 20], use_prev)
+            .unwrap();
+        assert_eq!(cells.data_type(), &group.column_type().arrow_type());
+        let cells = cells.as_any().downcast_ref::<ListArray>().unwrap();
+        let seen: Vec<Option<Vec<Option<i32>>>> = cells
+            .iter()
+            .map(|cell| {
+                cell.map(|cell| {
+                    let cell = cell.as_any().downcast_ref::<Int32Array>().unwrap();
+                    cell.iter().collect()
+                })
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                Some(vec![Some(4)]),
+                None,
+                Some(vec![Some(1), Some(2), Some(3)]),
+                None,
+                Some(vec![Some(4)]),
+            ]
+        );
+    }
+}
+
+#[test]
+fn a_range_join_of_a_range_join_groups_vectors_and_carries_them() {
+    let aggregations = [group(&[("Rs", "R")])];
+    let first = range_join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
+
+    // The vector column of the left table is carried.
+    let carried = [group(&[("Ns", "N")])];
+    let second = range_join(&first, &right(), &on(&["K"]), &inclusive(), &carried).unwrap();
+    assert_eq!(names(&second), ["Id", "K", "Lo", "Hi", "F", "Rs", "Ns"]);
+    assert_eq!(arrays(&second, "Rs", None), arrays(&first, "Rs", None));
+    assert_eq!(
+        arrays(&second, "Ns", None),
+        [some(&["1", "3", "5"]), some(&["3"]), some(&["2"])]
+    );
+
+    // The vector column of the right table is grouped: vectors of vectors.
+    let keyed = static_table(&[
+        ("K", ColumnType::String, strings(["a", "b"])),
+        ("Lo", ColumnType::Int, ints([0, 0])),
+        ("Hi", ColumnType::Int, ints([4, 9])),
+    ]);
+    let nested = [group(&[("Rss", "Rs")])];
+    let match_lo = RangeJoinMatch::parse("Lo <= Lo <= Hi").unwrap();
+    let result = range_join(&keyed, &first, &on(&["K"]), &match_lo, &nested).unwrap();
+    let column = group_column(&result, "Rss");
+    assert_eq!(
+        column.column_type(),
+        &ColumnType::vector(ColumnType::vector(ColumnType::Int))
+    );
+    // Bucket a has the rows with Lo 1 and 3, bucket b the row with Lo 0.
+    assert_eq!(
+        arrays(&result, "Rss", None),
+        [some(&["[1, 2, 3]", "[2]"]), some(&["[4]"])]
+    );
+}
+
+#[test]
+fn range_columns_that_are_vectors_are_refused_after_the_range_match() {
+    let sum = RangeAggregation::Other("sum".to_string());
+    let aggregations = [group(&[("Rs", "R"), ("Ss", "R")])];
+    let lists = range_join(&left(), &right(), &on(&["K"]), &inclusive(), &aggregations).unwrap();
+    let vector = ColumnType::vector(ColumnType::Int);
+    // Before the aggregations are looked at, and after a fault of the range match.
+    let error = refusal(&lists, &lists, &[], "Rs <= Rs <= Ss", &[sum.clone()]);
+    assert_eq!(error, RangeJoinError::InvalidRangeValueType(vector.clone()));
+    assert_eq!(
+        error.to_string(),
+        "Invalid range value type Vector(Int), must be primitive or comparable"
+    );
+    let error = refusal(&lists, &lists, &[], "Rs <= Rs <= Lo", &[sum.clone()]);
+    assert!(matches!(error, RangeJoinError::InvalidRangeMatch(_)));
+    let error = refusal(&lists, &lists, &on(&["Nope"]), "Rs <= Rs <= Ss", &[sum]);
+    assert!(matches!(error, RangeJoinError::InvalidExactMatches(_)));
+}
+
+#[test]
+fn a_text_that_does_not_fit_is_refused_with_java_s_pattern_and_names_are_checked_first() {
+    let error = RangeJoinMatch::parse("Lo <= P").unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        "Input expression Lo <= P does not match expected pattern \
+         \\A\\s*(<-)?\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\
+         \\s*(<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(->)?\\s*\\Z"
+    );
+
+    // The names are asked in the order start, range, end, and the first refusal is the
+    // one reported, before the rules and the equal bounds are looked at.
+    let refusing = |refused: &'static [&'static str]| {
+        move |name: &str| match refused.contains(&name) {
+            true => Err(format!("no {name}")),
+            false => Ok(()),
+        }
+    };
+    let checked = |text: &str, refused: &'static [&'static str]| {
+        RangeJoinMatch::parse_checked(text, refusing(refused)).map_err(|error| error.to_string())
+    };
+    assert_eq!(checked("A <= B <= C", &["C", "B"]), Err("no B".into()));
+    assert_eq!(checked("A <= B <= C", &["C", "A"]), Err("no A".into()));
+    assert_eq!(checked("A <= B <= C", &["C"]), Err("no C".into()));
+    assert_eq!(checked("<- A < B <= C", &["C"]), Err("no C".into()));
+    assert_eq!(checked("A <= B < C ->", &["A"]), Err("no A".into()));
+    assert_eq!(checked("A <= B <= A", &["A"]), Err("no A".into()));
+    // A text that does not fit is refused before any name is asked.
+    assert!(checked("A <= B", &["A"])
+        .unwrap_err()
+        .starts_with("Input expression A <= B does not match"));
+    assert_eq!(
+        checked("A <= B <= C", &[]),
+        Ok(RangeJoinMatch::parse("A <= B <= C").unwrap())
+    );
+    assert!(checked("<- A < B <= C", &[])
+        .unwrap_err()
+        .starts_with("Error parsing expression"));
 }

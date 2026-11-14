@@ -6,19 +6,17 @@
 //! - the scenarios of `testdata/scenarios`, in the same format and recorded in
 //!   `testdata/corpus` by `testdata/record.py`.
 //!
-//! A result of `range_join` has array-valued columns, which no table can hold yet, so the
-//! shared replay of `ops/oracle.rs` can compare only what Java refuses: there the operation
-//! must be refused here. The first test does that for every scenario of the oracle.
+//! The first test runs the oracle's scenarios through the shared replay of `ops/oracle.rs`,
+//! which compares every result table and every refusal with Java's.
 //!
-//! The second test compares the results themselves, taken at the seam
-//! (`grouped::Joined`): the column names and order, the Arrow type of every column, the
-//! row count, and the cells by position (floats bit for bit, every NaN equal to every NaN,
-//! arrays element by element, a null array equal only to a null array). The recorded
-//! tables carry none of the attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`,
-//! which is checked of the recordings, since the seam has no attributes to compare.
+//! The other two compare the result tables with the recordings themselves: the column
+//! names and order, the Arrow type of every column, the Java type of every vector column
+//! (`deephaven:type` and `deephaven:componentType` of the recorded field), the row count,
+//! the cells by position (floats bit for bit, every NaN equal to every NaN, vectors
+//! element by element, a null vector equal only to a null vector), and the attributes
+//! `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`, none of which a result has.
 
-use super::grouped::{join, Column, Joined};
-use super::{RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule};
+use super::{range_join, RangeAggregation, RangeEndRule, RangeJoinError, RangeJoinMatch, RangeStartRule};
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
 use crate::ops::oracle::{replay_all, Built};
@@ -31,7 +29,7 @@ use arrow::datatypes::{DataType, Field, Schema};
 use arrow::ipc::reader::FileReader;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use oxhaven_testkit::definition;
+use oxhaven_testkit::{definition, TableSnapshot};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -205,7 +203,7 @@ fn joined(
     left: &Arc<dyn Table>,
     right: &Arc<dyn Table>,
     by_fields: bool,
-) -> Result<Joined, RangeJoinError> {
+) -> Result<Arc<dyn Table>, RangeJoinError> {
     let on = list(&operation["on"]);
     let (range, exact) = on.split_last().expect("a range match");
     let exact: Vec<JoinMatch> = exact.iter().map(|m| exact_match(text(m))).collect();
@@ -216,7 +214,7 @@ fn joined(
     };
     let aggregations: Vec<RangeAggregation> =
         list(&operation["aggs"]).iter().map(aggregation).collect();
-    join(left, right, &exact, &range, &aggregations)
+    range_join(left, right, &exact, &range, &aggregations)
 }
 
 /// Whether two arrays hold the same cells. Floats are compared bit for bit, except that
@@ -260,9 +258,9 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
     }
 }
 
-/// The Java type of a `group` column of elements of `element`, as the recordings have it
-/// in `deephaven:type` and `deephaven:componentType`. Only the element types the
-/// scenarios aggregate are known.
+/// The Java type of a vector column of elements of `element`, as the recordings have it in
+/// `deephaven:type` and `deephaven:componentType`. Only the element types the scenarios
+/// aggregate are known.
 fn vector_type(element: &ColumnType) -> (&'static str, &'static str) {
     match element {
         ColumnType::Int => ("io.deephaven.vector.IntVector", "int"),
@@ -274,30 +272,26 @@ fn vector_type(element: &ColumnType) -> (&'static str, &'static str) {
 }
 
 /// How `joined` differs from the recorded table, if it does: the first difference found.
-fn difference(joined: &Joined, expected: &RecordBatch) -> Option<String> {
+fn difference(joined: &dyn Table, expected: &RecordBatch) -> Option<String> {
     let schema = expected.schema();
-    for name in ["IsFlat", "AddOnly", "AppendOnly", "BlinkTable"] {
+    let attributes = joined.attributes();
+    let ours = [
+        ("IsFlat", joined.is_flat()),
+        ("AddOnly", attributes.add_only),
+        ("AppendOnly", attributes.append_only),
+        ("BlinkTable", attributes.blink),
+    ];
+    for (name, ours) in ours {
         let key = format!("deephaven:attribute.{name}");
-        if schema.metadata().get(&key).is_some_and(|v| v == "true") {
-            return Some(format!(
-                "Java's table is {name}; the seam has no attributes"
-            ));
+        let theirs = schema.metadata().get(&key).is_some_and(|v| v == "true");
+        if ours != theirs {
+            return Some(format!("{name} is {ours}, Java has {theirs}"));
         }
     }
-    let rows = joined.left.row_set();
-    let ours: Vec<(&str, DataType)> = joined
-        .columns
+    let columns = joined.definition().columns();
+    let ours: Vec<(&str, DataType)> = columns
         .iter()
-        .map(|(name, column)| {
-            let data_type = match column {
-                Column::Left(index) => joined.left.column(*index).column_type().arrow_type(),
-                Column::Group(group) => {
-                    let item = Field::new("", group.element_type().arrow_type(), true);
-                    DataType::List(Arc::new(item))
-                }
-            };
-            (name.as_str(), data_type)
-        })
+        .map(|column| (column.name.as_str(), column.column_type.arrow_type()))
         .collect();
     let theirs: Vec<(&str, DataType)> = schema
         .fields()
@@ -307,31 +301,37 @@ fn difference(joined: &Joined, expected: &RecordBatch) -> Option<String> {
     if ours != theirs {
         return Some(format!("columns {ours:?}, Java has {theirs:?}"));
     }
-    if rows.size() != expected.num_rows() as u64 {
-        let (ours, theirs) = (rows.size(), expected.num_rows());
+    let snapshot = match TableSnapshot::current(joined) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Some(format!("cannot be read: {error}")),
+    };
+    if snapshot.rows.size() != expected.num_rows() as u64 {
+        let (ours, theirs) = (snapshot.rows.size(), expected.num_rows());
         return Some(format!("{ours} rows, Java has {theirs}"));
     }
-    for (index, (name, column)) in joined.columns.iter().enumerate() {
-        let found = match column {
-            Column::Left(left) => joined.left.column(*left).chunk(&rows),
-            Column::Group(group) => {
-                let field = schema.field(index);
-                let (class, component) = vector_type(group.element_type());
-                let java = |key: &str| field.metadata().get(key).map(String::as_str);
+    for (index, column) in columns.iter().enumerate() {
+        let name = &column.name;
+        let field = schema.field(index);
+        let java = |key: &str| field.metadata().get(key).map(String::as_str);
+        match &column.column_type {
+            ColumnType::Vector(element) => {
+                let (class, component) = vector_type(element);
                 if java("deephaven:type") != Some(class)
                     || java("deephaven:componentType") != Some(component)
                 {
                     let metadata = field.metadata();
                     return Some(format!("column {name} is a {class}, Java has {metadata:?}"));
                 }
-                group.chunk(&rows)
             }
-        };
-        let found = match found {
-            Ok(found) => found,
-            Err(error) => return Some(format!("column {name} cannot be read: {error}")),
-        };
-        if !same_cells(expected.column(index), &found) {
+            other => {
+                let java_type = java("deephaven:type").unwrap_or_default();
+                if java_type.starts_with("io.deephaven.vector.") || java_type.ends_with("[]") {
+                    return Some(format!("column {name} is {other:?}, Java has {java_type}"));
+                }
+            }
+        }
+        let found = &snapshot.columns[index];
+        if !same_cells(expected.column(index), found) {
             let theirs = expected.column(index);
             return Some(format!("column {name} is {found:?}, Java has {theirs:?}"));
         }
@@ -357,8 +357,8 @@ struct Tally {
     refused: usize,
     /// `scenario/table: how`, for every result that differs.
     differences: Vec<String>,
-    /// `scenario/table`, for the results that were not built.
-    not_run: Vec<String>,
+    /// The results whose left or right table is itself the result of a range join.
+    of_results: usize,
 }
 
 /// Compares every result of the static scenario at `path` with its recording in
@@ -373,7 +373,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
     let directory = corpus.join(name);
     let manifest = json(&directory.join("manifest.json"));
 
-    let inputs: BTreeMap<&str, Arc<dyn Table>> = list(&scenario["inputs"])
+    let mut tables: BTreeMap<&str, Arc<dyn Table>> = list(&scenario["inputs"])
         .iter()
         .map(|input| (text(&input["name"]), load(input)))
         .collect();
@@ -386,28 +386,33 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
         assert_eq!(text(&operation["op"]), "range_join", "{name}/{table}");
         assert!(results.contains(&table), "{name}/{table} is a result");
         let place = format!("{name}/{table}");
-        let sides = (
-            inputs.get(text(&operation["left"])),
-            inputs.get(text(&operation["right"])),
-        );
-        let (Some(left), Some(right)) = sides else {
-            // The result of a range join is not a table yet.
-            tally.not_run.push(place);
-            continue;
+        let (left, right) = (text(&operation["left"]), text(&operation["right"]));
+        if results.contains(&left) || results.contains(&right) {
+            tally.of_results += 1;
+        }
+        // A table defined from a refused one is in no scenario.
+        let side = |name: &str| {
+            let table = tables.get(name);
+            table.unwrap_or_else(|| panic!("{place}: no table {name}")).clone()
         };
+        let (left, right) = (side(left), side(right));
         let entries = list(&manifest["entries"]);
         let entry = entries
             .iter()
             .find(|entry| entry["step"] == 0 && entry["table"] == table)
             .unwrap_or_else(|| panic!("no recording of {place}"));
         let failure = &entry["failure"];
-        let difference = match joined(operation, left, right, name == BY_FIELDS) {
+        let difference = match joined(operation, &left, &right, name == BY_FIELDS) {
             Err(error) if failure.is_null() => Some(format!("refused ({error}), Java has a table")),
             // Every refusal of a range join is `INVALID_ARGUMENT`.
             Err(_) => (failure["code"] != "INVALID_ARGUMENT")
                 .then(|| format!("refused, Java fails with {}", failure["code"])),
             Ok(_) if !failure.is_null() => Some(format!("Java fails with {}", failure["code"])),
-            Ok(joined) => difference(&joined, &recorded_table(&directory, entry)),
+            Ok(joined) => {
+                let difference = difference(&*joined, &recorded_table(&directory, entry));
+                tables.insert(table, joined);
+                difference
+            }
         };
         match difference {
             Some(difference) => tally.differences.push(format!("{place}: {difference}")),
@@ -418,7 +423,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
 }
 
 #[test]
-fn every_refusal_of_the_oracle_scenarios_is_a_refusal_here() {
+fn the_oracle_scenarios_give_what_java_gives() {
     let tally = replay_all(&["range_join"], &|operation, parents| match joined(
         operation,
         &parents[0],
@@ -426,42 +431,36 @@ fn every_refusal_of_the_oracle_scenarios_is_a_refusal_here() {
         false,
     ) {
         Err(_) => Built::Refused("INVALID_ARGUMENT"),
-        Ok(_) => Built::NotRun("array-valued columns".to_string()),
+        Ok(table) => Built::Table(table),
     });
     assert_eq!(tally.differences, Vec::<String>::new());
-    let refused = [
+    assert_eq!(tally.not_run, Vec::<String>::new());
+    let compared = [
         "range_join/bad_match",
         "range_join/count_agg",
+        "range_join/empty_right",
+        "range_join/half_open",
+        "range_join/inclusive",
         "range_join/no_exact",
+        "range_join/no_exact_neighbours",
+        "range_join/no_exact_ordered",
+        "range_join/other_half",
         "range_join/other_types",
+        "range_join/strict",
         "range_join/strict_neighbours",
         "range_join/sum_agg",
         "range_join/unknown_column",
         "range_join/unsorted_right",
+        "range_join/with_neighbours",
+        "range_join/with_preceding",
         "ticking_range_join/ticking_both",
         "ticking_range_join/ticking_left",
         "ticking_range_join/ticking_right",
     ];
-    assert_eq!(tally.compared, refused);
-    // The eight static refusals once, the three ticking ones at each of four steps.
-    assert_eq!(tally.comparisons, 8 + 3 * 4);
-    let not_run: Vec<&str> = tally
-        .not_run
-        .iter()
-        .map(|result| result.split(':').next().expect("a name"))
-        .collect();
-    let tables = [
-        "range_join/inclusive",
-        "range_join/strict",
-        "range_join/half_open",
-        "range_join/other_half",
-        "range_join/with_neighbours",
-        "range_join/with_preceding",
-        "range_join/no_exact_ordered",
-        "range_join/no_exact_neighbours",
-        "range_join/empty_right",
-    ];
-    assert_eq!(not_run, tables);
+    assert_eq!(tally.compared, compared);
+    // The nine tables and eight refusals of the static scenario once, the three refusals
+    // of the ticking one at each of four steps.
+    assert_eq!(tally.comparisons, 9 + 8 + 3 * 4);
 }
 
 #[test]
@@ -470,8 +469,8 @@ fn the_ranges_of_the_oracle_scenario_are_those_of_java() {
     let scenario = oracle().join("scenarios/static/range_join.json");
     run(&scenario, &oracle().join("corpus"), &mut tally);
     assert_eq!(tally.differences, Vec::<String>::new());
-    assert_eq!(tally.not_run, Vec::<String>::new());
     assert_eq!((tally.tables, tally.refused), (9, 8));
+    assert_eq!(tally.of_results, 0);
 }
 
 #[test]
@@ -487,7 +486,8 @@ fn the_ranges_of_the_recorded_scenarios_are_those_of_java() {
         run(path, &testdata().join("corpus"), &mut tally);
     }
     assert_eq!(tally.differences, Vec::<String>::new());
-    // Its left table is the result of a range join.
-    assert_eq!(tally.not_run, ["range_join_refusals/of_a_range_join"]);
-    assert_eq!((tally.tables, tally.refused), (79, 37));
+    // `range_join_refusals/of_a_range_join`, whose left table is the result of a range
+    // join, is the eightieth table.
+    assert_eq!(tally.of_results, 1);
+    assert_eq!((tally.tables, tally.refused), (80, 37));
 }

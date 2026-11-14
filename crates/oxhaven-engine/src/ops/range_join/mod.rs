@@ -16,18 +16,14 @@
 //! | `mod.rs` | The arguments, the refusals, the public function |
 //! | `search.rs` | The range of each left row of a bucket, as positions in the bucket's right rows |
 //! | `ranges.rs` | Buckets by exact match, range values by type, the ranges of every left row |
-//! | `grouped.rs` | The result short of a table: the left columns and the array-valued columns |
+//! | `grouped.rs` | The result table: the left columns and the vector columns over the ranges |
 //!
-//! # What waits for list columns
+//! # The result
 //!
-//! Every result column of a `group` aggregation is array-valued, and the contracts have no
-//! array-valued column type, so a [`TableDefinition`](oxhaven_contracts::schema::TableDefinition)
-//! cannot name such a column yet. Everything up to that point is here: `grouped::Joined`
-//! holds the result's columns in order, and each `grouped::GroupColumn` answers
-//! `chunk(rows)` with the Arrow `ListArray` Java sends for those rows. That type is the
-//! seam, not a contract. [`range_join`] refuses what Java refuses, computes the ranges (so
-//! the order of the right table is checked), and then stops with `unported!` where the
-//! table would be made, unless no column of the result is array-valued.
+//! Every result column of a `group` aggregation is a vector column
+//! ([`ColumnType::Vector`](oxhaven_contracts::schema::ColumnType::Vector) of the right
+//! column's type). It holds no values of its own: a cell is read from the right column
+//! through the range of its left row, as Java's `RangeAggregateColumnSource` reads it.
 
 mod grouped;
 mod ranges;
@@ -41,6 +37,7 @@ mod tests;
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
 use oxhaven_contracts::rowset::RowKey;
+use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use regex::Regex;
 use std::fmt;
@@ -120,10 +117,24 @@ impl RangeJoinMatch {
     /// only next to `<=`.
     ///
     /// Not checked here: that each name is one Java accepts as a column name
-    /// (io.deephaven.api.ColumnName#of refuses reserved words).
+    /// (io.deephaven.api.ColumnName#of refuses reserved words); [`Self::parse_checked`]
+    /// takes that check.
     ///
     /// Behavior: io.deephaven.api.RangeJoinMatch#parse
     pub fn parse(input: &str) -> Result<Self, RangeJoinError> {
+        Self::parse_checked(input, |_| Ok(()))
+    }
+
+    /// As [`Self::parse`], with `check_name` asked of the three column names in the order
+    /// left start, right range, left end, once the text fits the pattern and before
+    /// anything else about it is refused. Its error is the text of the refusal.
+    ///
+    /// Behavior: io.deephaven.api.RangeJoinMatch#parse, where `check_name` is
+    /// io.deephaven.api.ColumnName#of
+    pub fn parse_checked(
+        input: &str,
+        check_name: impl Fn(&str) -> Result<(), String>,
+    ) -> Result<Self, RangeJoinError> {
         const ID: &str = r"[a-zA-Z_$][a-zA-Z0-9_$]*";
         static PATTERN: OnceLock<Regex> = OnceLock::new();
         let pattern = PATTERN.get_or_init(|| {
@@ -134,10 +145,15 @@ impl RangeJoinMatch {
             Regex::new(&text).expect("a pattern")
         });
         let Some(found) = pattern.captures(input) else {
+            // The pattern as Java writes it, which the text above is in this crate's syntax.
+            let java = format!(r"\A\s*(<-)?\s*({ID})\s*(<=?)\s*({ID})\s*(<=?)\s*({ID})\s*(->)?\s*\Z");
             return Err(RangeJoinError::InvalidMatch(format!(
-                "Input expression {input} does not match expected pattern {pattern}"
+                "Input expression {input} does not match expected pattern {java}"
             )));
         };
+        for name in [2, 4, 6] {
+            check_name(&found[name]).map_err(RangeJoinError::InvalidMatch)?;
+        }
         let allow_preceding = found.get(1).is_some();
         let start_allows_equal = found[3].len() == 2;
         let end_allows_equal = found[5].len() == 2;
@@ -255,6 +271,9 @@ pub enum RangeJoinError {
     /// Java's `IllegalArgumentException` "Invalid range match": columns a table does not
     /// have and bounds whose type is not the range column's, one entry each.
     InvalidRangeMatch(Vec<String>),
+    /// Java's `IllegalArgumentException` "Invalid range value type": the range columns
+    /// are vectors or arrays, which Java can not order.
+    InvalidRangeValueType(ColumnType),
     /// Java's `UnsupportedOperationException` "rangeJoin only supports the "group"
     /// aggregation at this time", with the description of each aggregation refused.
     UnsupportedAggregations(Vec<String>),
@@ -296,6 +315,10 @@ impl fmt::Display for RangeJoinError {
             RangeJoinError::InvalidRangeMatch(issues) => {
                 write!(f, "Invalid range match: {}", issues.join(", "))
             }
+            RangeJoinError::InvalidRangeValueType(column_type) => write!(
+                f,
+                "Invalid range value type {column_type:?}, must be primitive or comparable"
+            ),
             RangeJoinError::UnsupportedAggregations(aggregations) => write!(
                 f,
                 "rangeJoin only supports the \"group\" aggregation at this time - unsupported \
@@ -336,16 +359,13 @@ impl From<TableFailure> for RangeJoinError {
 /// cells are null, where those of an empty range are empty arrays.
 ///
 /// The result has the left table's columns, and for each pair of each `group` aggregation
-/// a column of arrays named by its output. An output named like a column that is already
+/// a column of vectors named by its output. An output named like a column that is already
 /// there replaces it where it stands. The result is static and carries no attribute of
 /// the left table.
 ///
 /// Refusals are checked in Java's order: refreshing tables, the exact matches, the range
-/// match, the aggregations, then the order of the right table, then the inputs of the
-/// aggregations.
-///
-/// Stops with `unported!` where the result has an array-valued column: see the module
-/// documentation.
+/// match, the type of the range columns, the aggregations, then the order of the right
+/// table, then the inputs of the aggregations.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#rangeJoin and
 /// io.deephaven.engine.table.impl.rangejoin.RangeJoinOperation
@@ -356,5 +376,5 @@ pub fn range_join(
     range: &RangeJoinMatch,
     aggregations: &[RangeAggregation],
 ) -> Result<Arc<dyn Table>, RangeJoinError> {
-    grouped::join(left, right, exact, range, aggregations)?.into_table()
+    grouped::join(left, right, exact, range, aggregations)
 }
