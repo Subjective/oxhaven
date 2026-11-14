@@ -10,12 +10,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// The gRPC status code the Java server answers with for each refusal, as recorded in
-/// `fixtures/head_tail_by_static.json`.
+/// `fixtures/head_tail_by_static.json` and, for a blink table, at the end of
+/// `fixtures/java_refusals.txt`.
 fn code(error: &HeadByError) -> &'static str {
     match error {
         HeadByError::RowsNotPositive(_)
         | HeadByError::GroupColumns { .. }
-        | HeadByError::NoOtherColumns(_) => "INVALID_ARGUMENT",
+        | HeadByError::NoOtherColumns(_)
+        | HeadByError::Blink => "INVALID_ARGUMENT",
         other => panic!("no recorded status code for {other:?}"),
     }
 }
@@ -64,6 +66,37 @@ fn groups_of_more_than_1024_kept_rows_match_java() {
         replay(&fixture("head_tail_by_wide_groups"), &define),
         3 * 5 + 3 * 4
     );
+}
+
+/// What the gRPC handler of the Java server answers for a blink table, which the fixtures
+/// cannot make: `fixtures/record_refusals.py` asked it.
+#[test]
+fn a_blink_table_is_refused_with_javas_status_code() {
+    use crate::ops::sort::testing::{blink_table, graph};
+    use oxhaven_contracts::schema::ColumnType;
+    let recorded = include_str!("fixtures/java_refusals.txt");
+    let recorded: Vec<&str> = recorded
+        .lines()
+        .filter_map(|line| line.strip_prefix("grpc-blink "))
+        .collect();
+    assert_eq!(recorded.len(), 3);
+    let columns = [
+        ("Timestamp", ColumnType::Instant),
+        ("A", ColumnType::Int),
+        ("B", ColumnType::String),
+    ];
+    let (blink, _source) = blink_table(&graph(), &columns);
+    for line in recorded {
+        let (call, answer) = line.split_once(" => ").expect("a call and its answer");
+        let words: Vec<&str> = call.split(' ').collect();
+        let by: Vec<String> = words[2].split(',').map(str::to_string).collect();
+        let rows: i64 = words[1].parse().unwrap();
+        let made = match words[0] {
+            "head" => head_by(&blink, rows, &by),
+            _ => tail_by(&blink, rows, &by),
+        };
+        assert_eq!(code(&made.err().expect("a refusal")), answer, "{call}");
+    }
 }
 
 /// The oracle's scenarios, as far as they can be built from `head_by` and `tail_by`.

@@ -1,0 +1,26 @@
+static head 0 Nope => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
+static head 0 A,B => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
+static head 0 A,A => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
+static tail 0 - => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
+static tail -1 A => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == -1.
+static head 1 Nope => java.lang.ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1
+static tail 1 Nope => java.lang.ArrayIndexOutOfBoundsException: Index 1 out of bounds for length 1
+static head 1 A,A => java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0
+static head 1 A,Nope => java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0
+static head 1 Nope,Nope2 => java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0
+static head 1 A,B,B => java.lang.NegativeArraySizeException: -1
+static tail 1 A,B,Nope => java.lang.NegativeArraySizeException: -1
+static head 1 Nope,Nope2,Nope3,Nope4 => java.lang.NegativeArraySizeException: -2
+static head 1 A,B => java.lang.IllegalArgumentException: aggBy must have at least one aggregation, none specified. groupByColumns=[A,B]
+static tail 1 B,A => java.lang.IllegalArgumentException: aggBy must have at least one aggregation, none specified. groupByColumns=[B,A]
+static head 1 A => OK
+static tail 9223372036854775807 - => OK
+blink head 0 A => io.deephaven.base.verify.RequirementFailure: Requirement failed: required nRows > 0, instead nRows == 0.
+blink head 1 Nope => java.lang.ArrayIndexOutOfBoundsException: Index 2 out of bounds for length 2
+blink head 1 A,A,B,B => java.lang.NegativeArraySizeException: -1
+blink head 1 Timestamp,A,B => java.lang.IllegalArgumentException: aggBy must have at least one aggregation, none specified. groupByColumns=[Timestamp,A,B]
+blink head 1 A => java.lang.UnsupportedOperationException: Blink tables do not support AggGroup; use BlinkTableTools.blinkToAppendOnly to accumulate full history
+blink tail 1 - => java.lang.UnsupportedOperationException: Blink tables do not support AggGroup; use BlinkTableTools.blinkToAppendOnly to accumulate full history
+grpc-blink head 1 A => INVALID_ARGUMENT
+grpc-blink tail 0 A => INVALID_ARGUMENT
+grpc-blink head 1 A,A => INVALID_ARGUMENT

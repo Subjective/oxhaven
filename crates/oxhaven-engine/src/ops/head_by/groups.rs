@@ -309,7 +309,6 @@ impl Groups {
             state.saved.clear();
             state.saved_step = step;
         }
-        let slots_at_start = state.rows.len();
         let mut cycle = Cycle::default();
 
         let removed = self.by_slot(state, &update.removed, true, false)?;
@@ -357,7 +356,7 @@ impl Groups {
         let mut removed = Vec::new();
         for (&slot, &had_rows) in &cycle.touched {
             let has_rows = !state.rows[slot].is_empty();
-            if slot >= slots_at_start || (!had_rows && has_rows) {
+            if !had_rows && has_rows {
                 added.push(slot as RowKey);
             } else if had_rows && !has_rows {
                 removed.push(slot as RowKey);
@@ -365,9 +364,9 @@ impl Groups {
         }
         let added = RowSet::from_keys(added);
         let modified = cycle.changed.iter().map(|&slot| slot as RowKey);
-        let modified = RowSet::from_keys(modified.filter(|&slot| {
-            !state.rows[slot as usize].is_empty() && !added.contains(slot)
-        }));
+        let modified = RowSet::from_keys(
+            modified.filter(|&slot| !state.rows[slot as usize].is_empty() && !added.contains(slot)),
+        );
         // The columns of the grouped table: the keys, then the others in their order.
         let first = self.source.definition().columns().len() - self.value_columns.len();
         let values = self.value_columns.iter().enumerate();

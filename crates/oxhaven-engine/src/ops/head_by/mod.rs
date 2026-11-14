@@ -44,8 +44,9 @@ use std::fmt;
 use std::sync::Arc;
 
 /// Why a `head_by` or `tail_by` was refused, in the order Java checks. The text is Java's
-/// message; the Java server answers `INVALID_ARGUMENT` for each of the first three, as
-/// recorded in `fixtures/head_tail_by_static.json`.
+/// message, as recorded in `fixtures/java_refusals.txt`; the Java server answers
+/// `INVALID_ARGUMENT` for each but `Failed`, as recorded there and in
+/// `fixtures/head_tail_by_static.json`.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum HeadByError {
     /// The number of rows is zero or negative.
@@ -170,7 +171,10 @@ fn checked(source: &dyn Table, rows: i64, columns: &[String]) -> Result<Vec<usiz
         return Err(HeadByError::Blink);
     }
     let index = |name: &String| source.definition().index_of(name);
-    Ok(columns.iter().map(|name| index(name).expect("a column")).collect())
+    Ok(columns
+        .iter()
+        .map(|name| index(name).expect("a column"))
+        .collect())
 }
 
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#headOrTailBy
