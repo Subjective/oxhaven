@@ -8,6 +8,31 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 use std::sync::{Arc, Mutex, PoisonError};
 
+/// A column whose cells are arrays, as `ungroup` reads it.
+///
+/// It is what `ungroup` needs of such a column, not a contract. [`Lists`] is the
+/// implementation for a column of `ColumnType::Vector` or `ColumnType::Array`; `head_by`
+/// has one for the rows it keeps of each group.
+pub(crate) trait ArrayColumn: Send + Sync {
+    /// The type of the elements, which is the type of the ungrouped column.
+    fn element_type(&self) -> &ColumnType;
+
+    /// The number of elements of the array at each of `rows`, in row order, now or as of
+    /// the previous cycle. A null array has none.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.UngroupSizeKernel.ArraySizeKernel#maxSize
+    /// and VectorSizeKernel#maxSize
+    fn sizes(&self, rows: &RowSet, previous: bool) -> Result<Vec<u64>, TableFailure>;
+
+    /// For each `(row key, offset)` of `cells`, in that order, the element at the offset
+    /// of the row's array, now or as of the previous cycle. Null for a null array and for
+    /// an offset at or beyond the array's size, as an array of the element type.
+    ///
+    /// Behavior: the `get` and `getPrev` of the subclasses of
+    /// io.deephaven.engine.table.impl.sources.UngroupedColumnSource
+    fn elements(&self, cells: &[(RowKey, u64)], previous: bool) -> Result<ArrayRef, TableFailure>;
+}
+
 fn failure(error: impl ToString) -> TableFailure {
     TableFailure {
         message: error.to_string(),
@@ -55,18 +80,14 @@ impl Lists {
         let element = column.column_type().list_element()?.clone();
         Some(Self { column, element })
     }
+}
 
-    /// The type of the elements, which is the type of the ungrouped column.
-    pub(super) fn element_type(&self) -> &ColumnType {
+impl ArrayColumn for Lists {
+    fn element_type(&self) -> &ColumnType {
         &self.element
     }
 
-    /// The number of elements of the array at each of `rows`, in row order, now or as of
-    /// the previous cycle. A null array has none.
-    ///
-    /// Behavior: io.deephaven.engine.table.impl.UngroupSizeKernel.ArraySizeKernel#maxSize
-    /// and VectorSizeKernel#maxSize
-    pub(super) fn sizes(&self, rows: &RowSet, previous: bool) -> Result<Vec<u64>, TableFailure> {
+    fn sizes(&self, rows: &RowSet, previous: bool) -> Result<Vec<u64>, TableFailure> {
         let values = if previous {
             self.column.prev_chunk(rows)?
         } else {
@@ -76,17 +97,7 @@ impl Lists {
         Ok((0..lists.len()).map(|at| size(lists, at)).collect())
     }
 
-    /// For each `(row key, offset)` of `cells`, in that order, the element at the offset
-    /// of the row's array, now or as of the previous cycle. Null for a null array and for
-    /// an offset at or beyond the array's size, as an array of the element type.
-    ///
-    /// Behavior: the `get` and `getPrev` of the subclasses of
-    /// io.deephaven.engine.table.impl.sources.UngroupedColumnSource
-    pub(super) fn elements(
-        &self,
-        cells: &[(RowKey, u64)],
-        previous: bool,
-    ) -> Result<ArrayRef, TableFailure> {
+    fn elements(&self, cells: &[(RowKey, u64)], previous: bool) -> Result<ArrayRef, TableFailure> {
         // Each run of cells of one row reads the row's array once.
         let mut rows: Vec<RowKey> = Vec::new();
         let mut cell_rows = Vec::with_capacity(cells.len());
@@ -233,7 +244,7 @@ impl ColumnSource for Repeated {
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.UngroupedColumnSource
 pub(super) struct Elements {
-    pub(super) arrays: Arc<Lists>,
+    pub(super) arrays: Arc<dyn ArrayColumn>,
     pub(super) bases: Arc<Bases>,
 }
 

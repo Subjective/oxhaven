@@ -15,7 +15,7 @@ use oxhaven_contracts::table::TableFailure;
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#minimumUngroupBase, the default of
 /// the property `QueryTable.minimumUngroupBase`
-pub(super) const MINIMUM_BASE: u32 = 10;
+pub(crate) const MINIMUM_BASE: u32 = 10;
 
 /// The base whose slots hold an array of `max_size` elements.
 ///

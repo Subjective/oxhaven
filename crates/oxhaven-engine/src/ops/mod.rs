@@ -5,6 +5,7 @@ pub mod asof;
 pub mod crossjoin;
 pub mod distinct;
 pub mod filter;
+pub mod head_by;
 pub mod join;
 #[cfg(test)]
 mod list_columns;

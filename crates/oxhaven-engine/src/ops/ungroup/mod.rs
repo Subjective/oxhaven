@@ -10,15 +10,17 @@
 //!
 //! [`ungroup`] is the operation: it decides which columns are ungrouped and refuses a
 //! named column that does not exist or is not an array, as Java does. The rest is built
-//! on [`sources::Lists`], which reads the Arrow list cells of a vector or array column
-//! (`ColumnType::Vector`, `ColumnType::Array`) as the sizes of the arrays of some rows
-//! and as elements by row and offset, now or as of the previous cycle: the row keys of
-//! the result ([`keys`]), its columns ([`sources`]), the initial result and the change of
-//! the result for every change of the source ([`operator`]).
+//! against [`sources::ArrayColumn`] (the sizes of the arrays of some rows, and elements by
+//! row and offset, now or as of the previous cycle): the row keys of the result
+//! ([`keys`]), its columns ([`sources`]), the initial result and the change of the result
+//! for every change of the source ([`operator`]). [`sources::Lists`] is that for the
+//! Arrow list cells of a vector or array column (`ColumnType::Vector`,
+//! `ColumnType::Array`); `head_by` ungroups the rows it keeps of each group through the
+//! same seam.
 
-mod keys;
-mod operator;
-mod sources;
+pub(crate) mod keys;
+pub(crate) mod operator;
+pub(crate) mod sources;
 
 #[cfg(test)]
 mod corpus;
@@ -32,7 +34,7 @@ use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
-use sources::Lists;
+use sources::{ArrayColumn, Lists};
 use std::fmt;
 use std::sync::Arc;
 
@@ -163,7 +165,7 @@ fn is_array(column_type: &ColumnType) -> bool {
 /// The arrays of column `index` of `source`, which [`is_array`].
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource
-fn arrays_of(source: &dyn Table, index: usize) -> Arc<Lists> {
+fn arrays_of(source: &dyn Table, index: usize) -> Arc<dyn ArrayColumn> {
     let arrays = Lists::of(source.column(index));
     Arc::new(arrays.expect("a vector or array column"))
 }

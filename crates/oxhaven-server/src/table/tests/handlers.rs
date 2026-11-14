@@ -45,6 +45,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::ComboAggregate(r) => c.client.combo_aggregate(c.auth(r)).await,
         Op::SelectDistinct(r) => c.client.select_distinct(c.auth(r)).await,
         Op::WhereIn(r) => c.client.where_in(c.auth(r)).await,
+        Op::CrossJoin(r) => c.client.cross_join_tables(c.auth(r)).await,
         Op::NaturalJoin(r) => c.client.natural_join_tables(c.auth(r)).await,
         Op::ExactJoin(r) => c.client.exact_join_tables(c.auth(r)).await,
         Op::LeftJoin(r) => c.client.left_join_tables(c.auth(r)).await,
@@ -1781,6 +1782,225 @@ async fn where_in_of_a_ticking_set_follows_it() {
     });
     assert!(all > fixed as u64);
     assert_eq!(others, all - fixed as u64);
+}
+
+fn cross(result: i32, right: i32, on: &[&str], add: &[&str], reserve_bits: i32) -> Op {
+    Op::CrossJoin(proto::CrossJoinTablesRequest {
+        result_id: ticket(result),
+        left_id: by_ticket(1),
+        right_id: by_ticket(right),
+        columns_to_match: texts(on),
+        columns_to_add: texts(add),
+        reserve_bits,
+    })
+}
+
+#[tokio::test]
+async fn cross_join_pairs_each_left_row_with_every_matching_right_row() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    words(&mut c, 2).await;
+    table_of(
+        &mut c,
+        3,
+        &[&["Key = `b`", "W = 7"], &["Key = `c`", "W = 8"]],
+    )
+    .await;
+
+    // key `a` has one right row and key `b` two; every right column that is not a match
+    // column is added
+    let response = call(&mut c, cross(10, 2, &["S"], &[], 0)).await.unwrap();
+    assert!(response.is_static);
+    assert_eq!(response.size, 9);
+    let table = c.table(10);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "W"]);
+    assert_eq!(
+        values(table.as_ref(), "I"),
+        ints(&[0, 1, 1, 2, 3, 3, 4, 5, 5])
+    );
+    assert_eq!(
+        values(table.as_ref(), "W"),
+        ints(&[1, 2, 3, 1, 2, 3, 1, 2, 3])
+    );
+
+    // match and addition spelled with space and `==`, and renamed; a left row without a
+    // right row has no result row
+    let response = call(&mut c, cross(11, 3, &[" S == Key "], &[" Word = W "], 0))
+        .await
+        .unwrap();
+    assert_eq!(response.size, 3);
+    let table = c.table(11);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "Word"]);
+    assert_eq!(values(table.as_ref(), "I"), ints(&[1, 3, 5]));
+    assert_eq!(values(table.as_ref(), "Word"), ints(&[7, 7, 7]));
+
+    // no match columns: every pair, the right rows in their order under each left row
+    let response = call(&mut c, cross(12, 3, &[], &[], 0)).await.unwrap();
+    assert_eq!(response.size, 12);
+    let table = c.table(12);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "Key", "W"]);
+    assert_eq!(
+        values(table.as_ref(), "I"),
+        ints(&[0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5])
+    );
+    assert_eq!(
+        values(table.as_ref(), "Key"),
+        texts(&["b", "c", "b", "c", "b", "c", "b", "c", "b", "c", "b", "c"])
+    );
+
+    // in a batch, of tables the batch made
+    let (responses, status) = c
+        .batch(vec![
+            Op::EmptyTable(empty(None, 2)),
+            Op::EmptyTable(empty(None, 3)),
+            Op::CrossJoin(proto::CrossJoinTablesRequest {
+                result_id: ticket(13),
+                left_id: by_offset(0),
+                right_id: by_offset(1),
+                ..Default::default()
+            }),
+        ])
+        .await
+        .unwrap();
+    assert!(status.is_none(), "{status:?}");
+    assert!(responses.iter().all(|response| response.success));
+    assert_eq!(c.table(13).row_set().size(), 6);
+}
+
+#[tokio::test]
+async fn cross_join_refuses_as_java_does() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    words(&mut c, 2).await;
+
+    // the columns are read first, and refused with a status of their own: the first
+    // unreadable match, then the first unreadable addition
+    let unparsable = [
+        (
+            cross(10, 2, &["S", "A B"], &["C D"], 0),
+            "Unable to parse expression: \"A B\": A B",
+        ),
+        (
+            cross(11, 2, &["S"], &["W", "W = 1"], 0),
+            "Unable to parse expression: \"W = 1\": W = 1",
+        ),
+        (
+            cross(12, 2, &["S=in"], &[], 0),
+            "Failed to get expression for all matched patterns: S=in",
+        ),
+    ];
+    for (op, message) in unparsable {
+        let refused = call(&mut c, op.clone()).await.unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+        assert_eq!(refused.message(), message);
+
+        // in a batch, before any operation of the batch is created
+        let refused = c
+            .batch(vec![Op::EmptyTable(empty(ticket(20), 1)), op])
+            .await
+            .unwrap_err();
+        assert_eq!(refused.code(), Code::InvalidArgument);
+        assert_eq!(refused.message(), message);
+        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        assert_ne!(unused.state(), ExportState::Exported);
+    }
+
+    // what the engine refuses is an exception in Java: both tables have a column `S`,
+    // a column that does not exist on either side, an addition that names a left column,
+    // match columns of two types
+    let refusals: [(&[&str], &[&str]); 6] = [
+        (&[], &[]),
+        (&["Nope=S"], &[]),
+        (&["S=Nope"], &[]),
+        (&["S"], &["X=Nope"]),
+        (&["S"], &["I=W"]),
+        (&["I=S"], &["W"]),
+    ];
+    for (result, (on, add)) in (30..).zip(refusals) {
+        let refused = call(&mut c, cross(result, 2, on, add, 0))
+            .await
+            .unwrap_err();
+        assert_internal(&refused);
+    }
+    // the same addition twice is not refused, as it is not in Java
+    let response = call(&mut c, cross(40, 2, &["S"], &["A=W", "A=W"], 0))
+        .await
+        .unwrap();
+    assert_eq!(response.size, 9);
+    assert_eq!(column_names(c.table(40).as_ref()), ["I", "N", "S", "A"]);
+}
+
+#[tokio::test]
+async fn cross_join_reserves_the_bits_of_the_request_or_the_default() {
+    let mut c = Connected::start().await;
+    // four rows at the row keys 0 to 3, which take two bits
+    call(&mut c, Op::EmptyTable(empty(ticket(1), 4)))
+        .await
+        .unwrap();
+    // a refreshing table that stays empty, a time table that starts in the year 2200: it
+    // needs no bits of its own, so the reserve alone decides
+    let never = TimeTableRequest {
+        start_time: Some(StartTime::StartTimeNanos(7_258_118_400_000_000_000)),
+        ..ticking_time_table(ticket(3))
+    };
+    let response = call(&mut c, Op::TimeTable(never)).await.unwrap();
+    assert!(!response.is_static);
+    assert_eq!(response.size, 0);
+
+    // Java's server, asked for a static table of four rows joined with an empty refreshing
+    // one, accepts 1 to 61 bits, refuses 62 and more, and takes anything below 1 as no
+    // request: the default of 10 bits
+    let cases = [
+        (i32::MIN, true),
+        (-1, true),
+        (0, true),
+        (1, true),
+        (10, true),
+        (61, true),
+        (62, false),
+        (63, false),
+        (64, false),
+        (i32::MAX, false),
+    ];
+    for (result, (bits, accepted)) in (10..).zip(cases) {
+        let response = call(&mut c, cross(result, 3, &[], &["T=Timestamp"], bits)).await;
+        match response {
+            Ok(response) => {
+                assert!(accepted, "{bits} bits");
+                assert!(!response.is_static);
+                assert_eq!(response.size, 0);
+            }
+            Err(refused) => {
+                assert!(!accepted, "{bits} bits");
+                assert_internal(&refused);
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn a_cross_join_of_a_refreshing_table_follows_it() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    call(&mut c, Op::TimeTable(ticking_time_table(ticket(2))))
+        .await
+        .unwrap();
+    let response = call(&mut c, cross(3, 2, &[], &[], 0)).await.unwrap();
+    assert!(!response.is_static);
+    let (right, result) = (c.table(2), c.table(3));
+    assert_eq!(column_names(result.as_ref()), ["I", "N", "S", "Timestamp"]);
+    let graph = c.server.state.graph.clone();
+    let sizes = || {
+        locked(graph.as_ref(), || {
+            (right.row_set().size(), result.row_set().size())
+        })
+    };
+    let (_, before) = sizes();
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    let (right_size, result_size) = sizes();
+    assert!(result_size > before);
+    assert_eq!(result_size, 6 * right_size);
 }
 
 // ---------------------------------------------------------------- snapshots
