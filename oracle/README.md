@@ -8,8 +8,13 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | Path | Holds |
 | --- | --- |
 | `requirements.txt` | The pinned Python environment |
+| `requirements-replay.txt` | The same pins without the Java server: enough for `replay`, the smokes and the tests |
 | `bin/start-java.sh`, `bin/stop-java.sh` | Start and stop the Java reference server |
 | `bin/harness` | Runs the harness from any directory |
+| `bin/ci-replay.sh` | **The replay gate** that CI runs: build, start, replay, smokes, compare with the baseline |
+| `bin/check-baseline-change.sh` | Fails if a change to the baseline is not a stricter one |
+| `replay-baseline.json` | The expected state of every scenario and smoke check against Oxhaven |
+| `harness/gate.py`, `harness/baseline.py` | The gate's run and the baseline's rules |
 | `harness/scenario.py` | The scenario format, its validator, and the `--ops` filter |
 | `harness/runner.py` | Runs a scenario against a server URL, returns tables or failures |
 | `harness/rules.py` | **The comparison rules**, as data and code. Keep in step with `PARITY.md` |
@@ -114,6 +119,82 @@ status code and has no file. The manifest holds a hash of the scenario content; 
 refuses a recording whose scenario has changed since, so a changed scenario must be recorded
 again. The recordings are committed. Re-recording changes the files byte for byte only where the
 results changed.
+
+## The replay gate
+
+CI runs one command on every pull request and on every push to `main` (the `oracle-replay` job):
+
+```bash
+oracle/bin/ci-replay.sh
+```
+
+It builds `oxhaven-server`, starts it on a free port, replays every scenario against the
+recordings in `corpus/`, runs every client smoke area, stops the server, and compares what it
+saw with `replay-baseline.json`. It needs no Java server: it talks only to the Oxhaven server it
+started. To run it locally you need the Rust toolchain and a Python environment at
+`oracle/.venv`; the one from `requirements.txt` works, and `requirements-replay.txt` is the same
+pins without the Java server wheel, which is what CI installs:
+
+```bash
+python3 -m venv oracle/.venv
+oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
+oracle/bin/ci-replay.sh
+```
+
+It takes about 20 seconds after the build (83 scenarios and 27 smoke checks). `ORACLE_GATE_PORT` fixes the port (other agents
+share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
+and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
+The output directory holds `server.log` and `report.json`: every scenario and check with its
+state, its difference kinds, each mismatch in full, and its duration. CI uploads the directory
+as the artifact `oracle-replay-report` when the job fails. Against a server that is already
+running, `bin/harness gate --url $URL` does the comparison alone.
+
+The exit status is 0 when the outcome is the baseline's, 1 when it is not, and 2 when the server
+did not build or start, exited during the run, or a scenario or check could not be run.
+
+**The baseline.** `replay-baseline.json` has one line per scenario (section `replay`) and per
+smoke check (sections `client-smoke <area>`):
+
+```json
+"where_int": {"state": "clean"},
+"aj_int_keys": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["keyed", "strict", "unkeyed"], "why": "no handler for aj"},
+```
+
+`kinds` are the kinds of difference the scenario shows, `tables` the result tables that show
+one, and `why` names the cause in words. A kind is the comparator's mismatch kind (the list is
+in `harness/rules.py`), with the status code for a failure (`failure_unexpected:UNIMPLEMENTED`)
+and the metadata key for a metadata difference (`table_metadata:AddOnly`,
+`column_metadata:inputtable.isKey`). A smoke check that fails has the one kind `failed` and no
+tables.
+
+The gate is a ratchet in both directions. Each line of its verdict starts with what is wrong:
+
+| Verdict | Meaning | What to do |
+| --- | --- | --- |
+| `REGRESSED` | Listed `clean`, now differs | Fix your change |
+| `NEW KIND`, `NEW TABLE` | Listed `differs`, now differs in another way or in another result table | Fix your change |
+| `PROMOTE` | Listed `differs`, now clean | Promote it, in the same pull request |
+| `TIGHTEN` | Listed `differs`, now shows fewer kinds or tables | Tighten it, in the same pull request |
+| `UNLISTED` | It ran and has no line | A new scenario or check comes with its line (protected) |
+| `STALE` | It has a line and did not run | A removed scenario or check takes its line with it (protected) |
+| `NOT RUN` | It could not be run | Find out why; the server log is next to the report |
+
+**Promoting a scenario.** When your change makes a scenario or check clean, the gate fails with
+`PROMOTE` and prints the line to write. Replace the entry's line in `replay-baseline.json` with
+it (`"<name>": {"state": "clean"}`), keep the trailing comma as it was, and commit that in the
+same pull request. `TIGHTEN` works the same way: the verdict prints the line with the kinds and
+tables that remain. `report.json` also holds the whole observed outcome in baseline form under
+`observed_as_baseline`. Nothing updates the baseline automatically, in CI or locally, so that
+every change to it is a line somebody wrote and a reviewer sees.
+
+**Weakening the baseline is a protected change.** A pull request may make the baseline stricter
+without the `oracle-change` label: `differs` to `clean`, fewer kinds, fewer tables, a reworded
+`why`. Everything else needs the label, which only the orchestrator applies: `clean` to
+`differs`, another kind or table on a `differs` line, a new line, a removed line. The `rules`
+CI job enforces this with `bin/check-baseline-change.sh <base>`, which you can run locally. If
+you believe a `clean` line is wrong, stop and say so in the pull request (`PORTING.md`, "Never
+weaken a check"). There is no state for a scenario that is sometimes clean: one that flakes
+is a defect to find, in the server or in the harness.
 
 ## Fuzz
 
@@ -314,6 +395,9 @@ They need the recordings but no server.
   operations, the shrinker reaches the smallest scenario for a known difference, and the `fuzz`
   command catches and shrinks a faulty target (with an in-process stand-in for the servers).
 - `tests/test_scenario.py`: the scenario format, the `--ops` filter, the corpus, recordings.
+- `tests/test_gate.py`: the baseline's ratchet (what fails the gate, what counts as weakening),
+  its file format, the difference kinds, and that the checked-in baseline lists every scenario
+  and every smoke check.
 - `tests/test_formulas.py`: the formula corpus files, the classifier, the comparison of
   formula outcomes (each kind of difference must be reported), the checks, the Java log reader.
 
@@ -471,8 +555,10 @@ When the server refuses an operation, the table's result is a failure with the g
 from it. When an operation is accepted and the snapshot of its table fails (a `view` whose
 formula throws when it is read), the result of that step is a failure. `show` prints
 `fails with <code>`. The `error_*` scenarios and `ticking_error_after_step` record such results.
-An action of a step that the server refuses is not a result: the scenario is reported as
-`ERROR`.
+A ticking input that the server refuses to create (a blink input table on a server without
+them) fails the same way: every table defined from it fails with that code, and the actions of
+the steps on it are not sent. An action of a step on an input that was created and that the
+server refuses is not a result: the scenario is reported as `ERROR`.
 
 When writing a scenario, `ORACLE_TRACE=1` in the environment makes `show` print, for each
 operation the server refuses, the status code and the server's message. Java often answers

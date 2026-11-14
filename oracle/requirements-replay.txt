@@ -1,0 +1,20 @@
+# What the replay gate (bin/ci-replay.sh) and the harness tests need: the Python client, without
+# the Java server wheel. Every version is the one requirements.txt pins; tests/test_gate.py
+# checks that. Python 3.13.
+# Direct dependencies:
+pydeephaven==42.9
+pydeephaven-ticking==42.9
+pyarrow==26.0.1
+pytest==9.2.0
+# What they resolved to:
+grpcio==1.85.1
+iniconfig==2.3.1
+numpy==2.5.4
+packaging==26.3
+pandas==3.1.1
+pluggy==1.7.0
+protobuf==7.36.2
+Pygments==2.21.0
+python-dateutil==4.0.0
+typing_extensions==4.16.0
+tzdata==2026.6

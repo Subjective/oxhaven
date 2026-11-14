@@ -63,6 +63,12 @@ the differential tests decide. When the two conflict on results, `PARITY.md` win
    `oracle-change` label, which only the orchestrator applies. If a contract is wrong or
    missing something, open a contract-change pull request that touches nothing else and explain
    the need.
+
+   `oracle/replay-baseline.json` is the one exception. A pull request may edit its lines without
+   the label when every edit makes it stricter (`differs` to `clean`, fewer kinds, fewer
+   tables), and must do so in the same pull request when it changes a replay outcome: the
+   replay gate fails with `PROMOTE` or `TIGHTEN` and prints the line to write. Any other edit
+   to it needs the label (`oracle/README.md`, "The replay gate").
 5. **Simple before fast.** Write the plain correct version first. Optimize only in a task that
    names a benchmark.
 6. **`unsafe` needs a reason.** Each `unsafe` block has a `// SAFETY:` comment stating the

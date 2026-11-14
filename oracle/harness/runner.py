@@ -449,19 +449,32 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
             if not item.ticking:
                 tables[item.name] = _import(session, sc.arrow_table(item.columns, item.rows))
                 continue
-            input_table = session.input_table(
-                schema=sc.arrow_schema(item.columns), key_cols=list(item.key_columns or ()),
-                blink_table=item.blink,
-            )
+            try:
+                input_table = session.input_table(
+                    schema=sc.arrow_schema(item.columns), key_cols=list(item.key_columns or ()),
+                    blink_table=item.blink,
+                )
+            except Exception as error:  # noqa: BLE001 - classified just below
+                # A server that refuses the input table fails it like a refused operation
+                # (`_define`): every table defined from it fails the same way, and the steps
+                # that change it are not sent.
+                code = failure_code(error)
+                if code is None:
+                    raise
+                if os.environ.get("ORACLE_TRACE"):
+                    print(f"trace: {item.name}: {code}: {_details(error)}", file=sys.stderr)
+                tables[item.name] = Failure(code)
+                continue
             inputs[item.name] = input_table
             tables[item.name] = input_table
         # A time table fills in on the server's own cycles, so it needs the barrier too.
         clocked = any(op["op"] == "time_table" for op in scenario.operations)
-        barrier = _Barrier(session) if inputs or clocked else None
+        ticking = any(item.ticking for item in scenario.inputs)
+        barrier = _Barrier(session) if ticking or clocked else None
 
         # Initial rows of an input table go in through the same path as later additions.
         for item in scenario.inputs:
-            if item.ticking and item.rows:
+            if item.name in inputs and item.rows:
                 inputs[item.name].add(_import(session, sc.arrow_table(item.columns, item.rows)))
 
         for op in scenario.operations:
@@ -473,6 +486,8 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
 
         for number, actions in enumerate(scenario.steps, start=1):
             for action in actions:
+                if action.table not in inputs:
+                    continue  # its input table was refused
                 item = scenario.input(action.table)
                 if action.action == "add":
                     data = sc.arrow_table(item.columns, action.rows)
