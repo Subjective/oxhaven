@@ -178,3 +178,19 @@ test: application fields and console stubs (6.1, running), ApplyPreviewColumns (
 Disk: 11 GB free with ten agents building (each target directory 1 to 3 GB; each worktree is
 0.7 GB since the formula corpus was checked in). Removed four clean worktrees of retired agents.
 If free space drops below 5 GB, the next agent to finish is not replaced until space recovers.
+
+## 11:20 Corpus doubled; integration is its own task
+
+The oracle extension is pushed but cannot merge alone: engine corpus tests pin the scenario count
+and the lists of compared results, so new scenarios move pins in four operator test suites. A fresh
+agent merges main into the oracle branch, classifies every new recorded result per operator
+(matches, cannot run, differs) and reports the differences. Differences become a pinned list per
+test that fails when it changes in either direction, not a silent skip.
+
+Design note for the retrospective: pinned lists in every operator test make corpus growth cost an
+integration task each time. A single shared classification file read by all corpus tests would cut
+that; worth doing once the operator set settles.
+
+New Java facts from the recordings that PARITY.md does not state (left_join unimplemented, range
+join restrictions, head_by/tail_by refusals, sum of a single -0.0 is 0.0 which bears on A2) are
+collected for a second PARITY corrections pass after integration.
