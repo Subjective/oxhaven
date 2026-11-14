@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "name": "ticking_cross_join_key_space",
+  "description": "Chained cross joins of a ticking table, each reserving the default 10 bits of row key space for the right rows: six fit in 63 bits, a seventh, with or without match columns, is refused.",
+  "inputs": [
+    {
+      "name": "c",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "V", "type": "int64"}],
+      "rows": [[1], [2]]
+    }
+  ],
+  "operations": [
+    {"name": "z1", "op": "join", "left": "c", "right": "c", "on": [], "joins": ["V1=V"]},
+    {"name": "z2", "op": "join", "left": "z1", "right": "c", "on": [], "joins": ["V2=V"]},
+    {"name": "z3", "op": "join", "left": "z2", "right": "c", "on": [], "joins": ["V3=V"]},
+    {"name": "z4", "op": "join", "left": "z3", "right": "c", "on": [], "joins": ["V4=V"]},
+    {"name": "z5", "op": "join", "left": "z4", "right": "c", "on": [], "joins": ["V5=V"]},
+    {"name": "z6", "op": "join", "left": "z5", "right": "c", "on": [], "joins": ["V6=V"]},
+    {"name": "z7", "op": "join", "left": "z6", "right": "c", "on": [], "joins": ["V7=V"]},
+    {"name": "k7", "op": "join", "left": "z6", "right": "c", "on": ["V"], "joins": ["V7=V"]},
+    {"name": "k1", "op": "join", "left": "c", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k2", "op": "join", "left": "k1", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k3", "op": "join", "left": "k2", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k4", "op": "join", "left": "k3", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k5", "op": "join", "left": "k4", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k6", "op": "join", "left": "k5", "right": "c", "on": ["V"], "joins": []},
+    {"name": "k7b", "op": "join", "left": "k6", "right": "c", "on": ["V"], "joins": []}
+  ],
+  "results": [
+    {"table": "z6"},
+    {"table": "z7"},
+    {"table": "k7"},
+    {"table": "k6"},
+    {"table": "k7b"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "c", "rows": [[1]]}]}
+  ]
+}

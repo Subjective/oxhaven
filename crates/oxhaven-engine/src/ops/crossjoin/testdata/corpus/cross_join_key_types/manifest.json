@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "cross_join_key_types",
+  "scenario_sha256": "d5282498d4fd907a540a87642b79d1ba69682b324d939951d63bf7c2a45d3b38",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "on_i",
+      "file": "step000.on_i.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "on_s",
+      "file": "step000.on_s.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "on_d",
+      "file": "step000.on_d.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "on_f",
+      "file": "step000.on_f.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "on_b",
+      "file": "step000.on_b.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "on_t",
+      "file": "step000.on_t.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "on_x",
+      "file": "step000.on_x.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "on_i_s",
+      "file": "step000.on_i_s.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "on_s_b_d",
+      "file": "step000.on_s_b_d.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "self_on_b",
+      "file": "step000.self_on_b.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "chained",
+      "file": "step000.chained.arrow",
+      "rows": 16
+    }
+  ]
+}
