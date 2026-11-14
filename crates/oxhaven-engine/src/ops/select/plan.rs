@@ -1,8 +1,8 @@
 //! Turns the column strings of one call into steps: what each result column is, what it can
 //! read, and which parent columns change it.
 
-use super::sources::holds_values;
 use super::{Flavor, SelectError};
+use crate::table::holds_values;
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_contracts::expr::{Expr, Formula, FormulaCompiler, Literal, RowVariable};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};

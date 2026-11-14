@@ -1,0 +1,243 @@
+{
+  "format": 2,
+  "scenario": "agg_all_by",
+  "scenario_sha256": "3736631246a2b51f034f2a41a77eeab41812b003287a499a56d50815ccd027d5",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "sum_by_key",
+      "file": "step000.sum_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "abs_sum_by_key",
+      "file": "step000.abs_sum_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "avg_by_key",
+      "file": "step000.avg_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "min_by_key",
+      "file": "step000.min_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "max_by_key",
+      "file": "step000.max_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "first_by_key",
+      "file": "step000.first_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "last_by_key",
+      "file": "step000.last_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "std_by_key",
+      "file": "step000.std_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "var_by_key",
+      "file": "step000.var_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "median_by_key",
+      "file": "step000.median_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "group_by_key",
+      "file": "step000.group_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "count_distinct_by_key",
+      "file": "step000.count_distinct_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "distinct_by_key",
+      "file": "step000.distinct_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "unique_by_key",
+      "file": "step000.unique_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "sum_no_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "avg_no_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "min_no_key",
+      "file": "step000.min_no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "last_no_key",
+      "file": "step000.last_no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "std_no_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "group_no_key",
+      "file": "step000.group_no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "sum_plain",
+      "file": "step000.sum_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "abs_sum_plain",
+      "file": "step000.abs_sum_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "avg_plain",
+      "file": "step000.avg_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "std_plain",
+      "file": "step000.std_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "var_plain",
+      "file": "step000.var_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "median_plain",
+      "file": "step000.median_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "max_plain",
+      "file": "step000.max_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "count_distinct_plain",
+      "file": "step000.count_distinct_plain.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "sum_plain_empty",
+      "file": "step000.sum_plain_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "avg_plain_empty",
+      "file": "step000.avg_plain_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "pct_by_key",
+      "file": "step000.pct_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "sum_empty",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "avg_empty_by_key",
+      "file": "step000.avg_empty_by_key.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "by_two",
+      "file": "step000.by_two.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "mixed_sum",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "mixed_min",
+      "file": "step000.mixed_min.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "mixed_avg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unknown_key",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

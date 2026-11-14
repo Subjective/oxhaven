@@ -23,6 +23,7 @@ import json
 import sys
 from collections import Counter
 from pathlib import Path
+from typing import Any
 
 from . import fuzz as fz
 from . import results as res
@@ -184,6 +185,65 @@ def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> li
     return out
 
 
+def _signature(mismatch: rules.Mismatch, operations: dict[str, dict]) -> tuple[str, str, str]:
+    """What a difference is about: its kind, the metadata keys that differ, the operation.
+
+    Differences with one signature are taken to have one cause. Names of generated tables
+    and columns are left out, since they vary from seed to seed.
+    """
+    key = ""
+    if isinstance(mismatch.expected, dict) and isinstance(mismatch.actual, dict):
+        differing = sorted(
+            str(k) for k in set(mismatch.expected) | set(mismatch.actual)
+            if mismatch.expected.get(k) != mismatch.actual.get(k))
+        key = ",".join(differing)
+    operation = operations.get(mismatch.table, {}).get("op", sc.INPUT_TABLE)
+    return mismatch.kind, key, operation
+
+
+def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, target_b: Any) -> int:
+    """Runs every seed, and groups the differences instead of shrinking the first one."""
+    out_dir = Path(args.out)
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    clean = not_run = differing = 0
+    for seed in range(args.seed, args.seed + args.seeds):
+        doc, _ = fz.generate(seed, ops)
+        scenario = sc.parse(doc)
+        try:
+            found = rules.compare_scenario(
+                scenario, target_a.run(scenario), target_b.run(scenario), args.exact)
+        except RunError as error:
+            not_run += 1
+            print(f"ERROR seed {seed}: {error}")
+            continue
+        if not found:
+            clean += 1
+            continue
+        differing += 1
+        path = _write_scenario(out_dir, doc, f"fuzz_{seed}")
+        operations = {op["name"]: op for op in doc["operations"]}
+        for mismatch in found:
+            group = groups.setdefault(_signature(mismatch, operations), {
+                "seeds": [], "mismatches": 0, "example": mismatch, "path": path})
+            group["mismatches"] += 1
+            if seed not in group["seeds"]:
+                group["seeds"].append(seed)
+    ordered = sorted(groups.items(), key=lambda item: (-len(item[1]["seeds"]), item[0]))
+    for (kind, key, operation), group in ordered:
+        seeds = group["seeds"]
+        print(f"GROUP kind={kind} key={key or '-'} operation={operation}: "
+              f"{len(seeds)} seeds, {group['mismatches']} mismatches; seeds "
+              f"{', '.join(map(str, seeds[:20]))}{' ...' if len(seeds) > 20 else ''}")
+        print(f"      example, seed {seeds[0]}: {str(group['example'])[:600]}")
+        print(f"      scenario: {group['path']}")
+    if differing:
+        print(f"differing scenarios are in {out_dir}; rerun one with: python -m harness diff "
+              f"--a {target_a} --b {target_b} --scenarios <file>")
+    print(f"fuzz: {args.seeds} seeds, {clean} clean, {differing} with differences in "
+          f"{len(groups)} groups, {not_run} not run")
+    return 1 if differing else 2 if not_run else 0
+
+
 def cmd_fuzz(args: argparse.Namespace) -> int:
     ops = _ops(args.ops) - {sc.INPUT_TABLE}
     target_a = open_target(args.a)
@@ -194,6 +254,8 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
     misses: list[str] = []
     print(f"fuzz {target_a} vs {target_b}: seeds {args.seed}..{args.seed + args.seeds - 1} "
           f"over {', '.join(sorted(ops))}")
+    if args.keep_going:
+        return _fuzz_all(args, ops, target_a, target_b)
     for seed in range(args.seed, args.seed + args.seeds):
         doc, predicted = fz.generate(seed, ops)
         scenario = sc.parse(doc)
@@ -322,6 +384,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="no float tolerance: for two runs of the same server")
     p.add_argument("--out", default=str(FUZZ_OUT), help="where a differing scenario is written")
     p.add_argument("--max-shrink-runs", type=int, default=200)
+    p.add_argument("--keep-going", action="store_true",
+                   help="run every seed: write each differing scenario to --out, group the "
+                        "differences by kind, differing metadata keys and operation, and "
+                        "print one example per group; nothing is shrunk")
     p.set_defaults(run=cmd_fuzz)
 
     p = sub.add_parser("client-smoke", help="exercise one area of the client protocol")

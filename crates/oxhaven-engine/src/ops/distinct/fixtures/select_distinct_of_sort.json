@@ -1,0 +1,153 @@
+{
+ "name": "select_distinct_of_sort",
+ "description": "select_distinct of a sorted table that ticks. The order of the keys depends on which rows the sort reports as added and which as modified: Java's sort removes and adds a modified row whose new sort key comes before its old one, even when the row keeps its neighbours (step 4).",
+ "inputs": [
+  {"name": "base", "ticking": {"key_columns": ["K"]}, "columns": [{"name": "K", "type": "int32"}, {"name": "G", "type": "int32"}, {"name": "V", "type": "float64"}, {"name": "S", "type": "string"}], "rows": [
+   [1, 10, 1.0, "a"],
+   [2, 20, -0.0, "b"],
+   [3, 10, null, null],
+   [4, 30, "NaN", "a"]
+  ]}
+ ],
+ "operations": [
+  {"name": "base_sorted", "op": "sort", "source": "base", "by": [{"column": "V", "direction": "descending"}]},
+  {"name": "of_sorted", "op": "select_distinct", "source": "base_sorted", "columns": ["G"]}
+ ],
+ "results": ["of_sorted"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "base", "rows": [[5, 40, 0.0, "c"]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[2]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[6, 20, 0.0, "b"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[1, 60, 7.0, "z"], [7, 70, 8.0, "y"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[8, 80, 9.0, "x"], [3, 90, 10.0, "w"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 40, 0.0, "c"], [5, 30, "NaN", "a"]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[4, 40, 0.0, "c"]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[1], [7]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[9, 70, 8.0, "y"]]}, {"action": "add", "table": "base", "rows": [[10, 60, 7.0, "z"]]}, {"action": "add", "table": "base", "rows": [[11, null, null, null]]}]},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[3], [4], [5], [6], [8], [9], [10], [11]]}]},
+  {"actions": [{"action": "add", "table": "base", "rows": [[12, 90, 10.0, "w"], [13, 10, 1.0, "a"], [14, 5, 5.0, "new"]]}]},
+  {"actions": []},
+  {"actions": [{"action": "delete", "table": "base", "rows": [[99]]}]}
+ ],
+ "java": {"steps": [
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [10],
+    [20]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [10],
+    [20],
+    [40]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [10],
+    [40]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [10],
+    [20],
+    [40]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [10],
+    [20],
+    [40],
+    [70],
+    [60]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [20],
+    [40],
+    [70],
+    [60],
+    [90],
+    [80]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [20],
+    [40],
+    [70],
+    [60],
+    [90],
+    [80]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [20],
+    [40],
+    [70],
+    [60],
+    [90],
+    [80]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [20],
+    [40],
+    [90],
+    [80]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [30],
+    [20],
+    [40],
+    [70],
+    [60],
+    [90],
+    [80],
+    [null]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10],
+    [90],
+    [5]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10],
+    [90],
+    [5]
+   ]}
+  },
+  {
+   "of_sorted": {"columns": [{"name": "G", "type": "int32"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10],
+    [90],
+    [5]
+   ]}
+  }
+ ]}
+}

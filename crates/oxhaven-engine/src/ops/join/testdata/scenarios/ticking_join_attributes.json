@@ -1,0 +1,77 @@
+{
+  "format": 1,
+  "name": "ticking_join_attributes",
+  "description": "The AddOnly and AppendOnly attributes of joins of append-only, keyed and static tables, for each join type that changes them.",
+  "inputs": [
+    {
+      "name": "la",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "LV", "type": "int32"}],
+      "rows": [["a", 1]]
+    },
+    {
+      "name": "lk",
+      "ticking": {"key_columns": ["Id"]},
+      "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}],
+      "rows": [[1, "a"]]
+    },
+    {
+      "name": "ra",
+      "ticking": {"key_columns": []},
+      "columns": [{"name": "K", "type": "string"}, {"name": "RV", "type": "int64"}],
+      "rows": [["a", 10], ["b", 20]]
+    },
+    {
+      "name": "rk",
+      "ticking": {"key_columns": ["K"]},
+      "columns": [{"name": "K", "type": "string"}, {"name": "KV", "type": "int64"}],
+      "rows": [["a", 10]]
+    },
+    {
+      "name": "fixed",
+      "columns": [{"name": "K", "type": "string"}, {"name": "FV", "type": "int64"}],
+      "rows": [["a", 1], ["b", 2]]
+    }
+  ],
+  "operations": [
+    {"name": "append_static", "op": "natural_join", "left": "la", "right": "fixed", "on": ["K"]},
+    {"name": "append_static_first", "op": "natural_join", "left": "la", "right": "fixed", "on": ["K"], "type": "first_match"},
+    {"name": "append_static_exact", "op": "exact_join", "left": "la", "right": "fixed", "on": ["K"]},
+    {"name": "append_keyed", "op": "natural_join", "left": "la", "right": "rk", "on": ["K"]},
+    {"name": "append_append", "op": "natural_join", "left": "la", "right": "ra", "on": ["K"]},
+    {"name": "append_append_first", "op": "natural_join", "left": "la", "right": "ra", "on": ["K"], "type": "first_match"},
+    {"name": "append_append_last", "op": "natural_join", "left": "la", "right": "ra", "on": ["K"], "type": "last_match"},
+    {"name": "append_append_exactly_one", "op": "natural_join", "left": "la", "right": "ra", "on": ["K"], "type": "exactly_one_match"},
+    {"name": "append_append_exact", "op": "exact_join", "left": "la", "right": "ra", "on": ["K"]},
+    {"name": "static_append", "op": "natural_join", "left": "fixed", "right": "ra", "on": ["K"]},
+    {"name": "static_append_exact", "op": "exact_join", "left": "fixed", "right": "ra", "on": ["K"]},
+    {"name": "static_keyed", "op": "natural_join", "left": "fixed", "right": "rk", "on": ["K"]},
+    {"name": "keyed_static", "op": "natural_join", "left": "lk", "right": "fixed", "on": ["K"]},
+    {"name": "keyed_append_exact", "op": "exact_join", "left": "lk", "right": "ra", "on": ["K"]},
+    {"name": "append_keyed_zero_keys", "op": "natural_join", "left": "la", "right": "rk", "on": [], "joins": ["KV"]}
+  ],
+  "results": [
+    {"table": "append_static"},
+    {"table": "append_static_first"},
+    {"table": "append_static_exact"},
+    {"table": "append_keyed"},
+    {"table": "append_append"},
+    {"table": "append_append_first"},
+    {"table": "append_append_last"},
+    {"table": "append_append_exactly_one"},
+    {"table": "append_append_exact"},
+    {"table": "static_append"},
+    {"table": "static_append_exact"},
+    {"table": "static_keyed"},
+    {"table": "keyed_static"},
+    {"table": "keyed_append_exact"},
+    {"table": "append_keyed_zero_keys"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "la", "rows": [["b", 2]]}]},
+    {"actions": [{"action": "add", "table": "ra", "rows": [["c", 30]]}]},
+    {"actions": [{"action": "add", "table": "la", "rows": [["c", 3]]}]},
+    {"actions": [{"action": "add", "table": "rk", "rows": [["b", 5]]}]},
+    {"actions": [{"action": "add", "table": "lk", "rows": [[2, "c"], [1, "b"]]}]}
+  ]
+}

@@ -1,0 +1,371 @@
+{
+ "format": 1,
+ "name": "ticking_sort_absolute_descending",
+ "description": "Absolute and descending sorts of a keyed input table with ties, nulls, NaN and signed zeros, through adds, replaced rows that move in the order, and deletes.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     3,
+     -2.5,
+     "b"
+    ],
+    [
+     2,
+     -3,
+     2.5,
+     "a"
+    ],
+    [
+     3,
+     null,
+     null,
+     null
+    ],
+    [
+     4,
+     0,
+     -0.0,
+     "b"
+    ],
+    [
+     5,
+     -7,
+     "NaN",
+     "a"
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "abs_int",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_int_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_double",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_double_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "int_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "double_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "string_down_int_up",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "S",
+     "direction": "descending"
+    },
+    {
+     "column": "I",
+     "direction": "ascending"
+    }
+   ]
+  },
+  {
+   "name": "abs_then_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "ascending",
+     "absolute": true
+    },
+    {
+     "column": "D",
+     "direction": "descending"
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "abs_int"
+  },
+  {
+   "table": "abs_int_down"
+  },
+  {
+   "table": "abs_double"
+  },
+  {
+   "table": "abs_double_down"
+  },
+  {
+   "table": "int_down"
+  },
+  {
+   "table": "double_down"
+  },
+  {
+   "table": "string_down_int_up"
+  },
+  {
+   "table": "abs_then_down"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       3,
+       0.0,
+       "b"
+      ],
+      [
+       7,
+       -3,
+       "Infinity",
+       null
+      ],
+      [
+       8,
+       7,
+       "-Infinity",
+       "a"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       -1,
+       2.5,
+       "a"
+      ],
+      [
+       5,
+       0,
+       -0.0,
+       "b"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       9,
+       null,
+       "NaN",
+       "c"
+      ],
+      [
+       3,
+       3,
+       2.5,
+       "b"
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       6
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       2147483647,
+       1e+300,
+       "a"
+      ],
+      [
+       4,
+       -2147483647,
+       -1e+300,
+       ""
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       4
+      ],
+      [
+       5
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       -1,
+       -1.0,
+       "x"
+      ],
+      [
+       2,
+       1,
+       1.0,
+       "x"
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

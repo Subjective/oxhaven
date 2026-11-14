@@ -253,6 +253,7 @@ macro_rules! handlers {
 
 // One line per handler file: `file { Operation => HandlerType }`.
 handlers! {
+    apply_preview_columns { ApplyPreviewColumns => Handler }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll }
     create_input_table { CreateInputTable => Handler }
     drop_columns { DropColumns => Handler }

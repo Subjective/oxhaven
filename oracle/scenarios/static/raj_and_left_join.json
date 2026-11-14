@@ -1,0 +1,387 @@
+{
+ "format": 1,
+ "name": "raj_and_left_join",
+ "description": "raj with each match rule next to aj on the same tables (exact match columns with nulls, duplicate stamps on the right, null stamps, no match), raj on a floating point stamp with NaN and infinities, and the left_join request.",
+ "inputs": [
+  {
+   "name": "l",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "a",
+     1,
+     "NaN"
+    ],
+    [
+     3,
+     "b",
+     10,
+     2.5
+    ],
+    [
+     4,
+     null,
+     3,
+     null
+    ],
+    [
+     5,
+     "c",
+     7,
+     0.0
+    ],
+    [
+     6,
+     "a",
+     null,
+     -0.0
+    ],
+    [
+     7,
+     "b",
+     0,
+     "Infinity"
+    ]
+   ]
+  },
+  {
+   "name": "r",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "Y",
+     "type": "int32"
+    },
+    {
+     "name": "W",
+     "type": "string"
+    },
+    {
+     "name": "E",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     "a1",
+     1.5
+    ],
+    [
+     "a",
+     5,
+     "a5",
+     2.0
+    ],
+    [
+     "a",
+     5,
+     "a5again",
+     "NaN"
+    ],
+    [
+     "a",
+     9,
+     "a9",
+     9.0
+    ],
+    [
+     "b",
+     2,
+     "b2",
+     null
+    ],
+    [
+     "b",
+     null,
+     "bnull",
+     0.0
+    ],
+    [
+     null,
+     3,
+     "null3",
+     3.0
+    ],
+    [
+     "d",
+     1,
+     "d1",
+     -0.0
+    ]
+   ]
+  },
+  {
+   "name": "r_empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "Y",
+     "type": "int32"
+    },
+    {
+     "name": "W",
+     "type": "string"
+    },
+    {
+     "name": "E",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "raj_ge",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X <= Y"
+   ],
+   "joins": [
+    "Y",
+    "W"
+   ]
+  },
+  {
+   "name": "raj_gt",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X < Y"
+   ],
+   "joins": [
+    "Y",
+    "W"
+   ]
+  },
+  {
+   "name": "aj_le",
+   "op": "aj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X >= Y"
+   ],
+   "joins": [
+    "Y",
+    "W"
+   ]
+  },
+  {
+   "name": "aj_lt",
+   "op": "aj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X > Y"
+   ],
+   "joins": [
+    "Y",
+    "W"
+   ]
+  },
+  {
+   "name": "raj_no_key",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "X <= Y"
+   ],
+   "joins": [
+    "RK = K",
+    "Y"
+   ]
+  },
+  {
+   "name": "raj_double",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "D <= E"
+   ],
+   "joins": [
+    "E",
+    "W"
+   ]
+  },
+  {
+   "name": "aj_double",
+   "op": "aj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "D >= E"
+   ],
+   "joins": [
+    "E",
+    "W"
+   ]
+  },
+  {
+   "name": "raj_all_columns",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X <= Y"
+   ]
+  },
+  {
+   "name": "raj_empty_right",
+   "op": "raj",
+   "left": "l",
+   "right": "r_empty",
+   "on": [
+    "K",
+    "X <= Y"
+   ],
+   "joins": [
+    "W"
+   ]
+  },
+  {
+   "name": "raj_wrong_rule",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X >= Y"
+   ],
+   "joins": [
+    "W"
+   ]
+  },
+  {
+   "name": "raj_stamp_types",
+   "op": "raj",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "X <= E"
+   ],
+   "joins": [
+    "W"
+   ]
+  },
+  {
+   "name": "raj_name_clash",
+   "op": "raj",
+   "left": "l",
+   "right": "l",
+   "on": [
+    "K",
+    "X <= X"
+   ]
+  },
+  {
+   "name": "left",
+   "op": "left_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K"
+   ],
+   "joins": [
+    "Y",
+    "W"
+   ]
+  },
+  {
+   "name": "left_all",
+   "op": "left_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "raj_ge"
+  },
+  {
+   "table": "raj_gt"
+  },
+  {
+   "table": "aj_le"
+  },
+  {
+   "table": "aj_lt"
+  },
+  {
+   "table": "raj_no_key"
+  },
+  {
+   "table": "raj_double"
+  },
+  {
+   "table": "aj_double"
+  },
+  {
+   "table": "raj_all_columns"
+  },
+  {
+   "table": "raj_empty_right"
+  },
+  {
+   "table": "raj_wrong_rule"
+  },
+  {
+   "table": "raj_stamp_types"
+  },
+  {
+   "table": "raj_name_clash"
+  },
+  {
+   "table": "left"
+  },
+  {
+   "table": "left_all"
+  }
+ ]
+}

@@ -1,0 +1,624 @@
+{
+ "format": 1,
+ "name": "range_join",
+ "description": "range_join with each pair of range rules (strict, inclusive, allowing the row before and the row after), with and without exact match columns, over empty, inverted and null ranges, null keys and duplicate range values; an unsorted right table; aggregations other than group.",
+ "inputs": [
+  {
+   "name": "l",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "Lo",
+     "type": "int32"
+    },
+    {
+     "name": "Hi",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     5
+    ],
+    [
+     2,
+     "a",
+     3,
+     3
+    ],
+    [
+     3,
+     "a",
+     6,
+     2
+    ],
+    [
+     4,
+     "b",
+     0,
+     100
+    ],
+    [
+     5,
+     "c",
+     1,
+     2
+    ],
+    [
+     6,
+     null,
+     1,
+     9
+    ],
+    [
+     7,
+     "a",
+     null,
+     4
+    ],
+    [
+     8,
+     "a",
+     2,
+     null
+    ],
+    [
+     9,
+     "a",
+     null,
+     null
+    ]
+   ]
+  },
+  {
+   "name": "r",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1.5
+    ],
+    [
+     "a",
+     2,
+     "NaN"
+    ],
+    [
+     "a",
+     3,
+     3.5
+    ],
+    [
+     "a",
+     3,
+     3.75
+    ],
+    [
+     "a",
+     5,
+     null
+    ],
+    [
+     "a",
+     8,
+     8.5
+    ],
+    [
+     "b",
+     50,
+     50.5
+    ],
+    [
+     null,
+     4,
+     4.5
+    ],
+    [
+     "d",
+     1,
+     0.5
+    ]
+   ]
+  },
+  {
+   "name": "r_unsorted",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     5,
+     5.5
+    ],
+    [
+     "a",
+     1,
+     1.5
+    ],
+    [
+     "a",
+     3,
+     3.5
+    ]
+   ]
+  },
+  {
+   "name": "r_ordered",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1.5
+    ],
+    [
+     "d",
+     1,
+     0.5
+    ],
+    [
+     "a",
+     2,
+     "NaN"
+    ],
+    [
+     "a",
+     3,
+     3.5
+    ],
+    [
+     null,
+     4,
+     4.5
+    ],
+    [
+     "b",
+     50,
+     50.5
+    ],
+    [
+     "z",
+     null,
+     9.5
+    ]
+   ]
+  },
+  {
+   "name": "r_empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "inclusive",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "strict",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo < P < Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "half_open",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P < Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "other_half",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo < P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "with_neighbours",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "<- Lo <= P <= Hi ->"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "with_preceding",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "<- Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "no_exact",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "no_exact_ordered",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_ordered",
+   "on": [
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "no_exact_neighbours",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_ordered",
+   "on": [
+    "<- Lo <= P <= Hi ->"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "strict_neighbours",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_ordered",
+   "on": [
+    "<- Lo < P < Hi ->"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unsorted_right",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_unsorted",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "empty_right",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_empty",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "sum_agg",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "sum",
+     "columns": [
+      "V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "count_agg",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    }
+   ]
+  },
+  {
+   "name": "bad_match",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo >= P >= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "unknown_column",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= Nope <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "other_types",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= V <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "inclusive"
+  },
+  {
+   "table": "strict"
+  },
+  {
+   "table": "half_open"
+  },
+  {
+   "table": "other_half"
+  },
+  {
+   "table": "with_neighbours"
+  },
+  {
+   "table": "with_preceding"
+  },
+  {
+   "table": "no_exact"
+  },
+  {
+   "table": "no_exact_ordered"
+  },
+  {
+   "table": "no_exact_neighbours"
+  },
+  {
+   "table": "strict_neighbours"
+  },
+  {
+   "table": "unsorted_right"
+  },
+  {
+   "table": "empty_right"
+  },
+  {
+   "table": "sum_agg"
+  },
+  {
+   "table": "count_agg"
+  },
+  {
+   "table": "bad_match"
+  },
+  {
+   "table": "unknown_column"
+  },
+  {
+   "table": "other_types"
+  }
+ ]
+}

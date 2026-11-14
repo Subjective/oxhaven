@@ -17,9 +17,10 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::Stream;
 use tonic::{Request, Response, Status, Streaming};
 
-use super::encode::{record_batch_messages, schema_message, BatchOptions};
+use super::encode::schema_message;
 use super::upload::{not_ported as not_ported_status, TableUpload, UploadError};
-use super::wire::{snapshot, wire_schema};
+use super::wire::wire_schema;
+use crate::barrage::{snapshot_request_messages, Barrage, WireOptions};
 use crate::schema::schema_ipc_bytes;
 use crate::session::{
     current_session, descriptor_to_export_id, export_id_to_bytes, handshake, optional_session,
@@ -94,11 +95,18 @@ pub fn flight_info(
 pub struct FlightGrpc {
     store: Arc<SessionStore>,
     router: Arc<TicketRouter>,
+    barrage: Arc<Barrage>,
 }
 
 impl FlightGrpc {
+    /// Must be called inside a tokio runtime: Barrage sends updates from its blocking
+    /// threads.
     pub fn new(store: Arc<SessionStore>, router: Arc<TicketRouter>) -> Self {
-        Self { store, router }
+        Self {
+            store,
+            router,
+            barrage: Barrage::on_runtime(tokio::runtime::Handle::current()),
+        }
     }
 
     /// Answers a unary call with something computed from the flight info of the table a
@@ -162,19 +170,10 @@ pub fn do_get_messages(table: &Arc<dyn Table>) -> Result<Vec<FlightData>, Export
                 .map_or(true, |field| field.is_nullable())
         })
         .collect();
-    let snapshot = snapshot(table).map_err(|failure| ExportError::Internal(failure.message))?;
-    // Java attaches a `BarrageUpdateMetadata` to the first batch of each snapshot, which a
-    // Flight client ignores. It comes with the Barrage subscription code.
-    let app_metadata = Vec::new();
-    let batches = record_batch_messages(
-        &snapshot.columns,
-        &nullable,
-        snapshot.rows,
-        BatchOptions::default(),
-        app_metadata,
-        table.is_refreshing(),
-    )
-    .map_err(|problem| ExportError::Internal(problem.0))?;
+    // Java attaches a `BarrageUpdateMetadata` to the first batch of each part of the
+    // snapshot, which a Flight client ignores.
+    let batches =
+        snapshot_request_messages(table, &nullable, None, None, false, WireOptions::default())?;
     let mut messages = Vec::with_capacity(1 + batches.len());
     messages.push(schema_message(&schema));
     messages.extend(batches);
@@ -463,11 +462,18 @@ impl FlightService for FlightGrpc {
         Ok(boxed(receiver))
     }
 
+    /// Barrage: subscriptions to tables and snapshots of them; see [`crate::barrage`].
+    ///
+    /// Behavior: `FlightServiceGrpcImpl#doExchangeCustom`
     async fn do_exchange(
         &self,
-        _request: Request<Streaming<FlightData>>,
+        request: Request<Streaming<FlightData>>,
     ) -> Result<Response<Self::DoExchangeStream>, Status> {
-        not_ported("doExchangeCustom")
+        let session = current_session(&request)?;
+        let responses =
+            self.barrage
+                .exchange(session, self.router.clone(), request.into_inner())?;
+        Ok(boxed(responses))
     }
 
     async fn do_action(

@@ -1,0 +1,168 @@
+{
+ "format": 1,
+ "name": "ticking_column_statistics",
+ "description": "column_statistics of a ticking table: Java computes it once, so the result must not follow the table.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN"
+    ],
+    [
+     4,
+     null,
+     2,
+     -0.0
+    ],
+    [
+     5,
+     "b",
+     7,
+     2.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "stats_int",
+   "op": "column_statistics",
+   "source": "t",
+   "column": "I"
+  },
+  {
+   "name": "stats_string",
+   "op": "column_statistics",
+   "source": "t",
+   "column": "G"
+  },
+  {
+   "name": "distinct_groups",
+   "op": "select_distinct",
+   "source": "t",
+   "columns": [
+    "G"
+   ]
+  },
+  {
+   "name": "meta",
+   "op": "meta_table",
+   "source": "t"
+  }
+ ],
+ "results": [
+  {
+   "table": "stats_int"
+  },
+  {
+   "table": "stats_string"
+  },
+  {
+   "table": "distinct_groups"
+  },
+  {
+   "table": "meta"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "a",
+       1,
+       0.5
+      ],
+      [
+       7,
+       "c",
+       4,
+       "Infinity"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       3,
+       3.5
+      ],
+      [
+       4,
+       "b",
+       2,
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

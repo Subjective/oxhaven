@@ -1,0 +1,488 @@
+{
+  "format": 2,
+  "scenario": "ticking_join_failures",
+  "scenario_sha256": "9fc5c20badddea821123ee0012ae7a7be557987bc694af4f1ce8a8435a62d02a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "error_a",
+      "file": "step000.error_a.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "error_b",
+      "file": "step000.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "error_static_left",
+      "file": "step000.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "error_static_right",
+      "file": "step000.error_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "first_static_right",
+      "file": "step000.first_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "last_static_right",
+      "file": "step000.last_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "exact_a",
+      "file": "step000.exact_a.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "exact_b",
+      "file": "step000.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "exactly_one_static_left",
+      "file": "step000.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "exact_static_right",
+      "file": "step000.exact_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "error_a",
+      "file": "step001.error_a.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "error_b",
+      "file": "step001.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "error_static_left",
+      "file": "step001.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "error_static_right",
+      "file": "step001.error_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "first_static_right",
+      "file": "step001.first_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "last_static_right",
+      "file": "step001.last_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "exact_a",
+      "file": "step001.exact_a.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "exact_b",
+      "file": "step001.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "exactly_one_static_left",
+      "file": "step001.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "exact_static_right",
+      "file": "step001.exact_static_right.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "error_a",
+      "file": "step002.error_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "error_b",
+      "file": "step002.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "error_static_left",
+      "file": "step002.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "error_static_right",
+      "file": "step002.error_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "first_static_right",
+      "file": "step002.first_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "last_static_right",
+      "file": "step002.last_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "exact_a",
+      "file": "step002.exact_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "exact_b",
+      "file": "step002.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "exactly_one_static_left",
+      "file": "step002.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "exact_static_right",
+      "file": "step002.exact_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "error_a",
+      "file": "step003.error_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "error_b",
+      "file": "step003.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "error_static_left",
+      "file": "step003.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "error_static_right",
+      "file": "step003.error_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "first_static_right",
+      "file": "step003.first_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "last_static_right",
+      "file": "step003.last_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "exact_a",
+      "file": "step003.exact_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "exact_b",
+      "file": "step003.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "exactly_one_static_left",
+      "file": "step003.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "exact_static_right",
+      "file": "step003.exact_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "error_a",
+      "file": "step004.error_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "error_b",
+      "file": "step004.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "error_static_left",
+      "file": "step004.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "error_static_right",
+      "file": "step004.error_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "first_static_right",
+      "file": "step004.first_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "last_static_right",
+      "file": "step004.last_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "exact_a",
+      "file": "step004.exact_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "exact_b",
+      "file": "step004.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "exactly_one_static_left",
+      "file": "step004.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "exact_static_right",
+      "file": "step004.exact_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "error_a",
+      "file": "step005.error_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "error_b",
+      "file": "step005.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "error_static_left",
+      "file": "step005.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "error_static_right",
+      "file": "step005.error_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "first_static_right",
+      "file": "step005.first_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "last_static_right",
+      "file": "step005.last_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "exact_a",
+      "file": "step005.exact_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "exact_b",
+      "file": "step005.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "exactly_one_static_left",
+      "file": "step005.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "exact_static_right",
+      "file": "step005.exact_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "error_a",
+      "file": "step006.error_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "error_b",
+      "file": "step006.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "error_static_left",
+      "file": "step006.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "error_static_right",
+      "file": "step006.error_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "first_static_right",
+      "file": "step006.first_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "last_static_right",
+      "file": "step006.last_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "exact_a",
+      "file": "step006.exact_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "exact_b",
+      "file": "step006.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "exactly_one_static_left",
+      "file": "step006.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "exact_static_right",
+      "file": "step006.exact_static_right.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "error_a",
+      "file": "step007.error_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "error_b",
+      "file": "step007.error_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "error_static_left",
+      "file": "step007.error_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "error_static_right",
+      "file": "step007.error_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "first_static_right",
+      "file": "step007.first_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "last_static_right",
+      "file": "step007.last_static_right.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "exact_a",
+      "file": "step007.exact_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "exact_b",
+      "file": "step007.exact_b.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "exactly_one_static_left",
+      "file": "step007.exactly_one_static_left.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "exact_static_right",
+      "file": "step007.exact_static_right.arrow",
+      "rows": 2
+    }
+  ]
+}

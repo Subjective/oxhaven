@@ -1,0 +1,106 @@
+{
+  "format": 1,
+  "name": "join_arguments",
+  "description": "The match and addition arguments of natural_join and exact_join: other names on each side, renamed and repeated additions, the default additions, and every refusal.",
+  "inputs": [
+    {
+      "name": "l",
+      "columns": [{"name": "LK", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "Tag", "type": "string"}],
+      "rows": [
+        [1, 0.0, "l0"],
+        [2, "NaN", "l1"],
+        [null, null, "l2"],
+        [4, 1.5, "l3"]
+      ]
+    },
+    {
+      "name": "r",
+      "columns": [{"name": "K", "type": "int32"}, {"name": "LK", "type": "int32"}, {"name": "V", "type": "int64"}, {"name": "W", "type": "string"}],
+      "rows": [
+        [1, 9, 10, "w1"],
+        [2, 8, 20, "w2"],
+        [null, 7, 30, "w3"]
+      ]
+    },
+    {
+      "name": "floats",
+      "columns": [{"name": "D", "type": "float64"}, {"name": "V", "type": "int64"}],
+      "rows": [
+        [-0.0, 1],
+        ["NaN", 2],
+        [0.0, 3],
+        [2.5, 4],
+        [2.5, 5],
+        [null, 6],
+        [null, 7]
+      ]
+    },
+    {
+      "name": "left_floats",
+      "columns": [{"name": "D", "type": "float64"}],
+      "rows": [[0.0]]
+    },
+    {
+      "name": "left_nulls",
+      "columns": [{"name": "D", "type": "float64"}],
+      "rows": [[null]]
+    },
+    {
+      "name": "left_other",
+      "columns": [{"name": "D", "type": "float64"}],
+      "rows": [["NaN"], [7.0]]
+    }
+  ],
+  "operations": [
+    {"name": "other_names", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["V"]},
+    {"name": "default_additions", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"]},
+    {"name": "default_additions_exact", "op": "exact_join", "left": "r", "right": "l", "on": ["K=LK"]},
+    {"name": "renamed", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["X=V", "W", "RightKey=K", "Y=V"]},
+    {"name": "repeated_name", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["X=V", "X=W"]},
+    {"name": "repeated_name_between", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["X=V", "W", "X=K"]},
+    {"name": "default_conflict", "op": "natural_join", "left": "l", "right": "r", "on": ["Tag=W"]},
+    {"name": "conflict", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["Tag=W"]},
+    {"name": "conflict_with_match", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["LK"]},
+    {"name": "no_left_match", "op": "natural_join", "left": "l", "right": "r", "on": ["Nope=K"], "joins": ["V"]},
+    {"name": "no_right_match", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=Nope"], "joins": ["V"]},
+    {"name": "no_addition", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["Nope"]},
+    {"name": "no_addition_exact", "op": "exact_join", "left": "l", "right": "r", "on": ["LK=K"], "joins": ["X=Nope"]},
+    {"name": "other_types", "op": "natural_join", "left": "l", "right": "r", "on": ["Tag=K"], "joins": ["V"]},
+    {"name": "int_and_long", "op": "natural_join", "left": "l", "right": "r", "on": ["LK=V"], "joins": ["W"]},
+    {"name": "unmatched_duplicates", "op": "natural_join", "left": "left_other", "right": "floats", "on": ["D"]},
+    {"name": "both_zeros", "op": "natural_join", "left": "left_floats", "right": "floats", "on": ["D"]},
+    {"name": "both_zeros_first", "op": "natural_join", "left": "left_floats", "right": "floats", "on": ["D"], "type": "first_match"},
+    {"name": "both_zeros_last", "op": "natural_join", "left": "left_floats", "right": "floats", "on": ["D"], "type": "last_match"},
+    {"name": "two_nulls", "op": "natural_join", "left": "left_nulls", "right": "floats", "on": ["D"]},
+    {"name": "two_nulls_exact", "op": "exact_join", "left": "left_nulls", "right": "floats", "on": ["D"]},
+    {"name": "two_nulls_last", "op": "natural_join", "left": "left_nulls", "right": "floats", "on": ["D"], "type": "last_match"},
+    {"name": "no_right_row_exact", "op": "exact_join", "left": "left_other", "right": "floats", "on": ["D"]},
+    {"name": "no_right_row_exactly_one", "op": "natural_join", "left": "left_other", "right": "floats", "on": ["D"], "type": "exactly_one_match"}
+  ],
+  "results": [
+    {"table": "other_names"},
+    {"table": "default_additions"},
+    {"table": "default_additions_exact"},
+    {"table": "renamed"},
+    {"table": "repeated_name"},
+    {"table": "repeated_name_between"},
+    {"table": "default_conflict"},
+    {"table": "conflict"},
+    {"table": "conflict_with_match"},
+    {"table": "no_left_match"},
+    {"table": "no_right_match"},
+    {"table": "no_addition"},
+    {"table": "no_addition_exact"},
+    {"table": "other_types"},
+    {"table": "int_and_long"},
+    {"table": "unmatched_duplicates"},
+    {"table": "both_zeros"},
+    {"table": "both_zeros_first"},
+    {"table": "both_zeros_last"},
+    {"table": "two_nulls"},
+    {"table": "two_nulls_exact"},
+    {"table": "two_nulls_last"},
+    {"table": "no_right_row_exact"},
+    {"table": "no_right_row_exactly_one"}
+  ]
+}

@@ -199,14 +199,17 @@ is a defect to find, in the server or in the harness.
 ## Fuzz
 
 ```bash
-# 300 generated scenarios over every operation, Java against Java:
-OPS=where,sort,head,tail,view,select,update,drop_columns,merge,agg_by,natural_join,exact_join,join,aj,update_by
+# 300 generated scenarios over every operation the generator builds, Java against Java:
+OPS=$(.venv/bin/python -c "from harness import fuzz; print(','.join(sorted(fuzz.OPERATIONS)))")
 .venv/bin/python -m harness fuzz --a $URL --ops $OPS --seeds 300 --exact
 
 # Java against a server under test, 10000 scenarios that only filter, starting at seed 0:
 .venv/bin/python -m harness fuzz --a $URL --b dh://127.0.0.1:10100 --ops where --seeds 10000
 # One seed again:
 .venv/bin/python -m harness fuzz --a $URL --b dh://127.0.0.1:10100 --ops where --seeds 1 --seed 4711
+# Every seed, whatever differs, with the differences grouped by cause:
+.venv/bin/python -m harness fuzz --a $URL --b dh://127.0.0.1:10100 --ops $OPS --seeds 500 \
+    --keep-going --out /tmp/fuzz-differences
 ```
 
 A scenario is a function of the seed and the set of operations, and of nothing else
@@ -216,6 +219,15 @@ tables with steps that add rows, replace rows by key and delete them, and one to
 drawn from `--ops` with arguments that fit the schema. Generated scenarios use no operation
 outside `--ops`. About 300 seeds over all operations take a minute and a half against a local
 Java server.
+
+The generator builds the operations in `fuzz.OPERATIONS`: `where`, `filter` (structured
+conditions: comparisons of numeric columns with literals and columns, `in`, the null test, and
+`and`, `or`, `not` of them), `sort`, `head`, `tail`, `slice`, `reverse`, `flatten`, `view`,
+`select`, `update`, `update_view`, `lazy_update`, `drop_columns`, `select_distinct`, `merge`,
+`agg_by` (`sum`, `min`, `max`, `first`, `last`, `avg`, `count`), `head_by`, `tail_by`,
+`natural_join`, `exact_join`, `join`, `aj` and `update_by` (`cum_sum`). `--ops` with any other
+name is refused. The scenarios for a seed depend on the set of operations asked for, so a seed
+over a set without the newer operations is the scenario it always was.
 
 `fuzz` stops at the first seed whose results differ. It prints the first mismatch, shrinks the
 scenario (fewer steps, operations, rows, columns, arguments) while the two servers still differ,
@@ -233,6 +245,22 @@ rerun: python -m harness diff --a ... --b ... --scenarios .../.fuzz/fuzz_18_min.
 The exit status is 0 when every seed is clean, 1 at a difference, 2 when a scenario could not be
 run. Operations that fail on the reference are part of the comparison (see the rules), so a
 generated scenario with a failing operation is not an error.
+
+With `--keep-going`, `fuzz` runs every seed and shrinks nothing, so that one known difference
+does not hide the others. Each differing scenario is written to `--out` as `fuzz_<seed>.json`.
+The differences are grouped by signature: the kind of mismatch, the metadata keys whose values
+differ (for `table_metadata` and `column_metadata`), and the operation that defines the table
+(`input_table` for an input). Names of generated tables and columns are not part of it. Each
+group is printed with its seeds and one example, the most frequent first:
+
+```
+GROUP kind=table_metadata key=deephaven:attribute.AddOnly,deephaven:attribute.AppendOnly operation=where: 41 seeds, 96 mismatches; seeds 0, 3, 4, ...
+      example, seed 0: scenario=fuzz_0 table=o2 step=0 kind=table_metadata expected={...} actual={...}
+      scenario: /tmp/fuzz-differences/fuzz_0.json
+fuzz: 500 seeds, 448 clean, 52 with differences in 3 groups, 0 not run
+```
+
+To shrink one of them, run that seed alone without `--keep-going`.
 
 ### A faulty server to test against
 
@@ -388,12 +416,20 @@ cites the section of `PARITY.md` behind each rule. In short:
 - Booleans, integers, strings and timestamps are exact. Null equals only null.
 - Floats are compared bit for bit, except that every NaN equals every NaN. `0.0` and `-0.0`
   differ (A2 is proposed, not in force).
-- The exception is A1: a float cell of a computed column (the result of `sum`, `avg` or
-  `cum_sum`, or of a formula that calls an inexact library function) may differ by a relative
-  `1e-9` or an absolute `1e-12` for `double`, and `1e-5` or `1e-6` for `float`. Null, NaN and
-  infinity are never covered by the tolerance. `rules.computed_columns` derives the computed
-  columns from the scenario's operations. `--exact` switches the tolerance off, for comparing
-  two runs of the same server.
+- The exception is A1: a float cell of a computed column may differ by a relative `1e-9` or an
+  absolute `1e-12` for `double`, and `1e-5` or `1e-6` for `float`. Null, NaN and infinity are
+  never covered by the tolerance. Computed columns are the results of the aggregations `sum`,
+  `abs_sum`, `avg`, `weighted_avg`, `weighted_sum`, `var`, `std` and `median` (in `agg_by`,
+  `agg_all_by` and `range_join`), of the `update_by` operators that accumulate (`cum_sum`,
+  `cum_prod`, the `em*` family, rolling sum, avg, std and weighted avg), of a formula that
+  calls an inexact library function, the columns `SUM`, `SUM_ABS`, `SUM_SQRD`, `AVG`,
+  `AVG_ABS` and `STD_DEV` of `column_statistics`, and any column that passes such a column
+  on (a `first` of a sum, a join that adds it, a snapshot of it). `rules.computed_columns`
+  derives them from the scenario's operations. `--exact` switches the tolerance off, for
+  comparing two runs of the same server.
+- An array cell (the result of `group`, `distinct`, `rolling_group_*`, `group_by` and
+  `range_join`) is compared element by element under the rule of its element type; a null
+  array differs from an empty one. Arrays of structs and other nested types are not known.
 - A result that the scenario marks unordered is compared as a multiset. Everything else is
   compared in order.
 - A column type the rules do not know is reported, never passed.
@@ -433,24 +469,71 @@ A scenario is one JSON document. `harness/scenario.py` validates it and rejects 
   the epoch, UTC, written as an integer). A cell is a JSON value or `null`; the floats that JSON
   lacks are written `"NaN"`, `"Infinity"` and `"-Infinity"`. Without `ticking` the input is a
   static table. With it, the input is an input table: keyed when `key_columns` names columns,
-  append-only when the list is empty.
+  append-only when the list is empty. `"blink": true` next to an empty `key_columns` makes it
+  a blink input table, which starts without rows and shows each added row for one cycle.
+  `inputs` may be empty when every table comes from `empty_table` or `time_table`.
 - **operations**: each defines a named table from tables defined before it.
 
   | `op` | Other keys |
   | --- | --- |
-  | `where` | `source`, `filters` |
-  | `sort` | `source`, `by`: list of `{"column", "direction"}` with `ascending` or `descending` |
-  | `head`, `tail` | `source`, `rows` |
-  | `view`, `select`, `update` | `source`, `formulas` |
-  | `drop_columns` | `source`, `columns` |
-  | `merge` | `sources` |
-  | `agg_by` | `source`, `by`, `aggs`: list of `{"agg", "columns"}` for `sum`, `min`, `max`, `first`, `last`, `avg`, or `{"agg": "count", "column"}` |
-  | `natural_join` | `left`, `right`, `on`, optional `joins`, optional `type`: `error_on_duplicate` (default), `first_match`, `last_match`, `exactly_one_match` |
-  | `exact_join`, `join`, `aj` | `left`, `right`, `on`, optional `joins` |
-  | `update_by` | `source`, `by`, `ops`: list of `{"op": "cum_sum", "columns"}` |
+  | `op` | Request of the table service | Other keys |
+  | --- | --- | --- |
+  | `where` | `unstructured_filter` | `source`, `filters` |
+  | `filter` | `filter` | `source`, `conditions`: list of structured conditions, see below |
+  | `where_in` | `where_in` | `left`, `right`, `on`, optional `inverted` |
+  | `sort` | `sort` | `source`, `by`: list of `{"column", "direction"}` with `ascending` or `descending`, optional `"absolute": true` |
+  | `reverse` | `sort` with the `REVERSE` direction | `source` |
+  | `head`, `tail` | `head`, `tail` | `source`, `rows` |
+  | `slice` | `slice` | `source`, `start`, `stop` (negative counts from the end) |
+  | `head_by`, `tail_by` | `head_by`, `tail_by` | `source`, `rows`, `by` |
+  | `flatten` | `flatten` | `source` |
+  | `view`, `select`, `update`, `update_view`, `lazy_update` | the same names | `source`, `formulas` |
+  | `drop_columns` | `drop_columns` | `source`, `columns` |
+  | `select_distinct` | `select_distinct` | `source`, `columns` (may be empty) |
+  | `merge` | `merge` | `sources` |
+  | `agg_by` | `aggregate` | `source`, `by`, `aggs`: list of aggregations, see below |
+  | `agg_all_by` | `aggregate_all` | `source`, `by`, `agg`: one aggregation without `columns` |
+  | `group_by` | `aggregate_all` with `group` | `source`, `by` |
+  | `ungroup` | `ungroup` | `source`, optional `columns`, `null_fill` |
+  | `natural_join` | `natural_join` | `left`, `right`, `on`, optional `joins`, optional `type`: `error_on_duplicate` (default), `first_match`, `last_match`, `exactly_one_match` |
+  | `exact_join`, `join`, `left_join` | `exact_join`, `cross_join`, `left_join` | `left`, `right`, `on`, optional `joins` |
+  | `aj`, `raj` | `aj`, `raj` | `left`, `right`, `on` (the last entry is the as-of match), optional `joins` |
+  | `range_join` | `range_join` | `left`, `right`, `on` (the last entry is the range match, such as `"<- Lo <= P < Hi"`), `aggs` |
+  | `multi_join` | `multi_join` | `inputs`: list of `{"table", "on", optional "joins"}` |
+  | `update_by` | `update_by` | `source`, `by`, `ops`: list of `{"op", "columns", optional "args"}` |
+  | `snapshot` | `snapshot` | `source` |
+  | `snapshot_when` | `snapshot_when` | `source`, `trigger`, optional `stamp_columns`, `initial`, `incremental`, `history` |
+  | `time_table` | `time_table` | `period`, `start_time` (strings such as `PT1H` and `2024-01-01T00:00:00Z`), optional `blink` |
+  | `empty_table` | `empty_table` | `size` |
+  | `meta_table` | `meta_table` | `source` |
+  | `column_statistics` | `column_statistics` | `source`, `column`, optional `unique_value_limit` |
+
+  `create_input_table` has no `op`: every input with `ticking` is created with it.
 
   Filters, formulas and column pairs (`"Out = In"`, `"X >= Y"`) are Deephaven query strings and
   go to the server unchanged.
+
+  An aggregation is `{"agg": name, "columns": [...], optional "args": {...}}`, or
+  `{"agg": "count", "column": name}`. The names are `sum`, `abs_sum`, `avg`, `min`, `max`,
+  `first`, `last`, `std`, `var`, `group`, `count`, `count_where` (`filters`), `count_distinct`
+  (`count_nulls`), `distinct` (`include_nulls`), `unique` (`include_nulls`,
+  `non_unique_sentinel`), `median` and `pct` (`percentile`, `average_evenly_divided`),
+  `sorted_first` and `sorted_last` (`order_by`), `weighted_avg` and `weighted_sum` (`wcol`) and
+  `formula` (`formula`, `formula_param`); the arguments in parentheses go in `args`.
+  `scenario.AGGREGATIONS` is the list.
+
+  An `update_by` operator is named after the function of `pydeephaven.updateby` that builds
+  it (`cum_sum`, `delta`, `ema_tick`, `rolling_avg_time`, ...; `scenario.UPDATE_BY_OPS`), and
+  `args` are that function's keyword arguments (`decay_ticks`, `rev_ticks`, `ts_col`, ...).
+
+  A structured condition is an object with one key, shaped like the `Condition` message of
+  `table.proto`: `{"and": [...]}`, `{"or": [...]}`, `{"not": condition}`,
+  `{"compare": {"op": "<", "lhs": value, "rhs": value}}`,
+  `{"in": {"target": value, "candidates": [value, ...]}}`, `{"is_null": column}`,
+  `{"is_nan": column}`, `{"matches": {"column", "text"}}`, `{"contains": {"column", "text"}}`,
+  `{"invoke": {"method", "arguments", optional "target"}}` and `{"search": {"text"}}`. A value
+  is `{"column": name}`, `{"literal": string, number or boolean}`, `{"long": integer}` or
+  `{"nanos": integer}`.
 - **results**: the tables to compare; an input table may be named directly. A result is ordered
   unless it says `"ordered": false`, which also needs `"unordered_reason"`: a citation of the
   Java source showing that the reference does not guarantee the order. No scenario in the corpus
@@ -475,6 +558,27 @@ formula throws when it is read), the result of that step is a failure. `show` pr
 An action of a step that the server refuses is not a result: the scenario is reported as
 `ERROR`.
 
+When writing a scenario, `ORACLE_TRACE=1` in the environment makes `show` print, for each
+operation the server refuses, the status code and the server's message. Java often answers
+`Details Logged w/ID '...'`; the reason is then next to that id in `.run/java-<port>.log`.
+
+Refusals of Java 42.9 that the recordings hold and that are easy to take for harness faults:
+
+- `left_join`: `UNIMPLEMENTED` for any tables (`raj_and_left_join`).
+- `filter`: the NaN test, a NaN or infinite literal, and a string literal in `<`, `<=`, `>`,
+  `>=` unless the text of the literal carries its own double quotes (`filter_structured`).
+- `range_join`: any refreshing table, any aggregation other than `group`, and `<-` or `->`
+  next to a strict `<` (`range_join`, `ticking_range_join`).
+- `snapshot_when` with `history` together with `initial` or `incremental`: `UNIMPLEMENTED`
+  (`snapshot_static`).
+- `agg_all_by` with `sum`, `avg`, `std` and the like when a column that is not a key is a
+  string, boolean or timestamp (`agg_all_by`).
+- `head_by` and `tail_by` with zero rows, or with every column as a key (`head_by_tail_by`).
+- `select_distinct` of a formula such as `Odd = K % 2`: `FAILED_PRECONDITION`
+  (`select_distinct`).
+- `rolling_formula_*` and the `formula` aggregation replace the parameter as text, so the
+  parameter `x` in `max(x)` gives `maI(I)`; the scenarios name the parameter `each`.
+
 ### How a ticking step is known to be finished
 
 The Java server answers an input table change as soon as the input table has refreshed, while
@@ -490,8 +594,30 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
 - In the formula corpus an input column of type `byte[]`, a vector, `BigDecimal` or a boxed
   type cannot be built through the client, so formulas of the Java tests that need one are
   left out; `harness/formulas/extract.py` counts what it leaves out when it runs.
-- Operations outside the table above have no scenario, no generator and no rule yet; `--ops`
-  rejects their names.
+- Five of the 41 batch operations of the table service have no operation name here:
+  `combo_aggregate` (the older form of `aggregate`; the Python client does not send it),
+  `as_of_join` (deprecated in `table.proto` in favour of `aj` and `raj`),
+  `run_chart_downsample` and `apply_preview_columns` (services for the web client; the first
+  needs a table already ordered on a time axis and returns a sample chosen by pixel count,
+  the second rewrites columns into preview types the rules do not know), and `fetch_table`
+  (it returns its source; every result is already fetched). `--ops` rejects these names and
+  any other name outside the table above.
+- The fuzzer builds only the operations listed under Fuzz. The joins beyond `aj`, the
+  aggregations beyond the seven first ones, `update_by` beyond `cum_sum`, `where_in`,
+  `ungroup`, `snapshot_when`, `range_join`, `multi_join` and the table sources are covered by
+  recorded scenarios only.
+- A `time_table` is only compared through operations whose result does not depend on the
+  clock: a start time far in the past with `head`, `slice` or a `where` on the timestamp.
+  Nothing compares when its rows arrive.
+- A blink input can only be changed by adding rows, and its results are snapshotted between
+  cycles, so the rows of one cycle are seen only through tables that keep them (`head`,
+  `tail`, aggregations); the Barrage update stream of a blink table is not compared.
+- The time-based `update_by` operators and `snapshot_when` with `history` are recorded on
+  static tables and on input tables through adds and deletes; no scenario makes a timestamp
+  go backwards.
+- `faults.py` cannot add a row to, or change the attributes of, a table without columns
+  (`empty_table`, `select_distinct` of no columns): pyarrow drops the rows. The comparison
+  itself does see the row count of such a table.
 - A ticking table that fails during an update cycle (a duplicate right key arriving in a
   `natural_join`, a formula that throws in `update`) is not compared after that. Java keeps
   answering snapshots of such a table, with contents that are not a consistent table (rows of

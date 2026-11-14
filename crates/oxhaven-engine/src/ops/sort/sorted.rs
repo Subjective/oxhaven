@@ -8,7 +8,7 @@
 use super::keys::{KeyEncoder, SortKey};
 use super::{SortColumn, SortError};
 use crate::ops::merge::flattened_shift_data;
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -56,10 +56,10 @@ fn redirected_columns(
     let redirection: Arc<dyn RowRedirection> = redirection.clone();
     (0..parent.definition().columns().len())
         .map(|index| {
-            Arc::new(RedirectedSource::new(
+            reads_through(RedirectedSource::new(
                 redirection.clone(),
                 parent.column(index),
-            )) as Arc<dyn ColumnSource>
+            ))
         })
         .collect()
 }
@@ -82,7 +82,8 @@ fn remap(
     }
 }
 
-/// Only the blink attribute passes through a sort.
+/// Of the add-only, append-only and blink attributes, only blink passes through a sort. The
+/// input table of the parent does too, and is given with `TableSpec::with_input_table_of`.
 ///
 /// Behavior: the `Sort` entries of the attribute table in
 /// io.deephaven.engine.table.impl.BaseTable
@@ -133,6 +134,7 @@ fn static_sort(
         redirected_columns(parent, &redirection),
     )
     .with_attributes(sort_attributes(&**parent))
+    .with_input_table_of(&**parent)
     .flat();
     Ok(QueryTable::new_static(spec))
 }
@@ -158,6 +160,7 @@ fn blink_sort(
             redirected_columns(parent, &redirection),
         )
         .with_attributes(sort_attributes(&**parent))
+        .with_input_table_of(&**parent)
         .flat();
 
         let parent = parent.clone();
@@ -193,6 +196,58 @@ fn blink_sort(
     Ok(result)
 }
 
+/// What an update does with a row that the parent did not remove.
+enum Fate {
+    /// The row is not placed again.
+    Untouched,
+    /// The row was placed again and stays where it is, with this sort key.
+    Kept(SortKey),
+    /// The row was placed again and leaves its position for another.
+    Moved,
+}
+
+/// A row of the previous result that the parent did not remove.
+struct Survivor {
+    /// The row's previous position.
+    position: usize,
+    /// The row's current parent key with its previous sort key.
+    entry: Entry,
+    fate: Fate,
+}
+
+/// The index of the last of `survivors` that does not sort after `target`, comparing the
+/// target's current sort key with the previous sort keys of the survivors, and current
+/// parent keys where those are equal. `None` when every survivor sorts after the target.
+///
+/// A modified row is among the survivors with the sort key it had: if its new key sorts
+/// before its old one, the place found is before the row itself.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortListener.TargetComparator#compareTargetTo,
+/// as io.deephaven.engine.rowset.RowSet.SearchIterator#binarySearchValue applies it in
+/// io.deephaven.engine.table.impl.SortListener#onUpdate
+fn place_among(survivors: &[Survivor], target: &Entry) -> Option<usize> {
+    survivors
+        .partition_point(|survivor| {
+            (&survivor.entry.key, survivor.entry.parent_key) <= (&target.key, target.parent_key)
+        })
+        .checked_sub(1)
+}
+
+/// Whether a modified row whose sort columns changed is reported as modified, not as
+/// removed and added: the place found for it (`after`) is the row itself (`current`), and
+/// the row queued last for insertion does not go to that same place. That row sorts
+/// before this one, so this one has to follow it.
+///
+/// Behavior: the test "check if new location differs from current location or if the
+/// previous row needs to slot here" in io.deephaven.engine.table.impl.SortListener#onUpdate
+fn keeps_its_place(
+    current: usize,
+    after: Option<usize>,
+    last_queued: Option<Option<usize>>,
+) -> bool {
+    after == Some(current) && last_queued != Some(Some(current))
+}
+
 /// The incremental half of a sort.
 struct SortOperator {
     parent: Arc<dyn Table>,
@@ -211,10 +266,10 @@ impl SortOperator {
     /// The cases are Java's. Removed rows leave. Shifted rows keep their place and only
     /// change the parent key they show. Added rows are placed by sort key, after the rows
     /// with an equal key that precede them in the parent. A modified row is placed again
-    /// only when a sort column is among the modified columns; if it then still lies between
-    /// the same neighbours it is reported as modified, otherwise as removed and added.
-    /// Where Java finds each place by a binary search of the result and moves the rows in
-    /// the way, this merges the rows that stay with the rows to place in one pass.
+    /// only when a sort column is among the modified columns, and is then reported as
+    /// modified or as removed and added by the rule of [`keeps_its_place`].
+    /// Where Java moves the rows in the way of each row it places, this merges the rows
+    /// that stay with the rows to place in one pass.
     ///
     /// Behavior: io.deephaven.engine.table.impl.SortListener#onUpdate
     fn on_update(&self, upstream: &TableUpdate) -> Result<TableUpdate, TableFailure> {
@@ -236,76 +291,103 @@ impl SortOperator {
         let mut added = Vec::new();
         let mut modified = Vec::new();
 
-        // Rows that stay where they are in the order, with their previous positions, and
-        // the previous positions of the rows to place again, by current parent key.
-        let mut staying = Vec::with_capacity(old.len());
-        let mut placed_before: BTreeMap<RowKey, usize> = BTreeMap::new();
+        // The rows the parent did not remove, in their previous order and with their
+        // previous sort keys, under the parent keys they have now.
+        let mut survivors = Vec::with_capacity(old.len());
         for (position, entry) in old.into_iter().enumerate() {
             if upstream.removed.contains(entry.parent_key) {
                 removed.push(position as RowKey);
                 continue;
             }
-            let parent_key = upstream.shifted.apply_to_key(entry.parent_key);
-            if resort && upstream.modified.contains(parent_key) {
-                placed_before.insert(parent_key, position);
-            } else {
-                staying.push((
-                    position,
-                    Entry {
-                        parent_key,
-                        key: entry.key,
-                    },
-                ));
-            }
+            survivors.push(Survivor {
+                position,
+                entry: Entry {
+                    parent_key: upstream.shifted.apply_to_key(entry.parent_key),
+                    key: entry.key,
+                },
+                fate: Fate::Untouched,
+            });
         }
 
+        // The rows to put into the result: the added rows and the modified rows that do
+        // not keep their place.
+        let mut queued = Vec::with_capacity(incoming.len());
+        if resort {
+            let index_of: BTreeMap<RowKey, usize> = survivors
+                .iter()
+                .enumerate()
+                .filter(|(_, survivor)| upstream.modified.contains(survivor.entry.parent_key))
+                .map(|(index, survivor)| (survivor.entry.parent_key, index))
+                .collect();
+            // Where the row queued last goes: after this survivor, or before all of them.
+            let mut last_queued: Option<Option<usize>> = None;
+            for entry in incoming {
+                let after = place_among(&survivors, &entry);
+                let current = index_of.get(&entry.parent_key).copied();
+                match current {
+                    Some(index) if keeps_its_place(index, after, last_queued) => {
+                        survivors[index].fate = Fate::Kept(entry.key);
+                    }
+                    _ => {
+                        if let Some(index) = current {
+                            survivors[index].fate = Fate::Moved;
+                        }
+                        last_queued = Some(after);
+                        queued.push(entry);
+                    }
+                }
+            }
+        } else {
+            queued = incoming;
+        }
+
+        // The rows that stay in the result, in their previous order: the kept rows have
+        // their new sort keys, and the order is still the sorted one.
         let report_modified = !resort && !upstream.modified.is_empty();
-        let mut merged: Vec<Entry> = Vec::with_capacity(staying.len() + incoming.len());
-        // The previous position of the last row that kept its place.
-        let mut last_kept: Option<usize> = None;
+        let mut staying = Vec::with_capacity(survivors.len());
+        for survivor in survivors {
+            let Survivor {
+                position,
+                mut entry,
+                fate,
+            } = survivor;
+            let changed = match fate {
+                Fate::Moved => {
+                    removed.push(position as RowKey);
+                    continue;
+                }
+                Fate::Kept(key) => {
+                    entry.key = key;
+                    true
+                }
+                Fate::Untouched => report_modified && upstream.modified.contains(entry.parent_key),
+            };
+            staying.push((entry, changed));
+        }
+        removed.sort_unstable();
+
+        let mut merged: Vec<Entry> = Vec::with_capacity(staying.len() + queued.len());
         let mut staying = staying.into_iter().peekable();
         let keep = |merged: &mut Vec<Entry>,
                     modified: &mut Vec<RowKey>,
-                    last_kept: &mut Option<usize>,
-                    (position, entry): (usize, Entry)| {
-            if report_modified && upstream.modified.contains(entry.parent_key) {
+                    (entry, changed): (Entry, bool)| {
+            if changed {
                 modified.push(merged.len() as RowKey);
             }
-            *last_kept = Some(position);
             merged.push(entry);
         };
-        for entry in incoming {
+        for entry in queued {
             // Rows with equal sort keys are in parent order: ties go to the lower key.
-            while let Some((position, before)) = staying.next_if(|(_, staying)| {
+            while let Some(before) = staying.next_if(|(staying, _)| {
                 (&staying.key, staying.parent_key) < (&entry.key, entry.parent_key)
             }) {
-                keep(
-                    &mut merged,
-                    &mut modified,
-                    &mut last_kept,
-                    (position, before),
-                );
+                keep(&mut merged, &mut modified, before);
             }
-            let position = merged.len() as RowKey;
-            match placed_before.get(&entry.parent_key) {
-                // Still after the row that precedes it and before the row that follows.
-                Some(&before)
-                    if last_kept.is_none_or(|kept| kept < before)
-                        && staying.peek().is_none_or(|(next, _)| before < *next) =>
-                {
-                    modified.push(position);
-                    last_kept = Some(before);
-                }
-                Some(&before) => {
-                    removed.push(before as RowKey);
-                    added.push(position);
-                }
-                None => added.push(position),
-            }
+            added.push(merged.len() as RowKey);
             merged.push(entry);
         }
         for kept in staying {
-            keep(&mut merged, &mut modified, &mut last_kept, kept);
+            keep(&mut merged, &mut modified, kept);
         }
 
         remap(
@@ -349,7 +431,8 @@ fn incremental_sort(
             RowSet::flat(entries.len() as u64),
             redirected_columns(parent, &redirection),
         )
-        .with_attributes(sort_attributes(&**parent));
+        .with_attributes(sort_attributes(&**parent))
+        .with_input_table_of(&**parent);
         let operator = SortOperator {
             parent: parent.clone(),
             sort_columns: encoder.column_indices(),

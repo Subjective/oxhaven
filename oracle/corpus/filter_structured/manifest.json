@@ -1,0 +1,417 @@
+{
+  "format": 2,
+  "scenario": "filter_structured",
+  "scenario_sha256": "0a9524fa9afb421fec415f4fc580bce40477ff825f3acd8b0a07e53eb0d5803a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "int_less",
+      "file": "step000.int_less.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "int_less_equal",
+      "file": "step000.int_less_equal.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "int_greater",
+      "file": "step000.int_greater.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "int_greater_equal",
+      "file": "step000.int_greater_equal.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "int_equal",
+      "file": "step000.int_equal.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "int_not_equal",
+      "file": "step000.int_not_equal.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "literal_on_the_left",
+      "file": "step000.literal_on_the_left.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "double_less",
+      "file": "step000.double_less.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "double_greater_equal",
+      "file": "step000.double_greater_equal.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "double_equal_zero",
+      "file": "step000.double_equal_zero.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "double_equal_nan",
+      "file": "step000.double_equal_nan.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "double_not_equal",
+      "file": "step000.double_not_equal.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "double_less_infinity",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "float_greater",
+      "file": "step000.float_greater.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "string_equal",
+      "file": "step000.string_equal.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "string_equal_ignore_case",
+      "file": "step000.string_equal_ignore_case.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "string_not_equal",
+      "file": "step000.string_not_equal.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "string_less",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_less_quoted",
+      "file": "step000.string_less_quoted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "string_greater_equal_quoted",
+      "file": "step000.string_greater_equal_quoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "bool_equal",
+      "file": "step000.bool_equal.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "bool_not_equal",
+      "file": "step000.bool_not_equal.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "time_greater",
+      "file": "step000.time_greater.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "time_equal",
+      "file": "step000.time_equal.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "column_to_column",
+      "file": "step000.column_to_column.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "column_to_other_type",
+      "file": "step000.column_to_other_type.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "two_filters",
+      "file": "step000.two_filters.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "and_",
+      "file": "step000.and_.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "or_",
+      "file": "step000.or_.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "not_",
+      "file": "step000.not_.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "not_less",
+      "file": "step000.not_less.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "nested",
+      "file": "step000.nested.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "in_ints",
+      "file": "step000.in_ints.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "not_in_ints",
+      "file": "step000.not_in_ints.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "in_strings",
+      "file": "step000.in_strings.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "in_strings_ignore_case",
+      "file": "step000.in_strings_ignore_case.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "in_doubles",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "in_doubles_finite",
+      "file": "step000.in_doubles_finite.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "not_in_doubles_finite",
+      "file": "step000.not_in_doubles_finite.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "in_doubles_nan_equal",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "in_doubles_nan_not_equal",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "in_columns",
+      "file": "step000.in_columns.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "is_null_string",
+      "file": "step000.is_null_string.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "is_null_double",
+      "file": "step000.is_null_double.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "is_not_null_bool",
+      "file": "step000.is_not_null_bool.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "is_nan_double",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "is_nan_float",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "is_nan_int",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "matches",
+      "file": "step000.matches.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "matches_ignore_case",
+      "file": "step000.matches_ignore_case.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "matches_inverted",
+      "file": "step000.matches_inverted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "matches_empty",
+      "file": "step000.matches_empty.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "contains",
+      "file": "step000.contains.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "contains_ignore_case",
+      "file": "step000.contains_ignore_case.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "contains_inverted",
+      "file": "step000.contains_inverted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "contains_empty",
+      "file": "step000.contains_empty.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "invoke_method",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "invoke_method_no_nulls",
+      "file": "step000.invoke_method_no_nulls.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "invoke_function",
+      "file": "step000.invoke_function.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "search",
+      "file": "step000.search.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "search_columns",
+      "file": "step000.search_columns.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "unknown_column",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_against_number",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "matches_on_int",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_regex",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    }
+  ]
+}
