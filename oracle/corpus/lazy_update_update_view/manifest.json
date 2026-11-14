@@ -1,0 +1,126 @@
+{
+  "format": 2,
+  "scenario": "lazy_update_update_view",
+  "scenario_sha256": "e49e2bb3a1d33f4bce2db9bfd90458c632417e6c353d1ae7d7663e8728f96ccc",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lazy",
+      "file": "step000.lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_replace",
+      "file": "step000.lazy_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_chain",
+      "file": "step000.lazy_chain.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_strings",
+      "file": "step000.lazy_strings.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_empty",
+      "file": "step000.lazy_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "uv",
+      "file": "step000.uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "uv_replace",
+      "file": "step000.uv_replace.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "uv_chain",
+      "file": "step000.uv_chain.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "uv_strings",
+      "file": "step000.uv_strings.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "uv_empty",
+      "file": "step000.uv_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "uv_then_where",
+      "file": "step000.uv_then_where.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "lazy_then_sort",
+      "file": "step000.lazy_then_sort.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "uv_of_lazy",
+      "file": "step000.uv_of_lazy.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_of_uv",
+      "file": "step000.lazy_of_uv.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "lazy_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "uv_unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "lazy_remainder",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "uv_remainder",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "uv_duplicate",
+      "file": "step000.uv_duplicate.arrow",
+      "rows": 5
+    }
+  ]
+}

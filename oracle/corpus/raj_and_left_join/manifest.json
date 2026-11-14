@@ -1,0 +1,97 @@
+{
+  "format": 2,
+  "scenario": "raj_and_left_join",
+  "scenario_sha256": "48c7d69d043579c4a8628f3609d202f9d1760899e52641cc7eee208b71762397",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "raj_ge",
+      "file": "step000.raj_ge.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_gt",
+      "file": "step000.raj_gt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "aj_le",
+      "file": "step000.aj_le.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "aj_lt",
+      "file": "step000.aj_lt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_no_key",
+      "file": "step000.raj_no_key.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_double",
+      "file": "step000.raj_double.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "aj_double",
+      "file": "step000.aj_double.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_all_columns",
+      "file": "step000.raj_all_columns.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_empty_right",
+      "file": "step000.raj_empty_right.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "raj_wrong_rule",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "raj_stamp_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "raj_name_clash",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "left",
+      "failure": {
+        "code": "UNIMPLEMENTED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "left_all",
+      "failure": {
+        "code": "UNIMPLEMENTED"
+      }
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+{
+ "format": 1,
+ "name": "empty_table_and_meta",
+ "description": "empty_table with zero and several rows, with columns computed from the row position; meta_table of tables with every column type, of derived tables and of an empty table.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "narrow",
+   "columns": [
+    {
+     "name": "I8",
+     "type": "int8"
+    },
+    {
+     "name": "I16",
+     "type": "int16"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "none",
+   "op": "empty_table",
+   "size": 0
+  },
+  {
+   "name": "five",
+   "op": "empty_table",
+   "size": 5
+  },
+  {
+   "name": "five_columns",
+   "op": "update",
+   "source": "five",
+   "formulas": [
+    "I = i",
+    "L = ii",
+    "D = i * 0.5",
+    "S = `row` + i",
+    "Even = i % 2 == 0"
+   ]
+  },
+  {
+   "name": "none_columns",
+   "op": "update",
+   "source": "none",
+   "formulas": [
+    "I = i",
+    "D = i * 0.5"
+   ]
+  },
+  {
+   "name": "five_view",
+   "op": "view",
+   "source": "five",
+   "formulas": [
+    "Twice = ii * 2"
+   ]
+  },
+  {
+   "name": "five_tail",
+   "op": "tail",
+   "source": "five_columns",
+   "rows": 2
+  },
+  {
+   "name": "meta",
+   "op": "meta_table",
+   "source": "t"
+  },
+  {
+   "name": "meta_narrow",
+   "op": "meta_table",
+   "source": "narrow"
+  },
+  {
+   "name": "meta_computed",
+   "op": "meta_table",
+   "source": "five_columns"
+  },
+  {
+   "name": "meta_empty_table",
+   "op": "meta_table",
+   "source": "none"
+  },
+  {
+   "name": "grouped",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "meta_grouped",
+   "op": "meta_table",
+   "source": "grouped"
+  },
+  {
+   "name": "meta_of_meta",
+   "op": "meta_table",
+   "source": "meta"
+  }
+ ],
+ "results": [
+  {
+   "table": "none"
+  },
+  {
+   "table": "five"
+  },
+  {
+   "table": "five_columns"
+  },
+  {
+   "table": "none_columns"
+  },
+  {
+   "table": "five_view"
+  },
+  {
+   "table": "five_tail"
+  },
+  {
+   "table": "meta"
+  },
+  {
+   "table": "meta_narrow"
+  },
+  {
+   "table": "meta_computed"
+  },
+  {
+   "table": "meta_empty_table"
+  },
+  {
+   "table": "grouped"
+  },
+  {
+   "table": "meta_grouped"
+  },
+  {
+   "table": "meta_of_meta"
+  }
+ ]
+}

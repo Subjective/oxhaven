@@ -7,7 +7,7 @@ use super::filters::FilterSpec;
 use super::tests::static_table;
 use super::*;
 use crate::graph::SteppedUpdateGraph;
-use crate::table::keyed_input_table;
+use crate::table::{append_only_input_table, keyed_input_table};
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
     Int64Array, Int8Array, RecordBatch, StringArray, UInt16Array,
@@ -156,9 +156,13 @@ fn rendered(values: &ArrayRef) -> Vec<String> {
 // Scenarios
 // ---------------------------------------------------------------------------------------
 
-/// The table Java returned, or `None` if it answered with a failure.
-fn recorded(scenario: &str, step: usize, table: &str) -> Option<RecordBatch> {
-    let manifest = json(&oracle().join(format!("corpus/{scenario}/manifest.json")));
+/// What Java answered for `table` at `step`: the table, or the status code of its failure.
+fn recorded(
+    manifest: &Json,
+    scenario: &str,
+    step: usize,
+    table: &str,
+) -> Result<RecordBatch, String> {
     let entry = manifest["entries"]
         .as_array()
         .expect("entries")
@@ -166,8 +170,10 @@ fn recorded(scenario: &str, step: usize, table: &str) -> Option<RecordBatch> {
         .find(|entry| entry["step"] == step && entry["table"] == table)
         .unwrap_or_else(|| panic!("{scenario}: no entry for {table} at step {step}"));
     if !entry["failure"].is_null() {
-        assert_eq!(entry["failure"]["code"], "INVALID_ARGUMENT");
-        return None;
+        return Err(entry["failure"]["code"]
+            .as_str()
+            .expect("a code")
+            .to_string());
     }
     let path = oracle().join(format!(
         "corpus/{scenario}/{}",
@@ -182,24 +188,7 @@ fn recorded(scenario: &str, step: usize, table: &str) -> Option<RecordBatch> {
         batch.num_rows() as u64,
         entry["rows"].as_u64().expect("rows")
     );
-    Some(batch)
-}
-
-fn assert_matches_recording(context: &str, table: &dyn Table, expected: &RecordBatch) {
-    let snapshot = TableSnapshot::current(table).unwrap();
-    let columns = table.definition().columns();
-    assert_eq!(expected.num_columns(), columns.len(), "{context}: columns");
-    for (index, column) in columns.iter().enumerate() {
-        let recorded = expected
-            .column_by_name(&column.name)
-            .unwrap_or_else(|| panic!("{context}: Java returned no column {}", column.name));
-        assert_eq!(
-            rendered(&snapshot.columns[index]),
-            rendered(recorded),
-            "{context}: column {}",
-            column.name
-        );
-    }
+    Ok(batch)
 }
 
 /// The attributes Java sent with a recorded table: `IsFlat`, `AddOnly`, `AppendOnly`,
@@ -236,187 +225,608 @@ fn attributes_of(table: &dyn Table) -> [bool; 5] {
     ]
 }
 
-fn filters_of(operation: &Json) -> Vec<&str> {
-    let filters = operation["filters"].as_array().expect("filters");
-    filters
+/// How `table` differs from the table Java recorded, if it does: column names, order and
+/// types, every cell by position (floats by their bits, with a cell holding its type's null
+/// value as null), and the attributes.
+fn difference(table: &dyn Table, expected: &RecordBatch) -> Option<String> {
+    let columns = table.definition().columns();
+    let ours: Vec<(&str, DataType)> = columns
         .iter()
-        .map(|f| f.as_str().expect("a string"))
-        .collect()
+        .map(|c| (c.name.as_str(), c.column_type.arrow_type()))
+        .collect();
+    let schema = expected.schema();
+    let theirs: Vec<(&str, DataType)> = schema
+        .fields()
+        .iter()
+        .map(|f| (f.name().as_str(), f.data_type().clone()))
+        .collect();
+    if ours != theirs {
+        return Some(format!("columns {ours:?}, Java has {theirs:?}"));
+    }
+    let snapshot = match TableSnapshot::current(table) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Some(format!("cannot be read: {error}")),
+    };
+    for (index, column) in columns.iter().enumerate() {
+        let ours = rendered(&snapshot.columns[index]);
+        let theirs = rendered(expected.column(index));
+        if ours != theirs {
+            return Some(format!(
+                "column {} is {ours:?}, Java has {theirs:?}",
+                column.name
+            ));
+        }
+    }
+    let (ours, theirs) = (attributes_of(table), recorded_attributes(expected));
+    (ours != theirs).then(|| {
+        format!(
+            "IsFlat, AddOnly, AppendOnly, BlinkTable, InputTable are {ours:?}, Java has {theirs:?}"
+        )
+    })
 }
 
-/// The `where` operations of a scenario that read an input table and whose result is
-/// recorded, with that input.
-fn recorded_wheres(scenario: &Json) -> Vec<(&Json, &Json)> {
-    let inputs = scenario["inputs"].as_array().expect("inputs");
-    let results = scenario["results"].as_array().expect("results");
-    scenario["operations"]
-        .as_array()
-        .expect("operations")
-        .iter()
-        .filter(|operation| operation["op"] == "where")
-        .filter(|operation| results.iter().any(|r| r["table"] == operation["name"]))
-        .filter_map(|operation| {
-            let input = inputs.iter().find(|i| i["name"] == operation["source"])?;
-            Some((operation, input))
-        })
-        .collect()
+/// A literal or column of a structured filter condition.
+///
+/// Behavior: `_value` in `oracle/harness/runner.py`, which makes the `Value` message.
+fn condition_value(value: &Json) -> Value {
+    let (kind, body) = value
+        .as_object()
+        .and_then(|object| object.iter().next())
+        .expect("a value");
+    let literal = match (kind.as_str(), body) {
+        ("column", name) => return Value::Reference(name.as_str().expect("a name").to_string()),
+        ("long", number) => Literal::Long(number.as_i64().expect("a long")),
+        ("nanos", number) => Literal::NanoTime(number.as_i64().expect("nanoseconds")),
+        (_, Json::Bool(flag)) => Literal::Bool(*flag),
+        (_, Json::String(word)) if !["NaN", "Infinity", "-Infinity"].contains(&word.as_str()) => {
+            Literal::String(word.clone())
+        }
+        (_, number) => Literal::Double(float_cell(number).expect("a number")),
+    };
+    Value::Literal(literal)
 }
 
-/// Runs the recorded `where` operations of a static scenario, except those named in
-/// `not_run`, which must be refused. Returns how many results were compared.
-fn check_static_scenario(name: &str, not_run: &[&str]) -> usize {
-    let scenario = json(&oracle().join(format!("scenarios/static/{name}.json")));
-    let mut checked = 0;
-    for (operation, input) in recorded_wheres(&scenario) {
-        let operation_name = operation["name"].as_str().expect("a name");
-        let context = format!("{name}.{operation_name}");
-        let columns = columns_of(&input["columns"]).expect("column types");
-        let named: Vec<(&str, ColumnType)> = columns
+/// A structured filter condition, or why it has no engine form.
+///
+/// Behavior: `_condition` in `oracle/harness/runner.py`, which makes the `Condition`
+/// message, and `condition` in `oxhaven-server`'s `table/ops/filter.rs`, which reads it.
+fn condition(condition: &Json) -> Result<Condition, String> {
+    let (kind, body) = condition
+        .as_object()
+        .and_then(|object| object.iter().next())
+        .expect("a condition");
+    let flag = |name: &str| body[name] == true;
+    let case = || match flag("ignore_case") {
+        true => CaseSensitivity::IgnoreCase,
+        false => CaseSensitivity::MatchCase,
+    };
+    let match_type = || match flag("inverted") {
+        true => MatchType::Inverted,
+        false => MatchType::Regular,
+    };
+    let text = |name: &str| body[name].as_str().expect("a string").to_string();
+    let all = || {
+        body.as_array()
+            .expect("conditions")
             .iter()
-            .map(|(n, t)| (n.as_str(), t.clone()))
-            .collect();
-        let arrays = arrays_of(&columns, &input["rows"]);
-        let size = arrays[0].len() as u64;
-        let table: Arc<dyn Table> =
-            ReferenceTable::new_static(definition(&named), RowSet::flat(size), arrays);
-        let result = unstructured_filter(&table, &filters_of(operation), &Compiler);
-        if not_run.contains(&operation_name) {
-            assert!(
-                matches!(result, Err(FilterError::Invalid(_))),
-                "{context} is listed as not run but was not refused"
-            );
+            .map(self::condition)
+            .collect::<Result<Vec<_>, _>>()
+    };
+    Ok(match kind.as_str() {
+        "and" => Condition::And(all()?),
+        "or" => Condition::Or(all()?),
+        "not" => Condition::Not(Box::new(self::condition(body)?)),
+        "compare" => Condition::Compare {
+            op: match body["op"].as_str().expect("an operator") {
+                "<" => CompareOp::LessThan,
+                "<=" => CompareOp::LessThanOrEqual,
+                ">" => CompareOp::GreaterThan,
+                ">=" => CompareOp::GreaterThanOrEqual,
+                "==" => CompareOp::Equals,
+                "!=" => CompareOp::NotEquals,
+                other => panic!("no comparison {other}"),
+            },
+            case_sensitivity: case(),
+            lhs: condition_value(&body["lhs"]),
+            rhs: condition_value(&body["rhs"]),
+        },
+        "in" => Condition::In {
+            target: condition_value(&body["target"]),
+            candidates: body["candidates"]
+                .as_array()
+                .expect("candidates")
+                .iter()
+                .map(condition_value)
+                .collect(),
+            case_sensitivity: case(),
+            match_type: match_type(),
+            nan_comparison: match flag("nan_equals") {
+                true => NanComparison::NanEqualsNan,
+                false => NanComparison::NanNotEqualsNan,
+            },
+        },
+        "is_null" => Condition::IsNull {
+            column: body.as_str().expect("a column").to_string(),
+        },
+        // The gRPC handler refuses it, as the Java server's visitor does; the engine has no
+        // form of it.
+        "is_nan" => return Err("is_nan, which the gRPC handler refuses".to_string()),
+        "matches" => Condition::Matches {
+            column: text("column"),
+            regex: text("text"),
+            case_sensitivity: case(),
+            match_type: match_type(),
+        },
+        "contains" => Condition::Contains {
+            column: text("column"),
+            search_string: text("text"),
+            case_sensitivity: case(),
+            match_type: match_type(),
+        },
+        "invoke" => Condition::Invoke {
+            method: text("method"),
+            target: (!body["target"].is_null()).then(|| condition_value(&body["target"])),
+            arguments: body["arguments"]
+                .as_array()
+                .expect("arguments")
+                .iter()
+                .map(condition_value)
+                .collect(),
+        },
+        "search" => Condition::Search {
+            search_string: text("text"),
+            columns: body["columns"]
+                .as_array()
+                .map(|columns| {
+                    columns
+                        .iter()
+                        .map(|c| c.as_str().expect("a column").to_string())
+                        .collect()
+                })
+                .unwrap_or_default(),
+        },
+        other => panic!("no condition {other}"),
+    })
+}
+
+/// One of this module's operations, applied to a parent table.
+type Operation = Arc<dyn Fn(&Arc<dyn Table>) -> Result<Arc<dyn Table>, FilterError> + Send + Sync>;
+
+/// The `where` or `filter` of a scenario operation, or why it is not run.
+fn operation_of(operation: &Json) -> Result<Operation, String> {
+    match operation["op"].as_str().expect("an op") {
+        "where" => {
+            let filters: Vec<String> = operation["filters"]
+                .as_array()
+                .expect("filters")
+                .iter()
+                .map(|f| f.as_str().expect("a string").to_string())
+                .collect();
+            Ok(Arc::new(move |parent| {
+                unstructured_filter(parent, &filters, &Compiler)
+            }))
+        }
+        "filter" => {
+            let conditions = operation["conditions"]
+                .as_array()
+                .expect("conditions")
+                .iter()
+                .map(condition)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Arc::new(move |parent| {
+                filter(parent, &conditions, &Compiler)
+            }))
+        }
+        other => Err(other.to_string()),
+    }
+}
+
+/// A table of a scenario as far as it is made here.
+enum Made {
+    Table(Arc<dyn Table>),
+    /// This module's operation refused the request, for the reason given.
+    Refused(String),
+    /// Made by an operation of another module, or from such a table, or an input this test
+    /// cannot make, as the reason says.
+    NotRun(String),
+}
+
+/// An input table that takes the actions of the steps.
+struct Input {
+    table: Arc<dyn Table>,
+    columns: Vec<(String, ColumnType)>,
+    keys: Vec<(String, ColumnType)>,
+}
+
+/// What was compared and what was not.
+#[derive(Default)]
+struct Tally {
+    /// The steps compared, by `scenario.table`, for every result of this module's
+    /// operations that agrees with Java at every step.
+    compared: BTreeMap<String, usize>,
+    /// `scenario.table at step N: how`, for every result that differs.
+    differences: Vec<String>,
+    /// `scenario.table: why`, for the results of this module's operations not made here.
+    not_run: Vec<String>,
+}
+
+/// Replays a scenario: its inputs, its `where` and `filter` operations on them and on each
+/// other, and its steps; and compares every recorded result of those operations at every
+/// step, with the input it reads when that is recorded too. A refreshing result is checked
+/// against a recomputation from a snapshot of its parent at every step.
+fn replay(scenario: &Json, tally: &mut Tally) {
+    let name = scenario["name"].as_str().expect("a name");
+    let manifest = json(&oracle().join(format!("corpus/{name}/manifest.json")));
+    let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
+    let mut tables: BTreeMap<String, Made> = BTreeMap::new();
+    let mut inputs: BTreeMap<String, Input> = BTreeMap::new();
+    for input in scenario["inputs"].as_array().expect("inputs") {
+        let input_name = input["name"].as_str().expect("a name").to_string();
+        if input["ticking"]["blink"] == true {
+            // The engine has no blink input table.
+            tables.insert(input_name, Made::NotRun("blink input".to_string()));
             continue;
         }
-        match (result, recorded(name, 0, operation_name)) {
-            (Ok(table), Some(expected)) => {
-                assert_matches_recording(&context, &*table, &expected);
-                assert_eq!(
-                    attributes_of(&*table),
-                    recorded_attributes(&expected),
-                    "{context}: IsFlat, AddOnly, AppendOnly, BlinkTable, InputTable"
-                );
-            }
-            (Err(FilterError::Invalid(_)), None) => {}
-            (Ok(_), None) => panic!("{context}: Java refused this"),
-            (Err(e), _) => panic!("{context}: {e}"),
-        }
-        checked += 1;
-    }
-    checked
-}
-
-/// Scenarios with a `where` that are not run here, and why:
-/// - `agg_by_no_keys.no_nan` and `error_formula.nonzero` are not recorded results; they feed
-///   an aggregation and an update.
-/// - `ticking_error_after_step.after_joined` filters a natural join.
-#[test]
-fn static_scenarios_match_the_recorded_java_results() {
-    let checked = [
-        check_static_scenario("empty_table_ops", &[]),
-        check_static_scenario("error_formula", &[]),
-        check_static_scenario("error_unknown_column", &[]),
-        check_static_scenario("null_sentinel_inputs", &[]),
-        check_static_scenario("pipeline", &[]),
-        check_static_scenario("timestamps", &[]),
-        check_static_scenario("where_float_nan", &[]),
-        check_static_scenario("where_int", &[]),
-        check_static_scenario("where_string_bool", &[]),
-    ];
-    assert_eq!(checked, [1, 2, 2, 1, 1, 2, 7, 6, 8]);
-}
-
-/// Runs a ticking scenario's recorded `where` operations over a keyed input table, applying
-/// each step's actions and comparing after each step. Returns how many results were compared.
-fn check_ticking_scenario(name: &str) -> usize {
-    let scenario = json(&oracle().join(format!("scenarios/ticking/{name}.json")));
-    let mut checked = 0;
-    for (operation, input) in recorded_wheres(&scenario) {
-        let operation_name = operation["name"].as_str().expect("a name");
-        let input_name = input["name"].as_str().expect("a name");
         let columns = columns_of(&input["columns"]).expect("column types");
         let named: Vec<(&str, ColumnType)> = columns
             .iter()
             .map(|(n, t)| (n.as_str(), t.clone()))
             .collect();
-        let keys: Vec<&str> = input["ticking"]["key_columns"]
-            .as_array()
-            .expect("key columns")
-            .iter()
-            .map(|key| key.as_str().expect("a name"))
-            .collect();
-        let key_columns: Vec<(String, ColumnType)> = columns
-            .iter()
-            .filter(|(column, _)| keys.contains(&column.as_str()))
-            .cloned()
-            .collect();
-        let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
-        let initial = batch_of(&columns, &input["rows"]);
-        let source: Arc<dyn Table> =
-            keyed_input_table(graph, definition(&named), &keys, Some(&initial)).unwrap();
-        let filters: Vec<String> = filters_of(operation)
-            .iter()
-            .map(|f| f.to_string())
-            .collect();
-        let result = unstructured_filter(&source, &filters, &Compiler).unwrap();
-        let expected = source.clone();
-        let checker = ConsistencyChecker::attach_with_recompute(result.clone(), move || {
-            let snapshot = TableSnapshot::current(&*expected).unwrap();
-            let copy: Arc<dyn Table> = ReferenceTable::new_static(
-                expected.definition().clone(),
-                snapshot.rows,
-                snapshot.columns,
-            );
-            unstructured_filter(&copy, &filters, &Compiler).unwrap()
-        });
-        let compare = |step: usize| {
-            checker.assert_consistent();
-            let context = format!("{name}.{operation_name} at step {step}");
-            let expected = recorded(name, step, operation_name).expect("a recorded table");
-            // The input must be what Java had, or the comparison of the result says nothing.
-            let input_recorded = scenario["results"]
+        let rows = input["rows"].as_array().expect("rows").len() as u64;
+        let table: Arc<dyn Table> = if input["ticking"].is_null() {
+            let arrays = arrays_of(&columns, &input["rows"]);
+            ReferenceTable::new_static(definition(&named), RowSet::flat(rows), arrays)
+        } else {
+            let initial = batch_of(&columns, &input["rows"]);
+            let keys: Vec<&str> = input["ticking"]["key_columns"]
                 .as_array()
-                .is_some_and(|results| results.iter().any(|r| r["table"] == input_name));
-            if input_recorded {
-                let input = recorded(name, step, input_name).expect("a recorded table");
-                assert_matches_recording(&format!("{context}: input"), &*source, &input);
+                .expect("key columns")
+                .iter()
+                .map(|key| key.as_str().expect("a name"))
+                .collect();
+            if keys.is_empty() {
+                append_only_input_table(graph.clone(), definition(&named), Some(&initial)).unwrap()
+            } else {
+                keyed_input_table(graph.clone(), definition(&named), &keys, Some(&initial)).unwrap()
             }
-            assert_matches_recording(&context, &*result, &expected);
-            assert_eq!(
-                attributes_of(&*result),
-                recorded_attributes(&expected),
-                "{context}: IsFlat, AddOnly, AppendOnly, BlinkTable, InputTable"
-            );
         };
-        compare(0);
-        checked += 1;
-        let writer = source.input_table().expect("an input table");
-        for (index, step) in scenario["steps"]
+        let keys = input["ticking"]["key_columns"]
             .as_array()
-            .expect("steps")
-            .iter()
-            .enumerate()
-        {
-            for action in step["actions"].as_array().expect("actions") {
-                assert_eq!(action["table"], input_name);
-                match action["action"].as_str().expect("an action") {
-                    "add" => writer.add(batch_of(&columns, &action["rows"])).unwrap(),
-                    "delete" => writer
-                        .delete(batch_of(&key_columns, &action["rows"]))
-                        .unwrap(),
-                    other => panic!("unknown action {other}"),
+            .map(|keys| {
+                columns
+                    .iter()
+                    .filter(|(column, _)| keys.iter().any(|key| key == column.as_str()))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        tables.insert(input_name.clone(), Made::Table(table.clone()));
+        inputs.insert(
+            input_name,
+            Input {
+                table,
+                columns,
+                keys,
+            },
+        );
+    }
+
+    // This module's operations, with the parent each reads.
+    let mut ours: Vec<(&str, &str)> = Vec::new();
+    let mut checkers = Vec::new();
+    for operation in scenario["operations"].as_array().expect("operations") {
+        let table_name = operation["name"].as_str().expect("a name");
+        let op = operation["op"].as_str().expect("an op");
+        let parent_name = operation["source"].as_str();
+        let made = match operation_of(operation) {
+            Err(why) => Made::NotRun(why),
+            Ok(run) => match &tables[parent_name.expect("a source")] {
+                Made::NotRun(why) => Made::NotRun(why.clone()),
+                Made::Refused(_) => Made::NotRun("the source is refused".to_string()),
+                Made::Table(parent) => {
+                    // An operation may report a construct that is not ported yet by
+                    // panicking.
+                    match catch_unwind(AssertUnwindSafe(|| run(parent))) {
+                        Ok(Ok(table)) => {
+                            if table.is_refreshing() {
+                                let parent = parent.clone();
+                                let recompute = move || {
+                                    let snapshot = TableSnapshot::current(&*parent).unwrap();
+                                    let copy: Arc<dyn Table> = ReferenceTable::new_static(
+                                        parent.definition().clone(),
+                                        snapshot.rows,
+                                        snapshot.columns,
+                                    );
+                                    run(&copy).unwrap()
+                                };
+                                checkers.push(ConsistencyChecker::attach_with_recompute(
+                                    table.clone(),
+                                    recompute,
+                                ));
+                            }
+                            Made::Table(table)
+                        }
+                        Ok(Err(error)) => Made::Refused(error.to_string()),
+                        Err(panic) => {
+                            let message = panic
+                                .downcast_ref::<String>()
+                                .map(String::as_str)
+                                .or_else(|| panic.downcast_ref::<&str>().copied())
+                                .unwrap_or("a panic");
+                            match message.strip_prefix("unported: ") {
+                                Some(construct) => Made::NotRun(format!("unported {construct}")),
+                                None => std::panic::resume_unwind(panic),
+                            }
+                        }
+                    }
                 }
-            }
-            compare(index + 1);
-            checked += 1;
+            },
+        };
+        if OURS.contains(&op) {
+            ours.push((table_name, parent_name.expect("a source")));
+        }
+        tables.insert(table_name.to_string(), made);
+    }
+
+    // The results of this module's operations.
+    let results: Vec<(&str, &str)> = ours
+        .into_iter()
+        .filter(|(table, _)| {
+            scenario["results"]
+                .as_array()
+                .expect("results")
+                .iter()
+                .any(|result| result["table"] == *table)
+        })
+        .collect();
+    let recorded_inputs: Vec<&str> = scenario["results"]
+        .as_array()
+        .expect("results")
+        .iter()
+        .map(|result| result["table"].as_str().expect("a table"))
+        .filter(|table| inputs.contains_key(*table))
+        .collect();
+    for (table, _) in &results {
+        if let Made::NotRun(why) = &tables[*table] {
+            tally.not_run.push(format!("{name}.{table}: {why}"));
         }
     }
-    checked
+    let mut differs: Vec<String> = Vec::new();
+    let mut steps_compared = 0;
+    let mut compare = |step: usize, differs: &mut Vec<String>| {
+        for checker in &checkers {
+            checker.assert_consistent();
+        }
+        for (table, parent) in &results {
+            let place = format!("{name}.{table} at step {step}");
+            let expected = recorded(&manifest, name, step, table);
+            let difference = match (&tables[*table], expected) {
+                (Made::NotRun(_), _) => continue,
+                (Made::Refused(_), Err(code)) if code == "INVALID_ARGUMENT" => None,
+                (Made::Refused(why), Err(code)) => {
+                    Some(format!("refused ({why}), Java with {code}"))
+                }
+                (Made::Refused(why), Ok(_)) => Some(format!("refused ({why}), Java has a table")),
+                (Made::Table(_), Err(code)) => Some(format!("Java fails with {code}")),
+                (Made::Table(made), Ok(_)) if made.is_failed() => {
+                    Some("the table has failed".to_string())
+                }
+                (Made::Table(made), Ok(expected)) => {
+                    // The input must be what Java had, or the comparison of the result says
+                    // nothing.
+                    let input = recorded_inputs.contains(parent).then(|| {
+                        let Made::Table(input) = &tables[*parent] else {
+                            unreachable!("a recorded input is made")
+                        };
+                        let recorded = recorded(&manifest, name, step, parent).expect("a table");
+                        difference(&**input, &recorded).map(|how| format!("input: {how}"))
+                    });
+                    input.flatten().or_else(|| difference(&**made, &expected))
+                }
+            };
+            if let Some(how) = difference {
+                differs.push(table.to_string());
+                tally.differences.push(format!("{place}: {how}"));
+            }
+        }
+    };
+    compare(0, &mut differs);
+    steps_compared += 1;
+    for step in scenario["steps"].as_array().cloned().unwrap_or_default() {
+        for action in step["actions"].as_array().expect("actions") {
+            // An input that was not made takes no actions.
+            let Some(input) = inputs.get(action["table"].as_str().expect("a table")) else {
+                continue;
+            };
+            let writer = input.table.input_table().expect("an input table");
+            match action["action"].as_str().expect("an action") {
+                "add" => writer
+                    .add(batch_of(&input.columns, &action["rows"]))
+                    .unwrap(),
+                "delete" => writer
+                    .delete(batch_of(&input.keys, &action["rows"]))
+                    .unwrap(),
+                other => panic!("unknown action {other}"),
+            }
+        }
+        compare(steps_compared, &mut differs);
+        steps_compared += 1;
+    }
+    for (table, _) in &results {
+        if !matches!(tables[*table], Made::NotRun(_)) && !differs.iter().any(|d| d == table) {
+            tally
+                .compared
+                .insert(format!("{name}.{table}"), steps_compared);
+        }
+    }
 }
 
+/// The operations of this module.
+const OURS: [&str; 2] = ["where", "filter"];
+
+/// Results that differ from what Java recorded, each with the first difference found.
+const KNOWN_DIFFERENCES: [&str; 1] = [
+    // The condition prints as `D == Double.NaN`, a formula Java compiles; the formula
+    // compiler has no field access yet.
+    "filter_structured.double_equal_nan at step 0: refused (unsupported in formulas: field \
+     access .NaN), Java has a table",
+];
+
+/// Every scenario of the oracle, replayed as far as `where` and `filter` reach: each
+/// recorded result of one of them is compared at every step, or listed as not run with the
+/// reason. A `where` or `filter` that is not a recorded result (`agg_by_no_keys.no_nan`
+/// and `error_formula.nonzero` feed an aggregation and an update) is made but not compared.
 #[test]
-fn ticking_scenarios_match_the_recorded_java_results_at_every_step() {
-    assert_eq!(check_ticking_scenario("ticking_empty_start"), 5);
-    assert_eq!(check_ticking_scenario("ticking_where_sort"), 8);
+fn scenarios_match_the_recorded_java_results() {
+    let mut paths = Vec::new();
+    for kind in ["static", "ticking"] {
+        let directory = oracle().join("scenarios").join(kind);
+        for entry in std::fs::read_dir(&directory).expect("the scenarios") {
+            paths.push(entry.expect("a scenario").path());
+        }
+    }
+    paths.sort();
+    assert_eq!(paths.len(), 83);
+    let mut tally = Tally::default();
+    for path in &paths {
+        replay(&json(path), &mut tally);
+    }
+    assert_eq!(
+        tally.differences, KNOWN_DIFFERENCES,
+        "differences from Java"
+    );
+    let compared: Vec<String> = tally
+        .compared
+        .iter()
+        .map(|(table, steps)| format!("{table} x{steps}"))
+        .collect();
+    let expected = [
+        "column_statistics.big x1",
+        "empty_table_ops.w x1",
+        "error_formula.filter_not_boolean x1",
+        "error_formula.syntax_filter x1",
+        "error_unknown_column.bad_where x1",
+        "error_unknown_column.good x1",
+        "filter_structured.and_ x1",
+        "filter_structured.bad_regex x1",
+        "filter_structured.bool_equal x1",
+        "filter_structured.bool_not_equal x1",
+        "filter_structured.column_to_column x1",
+        "filter_structured.column_to_other_type x1",
+        "filter_structured.contains x1",
+        "filter_structured.contains_empty x1",
+        "filter_structured.contains_ignore_case x1",
+        "filter_structured.contains_inverted x1",
+        "filter_structured.double_equal_zero x1",
+        "filter_structured.double_greater_equal x1",
+        "filter_structured.double_less x1",
+        "filter_structured.double_less_infinity x1",
+        "filter_structured.double_not_equal x1",
+        "filter_structured.float_greater x1",
+        "filter_structured.in_columns x1",
+        "filter_structured.in_doubles x1",
+        "filter_structured.in_doubles_finite x1",
+        "filter_structured.in_doubles_nan_equal x1",
+        "filter_structured.in_doubles_nan_not_equal x1",
+        "filter_structured.in_ints x1",
+        "filter_structured.in_strings x1",
+        "filter_structured.in_strings_ignore_case x1",
+        "filter_structured.int_equal x1",
+        "filter_structured.int_greater x1",
+        "filter_structured.int_greater_equal x1",
+        "filter_structured.int_less x1",
+        "filter_structured.int_less_equal x1",
+        "filter_structured.int_not_equal x1",
+        "filter_structured.invoke_function x1",
+        "filter_structured.invoke_method x1",
+        "filter_structured.invoke_method_no_nulls x1",
+        "filter_structured.is_not_null_bool x1",
+        "filter_structured.is_null_double x1",
+        "filter_structured.is_null_string x1",
+        "filter_structured.literal_on_the_left x1",
+        "filter_structured.matches x1",
+        "filter_structured.matches_empty x1",
+        "filter_structured.matches_ignore_case x1",
+        "filter_structured.matches_inverted x1",
+        "filter_structured.matches_on_int x1",
+        "filter_structured.nested x1",
+        "filter_structured.not_ x1",
+        "filter_structured.not_in_doubles_finite x1",
+        "filter_structured.not_in_ints x1",
+        "filter_structured.not_less x1",
+        "filter_structured.of_empty x1",
+        "filter_structured.or_ x1",
+        "filter_structured.string_against_number x1",
+        "filter_structured.string_equal x1",
+        "filter_structured.string_equal_ignore_case x1",
+        "filter_structured.string_greater_equal_quoted x1",
+        "filter_structured.string_less x1",
+        "filter_structured.string_less_quoted x1",
+        "filter_structured.string_not_equal x1",
+        "filter_structured.time_equal x1",
+        "filter_structured.time_greater x1",
+        "filter_structured.two_filters x1",
+        "filter_structured.unknown_column x1",
+        "flatten_reverse.big x1",
+        "null_sentinel_inputs.nulls x1",
+        "pipeline.valid x1",
+        "slice_positions.big x1",
+        "snapshot_static.big x1",
+        "ticking_empty_start.w x5",
+        "ticking_filter_structured.a_or_null x9",
+        "ticking_filter_structured.both x9",
+        "ticking_filter_structured.filter_of_filter x9",
+        "ticking_filter_structured.id_below_i x9",
+        "ticking_filter_structured.in_doubles x9",
+        "ticking_filter_structured.in_list x9",
+        "ticking_filter_structured.letters x9",
+        "ticking_filter_structured.not_a x9",
+        "ticking_filter_structured.positive x9",
+        "ticking_filter_structured.small x9",
+        "ticking_head_tail.big x9",
+        "ticking_merge_refreshing.a_big x8",
+        "ticking_slice_flatten_reverse.big x9",
+        "ticking_snapshot_when.big x9",
+        "ticking_where_sort.positive x8",
+        "timestamps.after x1",
+        "timestamps.not_null x1",
+        "where_float_nan.eq_self x1",
+        "where_float_nan.ge x1",
+        "where_float_nan.gt x1",
+        "where_float_nan.is_inf x1",
+        "where_float_nan.is_nan x1",
+        "where_float_nan.is_null x1",
+        "where_float_nan.lt x1",
+        "where_int.eq x1",
+        "where_int.gt x1",
+        "where_int.is_null x1",
+        "where_int.le x1",
+        "where_int.none x1",
+        "where_int.not_null_long x1",
+        "where_string_bool.empty_s x1",
+        "where_string_bool.eq x1",
+        "where_string_bool.is_false x1",
+        "where_string_bool.is_true x1",
+        "where_string_bool.lt x1",
+        "where_string_bool.ne x1",
+        "where_string_bool.null_b x1",
+        "where_string_bool.null_s x1",
+    ];
+    assert_eq!(compared, expected, "compared");
+    // Results of this module's operations made from an operation of another module or from
+    // an input this test cannot make, and conditions the engine has no form of.
+    let not_run = [
+        "filter_structured.is_nan_double: is_nan, which the gRPC handler refuses",
+        "filter_structured.is_nan_float: is_nan, which the gRPC handler refuses",
+        "filter_structured.is_nan_int: is_nan, which the gRPC handler refuses",
+        "filter_structured.search: unported io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter",
+        "filter_structured.search_columns: unported io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter",
+        "lazy_update_update_view.uv_then_where: update_view",
+        "ticking_blink_sort_head_tail.big: blink input",
+        "ticking_lazy_update_update_view.uv_big: update_view",
+        "ticking_time_table.first_day: time_table",
+    ];
+    assert_eq!(tally.not_run, not_run, "not run");
 }
 
 // ---------------------------------------------------------------------------------------

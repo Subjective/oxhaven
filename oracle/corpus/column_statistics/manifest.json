@@ -1,0 +1,117 @@
+{
+  "format": 2,
+  "scenario": "column_statistics",
+  "scenario_sha256": "6313dc2a7eb9225ff319b27917883b58dc2618f7453441080e239c654d83a953",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "stats_K",
+      "file": "step000.stats_K.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_G",
+      "file": "step000.stats_G.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_I",
+      "file": "step000.stats_I.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_D",
+      "file": "step000.stats_D.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_F",
+      "file": "step000.stats_F.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_B",
+      "file": "step000.stats_B.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "stats_T",
+      "file": "step000.stats_T.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "finite_I",
+      "file": "step000.finite_I.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "finite_D",
+      "file": "step000.finite_D.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "finite_F",
+      "file": "step000.finite_F.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "limit_one",
+      "file": "step000.limit_one.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "limit_zero",
+      "file": "step000.limit_zero.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "limit_many",
+      "file": "step000.limit_many.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "empty_int",
+      "file": "step000.empty_int.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "empty_string",
+      "file": "step000.empty_string.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "of_filtered",
+      "file": "step000.of_filtered.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "unknown",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

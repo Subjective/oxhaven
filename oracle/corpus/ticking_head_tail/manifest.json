@@ -1,0 +1,926 @@
+{
+  "format": 2,
+  "scenario": "ticking_head_tail",
+  "scenario_sha256": "d2cab903047c7e69d8a10456a04616936dca306266e186438c8cda438105f2d8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "head_zero",
+      "file": "step000.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "tail_zero",
+      "file": "step000.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "head_two",
+      "file": "step000.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "tail_two",
+      "file": "step000.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "head_many",
+      "file": "step000.head_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "tail_many",
+      "file": "step000.tail_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "big_head",
+      "file": "step000.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "big_tail",
+      "file": "step000.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "sorted_k",
+      "file": "step000.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "top",
+      "file": "step000.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "bottom",
+      "file": "step000.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "head_of_tail",
+      "file": "step000.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "tail_of_head",
+      "file": "step000.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "log_head",
+      "file": "step000.log_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "log_tail",
+      "file": "step000.log_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "log_tail_zero",
+      "file": "step000.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "head_zero",
+      "file": "step001.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "tail_zero",
+      "file": "step001.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "head_two",
+      "file": "step001.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "tail_two",
+      "file": "step001.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "head_many",
+      "file": "step001.head_many.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "tail_many",
+      "file": "step001.tail_many.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "big",
+      "file": "step001.big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "big_head",
+      "file": "step001.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "big_tail",
+      "file": "step001.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "sorted_k",
+      "file": "step001.sorted_k.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "top",
+      "file": "step001.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "bottom",
+      "file": "step001.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "head_of_tail",
+      "file": "step001.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "tail_of_head",
+      "file": "step001.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "log_head",
+      "file": "step001.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "log_tail",
+      "file": "step001.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "log_tail_zero",
+      "file": "step001.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "head_zero",
+      "file": "step002.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "tail_zero",
+      "file": "step002.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "head_two",
+      "file": "step002.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "tail_two",
+      "file": "step002.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "head_many",
+      "file": "step002.head_many.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "tail_many",
+      "file": "step002.tail_many.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "big",
+      "file": "step002.big.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "big_head",
+      "file": "step002.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "big_tail",
+      "file": "step002.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "sorted_k",
+      "file": "step002.sorted_k.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "top",
+      "file": "step002.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "bottom",
+      "file": "step002.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "head_of_tail",
+      "file": "step002.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "tail_of_head",
+      "file": "step002.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "log_head",
+      "file": "step002.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "log_tail",
+      "file": "step002.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "log_tail_zero",
+      "file": "step002.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "head_zero",
+      "file": "step003.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "tail_zero",
+      "file": "step003.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "head_two",
+      "file": "step003.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "tail_two",
+      "file": "step003.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "head_many",
+      "file": "step003.head_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "tail_many",
+      "file": "step003.tail_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "big",
+      "file": "step003.big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "big_head",
+      "file": "step003.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "big_tail",
+      "file": "step003.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "sorted_k",
+      "file": "step003.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "top",
+      "file": "step003.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "bottom",
+      "file": "step003.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "head_of_tail",
+      "file": "step003.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "tail_of_head",
+      "file": "step003.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "log_head",
+      "file": "step003.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "log_tail",
+      "file": "step003.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "log_tail_zero",
+      "file": "step003.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "head_zero",
+      "file": "step004.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "tail_zero",
+      "file": "step004.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "head_two",
+      "file": "step004.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "tail_two",
+      "file": "step004.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "head_many",
+      "file": "step004.head_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "tail_many",
+      "file": "step004.tail_many.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "big",
+      "file": "step004.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "big_head",
+      "file": "step004.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "big_tail",
+      "file": "step004.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "sorted_k",
+      "file": "step004.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "top",
+      "file": "step004.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "bottom",
+      "file": "step004.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "head_of_tail",
+      "file": "step004.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "tail_of_head",
+      "file": "step004.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "log_head",
+      "file": "step004.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "log_tail",
+      "file": "step004.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "log_tail_zero",
+      "file": "step004.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "head_zero",
+      "file": "step005.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "tail_zero",
+      "file": "step005.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "head_two",
+      "file": "step005.head_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "tail_two",
+      "file": "step005.tail_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "head_many",
+      "file": "step005.head_many.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "tail_many",
+      "file": "step005.tail_many.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "big",
+      "file": "step005.big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "big_head",
+      "file": "step005.big_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "big_tail",
+      "file": "step005.big_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "sorted_k",
+      "file": "step005.sorted_k.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "top",
+      "file": "step005.top.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "bottom",
+      "file": "step005.bottom.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "head_of_tail",
+      "file": "step005.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "tail_of_head",
+      "file": "step005.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "log_head",
+      "file": "step005.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "log_tail",
+      "file": "step005.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "log_tail_zero",
+      "file": "step005.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "head_zero",
+      "file": "step006.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "tail_zero",
+      "file": "step006.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "head_two",
+      "file": "step006.head_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tail_two",
+      "file": "step006.tail_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "head_many",
+      "file": "step006.head_many.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tail_many",
+      "file": "step006.tail_many.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "big",
+      "file": "step006.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "big_head",
+      "file": "step006.big_head.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "big_tail",
+      "file": "step006.big_tail.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "sorted_k",
+      "file": "step006.sorted_k.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "top",
+      "file": "step006.top.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "bottom",
+      "file": "step006.bottom.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "head_of_tail",
+      "file": "step006.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tail_of_head",
+      "file": "step006.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "log_head",
+      "file": "step006.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "log_tail",
+      "file": "step006.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "log_tail_zero",
+      "file": "step006.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_zero",
+      "file": "step007.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_zero",
+      "file": "step007.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_two",
+      "file": "step007.head_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_two",
+      "file": "step007.tail_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_many",
+      "file": "step007.head_many.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_many",
+      "file": "step007.tail_many.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "big",
+      "file": "step007.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "big_head",
+      "file": "step007.big_head.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "big_tail",
+      "file": "step007.big_tail.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "sorted_k",
+      "file": "step007.sorted_k.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "top",
+      "file": "step007.top.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "bottom",
+      "file": "step007.bottom.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "head_of_tail",
+      "file": "step007.head_of_tail.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "tail_of_head",
+      "file": "step007.tail_of_head.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "log_head",
+      "file": "step007.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "log_tail",
+      "file": "step007.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "log_tail_zero",
+      "file": "step007.log_tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "head_zero",
+      "file": "step008.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "tail_zero",
+      "file": "step008.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "head_two",
+      "file": "step008.head_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "tail_two",
+      "file": "step008.tail_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "head_many",
+      "file": "step008.head_many.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "tail_many",
+      "file": "step008.tail_many.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "big",
+      "file": "step008.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "big_head",
+      "file": "step008.big_head.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "big_tail",
+      "file": "step008.big_tail.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "sorted_k",
+      "file": "step008.sorted_k.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "top",
+      "file": "step008.top.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "bottom",
+      "file": "step008.bottom.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "head_of_tail",
+      "file": "step008.head_of_tail.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "tail_of_head",
+      "file": "step008.tail_of_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "log_head",
+      "file": "step008.log_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "log_tail",
+      "file": "step008.log_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "log_tail_zero",
+      "file": "step008.log_tail_zero.arrow",
+      "rows": 0
+    }
+  ]
+}

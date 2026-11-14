@@ -1,0 +1,349 @@
+{
+ "format": 1,
+ "name": "ticking_group_ungroup_head_by",
+ "description": "group_by, ungroup, head_by and tail_by of a keyed input table, through adds, rows that change group, deletes that empty groups and the table, and refilling it.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN"
+    ],
+    [
+     4,
+     null,
+     2,
+     -0.0
+    ],
+    [
+     5,
+     "b",
+     7,
+     2.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "grouped",
+   "op": "group_by",
+   "source": "t",
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "grouped_all",
+   "op": "group_by",
+   "source": "t",
+   "by": []
+  },
+  {
+   "name": "back",
+   "op": "ungroup",
+   "source": "grouped"
+  },
+  {
+   "name": "back_ids",
+   "op": "ungroup",
+   "source": "grouped",
+   "columns": [
+    "Id"
+   ]
+  },
+  {
+   "name": "head_one",
+   "op": "head_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_two",
+   "op": "head_by",
+   "source": "t",
+   "rows": 2,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "tail_one",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 1,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "tail_two",
+   "op": "tail_by",
+   "source": "t",
+   "rows": 2,
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "head_zero",
+   "op": "head_by",
+   "source": "t",
+   "rows": 0,
+   "by": [
+    "G"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "grouped"
+  },
+  {
+   "table": "grouped_all"
+  },
+  {
+   "table": "back"
+  },
+  {
+   "table": "back_ids"
+  },
+  {
+   "table": "head_one"
+  },
+  {
+   "table": "head_two"
+  },
+  {
+   "table": "tail_one"
+  },
+  {
+   "table": "tail_two"
+  },
+  {
+   "table": "head_zero"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       "a",
+       1,
+       0.5
+      ],
+      [
+       7,
+       "c",
+       4,
+       "Infinity"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       3,
+       3.5
+      ],
+      [
+       4,
+       "b",
+       2,
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       "c",
+       0,
+       0.0
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       null,
+       null,
+       "NaN"
+      ],
+      [
+       9,
+       "b",
+       6,
+       6.5
+      ],
+      [
+       10,
+       "a",
+       -1,
+       -1.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       "a",
+       1,
+       1.0
+      ],
+      [
+       12,
+       "a",
+       2,
+       2.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

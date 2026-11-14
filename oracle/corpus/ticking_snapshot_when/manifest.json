@@ -1,0 +1,548 @@
+{
+  "format": 2,
+  "scenario": "ticking_snapshot_when",
+  "scenario_sha256": "ab9b8a664c1f9b4eb881427369a4fdd92741ef196e8eafa46dbd1c68ecfb05cd",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "snap",
+      "file": "step000.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "when_plain",
+      "file": "step000.when_plain.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "when_initial",
+      "file": "step000.when_initial.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "when_stamp",
+      "file": "step000.when_stamp.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "when_incremental",
+      "file": "step000.when_incremental.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "when_history",
+      "file": "step000.when_history.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "when_keyed_trigger",
+      "file": "step000.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "when_derived",
+      "file": "step000.when_derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "count_snapshots",
+      "file": "step000.count_snapshots.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "snap",
+      "file": "step001.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "when_plain",
+      "file": "step001.when_plain.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "when_initial",
+      "file": "step001.when_initial.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "when_stamp",
+      "file": "step001.when_stamp.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "when_incremental",
+      "file": "step001.when_incremental.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "when_history",
+      "file": "step001.when_history.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "when_keyed_trigger",
+      "file": "step001.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "big",
+      "file": "step001.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "when_derived",
+      "file": "step001.when_derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "count_snapshots",
+      "file": "step001.count_snapshots.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "snap",
+      "file": "step002.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "when_plain",
+      "file": "step002.when_plain.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "when_initial",
+      "file": "step002.when_initial.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "when_stamp",
+      "file": "step002.when_stamp.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "when_incremental",
+      "file": "step002.when_incremental.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "when_history",
+      "file": "step002.when_history.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "when_keyed_trigger",
+      "file": "step002.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "big",
+      "file": "step002.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "when_derived",
+      "file": "step002.when_derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "count_snapshots",
+      "file": "step002.count_snapshots.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "snap",
+      "file": "step003.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "when_plain",
+      "file": "step003.when_plain.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "when_initial",
+      "file": "step003.when_initial.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "when_stamp",
+      "file": "step003.when_stamp.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "when_incremental",
+      "file": "step003.when_incremental.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "when_history",
+      "file": "step003.when_history.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "when_keyed_trigger",
+      "file": "step003.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "big",
+      "file": "step003.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "when_derived",
+      "file": "step003.when_derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "count_snapshots",
+      "file": "step003.count_snapshots.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "snap",
+      "file": "step004.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "when_plain",
+      "file": "step004.when_plain.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "when_initial",
+      "file": "step004.when_initial.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "when_stamp",
+      "file": "step004.when_stamp.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "when_incremental",
+      "file": "step004.when_incremental.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "when_history",
+      "file": "step004.when_history.arrow",
+      "rows": 11
+    },
+    {
+      "step": 4,
+      "table": "when_keyed_trigger",
+      "file": "step004.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "big",
+      "file": "step004.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "when_derived",
+      "file": "step004.when_derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "count_snapshots",
+      "file": "step004.count_snapshots.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "snap",
+      "file": "step005.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "when_plain",
+      "file": "step005.when_plain.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "when_initial",
+      "file": "step005.when_initial.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "when_stamp",
+      "file": "step005.when_stamp.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "when_incremental",
+      "file": "step005.when_incremental.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "when_history",
+      "file": "step005.when_history.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "when_keyed_trigger",
+      "file": "step005.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "big",
+      "file": "step005.big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "when_derived",
+      "file": "step005.when_derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "count_snapshots",
+      "file": "step005.count_snapshots.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "snap",
+      "file": "step006.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "when_plain",
+      "file": "step006.when_plain.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "when_initial",
+      "file": "step006.when_initial.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "when_stamp",
+      "file": "step006.when_stamp.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "when_incremental",
+      "file": "step006.when_incremental.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "when_history",
+      "file": "step006.when_history.arrow",
+      "rows": 29
+    },
+    {
+      "step": 6,
+      "table": "when_keyed_trigger",
+      "file": "step006.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "big",
+      "file": "step006.big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "when_derived",
+      "file": "step006.when_derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "count_snapshots",
+      "file": "step006.count_snapshots.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "snap",
+      "file": "step007.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "when_plain",
+      "file": "step007.when_plain.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "when_initial",
+      "file": "step007.when_initial.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "when_stamp",
+      "file": "step007.when_stamp.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "when_incremental",
+      "file": "step007.when_incremental.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "when_history",
+      "file": "step007.when_history.arrow",
+      "rows": 29
+    },
+    {
+      "step": 7,
+      "table": "when_keyed_trigger",
+      "file": "step007.when_keyed_trigger.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "big",
+      "file": "step007.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "when_derived",
+      "file": "step007.when_derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "count_snapshots",
+      "file": "step007.count_snapshots.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "snap",
+      "file": "step008.snap.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "when_plain",
+      "file": "step008.when_plain.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "when_initial",
+      "file": "step008.when_initial.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "when_stamp",
+      "file": "step008.when_stamp.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "when_incremental",
+      "file": "step008.when_incremental.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "when_history",
+      "file": "step008.when_history.arrow",
+      "rows": 29
+    },
+    {
+      "step": 8,
+      "table": "when_keyed_trigger",
+      "file": "step008.when_keyed_trigger.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "big",
+      "file": "step008.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "when_derived",
+      "file": "step008.when_derived.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "count_snapshots",
+      "file": "step008.count_snapshots.arrow",
+      "rows": 5
+    }
+  ]
+}

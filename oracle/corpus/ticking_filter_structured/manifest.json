@@ -1,0 +1,548 @@
+{
+  "format": 2,
+  "scenario": "ticking_filter_structured",
+  "scenario_sha256": "b9e515d7229fd0ba13e926deb1331ab3e076034c9d374fbe02a0e2bc2aea4cff",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "positive",
+      "file": "step000.positive.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "small",
+      "file": "step000.small.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "a_or_null",
+      "file": "step000.a_or_null.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "not_a",
+      "file": "step000.not_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "both",
+      "file": "step000.both.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "in_list",
+      "file": "step000.in_list.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "letters",
+      "file": "step000.letters.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "id_below_i",
+      "file": "step000.id_below_i.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "in_doubles",
+      "file": "step000.in_doubles.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "filter_of_filter",
+      "file": "step000.filter_of_filter.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "positive",
+      "file": "step001.positive.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "small",
+      "file": "step001.small.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "a_or_null",
+      "file": "step001.a_or_null.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "not_a",
+      "file": "step001.not_a.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "both",
+      "file": "step001.both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "in_list",
+      "file": "step001.in_list.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "letters",
+      "file": "step001.letters.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "id_below_i",
+      "file": "step001.id_below_i.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "in_doubles",
+      "file": "step001.in_doubles.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "filter_of_filter",
+      "file": "step001.filter_of_filter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "positive",
+      "file": "step002.positive.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "small",
+      "file": "step002.small.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "a_or_null",
+      "file": "step002.a_or_null.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "not_a",
+      "file": "step002.not_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "both",
+      "file": "step002.both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "in_list",
+      "file": "step002.in_list.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "letters",
+      "file": "step002.letters.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "id_below_i",
+      "file": "step002.id_below_i.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "in_doubles",
+      "file": "step002.in_doubles.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "filter_of_filter",
+      "file": "step002.filter_of_filter.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "positive",
+      "file": "step003.positive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "small",
+      "file": "step003.small.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "a_or_null",
+      "file": "step003.a_or_null.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "not_a",
+      "file": "step003.not_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "both",
+      "file": "step003.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "in_list",
+      "file": "step003.in_list.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "letters",
+      "file": "step003.letters.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "id_below_i",
+      "file": "step003.id_below_i.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "in_doubles",
+      "file": "step003.in_doubles.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "filter_of_filter",
+      "file": "step003.filter_of_filter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "positive",
+      "file": "step004.positive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "small",
+      "file": "step004.small.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "a_or_null",
+      "file": "step004.a_or_null.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "not_a",
+      "file": "step004.not_a.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "both",
+      "file": "step004.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "in_list",
+      "file": "step004.in_list.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "letters",
+      "file": "step004.letters.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "id_below_i",
+      "file": "step004.id_below_i.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "in_doubles",
+      "file": "step004.in_doubles.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "filter_of_filter",
+      "file": "step004.filter_of_filter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "positive",
+      "file": "step005.positive.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "small",
+      "file": "step005.small.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "a_or_null",
+      "file": "step005.a_or_null.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "not_a",
+      "file": "step005.not_a.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "both",
+      "file": "step005.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "in_list",
+      "file": "step005.in_list.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "letters",
+      "file": "step005.letters.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "id_below_i",
+      "file": "step005.id_below_i.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "in_doubles",
+      "file": "step005.in_doubles.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "filter_of_filter",
+      "file": "step005.filter_of_filter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "positive",
+      "file": "step006.positive.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "small",
+      "file": "step006.small.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "a_or_null",
+      "file": "step006.a_or_null.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "not_a",
+      "file": "step006.not_a.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "both",
+      "file": "step006.both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "in_list",
+      "file": "step006.in_list.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "letters",
+      "file": "step006.letters.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "id_below_i",
+      "file": "step006.id_below_i.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "in_doubles",
+      "file": "step006.in_doubles.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "filter_of_filter",
+      "file": "step006.filter_of_filter.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "positive",
+      "file": "step007.positive.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "small",
+      "file": "step007.small.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "a_or_null",
+      "file": "step007.a_or_null.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "not_a",
+      "file": "step007.not_a.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "both",
+      "file": "step007.both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "in_list",
+      "file": "step007.in_list.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "letters",
+      "file": "step007.letters.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "id_below_i",
+      "file": "step007.id_below_i.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "in_doubles",
+      "file": "step007.in_doubles.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "filter_of_filter",
+      "file": "step007.filter_of_filter.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "positive",
+      "file": "step008.positive.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "small",
+      "file": "step008.small.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "a_or_null",
+      "file": "step008.a_or_null.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "not_a",
+      "file": "step008.not_a.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "both",
+      "file": "step008.both.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "in_list",
+      "file": "step008.in_list.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "letters",
+      "file": "step008.letters.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "id_below_i",
+      "file": "step008.id_below_i.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "in_doubles",
+      "file": "step008.in_doubles.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "filter_of_filter",
+      "file": "step008.filter_of_filter.arrow",
+      "rows": 2
+    }
+  ]
+}

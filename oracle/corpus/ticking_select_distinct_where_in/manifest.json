@@ -1,0 +1,440 @@
+{
+  "format": 2,
+  "scenario": "ticking_select_distinct_where_in",
+  "scenario_sha256": "a4d7296eb40539eedafae2844d3668411c62ad85b5ea5d8c9e22e8ebb0dcf634",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "groups",
+      "file": "step000.groups.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "pairs",
+      "file": "step000.pairs.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "doubles",
+      "file": "step000.doubles.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "in_ticking",
+      "file": "step000.in_ticking.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "not_in_ticking",
+      "file": "step000.not_in_ticking.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "in_fixed",
+      "file": "step000.in_fixed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "not_in_fixed",
+      "file": "step000.not_in_fixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "in_distinct",
+      "file": "step000.in_distinct.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "groups",
+      "file": "step001.groups.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "pairs",
+      "file": "step001.pairs.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "doubles",
+      "file": "step001.doubles.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "in_ticking",
+      "file": "step001.in_ticking.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "not_in_ticking",
+      "file": "step001.not_in_ticking.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "in_fixed",
+      "file": "step001.in_fixed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "not_in_fixed",
+      "file": "step001.not_in_fixed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "in_distinct",
+      "file": "step001.in_distinct.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "groups",
+      "file": "step002.groups.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "pairs",
+      "file": "step002.pairs.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "doubles",
+      "file": "step002.doubles.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "in_ticking",
+      "file": "step002.in_ticking.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "not_in_ticking",
+      "file": "step002.not_in_ticking.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "in_fixed",
+      "file": "step002.in_fixed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "not_in_fixed",
+      "file": "step002.not_in_fixed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "in_distinct",
+      "file": "step002.in_distinct.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "groups",
+      "file": "step003.groups.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "pairs",
+      "file": "step003.pairs.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "doubles",
+      "file": "step003.doubles.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "in_ticking",
+      "file": "step003.in_ticking.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "not_in_ticking",
+      "file": "step003.not_in_ticking.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "in_fixed",
+      "file": "step003.in_fixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "not_in_fixed",
+      "file": "step003.not_in_fixed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "in_distinct",
+      "file": "step003.in_distinct.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "groups",
+      "file": "step004.groups.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "pairs",
+      "file": "step004.pairs.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "doubles",
+      "file": "step004.doubles.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "in_ticking",
+      "file": "step004.in_ticking.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "not_in_ticking",
+      "file": "step004.not_in_ticking.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "in_fixed",
+      "file": "step004.in_fixed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "not_in_fixed",
+      "file": "step004.not_in_fixed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "in_distinct",
+      "file": "step004.in_distinct.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "groups",
+      "file": "step005.groups.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "pairs",
+      "file": "step005.pairs.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "doubles",
+      "file": "step005.doubles.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "in_ticking",
+      "file": "step005.in_ticking.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "not_in_ticking",
+      "file": "step005.not_in_ticking.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "in_fixed",
+      "file": "step005.in_fixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "not_in_fixed",
+      "file": "step005.not_in_fixed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "in_distinct",
+      "file": "step005.in_distinct.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "groups",
+      "file": "step006.groups.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "pairs",
+      "file": "step006.pairs.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "doubles",
+      "file": "step006.doubles.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "in_ticking",
+      "file": "step006.in_ticking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "not_in_ticking",
+      "file": "step006.not_in_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "in_fixed",
+      "file": "step006.in_fixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "not_in_fixed",
+      "file": "step006.not_in_fixed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "in_distinct",
+      "file": "step006.in_distinct.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "groups",
+      "file": "step007.groups.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "pairs",
+      "file": "step007.pairs.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "doubles",
+      "file": "step007.doubles.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "in_ticking",
+      "file": "step007.in_ticking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "not_in_ticking",
+      "file": "step007.not_in_ticking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "in_fixed",
+      "file": "step007.in_fixed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "not_in_fixed",
+      "file": "step007.not_in_fixed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "in_distinct",
+      "file": "step007.in_distinct.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "groups",
+      "file": "step008.groups.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "pairs",
+      "file": "step008.pairs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "doubles",
+      "file": "step008.doubles.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "in_ticking",
+      "file": "step008.in_ticking.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "not_in_ticking",
+      "file": "step008.not_in_ticking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "in_fixed",
+      "file": "step008.in_fixed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "not_in_fixed",
+      "file": "step008.not_in_fixed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "in_distinct",
+      "file": "step008.in_distinct.arrow",
+      "rows": 1
+    }
+  ]
+}

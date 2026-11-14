@@ -20,7 +20,7 @@ from harness import scenario as sc
 from harness.results import ResultSet
 
 ORACLE = Path(__file__).resolve().parent.parent
-ALL_OPS = frozenset(sc.OPERATIONS)
+ALL_OPS = fuzz.OPERATIONS
 SEEDS = range(200)
 GENERATED = {seed: fuzz.generate(seed, ALL_OPS)[0] for seed in SEEDS}
 
@@ -39,7 +39,7 @@ def test_generation_is_deterministic():
 def test_generation_is_the_same_in_another_process():
     """Python randomizes string hashes per process; the generator must not depend on them."""
     code = ("import json; from harness import fuzz, scenario as sc; "
-            "print(json.dumps(fuzz.generate(5, frozenset(sc.OPERATIONS))[0], sort_keys=True))")
+            "print(json.dumps(fuzz.generate(5, fuzz.OPERATIONS)[0], sort_keys=True))")
     for hash_seed in ("1", "2"):
         out = subprocess.run(
             [sys.executable, "-c", code], cwd=ORACLE, check=True, capture_output=True,
@@ -234,6 +234,38 @@ def test_fuzz_command_is_clean_when_both_sides_agree(monkeypatch, tmp_path, caps
     assert code == 0, out
     assert "25 seeds, 25 clean, 0 with differences, 0 not run" in out
     assert list(tmp_path.iterdir()) == []
+
+
+def test_fuzz_keep_going_runs_every_seed_and_groups_the_differences(
+        monkeypatch, tmp_path, capsys):
+    _targets(monkeypatch, "changed_table_attribute")
+    arguments = ["fuzz", "--a", "x", "--b", "faulty:changed_table_attribute@x", "--ops",
+                 "where,sort,slice", "--seeds", "12", "--out", str(tmp_path), "--keep-going"]
+    code = cli.main(arguments)
+    out = capsys.readouterr().out
+    assert code == 1, out
+    assert "DIFF" not in out and "shrunk" not in out
+    saved = sorted(path.name for path in tmp_path.iterdir())
+    assert saved and all(name.startswith("fuzz_") and "_min" not in name for name in saved)
+    summary = out.strip().splitlines()[-1]
+    assert summary.startswith("fuzz: 12 seeds, ") and "0 not run" in summary
+    differing = int(summary.split(" clean, ")[1].split(" with differences")[0])
+    assert differing == len(saved)
+    groups = [line for line in out.splitlines() if line.startswith("GROUP ")]
+    assert groups and len(groups) == int(summary.split(" in ")[1].split(" groups")[0])
+    # One cause, one group per operation it shows on: the fault changes one attribute.
+    assert all(line.startswith(
+        "GROUP kind=table_metadata key=deephaven:attribute.BlinkTable operation=")
+        for line in groups), groups
+    assert len({line.split(":")[0] + line.split("operation=")[1].split(":")[0]
+                for line in groups}) == len(groups)
+    for line in groups:
+        seed = int(line.split("seeds ")[-1].split(",")[0].split(" ")[0])
+        assert f"fuzz_{seed}.json" in saved
+
+    _targets(monkeypatch, None)
+    assert cli.main(arguments[:3] + arguments[5:]) == 0
+    assert "12 seeds, 12 clean, 0 with differences in 0 groups, 0 not run" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("fault", ["nan_to_null", "truncated_after_three", "dropped_row"])

@@ -1,0 +1,287 @@
+{
+ "format": 1,
+ "name": "sort_absolute",
+ "description": "Absolute-value sorts of integer and floating point columns with negatives, nulls, NaN, infinities, signed zeros and the limits of the type, ascending and descending, and together with plain sort columns; an absolute sort of a string column.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "L",
+     "type": "int64"
+    },
+    {
+     "name": "B",
+     "type": "int8"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     3,
+     -5,
+     1,
+     1.5,
+     -2.5,
+     "c"
+    ],
+    [
+     -3,
+     5,
+     -1,
+     -1.5,
+     2.5,
+     "a"
+    ],
+    [
+     null,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     0,
+     0,
+     0,
+     -0.0,
+     0.0,
+     "b"
+    ],
+    [
+     -7,
+     9223372036854775807,
+     -127,
+     "NaN",
+     "NaN",
+     "d"
+    ],
+    [
+     7,
+     -9223372036854775807,
+     127,
+     "Infinity",
+     "-Infinity",
+     "e"
+    ],
+    [
+     3,
+     5,
+     1,
+     "-Infinity",
+     "Infinity",
+     "f"
+    ],
+    [
+     -2147483647,
+     2,
+     -127,
+     0.0,
+     -0.0,
+     "g"
+    ],
+    [
+     2147483647,
+     -2,
+     2,
+     2.5,
+     1e+300,
+     "h"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "abs_int",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_int_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_long",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "L",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_byte_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "B",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_float",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "F",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_float_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "F",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_double",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_double_down",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "D",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_then_plain",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "I",
+     "direction": "ascending",
+     "absolute": true
+    },
+    {
+     "column": "L",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "plain_then_abs",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "B",
+     "direction": "ascending"
+    },
+    {
+     "column": "D",
+     "direction": "descending",
+     "absolute": true
+    }
+   ]
+  },
+  {
+   "name": "abs_string",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "S",
+     "direction": "ascending",
+     "absolute": true
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "abs_int"
+  },
+  {
+   "table": "abs_int_down"
+  },
+  {
+   "table": "abs_long"
+  },
+  {
+   "table": "abs_byte_down"
+  },
+  {
+   "table": "abs_float"
+  },
+  {
+   "table": "abs_float_down"
+  },
+  {
+   "table": "abs_double"
+  },
+  {
+   "table": "abs_double_down"
+  },
+  {
+   "table": "abs_then_plain"
+  },
+  {
+   "table": "plain_then_abs"
+  },
+  {
+   "table": "abs_string"
+  }
+ ]
+}

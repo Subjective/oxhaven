@@ -1,0 +1,97 @@
+{
+  "format": 2,
+  "scenario": "agg_by_statistics",
+  "scenario_sha256": "da4354681abe9fc905b18bd2032bb5c608c85e5810e15085e9ef95c8e0a5fb8a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "by_two",
+      "file": "step000.by_two.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "special_by_key",
+      "file": "step000.special_by_key.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "special_no_key",
+      "file": "step000.special_no_key.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "of_empty",
+      "file": "step000.of_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "of_empty_by_key",
+      "file": "step000.of_empty_by_key.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "time_median",
+      "file": "step000.time_median.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "string_median",
+      "file": "step000.string_median.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "string_std",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_abs_sum",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bool_var",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "pct_out_of_range",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "string_weight",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
