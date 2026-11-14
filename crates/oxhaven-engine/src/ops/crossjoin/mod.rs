@@ -20,6 +20,8 @@ mod zero;
 #[cfg(test)]
 mod corpus;
 #[cfg(test)]
+mod java_updates;
+#[cfg(test)]
 mod random;
 #[cfg(test)]
 mod tests;
