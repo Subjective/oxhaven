@@ -238,8 +238,18 @@ fn is_append_only(table: &dyn Table) -> bool {
 /// The left table's blink attribute; add-only and append-only when the left table is and no
 /// change of the right table can modify a row of the result. A static table counts as both.
 ///
-/// Behavior: io.deephaven.engine.table.impl.NaturalJoinHelper#naturalJoin, and the `Join`
-/// entries of the attribute table in io.deephaven.engine.table.impl.BaseTable
+/// Java copies the left table's attributes with `CopyAttributeOperation.Join`, and nothing
+/// from the right table. Of the attributes a table has here, `Join` is listed for
+/// `BLINK_TABLE_ATTRIBUTE` and `INPUT_TABLE_ATTRIBUTE`, and not for
+/// `ADD_ONLY_TABLE_ATTRIBUTE` or `APPEND_ONLY_TABLE_ATTRIBUTE`, which the join sets itself.
+/// The input table is given with `TableSpec::with_input_table_of`. The other attributes
+/// copied for `Join` (sortable and filterable columns, layout hints, the snapshot viewport
+/// type, key columns, unique keys, the initially empty coalesced source table marker, and
+/// every attribute without an entry) are ones no table has here.
+///
+/// Behavior: io.deephaven.engine.table.impl.NaturalJoinHelper#naturalJoin,
+/// io.deephaven.engine.table.impl.BaseTable#copyAttributes, and the `Join` entries of
+/// `attributeToCopySet` with io.deephaven.engine.table.impl.BaseTable#shouldCopyAttribute
 fn join_attributes(left: &dyn Table, right: &dyn Table, plan: &Plan) -> TableAttributes {
     // An exact join already has the one right row of every left row, so an add-only right
     // table has nothing to add to it.
@@ -376,7 +386,8 @@ impl NaturalJoin {
             Err(e) => panic!("the added columns passed the name checks: {e}"),
         };
         let spec = TableSpec::new(definition, (*left_rows).clone(), columns)
-            .with_attributes(join_attributes(&**left, &**right, &plan));
+            .with_attributes(join_attributes(&**left, &**right, &plan))
+            .with_input_table_of(&**left);
 
         let added = left_count..left_count + plan.additions.len();
         let right_columns = ModifiedColumnTransformer::new(
