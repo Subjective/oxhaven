@@ -305,11 +305,11 @@ fn a_floating_result_equal_to_the_null_value_is_null() {
     );
 }
 
-/// QLFU `#negate(byte)`, `#negate(short)`, `#negate(char)` return `int`; `#negate(int)`,
-/// `#negate(long)`, `#negate(float)`, `#negate(double)` return their own type. All return
-/// null for null.
+/// QLFU `#negate(int)`, `#negate(long)`, `#negate(float)`, `#negate(double)` return their
+/// own type, and null for null. `QueryLanguageParser#visit(UnaryExpr)` refuses a `byte`,
+/// `short` or `char` operand.
 #[test]
-fn unary_minus_promotes_small_integers_and_keeps_null() {
+fn unary_minus_keeps_the_type_and_null_and_refuses_small_integers() {
     let table = TestTable::new([
         ("B", bytes([Some(5), None, Some(-127)])),
         ("S", shorts([Some(5), None, Some(-32_767)])),
@@ -319,9 +319,17 @@ fn unary_minus_promotes_small_integers_and_keeps_null() {
         ("F", floats([Some(0.0), None, Some(f32::NAN)])),
         ("D", doubles([Some(-0.0), None, Some(f64::INFINITY)])),
     ]);
-    table.assert("-B", ints([Some(-5), None, Some(127)]));
-    table.assert("-S", ints([Some(-5), None, Some(32_767)]));
-    table.assert("-C", ints([Some(-97), None, Some(-65_534)]));
+    // Java types `-B` as int and emits `negate(byte)`, which returns byte, and then fails
+    // its own assertion that the two agree. Recorded from Java 42.9:
+    // "asserted ret.equals(result), instead ret == byte, result == int".
+    for formula in ["-B", "-S", "-C", "- -B", "-'a'"] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula}"
+        );
+    }
+    table.assert("-(int) B", ints([Some(-5), None, Some(127)]));
+    table.assert("-(B + 0)", ints([Some(-5), None, Some(127)]));
     table.assert("-I", ints([Some(-5), None, Some(2_147_483_647)]));
     table.assert("-L", longs([Some(-5), None, Some(-i64::MAX)]));
     table.assert("-F", floats([Some(-0.0), None, Some(f32::NAN)]));

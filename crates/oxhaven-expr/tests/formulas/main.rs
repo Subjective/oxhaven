@@ -10,6 +10,7 @@ mod comparison;
 mod corpus;
 mod formula;
 mod logic;
+mod recorded;
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,

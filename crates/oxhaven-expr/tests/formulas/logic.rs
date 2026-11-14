@@ -1,7 +1,7 @@
 //! `&& || !`, and what the type checker refuses.
 
 use super::*;
-use oxhaven_contracts::expr::{Expr, Literal, UnaryOp};
+use oxhaven_contracts::expr::{Expr, Literal, RowVariable, UnaryOp};
 
 #[test]
 fn and_or_and_not_follow_their_truth_tables() {
@@ -130,34 +130,43 @@ fn formulas_with_ill_typed_operands_are_type_errors() {
 #[test]
 fn formulas_outside_the_subset_are_reported_as_unsupported() {
     let table = checker_table();
+    let mut wrong = Vec::new();
     for (formula, construct) in [
-        ("S + 1", "string concatenation with +"),
-        ("I + S", "string concatenation with +"),
         ("T - T", "arithmetic on Instant values"),
         ("T + 1", "arithmetic on Instant values"),
-        ("I & 1", "bitwise operator &"),
-        ("B | B", "bitwise operator |"),
-        ("B ^ B", "bitwise operator ^"),
-        ("B < B", "ordering comparison of Boolean values"),
-        ("I == S", "comparison of Int with String"),
-        ("B == 1", "comparison of Boolean with Int"),
-        ("T >= 1L", "comparison of Instant with Long"),
-        ("null", "null literal outside == and !="),
+        ("T >= 1L", "ordering comparison of Instant with long"),
+        (
+            "null",
+            "null literal outside ==, !=, ?:, a cast and string concatenation",
+        ),
         ("null == null", "comparison of null with null"),
-        ("I < null", "null literal as an operand of <"),
-        ("I + null", "null literal as an operand of +"),
-        ("isNull(null)", "null literal outside == and !="),
+        ("S < null", "null literal as an operand of <"),
+        ("B & null", "null literal as an operand of &"),
+        (
+            "isNull(null)",
+            "null literal outside ==, !=, ?:, a cast and string concatenation",
+        ),
+        ("abs(I)", "function abs()"),
+        ("S.split(S)", "method call String.split()"),
+        (
+            "S.indexOf(S, I)",
+            "method call String.indexOf() with 2 arguments",
+        ),
+        ("(Integer) I", "cast to Integer"),
+        ("1.5F", "float literal with an uppercase F suffix 1.5F"),
         ("i", "row variable I"),
         ("ii + 1", "row variable Ii"),
         ("I + k", "row variable K"),
         ("I_", "column array I_"),
     ] {
-        assert_eq!(
-            table.compile_error(formula),
-            FormulaError::Unsupported(construct.into()),
-            "{formula}"
-        );
+        let result = Compiler
+            .parse(formula)
+            .and_then(|expr| Compiler.compile(&expr, &table.definition).map(|_| ()));
+        if result != Err(FormulaError::Unsupported(construct.into())) {
+            wrong.push(format!("{formula}: {result:?}"));
+        }
     }
+    assert!(wrong.is_empty(), "{wrong:#?}");
 }
 
 /// A tree built without the parser gets the same answers.
@@ -170,27 +179,16 @@ fn expression_trees_outside_the_subset_do_not_compile() {
         Err(error) => error,
     };
     assert_eq!(
-        compile(Expr::Ternary {
-            condition: Box::new(Expr::Column("B".into())),
-            if_true: column(),
-            if_false: column(),
-        }),
-        FormulaError::Unsupported("ternary operator (?:)".into())
-    );
-    assert_eq!(
-        compile(Expr::Cast {
-            to: ColumnType::Long,
-            operand: column(),
-        }),
-        FormulaError::Unsupported("cast".into())
-    );
-    assert_eq!(
         compile(Expr::MethodCall {
             receiver: Box::new(Expr::Column("S".into())),
-            method: "length".into(),
+            method: "hashCode".into(),
             arguments: vec![],
         }),
-        FormulaError::Unsupported("method call .length()".into())
+        FormulaError::Unsupported("method call String.hashCode()".into())
+    );
+    assert_eq!(
+        compile(Expr::RowVariable(RowVariable::I)),
+        FormulaError::Unsupported("row variable I".into())
     );
     assert_eq!(
         compile(Expr::Call {
