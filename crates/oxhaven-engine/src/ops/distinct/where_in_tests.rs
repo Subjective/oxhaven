@@ -595,6 +595,33 @@ fn a_where_not_in_loses_rows_to_a_key_that_arrives() {
     assert_eq!(rig.ks(), ["1", "3", "4"]);
 }
 
+/// Without the `select_distinct` in between, the rows of the set table are the keys, and
+/// a row that is modified can change its key.
+#[test]
+fn a_set_row_that_changes_its_key_swaps_the_keys() {
+    let rig = Rig::new(&[(1, 7), (2, 8), (3, 7), (4, 9)], &[7, 9], included_raw);
+    assert_eq!(rig.ks(), ["1", "3", "4"]);
+    // The key 9 becomes the key 8: everything is filtered again.
+    let modify = TableChange::new().modify([1], [(0, ints([8]))]);
+    assert_eq!(rig.changed(None, Some(modify)), (vec![20], vec![40], NONE));
+    // Rows written with the keys they had, and a change of the other column: nothing.
+    let modify = TableChange::new().modify([0, 1], [(0, ints([7, 8]))]);
+    assert_eq!(rig.step(None, Some(modify)), None);
+    let modify = TableChange::new().modify([0], [(1, strings(["x"]))]);
+    assert_eq!(rig.step(None, Some(modify)), None);
+    // A row that moves and changes its key: the old key is where the row was.
+    let moved = TableChange::new()
+        .shift(1, 1, 4)
+        .modify([5], [(0, ints([9]))]);
+    assert_eq!(rig.changed(None, Some(moved)), (vec![40], vec![20], NONE));
+    assert_eq!(rig.ks(), ["1", "3", "4"]);
+
+    let rig = Rig::new(&[(1, 7), (2, 8), (3, 7), (4, 9)], &[7, 9], excluded_raw);
+    assert_eq!(rig.ks(), ["2"]);
+    let modify = TableChange::new().modify([1], [(0, ints([8]))]);
+    assert_eq!(rig.changed(None, Some(modify)), (vec![40], vec![20], NONE));
+}
+
 /// The left table's change and a change of the set of keys in one cycle, for each of the
 /// three ways of filtering again and both operations. The left table removes a row of the
 /// result and one outside it, shifts, adds a row that passes and one that does not, and
