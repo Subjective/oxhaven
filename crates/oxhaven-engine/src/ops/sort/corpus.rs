@@ -34,6 +34,20 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+/// The updates of a sort, not only its rows: which modified rows it reports as modified
+/// and which as removed and added. Recorded from the Java server by
+/// `ops/snapshot/fixtures/record.py`; the oracle's corpus holds no updates.
+#[test]
+fn the_updates_for_modified_rows_match_java() {
+    use crate::ops::snapshot::testing::{replay, Built};
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src/ops/sort/fixtures/sort_modified_rows.json");
+    let define =
+        |operation: &Value, _: &[Arc<dyn Table>]| -> Built { panic!("no operation {operation}") };
+    // 2 results at 14 steps, and the updates of both during 13 steps.
+    assert_eq!(replay(&path, &define), 2 * 14 + 2 * 13);
+}
+
 fn oracle() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../oracle")
 }
