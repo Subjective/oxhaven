@@ -233,3 +233,23 @@ orchestrator's label.
 
 Started full aggregations (4.1) in a freed slot after load fell to 8 and disk recovered to 16 GB
 (removed worktrees of six finished agents).
+
+## 18:35 Usage limit stopped the run for about six and a half hours
+
+At about 11:50 the account hit its usage limit on the primary model. Five agents stopped mid-task
+(joins, update_by, the sort fix on the snapshot branch, corpus integration, full aggregations) and
+the orchestrator did not get another turn until 18:29, after a container restart. The stated reset
+is 17 November 08:00 UTC.
+
+State found on return: PR 29 was green and is merged. The Barrage branch is PR 30. Committed work
+survived in every worktree, and uncommitted edits survived in four of them. The full-aggregation
+agent had committed nothing and its worktree was gone, so that run is lost.
+
+Decision: continue on the next model down for agents, since resuming the stopped agents would send
+requests to the limited model. Three replacement agents were started in the existing worktrees
+(corpus integration, sort fix, update_by), each briefed from the branch state, not from the old
+agent's context. The orchestrator finishes the join branch itself.
+
+For the retrospective: agents should commit work in progress at least every 30 minutes so a stop
+costs minutes, not a run; and the limit should have been anticipated when eight to ten agents
+were running at once.
