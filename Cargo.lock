@@ -1077,6 +1077,9 @@ dependencies = [
 [[package]]
 name = "oxhaven-engine"
 version = "0.0.0"
+dependencies = [
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "oxhaven-expr"
@@ -1115,6 +1118,10 @@ version = "0.0.0"
 [[package]]
 name = "oxhaven-testkit"
 version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-contracts",
+]
 
 [[package]]
 name = "percent-encoding"
