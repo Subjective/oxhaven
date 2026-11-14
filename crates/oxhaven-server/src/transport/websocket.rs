@@ -465,9 +465,6 @@ fn read_headers(text: &[u8]) -> HeaderMap {
         let Ok(name) = HeaderName::from_bytes(name) else {
             continue;
         };
-        if name == CONTENT_TYPE {
-            continue;
-        }
         if let Ok(value) = HeaderValue::from_bytes(value) {
             headers.append(name, value);
         }
@@ -480,18 +477,65 @@ fn read_headers(text: &[u8]) -> HeaderMap {
     headers
 }
 
+/// A `grpc-message` value as gRPC Java writes it: percent-encoded only where the protocol
+/// requires it, which leaves spaces as they are. The services here encode more than that,
+/// which a gRPC client reads the same, but the Deephaven JS API was seen to fail on it.
+///
+/// Behavior: the gRPC over HTTP/2 protocol, `Percent-Encoded`; `io.grpc.Status` (the
+/// message marshaller)
+fn grpc_message(encoded: &[u8]) -> Vec<u8> {
+    let mut message = Vec::with_capacity(encoded.len());
+    let mut i = 0;
+    while i < encoded.len() {
+        let escaped = (encoded[i] == b'%')
+            .then(|| encoded.get(i + 1..i + 3))
+            .flatten()
+            .and_then(|hex| std::str::from_utf8(hex).ok())
+            .and_then(|hex| u8::from_str_radix(hex, 16).ok());
+        let (byte, used) = match escaped {
+            Some(byte) => (byte, 3),
+            None => (encoded[i], 1),
+        };
+        i += used;
+        if (b' '..=b'~').contains(&byte) && byte != b'%' {
+            message.push(byte);
+        } else {
+            message.extend_from_slice(format!("%{byte:02X}").as_bytes());
+        }
+    }
+    message
+}
+
 /// Headers or trailers as the text of a metadata frame: the flag byte, the length of the
-/// text, and `name: value\r\n` for each.
+/// text, and `name: value\r\n` for each, the status first. `content-length` describes an
+/// HTTP body and is left out.
 ///
 /// Behavior: `MultiplexedWebsocketStreamImpl.Sink#writeMetadataToStream`,
 /// `io.grpc.servlet.jakarta.web.GrpcWebServletResponse#createTrailerPayload`
 pub(crate) fn metadata_frame(headers: &HeaderMap) -> Bytes {
     let mut text = BytesMut::new();
-    for (name, value) in headers {
-        text.put_slice(name.as_str().as_bytes());
+    let mut line = |name: &str, value: &[u8]| {
+        text.put_slice(name.as_bytes());
         text.put_slice(b": ");
-        text.put_slice(value.as_bytes());
+        text.put_slice(value);
         text.put_slice(b"\r\n");
+    };
+    for name in ["grpc-status", "grpc-message"] {
+        for value in headers.get_all(name) {
+            if name == "grpc-message" {
+                line(name, &grpc_message(value.as_bytes()));
+            } else {
+                line(name, value.as_bytes());
+            }
+        }
+    }
+    for (name, value) in headers {
+        if !matches!(
+            name.as_str(),
+            "grpc-status" | "grpc-message" | "content-length"
+        ) {
+            line(name.as_str(), value.as_bytes());
+        }
     }
     let mut frame = BytesMut::with_capacity(text.len() + 5);
     frame.put_u8(METADATA_FRAME);

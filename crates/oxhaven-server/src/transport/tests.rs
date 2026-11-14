@@ -266,7 +266,7 @@ async fn a_wrong_key_fails_the_call_in_one_message() {
     assert_eq!(header(&frame, "grpc-status").as_deref(), Some("16"));
     assert_eq!(
         header(&frame, "grpc-message").as_deref(),
-        Some("Authentication%20details%20invalid")
+        Some("Authentication details invalid")
     );
 }
 
@@ -457,6 +457,14 @@ async fn only_get_post_and_options_are_taken() {
         let (status, _, _) = http1(&server, &format!("{method} /ide/ HTTP/1.1\n")).await;
         assert_eq!(status, "HTTP/1.1 405 Method Not Allowed", "{method}");
     }
+    // whatever the request is otherwise
+    let (status, headers, _) = http1(
+        &server,
+        "PUT /a/b HTTP/1.1\ncontent-type: application/grpc\ncontent-length: 0\n",
+    )
+    .await;
+    assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
+    assert!(!headers.iter().any(|h| h.starts_with("grpc-status")));
     let (status, _, _) = http1(&server, "POST /ide/ HTTP/1.1\ncontent-length: 0\n").await;
     assert_eq!(status, "HTTP/1.1 405 Method Not Allowed");
     let (status, headers, _) = http1(&server, "OPTIONS /ide/ HTTP/1.1\n").await;

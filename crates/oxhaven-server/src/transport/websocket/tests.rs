@@ -330,6 +330,8 @@ async fn a_call_that_fails_before_a_message_is_one_closing_message() {
         metadata(&payload),
         vec!["grpc-message: refused", "grpc-status: 7"]
     );
+    // the status is the first line
+    assert!(payload[5..].starts_with(b"grpc-status: 7\r\n"));
 }
 
 #[tokio::test]
@@ -524,6 +526,28 @@ fn the_first_offered_subprotocol_the_server_has_is_chosen() {
     );
     assert_eq!(offer("other"), None);
     assert_eq!(choose_protocol(&HeaderMap::new()), None);
+}
+
+#[test]
+fn a_status_message_is_encoded_only_where_it_must_be() {
+    // as the services write it: spaces and all punctuation escaped
+    let status = Status::new(Code::Internal, "a b: 100% \u{e9}\n");
+    let frame = metadata_frame(&status_headers(&status));
+    assert_eq!(
+        std::str::from_utf8(&frame[5..]).unwrap(),
+        "grpc-status: 13\r\ngrpc-message: a b: 100%25 %C3%A9%0A\r\n"
+    );
+    assert_eq!(grpc_message(b"plain"), b"plain");
+    // a percent sign that starts no escape is itself escaped
+    assert_eq!(grpc_message(b"50%"), b"50%25");
+}
+
+#[test]
+fn a_metadata_frame_leaves_out_the_content_length() {
+    let mut headers = HeaderMap::new();
+    headers.insert("content-length", HeaderValue::from_static("0"));
+    headers.insert("grpc-status", HeaderValue::from_static("12"));
+    assert_eq!(&metadata_frame(&headers)[5..], b"grpc-status: 12\r\n");
 }
 
 #[test]
