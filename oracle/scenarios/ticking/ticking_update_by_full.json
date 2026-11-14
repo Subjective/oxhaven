@@ -1,0 +1,544 @@
+{
+ "format": 1,
+ "name": "ticking_update_by_full",
+ "description": "Cumulative, rolling (by rows and by time) and exponential update_by operators on a keyed input table and on an append-only one, through adds, replaced rows in the middle of a group, deletes and refilling.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     1.5,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     2,
+     2.5,
+     1700000000000000000
+    ],
+    [
+     3,
+     "a",
+     null,
+     null,
+     1700000001000000000
+    ],
+    [
+     4,
+     "a",
+     3,
+     -0.5,
+     1700000002000000000
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  },
+  {
+   "name": "log",
+   "columns": [
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1.5,
+     1700000000000000000
+    ],
+    [
+     "b",
+     2,
+     2.5,
+     1700000001000000000
+    ]
+   ],
+   "ticking": {
+    "key_columns": []
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "cumulative",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I",
+      "SumD = D"
+     ]
+    },
+    {
+     "op": "cum_prod",
+     "columns": [
+      "ProdI = I"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinD = D"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxI = I"
+     ]
+    },
+    {
+     "op": "forward_fill",
+     "columns": [
+      "FillI = I"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaI = I"
+     ]
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "cumulative_all",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I"
+     ]
+    },
+    {
+     "op": "cum_max",
+     "columns": [
+      "MaxD = D"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "rolling",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_avg_tick",
+     "columns": [
+      "AvgD = D"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 1
+     }
+    },
+    {
+     "op": "rolling_group_tick",
+     "columns": [
+      "GroupI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_count_tick",
+     "columns": [
+      "CountI = I"
+     ],
+     "args": {
+      "rev_ticks": 3,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_max_tick",
+     "columns": [
+      "MaxD = D"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "ema",
+   "op": "update_by",
+   "source": "t",
+   "ops": [
+    {
+     "op": "ema_tick",
+     "columns": [
+      "EmaD = D"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    },
+    {
+     "op": "ems_tick",
+     "columns": [
+      "EmsI = I"
+     ],
+     "args": {
+      "decay_ticks": 2
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "log_cumulative",
+   "op": "update_by",
+   "source": "log",
+   "ops": [
+    {
+     "op": "cum_sum",
+     "columns": [
+      "SumI = I"
+     ]
+    },
+    {
+     "op": "cum_min",
+     "columns": [
+      "MinD = D"
+     ]
+    },
+    {
+     "op": "delta",
+     "columns": [
+      "DeltaD = D"
+     ]
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  },
+  {
+   "name": "log_rolling",
+   "op": "update_by",
+   "source": "log",
+   "ops": [
+    {
+     "op": "rolling_sum_tick",
+     "columns": [
+      "SumI = I"
+     ],
+     "args": {
+      "rev_ticks": 2,
+      "fwd_ticks": 0
+     }
+    },
+    {
+     "op": "rolling_sum_time",
+     "columns": [
+      "TimeSumD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "rev_time": "PT2S",
+      "fwd_time": "PT0S"
+     }
+    },
+    {
+     "op": "ema_time",
+     "columns": [
+      "EmaD = D"
+     ],
+     "args": {
+      "ts_col": "T",
+      "decay_time": "PT2S"
+     }
+    }
+   ],
+   "by": [
+    "G"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "cumulative"
+  },
+  {
+   "table": "cumulative_all"
+  },
+  {
+   "table": "rolling"
+  },
+  {
+   "table": "ema"
+  },
+  {
+   "table": "log_cumulative"
+  },
+  {
+   "table": "log_rolling"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       5,
+       "b",
+       5,
+       5.5,
+       1700000003000000000
+      ],
+      [
+       6,
+       "a",
+       6,
+       6.5,
+       1700000003000000000
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       "a",
+       3,
+       3.5,
+       1700000001000000000
+      ],
+      [
+       "a",
+       null,
+       null,
+       1700000002000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       3,
+       "a",
+       30,
+       30.5,
+       1700000001000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       "a",
+       20,
+       20.5,
+       1700000000000000000
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       "b",
+       4,
+       4.5,
+       1700000003000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       7,
+       "b",
+       null,
+       null,
+       1700000004000000000
+      ],
+      [
+       1,
+       "b",
+       1,
+       1.0,
+       1700000000000000000
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       "a",
+       5,
+       5.5,
+       1700000004000000000
+      ],
+      [
+       "c",
+       6,
+       6.5,
+       1700000004000000000
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       2
+      ],
+      [
+       3
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       "a",
+       8,
+       8.5,
+       1700000009000000000
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

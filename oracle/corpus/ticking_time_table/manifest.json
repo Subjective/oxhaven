@@ -1,0 +1,212 @@
+{
+  "format": 2,
+  "scenario": "ticking_time_table",
+  "scenario_sha256": "c30b2ddb521bdb536b603498b30ecefb68f6a7fba78b1239fba82ae38469f700",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "first_hours",
+      "file": "step000.first_hours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "some_hours",
+      "file": "step000.some_hours.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "first_day",
+      "file": "step000.first_day.arrow",
+      "rows": 24
+    },
+    {
+      "step": 0,
+      "table": "first_day_count",
+      "file": "step000.first_day_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "numbered",
+      "file": "step000.numbered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "first_half_days",
+      "file": "step000.first_half_days.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "blinking_none",
+      "file": "step000.blinking_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "meta_hours",
+      "file": "step000.meta_hours.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "meta_input",
+      "file": "step000.meta_input.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "bad_period",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_start",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "first_hours",
+      "file": "step001.first_hours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "some_hours",
+      "file": "step001.some_hours.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "first_day",
+      "file": "step001.first_day.arrow",
+      "rows": 24
+    },
+    {
+      "step": 1,
+      "table": "first_day_count",
+      "file": "step001.first_day_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "numbered",
+      "file": "step001.numbered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "first_half_days",
+      "file": "step001.first_half_days.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "blinking_none",
+      "file": "step001.blinking_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "meta_hours",
+      "file": "step001.meta_hours.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "meta_input",
+      "file": "step001.meta_input.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "bad_period",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "bad_start",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "first_hours",
+      "file": "step002.first_hours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "some_hours",
+      "file": "step002.some_hours.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "first_day",
+      "file": "step002.first_day.arrow",
+      "rows": 24
+    },
+    {
+      "step": 2,
+      "table": "first_day_count",
+      "file": "step002.first_day_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "numbered",
+      "file": "step002.numbered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "first_half_days",
+      "file": "step002.first_half_days.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "blinking_none",
+      "file": "step002.blinking_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "meta_hours",
+      "file": "step002.meta_hours.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "meta_input",
+      "file": "step002.meta_input.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "bad_period",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "bad_start",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

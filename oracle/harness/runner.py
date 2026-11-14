@@ -6,14 +6,18 @@ No Java counterpart: this is the harness. It speaks to the server only through p
 
 from __future__ import annotations
 
-from typing import Any
+import os
+import sys
+from typing import Any, Callable
 
 import grpc
 import pyarrow as pa
 import pyarrow.flight as paflight
-from pydeephaven import NaturalJoinType, Session, SortDirection, agg, updateby
+from deephaven_core.proto import table_pb2
+from pydeephaven import NaturalJoinType, Session, agg, updateby
 from pydeephaven._arrow import map_arrow_type
-from pydeephaven.table import InputTable, Table
+from pydeephaven.table import InputTable, MultiJoinInput, Table, multi_join
+from pydeephaven.ticket import ExportTicket
 
 from . import scenario as sc
 from .connect import open_session
@@ -53,20 +57,151 @@ def _import(session: Session, data: pa.Table) -> Table:
 
 
 _AGGS = {
-    "sum": agg.sum_,
-    "min": agg.min_,
-    "max": agg.max_,
-    "first": agg.first,
-    "last": agg.last,
-    "avg": agg.avg,
+    "sum": agg.sum_, "abs_sum": agg.abs_sum, "avg": agg.avg, "min": agg.min_, "max": agg.max_,
+    "first": agg.first, "last": agg.last, "std": agg.std, "var": agg.var, "group": agg.group,
+    "count_distinct": agg.count_distinct, "distinct": agg.distinct, "unique": agg.unique,
+    "median": agg.median, "pct": agg.pct, "sorted_first": agg.sorted_first,
+    "sorted_last": agg.sorted_last, "weighted_avg": agg.weighted_avg,
+    "weighted_sum": agg.weighted_sum, "formula": agg.formula,
 }
-_UPDATE_BY = {"cum_sum": updateby.cum_sum}
 _NATURAL_JOIN_TYPES = {
     "error_on_duplicate": NaturalJoinType.ERROR_ON_DUPLICATE,
     "first_match": NaturalJoinType.FIRST_MATCH,
     "last_match": NaturalJoinType.LAST_MATCH,
     "exactly_one_match": NaturalJoinType.EXACTLY_ONE_MATCH,
 }
+_COMPARE = {
+    "<": table_pb2.CompareCondition.LESS_THAN,
+    "<=": table_pb2.CompareCondition.LESS_THAN_OR_EQUAL,
+    ">": table_pb2.CompareCondition.GREATER_THAN,
+    ">=": table_pb2.CompareCondition.GREATER_THAN_OR_EQUAL,
+    "==": table_pb2.CompareCondition.EQUALS,
+    "!=": table_pb2.CompareCondition.NOT_EQUALS,
+}
+
+
+def _aggregation(spec: dict[str, Any]) -> agg.Aggregation:
+    kind, args = spec["agg"], spec.get("args", {})
+    if kind == "count":
+        return agg.count_(spec["column"])
+    if kind == "count_where":
+        return agg.count_where(spec["column"], args["filters"])
+    if kind == "formula":
+        return agg.formula(cols=spec["columns"], **args)
+    if kind in ("sorted_first", "sorted_last", "weighted_avg", "weighted_sum"):
+        first = args["order_by"] if kind.startswith("sorted") else args["wcol"]
+        return _AGGS[kind](first, spec["columns"])
+    return _AGGS[kind](cols=spec["columns"], **args)
+
+
+def _update_by(spec: dict[str, Any]) -> updateby.UpdateByOperation:
+    function = getattr(updateby, spec["op"])
+    args = dict(spec.get("args", {}))
+    if "delta_control" in args:
+        args["delta_control"] = updateby.DeltaControl[args["delta_control"]]
+    if "count_where" in spec["op"]:
+        return function(col=spec["columns"][0], **args)
+    return function(cols=spec["columns"], **args)
+
+
+def _raw(session: Session, rpc: str, request: Callable[[Any], Any]) -> Table:
+    """One table service call that pydeephaven has no method for. `request` builds the
+    request message from the result ticket."""
+    ticket = session.make_export_ticket()
+    stub = session.table_service._grpc_table_stub  # noqa: SLF001
+    response = session.wrap_rpc(getattr(stub, rpc), request(ticket.pb_ticket))
+    if not response.success:
+        raise RunError(f"{rpc} answered without success: {response.error_info}")
+    return Table(session, ticket=ExportTicket(response.result_id.ticket.ticket),
+                 schema_header=response.schema_header, size=response.size,
+                 is_static=response.is_static)
+
+
+def _reference(table: Table) -> Any:
+    return table_pb2.TableReference(ticket=table.pb_ticket)
+
+
+def _value(value: dict[str, Any]) -> Any:
+    kind, body = next(iter(value.items()))
+    if kind == "column":
+        return table_pb2.Value(reference=table_pb2.Reference(column_name=body))
+    if kind == "long":
+        return table_pb2.Value(literal=table_pb2.Literal(long_value=body))
+    if kind == "nanos":
+        return table_pb2.Value(literal=table_pb2.Literal(nano_time_value=body))
+    if isinstance(body, bool):
+        return table_pb2.Value(literal=table_pb2.Literal(bool_value=body))
+    if isinstance(body, str) and body not in sc.FLOAT_WORDS:
+        return table_pb2.Value(literal=table_pb2.Literal(string_value=body))
+    return table_pb2.Value(literal=table_pb2.Literal(
+        double_value=sc.FLOAT_WORDS.get(body, body)))
+
+
+def _condition(condition: dict[str, Any]) -> Any:
+    """The `Condition` message of table.proto for one structured filter condition."""
+    kind, body = next(iter(condition.items()))
+
+    def case(item: dict[str, Any]) -> Any:
+        return table_pb2.IGNORE_CASE if item.get("ignore_case") else table_pb2.MATCH_CASE
+
+    def match(item: dict[str, Any]) -> Any:
+        return table_pb2.INVERTED if item.get("inverted") else table_pb2.REGULAR
+
+    if kind in ("and", "or"):
+        message = table_pb2.AndCondition if kind == "and" else table_pb2.OrCondition
+        return table_pb2.Condition(**{kind: message(filters=[_condition(c) for c in body])})
+    if kind == "not":
+        return table_pb2.Condition(**{"not": table_pb2.NotCondition(filter=_condition(body))})
+    if kind == "compare":
+        return table_pb2.Condition(compare=table_pb2.CompareCondition(
+            operation=_COMPARE[body["op"]], case_sensitivity=case(body),
+            lhs=_value(body["lhs"]), rhs=_value(body["rhs"])))
+    if kind == "in":
+        nan = {None: table_pb2.NAN_COMPARISON_TYPE_NOT_SPECIFIED, True: table_pb2.NAN_EQUALS_NAN,
+               False: table_pb2.NAN_NOT_EQUALS_NAN}[body.get("nan_equals")]
+        return table_pb2.Condition(**{"in": table_pb2.InCondition(
+            target=_value(body["target"]), candidates=[_value(v) for v in body["candidates"]],
+            case_sensitivity=case(body), match_type=match(body), nan_comparison=nan)})
+    if kind == "is_null":
+        return table_pb2.Condition(is_null=table_pb2.IsNullCondition(
+            reference=table_pb2.Reference(column_name=body)))
+    if kind == "is_nan":
+        return table_pb2.Condition(is_nan=table_pb2.IsNaNCondition(
+            reference=table_pb2.Reference(column_name=body)))
+    if kind == "matches":
+        return table_pb2.Condition(matches=table_pb2.MatchesCondition(
+            reference=table_pb2.Reference(column_name=body["column"]), regex=body["text"],
+            case_sensitivity=case(body), match_type=match(body)))
+    if kind == "contains":
+        return table_pb2.Condition(contains=table_pb2.ContainsCondition(
+            reference=table_pb2.Reference(column_name=body["column"]),
+            search_string=body["text"], case_sensitivity=case(body), match_type=match(body)))
+    if kind == "invoke":
+        target = {"target": _value(body["target"])} if "target" in body else {}
+        return table_pb2.Condition(invoke=table_pb2.InvokeCondition(
+            method=body["method"], arguments=[_value(v) for v in body["arguments"]], **target))
+    return table_pb2.Condition(search=table_pb2.SearchCondition(
+        search_string=body["text"],
+        optional_references=[table_pb2.Reference(column_name=c)
+                             for c in body.get("columns", ())]))
+
+
+def _sort(session: Session, source: Table, op: dict[str, Any]) -> Table:
+    directions = {
+        "ascending": table_pb2.SortDescriptor.ASCENDING,
+        "descending": table_pb2.SortDescriptor.DESCENDING,
+    }
+    if op["op"] == "reverse":
+        sorts = [table_pb2.SortDescriptor(direction=table_pb2.SortDescriptor.REVERSE)]
+    else:
+        sorts = [
+            table_pb2.SortDescriptor(column_name=by["column"],
+                                     direction=directions[by["direction"]],
+                                     is_absolute=by.get("absolute", False))
+            for by in op["by"]
+        ]
+    return _raw(session, "Sort", lambda result: table_pb2.SortTableRequest(
+        result_id=result, source_id=_reference(source), sorts=sorts))
 
 
 def apply_operation(session: Session, tables: dict[str, Table], op: dict[str, Any]) -> Table:
@@ -74,7 +209,17 @@ def apply_operation(session: Session, tables: dict[str, Table], op: dict[str, An
     kind = op["op"]
     if kind == "merge":
         return session.merge_tables([tables[name] for name in op["sources"]])
-    if kind in ("natural_join", "exact_join", "join", "aj"):
+    if kind == "empty_table":
+        return session.empty_table(op["size"])
+    if kind == "time_table":
+        return session.time_table(op["period"], op["start_time"], op.get("blink", False))
+    if kind == "multi_join":
+        return multi_join([
+            MultiJoinInput(tables[item["table"]], item["on"], item.get("joins"))
+            for item in op["inputs"]
+        ]).table
+    if kind in ("natural_join", "exact_join", "join", "aj", "raj", "left_join", "where_in",
+                "range_join"):
         left, right = tables[op["left"]], tables[op["right"]]
         joins = op.get("joins")
         if kind == "natural_join":
@@ -84,40 +229,85 @@ def apply_operation(session: Session, tables: dict[str, Table], op: dict[str, An
             return left.exact_join(right, on=op["on"], joins=joins)
         if kind == "join":
             return left.join(right, on=op["on"], joins=joins)
-        return left.aj(right, on=op["on"], joins=joins)
+        if kind == "aj":
+            return left.aj(right, on=op["on"], joins=joins)
+        if kind == "raj":
+            return left.raj(right, on=op["on"], joins=joins)
+        if kind == "left_join":
+            return _raw(session, "LeftJoinTables", lambda result: table_pb2.LeftJoinTablesRequest(
+                result_id=result, left_id=_reference(left), right_id=_reference(right),
+                columns_to_match=op["on"], columns_to_add=joins or []))
+        if kind == "where_in":
+            if op.get("inverted", False):
+                return left.where_not_in(right, op["on"])
+            return left.where_in(right, op["on"])
+        # range_join: the last entry of `on` is the range match, the others are exact matches.
+        return _raw(session, "RangeJoinTables", lambda result: table_pb2.RangeJoinTablesRequest(
+            result_id=result, left_id=_reference(left), right_id=_reference(right),
+            exact_match_columns=op["on"][:-1], range_match=op["on"][-1],
+            aggregations=[_aggregation(a).make_grpc_message() for a in op["aggs"]]))
 
     source = tables[op["source"]]
     if kind == "where":
         return source.where(op["filters"])
-    if kind == "sort":
-        directions = {
-            "ascending": SortDirection.ASCENDING,
-            "descending": SortDirection.DESCENDING,
-        }
-        return source.sort(
-            order_by=[by["column"] for by in op["by"]],
-            order=[directions[by["direction"]] for by in op["by"]],
-        )
+    if kind == "filter":
+        return _raw(session, "Filter", lambda result: table_pb2.FilterTableRequest(
+            result_id=result, source_id=_reference(source),
+            filters=[_condition(c) for c in op["conditions"]]))
+    if kind in ("sort", "reverse"):
+        return _sort(session, source, op)
     if kind == "head":
         return source.head(op["rows"])
     if kind == "tail":
         return source.tail(op["rows"])
+    if kind == "head_by":
+        return source.head_by(op["rows"], op["by"])
+    if kind == "tail_by":
+        return source.tail_by(op["rows"], op["by"])
+    if kind == "slice":
+        return source.slice(op["start"], op["stop"])
+    if kind == "flatten":
+        return _raw(session, "Flatten", lambda result: table_pb2.FlattenRequest(
+            result_id=result, source_id=_reference(source)))
     if kind == "view":
         return source.view(op["formulas"])
+    if kind == "update_view":
+        return source.update_view(op["formulas"])
     if kind == "select":
         return source.select(op["formulas"])
     if kind == "update":
         return source.update(op["formulas"])
+    if kind == "lazy_update":
+        return source.lazy_update(op["formulas"])
     if kind == "drop_columns":
         return source.drop_columns(op["columns"])
+    if kind == "select_distinct":
+        return source.select_distinct(op["columns"])
     if kind == "agg_by":
-        aggs = [
-            agg.count_(a["column"]) if a["agg"] == "count" else _AGGS[a["agg"]](a["columns"])
-            for a in op["aggs"]
-        ]
-        return source.agg_by(aggs, op["by"])
+        return source.agg_by([_aggregation(a) for a in op["aggs"]], op["by"])
+    if kind == "agg_all_by":
+        return source.agg_all_by(_aggregation(op["agg"]), op["by"])
+    if kind == "group_by":
+        return source.group_by(op["by"])
+    if kind == "ungroup":
+        return source.ungroup(op.get("columns", []), op.get("null_fill", True))
     if kind == "update_by":
-        return source.update_by([_UPDATE_BY[o["op"]](o["columns"]) for o in op["ops"]], op["by"])
+        return source.update_by([_update_by(o) for o in op["ops"]], op["by"])
+    if kind == "snapshot":
+        return source.snapshot()
+    if kind == "snapshot_when":
+        return source.snapshot_when(
+            tables[op["trigger"]], op.get("stamp_columns", []), op.get("initial", False),
+            op.get("incremental", False), op.get("history", False))
+    if kind == "meta_table":
+        return source.meta_table
+    if kind == "column_statistics":
+        limit = ({"unique_value_limit": op["unique_value_limit"]}
+                 if "unique_value_limit" in op else {})
+        return _raw(session, "ComputeColumnStatistics",
+                    lambda result: table_pb2.ColumnStatisticsRequest(
+                        result_id=result, source_id=_reference(source),
+                        column_name=op["column"], **limit))
     raise RunError(f"operation {kind!r} has no translation")
 
 
@@ -162,6 +352,15 @@ def failure_code(error: BaseException | None) -> str | None:
             return error.code().name
         error = error.__cause__ or error.__context__
     return None
+
+
+def _details(error: BaseException | None) -> str:
+    """The server's message behind a client exception, on one line."""
+    while error is not None:
+        if isinstance(error, grpc.RpcError):
+            return " ".join(str(error.details()).split())[:400]
+        error = error.__cause__ or error.__context__
+    return ""
 
 
 def _do_get_code(session: Session, table: Table) -> str | None:
@@ -216,11 +415,7 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
     A table defined from a failed table fails the same way: the request is not sent, as the
     server would refuse it for the missing dependency.
     """
-    for key in ("source", "left", "right"):
-        if key in op and isinstance(tables[op[key]], Failure):
-            tables[op["name"]] = tables[op[key]]
-            return
-    for name in op.get("sources", ()):
+    for name in sc.references(op):
         if isinstance(tables[name], Failure):
             tables[op["name"]] = tables[name]
             return
@@ -230,6 +425,9 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
         code = failure_code(error)
         if code is None:
             raise
+        if os.environ.get("ORACLE_TRACE"):
+            # For the author of a scenario: why the server refused. Never part of a result.
+            print(f"trace: {op['name']}: {code}: {_details(error)}", file=sys.stderr)
         tables[op["name"]] = Failure(code)
 
 
@@ -252,11 +450,14 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
                 tables[item.name] = _import(session, sc.arrow_table(item.columns, item.rows))
                 continue
             input_table = session.input_table(
-                schema=sc.arrow_schema(item.columns), key_cols=list(item.key_columns or ())
+                schema=sc.arrow_schema(item.columns), key_cols=list(item.key_columns or ()),
+                blink_table=item.blink,
             )
             inputs[item.name] = input_table
             tables[item.name] = input_table
-        barrier = _Barrier(session) if inputs else None
+        # A time table fills in on the server's own cycles, so it needs the barrier too.
+        clocked = any(op["op"] == "time_table" for op in scenario.operations)
+        barrier = _Barrier(session) if inputs or clocked else None
 
         # Initial rows of an input table go in through the same path as later additions.
         for item in scenario.inputs:

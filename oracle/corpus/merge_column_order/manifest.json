@@ -1,0 +1,70 @@
+{
+  "format": 2,
+  "scenario": "merge_column_order",
+  "scenario_sha256": "be46c1e038d7407444d76050f3f70dbde1aa0820772332b7287966a95d365238",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "reordered",
+      "file": "step000.reordered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "reordered_first",
+      "file": "step000.reordered_first.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "fewer_columns",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "other_type",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "with_itself",
+      "file": "step000.with_itself.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "with_empty",
+      "file": "step000.with_empty.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "only_empty",
+      "file": "step000.only_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "one_table",
+      "file": "step000.one_table.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "b_as_a",
+      "file": "step000.b_as_a.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "after_view",
+      "file": "step000.after_view.arrow",
+      "rows": 4
+    }
+  ]
+}

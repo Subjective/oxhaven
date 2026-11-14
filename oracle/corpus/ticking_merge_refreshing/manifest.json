@@ -1,0 +1,536 @@
+{
+  "format": 2,
+  "scenario": "ticking_merge_refreshing",
+  "scenario_sha256": "f8cf1da5b4e51f2bfff586571fef3817b91518fe30f07c72c80555752da5437e",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ab",
+      "file": "step000.ab.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ba",
+      "file": "step000.ba.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "all",
+      "file": "step000.all.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "file": "step000.twice.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "a_big",
+      "file": "step000.a_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "b_sorted",
+      "file": "step000.b_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "derived",
+      "file": "step000.derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merged_sorted",
+      "file": "step000.merged_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merged_tail",
+      "file": "step000.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merge_of_merge",
+      "file": "step000.merge_of_merge.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merged_count",
+      "file": "step000.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "ab",
+      "file": "step001.ab.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "ba",
+      "file": "step001.ba.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "all",
+      "file": "step001.all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "twice",
+      "file": "step001.twice.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "a_big",
+      "file": "step001.a_big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "b_sorted",
+      "file": "step001.b_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "derived",
+      "file": "step001.derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "merged_sorted",
+      "file": "step001.merged_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "merged_tail",
+      "file": "step001.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "merge_of_merge",
+      "file": "step001.merge_of_merge.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "merged_count",
+      "file": "step001.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "ab",
+      "file": "step002.ab.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "ba",
+      "file": "step002.ba.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "all",
+      "file": "step002.all.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "twice",
+      "file": "step002.twice.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "a_big",
+      "file": "step002.a_big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "b_sorted",
+      "file": "step002.b_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "derived",
+      "file": "step002.derived.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "merged_sorted",
+      "file": "step002.merged_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "merged_tail",
+      "file": "step002.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "merge_of_merge",
+      "file": "step002.merge_of_merge.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "merged_count",
+      "file": "step002.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "ab",
+      "file": "step003.ab.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "ba",
+      "file": "step003.ba.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "all",
+      "file": "step003.all.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "twice",
+      "file": "step003.twice.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "a_big",
+      "file": "step003.a_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "b_sorted",
+      "file": "step003.b_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "derived",
+      "file": "step003.derived.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "merged_sorted",
+      "file": "step003.merged_sorted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "merged_tail",
+      "file": "step003.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "merge_of_merge",
+      "file": "step003.merge_of_merge.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "merged_count",
+      "file": "step003.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "ab",
+      "file": "step004.ab.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "ba",
+      "file": "step004.ba.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "all",
+      "file": "step004.all.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "twice",
+      "file": "step004.twice.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "a_big",
+      "file": "step004.a_big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "b_sorted",
+      "file": "step004.b_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "derived",
+      "file": "step004.derived.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "merged_sorted",
+      "file": "step004.merged_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "merged_tail",
+      "file": "step004.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "merge_of_merge",
+      "file": "step004.merge_of_merge.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "merged_count",
+      "file": "step004.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "ab",
+      "file": "step005.ab.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "ba",
+      "file": "step005.ba.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "all",
+      "file": "step005.all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "twice",
+      "file": "step005.twice.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "a_big",
+      "file": "step005.a_big.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "b_sorted",
+      "file": "step005.b_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "derived",
+      "file": "step005.derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "merged_sorted",
+      "file": "step005.merged_sorted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "merged_tail",
+      "file": "step005.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "merge_of_merge",
+      "file": "step005.merge_of_merge.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "merged_count",
+      "file": "step005.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "ab",
+      "file": "step006.ab.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "ba",
+      "file": "step006.ba.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "all",
+      "file": "step006.all.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "twice",
+      "file": "step006.twice.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "a_big",
+      "file": "step006.a_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "b_sorted",
+      "file": "step006.b_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "derived",
+      "file": "step006.derived.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "merged_sorted",
+      "file": "step006.merged_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "merged_tail",
+      "file": "step006.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "merge_of_merge",
+      "file": "step006.merge_of_merge.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "merged_count",
+      "file": "step006.merged_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "ab",
+      "file": "step007.ab.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "ba",
+      "file": "step007.ba.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "all",
+      "file": "step007.all.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "twice",
+      "file": "step007.twice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "a_big",
+      "file": "step007.a_big.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "b_sorted",
+      "file": "step007.b_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "derived",
+      "file": "step007.derived.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "merged_sorted",
+      "file": "step007.merged_sorted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "merged_tail",
+      "file": "step007.merged_tail.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "merge_of_merge",
+      "file": "step007.merge_of_merge.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "merged_count",
+      "file": "step007.merged_count.arrow",
+      "rows": 1
+    }
+  ]
+}

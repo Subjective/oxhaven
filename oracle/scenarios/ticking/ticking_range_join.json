@@ -1,0 +1,336 @@
+{
+ "format": 1,
+ "name": "ticking_range_join",
+ "description": "range_join with a ticking left table, with a ticking right table, and with both.",
+ "inputs": [
+  {
+   "name": "l",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "Lo",
+     "type": "int32"
+    },
+    {
+     "name": "Hi",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     5
+    ],
+    [
+     2,
+     "a",
+     3,
+     3
+    ],
+    [
+     3,
+     "a",
+     6,
+     2
+    ],
+    [
+     4,
+     "b",
+     0,
+     100
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  },
+  {
+   "name": "r",
+   "columns": [
+    {
+     "name": "Rid",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     1.5
+    ],
+    [
+     2,
+     "a",
+     3,
+     3.5
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Rid"
+    ]
+   }
+  },
+  {
+   "name": "l_fixed",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "Lo",
+     "type": "int32"
+    },
+    {
+     "name": "Hi",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1,
+     5
+    ],
+    [
+     2,
+     "a",
+     3,
+     3
+    ],
+    [
+     3,
+     "a",
+     6,
+     2
+    ],
+    [
+     4,
+     "b",
+     0,
+     100
+    ]
+   ]
+  },
+  {
+   "name": "r_fixed",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "P",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     "a",
+     1,
+     1.5
+    ],
+    [
+     "a",
+     2,
+     "NaN"
+    ],
+    [
+     "a",
+     3,
+     3.5
+    ],
+    [
+     "a",
+     3,
+     3.75
+    ],
+    [
+     "a",
+     5,
+     null
+    ],
+    [
+     "a",
+     8,
+     8.5
+    ],
+    [
+     "b",
+     50,
+     50.5
+    ],
+    [
+     null,
+     4,
+     4.5
+    ],
+    [
+     "d",
+     1,
+     0.5
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "ticking_left",
+   "op": "range_join",
+   "left": "l",
+   "right": "r_fixed",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ticking_right",
+   "op": "range_join",
+   "left": "l_fixed",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ticking_both",
+   "op": "range_join",
+   "left": "l",
+   "right": "r",
+   "on": [
+    "K",
+    "Lo <= P <= Hi"
+   ],
+   "aggs": [
+    {
+     "agg": "group",
+     "columns": [
+      "Ps = P",
+      "Vs = V"
+     ]
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "ticking_left"
+  },
+  {
+   "table": "ticking_right"
+  },
+  {
+   "table": "ticking_both"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "l",
+     "rows": [
+      [
+       5,
+       "a",
+       2,
+       8
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "r",
+     "rows": [
+      [
+       3,
+       "a",
+       4,
+       4.5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "l",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "r",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

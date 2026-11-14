@@ -1,0 +1,818 @@
+{
+  "format": 2,
+  "scenario": "ticking_slice_flatten_reverse",
+  "scenario_sha256": "e010027589ff6ace77c83403a893d367aca0ab4c3b51edfe9af1be241863255b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "first_three",
+      "file": "step000.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "middle",
+      "file": "step000.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "last_two",
+      "file": "step000.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "inner",
+      "file": "step000.inner.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "sorted_k",
+      "file": "step000.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "sorted_middle",
+      "file": "step000.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "big",
+      "file": "step000.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "flat",
+      "file": "step000.flat.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "flat_big",
+      "file": "step000.flat_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "flat_sorted",
+      "file": "step000.flat_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "rev",
+      "file": "step000.rev.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "rev_big",
+      "file": "step000.rev_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "rev_sorted",
+      "file": "step000.rev_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "rev_head",
+      "file": "step000.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "rev_slice",
+      "file": "step000.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "first_three",
+      "file": "step001.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "middle",
+      "file": "step001.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "last_two",
+      "file": "step001.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "inner",
+      "file": "step001.inner.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "sorted_k",
+      "file": "step001.sorted_k.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "sorted_middle",
+      "file": "step001.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "big",
+      "file": "step001.big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "flat",
+      "file": "step001.flat.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "flat_big",
+      "file": "step001.flat_big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "flat_sorted",
+      "file": "step001.flat_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "rev",
+      "file": "step001.rev.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "rev_big",
+      "file": "step001.rev_big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "rev_sorted",
+      "file": "step001.rev_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "rev_head",
+      "file": "step001.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "rev_slice",
+      "file": "step001.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "first_three",
+      "file": "step002.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "middle",
+      "file": "step002.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "last_two",
+      "file": "step002.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "inner",
+      "file": "step002.inner.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "sorted_k",
+      "file": "step002.sorted_k.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "sorted_middle",
+      "file": "step002.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "big",
+      "file": "step002.big.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "flat",
+      "file": "step002.flat.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "flat_big",
+      "file": "step002.flat_big.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "flat_sorted",
+      "file": "step002.flat_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "rev",
+      "file": "step002.rev.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "rev_big",
+      "file": "step002.rev_big.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "rev_sorted",
+      "file": "step002.rev_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "rev_head",
+      "file": "step002.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "rev_slice",
+      "file": "step002.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "first_three",
+      "file": "step003.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "middle",
+      "file": "step003.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "last_two",
+      "file": "step003.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "inner",
+      "file": "step003.inner.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "sorted_k",
+      "file": "step003.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "sorted_middle",
+      "file": "step003.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "big",
+      "file": "step003.big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "flat",
+      "file": "step003.flat.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "flat_big",
+      "file": "step003.flat_big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "flat_sorted",
+      "file": "step003.flat_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "rev",
+      "file": "step003.rev.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "rev_big",
+      "file": "step003.rev_big.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "rev_sorted",
+      "file": "step003.rev_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "rev_head",
+      "file": "step003.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "rev_slice",
+      "file": "step003.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "first_three",
+      "file": "step004.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "middle",
+      "file": "step004.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "last_two",
+      "file": "step004.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "inner",
+      "file": "step004.inner.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "sorted_k",
+      "file": "step004.sorted_k.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "sorted_middle",
+      "file": "step004.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "big",
+      "file": "step004.big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "flat",
+      "file": "step004.flat.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "flat_big",
+      "file": "step004.flat_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "flat_sorted",
+      "file": "step004.flat_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "rev",
+      "file": "step004.rev.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "rev_big",
+      "file": "step004.rev_big.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "rev_sorted",
+      "file": "step004.rev_sorted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "rev_head",
+      "file": "step004.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "rev_slice",
+      "file": "step004.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "first_three",
+      "file": "step005.first_three.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "middle",
+      "file": "step005.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "last_two",
+      "file": "step005.last_two.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "inner",
+      "file": "step005.inner.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "sorted_k",
+      "file": "step005.sorted_k.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "sorted_middle",
+      "file": "step005.sorted_middle.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "big",
+      "file": "step005.big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "flat",
+      "file": "step005.flat.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "flat_big",
+      "file": "step005.flat_big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "flat_sorted",
+      "file": "step005.flat_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "rev",
+      "file": "step005.rev.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "rev_big",
+      "file": "step005.rev_big.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "rev_sorted",
+      "file": "step005.rev_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "rev_head",
+      "file": "step005.rev_head.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "rev_slice",
+      "file": "step005.rev_slice.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "first_three",
+      "file": "step006.first_three.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "middle",
+      "file": "step006.middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "last_two",
+      "file": "step006.last_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "inner",
+      "file": "step006.inner.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "sorted_k",
+      "file": "step006.sorted_k.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "sorted_middle",
+      "file": "step006.sorted_middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "big",
+      "file": "step006.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "flat",
+      "file": "step006.flat.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "flat_big",
+      "file": "step006.flat_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "flat_sorted",
+      "file": "step006.flat_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "rev",
+      "file": "step006.rev.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "rev_big",
+      "file": "step006.rev_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "rev_sorted",
+      "file": "step006.rev_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "rev_head",
+      "file": "step006.rev_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "rev_slice",
+      "file": "step006.rev_slice.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "first_three",
+      "file": "step007.first_three.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "middle",
+      "file": "step007.middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "last_two",
+      "file": "step007.last_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "inner",
+      "file": "step007.inner.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "sorted_k",
+      "file": "step007.sorted_k.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "sorted_middle",
+      "file": "step007.sorted_middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "big",
+      "file": "step007.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "flat",
+      "file": "step007.flat.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "flat_big",
+      "file": "step007.flat_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "flat_sorted",
+      "file": "step007.flat_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "rev",
+      "file": "step007.rev.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "rev_big",
+      "file": "step007.rev_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "rev_sorted",
+      "file": "step007.rev_sorted.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "rev_head",
+      "file": "step007.rev_head.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "rev_slice",
+      "file": "step007.rev_slice.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "first_three",
+      "file": "step008.first_three.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "middle",
+      "file": "step008.middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "last_two",
+      "file": "step008.last_two.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "inner",
+      "file": "step008.inner.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "sorted_k",
+      "file": "step008.sorted_k.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "sorted_middle",
+      "file": "step008.sorted_middle.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "big",
+      "file": "step008.big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "flat",
+      "file": "step008.flat.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "flat_big",
+      "file": "step008.flat_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "flat_sorted",
+      "file": "step008.flat_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "rev",
+      "file": "step008.rev.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "rev_big",
+      "file": "step008.rev_big.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "rev_sorted",
+      "file": "step008.rev_sorted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "rev_head",
+      "file": "step008.rev_head.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "rev_slice",
+      "file": "step008.rev_slice.arrow",
+      "rows": 0
+    }
+  ]
+}

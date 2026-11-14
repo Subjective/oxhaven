@@ -1,0 +1,118 @@
+{
+  "format": 2,
+  "scenario": "range_join",
+  "scenario_sha256": "d001ff31d1de79e32578660daeb665d6483b0721fa1c45618e95d20f1fc14661",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "inclusive",
+      "file": "step000.inclusive.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "strict",
+      "file": "step000.strict.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "half_open",
+      "file": "step000.half_open.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "other_half",
+      "file": "step000.other_half.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "with_neighbours",
+      "file": "step000.with_neighbours.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "with_preceding",
+      "file": "step000.with_preceding.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "no_exact",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_exact_ordered",
+      "file": "step000.no_exact_ordered.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "no_exact_neighbours",
+      "file": "step000.no_exact_neighbours.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "strict_neighbours",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unsorted_right",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "empty_right",
+      "file": "step000.empty_right.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "sum_agg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "count_agg",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_match",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unknown_column",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "other_types",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

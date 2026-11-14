@@ -1,0 +1,193 @@
+{
+ "format": 1,
+ "name": "flatten_reverse",
+ "description": "flatten and reverse of a table, of a filtered table, of an empty table and of each other; head and tail of a reversed table.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     2,
+     "b",
+     null
+    ],
+    [
+     3,
+     null,
+     "NaN"
+    ],
+    [
+     4,
+     "d",
+     -0.0
+    ],
+    [
+     5,
+     "e",
+     "Infinity"
+    ],
+    [
+     6,
+     "f",
+     6.0
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "flat",
+   "op": "flatten",
+   "source": "t"
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K % 2 == 0"
+   ]
+  },
+  {
+   "name": "flat_big",
+   "op": "flatten",
+   "source": "big"
+  },
+  {
+   "name": "flat_empty",
+   "op": "flatten",
+   "source": "empty"
+  },
+  {
+   "name": "rev",
+   "op": "reverse",
+   "source": "t"
+  },
+  {
+   "name": "rev_big",
+   "op": "reverse",
+   "source": "big"
+  },
+  {
+   "name": "rev_empty",
+   "op": "reverse",
+   "source": "empty"
+  },
+  {
+   "name": "rev_rev",
+   "op": "reverse",
+   "source": "rev"
+  },
+  {
+   "name": "rev_head",
+   "op": "head",
+   "source": "rev",
+   "rows": 2
+  },
+  {
+   "name": "rev_tail",
+   "op": "tail",
+   "source": "rev",
+   "rows": 2
+  },
+  {
+   "name": "flat_rev",
+   "op": "flatten",
+   "source": "rev"
+  },
+  {
+   "name": "sorted_s",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "S",
+     "direction": "ascending"
+    }
+   ]
+  },
+  {
+   "name": "rev_sorted",
+   "op": "reverse",
+   "source": "sorted_s"
+  }
+ ],
+ "results": [
+  {
+   "table": "flat"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "flat_big"
+  },
+  {
+   "table": "flat_empty"
+  },
+  {
+   "table": "rev"
+  },
+  {
+   "table": "rev_big"
+  },
+  {
+   "table": "rev_empty"
+  },
+  {
+   "table": "rev_rev"
+  },
+  {
+   "table": "rev_head"
+  },
+  {
+   "table": "rev_tail"
+  },
+  {
+   "table": "flat_rev"
+  },
+  {
+   "table": "sorted_s"
+  },
+  {
+   "table": "rev_sorted"
+  }
+ ]
+}

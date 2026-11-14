@@ -1,0 +1,436 @@
+{
+ "format": 1,
+ "name": "where_in",
+ "description": "where_in and where_not_in on one and two columns, with renamed match columns, nulls and NaN on both sides, duplicates in the filter table, an empty filter table, an empty left table, and columns of different types.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     2,
+     "b",
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     "a",
+     -5,
+     "NaN",
+     "NaN",
+     false,
+     1700000001000000000
+    ],
+    [
+     4,
+     null,
+     5,
+     -0.0,
+     -0.0,
+     true,
+     1700000000000000000
+    ],
+    [
+     5,
+     "b",
+     0,
+     0.0,
+     0.0,
+     null,
+     1699999999000000000
+    ],
+    [
+     6,
+     "a",
+     5,
+     1.5,
+     0.5,
+     true,
+     1700000000000000000
+    ],
+    [
+     7,
+     "",
+     2147483647,
+     "Infinity",
+     "Infinity",
+     false,
+     0
+    ],
+    [
+     8,
+     null,
+     null,
+     "-Infinity",
+     "-Infinity",
+     false,
+     null
+    ],
+    [
+     9,
+     "b",
+     -7,
+     2.5,
+     2.5,
+     true,
+     1700000002000000000
+    ],
+    [
+     10,
+     "a",
+     3,
+     1.5,
+     1.5,
+     false,
+     1700000001000000000
+    ]
+   ]
+  },
+  {
+   "name": "empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "G",
+     "type": "string"
+    },
+    {
+     "name": "I",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "F",
+     "type": "float32"
+    },
+    {
+     "name": "B",
+     "type": "bool"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "name": "f",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "a",
+     1.5
+    ],
+    [
+     3,
+     null,
+     "NaN"
+    ],
+    [
+     3,
+     "a",
+     1.5
+    ],
+    [
+     null,
+     "zz",
+     null
+    ],
+    [
+     99,
+     "b",
+     -0.0
+    ]
+   ]
+  },
+  {
+   "name": "f_empty",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    }
+   ],
+   "rows": []
+  },
+  {
+   "name": "f_long",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int64"
+    }
+   ],
+   "rows": [
+    [
+     1
+    ],
+    [
+     2
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "in_int",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "K"
+   ]
+  },
+  {
+   "name": "not_in_int",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "K"
+   ],
+   "inverted": true
+  },
+  {
+   "name": "in_string",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "G = S"
+   ]
+  },
+  {
+   "name": "not_in_string",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "G = S"
+   ],
+   "inverted": true
+  },
+  {
+   "name": "in_double",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "D"
+   ]
+  },
+  {
+   "name": "not_in_double",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "D"
+   ],
+   "inverted": true
+  },
+  {
+   "name": "in_two",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "G = S",
+    "D"
+   ]
+  },
+  {
+   "name": "not_in_two",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "G = S",
+    "D"
+   ],
+   "inverted": true
+  },
+  {
+   "name": "in_none",
+   "op": "where_in",
+   "left": "t",
+   "right": "f_empty",
+   "on": [
+    "K"
+   ]
+  },
+  {
+   "name": "not_in_none",
+   "op": "where_in",
+   "left": "t",
+   "right": "f_empty",
+   "on": [
+    "K"
+   ],
+   "inverted": true
+  },
+  {
+   "name": "empty_left",
+   "op": "where_in",
+   "left": "empty",
+   "right": "f",
+   "on": [
+    "K"
+   ]
+  },
+  {
+   "name": "in_itself",
+   "op": "where_in",
+   "left": "t",
+   "right": "t",
+   "on": [
+    "I"
+   ]
+  },
+  {
+   "name": "other_type",
+   "op": "where_in",
+   "left": "t",
+   "right": "f_long",
+   "on": [
+    "K"
+   ]
+  },
+  {
+   "name": "unknown_left",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "Nope = K"
+   ]
+  },
+  {
+   "name": "unknown_right",
+   "op": "where_in",
+   "left": "t",
+   "right": "f",
+   "on": [
+    "K = Nope"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "in_int"
+  },
+  {
+   "table": "not_in_int"
+  },
+  {
+   "table": "in_string"
+  },
+  {
+   "table": "not_in_string"
+  },
+  {
+   "table": "in_double"
+  },
+  {
+   "table": "not_in_double"
+  },
+  {
+   "table": "in_two"
+  },
+  {
+   "table": "not_in_two"
+  },
+  {
+   "table": "in_none"
+  },
+  {
+   "table": "not_in_none"
+  },
+  {
+   "table": "empty_left"
+  },
+  {
+   "table": "in_itself"
+  },
+  {
+   "table": "other_type"
+  },
+  {
+   "table": "unknown_left"
+  },
+  {
+   "table": "unknown_right"
+  }
+ ]
+}

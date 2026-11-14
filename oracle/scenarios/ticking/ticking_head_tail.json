@@ -1,0 +1,466 @@
+{
+ "format": 1,
+ "name": "ticking_head_tail",
+ "description": "head and tail of ticking parents (an input table, a filter, a sort), with zero rows, fewer and more rows than the parent has, through adds, replaced rows, deletes, emptying the table and refilling it.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     5,
+     "e",
+     1.5
+    ],
+    [
+     2,
+     3,
+     "c",
+     null
+    ],
+    [
+     3,
+     9,
+     null,
+     "NaN"
+    ],
+    [
+     4,
+     1,
+     "a",
+     -0.0
+    ],
+    [
+     5,
+     7,
+     "g",
+     7.0
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  },
+  {
+   "name": "log",
+   "columns": [
+    {
+     "name": "N",
+     "type": "int64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     "one"
+    ]
+   ],
+   "ticking": {
+    "key_columns": []
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "head_zero",
+   "op": "head",
+   "source": "t",
+   "rows": 0
+  },
+  {
+   "name": "tail_zero",
+   "op": "tail",
+   "source": "t",
+   "rows": 0
+  },
+  {
+   "name": "head_two",
+   "op": "head",
+   "source": "t",
+   "rows": 2
+  },
+  {
+   "name": "tail_two",
+   "op": "tail",
+   "source": "t",
+   "rows": 2
+  },
+  {
+   "name": "head_many",
+   "op": "head",
+   "source": "t",
+   "rows": 100
+  },
+  {
+   "name": "tail_many",
+   "op": "tail",
+   "source": "t",
+   "rows": 100
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K > 3"
+   ]
+  },
+  {
+   "name": "big_head",
+   "op": "head",
+   "source": "big",
+   "rows": 2
+  },
+  {
+   "name": "big_tail",
+   "op": "tail",
+   "source": "big",
+   "rows": 2
+  },
+  {
+   "name": "sorted_k",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "K",
+     "direction": "descending"
+    }
+   ]
+  },
+  {
+   "name": "top",
+   "op": "head",
+   "source": "sorted_k",
+   "rows": 3
+  },
+  {
+   "name": "bottom",
+   "op": "tail",
+   "source": "sorted_k",
+   "rows": 3
+  },
+  {
+   "name": "head_of_tail",
+   "op": "head",
+   "source": "tail_two",
+   "rows": 1
+  },
+  {
+   "name": "tail_of_head",
+   "op": "tail",
+   "source": "head_many",
+   "rows": 1
+  },
+  {
+   "name": "log_head",
+   "op": "head",
+   "source": "log",
+   "rows": 2
+  },
+  {
+   "name": "log_tail",
+   "op": "tail",
+   "source": "log",
+   "rows": 2
+  },
+  {
+   "name": "log_tail_zero",
+   "op": "tail",
+   "source": "log",
+   "rows": 0
+  }
+ ],
+ "results": [
+  {
+   "table": "head_zero"
+  },
+  {
+   "table": "tail_zero"
+  },
+  {
+   "table": "head_two"
+  },
+  {
+   "table": "tail_two"
+  },
+  {
+   "table": "head_many"
+  },
+  {
+   "table": "tail_many"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "big_head"
+  },
+  {
+   "table": "big_tail"
+  },
+  {
+   "table": "sorted_k"
+  },
+  {
+   "table": "top"
+  },
+  {
+   "table": "bottom"
+  },
+  {
+   "table": "head_of_tail"
+  },
+  {
+   "table": "tail_of_head"
+  },
+  {
+   "table": "log_head"
+  },
+  {
+   "table": "log_tail"
+  },
+  {
+   "table": "log_tail_zero"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       4,
+       "d",
+       4.0
+      ],
+      [
+       7,
+       8,
+       "h",
+       "Infinity"
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       2,
+       "n0"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       10,
+       "c2",
+       2.5
+      ],
+      [
+       4,
+       1,
+       "a2",
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       4,
+       "n2"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       0,
+       "z",
+       0.5
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       2,
+       null,
+       "NaN"
+      ],
+      [
+       9,
+       6,
+       "f",
+       6.5
+      ],
+      [
+       10,
+       11,
+       "k",
+       -1.0
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       6,
+       "n4"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "log",
+     "rows": [
+      [
+       8,
+       "n6"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       1,
+       "again",
+       1.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

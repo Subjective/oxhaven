@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "head_tail_zero",
+  "scenario_sha256": "5ef12695ed89e63fd2220f2a9e9802115d39738eabe10c10df128bc6de380b21",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "head_zero",
+      "file": "step000.head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "tail_zero",
+      "file": "step000.tail_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "head_all",
+      "file": "step000.head_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "tail_all",
+      "file": "step000.tail_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "head_more",
+      "file": "step000.head_more.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "tail_more",
+      "file": "step000.tail_more.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "head_empty",
+      "file": "step000.head_empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "tail_empty_zero",
+      "file": "step000.tail_empty_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "head_of_tail",
+      "file": "step000.head_of_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "tail_of_head_zero",
+      "file": "step000.tail_of_head_zero.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "sorted_head_zero",
+      "file": "step000.sorted_head_zero.arrow",
+      "rows": 0
+    }
+  ]
+}

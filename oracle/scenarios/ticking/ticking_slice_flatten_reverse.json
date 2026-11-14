@@ -1,0 +1,386 @@
+{
+ "format": 1,
+ "name": "ticking_slice_flatten_reverse",
+ "description": "slice (from the start, from the end, mixed), flatten and reverse of a keyed input table and of tables derived from it, through adds, replaced rows, deletes, emptying the table and refilling it.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "float64"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     5,
+     "e",
+     1.5
+    ],
+    [
+     2,
+     3,
+     "c",
+     null
+    ],
+    [
+     3,
+     9,
+     null,
+     "NaN"
+    ],
+    [
+     4,
+     1,
+     "a",
+     -0.0
+    ],
+    [
+     5,
+     7,
+     "g",
+     7.0
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "first_three",
+   "op": "slice",
+   "source": "t",
+   "start": 0,
+   "stop": 3
+  },
+  {
+   "name": "middle",
+   "op": "slice",
+   "source": "t",
+   "start": 1,
+   "stop": 4
+  },
+  {
+   "name": "last_two",
+   "op": "slice",
+   "source": "t",
+   "start": -2,
+   "stop": 0
+  },
+  {
+   "name": "inner",
+   "op": "slice",
+   "source": "t",
+   "start": 1,
+   "stop": -1
+  },
+  {
+   "name": "sorted_k",
+   "op": "sort",
+   "source": "t",
+   "by": [
+    {
+     "column": "K",
+     "direction": "ascending"
+    }
+   ]
+  },
+  {
+   "name": "sorted_middle",
+   "op": "slice",
+   "source": "sorted_k",
+   "start": 1,
+   "stop": 3
+  },
+  {
+   "name": "big",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K > 3"
+   ]
+  },
+  {
+   "name": "flat",
+   "op": "flatten",
+   "source": "t"
+  },
+  {
+   "name": "flat_big",
+   "op": "flatten",
+   "source": "big"
+  },
+  {
+   "name": "flat_sorted",
+   "op": "flatten",
+   "source": "sorted_k"
+  },
+  {
+   "name": "rev",
+   "op": "reverse",
+   "source": "t"
+  },
+  {
+   "name": "rev_big",
+   "op": "reverse",
+   "source": "big"
+  },
+  {
+   "name": "rev_sorted",
+   "op": "reverse",
+   "source": "sorted_k"
+  },
+  {
+   "name": "rev_head",
+   "op": "head",
+   "source": "rev",
+   "rows": 2
+  },
+  {
+   "name": "rev_slice",
+   "op": "slice",
+   "source": "rev",
+   "start": -3,
+   "stop": -1
+  }
+ ],
+ "results": [
+  {
+   "table": "first_three"
+  },
+  {
+   "table": "middle"
+  },
+  {
+   "table": "last_two"
+  },
+  {
+   "table": "inner"
+  },
+  {
+   "table": "sorted_k"
+  },
+  {
+   "table": "sorted_middle"
+  },
+  {
+   "table": "big"
+  },
+  {
+   "table": "flat"
+  },
+  {
+   "table": "flat_big"
+  },
+  {
+   "table": "flat_sorted"
+  },
+  {
+   "table": "rev"
+  },
+  {
+   "table": "rev_big"
+  },
+  {
+   "table": "rev_sorted"
+  },
+  {
+   "table": "rev_head"
+  },
+  {
+   "table": "rev_slice"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       6,
+       4,
+       "d",
+       4.0
+      ],
+      [
+       7,
+       8,
+       "h",
+       "Infinity"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       2,
+       10,
+       "c2",
+       2.5
+      ],
+      [
+       4,
+       1,
+       "a2",
+       null
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ],
+      [
+       5
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       1,
+       0,
+       "z",
+       0.5
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       3
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       8,
+       2,
+       null,
+       "NaN"
+      ],
+      [
+       9,
+       6,
+       "f",
+       6.5
+      ],
+      [
+       10,
+       11,
+       "k",
+       -1.0
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       2
+      ],
+      [
+       4
+      ],
+      [
+       6
+      ],
+      [
+       7
+      ],
+      [
+       8
+      ],
+      [
+       9
+      ],
+      [
+       10
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "t",
+     "rows": [
+      [
+       1
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       11,
+       1,
+       "again",
+       1.0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}
