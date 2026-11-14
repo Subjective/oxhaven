@@ -1138,8 +1138,11 @@ version = "0.0.0"
 dependencies = [
  "arrow",
  "base64 0.22.1",
+ "flatbuffers",
  "http",
+ "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-engine",
  "oxhaven-proto",
  "prost",
  "tokio",
