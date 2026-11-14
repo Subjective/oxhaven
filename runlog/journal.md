@@ -89,3 +89,11 @@ The oracle agent is resumed to add recordings for operations the corpus lacks (s
 reverse, absolute sort, blink) and harness support for the remaining batch operations, because two
 operator agents reported verifying against the Java source alone for those. Agents now get a
 private scratch directory after one overwrote another's script in the shared scratchpad.
+
+## 10:22 PR 19 merged; M4 started with two fresh agents
+
+Sort and merge are on main. Two operator slots were free, so M4 starts now rather than waiting for
+the M3 gate: natural/exact/left join (4.2), and snapshot plus select_distinct (4.9 and half of 4.8).
+Both are fresh agents because the finished operator agents ended near 250k tokens. They may record
+their own Java fixtures, since the oracle extension is still in progress. Eight agents are running;
+load average is about 7 on 4 cores, so no more are added until one finishes.
