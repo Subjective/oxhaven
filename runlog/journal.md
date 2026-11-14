@@ -343,3 +343,14 @@ table from the right one within one cycle; worth one look before deciding.
 
 Also seen: a `Batch` operation with an unset table reference ends Java's stream with CANCELLED
 where Oxhaven answers INVALID_ARGUMENT (generic batch path; follow-up).
+
+## 22:40 Follow-ups found by the handler work
+
+- Engine: `CrossJoinHelper#zeroKeyColumnsJoin` returns a static table when one side is static
+  and empty; ours is refreshing and never changes. Small fix in `ops/crossjoin`.
+- Joins: a match or addition that is empty or ends in a space reaches a Java client as
+  CANCELLED (the message ends in a space and the transport rejects the header); we send
+  INVALID_ARGUMENT with the message. Candidate for PARITY.md, owner decision.
+- Session: an export id defined twice has Java's "Details Logged w/ID" text and our own text.
+- Watch: one of ten local gate runs hung 900 s in the client smoke "input table from an
+  initial table" with an idle server. Not reproduced. If CI shows it, it is a real hang.
