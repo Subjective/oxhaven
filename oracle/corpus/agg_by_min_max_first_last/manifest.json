@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "agg_by_min_max_first_last",
   "scenario_sha256": "6bc3c9d9f9d48d05e76cfee472f121c54f440e8a3a57cd306f5402b21f6222be",
   "reference": "42.9",

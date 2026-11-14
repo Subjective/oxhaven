@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "ticking_natural_join",
   "scenario_sha256": "c178e1696bf04e5815d8e6159dc7bf39f363bd2a8fa14de64780e1b6a9b027e2",
   "reference": "42.9",

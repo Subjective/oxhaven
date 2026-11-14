@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "where_string_bool",
   "scenario_sha256": "3f08fb411e2028e7b0b5b7e511b81995040d4649ad345b8f8a261edbb26955be",
   "reference": "42.9",

@@ -2,6 +2,7 @@
 # Direct dependencies:
 deephaven-server==42.9
 pydeephaven==42.9
+pydeephaven-ticking==42.9
 pyarrow==26.0.1
 pytest==9.2.0
 # What they resolved to, pinned so that a recording can be reproduced:

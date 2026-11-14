@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "null_sentinel_inputs",
   "scenario_sha256": "d8c4bd3a8c1b6b637feb6814cbe2d13b72d35938c5d131b9f697ef1aa5ae043b",
   "reference": "42.9",

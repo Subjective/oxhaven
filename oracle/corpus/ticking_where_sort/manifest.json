@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "ticking_where_sort",
   "scenario_sha256": "25061fb934103adbfc248014262815987e85a9a76257720297ee322b4db57733",
   "reference": "42.9",

@@ -135,3 +135,55 @@ def test_result_set_round_trips_through_arrow_ipc(tmp_path):
         res.load(tmp_path / "demo", "demo", "another digest")
     with pytest.raises(res.RecordingError):
         res.load(tmp_path / "absent", "demo", "digest")
+
+
+def test_ops_filter_selects_by_operation():
+    by_name = {s.name: s for s in SCENARIOS}
+    joins = sc.select(SCENARIOS, sc.resolve_ops(["natural_join", "cross_join"]))
+    assert joins and all(sc.ops_of(s) & {"natural_join", "join"} for s in joins)
+    left_out = [s for s in SCENARIOS if s not in joins]
+    assert left_out and not any(sc.ops_of(s) & {"natural_join", "join"} for s in left_out)
+    # `within` keeps only scenarios an implementation of these operations alone can run.
+    narrow = sc.select(SCENARIOS, sc.resolve_ops(["where"]), sc.resolve_ops(["where", "sort"]))
+    assert narrow and all(sc.ops_of(s) <= {"where", "sort"} for s in narrow)
+    assert len(narrow) < len(sc.select(SCENARIOS, sc.resolve_ops(["where"])))
+    ticking = sc.select(SCENARIOS, sc.resolve_ops(["input_table"]))
+    assert ticking == [s for s in SCENARIOS if s.ticking]
+    assert sc.select(SCENARIOS) == SCENARIOS
+    assert "input_table" in sc.ops_of(by_name["ticking_error_after_step"])
+
+
+def test_ops_filter_resolves_aliases_and_rejects_unknown_names():
+    assert sc.resolve_ops(["unstructured_filter", "aggregate", "aj_tables", "sort"]) == {
+        "where", "agg_by", "aj", "sort"}
+    with pytest.raises(sc.ScenarioError, match="no operation 'ungroup'"):
+        sc.resolve_ops(["where", "ungroup"])
+
+
+def test_corpus_has_error_scenarios():
+    names = {s.name for s in SCENARIOS}
+    assert {"error_unknown_column", "error_formula", "error_types_and_matches",
+            "ticking_error_after_step"} <= names
+    failed = 0
+    codes = set()
+    for name in sorted(n for n in names if "error" in n):
+        scenario = next(s for s in SCENARIOS if s.name == name)
+        recorded = res.load(ORACLE / "corpus" / name, name, scenario.digest())
+        failed += recorded.failures()
+        codes |= {recorded.get(*k).code for k in recorded.keys()
+                  if isinstance(recorded.get(*k), res.Failure)}
+        assert any(not isinstance(recorded.get(*k), res.Failure) for k in recorded.keys()), (
+            f"{name} records no success next to its failures")
+    assert failed >= 20
+    assert codes == {"INVALID_ARGUMENT", "FAILED_PRECONDITION"}
+
+
+def test_failures_round_trip_through_a_recording(tmp_path):
+    results = res.ResultSet("demo")
+    results.put(0, "bad", res.Failure("INVALID_ARGUMENT"))
+    results.put(0, "good", pa.table({"K": pa.array([1], pa.int32())}))
+    res.save(results, tmp_path / "demo", "digest", "42.9")
+    loaded = res.load(tmp_path / "demo", "demo", "digest")
+    assert loaded.get(0, "bad") == res.Failure("INVALID_ARGUMENT")
+    assert loaded.failures() == 1
+    assert rules.compare(results, loaded) == []

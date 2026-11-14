@@ -7,6 +7,7 @@ import math
 import pyarrow as pa
 import pytest
 
+from harness import results as res
 from harness import rules
 from harness.results import ResultSet
 
@@ -17,8 +18,10 @@ def table(**columns: pa.Array) -> pa.Table:
     return pa.table(columns)
 
 
-def diff(expected: pa.Table, actual: pa.Table, ordered: bool = True) -> list[rules.Mismatch]:
-    return rules.compare_tables("s", "t", 3, expected, actual, ordered=ordered)
+def diff(expected: pa.Table, actual: pa.Table, ordered: bool = True,
+         computed: frozenset[str] = frozenset()) -> list[rules.Mismatch]:
+    return rules.compare_tables("s", "t", 3, expected, actual, ordered=ordered,
+                                computed=computed)
 
 
 def kinds(found: list[rules.Mismatch]) -> list[str]:
@@ -87,13 +90,145 @@ def test_infinities_match_only_with_the_same_sign():
         (1e-300, 2e-300, True),
     ],
 )
-def test_float_tolerance(expected, actual, equal):
-    assert rules.floats_equal(expected, actual) is equal
-    assert rules.floats_equal(actual, expected) is equal
-    found = diff(
-        table(D=pa.array([expected], pa.float64())), table(D=pa.array([actual], pa.float64()))
+def test_computed_double_tolerance(expected, actual, equal):
+    """PARITY.md A1, double: relative 1e-9, absolute 1e-12."""
+    tolerance = rules.DEFAULT_RULES.double_tolerance
+    assert rules.floats_within(expected, actual, tolerance) is equal
+    assert rules.floats_within(actual, expected, tolerance) is equal
+    e = table(D=pa.array([expected], pa.float64()))
+    a = table(D=pa.array([actual], pa.float64()))
+    assert (diff(e, a, computed=frozenset({"D"})) == []) is equal
+    # The same pair in a column that is not computed must be identical.
+    assert diff(e, a) != []
+
+
+@pytest.mark.parametrize(
+    ("expected", "actual", "equal"),
+    [
+        (1.0, 1.0 + 5e-6, True),
+        (1.0, 1.0 + 2e-5, False),
+        (1000.0, 1000.005, True),
+        (1000.0, 1000.02, False),
+        (0.0, 5e-7, True),
+        (0.0, 2e-6, False),
+        (0.0, -0.0, True),
+    ],
+)
+def test_computed_float_tolerance(expected, actual, equal):
+    """PARITY.md A1, float: relative 1e-5, absolute 1e-6. Looser than double."""
+    e = table(F=pa.array([expected], pa.float32()))
+    a = table(F=pa.array([actual], pa.float32()))
+    assert (diff(e, a, computed=frozenset({"F"})) == []) is equal
+    assert diff(e, a) != []
+    # A double column gets the double tolerance even with the same values.
+    e64 = table(F=pa.array([expected], pa.float64()))
+    a64 = table(F=pa.array([actual], pa.float64()))
+    if abs(expected - actual) > 1e-8:
+        assert diff(e64, a64, computed=frozenset({"F"})) != []
+
+
+def test_floats_that_are_not_computed_are_exact_as_bit_patterns():
+    """PARITY.md, Must match, item 5; A2 is proposed and not in force."""
+    one = table(D=pa.array([1.0]), F=pa.array([1.0], pa.float32()))
+    assert diff(one, one) == []
+    next_double = table(D=pa.array([math.nextafter(1.0, 2.0)]), F=pa.array([1.0], pa.float32()))
+    assert [m.column for m in diff(one, next_double)] == ["D"]
+    next_float = table(D=pa.array([1.0]), F=pa.array([1.0000001192092896], pa.float32()))
+    assert [m.column for m in diff(one, next_float)] == ["F"]
+    zero = table(D=pa.array([0.0]))
+    negative_zero = table(D=pa.array([-0.0]))
+    assert kinds(diff(zero, negative_zero)) == [rules.VALUE]
+    assert diff(negative_zero, negative_zero) == []
+
+
+def test_tolerance_never_covers_null_nan_or_infinity():
+    """PARITY.md A1: "Null, NaN and infinities are never covered by the tolerance"."""
+    computed = frozenset({"D"})
+    for expected, actual in [(None, 0.0), (NAN, 0.0), (math.inf, 1.7976931348623157e308),
+                             (math.inf, -math.inf), (0.0, None), (1.0, NAN)]:
+        e = table(D=pa.array([expected], pa.float64()))
+        a = table(D=pa.array([actual], pa.float64()))
+        assert kinds(diff(e, a, computed=computed)) == [rules.VALUE], (expected, actual)
+    same = table(D=pa.array([None, NAN, math.inf, -math.inf], pa.float64()))
+    assert diff(same, same, computed=computed) == []
+
+
+def scenario_ops(*ops):
+    return [dict(op) for op in ops]
+
+
+def test_computed_columns_follow_parity_a1():
+    ops = scenario_ops(
+        {"name": "w", "op": "where", "source": "t", "filters": ["D > 0"]},
+        {"name": "a", "op": "agg_by", "source": "w", "by": ["K"], "aggs": [
+            {"agg": "sum", "columns": ["SumD = D", "SumI = I"]},
+            {"agg": "avg", "columns": ["AvgI = I"]},
+            {"agg": "min", "columns": ["MinD = D"]},
+            {"agg": "last", "columns": ["LastD = D"]},
+            {"agg": "count", "column": "N"}]},
+        {"name": "s", "op": "sort", "source": "a",
+         "by": [{"column": "K", "direction": "ascending"}]},
+        {"name": "again", "op": "agg_by", "source": "s", "by": [], "aggs": [
+            {"agg": "max", "columns": ["Biggest = SumD"]},
+            {"agg": "first", "columns": ["FirstMin = MinD"]}]},
+        {"name": "v", "op": "view", "source": "a",
+         "formulas": ["Kept = SumD", "Twice = SumD * 2", "MinD", "E = exp(MinD)"]},
+        {"name": "u", "op": "update", "source": "a", "formulas": ["SumD = MinD", "X = AvgI"]},
+        {"name": "d", "op": "drop_columns", "source": "a", "columns": ["SumD"]},
+        {"name": "c", "op": "update_by", "source": "t", "by": [],
+         "ops": [{"op": "cum_sum", "columns": ["Run = D"]}]},
+        {"name": "j", "op": "natural_join", "left": "t", "right": "a", "on": ["K"],
+         "joins": ["Joined = SumD", "M = MinD"]},
+        {"name": "j_all", "op": "join", "left": "t", "right": "a", "on": ["K"]},
+        {"name": "m", "op": "merge", "sources": ["a", "s"]},
     )
-    assert (found == []) is equal
+    computed = rules.computed_columns(ops)
+    assert computed["w"] == frozenset()
+    # sum and avg are computed; min, max, first, last and count are not.
+    assert computed["a"] == {"SumD", "SumI", "AvgI"}
+    assert computed["s"] == computed["a"]
+    # An aggregation that selects an element passes a computed cell through.
+    assert computed["again"] == {"Biggest"}
+    # A plain reference passes through; arithmetic is exact; an inexact function is computed.
+    assert computed["v"] == {"Kept", "E"}
+    assert computed["u"] == {"SumI", "AvgI", "X"}
+    assert computed["d"] == {"SumI", "AvgI"}
+    assert computed["c"] == {"Run"}
+    assert computed["j"] == {"Joined"}
+    assert computed["j_all"] == {"SumD", "SumI", "AvgI"}
+    assert computed["m"] == computed["a"]
+
+
+def test_failures_must_match_by_status_code_only():
+    """PARITY.md, Must match, item 7, and A5."""
+    def one(value):
+        results = ResultSet("s")
+        results.put(0, "t", value)
+        return results
+
+    data = table(I=pa.array([1], pa.int32()))
+    invalid = res.Failure("INVALID_ARGUMENT")
+    assert rules.compare(one(invalid), one(res.Failure("INVALID_ARGUMENT"))) == []
+    found = rules.compare(one(invalid), one(res.Failure("FAILED_PRECONDITION")))
+    assert [(m.kind, m.expected, m.actual) for m in found] == [
+        (rules.FAILURE_CODE, "INVALID_ARGUMENT", "FAILED_PRECONDITION")]
+    assert kinds(rules.compare(one(invalid), one(data))) == [rules.FAILURE_EXPECTED]
+    assert kinds(rules.compare(one(data), one(invalid))) == [rules.FAILURE_UNEXPECTED]
+
+
+def test_table_attributes_clients_act_on_are_compared():
+    def marked(**attributes: str) -> pa.Table:
+        metadata = {f"deephaven:attribute.{k}": v for k, v in attributes.items()}
+        metadata["deephaven:unsent.attribute.BarrageSchema"] = ""
+        return table(I=pa.array([1], pa.int32())).replace_schema_metadata(metadata)
+
+    assert diff(marked(AppendOnly="true"), marked(AppendOnly="true")) == []
+    for other in (marked(), marked(BlinkTable="true"), marked(AppendOnly="true", IsFlat="true")):
+        found = diff(marked(AppendOnly="true"), other)
+        assert kinds(found) == [rules.TABLE_METADATA]
+    ignored = marked(AppendOnly="true").replace_schema_metadata(
+        {"deephaven:attribute.AppendOnly": "true", "deephaven:attribute.SortedColumns": "X"})
+    assert diff(marked(AppendOnly="true"), ignored) == []
 
 
 def test_integers_have_no_tolerance():
@@ -148,9 +283,10 @@ def test_unordered_still_counts_duplicates():
 def test_unordered_applies_the_float_tolerance():
     a = table(K=pa.array([1, 2], pa.int32()), D=pa.array([1.0, 2.0]))
     b = table(K=pa.array([2, 1], pa.int32()), D=pa.array([2.0 + 1e-10, 1.0 - 1e-10]))
-    assert diff(a, b, ordered=False) == []
+    computed = frozenset({"D"})
+    assert diff(a, b, ordered=False, computed=computed) == []
     c = table(K=pa.array([2, 1], pa.int32()), D=pa.array([2.0 + 1e-8, 1.0]))
-    assert kinds(diff(a, c, ordered=False)) == [rules.VALUE]
+    assert kinds(diff(a, c, ordered=False, computed=computed)) == [rules.VALUE]
 
 
 def test_row_count():
@@ -203,11 +339,21 @@ def test_engine_type_metadata_is_part_of_the_type():
 
 def test_metadata_outside_the_rules_is_ignored():
     plain = table(X=pa.array([1], pa.int32()))
-    field = pa.field("X", pa.int32(), nullable=False, metadata={"deephaven:isSortable": "true"})
+    field = pa.field("X", pa.int32(), nullable=False, metadata={"somebody:else": "true"})
     noted = pa.Table.from_arrays(
         [pa.array([1], pa.int32())], schema=pa.schema([field], metadata={"anything": "else"})
     )
     assert diff(plain, noted) == []
+
+
+@pytest.mark.parametrize("key", ["isSortable", "componentType", "inputtable.isKey",
+                                 "description", "isPartitioning"])
+def test_field_metadata_parity_lists_as_compared(key):
+    plain = table(X=pa.array([1], pa.int32()))
+    field = pa.field("X", pa.int32(), metadata={f"deephaven:{key}": "true"})
+    noted = pa.Table.from_arrays([pa.array([1], pa.int32())], schema=pa.schema([field]))
+    assert kinds(diff(plain, noted)) == [rules.COLUMN_METADATA]
+    assert diff(noted, noted) == []
 
 
 def test_unsupported_types_are_reported_not_passed():

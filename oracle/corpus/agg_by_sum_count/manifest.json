@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "agg_by_sum_count",
   "scenario_sha256": "9d4b977d56a14aad3d6709d5d938c7e00bfc38d1bd149ec3cb6fd507ce75c1c9",
   "reference": "42.9",

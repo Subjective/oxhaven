@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "drop_columns",
   "scenario_sha256": "aae5576be726cbaf076a6e9f6ce49673fac88e9f99eef7999c0651290bb7caf1",
   "reference": "42.9",

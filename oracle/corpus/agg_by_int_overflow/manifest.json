@@ -1,5 +1,5 @@
 {
-  "format": 1,
+  "format": 2,
   "scenario": "agg_by_int_overflow",
   "scenario_sha256": "7c7a5db402efcbe6cecbc782c429e429341ee4c5c28e1d14ac22f4ad185272df",
   "reference": "42.9",
