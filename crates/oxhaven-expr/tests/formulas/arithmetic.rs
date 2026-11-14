@@ -353,6 +353,9 @@ fn literals_have_java_types_and_go_through_the_same_operators() {
     table.assert("7 / 2", doubles([Some(3.5)]));
     table.assert("'a' + 1", ints([Some(98)]));
     table.assert("'a'", chars([Some('a')]));
+    // U+FFFF is NULL_CHAR.
+    table.assert("isNull('\u{ffff}')", flags([true]));
+    table.assert("isNull('a')", flags([false]));
     table.assert("1e308 * 10", doubles([Some(f64::INFINITY)]));
     table.assert("-1.7976931348623157E308", doubles([None]));
     table.assert("-3.4028235E38f", floats([None]));
