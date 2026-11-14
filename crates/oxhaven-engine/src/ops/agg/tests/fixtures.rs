@@ -166,11 +166,12 @@ impl Watched<'_> {
             let removed = positions(&update.removed, &self.rows);
             self.rows.remove(&update.removed);
             self.rows.insert(&update.added);
-            let names = definition.columns().iter().enumerate();
+            let names = definition.columns().iter();
             let modified_columns: Vec<&str> = match &update.modified_columns {
                 _ if update.modified.is_empty() => Vec::new(),
-                ModifiedColumnSet::All => names.map(|(_, column)| column.name.as_str()).collect(),
+                ModifiedColumnSet::All => names.map(|column| column.name.as_str()).collect(),
                 columns => names
+                    .enumerate()
                     .filter(|(index, _)| columns.contains(*index))
                     .map(|(_, column)| column.name.as_str())
                     .collect(),
