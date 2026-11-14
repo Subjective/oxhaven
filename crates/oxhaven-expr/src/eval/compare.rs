@@ -1,7 +1,7 @@
 //! Comparison operators. The handling of null and NaN is written once, in [`decide`]; the
 //! comparison domains differ only in how two present values are ordered.
 
-use super::numeric::widen;
+use super::numeric::convert;
 use crate::types::{CompareDomain, CompareOp};
 use arrow::array::{Array, ArrayAccessor, AsArray, BooleanArray};
 use arrow::buffer::BooleanBuffer;
@@ -142,17 +142,19 @@ pub(crate) fn compare(
     right: &dyn Array,
 ) -> BooleanArray {
     match domain {
-        CompareDomain::Integral => rows(op, &widen::<i64>(left), &widen::<i64>(right), |a, b| {
-            a.cmp(&b)
-        }),
+        CompareDomain::Integral => {
+            rows(op, &convert::<i64>(left), &convert::<i64>(right), |a, b| {
+                a.cmp(&b)
+            })
+        }
         CompareDomain::Floating { through_float } => {
             // Java converts both operands to float, then compares; comparing the floats
             // as doubles gives the same answer.
             let double = |array| {
                 if through_float {
-                    widen::<f64>(&widen::<f32>(array))
+                    convert::<f64>(&convert::<f32>(array))
                 } else {
-                    widen::<f64>(array)
+                    convert::<f64>(array)
                 }
             };
             let order: fn(f64, f64) -> Ordering = if op.is_equality() {
@@ -166,13 +168,13 @@ pub(crate) fn compare(
             if left.data_type() == &DataType::Int64 {
                 rows(
                     op,
-                    &widen::<i64>(left),
-                    &widen::<f64>(right),
+                    &convert::<i64>(left),
+                    &convert::<f64>(right),
                     compare_long_to_double,
                 )
             } else {
                 // `compareTo(double a, long b)` is `-compareTo(b, a)`.
-                rows(op, &widen::<f64>(left), &widen::<i64>(right), |a, b| {
+                rows(op, &convert::<f64>(left), &convert::<i64>(right), |a, b| {
                     compare_long_to_double(b, a).reverse()
                 })
             }
@@ -184,6 +186,23 @@ pub(crate) fn compare(
             right.as_string::<i32>(),
             utf16_order,
         ),
+        // `QueryLanguageFunctionUtils#eq(Object,Object)` on values of two classes: the
+        // same reference, which only two nulls are, or `equals`, which is false. A
+        // primitive is boxed on the way in, so even its null value is an object.
+        CompareDomain::Unrelated => {
+            let reference = |array: &dyn Array| {
+                matches!(
+                    array.data_type(),
+                    DataType::Boolean | DataType::Utf8 | DataType::Timestamp(_, _)
+                )
+            };
+            let references = reference(left) && reference(right);
+            let values = BooleanBuffer::collect_bool(left.len(), |row| {
+                let both_null = references && left.is_null(row) && right.is_null(row);
+                both_null == (op == CompareOp::Equal)
+            });
+            BooleanArray::new(values, None)
+        }
     }
 }
 
