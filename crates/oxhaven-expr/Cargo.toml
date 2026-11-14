@@ -1,0 +1,10 @@
+[package]
+name = "oxhaven-expr"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]

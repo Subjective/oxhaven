@@ -1,0 +1,34 @@
+# AGENTS.md
+
+Oxhaven is a Rust implementation of the Deephaven Community Core server: wire-compatible
+(gRPC, Arrow Flight, Barrage), with a reimplemented engine.
+
+Before changing anything, read, in this order:
+
+1. `PORTING.md`: the rules for every change, including commit and pull request style.
+2. `PARITY.md`: what "matches Java" means and which differences are allowed.
+3. `crates/oxhaven-contracts`: the types and traits between crates.
+4. Your task file in `tasks/`.
+
+## Layout
+
+| Path | Holds |
+| --- | --- |
+| `crates/oxhaven-contracts` | Shared types and traits. Protected. |
+| `crates/oxhaven-testkit` | Reference implementations of the contracts, self-consistency checker |
+| `crates/oxhaven-rowset` | Row sets, shift data, tracking row sets |
+| `crates/oxhaven-column` | Arrow-backed column sources |
+| `crates/oxhaven-engine` | Update graph, tables, table operations |
+| `crates/oxhaven-expr` | Formula parser, type checker, evaluator |
+| `crates/oxhaven-proto` | Generated protocol types |
+| `crates/oxhaven-server` | gRPC services, sessions, Barrage |
+| `oracle/` | Differential harness, fuzzer, recorded Java results. Protected. |
+| `tasks/` | One file per task: scope, inputs, owned paths, gate command, status |
+
+## Commands
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+```

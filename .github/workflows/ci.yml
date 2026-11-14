@@ -1,0 +1,42 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  rules:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Protected paths need the oracle-change label
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE"...HEAD -- oracle PARITY.md crates/oxhaven-contracts)
+          if [ -n "$changed" ] && ! echo "$LABELS" | grep -q '"oracle-change"'; then
+            echo "These protected files changed without the oracle-change label:"
+            echo "$changed"
+            exit 1
+          fi
+      - name: Commit subjects are scope-prefixed
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: scripts/check-commit-subjects.sh "$BASE"..HEAD
