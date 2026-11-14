@@ -26,11 +26,56 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
     ]
 }
 
-/// Every aggregation Java has for each value column.
-fn every_aggregation() -> Vec<Aggregation> {
+/// Every aggregation Java has for each value column whose result does not depend on the
+/// update history, and with `weighted_averages` the weighted averages too.
+///
+/// Two are left out because Java's own result depends on the history, so that the
+/// aggregation of a static copy is not what Java gives. The fixtures compare both with Java
+/// (`fixtures/agg_ticking.json`, groups `w` and `n`):
+/// - The weighted average keeps a stale sum of weights after a modification that makes the
+///   new sum of weights equal the old weighted sum
+///   (`ChunkedWeightedAverageOperator#modifyChunk`). Without modifications it does not, so
+///   `weighted_averages` is for runs without them.
+/// - The weighted sum of an integer column by an integer weight adds each chunk's sum with
+///   `NullSafeAddition#plusLong`, which drops a chunk sum that wrapped to exactly
+///   `NULL_LONG` (`LongChunkedWeightedSumOperator#addChunk`); a null `int` value and weight
+///   count as -2147483648 each, so two such rows do that.
+fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
     let mut aggregations = vec![count("N")];
     for (name, column_type) in &parent_columns()[3..] {
-        let mut specs = vec![AggSpec::Min, AggSpec::Max, AggSpec::First, AggSpec::Last];
+        let mut specs = vec![
+            AggSpec::Min,
+            AggSpec::Max,
+            AggSpec::First,
+            AggSpec::Last,
+            AggSpec::Median {
+                average_evenly_divided: false,
+            },
+            AggSpec::Percentile {
+                percentile: 0.3,
+                average_evenly_divided: false,
+            },
+            AggSpec::CountDistinct { count_nulls: false },
+            AggSpec::CountDistinct { count_nulls: true },
+            AggSpec::Unique {
+                include_nulls: false,
+            },
+            AggSpec::Unique {
+                include_nulls: true,
+            },
+            AggSpec::SortedFirst {
+                columns: vec!["D".to_string()],
+            },
+            AggSpec::SortedLast {
+                columns: vec!["D".to_string()],
+            },
+            AggSpec::SortedFirst {
+                columns: vec!["S".to_string(), "I".to_string()],
+            },
+            AggSpec::SortedLast {
+                columns: vec!["B".to_string(), "T".to_string(), "F".to_string()],
+            },
+        ];
         if !matches!(column_type, ColumnType::String | ColumnType::Instant) {
             specs.push(AggSpec::Sum);
         }
@@ -38,10 +83,35 @@ fn every_aggregation() -> Vec<Aggregation> {
             column_type,
             ColumnType::String | ColumnType::Instant | ColumnType::Boolean
         ) {
-            specs.push(AggSpec::Avg);
+            specs.extend([
+                AggSpec::Avg,
+                AggSpec::AbsSum,
+                AggSpec::Var,
+                AggSpec::Std,
+                AggSpec::Median {
+                    average_evenly_divided: true,
+                },
+                AggSpec::Percentile {
+                    percentile: 0.7,
+                    average_evenly_divided: true,
+                },
+            ]);
+            let floating = matches!(column_type, ColumnType::Double | ColumnType::Float);
+            for weight in ["I", "X", "C"] {
+                if floating || weight == "X" {
+                    specs.push(AggSpec::WeightedSum {
+                        weight: weight.to_string(),
+                    });
+                }
+                if weighted_averages {
+                    specs.push(AggSpec::WeightedAvg {
+                        weight: weight.to_string(),
+                    });
+                }
+            }
         }
-        for spec in specs {
-            aggregations.push(agg(spec, &[&format!("{spec:?}{name} = {name}")]));
+        for (index, spec) in specs.into_iter().enumerate() {
+            aggregations.push(agg(spec, &[&format!("A{index}{name} = {name}")]));
         }
     }
     aggregations
@@ -56,6 +126,8 @@ struct Run {
     steps: usize,
     /// Which kinds of change to make: adds, removes, modifies, shifts.
     kinds: [bool; 4],
+    /// Whether to include the weighted averages; see [`every_aggregation`].
+    weighted_averages: bool,
 }
 
 impl Run {
@@ -68,6 +140,7 @@ impl Run {
             target_size: 5,
             steps: 40,
             kinds: [true; 4],
+            weighted_averages: false,
         }
     }
 
@@ -88,7 +161,11 @@ impl Run {
             values,
         );
         let parent: Arc<dyn Table> = source.table();
-        let aggregations = every_aggregation();
+        assert!(
+            !(self.weighted_averages && self.kinds[2]),
+            "weighted averages are compared only without modifications"
+        );
+        let aggregations = every_aggregation(self.weighted_averages);
         let result = aggregate(&parent, &aggregations, self.preserve_empty, self.by)
             .expect("an aggregation");
 
@@ -168,6 +245,22 @@ fn random_updates_of_each_kind_alone_and_in_pairs() {
             }
         }
     }
+}
+
+#[test]
+fn random_updates_of_weighted_averages_without_modifications() {
+    let mut updates = 0;
+    for seed in 600..630 {
+        for by in [&["K"][..], &["X"], &[]] {
+            updates += Run {
+                kinds: [true, true, false, true],
+                weighted_averages: true,
+                ..Run::new(seed, by)
+            }
+            .run();
+        }
+    }
+    assert!(updates > 500, "only {updates} updates were checked");
 }
 
 #[test]

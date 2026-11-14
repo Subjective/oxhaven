@@ -12,4 +12,5 @@ pub mod range_join;
 pub mod select;
 pub mod snapshot;
 pub mod sort;
+pub mod ungroup;
 pub mod update_by;

@@ -282,3 +282,14 @@ for Josh's review afterwards. Operators stay out of that change.
 Sizing so far: operator tasks that bundle the engine operator, its handler and a contract change
 are consistently too large. Engine operator alone, handler alone and contract change alone each
 fit one context. Applied from here on.
+
+## 20:41 Replay gate is on main
+
+PR 41 merged after its first Actions run passed (oracle-replay job about 4.5 minutes including
+the build; rust job about 8 minutes now that the engine suite is large). Baseline: 48 of 83
+scenarios clean, 26 of 27 smoke checks. From here every pull request that changes what the
+server answers must move its baseline lines, so the count of clean scenarios is the run's
+progress measure and cannot silently go down.
+
+Watch: the engine test suite took 365 s locally under load. If it keeps growing, the random
+tests should take their seed counts from an environment variable with a smaller default in CI.
