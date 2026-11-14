@@ -97,3 +97,17 @@ the M3 gate: natural/exact/left join (4.2), and snapshot plus select_distinct (4
 Both are fresh agents because the finished operator agents ended near 250k tokens. They may record
 their own Java fixtures, since the oracle extension is still in progress. Eight agents are running;
 load average is about 7 on 4 cores, so no more are added until one finishes.
+
+## 10:27 Wave 2 landing: where and the table service merged; handlers and replay start
+
+PRs 20 (table service, config, cycle driver) and 21 (where) merged; PR 22 (basic aggregation) is in
+CI. All four wave-2 operator and service runs finished within 50 to 60 minutes of each other and
+all judged themselves too large or only just right, with 87k to 339k tokens each. None parked.
+
+Next: the table service agent (98k tokens used, knows the registry) is resumed to expose the merged
+operators over gRPC and run the first oracle replay against Oxhaven. This is the first check of the
+engine through the wire, so mismatches go back to operator owners rather than being patched in
+handlers. The Flight agent is resumed to bring its branch onto main and wire CreateInputTable.
+
+Guard added to the handler task: an `unported!` reachable from a client must be rejected with a
+status before it reaches the engine (found in the aggregation report).
