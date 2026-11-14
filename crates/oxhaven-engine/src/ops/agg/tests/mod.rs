@@ -1,6 +1,7 @@
 //! Tests of aggregation.
 
 mod corpus;
+mod fixtures;
 mod incremental;
 mod random;
 mod static_tables;

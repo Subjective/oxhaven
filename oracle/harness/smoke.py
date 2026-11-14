@@ -24,7 +24,7 @@ import math
 import threading
 import time
 import traceback
-from typing import Any, Callable
+from typing import Any, Callable, Iterator
 
 import grpc
 import pyarrow as pa
@@ -784,23 +784,35 @@ _AREAS: dict[str, Callable[[str], list[tuple[str, Callable[[], None]]]]] = {
 }
 
 
-def run(area: str, url: str) -> int:
-    """Runs every check of `area` against `url`. 0 when all pass, 1 otherwise."""
-    checks = _AREAS[area](url)
-    failed = 0
-    for name, check in checks:
+def describe(error: BaseException) -> str:
+    """One line for a failed check: the expectation that did not hold, or the client error."""
+    if isinstance(error, SmokeFailure):
+        return str(error)
+    last = traceback.extract_tb(error.__traceback__)[-1]
+    return f"{type(error).__name__}: {error} ({last.name}, line {last.lineno})"
+
+
+def run_checks(area: str, url: str) -> Iterator[tuple[str, Exception | None]]:
+    """Runs every check of `area` against `url`; yields each name with what it failed with."""
+    for name, check in _AREAS[area](url):
         try:
             check()
-        except SmokeFailure as error:
-            failed += 1
-            print(f"FAIL  {area}: {name}: {error}")
         except Exception as error:  # noqa: BLE001 - a client error is a failed check too
-            failed += 1
-            last = traceback.extract_tb(error.__traceback__)[-1]
-            print(f"FAIL  {area}: {name}: {type(error).__name__}: {error} "
-                  f"({last.name}, line {last.lineno})")
+            yield name, error
         else:
+            yield name, None
+
+
+def run(area: str, url: str) -> int:
+    """Runs every check of `area` against `url`. 0 when all pass, 1 otherwise."""
+    total = failed = 0
+    for name, error in run_checks(area, url):
+        total += 1
+        if error is None:
             print(f"ok    {area}: {name}")
-    print(f"client-smoke {area} {url}: {len(checks)} checks, {len(checks) - failed} passed, "
+        else:
+            failed += 1
+            print(f"FAIL  {area}: {name}: {describe(error)}")
+    print(f"client-smoke {area} {url}: {total} checks, {total - failed} passed, "
           f"{failed} failed")
     return 1 if failed else 0

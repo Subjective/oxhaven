@@ -161,7 +161,7 @@ fn result_types_follow_java() {
         // min, max, first and last have the type of their input, whatever it is.
         for spec in [AggSpec::Min, AggSpec::Max, AggSpec::First, AggSpec::Last] {
             assert_eq!(
-                type_of(spec, name),
+                type_of(spec.clone(), name),
                 Ok(column_type.clone()),
                 "{spec:?} of {name}"
             );

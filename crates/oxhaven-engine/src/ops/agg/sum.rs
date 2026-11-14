@@ -69,11 +69,15 @@ fn double_results(values: &[f64], slots: &[usize]) -> ArrayRef {
     )
 }
 
-/// The wrapping sum of the non-null values of a run and how many there are.
+/// The wrapping sum of the non-null values of a run, or with `absolute` of their absolute
+/// values, and how many there are. The least value of each type is its null, so taking
+/// the absolute value never overflows.
 ///
-/// Behavior: io.deephaven.engine.table.impl.by.SumIntChunk#sumIntChunk
-fn sum_longs(run: &Run<'_>) -> (i64, i64) {
+/// Behavior: io.deephaven.engine.table.impl.by.SumIntChunk#sumIntChunk and
+/// #sumIntChunkAbs (and the Byte, Short, Long and Char copies)
+fn sum_longs(run: &Run<'_>, absolute: bool) -> (i64, i64) {
     run.longs().flatten().fold((0i64, 0i64), |(sum, count), v| {
+        let v = if absolute { v.wrapping_abs() } else { v };
         (sum.wrapping_add(v), count + 1)
     })
 }
@@ -115,18 +119,27 @@ impl AggOperator for Count {
     }
 }
 
-/// The sum of a `byte`, `short`, `int`, `long` or `char` column, as a `long` that wraps.
-/// Null when the group has no non-null value, and whenever the sum is `NULL_LONG`.
+/// The sum of a `byte`, `short`, `int`, `long` or `char` column, or with `absolute` the
+/// sum of the absolute values, as a `long` that wraps. Null when the group has no non-null
+/// value, and whenever the sum is `NULL_LONG`.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.IntChunkedSumOperator, and the identical
 /// Byte, Short, Long and Char operators.
 #[derive(Default)]
 pub struct LongSum {
+    absolute: bool,
     result: Vec<i64>,
     non_null: Vec<i64>,
 }
 
 impl LongSum {
+    pub fn new(absolute: bool) -> LongSum {
+        LongSum {
+            absolute,
+            ..LongSum::default()
+        }
+    }
+
     /// Behavior: IntChunkedSumOperator#updateInternal(long, long, int)
     fn update(&mut self, slot: usize, sum: i64, non_null: i64) -> Effect {
         if non_null > 0 {
@@ -158,19 +171,19 @@ impl AggOperator for LongSum {
     }
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (sum, non_null) = sum_longs(run);
+        let (sum, non_null) = sum_longs(run, self.absolute);
         self.update(slot, sum, non_null)
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (sum, non_null) = sum_longs(run);
+        let (sum, non_null) = sum_longs(run, self.absolute);
         self.update(slot, sum.wrapping_neg(), -non_null)
     }
 
     /// Behavior: IntChunkedSumOperator#updateInternal(long, long, int, int)
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
-        let (old_sum, old_non_null) = sum_longs(old);
-        let (new_sum, new_non_null) = sum_longs(new);
+        let (old_sum, old_non_null) = sum_longs(old, self.absolute);
+        let (new_sum, new_non_null) = sum_longs(new, self.absolute);
         let difference = new_sum.wrapping_sub(old_sum);
         if old_non_null == 0 && new_non_null == 0 {
             return Effect::UNCHANGED;
@@ -359,10 +372,15 @@ struct FloatRun {
 }
 
 impl FloatRun {
-    /// Behavior: io.deephaven.engine.table.impl.by.SumDoubleChunk#sumDoubleChunk
-    fn of(run: &Run<'_>) -> FloatRun {
+    /// With `absolute`, of the absolute values, so that both infinities count as `+Infinity`.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.SumDoubleChunk#sumDoubleChunk and
+    /// #sumDoubleChunkAbs, io.deephaven.engine.table.impl.by.SumFloatChunk#sumFloatChunk and
+    /// #sumFloatChunkAbs
+    fn of(run: &Run<'_>, absolute: bool) -> FloatRun {
         let mut result = FloatRun::default();
         for value in run.doubles().flatten() {
+            let value = if absolute { value.abs() } else { value };
             if value.is_nan() {
                 result.nan += 1;
             } else if value == f64::INFINITY {
@@ -424,7 +442,8 @@ impl FloatCounts {
     }
 }
 
-/// The sum of a `float` or `double` column, of the column's own type. A NaN makes it NaN,
+/// The sum of a `float` or `double` column, or with `absolute` of its absolute values, of
+/// the column's own type. A NaN makes it NaN,
 /// as do infinities of both signs; one sign of infinity makes it that infinity. Null when
 /// the group has no non-null value.
 ///
@@ -436,6 +455,7 @@ impl FloatCounts {
 /// io.deephaven.engine.table.impl.by.FloatChunkedSumOperator
 pub struct FloatSum {
     narrow: bool,
+    absolute: bool,
     counts: FloatCounts,
     running: Vec<f64>,
     /// The result, with `self.null()` for null.
@@ -444,9 +464,10 @@ pub struct FloatSum {
 
 impl FloatSum {
     /// A sum of a `float` column if `narrow`, else of a `double` column.
-    pub fn new(narrow: bool) -> FloatSum {
+    pub fn new(narrow: bool, absolute: bool) -> FloatSum {
         FloatSum {
             narrow,
+            absolute,
             counts: FloatCounts::default(),
             running: Vec::new(),
             result: Vec::new(),
@@ -504,7 +525,7 @@ impl AggOperator for FloatSum {
 
     /// Behavior: DoubleChunkedSumOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run);
+        let chunk = FloatRun::of(run, self.absolute);
         self.counts.update_non_normal(slot, &chunk, 1);
         if chunk.normal > 0 {
             self.counts.normal[slot] += chunk.normal;
@@ -523,7 +544,7 @@ impl AggOperator for FloatSum {
 
     /// Behavior: DoubleChunkedSumOperator#removeChunk
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run);
+        let chunk = FloatRun::of(run, self.absolute);
         self.counts.update_non_normal(slot, &chunk, -1);
         if chunk.normal > 0 {
             self.counts.normal[slot] -= chunk.normal;
@@ -549,8 +570,8 @@ impl AggOperator for FloatSum {
 
     /// Behavior: DoubleChunkedSumOperator#modifyChunk
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
-        let pre = FloatRun::of(old);
-        let post = FloatRun::of(new);
+        let pre = FloatRun::of(old, self.absolute);
+        let post = FloatRun::of(new, self.absolute);
         let non_normal_change = pre.nan != post.nan
             || pre.positive_infinity != post.positive_infinity
             || pre.negative_infinity != post.negative_infinity;
@@ -590,8 +611,12 @@ impl AggOperator for FloatSum {
             None => self.typed(sum),
         };
         let old_value = std::mem::replace(&mut self.result[slot], value);
-        // io.deephaven.util.compare.DoubleComparisons#eq: equal, or both NaN.
-        Effect::modified_if(!(old_value == value || (old_value.is_nan() && value.is_nan())))
+        // io.deephaven.util.compare.DoubleComparisons#eq: equal, or both NaN. Java stores the
+        // new value either way; the result column here takes only what is reported, so a
+        // change of the sign of zero, which `eq` ignores, is reported too.
+        Effect::modified_if(
+            !(old_value.to_bits() == value.to_bits() || (old_value.is_nan() && value.is_nan())),
+        )
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
@@ -637,7 +662,7 @@ impl AggOperator for LongAvg {
 
     /// Behavior: IntChunkedAvgOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (sum, non_null) = sum_longs(run);
+        let (sum, non_null) = sum_longs(run, false);
         if non_null > 0 {
             self.non_null[slot] += non_null;
             let sum = plus_long(self.running[slot], sum);
@@ -654,7 +679,7 @@ impl AggOperator for LongAvg {
 
     /// Behavior: IntChunkedAvgOperator#removeChunk
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let (sum, non_null) = sum_longs(run);
+        let (sum, non_null) = sum_longs(run, false);
         if non_null == 0 {
             return Effect::UNCHANGED;
         }
@@ -716,7 +741,7 @@ impl AggOperator for FloatAvg {
 
     /// Behavior: DoubleChunkedAvgOperator#addChunk
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run);
+        let chunk = FloatRun::of(run, false);
         self.counts.normal[slot] += chunk.normal;
         self.counts.update_non_normal(slot, &chunk, 1);
         if chunk.normal > 0 {
@@ -728,7 +753,7 @@ impl AggOperator for FloatAvg {
 
     /// Behavior: DoubleChunkedAvgOperator#removeChunk
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let chunk = FloatRun::of(run);
+        let chunk = FloatRun::of(run, false);
         if chunk.normal == 0 && !chunk.has_non_normal() {
             return Effect::UNCHANGED;
         }
