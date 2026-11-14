@@ -1,19 +1,19 @@
-//! The oracle's scenarios, as far as they can be built from `sort`, `head`, `tail` and
-//! `merge`, checked against the results recorded from the Java server (`oracle/corpus`,
-//! see `oracle/README.md`).
+//! The oracle's scenarios, as far as they can be built from `sort`, `reverse`, `head`,
+//! `tail`, `slice`, `merge` and `flatten`, checked against the results recorded from the
+//! Java server (`oracle/corpus`, see `oracle/README.md`).
 //!
 //! Every scenario is loaded. A table of a scenario is built when its operation is one of
-//! the four and every table it is defined from could be built; the other tables need
-//! operations of other tasks and are counted as not run. Every result that could be built
-//! is compared with its recording at every step by the rules of `oracle/harness/rules.py`
-//! that apply here: column names, order and types, the row count, the cells by position
-//! (floats bit for bit, every NaN equal to every NaN), and the attributes `IsFlat`,
-//! `AddOnly`, `AppendOnly` and `BlinkTable`. Where Java refused the operation, the
-//! operation must be refused here.
+//! these and every table it is defined from could be built; the other tables need
+//! operations of other tasks, or an input this test cannot make, and are counted as not
+//! run. Every result that could be built is compared with its recording at every step by
+//! the rules of `oracle/harness/rules.py` that apply here: column names, order and types,
+//! the row count, the cells by position (floats bit for bit, every NaN equal to every NaN),
+//! and the attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`. Where Java refused
+//! the operation, the operation must be refused here.
 
 use super::testing::graph;
-use super::{head, sort, tail, SortColumn, SortError};
-use crate::ops::merge::{merge, MergeError};
+use super::{head, reverse, slice, sort, tail, SortColumn, SortError};
+use crate::ops::merge::{flatten, merge, MergeError};
 use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
@@ -206,29 +206,42 @@ fn load(graph: &Arc<dyn UpdateGraph>, input: &Value) -> Input {
     loaded
 }
 
+/// The operations this test builds.
+const OURS: [&str; 7] = [
+    "sort", "reverse", "head", "tail", "slice", "merge", "flatten",
+];
+
 /// What became of one table of a scenario.
 enum Built {
     Table(Arc<dyn Table>),
     /// The operation was refused; the gRPC status code Java reports for this refusal.
     Refused(&'static str),
-    /// The table needs an operation of another task.
-    NotRun,
+    /// The table was not built: the operation of another task that it needs, or the kind
+    /// of input this test cannot make.
+    NotRun(String),
 }
 
 /// The gRPC status code the Java server answers with for each refusal, as recorded in
-/// `error_unknown_column` (a sort by a column the table does not have) and
-/// `error_types_and_matches` (a merge of tables with different columns).
+/// `error_unknown_column` (a sort by a column the table does not have), `sort_absolute`
+/// (the absolute value of a string), `slice_positions` (a slice that ends before it
+/// starts) and `error_types_and_matches` (a merge of tables with different columns). A
+/// refusal without a recorded code gets a text that equals no code.
 fn sort_code(error: &SortError) -> &'static str {
     match error {
         SortError::NoSuchColumn(_) => "FAILED_PRECONDITION",
-        other => panic!("no recorded status code for {other:?}"),
+        SortError::AbsoluteNotSupported { .. } | SortError::IllegalArgument(_) => {
+            "INVALID_ARGUMENT"
+        }
+        SortError::Unsupported(_) => "an unsupported operation, which has no recorded code",
+        SortError::Table(_) => "a failed table, which has no recorded code",
     }
 }
 
 fn merge_code(error: &MergeError) -> &'static str {
     match error {
         MergeError::IncompatibleDefinitions(_) => "INVALID_ARGUMENT",
-        other => panic!("no recorded status code for {other:?}"),
+        MergeError::IllegalArgument(_) => "an illegal argument, which has no recorded code",
+        MergeError::Table(_) => "a failed table, which has no recorded code",
     }
 }
 
@@ -239,12 +252,14 @@ fn sorted_or_refused(result: Result<Arc<dyn Table>, SortError>) -> Built {
     }
 }
 
-/// Defines the table of `operation` from `tables`.
+/// Defines the table of `operation` from `tables`. An operation this test does not know
+/// is not run, whatever its keys are.
 fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
-    let sources: Vec<&str> = match operation["op"].as_str() {
-        Some("sort" | "head" | "tail") => vec![text(&operation["source"])],
-        Some("merge") => list(&operation["sources"]).iter().map(text).collect(),
-        _ => return Built::NotRun,
+    let kind = text(&operation["op"]);
+    let sources: Vec<&str> = match kind {
+        "merge" => list(&operation["sources"]).iter().map(text).collect(),
+        kind if OURS.contains(&kind) => vec![text(&operation["source"])],
+        other => return Built::NotRun(other.to_string()),
     };
     let mut parents = Vec::with_capacity(sources.len());
     for source in sources {
@@ -252,24 +267,34 @@ fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
             Built::Table(table) => parents.push(table.clone()),
             // A table defined from a refused table is refused the same way.
             Built::Refused(code) => return Built::Refused(code),
-            Built::NotRun => return Built::NotRun,
+            Built::NotRun(why) => return Built::NotRun(why.clone()),
         }
     }
-    let rows = || operation["rows"].as_i64().expect("rows");
-    match text(&operation["op"]) {
+    let number = |key: &str| operation[key].as_i64().expect("an integer");
+    match kind {
         "sort" => {
             let columns: Vec<SortColumn> = list(&operation["by"])
                 .iter()
-                .map(|by| match text(&by["direction"]) {
-                    "ascending" => SortColumn::ascending(text(&by["column"])),
-                    "descending" => SortColumn::descending(text(&by["column"])),
-                    other => panic!("no direction {other}"),
+                .map(|by| {
+                    let column = match text(&by["direction"]) {
+                        "ascending" => SortColumn::ascending(text(&by["column"])),
+                        "descending" => SortColumn::descending(text(&by["column"])),
+                        other => panic!("no direction {other}"),
+                    };
+                    if by["absolute"] == true {
+                        column.absolute()
+                    } else {
+                        column
+                    }
                 })
                 .collect();
             sorted_or_refused(sort(&parents[0], &columns))
         }
-        "head" => sorted_or_refused(head(&parents[0], rows())),
-        "tail" => sorted_or_refused(tail(&parents[0], rows())),
+        "reverse" => sorted_or_refused(reverse(&parents[0])),
+        "head" => sorted_or_refused(head(&parents[0], number("rows"))),
+        "tail" => sorted_or_refused(tail(&parents[0], number("rows"))),
+        "slice" => sorted_or_refused(slice(&parents[0], number("start"), number("stop"))),
+        "flatten" => sorted_or_refused(flatten(&parents[0]).map_err(SortError::Table)),
         _ => match merge(&parents) {
             Ok(table) => Built::Table(table),
             Err(error) => Built::Refused(merge_code(&error)),
@@ -347,63 +372,68 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
     }
 }
 
-/// Compares `table` with what Java returned.
-fn compare(place: &str, recording: &Recording, entry: &Value, table: &dyn Table) {
+/// How `table` differs from what Java returned, if it does: the first difference found.
+fn difference(recording: &Recording, entry: &Value, table: &dyn Table) -> Option<String> {
     let (expected, attributes) = recording.table(entry);
     let schema = expected.schema();
     let columns = table.definition().columns();
-    let names = |fields: Vec<(&str, DataType)>| format!("{fields:?}");
-    assert_eq!(
-        names(
-            columns
-                .iter()
-                .map(|c| (c.name.as_str(), c.column_type.arrow_type()))
-                .collect()
-        ),
-        names(
-            schema
-                .fields()
-                .iter()
-                .map(|f| (f.name().as_str(), f.data_type().clone()))
-                .collect()
-        ),
-        "{place}: columns"
-    );
-    let snapshot = TableSnapshot::current(table).expect("a readable table");
-    assert_eq!(
-        snapshot.rows.size(),
-        expected.num_rows() as u64,
-        "{place}: row count"
-    );
+    let ours: Vec<(&str, DataType)> = columns
+        .iter()
+        .map(|c| (c.name.as_str(), c.column_type.arrow_type()))
+        .collect();
+    let theirs: Vec<(&str, DataType)> = schema
+        .fields()
+        .iter()
+        .map(|f| (f.name().as_str(), f.data_type().clone()))
+        .collect();
+    if ours != theirs {
+        return Some(format!("columns {ours:?}, Java has {theirs:?}"));
+    }
+    let snapshot = match TableSnapshot::current(table) {
+        Ok(snapshot) => snapshot,
+        Err(error) => return Some(format!("cannot be read: {error}")),
+    };
+    if snapshot.rows.size() != expected.num_rows() as u64 {
+        let (ours, theirs) = (snapshot.rows.size(), expected.num_rows());
+        return Some(format!("{ours} rows, Java has {theirs}"));
+    }
     for (index, column) in columns.iter().enumerate() {
-        assert!(
-            same_cells(expected.column(index), &snapshot.columns[index]),
-            "{place}: column {} is {:?}, Java has {:?}",
-            column.name,
-            snapshot.columns[index],
-            expected.column(index)
-        );
+        if !same_cells(expected.column(index), &snapshot.columns[index]) {
+            return Some(format!(
+                "column {} is {:?}, Java has {:?}",
+                column.name,
+                snapshot.columns[index],
+                expected.column(index)
+            ));
+        }
     }
     let found = table.attributes();
-    assert_eq!(
-        [
-            table.is_flat(),
-            found.add_only,
-            found.append_only,
-            found.blink
-        ],
-        attributes,
-        "{place}: the attributes IsFlat, AddOnly, AppendOnly, BlinkTable"
-    );
+    let ours = [
+        table.is_flat(),
+        found.add_only,
+        found.append_only,
+        found.blink,
+    ];
+    (ours != attributes).then(|| {
+        format!("IsFlat, AddOnly, AppendOnly, BlinkTable are {ours:?}, Java has {attributes:?}")
+    })
 }
 
-/// What was compared and what was not, as `scenario/table`.
+/// What was compared and what was not.
 #[derive(Default)]
 struct Tally {
+    /// `scenario/table`, for every result that was built and agrees with Java at every
+    /// step.
     compared: Vec<String>,
-    not_run: Vec<String>,
-    /// The number of tables compared, over all steps.
+    /// The number of results that agree, over all steps.
     comparisons: usize,
+    /// `scenario/table at step N: how`, for every result that was built and differs.
+    differences: Vec<String>,
+    /// `scenario/table: why`, for the results of this test's operations that were not
+    /// built.
+    not_run: Vec<String>,
+    /// The number of results of each other operation; none of them is built.
+    others: BTreeMap<String, usize>,
 }
 
 fn run(path: &Path, tally: &mut Tally) {
@@ -414,54 +444,78 @@ fn run(path: &Path, tally: &mut Tally) {
 
     let mut inputs: BTreeMap<String, Input> = BTreeMap::new();
     let mut tables: BTreeMap<String, Built> = BTreeMap::new();
+    // The operation that makes each table; an input has none.
+    let mut made_by: BTreeMap<String, &str> = BTreeMap::new();
     for input in list(&scenario["inputs"]) {
-        let loaded = load(&graph, input);
         let name = text(&input["name"]).to_string();
+        if input["ticking"]["blink"] == true {
+            // The engine has no blink input table.
+            tables.insert(name, Built::NotRun("blink input".to_string()));
+            continue;
+        }
+        let loaded = load(&graph, input);
         tables.insert(name.clone(), Built::Table(loaded.table.clone()));
         inputs.insert(name, loaded);
     }
     for operation in list(&scenario["operations"]) {
         let built = define(&tables, operation);
-        tables.insert(text(&operation["name"]).to_string(), built);
+        let table = text(&operation["name"]).to_string();
+        made_by.insert(table.clone(), text(&operation["op"]));
+        tables.insert(table, built);
     }
 
+    // A result that is an input involves none of the operations under test.
     let results: Vec<&str> = list(&scenario["results"])
         .iter()
         .map(|result| text(&result["table"]))
-        // A result that is an input involves none of the operations under test.
-        .filter(|result| !inputs.contains_key(*result))
+        .filter(|result| made_by.contains_key(*result))
         .collect();
     for result in &results {
+        let operation = made_by[*result];
         match &tables[*result] {
-            Built::NotRun => tally.not_run.push(format!("{name}/{result}")),
-            _ => tally.compared.push(format!("{name}/{result}")),
+            Built::NotRun(_) if !OURS.contains(&operation) => {
+                *tally.others.entry(operation.to_string()).or_default() += 1;
+            }
+            Built::NotRun(why) => tally.not_run.push(format!("{name}/{result}: {why}")),
+            _ => {}
         }
     }
+    let mut differs: Vec<&str> = Vec::new();
     let mut check = |step: usize| {
         for result in &results {
-            let place = format!("{name}/{result} at step {step}");
             let entry = recording.entry(step, result);
             let failure = &entry["failure"];
-            match &tables[*result] {
-                Built::NotRun => continue,
-                Built::Refused(code) => {
-                    assert!(!failure.is_null(), "{place}: refused, but Java has a table");
-                    assert_eq!(*code, text(&failure["code"]), "{place}: status code");
+            let difference = match &tables[*result] {
+                Built::NotRun(_) => continue,
+                Built::Refused(_) if failure.is_null() => {
+                    Some("refused, but Java has a table".to_string())
                 }
-                Built::Table(table) => {
-                    assert!(failure.is_null(), "{place}: Java fails with {failure}");
-                    assert!(!table.is_failed(), "{place}: the table has failed");
-                    compare(&place, &recording, entry, &**table);
+                Built::Refused(code) => (*code != text(&failure["code"]))
+                    .then(|| format!("refused with {code}, Java with {}", failure["code"])),
+                Built::Table(_) if !failure.is_null() => {
+                    Some(format!("Java fails with {}", failure["code"]))
+                }
+                Built::Table(table) if table.is_failed() => Some("the table has failed".into()),
+                Built::Table(table) => difference(&recording, entry, &**table),
+            };
+            match difference {
+                None => tally.comparisons += 1,
+                Some(difference) => {
+                    differs.push(result);
+                    let place = format!("{name}/{result} at step {step}");
+                    tally.differences.push(format!("{place}: {difference}"));
                 }
             }
-            tally.comparisons += 1;
         }
     };
 
     check(0);
     for (index, step) in list(&scenario["steps"]).iter().enumerate() {
         for action in list(&step["actions"]) {
-            let input = &inputs[text(&action["table"])];
+            // An input that was not made takes no actions.
+            let Some(input) = inputs.get(text(&action["table"])) else {
+                continue;
+            };
             let rows = list(&action["rows"]);
             match text(&action["action"]) {
                 "add" => input.add(rows),
@@ -471,7 +525,15 @@ fn run(path: &Path, tally: &mut Tally) {
         }
         check(index + 1);
     }
+    for result in &results {
+        if !matches!(tables[*result], Built::NotRun(_)) && !differs.contains(result) {
+            tally.compared.push(format!("{name}/{result}"));
+        }
+    }
 }
+
+/// Results that differ from what Java recorded, each with the first difference found.
+const KNOWN_DIFFERENCES: [&str; 0] = [];
 
 #[test]
 fn results_match_the_recorded_java_results() {
@@ -483,14 +545,20 @@ fn results_match_the_recorded_java_results() {
         }
     }
     paths.sort();
+    assert_eq!(paths.len(), 83);
     let mut tally = Tally::default();
     for path in &paths {
         run(path, &mut tally);
     }
     tally.compared.sort();
+    assert_eq!(
+        tally.differences, KNOWN_DIFFERENCES,
+        "differences from Java"
+    );
 
-    // Every result table of the corpus that is a sort, head, tail or merge of tables that
-    // are themselves inputs or such results. Everything else needs another operation.
+    // Every result table of the corpus that is a sort, reverse, head, tail, slice, merge
+    // or flatten of tables that are themselves inputs or such results, and agrees with
+    // Java at every step.
     let expected = [
         "empty_table_ops/h",
         "empty_table_ops/m",
@@ -498,6 +566,16 @@ fn results_match_the_recorded_java_results() {
         "empty_table_ops/tl",
         "error_types_and_matches/merge_different",
         "error_unknown_column/bad_sort",
+        "flatten_reverse/flat",
+        "flatten_reverse/flat_empty",
+        "flatten_reverse/flat_rev",
+        "flatten_reverse/rev",
+        "flatten_reverse/rev_empty",
+        "flatten_reverse/rev_head",
+        "flatten_reverse/rev_rev",
+        "flatten_reverse/rev_sorted",
+        "flatten_reverse/rev_tail",
+        "flatten_reverse/sorted_s",
         "head_tail/h0",
         "head_tail/h3",
         "head_tail/h5_t2",
@@ -507,12 +585,69 @@ fn results_match_the_recorded_java_results() {
         "head_tail/t2",
         "head_tail/t7",
         "head_tail/t99",
+        "head_tail_zero/head_all",
+        "head_tail_zero/head_empty",
+        "head_tail_zero/head_more",
+        "head_tail_zero/head_of_tail",
+        "head_tail_zero/head_zero",
+        "head_tail_zero/sorted_head_zero",
+        "head_tail_zero/tail_all",
+        "head_tail_zero/tail_empty_zero",
+        "head_tail_zero/tail_more",
+        "head_tail_zero/tail_of_head_zero",
+        "head_tail_zero/tail_zero",
+        "merge_column_order/fewer_columns",
+        "merge_column_order/one_table",
+        "merge_column_order/only_empty",
+        "merge_column_order/other_type",
+        "merge_column_order/reordered",
+        "merge_column_order/reordered_first",
+        "merge_column_order/with_empty",
+        "merge_column_order/with_itself",
         "merge_tables/aa",
         "merge_tables/ab",
         "merge_tables/abab",
         "merge_tables/aeb",
         "merge_tables/ba",
         "merge_tables/ee",
+        "slice_positions/all",
+        "slice_positions/backwards",
+        "slice_positions/before_start",
+        "slice_positions/beyond",
+        "slice_positions/end_then_start",
+        "slice_positions/from_end",
+        "slice_positions/last_two",
+        "slice_positions/middle",
+        "slice_positions/none",
+        "slice_positions/of_empty",
+        "slice_positions/of_empty_from_end",
+        "slice_positions/past_end",
+        "slice_positions/same",
+        "slice_positions/slice_of_slice",
+        "slice_positions/start_to_from_end",
+        "slice_positions/start_to_from_end_empty",
+        "sort_absolute/abs_byte_down",
+        "sort_absolute/abs_double",
+        "sort_absolute/abs_double_down",
+        "sort_absolute/abs_float",
+        "sort_absolute/abs_float_down",
+        "sort_absolute/abs_int",
+        "sort_absolute/abs_int_down",
+        "sort_absolute/abs_long",
+        "sort_absolute/abs_string",
+        "sort_absolute/abs_then_plain",
+        "sort_absolute/plain_then_abs",
+        "sort_descending_ties/bool_down",
+        "sort_descending_ties/double_down",
+        "sort_descending_ties/down_of_down",
+        "sort_descending_ties/down_then_up",
+        "sort_descending_ties/float_down",
+        "sort_descending_ties/int_down",
+        "sort_descending_ties/reverse_of_down",
+        "sort_descending_ties/string_down",
+        "sort_descending_ties/time_down",
+        "sort_descending_ties/two_down",
+        "sort_descending_ties/up_then_down",
         "sort_float_nan/d_down",
         "sort_float_nan/d_up",
         "sort_float_nan/f_down",
@@ -524,8 +659,50 @@ fn results_match_the_recorded_java_results() {
         "sort_multi_column/s_down_l_up",
         "sort_multi_column/s_then_i",
         "ticking_empty_start/s",
+        "ticking_head_tail/bottom",
+        "ticking_head_tail/head_many",
+        "ticking_head_tail/head_of_tail",
+        "ticking_head_tail/head_two",
+        "ticking_head_tail/head_zero",
+        "ticking_head_tail/log_head",
+        "ticking_head_tail/log_tail",
+        "ticking_head_tail/log_tail_zero",
+        "ticking_head_tail/sorted_k",
+        "ticking_head_tail/tail_many",
+        "ticking_head_tail/tail_of_head",
+        "ticking_head_tail/tail_two",
+        "ticking_head_tail/tail_zero",
+        "ticking_head_tail/top",
         "ticking_join_merge/m",
         "ticking_join_merge/m_sorted",
+        "ticking_merge_refreshing/ab",
+        "ticking_merge_refreshing/all",
+        "ticking_merge_refreshing/b_sorted",
+        "ticking_merge_refreshing/ba",
+        "ticking_merge_refreshing/merge_of_merge",
+        "ticking_merge_refreshing/merged_sorted",
+        "ticking_merge_refreshing/merged_tail",
+        "ticking_merge_refreshing/twice",
+        "ticking_slice_flatten_reverse/first_three",
+        "ticking_slice_flatten_reverse/flat",
+        "ticking_slice_flatten_reverse/flat_sorted",
+        "ticking_slice_flatten_reverse/inner",
+        "ticking_slice_flatten_reverse/last_two",
+        "ticking_slice_flatten_reverse/middle",
+        "ticking_slice_flatten_reverse/rev",
+        "ticking_slice_flatten_reverse/rev_head",
+        "ticking_slice_flatten_reverse/rev_slice",
+        "ticking_slice_flatten_reverse/rev_sorted",
+        "ticking_slice_flatten_reverse/sorted_k",
+        "ticking_slice_flatten_reverse/sorted_middle",
+        "ticking_sort_absolute_descending/abs_double",
+        "ticking_sort_absolute_descending/abs_double_down",
+        "ticking_sort_absolute_descending/abs_int",
+        "ticking_sort_absolute_descending/abs_int_down",
+        "ticking_sort_absolute_descending/abs_then_down",
+        "ticking_sort_absolute_descending/double_down",
+        "ticking_sort_absolute_descending/int_down",
+        "ticking_sort_absolute_descending/string_down_int_up",
         "ticking_update_by_append/first3",
         "ticking_where_sort/by_s",
         "ticking_where_sort/by_v",
@@ -536,8 +713,79 @@ fn results_match_the_recorded_java_results() {
         "timestamps/up",
     ];
     assert_eq!(tally.compared, expected);
-    // 34 tables of static scenarios at one step, and the ticking ones at every step:
-    // 1 at 5 steps, 2 at 8, 1 at 6 and 4 at 8.
-    assert_eq!(tally.comparisons, 34 + 5 + 16 + 6 + 32);
-    assert_eq!(tally.not_run.len(), 145, "{:#?}", tally.not_run);
+    // 101 tables of static scenarios at one step, and the ticking ones at every step:
+    // 1 at 5 steps, 1 at 6 steps, 22 at 8 steps, 26 at 9 steps.
+    assert_eq!(tally.comparisons, 101 + 1 * 5 + 1 * 6 + 22 * 8 + 26 * 9);
+    // Results of this test's operations that need an operation of another task, or an
+    // input this test cannot make.
+    let not_run = [
+        "empty_table_and_meta/five_tail: update",
+        "error_unknown_column/after_bad_where: where",
+        "flatten_reverse/flat_big: where",
+        "flatten_reverse/rev_big: where",
+        "lazy_update_update_view/lazy_then_sort: lazy_update",
+        "merge_column_order/after_view: view",
+        "pipeline/ranked: agg_by",
+        "pipeline/top: agg_by",
+        "slice_positions/of_filtered: where",
+        "ticking_blink_sort_head_tail/sorted_k: blink input",
+        "ticking_blink_sort_head_tail/first_two: blink input",
+        "ticking_blink_sort_head_tail/last_two: blink input",
+        "ticking_blink_sort_head_tail/none: blink input",
+        "ticking_blink_sort_head_tail/top_two: blink input",
+        "ticking_blink_sort_head_tail/bottom_one: blink input",
+        "ticking_blink_sort_head_tail/rev: blink input",
+        "ticking_head_tail/big_head: where",
+        "ticking_head_tail/big_tail: where",
+        "ticking_lazy_update_update_view/lazy_sorted: lazy_update",
+        "ticking_merge_refreshing/derived: where",
+        "ticking_slice_flatten_reverse/flat_big: where",
+        "ticking_slice_flatten_reverse/rev_big: where",
+        "ticking_time_table/first_hours: time_table",
+        "ticking_time_table/some_hours: time_table",
+        "ticking_time_table/first_half_days: time_table",
+        "ticking_time_table/blinking_none: time_table",
+        "ticking_update_by_append/last3: update_by",
+    ];
+    assert_eq!(tally.not_run, not_run, "not run");
+    // The results of every other operation, none of which is built here.
+    let others: Vec<(&str, usize)> = tally
+        .others
+        .iter()
+        .map(|(operation, results)| (operation.as_str(), *results))
+        .collect();
+    let expected = [
+        ("agg_all_by", 43),
+        ("agg_by", 70),
+        ("aj", 12),
+        ("column_statistics", 19),
+        ("drop_columns", 8),
+        ("empty_table", 2),
+        ("exact_join", 5),
+        ("filter", 76),
+        ("group_by", 11),
+        ("head_by", 14),
+        ("join", 7),
+        ("lazy_update", 11),
+        ("left_join", 2),
+        ("meta_table", 9),
+        ("multi_join", 14),
+        ("natural_join", 14),
+        ("raj", 12),
+        ("range_join", 20),
+        ("select", 4),
+        ("select_distinct", 18),
+        ("snapshot", 4),
+        ("snapshot_when", 20),
+        ("tail_by", 10),
+        ("time_table", 2),
+        ("ungroup", 15),
+        ("update", 20),
+        ("update_by", 42),
+        ("update_view", 13),
+        ("view", 12),
+        ("where", 44),
+        ("where_in", 20),
+    ];
+    assert_eq!(others, expected, "results of other operations");
 }
