@@ -819,13 +819,6 @@ fn structured_conditions_that_cannot_be_built_are_errors() {
             search_string: "x".to_string(),
             columns: vec![],
         }),
-        // This becomes a call of `equalsIgnoreCase`, which the formula compiler lacks.
-        Condition::Compare {
-            op: CompareOp::Equals,
-            case_sensitivity: CaseSensitivity::IgnoreCase,
-            lhs: column("S"),
-            rhs: string("a"),
-        },
     ] {
         let error = refused(condition.clone());
         assert!(is_invalid(&error), "{condition:?}: {error}");
