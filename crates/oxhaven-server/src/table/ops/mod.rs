@@ -49,8 +49,14 @@
 //!   update graph's shared lock, so the handler reads a consistent state and no cycle runs
 //!   between its read and its subscription.
 //! - Errors decide the status code the client sees, which the oracle compares with Java's:
-//!   - `?` on a `TableFailure` or a `FormulaError` gives what Java gives for an exception
-//!     out of the engine: `INVALID_ARGUMENT` with only an error id, the text in the log.
+//!   - `?` on a `TableFailure`, a `FormulaError` or the error of an engine operator gives
+//!     what Java gives for an exception out of the engine: `INVALID_ARGUMENT` with only an
+//!     error id, the text in the log. The conversions are in one place, in
+//!     [`support`](super::support).
+//!   - An `unported!` panic in the engine is answered `UNIMPLEMENTED` with the name of the
+//!     Java behavior that is missing, so a request cannot take the server down. Where the
+//!     handler can see that a request needs something that is not ported, it says so
+//!     itself with [`not_ported`](super::support::not_ported).
 //!   - A `Status` is sent as it is. Use one where the Java handler throws a status itself;
 //!     [`require_columns`](super::support::require_columns) is the common case
 //!     (`FAILED_PRECONDITION`, as `SortTableGrpcImpl` and `SelectDistinctGrpcImpl` do).
@@ -73,8 +79,8 @@ use tonic::Status;
 /// What handler files import.
 pub mod prelude {
     pub use super::super::support::{
-        compile, internal_status, missing_columns, parse_assignment, require_columns, source,
-        validate_column_name, OpContext,
+        compile, internal_status, missing_columns, not_ported, parse_assignment, require_columns,
+        source, validate_column_name, OpContext,
     };
     pub use super::TableOp;
     pub use crate::session::ExportError;
@@ -247,9 +253,25 @@ macro_rules! handlers {
 
 // One line per handler file: `file { Operation => HandlerType }`.
 handlers! {
+    aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll }
     create_input_table { CreateInputTable => Handler }
+    drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }
+    filter { Filter => Handler }
+    flatten { Flatten => Handler }
+    head_tail { Head => Head, Tail => Tail }
+    merge { Merge => Handler }
     meta_table { MetaTable => Handler }
+    select {
+        Update => Update,
+        LazyUpdate => LazyUpdate,
+        View => View,
+        UpdateView => UpdateView,
+        Select => Select,
+    }
+    slice { Slice => Handler }
+    sort { Sort => Handler }
     time_table { TimeTable => Handler }
+    unstructured_filter { UnstructuredFilter => Handler }
 }

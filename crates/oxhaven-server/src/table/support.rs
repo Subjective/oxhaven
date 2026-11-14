@@ -6,6 +6,10 @@ use crate::session::ExportError;
 use oxhaven_contracts::expr::{ColumnAssignment, Formula, FormulaCompiler, FormulaError};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::TableDefinition;
+use oxhaven_engine::ops::filter::FilterError;
+use oxhaven_engine::ops::merge::MergeError;
+use oxhaven_engine::ops::select::SelectError;
+use oxhaven_engine::ops::sort::SortError;
 use oxhaven_engine::table::TimeSource;
 use oxhaven_proto::grpc::TableReference;
 use std::sync::Arc;
@@ -47,6 +51,49 @@ impl From<FormulaError> for ExportError {
     fn from(error: FormulaError) -> Self {
         ExportError::Internal(error.to_string())
     }
+}
+
+/// What an engine operator refuses is, in Java, an exception out of the engine, and the
+/// Java server answers every such exception the same way: `INVALID_ARGUMENT` with an error
+/// id, the text in the log. This is the one place that decides it, so a handler writes `?`
+/// on an operator's result. A refusal that Java answers with a status of its own (a sort
+/// column that does not exist, a negative row count) is checked by the handler before the
+/// operator is called.
+///
+/// Behavior: `io.deephaven.server.session.SessionService.ObfuscatingErrorTransformer#transform`
+macro_rules! engine_errors_are_internal {
+    ($($error:ty),+) => {
+        $(
+            impl From<$error> for ExportError {
+                fn from(error: $error) -> Self {
+                    ExportError::Internal(error.to_string())
+                }
+            }
+        )+
+    };
+}
+
+engine_errors_are_internal!(SelectError, SortError, MergeError, FilterError);
+
+/// The status of a request that reached code which has not been ported. `panic` is what a
+/// handler panicked with; the result is `None` unless it is the message of an `unported!`
+/// call, which names the Java behavior that is missing.
+///
+/// Java has the behavior, so this status has no Java counterpart. It exists so that a
+/// request the engine cannot serve yet is refused by name and the server keeps running.
+pub(super) fn unported_status(panic: &(dyn std::any::Any + Send)) -> Option<Status> {
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())?;
+    let missing = message.strip_prefix("unported: ")?;
+    Some(Status::unimplemented(format!("not ported: {missing}")))
+}
+
+/// A request for something that has not been ported, refused before the engine is asked.
+/// `java` names the Java behavior that is missing.
+pub fn not_ported(java: &str, what: impl std::fmt::Display) -> Status {
+    Status::unimplemented(format!("not ported: {java}: {what}"))
 }
 
 /// Parses and compiles a formula expression, such as a filter, against `definition`.
