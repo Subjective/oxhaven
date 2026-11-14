@@ -220,3 +220,16 @@ For the retrospective: corpus tests compare table contents per step, not update 
 shape errors surface only through downstream consumers or Barrage. A recorded update-shape check
 (Barrage deltas from Java are exactly that) would close this hole; the Barrage fixtures may give
 it for free.
+
+## 11:48 Merge order for the pieces that touch the replay baseline
+
+Four branches interact: the function library (PR 28, changes filter corpus pins), the attribute
+fixes (PR 29, changes filter corpus comparisons), the 83-scenario corpus integration, and the CI
+gate whose baseline lists every scenario. Order: 28, then 29 updated with main, then the corpus
+integration, then the gate with its baseline regenerated on the result. The gate lands last so its
+first baseline is the strictest true one; after that every pull request that changes replay
+outcomes must edit its baseline lines, and the rules job allows only stricter edits without the
+orchestrator's label.
+
+Started full aggregations (4.1) in a freed slot after load fell to 8 and disk recovered to 16 GB
+(removed worktrees of six finished agents).
