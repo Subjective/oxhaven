@@ -73,8 +73,8 @@ use tonic::Status;
 /// What handler files import.
 pub mod prelude {
     pub use super::super::support::{
-        compile, internal_status, missing_columns, parse_assignment, require_columns, source,
-        validate_column_name, OpContext,
+        compile, internal_status, missing_columns, not_ported, parse_assignment, require_columns,
+        source, validate_column_name, OpContext,
     };
     pub use super::TableOp;
     pub use crate::session::ExportError;
@@ -247,8 +247,23 @@ macro_rules! handlers {
 
 // One line per handler file: `file { Operation => HandlerType }`.
 handlers! {
+    drop_columns { DropColumns => Handler }
     empty_table { EmptyTable => Handler }
     fetch_table { FetchTable => Handler }
+    filter { Filter => Handler }
+    flatten { Flatten => Handler }
+    head_tail { Head => Head, Tail => Tail }
+    merge { Merge => Handler }
     meta_table { MetaTable => Handler }
+    select {
+        Update => Update,
+        LazyUpdate => LazyUpdate,
+        View => View,
+        UpdateView => UpdateView,
+        Select => Select,
+    }
+    slice { Slice => Handler }
+    sort { Sort => Handler }
     time_table { TimeTable => Handler }
+    unstructured_filter { UnstructuredFilter => Handler }
 }
