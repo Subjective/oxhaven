@@ -1,0 +1,680 @@
+{
+  "format": 2,
+  "scenario": "partitioned_transform",
+  "scenario_sha256": "fa1dddb42512be95b3476631d58363e324688c43bcc5ec6736fd44dd839ce98d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "heads_underlying",
+      "file": "step000.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "heads",
+      "file": "step000.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "heads_found",
+      "file": "step000.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "counted_keys",
+      "file": "step000.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "joined",
+      "file": "step000.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "refiltered",
+      "file": "step000.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "heads_underlying",
+      "file": "step001.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "heads",
+      "file": "step001.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "heads_found",
+      "file": "step001.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "counted_keys",
+      "file": "step001.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "renamed",
+      "file": "step001.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "joined",
+      "file": "step001.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "refiltered",
+      "file": "step001.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "heads_underlying",
+      "file": "step002.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "heads",
+      "file": "step002.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "heads_found",
+      "file": "step002.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "file": "step002.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "counted_keys",
+      "file": "step002.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "renamed",
+      "file": "step002.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 2,
+      "table": "joined",
+      "file": "step002.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "refiltered",
+      "file": "step002.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "heads_underlying",
+      "file": "step003.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "heads",
+      "file": "step003.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "heads_found",
+      "file": "step003.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "file": "step003.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "counted_keys",
+      "file": "step003.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "renamed",
+      "file": "step003.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 3,
+      "table": "joined",
+      "file": "step003.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "refiltered",
+      "file": "step003.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "heads_underlying",
+      "file": "step004.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "heads",
+      "file": "step004.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "heads_found",
+      "file": "step004.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "file": "step004.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "counted_keys",
+      "file": "step004.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "renamed",
+      "file": "step004.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "joined",
+      "file": "step004.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "refiltered",
+      "file": "step004.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "heads_underlying",
+      "file": "step005.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "heads",
+      "file": "step005.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "heads_found",
+      "file": "step005.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "file": "step005.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "counted_keys",
+      "file": "step005.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "renamed",
+      "file": "step005.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 5,
+      "table": "joined",
+      "file": "step005.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "refiltered",
+      "file": "step005.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "heads_underlying",
+      "file": "step006.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "heads",
+      "file": "step006.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "heads_found",
+      "file": "step006.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "counted_keys",
+      "file": "step006.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "renamed",
+      "file": "step006.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 6,
+      "table": "joined",
+      "file": "step006.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "refiltered",
+      "file": "step006.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "heads_underlying",
+      "file": "step007.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "heads",
+      "file": "step007.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "heads_found",
+      "file": "step007.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "counted",
+      "file": "step007.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "counted_keys",
+      "file": "step007.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "renamed",
+      "file": "step007.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 7,
+      "table": "joined",
+      "file": "step007.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "refiltered",
+      "file": "step007.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "heads_underlying",
+      "file": "step008.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "heads",
+      "file": "step008.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "heads_found",
+      "file": "step008.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "counted",
+      "file": "step008.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 8,
+      "table": "counted_keys",
+      "file": "step008.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "renamed",
+      "file": "step008.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 8,
+      "table": "joined",
+      "file": "step008.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 8,
+      "table": "refiltered",
+      "file": "step008.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "heads_underlying",
+      "file": "step009.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "heads",
+      "file": "step009.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "heads_found",
+      "file": "step009.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "counted",
+      "file": "step009.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 9,
+      "table": "counted_keys",
+      "file": "step009.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "renamed",
+      "file": "step009.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 9,
+      "table": "joined",
+      "file": "step009.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 9,
+      "table": "refiltered",
+      "file": "step009.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 10,
+      "table": "heads_underlying",
+      "file": "step010.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 10,
+      "table": "heads",
+      "file": "step010.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 10,
+      "table": "heads_found",
+      "file": "step010.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 10,
+      "table": "counted",
+      "file": "step010.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 10,
+      "table": "counted_keys",
+      "file": "step010.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 10,
+      "table": "renamed",
+      "file": "step010.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 10,
+      "table": "joined",
+      "file": "step010.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 10,
+      "table": "refiltered",
+      "file": "step010.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 11,
+      "table": "heads_underlying",
+      "file": "step011.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 11,
+      "table": "heads",
+      "file": "step011.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 11,
+      "table": "heads_found",
+      "file": "step011.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 11,
+      "table": "counted",
+      "file": "step011.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 11,
+      "table": "counted_keys",
+      "file": "step011.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 11,
+      "table": "renamed",
+      "file": "step011.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 11,
+      "table": "joined",
+      "file": "step011.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 11,
+      "table": "refiltered",
+      "file": "step011.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 12,
+      "table": "heads_underlying",
+      "file": "step012.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 12,
+      "table": "heads",
+      "file": "step012.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 12,
+      "table": "heads_found",
+      "file": "step012.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 12,
+      "table": "counted",
+      "file": "step012.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 12,
+      "table": "counted_keys",
+      "file": "step012.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 12,
+      "table": "renamed",
+      "file": "step012.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 12,
+      "table": "joined",
+      "file": "step012.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 12,
+      "table": "refiltered",
+      "file": "step012.refiltered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 13,
+      "table": "heads_underlying",
+      "file": "step013.heads_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 13,
+      "table": "heads",
+      "file": "step013.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 13,
+      "table": "heads_found",
+      "file": "step013.heads_found.arrow",
+      "rows": 1
+    },
+    {
+      "step": 13,
+      "table": "counted",
+      "file": "step013.counted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 13,
+      "table": "counted_keys",
+      "file": "step013.counted_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 13,
+      "table": "renamed",
+      "file": "step013.renamed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 13,
+      "table": "joined",
+      "file": "step013.joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 13,
+      "table": "refiltered",
+      "file": "step013.refiltered.arrow",
+      "rows": 2
+    }
+  ]
+}

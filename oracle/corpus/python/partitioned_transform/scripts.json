@@ -1,0 +1,97 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.engine.table.Table.getDefinition()\" because \"resultEmptyConstituent\" is null",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : java.lang.ClassCastException: class java.lang.Byte cannot be cast to class io.deephaven.engine.table.Table (java.lang.Byte is in module java.base of loader 'bootstrap'; io.deephaven.engine.table.Table is in unnamed module of loader 'app')",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "unable to get constituent table. : RuntimeError: java.lang.IllegalArgumentException: Key count mismatch: expected one key column value for each key column name in [K], instead received [1, 2]",
+      "operation": "unable to get constituent table."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to sort the partitioned table. : RuntimeError: java.lang.IllegalArgumentException: Unsupported sort on constituent column __CONSTITUENT__ found in sort columns: [SortColumn{column=ColumnName(__CONSTITUENT__), order=ASCENDING}]",
+      "operation": "failed to sort the partitioned table."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a partitioned table. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: aggregation: not all group-by columns [Nope] are present in input table with columns [K, S, V]. Missing columns: [Nope]",
+      "operation": "failed to create a partitioned table."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a partitioned table. : deephaven.dherror.DHError: drop_keys must be a boolean value. : drop_keys must be a boolean value.",
+      "operation": "failed to create a partitioned table."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to apply filters to the partitioned table. : Cannot find variable or class Nope",
+      "operation": "failed to apply filters to the partitioned table."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a partitioned table. : RuntimeError: java.lang.UnsupportedOperationException: Blink tables do not support partitionBy; use BlinkTableTools.blinkToAppendOnly to accumulate full history",
+      "operation": "failed to create a partitioned table."
+    },
+    {
+      "step": 13,
+      "outcome": "ok"
+    }
+  ]
+}

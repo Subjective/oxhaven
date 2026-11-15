@@ -2,8 +2,8 @@
 //!
 //! The engine has sum, abs_sum, avg, min, max, first, last, var, std, median, percentile,
 //! count_distinct, distinct, unique, weighted_avg, weighted_sum, sorted_first, sorted_last,
-//! group, formula (in both forms), count and count_where. A request for any other
-//! aggregation (partition, the row keys, approximate_percentile, t_digest, freeze), or for
+//! group, formula (in both forms), count, count_where and partition. A request for any
+//! other aggregation (the row keys, approximate_percentile, t_digest, freeze), or for
 //! initial groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
 //!
 //! Java checks the filters of a count where and the formulas of a formula aggregation with
@@ -403,7 +403,11 @@ impl TableOp for Aggregate {
                 }
                 Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
                 Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
-                Some(AggregationType::Partition(_)) => return Err(missing("partition")),
+                // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
+                Some(AggregationType::Partition(partition)) => Aggregation::Partition {
+                    column: column_name(&partition.column_name)?,
+                    include_group_by_columns: partition.include_group_by_columns,
+                },
                 Some(AggregationType::Formula(formula)) => {
                     let (column, expression) = selectable(formula.selectable.as_ref())?;
                     Aggregation::formula(column, expression)

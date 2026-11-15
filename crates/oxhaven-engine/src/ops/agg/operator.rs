@@ -6,6 +6,7 @@ use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use oxhaven_contracts::update::TableUpdate;
 use std::sync::Arc;
 
 /// What a call did to a group's result. Both can be true: a removal that needs the
@@ -205,4 +206,28 @@ pub trait AggOperator: Send {
 
     /// The results of `slots`, as an array of `result_type`.
     fn results(&self, slots: &[usize]) -> ArrayRef;
+
+    /// The parent's change of the cycle that begins, before any row of it is given. For
+    /// an operator that passes parts of it on.
+    ///
+    /// Behavior: IterativeChunkedAggregationOperator#resetForStep
+    fn begin_cycle(&mut self, _upstream: &TableUpdate) {}
+
+    /// Whether a group whose rows were shifted, and nothing else, is given to
+    /// [`AggOperator::recompute`].
+    fn recomputes_shifted(&self) -> bool {
+        false
+    }
+
+    /// The column the result shows, given the column the framework writes this operator's
+    /// results to. For an operator whose results are owned by something that must live
+    /// as long as the column.
+    fn result_column(&self, written: Arc<dyn ColumnSource>) -> Arc<dyn ColumnSource> {
+        written
+    }
+
+    /// The result table has failed.
+    ///
+    /// Behavior: IterativeChunkedAggregationOperator#propagateFailure
+    fn failed(&mut self, _failure: &TableFailure) {}
 }

@@ -17,6 +17,7 @@ pub use flatten::flatten;
 pub(crate) use flatten::{flattened_shift_data, pivoted, positional};
 pub use sorted::merge_sorted;
 pub use union::merge;
+pub(crate) use union::{append_shift_data, key_space_for, next_slot};
 
 use oxhaven_contracts::table::TableFailure;
 use std::fmt;

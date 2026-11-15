@@ -129,7 +129,7 @@
   "time_table schema and refreshing flag": {"state": "clean"}
  },
  "replay-scripts": {
-  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "partitioned", "seeded"], "why": "the engine lacks the partition aggregation of AggregationAdapter#adapt and the initial groups of QueryTable#aggBy"},
+  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "seeded"], "why": "the engine lacks the initial groups of QueryTable#aggBy"},
   "agg_dedicated": {"state": "clean"},
   "convert_arrow": {"state": "clean"},
   "convert_arrow_errors": {"state": "clean"},
@@ -176,6 +176,10 @@
   "parquet_write_options": {"state": "clean"},
   "parquet_write_types": {"state": "clean"},
   "parquet_write_unported": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "by_class", "by_uri", "indexed", "lzo", "metadata", "narrowed", "nested", "partitioned"], "why": "writes that are refused by the Java method they need (docs/STORAGE.md, Writing Parquet): LZO, a codec by its class, _metadata files, index files, a file:// destination, a column of vectors of vectors, a column narrowed by the definition, partitioned writes"},
+  "partitioned_agg": {"state": "clean"},
+  "partitioned_static": {"state": "clean"},
+  "partitioned_ticking": {"state": "clean"},
+  "partitioned_transform": {"state": "clean"},
   "table_creation": {"state": "clean"},
   "table_error": {"state": "clean"},
   "table_first_steps": {"state": "clean"},
