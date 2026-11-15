@@ -1,0 +1,79 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow : conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow",
+      "operation": "conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow : conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow",
+      "operation": "conv_null can't be turned off when dtype_backend is either numpy_nullable or pyarrow"
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a pyarrow table from a Deephaven table. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [X, S]",
+      "operation": "failed to create a pyarrow table from a Deephaven table."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "columns - ['Nope'] not found : columns - ['Nope'] not found",
+      "operation": "columns - ['Nope'] not found"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a pyarrow table from a Deephaven table. : AttributeError: 'int' object has no attribute 'j_table'",
+      "operation": "failed to create a pyarrow table from a Deephaven table."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a pandas DataFrame from table. : AttributeError: 'int' object has no attribute 'is_refreshing'",
+      "operation": "failed to create a pandas DataFrame from table."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "columns - ['Nope'] not found : columns - ['Nope'] not found",
+      "operation": "columns - ['Nope'] not found"
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (1x). : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"1x\"",
+      "operation": "failed to create an InputColumn (1x)."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "AttributeError",
+      "text": "'list' object has no attribute 'columns'"
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "ValueError",
+      "text": "Columns must be same length as key"
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "KeyError",
+      "text": "'B'"
+    }
+  ]
+}

@@ -31,5 +31,7 @@ pub use encode::{
     EncodeError, EncodedBatch,
 };
 pub use service::{do_get_messages, flight_info, FlightGrpc};
-pub use upload::{convert_schema, not_ported, schema_from_ipc_bytes, TableUpload, UploadError};
+pub use upload::{
+    convert_schema, not_ported, schema_from_ipc_bytes, table_of_batches, TableUpload, UploadError,
+};
 pub use wire::{snapshot, wire_columns, wire_schema, Snapshot};

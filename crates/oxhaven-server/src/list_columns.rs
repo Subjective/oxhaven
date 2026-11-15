@@ -104,7 +104,9 @@ fn list_fields_are_described_as_java_recorded_them() {
         ("io.deephaven.vector.ObjectVector", "java.lang.Boolean"),
         ("io.deephaven.vector.ObjectVector", "java.lang.String"),
         ("io.deephaven.vector.ObjectVector", "java.time.Instant"),
+        ("java.lang.Boolean[]", "java.lang.Boolean"),
         ("java.lang.String[]", "java.lang.String"),
+        ("java.time.Instant[]", "java.time.Instant"),
         ("long[]", "long"),
     ]
     .into_iter()
