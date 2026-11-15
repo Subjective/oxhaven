@@ -39,5 +39,29 @@
     },
     "staticName": "ide_console_static",
     "tickingName": "ide_console_ticking"
+  },
+  "notebook": {
+    "comment": "Route notebook: the lines typed into a new notebook, per console type. The last line runs by itself (Run Selected) and makes the table `selected`; the whole notebook (Run) also makes the static table under another name. `comment` starts a comment of the language.",
+    "python": {
+      "extension": "py",
+      "lines": [
+        "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col",
+        "ide_notebook_static = new_table([int_col('Id', [1, 2, 3, 4, 5]), string_col('Sym', ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV']), double_col('Price', [101.5, 202.25, 303.125, 404.0, 505.75])])",
+        "from deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col('Sel', [7, 8])])"
+      ],
+      "comment": "#",
+      "staticName": "ide_notebook_static",
+      "selected": { "name": "ide_notebook_selected", "columns": ["Sel"], "displayed": [["7"], ["8"]] }
+    },
+    "groovy": {
+      "extension": "groovy",
+      "lines": [
+        "ide_notebook_static = newTable(intCol('Id', 1, 2, 3, 4, 5), stringCol('Sym', 'AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV'), doubleCol('Price', 101.5d, 202.25d, 303.125d, 404.0d, 505.75d))",
+        "ide_notebook_selected = newTable(intCol('Sel', 7, 8))"
+      ],
+      "comment": "//",
+      "staticName": "ide_notebook_static",
+      "selected": { "name": "ide_notebook_selected", "columns": ["Sel"], "displayed": [["7"], ["8"]] }
+    }
   }
 }

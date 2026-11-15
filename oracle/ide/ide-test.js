@@ -30,7 +30,7 @@ const { Trace, describeCalls } = require('./lib/trace');
 const faults = require('./lib/faults');
 
 const PSK_HANDLER = 'io.deephaven.authentication.psk.PskAuthenticationHandler';
-const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console'];
+const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'notebook', 'log', 'grid', 'errors', 'reconnect'];
 
 function usage(message) {
   if (message) console.error(`error: ${message}`);
@@ -63,6 +63,7 @@ function parseArgs(argv) {
     else if (a === '--expected') opts.expected = value();
     else if (a === '--out') opts.out = value();
     else if (a === '--timeout') opts.timeout = Number(value());
+    else if (a === '--restart') opts.restart = value();
     else if (a === '--deny' || a === '--empty') {
       try {
         opts[a.slice(2)] = faults.parseRules(value());
@@ -453,7 +454,10 @@ async function routeConsole(ctx) {
   return `${language} console: grid cells of ${expected.console.staticName} match; ${spec.name} ${spec.counter} went ${moved.from} -> ${moved.to}`;
 }
 
-const ROUTES = { panels: routePanels, iframe: routeIframe, jsapi: routeJsapi, console: routeConsole };
+const ROUTES = Object.assign(
+  { panels: routePanels, iframe: routeIframe, jsapi: routeJsapi, console: routeConsole },
+  require('./lib/flows')({ Failure, poll, readGrid, expectStaticGrid, waitForIde, same }),
+);
 
 async function runRoute(browser, name, opts, expected) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, ignoreHTTPSErrors: true });
