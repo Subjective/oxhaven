@@ -337,7 +337,7 @@ the scenario at hand before it counts the mismatch as known. The same check is a
 ```bash
 # For each ticking scenario: the tables one server kept up to date against the same tables
 # made again after every step. Clean on a server that agrees with itself.
-.venv/bin/python -m harness selfcheck $URL --scenarios /tmp/fuzz-differences/fuzz_155.json
+.venv/bin/python -m harness selfcheck --url $URL --scenarios /tmp/fuzz-differences/fuzz_155.json
 ```
 
 Remove an entry when its cause is fixed: nothing else notices that it no longer fits.
