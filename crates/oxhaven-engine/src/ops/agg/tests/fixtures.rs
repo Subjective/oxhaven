@@ -28,10 +28,10 @@ use std::path::PathBuf;
 
 /// The number of (table, step) results the fixtures must compare, and of operations Java
 /// refused. An operation that silently stops being run shows as a different count.
-const COMPARED: usize = 1098;
-const REFUSED: usize = 239;
+const COMPARED: usize = 1905;
+const REFUSED: usize = 272;
 /// The number of (table, step) lists of updates the fixtures must compare.
-const UPDATES: usize = 431;
+const UPDATES: usize = 925;
 
 /// The updates that are not Java's, by the context of the comparison, with the update
 /// delivered here. Each must be met, so that none outlives its difference.
@@ -99,7 +99,17 @@ fn aggregation(entry: &Value) -> Aggregation {
             .map(|filter| text(filter, "filter"));
         return Aggregation::count_where(text(&entry["column"], "column"), filters);
     }
+    if kind == "formula" && entry.get("cols").is_none() {
+        // Behavior: io.deephaven.api.Selectable#parse, for the texts the fixtures have.
+        let formula = text(&entry["formula"], "formula");
+        let (column, expression) = formula.split_once('=').unwrap_or((formula, formula));
+        return Aggregation::formula(column.trim(), expression);
+    }
     let spec = match kind {
+        "formula" => AggSpec::Formula {
+            formula: text(&entry["formula"], "formula").to_string(),
+            param_token: text(&entry["param"], "param").to_string(),
+        },
         "sum" => AggSpec::Sum,
         "abs_sum" => AggSpec::AbsSum,
         "avg" => AggSpec::Avg,
@@ -316,11 +326,13 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             }
             Err(error) if !failure.is_null() => {
                 assert_eq!(failure, "INVALID_ARGUMENT", "{context}");
-                // A filter that fails on the rows fails the first computation, which Java
-                // also reports as INVALID_ARGUMENT; nothing else may fail on the data.
-                let filtered = operation["aggs"]
-                    .as_array()
-                    .is_some_and(|aggs| aggs.iter().any(|entry| entry["agg"] == "count_where"));
+                // A filter or a formula that fails on the rows fails the first computation,
+                // which Java also reports as INVALID_ARGUMENT; nothing else may fail on
+                // the data.
+                let filtered = operation["aggs"].as_array().is_some_and(|aggs| {
+                    aggs.iter()
+                        .any(|entry| entry["agg"] == "count_where" || entry["agg"] == "formula")
+                });
                 assert!(
                     filtered || !matches!(error, AggregateError::Failed(_)),
                     "{context}: {error} is not a refusal of the request"

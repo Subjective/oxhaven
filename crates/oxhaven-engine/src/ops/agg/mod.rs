@@ -18,6 +18,7 @@
 //! | `weighted` | Weighted average and weighted sum, which read a weight column too |
 //! | `sorted` | Sorted first and sorted last, which read sort columns and an output column |
 //! | `group` | Group, and with it [`group_by`]: the values of each group as a vector |
+//! | `formula` | Formula: a formula over the values of each group as vectors, in both of Java's forms |
 //!
 //! # Adding an aggregation
 //!
@@ -39,9 +40,8 @@
 //! `Table#groupBy` is [`group_by`]: the `group` aggregation of every column that is not
 //! grouped by.
 //!
-//! Not here: the aggregations whose results are tables or formulas over vectors
-//! (`AggSpecFormula`, `Formula`, `Partition`): the formula language of this port has no
-//! vector values, and there are no partitioned tables. Nor `FirstRowKey`, `LastRowKey`, the
+//! Not here: the aggregation whose results are tables (`Partition`): there are no
+//! partitioned tables. Nor `FirstRowKey`, `LastRowKey`, the
 //! approximate percentile, t-digest and freeze; `initialGroups`; and, of a column of
 //! vectors or arrays, every aggregation but `first`, `last`, `group` and the output of a
 //! sorted first or last. The gRPC handler refuses each of them by name.
@@ -50,6 +50,7 @@ mod aggregator;
 mod count_where;
 mod distinct;
 mod first_last;
+mod formula;
 mod group;
 pub(crate) mod keys;
 mod min_max;
@@ -66,6 +67,7 @@ mod tests;
 pub use count_where::CountWhere;
 pub use distinct::{SetMode, SortedValues};
 pub use first_last::{FirstLast, FirstLastCell, FirstLastMode};
+pub use formula::{FormulaAgg, FormulaSource};
 pub use group::Group;
 pub use min_max::MinMax;
 pub use operator::{AggOperator, Effect, GroupReader};
@@ -76,9 +78,10 @@ pub use var::Var;
 pub use weighted::{WeightedFloat, WeightedLongSum};
 
 use crate::ops::filter::RowFilters;
+use crate::ops::select::ArrayFormula;
 use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use aggregator::{Aggregator, Layout, Planned};
-use oxhaven_contracts::expr::FormulaCompiler;
+use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
@@ -140,6 +143,12 @@ pub enum AggSpec {
     SortedLast { columns: Vec<String> },
     /// The values of the group's rows, in row order, as a vector. See [`Group`].
     Group,
+    /// A formula of the input column's values in the group as a vector, which the formula
+    /// names by `param_token`: `sum(each)` with the token `each`. See [`FormulaAgg`].
+    Formula {
+        formula: String,
+        param_token: String,
+    },
 }
 
 /// The value `unique` shows for a group with more than one distinct value, as a client
@@ -391,6 +400,13 @@ pub enum Aggregation {
         column: String,
         filters: Vec<String>,
     },
+    /// The value of `expression` for each group, as a column named `column`. The
+    /// expression names columns of the table: one that is grouped by is the group's key,
+    /// and any other is a vector of the column's values in the group. See [`FormulaAgg`].
+    ///
+    /// Behavior: io.deephaven.api.agg.Formula, as
+    /// io.deephaven.api.agg.Aggregation#AggFormula(String) makes one of `column = expression`
+    Formula { column: String, expression: String },
 }
 
 impl Aggregation {
@@ -404,6 +420,13 @@ impl Aggregation {
     pub fn count(column: impl Into<String>) -> Aggregation {
         Aggregation::Count {
             column: column.into(),
+        }
+    }
+
+    pub fn formula(column: impl Into<String>, expression: impl Into<String>) -> Aggregation {
+        Aggregation::Formula {
+            column: column.into(),
+            expression: expression.into(),
         }
     }
 
@@ -446,6 +469,9 @@ pub enum AggregateError {
     /// A filter of a count where that is not a filter of the table, or that reads other
     /// rows (`Column_`) or the row's position or key (`i`, `ii`, `k`).
     InvalidFilter(String),
+    /// A formula that does not compile against the vectors of its inputs, or that a
+    /// formula aggregation does not take.
+    InvalidFormula(String),
     /// The aggregation is not defined for a blink table. Java reports this one as an
     /// `UnsupportedOperationException`.
     BlinkUnsupported(AggSpec),
@@ -481,9 +507,9 @@ impl fmt::Display for AggregateError {
                 write!(f, "percentile {percentile} is not between 0 and 1")
             }
             AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
-            AggregateError::InvalidSentinel(message) | AggregateError::InvalidFilter(message) => {
-                f.write_str(message)
-            }
+            AggregateError::InvalidSentinel(message)
+            | AggregateError::InvalidFilter(message)
+            | AggregateError::InvalidFormula(message) => f.write_str(message),
             AggregateError::BlinkUnsupported(spec) => write!(
                 f,
                 "Blink tables do not support {spec:?}; use BlinkTableTools.blinkToAppendOnly \
@@ -608,6 +634,7 @@ fn make_operator(
         _ => {}
     }
     let op: Box<dyn AggOperator> = match spec {
+        AggSpec::Formula { .. } => unreachable!("a formula is planned by each_formula"),
         AggSpec::Group => {
             if kind == ParentKind::Blink {
                 return Err(AggregateError::BlinkUnsupported(spec.clone()));
@@ -795,8 +822,8 @@ fn make_operator(
 ///
 /// The result is static if `parent` is, and otherwise changes with it.
 ///
-/// A [`Aggregation::CountWhere`] needs a formula compiler for its filters and is refused
-/// here; [`aggregate_with`] takes one.
+/// A [`Aggregation::CountWhere`] needs a formula compiler for its filters, and a formula
+/// aggregation for its formula; they are refused here. [`aggregate_with`] takes one.
 ///
 /// Not ported: `initialGroups`.
 ///
@@ -812,7 +839,8 @@ pub fn aggregate(
 }
 
 /// [`aggregate`], with the compiler of the formulas among the filters of a
-/// [`Aggregation::CountWhere`].
+/// [`Aggregation::CountWhere`], and of the formulas of [`AggSpec::Formula`] and
+/// [`Aggregation::Formula`].
 pub fn aggregate_with(
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
@@ -887,6 +915,304 @@ fn count_where(
     })
 }
 
+/// `formula` with every `token` that stands alone replaced by `replacement`. A token
+/// stands alone unless a letter or `_` is before it, or a letter, a digit or `_` after it;
+/// a digit before it does not join it.
+///
+/// Behavior: io.deephaven.engine.table.impl.select.FormulaUtil#replaceFormulaTokens
+fn replace_formula_tokens(
+    formula: &str,
+    token: &str,
+    replacement: &str,
+) -> Result<String, AggregateError> {
+    if token.is_empty() {
+        return Err(AggregateError::InvalidFormula(
+            "sourceToken cannot be empty".to_string(),
+        ));
+    }
+    let mut text: Vec<char> = formula.chars().collect();
+    let token: Vec<char> = token.chars().collect();
+    let replacement: Vec<char> = replacement.chars().collect();
+    let mut at = 0;
+    while at + token.len() <= text.len() {
+        if text[at..at + token.len()] != token[..] {
+            at += 1;
+            continue;
+        }
+        let joined_before = at > 0 && (text[at - 1].is_alphabetic() || text[at - 1] == '_');
+        let joined_after = text
+            .get(at + token.len())
+            .is_some_and(|&next| next.is_alphabetic() || next == '_' || next.is_numeric());
+        if joined_before || joined_after {
+            at += 1;
+            continue;
+        }
+        text.splice(at..at + token.len(), replacement.iter().copied());
+        at += replacement.len();
+    }
+    Ok(text.into_iter().collect())
+}
+
+fn invalid_formula(error: FormulaError) -> AggregateError {
+    AggregateError::InvalidFormula(error.to_string())
+}
+
+/// The operator of a formula that names its input column by a token
+/// ([`AggSpec::Formula`]), for the input column `input`.
+///
+/// The formula can read that one column, as a vector, and nothing else: not the key
+/// columns either. Java refuses a blink table.
+///
+/// Not ported: `i`, `ii` and `k`, which Java takes here and evaluates as the position of
+/// the group's row in the result when the formula was last evaluated for the group.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor's
+/// `visit(AggSpecFormula)` and
+/// io.deephaven.engine.table.impl.by.FormulaChunkedOperator#FormulaChunkedOperator, which
+/// compiles the formula against the definition of the one grouped input column
+fn each_formula(
+    spec: &AggSpec,
+    parent: &Arc<dyn Table>,
+    input: usize,
+    kind: ParentKind,
+    preserve_empty: bool,
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<Planned, AggregateError> {
+    let AggSpec::Formula {
+        formula,
+        param_token,
+    } = spec
+    else {
+        unreachable!("called for a formula");
+    };
+    if kind == ParentKind::Blink {
+        return Err(AggregateError::BlinkUnsupported(spec.clone()));
+    }
+    let Some(compiler) = compiler else {
+        return Err(AggregateError::InvalidFormula(
+            "a formula aggregation needs a formula compiler: use aggregate_with".to_string(),
+        ));
+    };
+    let column = &parent.definition().columns()[input];
+    let expression = replace_formula_tokens(formula, param_token, &column.name)?;
+    let vector = ColumnType::vector(column.column_type.clone());
+    let grouped = TableDefinition::new(vec![ColumnDefinition::new(
+        column.name.as_str(),
+        vector.clone(),
+    )])
+    .expect("one column");
+    let parsed = compiler.parse(&expression).map_err(invalid_formula)?;
+    if compiler
+        .compile(&parsed, &grouped)
+        .is_ok_and(|formula| formula.uses_row_variables())
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.FormulaChunkedOperator#propagateInitialState",
+            "i, ii or k in an AggSpecFormula, which Java evaluates as the position of the \
+             group in the result"
+        );
+    }
+    let formula = ArrayFormula::compile(compiler, &expression, &[(column.name.as_str(), vector)])
+        .map_err(invalid_formula)?;
+    // Observed: `each` for a Boolean column is an `ObjectVector` whose component type Java
+    // has lost, which a client receives as a list of the strings `true` and `false`; for
+    // an Instant column, of the instants as text.
+    if let Some(element @ (ColumnType::Boolean | ColumnType::Instant)) =
+        formula.result_type().list_element()
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.FormulaChunkedOperator#FormulaChunkedOperator",
+            "an AggSpecFormula whose result is a vector of {element:?}, which Java gives \
+             without its component type"
+        );
+    }
+    let source = FormulaSource::Grouped {
+        source: parent.column(input),
+        column_type: column.column_type.clone(),
+    };
+    Ok(Planned {
+        reads: vec![input],
+        ..Planned::new(
+            Box::new(FormulaAgg::new(formula, vec![source], preserve_empty, true)),
+            None,
+        )
+    })
+}
+
+/// The operator of a formula over several columns ([`Aggregation::Formula`]), and the
+/// key columns, by their index among `key_columns`, that the formula reads.
+///
+/// The formula is compiled against the columns of the parent, each as a vector of its
+/// type unless it is grouped by, and may not read a column as an array (`Column_`) or use
+/// `i`, `ii` or `k`. Java refuses a blink table.
+///
+/// The result row of a group is reported modified as the group aggregation's is, by the
+/// columns the formula reads as vectors. A formula that reads no column at all has its
+/// rows reported in the same way and its column never among the modified columns. Nor
+/// has a formula that comes after a `group` aggregation (`after_group`): Java gives it
+/// that aggregation's operator, which reports the rows, and the formula's own operator
+/// then reports nothing, so that its column is not named. Observed in
+/// `fixtures/formula_ticking.json`, table `group_then_formula`.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor's `visit(Formula)`,
+/// `prepareFormula`, `maybeInitializeVectorColumns` and `validateSelectColumnForFormula`;
+/// io.deephaven.engine.table.impl.by.FormulaMultiColumnChunkedOperator#initializeRefreshing
+fn multi_formula(
+    parent: &Arc<dyn Table>,
+    expression: &str,
+    key_columns: &[usize],
+    kind: ParentKind,
+    preserve_empty: bool,
+    after_group: bool,
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<(Planned, Vec<usize>), AggregateError> {
+    if kind == ParentKind::Blink {
+        return Err(AggregateError::BlinkUnsupported(AggSpec::Formula {
+            formula: expression.to_string(),
+            param_token: String::new(),
+        }));
+    }
+    let Some(compiler) = compiler else {
+        return Err(AggregateError::InvalidFormula(
+            "a formula aggregation needs a formula compiler: use aggregate_with".to_string(),
+        ));
+    };
+    let columns = parent.definition().columns();
+    let seen = |index: usize| {
+        let column = &columns[index];
+        if key_columns.contains(&index) {
+            column.column_type.clone()
+        } else {
+            ColumnType::vector(column.column_type.clone())
+        }
+    };
+    let all: Vec<(&str, ColumnType)> = columns
+        .iter()
+        .enumerate()
+        .map(|(index, column)| (column.name.as_str(), seen(index)))
+        .collect();
+    let read: Vec<usize> = ArrayFormula::compile(compiler, expression, &all)
+        .map_err(invalid_formula)?
+        .inputs_read()
+        .iter()
+        .map(|name| {
+            parent
+                .definition()
+                .index_of(name)
+                .expect("the formula compiled against the columns")
+        })
+        .collect();
+    let mut inputs: Vec<(&str, ColumnType)> = Vec::new();
+    let mut sources = Vec::new();
+    let mut reads = Vec::new();
+    let mut keys_read = Vec::new();
+    for &index in &read {
+        inputs.push((columns[index].name.as_str(), seen(index)));
+        match key_columns.iter().position(|&key| key == index) {
+            Some(key) => {
+                keys_read.push(key);
+                sources.push(FormulaSource::Key(key));
+            }
+            None => {
+                reads.push(index);
+                sources.push(FormulaSource::Grouped {
+                    source: parent.column(index),
+                    column_type: columns[index].column_type.clone(),
+                });
+            }
+        }
+    }
+    if read.is_empty() {
+        let Some((name, column_type)) = all.first() else {
+            unported!(
+                "io.deephaven.engine.table.impl.by.FormulaMultiColumnChunkedOperator#propagateInitialState",
+                "a formula aggregation of a table without columns"
+            );
+        };
+        sources.push(FormulaSource::Unread(column_type.arrow_type()));
+        inputs.push((name, column_type.clone()));
+    }
+    let formula = ArrayFormula::compile(compiler, expression, &inputs).map_err(invalid_formula)?;
+    let op = FormulaAgg::new(
+        formula,
+        sources,
+        preserve_empty,
+        !read.is_empty() && !after_group,
+    );
+    Ok((
+        Planned {
+            reads,
+            ..Planned::new(Box::new(op), None)
+        },
+        keys_read,
+    ))
+}
+
+/// What Java's one shared group operator has when a later aggregation asks for it: the
+/// columns it groups, and the names of the columns it shows.
+///
+/// A `group` aggregation makes the operator. A later `group`, and a later formula over
+/// several columns, uses it, and when it needs a column the operator does not group yet
+/// Java makes the operator again with that column, and gives the new one to every formula
+/// operator made so far, also to those of formulas with a parameter token, which had a
+/// group operator of their own. Such a formula then looks for its input among the
+/// columns the shared operator shows.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#ensureGroupByOperator
+#[derive(Default)]
+struct SharedGroup<'a> {
+    /// `None` until a `group` aggregation is seen.
+    grouped: Option<Vec<&'a str>>,
+    shown: Vec<&'a str>,
+    /// The input columns of the formulas with a parameter token seen so far.
+    token_inputs: Vec<&'a str>,
+}
+
+impl<'a> SharedGroup<'a> {
+    fn group(&mut self, pairs: &'a [Pair]) -> Result<(), AggregateError> {
+        if self.grouped.is_none() {
+            self.grouped = Some(pairs.iter().map(|pair| pair.input.as_str()).collect());
+            self.shown = pairs.iter().map(|pair| pair.output.as_str()).collect();
+            return Ok(());
+        }
+        self.uses(pairs.iter().map(|pair| pair.input.as_str()))
+    }
+
+    /// A later aggregation reads the vectors of `columns`.
+    fn uses(&mut self, columns: impl Iterator<Item = &'a str>) -> Result<(), AggregateError> {
+        let Some(grouped) = &mut self.grouped else {
+            return Ok(());
+        };
+        let before = grouped.len();
+        for column in columns {
+            if !grouped.contains(&column) {
+                grouped.push(column);
+            }
+        }
+        if grouped.len() == before || self.token_inputs.is_empty() {
+            return Ok(());
+        }
+        // Behavior: FormulaChunkedOperator#propagateInitialState, which takes its input
+        // from `groupBy.getResultColumns()` by the input's name.
+        if let Some(missing) = self
+            .token_inputs
+            .iter()
+            .find(|input| !self.shown.contains(input))
+        {
+            return Err(AggregateError::InvalidFormula(format!(
+                "a formula with a parameter token for column {missing}, before a group \
+                 aggregation that a later aggregation extends: Java fails with a \
+                 NullPointerException"
+            )));
+        }
+        unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#ensureGroupByOperator",
+            "a formula with a parameter token that Java moves to the shared group operator, \
+             where it reads the group aggregation's output of its input's name"
+        );
+    }
+}
+
 fn aggregate_inner(
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
@@ -926,6 +1252,9 @@ fn aggregate_inner(
     let mut operators: Vec<Planned> = Vec::new();
     let mut outputs: Vec<&str> = Vec::new();
     let mut planned: Vec<(&str, Planned)> = Vec::new();
+    // The key columns that formulas read, by their index among the key columns.
+    let mut keys_read: Vec<usize> = Vec::new();
+    let mut shared_group = SharedGroup::default();
     for aggregation in aggregations {
         match aggregation {
             Aggregation::Count { column } => {
@@ -934,9 +1263,41 @@ fn aggregate_inner(
             Aggregation::CountWhere { column, filters } => {
                 planned.push((column, count_where(parent, filters, keyed, compiler)?));
             }
+            Aggregation::Formula { column, expression } => {
+                let (operator, keys) = multi_formula(
+                    parent,
+                    expression,
+                    &key_columns,
+                    kind,
+                    preserve_empty,
+                    shared_group.grouped.is_some(),
+                    compiler,
+                )?;
+                keys_read.extend(keys);
+                shared_group.uses(
+                    operator
+                        .reads
+                        .iter()
+                        .map(|&index| definition.columns()[index].name.as_str()),
+                )?;
+                planned.push((column, operator));
+            }
             Aggregation::Columns { spec, pairs } => {
+                if *spec == AggSpec::Group {
+                    for pair in pairs {
+                        column(&pair.input)?;
+                    }
+                    shared_group.group(pairs)?;
+                }
                 for pair in pairs {
                     let index = column(&pair.input)?;
+                    if matches!(spec, AggSpec::Formula { .. }) {
+                        shared_group.token_inputs.push(&pair.input);
+                        let operator =
+                            each_formula(spec, parent, index, kind, preserve_empty, compiler)?;
+                        planned.push((&pair.output, operator));
+                        continue;
+                    }
                     let operator = make_operator(spec, parent, index, kind, keyed, &pair.output)?
                         .ok_or_else(|| AggregateError::UnsupportedType {
                         spec: spec.clone(),
@@ -960,6 +1321,15 @@ fn aggregate_inner(
             .position(|&index| definition.columns()[index].name == name);
         match key.and_then(|key| layout.keys[key].take()) {
             Some(place) => {
+                if key.is_some_and(|key| keys_read.contains(&key)) {
+                    // Java's formula reads the result's column of that name, which is
+                    // this output: observed, `K = K + 1` by `K` is a column of nulls.
+                    unported!(
+                        "io.deephaven.engine.table.impl.by.FormulaMultiColumnChunkedOperator#propagateInitialState",
+                        "a formula that reads the group-by column {name}, whose place an \
+                         aggregation output of that name takes"
+                    );
+                }
                 result_columns[place] = output;
                 layout.ops.push(place);
             }
