@@ -347,6 +347,14 @@ impl Aggregator {
     pub fn initial(&mut self) -> Result<RowSet, TableFailure> {
         let rows = self.parent.row_set();
         self.process(&rows, false, true)?;
+        if self.preserve_empty {
+            for slot in (0..self.slots).filter(|&slot| self.row_counts[slot] == 0) {
+                for column in &mut self.ops {
+                    let effect = column.plan.op.shown_empty(slot);
+                    column.marks.note(slot, effect);
+                }
+            }
+        }
         self.recompute()?;
         let all: Vec<usize> = (0..self.slots).collect();
         self.write(&all, |_| true)?;
@@ -706,13 +714,14 @@ impl Aggregator {
     /// Lets the operators that could not answer from their state read their groups.
     fn recompute(&mut self) -> Result<(), TableFailure> {
         let group_rows: &[RowSet] = self.group_rows.as_deref().unwrap_or(&[]);
+        let keys: &[Arc<WritableSource>] = self.keys.as_ref().map_or(&[], |keys| &keys.results);
         for column in &mut self.ops {
             let pending = column.marks.marked(RECOMPUTE);
             if pending.is_empty() {
                 continue;
             }
             let input = column.plan.input.map(|input| self.parent.column(input));
-            let reader = GroupReader::new(group_rows, input.as_deref());
+            let reader = GroupReader::new(group_rows, input.as_deref(), keys);
             let changed = column.plan.op.recompute(&pending, &reader)?;
             for (&slot, changed) in pending.iter().zip(changed) {
                 if changed {
@@ -787,7 +796,7 @@ impl Aggregator {
         // for any group this cycle, also for one that is new or gone.
         if !modified.is_empty() {
             for (index, column) in self.ops.iter().enumerate() {
-                if column.marks.any(MODIFIED) {
+                if column.marks.any(MODIFIED) && column.plan.op.names_result() {
                     modified_columns.push(self.layout.ops[index]);
                 }
             }

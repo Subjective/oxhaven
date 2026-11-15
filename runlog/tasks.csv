@@ -78,3 +78,5 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 4.1d-agg-formula,1,agent,2026-11-15T04:40Z,128,282399,215,pr-open,0,67,right-sized,"Formula aggregation in both Java forms, 17 vector functions, null match on list columns; 6 unported!; spanned a usage-limit stop"
 6.2-console-scope,1,agent,2026-11-15T07:16Z,,,,running,,,,"Session as the one scope holder, publish to s/<name>, scope variables in formulas; ports 10926/10927"
 6.4-python-table-core,1,agent,2026-11-15T07:25Z,,,,running,,,,"Python table creation and core table methods against the script oracle; ports 10928/10929"
+4.15-parity-fixes-2,1,agent,2026-11-15T04:30Z,175,246044,290,pr-open,0,69,right-sized,"Zero sign in min/max, absolute sorts as three operations, copies for cross/ungroup/range join, flat selects, reverse row keys; fuzz 2934 of 3000 clean, rest is the failed-table class; spanned a usage-limit stop"
+6.16-python-environment,1,agent,2026-11-15T07:31Z,,,,running,,,,"How the embedded interpreter finds packages, virtual environments, CI parity; ports 10930/10931"

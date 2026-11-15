@@ -522,3 +522,7 @@ PR 68 (Python script oracle, task 6.3) opened. The agent tried to make `check-ba
 ## 2026-11-15 07:21 UTC
 
 PR 68 merged on green. The replay gate now builds with the Python console and carries two new sections: console smokes (4 clean) and recorded scripts (2 of 21 clean, 17 missing API names, 2 differing). Branches in flight must merge main before their final gate run.
+
+## 2026-11-15 07:40 UTC
+
+PR 69 opened (second parity fixes). Fuzz against Java is now clean in every family except two known classes, both owner questions: tables that fail mid-cycle (Java keeps serving the last snapshot; 65 of 3000 default seeds, 463 of 3000 join seeds) and one as-of join incremental difference (seed 1297). Java surprise recorded: seed 1526, Java throws ArrayIndexOutOfBounds in UnionRedirection while building the duplicate-right-key message.
