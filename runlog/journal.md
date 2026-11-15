@@ -562,3 +562,13 @@ PR 75 (Python aggregations, joins, update_by) and PR 76 (Parquet read, first sli
 ## 2026-11-15 09:42 UTC
 
 PR 75 merged. Its head showed one red check, `python-console`, from the run that the label event cancelled seconds after the pull request opened; the full run that replaced it on the same commit passed every job including `python-console`. The aggregate job added in PR 70 reports failure when its matrix jobs are cancelled, so every labelled pull request shows a stale red mark. To fix in the next CI change: the aggregate job should not run (or should report cancelled) when the run is cancelled.
+
+## 2026-11-15 09:44 UTC: Parquet read merged (PR 76); CI fix for the stale check open (PR 77)
+
+PR 76 merged on a green run whose head contained PR 75. Python scripts are now 16 of 34 clean
+(nine `parquet_read_*` scenarios added, five clean). Still for owner review: `docs/STORAGE.md`,
+and whether Snappy, Zstandard and Brotli may be enabled (their crates are BSD-3-Clause, and
+Snappy is what Java writes by default).
+
+PR 77 changes the `python-console` aggregate job from `always()` to `!cancelled()`, so the run
+that a label event cancels no longer leaves a failed check on the commit.
