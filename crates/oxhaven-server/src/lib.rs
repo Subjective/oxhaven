@@ -79,6 +79,12 @@ pub struct ServerState {
     pub applications: Arc<Applications>,
     /// The variables that tickets `s/<name>` name.
     pub scope: Arc<Scope>,
+    /// The script session of the server and the places its variables are published to, if
+    /// the server has a console. `None` after [`ServerState::new`]; set it before [`serve`],
+    /// for example with [`console::python::start`].
+    pub console: Option<Arc<console::Console>>,
+    /// What scripts print, for `ConsoleService/SubscribeToLogs`.
+    pub logs: Arc<console::logs::LogBuffer>,
     /// The static files of the web IDE, if the server has them. `None` after
     /// [`ServerState::new`]; set it before [`serve`].
     pub web_root: Option<Arc<web::WebRoot>>,
@@ -112,6 +118,8 @@ impl ServerState {
             graph,
             applications,
             scope,
+            console: None,
+            logs: Arc::new(console::logs::LogBuffer::new()),
             web_root: None,
         })
     }
@@ -151,7 +159,11 @@ impl ServerState {
         .add_service(ApplicationServiceServer::new(ApplicationGrpc::new(
             self.applications.clone(),
         )))
-        .add_service(ConsoleServiceServer::new(console::ConsoleGrpc))
+        .add_service(ConsoleServiceServer::new(console::ConsoleGrpc::new(
+            self.tickets.clone(),
+            self.console.clone(),
+            self.logs.clone(),
+        )))
         .add_service(StorageServiceServer::new(storage::StorageGrpc))
     }
 }
