@@ -287,7 +287,7 @@ fn random_updates_of_each_kind_alone_and_in_pairs() {
         [true, true, false, true],
     ];
     for (index, kinds) in kinds.into_iter().enumerate() {
-        for seed in 0..4 {
+        for seed in test_seeds(0..4) {
             for by in [&["K"][..], &[]] {
                 Run {
                     kinds,

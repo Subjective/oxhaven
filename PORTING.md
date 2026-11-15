@@ -96,7 +96,7 @@ Randomized tests take their seeds from `oxhaven_testkit::test_seeds`, and scale 
 work they did with `at_least_for`. The environment variable `OXHAVEN_TEST_SEEDS` sets how many
 seeds run:
 
-- unset or `quick`: the first quarter of each range, and at least eight seeds. This is what
+- unset or `quick`: the first fifth of each range, and at least two seeds. This is what
   `cargo test` and the `rust` job of a pull request run.
 - `full`: every seed. The `nightly` workflow (`.github/workflows/nightly.yml`) runs
   `OXHAVEN_TEST_SEEDS=full cargo test --workspace` on `main` every day, and on demand from the

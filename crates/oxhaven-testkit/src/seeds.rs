@@ -9,10 +9,10 @@ use std::sync::OnceLock;
 pub const SEED_BUDGET_VARIABLE: &str = "OXHAVEN_TEST_SEEDS";
 
 /// The quick budget runs one seed in this many, counted from the start of the range.
-const QUICK_DIVISOR: u64 = 4;
+const QUICK_DIVISOR: u64 = 5;
 
 /// The quick budget never runs fewer seeds of a range than this, or than the range has.
-const QUICK_MINIMUM: u64 = 8;
+const QUICK_MINIMUM: u64 = 2;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Budget {
@@ -68,7 +68,7 @@ impl Budget {
 /// The seeds of `full` that a randomized test runs under the seed budget of this process.
 ///
 /// With `OXHAVEN_TEST_SEEDS=full` they are all of `full`. Otherwise, which is what a pull
-/// request runs, they are its first quarter, rounded up, and at least 8 seeds; a range of 8
+/// request runs, they are its first fifth, rounded up, and at least 2 seeds; a range of 2
 /// seeds or fewer runs whole. The seeds a quick run leaves out run in the nightly workflow.
 ///
 /// Write the full range at the call site and let this function cut it:
@@ -77,7 +77,7 @@ impl Budget {
 /// use oxhaven_testkit::test_seeds;
 ///
 /// for seed in test_seeds(0..40) {
-///     // 40 seeds with OXHAVEN_TEST_SEEDS=full, the first 10 otherwise
+///     // 40 seeds with OXHAVEN_TEST_SEEDS=full, the first 8 otherwise
 ///     # let _ = seed;
 /// }
 /// ```
@@ -123,28 +123,29 @@ mod tests {
     }
 
     #[test]
-    fn quick_budget_runs_the_first_quarter_and_at_least_eight() {
+    fn quick_budget_runs_the_first_fifth_and_at_least_two() {
         let quick = |range| Budget::Quick.seeds(range);
-        assert_eq!(quick(0..150), 0..38);
-        assert_eq!(quick(1000..1080), 1000..1020);
-        assert_eq!(quick(0..40), 0..10);
-        assert_eq!(quick(0..33), 0..9);
-        assert_eq!(quick(0..32), 0..8);
-        assert_eq!(quick(0..24), 0..8);
-        assert_eq!(quick(100..109), 100..108);
-        assert_eq!(quick(0..8), 0..8);
-        assert_eq!(quick(100..104), 100..104);
+        assert_eq!(quick(0..150), 0..30);
+        assert_eq!(quick(1000..1080), 1000..1016);
+        assert_eq!(quick(0..40), 0..8);
+        assert_eq!(quick(0..24), 0..5);
+        assert_eq!(quick(0..11), 0..3);
+        assert_eq!(quick(0..10), 0..2);
+        assert_eq!(quick(100..104), 100..102);
+        assert_eq!(quick(0..2), 0..2);
+        assert_eq!(quick(7..8), 7..8);
         assert_eq!(quick(5..5), 5..5);
     }
 
     #[test]
     fn quick_budget_scales_a_floor_by_the_share_of_seeds_it_runs() {
-        assert_eq!(Budget::Quick.at_least(6000, 0..150), 6000 * 38 / 150);
-        assert_eq!(Budget::Quick.at_least(1000, 0..40), 250);
-        assert_eq!(Budget::Quick.at_least(500, 0..20), 200);
-        assert_eq!(Budget::Quick.at_least(500, 100..104), 500);
+        assert_eq!(Budget::Quick.at_least(6000, 0..150), 1200);
+        assert_eq!(Budget::Quick.at_least(1000, 0..40), 200);
+        assert_eq!(Budget::Quick.at_least(500, 0..24), 500 * 5 / 24);
+        assert_eq!(Budget::Quick.at_least(500, 100..104), 250);
+        assert_eq!(Budget::Quick.at_least(500, 0..2), 500);
         assert_eq!(Budget::Quick.at_least(500, 3..3), 500);
-        assert_eq!(Budget::Quick.at_least(u64::MAX, 0..8), u64::MAX);
+        assert_eq!(Budget::Quick.at_least(u64::MAX, 0..2), u64::MAX);
     }
 
     #[test]
