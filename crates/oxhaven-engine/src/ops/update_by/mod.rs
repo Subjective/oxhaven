@@ -1033,7 +1033,8 @@ impl Plan {
                 // (io.deephaven.engine.table.impl.updateby.internal.BaseLongUpdateByOperator.Context#accumulateRolling)
                 let stamped = self.stamped(rows)?;
                 let stamps = self.timestamps(affected, false)?;
-                let grouped = |member: &usize| matches!(self.columns[*member].kernel, Kernel::Group);
+                let grouped =
+                    |member: &usize| matches!(self.columns[*member].kernel, Kernel::Group);
                 if members.iter().any(grouped) {
                     stamped.positions_exist(affected, &stamps)?;
                 }

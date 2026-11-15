@@ -11,9 +11,7 @@ use super::{
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::ops::sort::testing::{keys, shifts, static_table, Ticking};
-use arrow::array::{
-    Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, StringArray,
-};
+use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, StringArray};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -1176,7 +1174,10 @@ fn groups_in_time() -> Vec<UpdateByOperation> {
         ),
         op(UpdateBySpec::RollingSum(time(5, 0)), &["Rs1 = I"]),
         op(UpdateBySpec::RollingGroup(time(-2, 6)), &["G4 = D"]),
-        op(UpdateBySpec::RollingGroup(time(4, 4)), &["G5 = X", "G6 = B"]),
+        op(
+            UpdateBySpec::RollingGroup(time(4, 4)),
+            &["G5 = X", "G6 = B"],
+        ),
         op(UpdateBySpec::RollingGroup(time(0, 0)), &["G7 = L"]),
         op(UpdateBySpec::RollingCount(time(0, 0)), &["Rc1 = L"]),
     ]

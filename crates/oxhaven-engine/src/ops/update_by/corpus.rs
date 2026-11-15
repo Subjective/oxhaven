@@ -17,8 +17,8 @@ use super::{
 use crate::graph::SteppedUpdateGraph;
 use crate::table::keyed_input_table;
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
+    Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::RecordBatch;
@@ -649,7 +649,10 @@ fn ticking_scenarios(recorded: &str, count: usize) {
                 }
                 break;
             }
-            assert!(!result.is_failed(), "{name} step {number}: the result failed");
+            assert!(
+                !result.is_failed(),
+                "{name} step {number}: the result failed"
+            );
             checker.assert_consistent();
             // The source rows first: if they differ, the input table is at fault.
             let rows = differences(&*result, &step["rows"]);

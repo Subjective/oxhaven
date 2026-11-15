@@ -49,7 +49,11 @@ pub(super) fn vectors(
             "rolling group: more than 2^31 - 1 values in the windows computed at once",
         ));
     }
-    lists(input.column_type(), lengths, input.chunk_by_keys(&keys, false)?)
+    lists(
+        input.column_type(),
+        lengths,
+        input.chunk_by_keys(&keys, false)?,
+    )
 }
 
 /// A vector column of cells of `lengths` elements, taken from `elements` in order.
