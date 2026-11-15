@@ -10,7 +10,9 @@
 //! - `ExecuteCommand` runs code. Its answer lists the variables that now hold, or no longer
 //!   hold, something a client can open; the same changes go to the clients listening on
 //!   `ApplicationService/ListFields`, and the ticket `s/<name>` resolves to the value. An
-//!   error in the code is not an error of the call: the answer carries its text.
+//!   error in the code is not an error of the call: the answer carries its text. A command
+//!   whose call the client cancels, or whose session ends, is stopped ([`Stop`]); Java
+//!   lets it run on.
 //! - What the code prints arrives through `SubscribeToLogs` ([`logs`]), with the server's
 //!   own log.
 //! - `GetHeapInfo` reports the memory of the process ([`memory`]).
@@ -54,10 +56,12 @@ use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status, Streaming};
 
 use crate::app::scope_ticket;
-use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
+use crate::session::{
+    current_session, ExportError, ExportValue, OnCloseId, Reply, Session, TicketRouter,
+};
 use logs::{LogBuffer, LogUpdates};
 pub use session::{
-    type_name_if_displayable, Changes, Console, ScriptSession, Variable,
+    type_name_if_displayable, Changes, Console, ScriptSession, Stop, Variable,
     CHECK_SCOPE_CHANGES_INTERVAL, TABLE_TYPE_NAME,
 };
 
@@ -121,6 +125,48 @@ fn console_of(value: &ExportValue) -> Result<Arc<Console>, ExportError> {
 /// The bytes of a ticket field; empty if the field is not set.
 fn ticket_bytes(ticket: Option<Ticket>) -> Vec<u8> {
     ticket.map(|ticket| ticket.ticket).unwrap_or_default()
+}
+
+/// Asks a command to stop when the call that sent it ends without its answer: when this
+/// is dropped before [`StopWithCall::answered`], which is what happens to the call's
+/// future when the client cancels the call or its connection is lost; and when the
+/// session of the call ends.
+struct StopWithCall {
+    stop: Arc<Stop>,
+    session: Arc<Session>,
+    on_close: Option<OnCloseId>,
+    answered: bool,
+}
+
+impl StopWithCall {
+    fn new(session: &Arc<Session>) -> Result<Self, Status> {
+        let stop = Stop::new();
+        let on_close = session.add_on_close({
+            let stop = stop.clone();
+            move || stop.request()
+        })?;
+        Ok(Self {
+            stop,
+            session: session.clone(),
+            on_close: Some(on_close),
+            answered: false,
+        })
+    }
+
+    fn answered(mut self) {
+        self.answered = true;
+    }
+}
+
+impl Drop for StopWithCall {
+    fn drop(&mut self) {
+        if let Some(on_close) = self.on_close.take() {
+            self.session.remove_on_close(on_close);
+        }
+        if !self.answered {
+            self.stop.request();
+        }
+    }
 }
 
 /// Behavior: `io.deephaven.server.console.ConsoleServiceGrpcImpl`
@@ -241,6 +287,15 @@ impl ConsoleService for ConsoleGrpc {
     /// Runs the code on the session's serial queue, so that the commands of a session run
     /// one after the other, and answers with what it changed.
     ///
+    /// When the client cancels the call, or its session ends, the command is stopped: one
+    /// that waits on the queue does not run, and one that runs is interrupted, as far as
+    /// the script session can (`docs/CONSOLE.md`, "Stopping a running command"). Java
+    /// does neither: on Java 42.9 a command whose call was cancelled, or whose session was
+    /// closed, ran to its end, and the commands after it waited (observed with a
+    /// `time.sleep` and with a loop). A command that never ends holds the update graph's
+    /// lock in either server, so there it is the end of every ticking table until the
+    /// server is restarted.
+    ///
     /// Behavior: `ConsoleServiceGrpcImpl#executeCommand`
     async fn execute_command(
         &self,
@@ -258,6 +313,8 @@ impl ConsoleService for ConsoleGrpc {
             .router
             .resolve(Some(&session), &console_id, "consoleId")?;
         let code = request.code;
+        let call = StopWithCall::new(&session)?;
+        let stop = call.stop.clone();
         let reply = Reply::new();
         let (on_error, on_success) = (reply.completer(), reply.completer());
         session
@@ -268,7 +325,7 @@ impl ConsoleService for ConsoleGrpc {
             .submit(move |inputs| {
                 let console = console_of(&inputs[0])?;
                 let start_timestamp = now_nanos();
-                let changes = console.evaluate(&code);
+                let changes = console.evaluate_stoppable(&code, &stop);
                 let end_timestamp = now_nanos();
                 if let Some(error) = &changes.error {
                     tracing::error!("Error running script: {error}");
@@ -287,9 +344,15 @@ impl ConsoleService for ConsoleGrpc {
                 }));
                 Ok(ExportValue::unit())
             })?;
-        reply.wait().await
+        let answer = reply.wait().await;
+        call.answered();
+        answer
     }
 
+    /// Not implemented, as in Java, whose web client does not call it either: its
+    /// `IdeSession#runCode` refuses to cancel. A command is stopped by cancelling the
+    /// `ExecuteCommand` call that sent it.
+    ///
     /// Behavior: `ConsoleServiceGrpcImpl#cancelCommand`, which Java does not have either
     async fn cancel_command(
         &self,

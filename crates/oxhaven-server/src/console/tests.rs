@@ -36,7 +36,7 @@ use tonic::{Code, Status};
 use tracing_subscriber::layer::SubscriberExt;
 
 use super::logs::{LogBuffer, LogUpdates, STDERR, STDOUT};
-use super::{Changes, Console, ScriptSession};
+use super::{Changes, Console, ScriptSession, Stop};
 use crate::app::FormulaValue;
 use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
@@ -44,8 +44,8 @@ use crate::ServerState;
 
 /// A script session whose language is one command per line: `make <name> <rows>` sets a
 /// variable to a new table, `note <name> <text>` sets one to a text, `drop <name>` removes
-/// one, `print <text>` writes a line to standard output, and anything else is an error
-/// that ends the code.
+/// one, `print <text>` writes a line to standard output, `wait` never ends unless the
+/// command is stopped, and anything else is an error that ends the code.
 struct WordSession {
     variables: Mutex<BTreeMap<String, ExportValue>>,
     /// The variables as they were when they were last looked at.
@@ -67,8 +67,14 @@ impl ScriptSession for WordSession {
         "Words"
     }
 
-    fn evaluate(&self, code: &str) -> Changes {
+    fn evaluate(&self, code: &str, stop: &Arc<Stop>) -> Changes {
         let mut error = None;
+        if stop.is_requested() {
+            return Changes {
+                error: Some("stopped before it started".to_string()),
+                ..Default::default()
+            };
+        }
         for line in code.lines() {
             let words: Vec<&str> = line.split_whitespace().collect();
             match words.as_slice() {
@@ -80,6 +86,14 @@ impl ScriptSession for WordSession {
                     self.variables.lock().unwrap().remove(*name);
                 }
                 ["print", text @ ..] => self.logs.record(STDOUT, format!("{}\n", text.join(" "))),
+                ["wait"] => {
+                    while !stop.is_requested() {
+                        std::thread::sleep(Duration::from_millis(5));
+                    }
+                    self.logs.record(STDOUT, "stopped\n");
+                    error = Some("stopped".to_string());
+                    break;
+                }
                 _ => {
                     error = Some(format!("not a command: {line}"));
                     break;
@@ -824,6 +838,108 @@ async fn the_log_stream_ends_with_its_session() {
     assert!(stream.next().await.is_none());
     client.server.state.logs.record(STDOUT, "after\n");
     assert_eq!(client.server.state.logs.subscriber_count(), 0);
+}
+
+impl Client {
+    /// Sends `code` and gives up on the answer after `after`, which cancels the call as a
+    /// client does that stops waiting.
+    fn execute_and_cancel(
+        &self,
+        code: &str,
+        after: Duration,
+    ) -> impl std::future::Future<Output = ()> + Send + 'static {
+        let request = ExecuteCommandRequest {
+            console_id: Some(export_id_to_ticket(1)),
+            code: code.to_string(),
+            ..Default::default()
+        };
+        let request = with_auth(request, &self.bearer);
+        let mut console = self.console.clone();
+        async move {
+            let answer = tokio::time::timeout(after, console.execute_command(request)).await;
+            assert!(answer.is_err(), "the command was answered: {answer:?}");
+        }
+    }
+
+    /// What the commands have printed, once `count` lines are there.
+    async fn printed(&self, count: usize) -> Vec<String> {
+        for _ in 0..500 {
+            let mut updates = self
+                .server
+                .state
+                .logs
+                .subscribe(LogSubscriptionRequest::default());
+            let lines: Vec<String> = waiting(&mut updates)
+                .into_iter()
+                .map(|record| record.unwrap().1)
+                .collect();
+            if lines.len() >= count {
+                return lines;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        panic!("fewer than {count} lines were printed within five seconds");
+    }
+}
+
+#[tokio::test]
+async fn a_command_whose_call_the_client_cancels_is_stopped() {
+    let mut client = Client::start().await;
+    client
+        .execute_and_cancel(
+            "make before 1\nwait\nmake after 1",
+            Duration::from_millis(300),
+        )
+        .await;
+    assert_eq!(client.printed(1).await, ["stopped\n"]);
+
+    // the session's queue is free again, and what the command did before it was stopped
+    // is there
+    let next = client.execute("print next").await;
+    assert_eq!(next.error_message, "");
+    assert!(client.server.state.scope.get("before").is_some());
+    assert!(client.server.state.scope.get("after").is_none());
+}
+
+#[tokio::test]
+async fn a_cancelled_command_that_has_not_started_does_not_run() {
+    let mut client = Client::start().await;
+    let running = tokio::spawn(client.execute_and_cancel("wait", Duration::from_millis(600)));
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    // waits behind the first on the session's queue, and is given up before the first
+    client
+        .execute_and_cancel("make queued 1\nprint queued", Duration::from_millis(200))
+        .await;
+    running.await.unwrap();
+
+    let next = client.execute("print next").await;
+    assert_eq!(next.error_message, "");
+    assert_eq!(client.printed(2).await, ["stopped\n", "next\n"]);
+    assert!(client.server.state.scope.get("queued").is_none());
+}
+
+#[tokio::test]
+async fn a_running_command_is_stopped_when_its_session_ends() {
+    let client = Client::start().await;
+    let mut console = client.console.clone();
+    let request = ExecuteCommandRequest {
+        console_id: Some(export_id_to_ticket(1)),
+        code: "wait".to_string(),
+        ..Default::default()
+    };
+    let call = tokio::spawn({
+        let request = with_auth(request, &client.bearer);
+        async move { console.execute_command(request).await }
+    });
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    SessionServiceClient::new(client.server.channel.clone())
+        .close_session(with_auth(HandshakeRequest::default(), &client.bearer))
+        .await
+        .unwrap();
+    assert_eq!(client.printed(1).await, ["stopped\n"]);
+    // and the call ends, with the answer of the stopped command or the end of its export
+    let answer = tokio::time::timeout(Duration::from_secs(5), call);
+    answer.await.expect("the call ends").unwrap().ok();
 }
 
 /// A client of a server with the word console, and the session of that console, so that a
