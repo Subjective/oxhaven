@@ -208,7 +208,7 @@ class _Wide(_Generator):
     # ------------------------------------------------------------ inputs
 
     def mode(self) -> str:
-        if "range_join" in self.ops and self.chance(0.75):
+        if "range_join" in self.ops and self.chance(0.8):
             return "static"  # the reference refuses a range join of a refreshing table
         return super().mode()
 
@@ -435,9 +435,14 @@ class _Wide(_Generator):
             else:
                 table.origin[column] = f"{op['name']}.{column}"
 
+    def pick_table(self) -> _Table:
+        # As in `_Generator`, without the tables that have no columns to name.
+        names = [name for name, table in self.tables.items() if table.columns]
+        return self.tables[self.rng.choices(names, [1 + index for index in range(len(names))])[0]]
+
     def pick(self, wanted: Callable[[_Table], bool]) -> _Table | None:
         """A table for which `wanted` holds, recent ones preferred; None when there is none."""
-        tables = [t for t in self.tables.values() if wanted(t)]
+        tables = [t for t in self.tables.values() if t.columns and wanted(t)]
         if not tables:
             return None
         return self.rng.choices(tables, [1 + index for index in range(len(tables))])[0]
@@ -474,9 +479,8 @@ class _Wide(_Generator):
             op["rows"] = 0  # refused by the reference
         elif kind == "select_distinct" and self.chance(0.06) and not self.has_lists(
                 self.tables[op["source"]]):
-            source = self.tables[op["source"]]
-            op["columns"] = []  # every column
-            table.columns = list(source.columns)
+            op["columns"] = []  # no columns: one row without columns, or none
+            table.columns = []
             table.unique = ()
             table.computed = rules.computed_columns(self.operations)[op["name"]]
         return True
@@ -981,6 +985,8 @@ class _Wide(_Generator):
         bounds = [c for c in left.usable(ORDERED_STAMPS) if c != "K"]
         if len(bounds) < 2:
             return False
+        if (left.live or right.live) and not self.chance(0.15):
+            return False  # the reference refuses a range join of a refreshing table
         low, high = ("S", "E") if {"S", "E"} <= set(bounds) and self.chance(0.8) \
             else rng.sample(bounds, 2)
         if left.type_of(low) != left.type_of(high):
@@ -995,10 +1001,10 @@ class _Wide(_Generator):
             on.append("K")
         # `<-` and `->` also take the row before and after the range; the reference refuses
         # them next to a strict comparison.
-        before = "<- " if self.chance(0.2) else ""
-        after = " ->" if self.chance(0.2) else ""
-        on.append(f"{before}{low} {rng.choice(['<=', '<=', '<'])} {middle} "
-                  f"{rng.choice(['<=', '<=', '<'])} {high}{after}")
+        lower, upper = rng.choice(["<=", "<=", "<"]), rng.choice(["<=", "<=", "<"])
+        before = "<- " if self.chance(0.3 if lower == "<=" else 0.04) else ""
+        after = " ->" if self.chance(0.3 if upper == "<=" else 0.04) else ""
+        on.append(f"{before}{low} {lower} {middle} {upper} {high}{after}")
         values = [c for c, kind in right.columns
                   if c not in on and not kind.startswith(LIST) and c != middle]
         if not values:
@@ -1107,6 +1113,8 @@ class _Wide(_Generator):
             op["incremental"] = True
         if self.chance(0.1):
             op["history"] = True  # with `initial` or `incremental`: refused
+            # Observed on the reference: with history the stamp columns come first.
+            columns = columns[len(source.columns):] + columns[:len(source.columns)]
         self.add(op, columns, min(MAX_ROWS, source.rows * 6))
         return True
 
