@@ -1,0 +1,80 @@
+{
+  "format": 2,
+  "scenario": "input_async",
+  "scenario_sha256": "f119136c155710f09fe8a627aded042733c9d9e524e5b0bdd21b02c67ff05bd0",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "in_script",
+      "file": "step000.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "ended_count",
+      "file": "step000.ended_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "in_script",
+      "file": "step001.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "ended_count",
+      "file": "step001.ended_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "in_script",
+      "file": "step002.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "ended_count",
+      "file": "step002.ended_count.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "keyed",
+      "file": "step003.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "in_script",
+      "file": "step003.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "ended_count",
+      "file": "step003.ended_count.arrow",
+      "rows": 1
+    }
+  ]
+}

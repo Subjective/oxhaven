@@ -238,8 +238,12 @@ async fn a_writer_s_rows_are_in_its_table_after_the_command() {
             "java.lang.ClassCastException",
         ),
         (
-            "writer.write_row(1, 2, 3.0, 4, True)",
+            "writer.write_row('1', 2, 3.0, 'a', True)",
             "java.lang.ClassCastException",
+        ),
+        (
+            "writer.write_row(1, 2, 3.0, 4.5, True)",
+            "not ported: io.deephaven.engine.table.impl.util.DynamicTableWriter#logRowPermissive",
         ),
         (
             "writer.write_row(1, 2, 3.0, 'a', 1)",
@@ -250,9 +254,16 @@ async fn a_writer_s_rows_are_in_its_table_after_the_command() {
         assert!(error.contains("failed to write a row."), "{code}: {error}");
         assert!(error.contains(text), "{code}: {error}");
     }
-    // A refused row is not written, in part or whole; a closed writer still writes.
-    python.run("with writer:\n    pass\nwriter.write_row(9, 9, 9, 'z', True)");
-    eventually(&python, "assert written.size == 4, written.size");
+    // A refused row is not written, in part or whole; a closed writer still writes, and a
+    // column of strings takes what is not a string. Java: the same rows.
+    python.run(
+        "with writer:\n    pass\nwriter.write_row(9, 9, 9, 7, True)\nwriter.write_row(9, 9, 9, False, True)",
+    );
+    eventually(&python, "assert written.size == 5, written.size");
+    assert_eq!(
+        described(&python, "written")[3],
+        "S: String = a, , c, 7, false"
+    );
 }
 
 #[tokio::test]

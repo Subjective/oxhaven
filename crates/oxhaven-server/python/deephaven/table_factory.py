@@ -199,8 +199,9 @@ def _row_value(data_type, value):
     column of `data_type`.
 
     Behavior: the setters of `io.deephaven.engine.table.impl.util.DynamicTableWriter`:
-    a numeric column takes any number through `Number#intValue` and the like, and every
-    other column casts the value to its class
+    a numeric column takes any number through `Number#intValue` and the like, a column of
+    Booleans, characters or instants casts the value to its class, and a column of strings
+    takes any object unchecked, which then reads as the text Java's `toString` gives it
     """
     if value is None:
         return None
@@ -227,9 +228,17 @@ def _row_value(data_type, value):
             raise _class_cast(value, "java.lang.Boolean")
         return value
     if name == "java.lang.String":
-        if not isinstance(value, str):
-            raise _class_cast(value, "java.lang.String")
-        return value
+        if isinstance(value, str):
+            return value
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, int):
+            return str(value)
+        # a float, whose text is that of Java's `Double#toString`, or another object
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.util.DynamicTableWriter#logRowPermissive",
+            f"a {type(value).__name__} for a column of strings",
+        )
     if name == "char":
         # nothing Python hands over is a Java Character
         raise _class_cast(value, "java.lang.Character")
