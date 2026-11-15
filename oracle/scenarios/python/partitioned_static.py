@@ -1,7 +1,7 @@
 # partition_by of a static table: the underlying table, whose constituent column a client is
 # sent as text, the keys, the constituents, one constituent by its key, and merge; with the
 # keys dropped, by two columns and by none; then a filter and a sort of the partitioned table.
-# oracle: results underlying, keys, merged, first, third, found, dropped_underlying, dropped_first, dropped_found, dropped_merged, whole_underlying, whole, filtered_underlying, filtered_keys, filtered_merged, ordered_underlying, ordered_merged, meta
+# oracle: results underlying, keys, merged, first, third, found, dropped_underlying, dropped_first, dropped_found, dropped_merged, whole_underlying, whole, filtered_underlying, filtered_keys, filtered_merged, ordered_underlying, ordered_merged, meta, joined, counted
 from deephaven import SortDirection, empty_table
 
 source = empty_table(9).update(["K = i % 3", "S = `s` + (i % 2)", "V = i * 1.5"])
@@ -46,3 +46,10 @@ ordered = pt.sort("K", SortDirection.DESCENDING)
 ordered_underlying = ordered.table
 ordered_merged = ordered.merge()
 assert [table.size for table in pt.sort(["K"]).constituent_tables] == [3, 3, 3]
+
+# the column of tables in other operations
+joined = source.natural_join(pt.table, "K", "__CONSTITUENT__").head(4)
+counted = pt.table.count_by("N", "__CONSTITUENT__")
+# oracle: step
+# oracle: fails
+first_per_key = pt.table.head_by(1, "K")

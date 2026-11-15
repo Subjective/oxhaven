@@ -425,6 +425,22 @@ fn a_transformed_partition_keeps_its_rows_and_holds_the_given_tables() {
     );
 }
 
+#[test]
+fn head_by_refuses_a_column_of_tables_it_would_have_to_cast() {
+    use crate::ops::head_by::{head_by, HeadByError};
+    let partitioned = partition_by(&seven_rows(), &["K"], false).unwrap();
+    // Observed: Java fails with "Cannot use view or updateView to produce results of type
+    // class io.deephaven.engine.table.impl.QueryTable; use select or update instead".
+    let refused = head_by(partitioned.table(), 1, &["K".to_string()]);
+    assert_eq!(
+        refused.err(),
+        Some(HeadByError::TableColumn(TableClass::QueryTable))
+    );
+    // grouped by, the column is a key and is not cast
+    let by_tables = head_by(partitioned.table(), 1, &[CONSTITUENT.to_string()]).unwrap();
+    assert_eq!(by_tables.row_set().size(), 3);
+}
+
 /// The rows of `parent` by the text of their `by` columns, in the parent's order.
 fn groups(parent: &dyn Table, by: &[usize]) -> HashMap<String, Vec<String>> {
     let row_set = parent.row_set();
