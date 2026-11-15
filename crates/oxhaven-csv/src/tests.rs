@@ -162,6 +162,8 @@ fn reads_what_java_reads() {
                 (name, kind, column["values"].as_array().unwrap())
             })
             .collect();
+        // Java's table has the row keys `0..size` without being marked flat
+        assert!(!table.is_flat(), "{name}: flat");
         let rows = table.row_set();
         assert_eq!(rows.size(), case["rows"].as_u64().unwrap(), "{name}: rows");
         let definition = table.definition();

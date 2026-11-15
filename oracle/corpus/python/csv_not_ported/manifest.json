@@ -1,0 +1,65 @@
+{
+  "format": 2,
+  "scenario": "csv_not_ported",
+  "scenario_sha256": "a3c8b3d6d5bd8014af379778a76e637d62cfef94744d67a0a60bd59925dff7c9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "regions",
+      "file": "step000.regions.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "mixed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "grouped_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "regions",
+      "file": "step001.regions.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "mixed",
+      "file": "step001.mixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "grouped_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "regions",
+      "file": "step002.regions.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "mixed",
+      "file": "step002.mixed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "grouped_lines",
+      "file": "step002.grouped_lines.arrow",
+      "rows": 4
+    }
+  ]
+}

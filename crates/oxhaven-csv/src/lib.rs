@@ -16,12 +16,11 @@ mod zones;
 #[cfg(test)]
 mod tests;
 
-use arrow::array::ArrayRef;
-use arrow::datatypes::{Field, Schema};
-use arrow::record_batch::RecordBatch;
+use oxhaven_column::FlatSource;
+use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
-use oxhaven_contracts::table::TableFailure;
-use oxhaven_engine::table::{empty_table, in_memory_table, QueryTable};
+use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use oxhaven_engine::table::{QueryTable, TableSpec};
 use std::fmt;
 use std::sync::Arc;
 
@@ -233,23 +232,26 @@ pub fn read_bytes(input: &[u8], options: &ReadOptions) -> Result<Arc<QueryTable>
         options.columns.iter().find(named).map(|c| c.parser)
     };
     let names = names::legalize(&cells.headers)?;
+    let invalid = |error: &dyn fmt::Display| CsvError::Invalid(error.to_string());
     let mut definitions = Vec::with_capacity(names.len());
-    let mut fields = Vec::with_capacity(names.len());
-    let mut arrays: Vec<ArrayRef> = Vec::with_capacity(names.len());
+    let mut columns: Vec<Arc<dyn ColumnSource>> = Vec::with_capacity(names.len());
     for ((header, name), column) in cells.headers.iter().zip(names).zip(&cells.columns) {
         let values = infer::column_values(column, parser_of(header))?;
         let column_type = values.column_type();
-        fields.push(Field::new(&name, column_type.arrow_type(), true));
-        definitions.push(ColumnDefinition::new(name, column_type));
-        arrays.push(values.into_array()?);
+        definitions.push(ColumnDefinition::new(name, column_type.clone()));
+        let source = FlatSource::new(column_type, values.into_array()?);
+        columns.push(Arc::new(
+            source.map_err(|failure| invalid(&failure.message))?,
+        ));
     }
-    if arrays.is_empty() {
-        // a file whose only header is empty: rows, and no column
-        return Ok(empty_table(cells.rows as u64));
-    }
-    let invalid = |error: &dyn fmt::Display| CsvError::Invalid(error.to_string());
+    // A file whose only header is empty has rows and no column. The table has the row keys
+    // `0..size` and is not marked flat, as Java's is not.
+    //
+    // Behavior: `io.deephaven.engine.table.impl.InMemoryTable#from(TableDefinition,
+    // TrackingRowSet, Map)`
     let definition = TableDefinition::new(definitions).map_err(|e| invalid(&e))?;
-    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays);
-    let batch = batch.map_err(|e| invalid(&e))?;
-    in_memory_table(definition, &[batch]).map_err(|failure| invalid(&failure.message))
+    let rows = RowSet::flat(cells.rows as u64);
+    Ok(QueryTable::new_static(TableSpec::new(
+        definition, rows, columns,
+    )))
 }
