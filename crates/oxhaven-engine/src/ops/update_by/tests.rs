@@ -1850,3 +1850,89 @@ fn random_updates_of_groups_in_time_match_a_recompute_without_buckets() {
 fn random_updates_of_groups_in_time_match_a_recompute_with_buckets() {
     random_updates_of_groups_in_time(&["K"]);
 }
+
+/// A window that holds no row fails the result when the rows of a cycle make it slide, as
+/// it fails the operation on a static table with the same rows.
+///
+/// Behavior: the `Assert.geq` that opens `pop` in
+/// io.deephaven.engine.table.impl.updateby.rollingminmax.LongRollingMinMaxOperator.Context,
+/// as the reference answers `tasks/4.17-fuzz-findings/U1-empty-window.json`
+#[test]
+fn an_empty_window_fails_the_result_when_rows_arrive() {
+    let columns = |stamps: &[Option<i64>]| [("T", ColumnType::Long, longs(stamps))];
+    let operations = || {
+        vec![op(
+            UpdateBySpec::RollingMin(RollingWindow::ticks(1, -1)),
+            &["R = T"],
+        )]
+    };
+    let rows = [Some(1_700_000_002), Some(1_699_999_998)];
+    let refused = update_by(&static_table(&columns(&rows)), &operations(), &[] as &[&str]);
+    match refused {
+        Err(UpdateByError::Failed(failure)) => {
+            assert!(failure.message.contains("Assertion failed"), "{failure}");
+        }
+        other => panic!("{:?}", other.map(|_| ())),
+    }
+
+    let t = Ticking::new([], &columns(&[]), move |source| {
+        update_by(source, &operations(), &[] as &[&str]).unwrap()
+    });
+    let added = columns(&rows).map(|(_, _, values)| values).to_vec();
+    t.script.push(TableChange::new().add([0, 1], added));
+    t.graph.run_cycle();
+    assert!(t.result.is_failed());
+}
+
+/// A NaN that poisons an exponential sum over time before any other value fails the
+/// result when the next row arrives in the same cycle, as it fails the operation on a
+/// static table with the same rows.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.ems.DoubleEMOperator.Context#accumulateCumulative,
+/// as the reference answers `tasks/4.17-fuzz-findings/U1-poison.json`
+#[test]
+fn a_poisoned_exponential_sum_over_time_fails_the_result_when_rows_arrive() {
+    let columns = |values: &[f64], stamps: &[Option<i64>]| {
+        [
+            ("I", ColumnType::Int, ints(&vec![2; values.len()])),
+            ("K", ColumnType::Double, doubles(values)),
+            ("T", ColumnType::Long, longs(stamps)),
+        ]
+    };
+    let operations = || {
+        vec![op(
+            UpdateBySpec::Ems(EmSpec {
+                window: WindowScale::Time {
+                    column: "T".into(),
+                    nanos: 1_000_000_000,
+                },
+                on_null: Some(BadDataBehavior::Skip),
+                on_nan: Some(BadDataBehavior::Poison),
+            }),
+            &["U = I", "V = K"],
+        )]
+    };
+    let values = [f64::NAN, 0.0];
+    let stamps = [Some(4_000_000_000), Some(5_000_000_000)];
+    let refused = update_by(
+        &static_table(&columns(&values, &stamps)),
+        &operations(),
+        &[] as &[&str],
+    );
+    match refused {
+        Err(UpdateByError::Failed(failure)) => {
+            assert!(failure.message.contains("must not decrease"), "{failure}");
+        }
+        other => panic!("{:?}", other.map(|_| ())),
+    }
+
+    let t = Ticking::new([], &columns(&[], &[]), move |source| {
+        update_by(source, &operations(), &[] as &[&str]).unwrap()
+    });
+    let added = columns(&values, &stamps)
+        .map(|(_, _, values)| values)
+        .to_vec();
+    t.script.push(TableChange::new().add([0, 1], added));
+    t.graph.run_cycle();
+    assert!(t.result.is_failed());
+}
