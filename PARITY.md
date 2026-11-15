@@ -177,6 +177,20 @@ Not compared:
 - Arrow record batch boundaries and batch sizes;
 - the bytes stored in a value buffer under a null validity bit.
 
+### A7. Stopping a console command
+
+Approved by the owner on 2026-11-15.
+
+A console command whose `ExecuteCommand` call is cancelled, whose connection drops or whose
+session ends is interrupted, and a queued command whose call was cancelled does not run. Java runs
+both to their end.
+
+The limits are those of `docs/CONSOLE.md`, "Stopping a running command":
+
+- native code that does not return to the interpreter is not stopped;
+- an engine operation in progress is finished, not abandoned;
+- `CancelCommand` stays `UNIMPLEMENTED`.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same

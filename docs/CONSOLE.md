@@ -395,7 +395,8 @@ runs.
 
 **What this server does: it stops the command.** This is a deliberate difference from
 Java, the one place where the console does more than the reference; the task's gate asks
-for it. It is observable only by a client that cancels a call or closes its session while
+for it, and it is allowed difference A7 of `PARITY.md` (approved by the owner on
+2026-11-15). It is observable only by a client that cancels a call or closes its session while
 its command runs: here the rest of the command does not happen.
 
 - A command is stopped when the client cancels its `ExecuteCommand` call (or the
