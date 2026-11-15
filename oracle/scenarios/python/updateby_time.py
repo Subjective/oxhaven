@@ -1,6 +1,6 @@
 # The rolling operators of update_by over a window of time, given in nanoseconds and as
 # duration strings; the windows they refuse; and last the rolling formula and count where,
-# which wait for engine operators.
+# one a step.
 # oracle: results windows, groups, by_formula, by_columns, counted
 # oracle: computed windows.Sum, windows.Avg, windows.Prod, windows.Std, windows.WAvg
 from deephaven import empty_table

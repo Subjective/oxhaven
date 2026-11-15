@@ -302,6 +302,17 @@ assert control.j_op_control == {"on_null_value": "SKIP", "on_nan_value": "POISON
                                 "big_value_context": {"precision": 16, "rounding_mode": "HALF_EVEN"}}
 poisoned = rows(nans.update_by(uby.ema_tick(2, "E = B", control)).view("E"))
 assert poisoned[0] == (0.0,) and all(e != e for (e,) in poisoned[1:]), poisoned
+# count where and the rolling formula, by one parameter and by the columns it names
+c = empty_table(6).update(["N = i", "T = '2024-01-01T00:00:00Z' + i * SECOND"])
+assert rows(c.update_by(uby.cum_count_where("Big", "N > 2")).view("Big")) == [(0,), (0,), (0,), (1,), (2,), (3,)]
+assert rows(c.update_by(uby.rolling_count_where_tick("Big", "N > 2", 2)).view("Big")) == [
+    (0,), (0,), (0,), (1,), (2,), (2,)]
+assert rows(c.update_by(uby.rolling_count_where_time("T", "Big", ["N > 2"], "PT1s")).view("Big")) == [
+    (0,), (0,), (0,), (1,), (2,), (2,)]
+sums = [(0,), (1,), (3,), (5,), (7,), (9,)]
+assert rows(c.update_by(uby.rolling_formula_tick("sum(x)", "x", "F = N", rev_ticks=2)).view("F")) == sums
+assert rows(c.update_by(uby.rolling_formula_tick("F = sum(N)", rev_ticks=2)).view("F")) == sums
+assert rows(c.update_by(uby.rolling_formula_time("T", "F = sum(N)", rev_time="PT1s")).view("F")) == sums
 # what Java refuses when the operation is made
 made = [
     ('failed to create a cumulative sum UpdateByOperation. : Invalid column name "A B"',
@@ -350,19 +361,11 @@ assert refused(lambda: t.update_by(uby.rolling_sum_time("K", "S = V", rev_time=5
 import deephaven.updateby as uby
 from deephaven.table import keyed_transpose
 t = empty_table(6).update(["K = i % 2", "C = `c` + (i % 3)", "N = i", "T = '2024-01-01T00:00:00Z' + i * SECOND"])
-count_where = "UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"
-formula = "UpdateByOperatorFactory.OperationVisitor#makeRollingFormulaOperator"
 not_ported = [
     ("AggregationAdapter#adapt: the aggregation partition", lambda: t.agg_by(agg.partition("P"), by="K")),
     ("QueryTable#aggBy: initial groups", lambda: t.agg_by(agg.sum_("N"), by="K", initial_groups=t)),
     ("CountWhereOperator#applyFilters", lambda: t.agg_by(agg.count_where("All", []), by="K")),
     ("KeyedTranspose#keyedTranspose", lambda: keyed_transpose(t, agg.sum_("N"), "K", "C")),
-    (count_where, lambda: t.update_by(uby.cum_count_where("Big", "N > 2"))),
-    (count_where, lambda: t.update_by(uby.rolling_count_where_tick("Big", "N > 2", 2))),
-    (count_where, lambda: t.update_by(uby.rolling_count_where_time("T", "Big", ["N > 2"], "PT2s"))),
-    (formula, lambda: t.update_by(uby.rolling_formula_tick("sum(x)", "x", "F = N", rev_ticks=2))),
-    (formula, lambda: t.update_by(uby.rolling_formula_tick("F = sum(N)", rev_ticks=2))),
-    (formula, lambda: t.update_by(uby.rolling_formula_time("T", "F = sum(N)", rev_time="PT2s"))),
 ]
 for java, call in not_ported:
     text = refused(call)

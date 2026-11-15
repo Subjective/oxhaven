@@ -1,6 +1,6 @@
 # Windowed update_by operators over rows: a rolling sum and average, and an exponential
 # moving average; then every other rolling operator, the windows they refuse when they are
-# made, and last the rolling formula and count where, which wait for engine operators.
+# made, and last the rolling formula and count where, one a step.
 # oracle: results rolled, smoothed, windows, groups, by_formula, by_columns, counted
 # oracle: computed rolled.Sum, rolled.Avg, smoothed.Ema, windows.Prod, windows.Std, windows.WAvg
 from deephaven import empty_table

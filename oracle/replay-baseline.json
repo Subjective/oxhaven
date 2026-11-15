@@ -150,9 +150,9 @@
   "table_where": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "one_of"], "why": "the engine lacks QueryTable#where of a FilterOr of filter strings (task 4.16)"},
   "time_instants": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "datetime_col and deephaven.time are not written yet (task 6.8)"},
   "udf_update": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "doubled", "kept"], "why": "a formula cannot call a Python function of the scope (task 6.11)"},
-  "updateby_cumulative": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "counted"], "why": "the engine lacks UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"},
+  "updateby_cumulative": {"state": "clean"},
   "updateby_exponential": {"state": "clean"},
-  "updateby_rolling": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "by_columns", "by_formula", "counted"], "why": "the engine lacks UpdateByOperatorFactory.OperationVisitor#makeRollingFormulaOperator and UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"},
-  "updateby_time": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "by_columns", "by_formula", "counted"], "why": "the engine lacks UpdateByOperatorFactory.OperationVisitor#makeRollingFormulaOperator and UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"}
+  "updateby_rolling": {"state": "clean"},
+  "updateby_time": {"state": "clean"}
  }
 }

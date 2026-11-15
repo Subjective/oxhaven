@@ -1,6 +1,6 @@
 # One update_by with the cumulative operators, by a key column and over the whole table;
 # then several column pairs in one operator, the controls of delta, what the operators
-# refuse when they are made, and last the count where, which waits for an engine operator.
+# refuse when they are made, and last the count where in a step of its own.
 # oracle: results by_key, overall, pairs, deltas, nothing_added, counted
 # oracle: computed by_key.Sum, by_key.Prod, overall.Sum, overall.Prod, pairs.SumV, deltas.Value, deltas.Zero
 from deephaven import empty_table
