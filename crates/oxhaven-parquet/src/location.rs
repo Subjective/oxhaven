@@ -51,7 +51,6 @@ pub(crate) fn check_codec(path: &Path, codec: Compression) -> Result<(), ReadErr
         Compression::UNCOMPRESSED
         | Compression::SNAPPY
         | Compression::GZIP(_)
-        | Compression::BROTLI(_)
         | Compression::LZ4
         | Compression::LZ4_RAW => Ok(()),
         other => Err(not_ported(

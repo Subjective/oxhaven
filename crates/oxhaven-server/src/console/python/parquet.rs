@@ -184,7 +184,7 @@ snappy = read("{DATA}/types_snappy.parquet")
         );
         let zstd = failure(&format!(r#"read("{DATA}/codec_zstd.parquet")"#));
         assert!(
-            zstd.starts_with("not ported yet: ") && zstd.ends_with("ZSTD"),
+            zstd.starts_with("not ported yet: ") && zstd.contains("pages compressed with ZSTD"),
             "{zstd}"
         );
         for (argument, java) in [
