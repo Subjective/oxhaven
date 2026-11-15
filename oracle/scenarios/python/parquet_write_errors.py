@@ -81,6 +81,12 @@ write(source, root + "/instruction.parquet", col_instructions=[
     ColumnInstruction(column_name="X", parquet_column_name="S"),
 ])
 # oracle: step
+# a codec for objects, on a column of ints
+# oracle: fails
+write(source, root + "/instruction.parquet", col_instructions=[
+    ColumnInstruction(column_name="X", parquet_column_name="X", codec_name="io.deephaven.util.codec.SerializableCodec"),
+])
+# oracle: step
 # oracle: fails
 write(source, root + "/limits.parquet", max_dictionary_keys=-2)
 # oracle: step

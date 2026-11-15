@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "parquet_write_errors",
-  "scenario_sha256": "54809ff4731306d71959396f32c543c7fa602ad2ef13bc203e474024a8bbd5dd",
+  "scenario_sha256": "529a57b7969d94381435d850624bc95aca6433a0bab3538186ada156ee8998d8",
   "reference": "42.9",
   "entries": [
     {
@@ -784,19 +784,40 @@
     {
       "step": 37,
       "table": "kept",
-      "file": "step037.kept.arrow",
-      "rows": 2
+      "failure": {
+        "code": "NOT_FOUND"
+      }
     },
     {
       "step": 37,
       "table": "twice",
-      "file": "step037.twice.arrow",
-      "rows": 3
+      "failure": {
+        "code": "NOT_FOUND"
+      }
     },
     {
       "step": 37,
       "table": "left",
-      "file": "step037.left.arrow",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 38,
+      "table": "kept",
+      "file": "step038.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 38,
+      "table": "twice",
+      "file": "step038.twice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 38,
+      "table": "left",
+      "file": "step038.left.arrow",
       "rows": 4
     }
   ]

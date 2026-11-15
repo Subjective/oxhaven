@@ -89,175 +89,182 @@
       "step": 12,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
-      "text": "failed to write to parquet data. : RuntimeError: io.deephaven.base.verify.RequirementFailure: Requirement failed: required maximumDictionaryKeys >= 0, instead maximumDictionaryKeys == -2.",
+      "text": "failed to write to parquet data. : java.lang.ClassCastException: class java.nio.HeapIntBuffer cannot be cast to class [Lorg.apache.parquet.io.api.Binary; (java.nio.HeapIntBuffer is in module java.base of loader 'bootstrap'; [Lorg.apache.parquet.io.api.Binary; is in unnamed module of loader 'app')",
       "operation": "failed to write to parquet data."
     },
     {
       "step": 13,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
-      "text": "failed to write to parquet data. : RuntimeError: io.deephaven.base.verify.RequirementFailure: Requirement failed: required maximumDictionarySize >= 0, instead maximumDictionarySize == -2.",
+      "text": "failed to write to parquet data. : RuntimeError: io.deephaven.base.verify.RequirementFailure: Requirement failed: required maximumDictionaryKeys >= 0, instead maximumDictionaryKeys == -2.",
       "operation": "failed to write to parquet data."
     },
     {
       "step": 14,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
-      "text": "failed to write to parquet data. : RuntimeError: java.lang.IllegalArgumentException: Target page size should be >= 2048",
+      "text": "failed to write to parquet data. : RuntimeError: io.deephaven.base.verify.RequirementFailure: Requirement failed: required maximumDictionarySize >= 0, instead maximumDictionarySize == -2.",
       "operation": "failed to write to parquet data."
     },
     {
       "step": 15,
       "outcome": "error",
-      "type": "RuntimeError",
-      "text": "java.lang.IllegalArgumentException: Cannot define less than 1 RowGroup"
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write to parquet data. : RuntimeError: java.lang.IllegalArgumentException: Target page size should be >= 2048",
+      "operation": "failed to write to parquet data."
     },
     {
       "step": 16,
       "outcome": "error",
       "type": "RuntimeError",
-      "text": "java.lang.IllegalArgumentException: MaxRows must be positive"
+      "text": "java.lang.IllegalArgumentException: Cannot define less than 1 RowGroup"
     },
     {
       "step": 17,
       "outcome": "error",
       "type": "RuntimeError",
-      "text": "java.lang.IllegalArgumentException: Must contain at least one group"
+      "text": "java.lang.IllegalArgumentException: MaxRows must be positive"
     },
     {
       "step": 18,
       "outcome": "error",
       "type": "RuntimeError",
-      "text": "java.lang.IllegalArgumentException: MaxRows must be positive"
+      "text": "java.lang.IllegalArgumentException: Must contain at least one group"
     },
     {
       "step": 19,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: MaxRows must be positive"
+    },
+    {
+      "step": 20,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : java.lang.IllegalArgumentException: Number of groups must be at least 1, got: 0",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 20,
+      "step": 21,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : java.lang.IllegalStateException: Misordered for Grouping column(s) [S]:",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 21,
+      "step": 22,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [X, S, K]",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 22,
+      "step": 23,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : RuntimeError: java.lang.IllegalArgumentException: Number of sources and destinations must match",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 23,
+      "step": 24,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : RuntimeError: java.lang.IllegalArgumentException: No source tables provided for writing",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 24,
+      "step": 25,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : RuntimeError: java.lang.IllegalArgumentException: Table definition must be provided when writing multiple tables with different definitions",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 25,
+      "step": 26,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : io.deephaven.UncheckedDeephavenException: Failed to install shadow file at /tmp/oxhaven_parquet_write_errors/twice.parquet because couldn't rename temporary shadow file from /tmp/oxhaven_parquet_write_errors/.NEW_twice.parquet to /tmp/oxhaven_parquet_w",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 26,
+      "step": 27,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : java.lang.IllegalStateException: Misordered for Grouping column(s) [S]:",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 27,
+      "step": 28,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : io.deephaven.UncheckedDeephavenException: Destination /tmp/oxhaven_parquet_write_errors/directory.parquet exists and is a directory",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 28,
+      "step": 29,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "write multiple tables to parquet data failed. : java.lang.IllegalArgumentException: Existing parent file /tmp/oxhaven_parquet_write_errors/file of /tmp/oxhaven_parquet_write_errors/file/two.parquet is not a directory",
       "operation": "write multiple tables to parquet data failed."
     },
     {
-      "step": 29,
+      "step": 30,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : io.deephaven.UncheckedDeephavenException: Destination /tmp/oxhaven_parquet_write_errors/directory.parquet exists and is a directory",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 30,
+      "step": 31,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : java.lang.IllegalArgumentException: Existing parent file /tmp/oxhaven_parquet_write_errors/file of /tmp/oxhaven_parquet_write_errors/file/under.parquet is not a directory",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 31,
+      "step": 32,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : RuntimeError: java.lang.IllegalArgumentException: Table must have partitioning columns to write partitioned data",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 32,
+      "step": 33,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : java.lang.ClassCastException: class java.nio.HeapIntBuffer cannot be cast to class [Lorg.apache.parquet.io.api.Binary; (java.nio.HeapIntBuffer is in module java.base of loader 'bootstrap'; [Lorg.apache.parquet.io.api.Binary; is in unnamed module of loader 'app')",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 33,
+      "step": 34,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : java.lang.UnsupportedOperationException",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 34,
+      "step": 35,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : AttributeError: 'str' object has no attribute 'j_table'",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 35,
+      "step": 36,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to write to parquet data. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"String.endsWith(String)\" because \"destinations[idx]\" is null",
       "operation": "failed to write to parquet data."
     },
     {
-      "step": 36,
+      "step": 37,
       "outcome": "error",
       "type": "deephaven.dherror.DHError",
       "text": "failed to delete a parquet table: None on disk. : RuntimeError: java.lang.NullPointerException",
       "operation": "failed to delete a parquet table: None on disk."
     },
     {
-      "step": 37,
+      "step": 38,
       "outcome": "ok"
     }
   ]

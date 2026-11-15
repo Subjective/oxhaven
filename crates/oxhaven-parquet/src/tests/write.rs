@@ -53,7 +53,11 @@ fn target(directory: &Path, name: &str) -> String {
     directory.join(name).to_str().unwrap().to_string()
 }
 
-fn write_one(table: &Arc<QueryTable>, path: &str, options: &WriteOptions) -> Result<(), WriteError> {
+fn write_one(
+    table: &Arc<QueryTable>,
+    path: &str,
+    options: &WriteOptions,
+) -> Result<(), WriteError> {
     let table: Arc<dyn Table> = table.clone();
     write(&[table], &[path], options)
 }
@@ -111,7 +115,11 @@ fn every_type_is_written_as_java_writes_it() {
         assert_eq!(column.compression(), Compression::SNAPPY);
         // only a string column has a dictionary
         let path = column.column_path().string();
-        assert_eq!(column.dictionary_page_offset().is_some(), path == "S", "{path}");
+        assert_eq!(
+            column.dictionary_page_offset().is_some(),
+            path == "S",
+            "{path}"
+        );
     }
     assert_java_types(&read_back(&path));
 }
@@ -153,7 +161,10 @@ fn a_table_without_rows_is_a_file_without_row_groups() {
         assert!(back.row_set().is_empty());
     }
     let refused = write_one(&table, &path, &with_groups(RowGroups::MaxRows(4)));
-    assert_eq!(invalid(refused), "Number of groups must be at least 1, got: 0");
+    assert_eq!(
+        invalid(refused),
+        "Number of groups must be at least 1, got: 0"
+    );
 }
 
 #[test]
@@ -187,8 +198,15 @@ fn rows_are_split_into_row_groups_as_the_instructions_say() {
     let refused = write_one(&table, &path, &with_groups(by(&["B"], None)));
     assert!(invalid(refused).starts_with("Misordered for Grouping column(s)"));
     let refused = write_one(&table, &path, &with_groups(by(&["Nope"], None)));
-    assert!(matches!(refused, Err(WriteError::Invalid(_))), "{refused:?}");
-    for groups in [RowGroups::MaxGroups(0), RowGroups::MaxRows(0), by(&[], None)] {
+    assert!(
+        matches!(refused, Err(WriteError::Invalid(_))),
+        "{refused:?}"
+    );
+    for groups in [
+        RowGroups::MaxGroups(0),
+        RowGroups::MaxRows(0),
+        by(&[], None),
+    ] {
         let refused = write_one(&table, &path, &with_groups(groups.clone()));
         assert!(matches!(refused, Err(WriteError::Invalid(_))), "{groups:?}");
     }
@@ -219,7 +237,11 @@ fn a_string_column_has_a_dictionary_while_it_fits_the_limits() {
     ];
     for (options, expected) in cases {
         write_one(&table, &path, &options).unwrap();
-        assert_eq!(has_dictionary(&footer(&path), 0, "S"), expected, "{options:?}");
+        assert_eq!(
+            has_dictionary(&footer(&path), 0, "S"),
+            expected,
+            "{options:?}"
+        );
         assert_java_types(&read_back(&path));
     }
     // a column that is asked for a dictionary has one whatever the limits
@@ -285,7 +307,10 @@ fn pages_are_compressed_with_the_codec_java_knows_by_the_name() {
     }
     // a codec Java writes and this crate does not
     let java = not_ported(write_one(&table, &path, &named("LZO")));
-    assert!(java.ends_with("DeephavenCompressorAdapterFactory#getByName"), "{java}");
+    assert!(
+        java.ends_with("DeephavenCompressorAdapterFactory#getByName"),
+        "{java}"
+    );
 }
 
 #[test]
@@ -303,11 +328,18 @@ fn columns_are_named_in_the_file_as_the_instructions_say() {
         ..WriteOptions::default()
     };
     // an instruction for a column the table does not have is ignored
-    let renamed = with(vec![column("K", "kay"), column("V", "vee"), column("Nope", "nope")]);
+    let renamed = with(vec![
+        column("K", "kay"),
+        column("V", "vee"),
+        column("Nope", "nope"),
+    ]);
     write_one(&table, &path, &renamed).unwrap();
     let footer = footer(&path);
     let schema = schema(&footer);
-    assert!(schema.contains("OPTIONAL INT32 kay (INTEGER(32,true));"), "{schema}");
+    assert!(
+        schema.contains("OPTIONAL INT32 kay (INTEGER(32,true));"),
+        "{schema}"
+    );
     assert!(schema.contains("OPTIONAL group vee (LIST)"), "{schema}");
     // the entry names the column of the file
     assert!(deephaven(&footer).contains(r#"{"columnName":"vee","specialType":"Vector"}"#));
@@ -317,16 +349,28 @@ fn columns_are_named_in_the_file_as_the_instructions_say() {
     assert_eq!(cells(&back, "vee"), cells(&table, "V"));
 
     let twice = with(vec![column("K", "a"), column("V", "a")]);
-    assert!(matches!(write_one(&table, &path, &twice), Err(WriteError::Invalid(_))));
+    assert!(matches!(
+        write_one(&table, &path, &twice),
+        Err(WriteError::Invalid(_))
+    ));
     let taken = with(vec![column("K", "V")]);
-    assert!(matches!(write_one(&table, &path, &taken), Err(WriteError::Invalid(_))));
+    assert!(matches!(
+        write_one(&table, &path, &taken),
+        Err(WriteError::Invalid(_))
+    ));
     let again = with(vec![column("K", "a"), column("K", "b")]);
-    assert!(matches!(write_one(&table, &path, &again), Err(WriteError::Invalid(_))));
+    assert!(matches!(
+        write_one(&table, &path, &again),
+        Err(WriteError::Invalid(_))
+    ));
     let unnamed = with(vec![WriteColumn {
         name: "K".to_string(),
         ..WriteColumn::default()
     }]);
-    assert!(matches!(write_one(&table, &path, &unnamed), Err(WriteError::Invalid(_))));
+    assert!(matches!(
+        write_one(&table, &path, &unnamed),
+        Err(WriteError::Invalid(_))
+    ));
 }
 
 #[test]
@@ -336,7 +380,8 @@ fn a_definition_chooses_orders_and_adds_columns() {
     let table = read_default("types.parquet").unwrap();
     let definition = |columns: &[(&str, ColumnType)]| {
         let columns = columns.iter();
-        let columns = columns.map(|(name, column_type)| ColumnDefinition::new(*name, column_type.clone()));
+        let columns =
+            columns.map(|(name, column_type)| ColumnDefinition::new(*name, column_type.clone()));
         WriteOptions {
             definition: Some(TableDefinition::new(columns.collect()).unwrap()),
             ..WriteOptions::default()
@@ -379,14 +424,21 @@ fn several_tables_are_written_together_or_not_at_all() {
     let lists = read_default("lists.parquet").unwrap();
     let all = |tables: &[&Arc<QueryTable>], paths: &[&str], options: &WriteOptions| {
         let tables = tables.iter();
-        let tables: Vec<Arc<dyn Table>> = tables.map(|table| -> Arc<dyn Table> { (*table).clone() }).collect();
+        let tables: Vec<Arc<dyn Table>> = tables
+            .map(|table| -> Arc<dyn Table> { (*table).clone() })
+            .collect();
         let paths: Vec<String> = paths.iter().map(|name| target(&directory, name)).collect();
         let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
         write(&tables, &paths, options)
     };
     let default = WriteOptions::default();
 
-    all(&[&types, &same], &["one.parquet", "a/b/two.parquet"], &default).unwrap();
+    all(
+        &[&types, &same],
+        &["one.parquet", "a/b/two.parquet"],
+        &default,
+    )
+    .unwrap();
     assert_java_types(&read_back(&target(&directory, "one.parquet")));
     assert_java_types(&read_back(&target(&directory, "a/b/two.parquet")));
     assert_eq!(names(&directory), ["a", "one.parquet"]);
@@ -401,7 +453,11 @@ fn several_tables_are_written_together_or_not_at_all() {
         "Number of sources and destinations must match"
     );
     assert_eq!(
-        invalid(all(&[&types, &lists], &["x.parquet", "y.parquet"], &default)),
+        invalid(all(
+            &[&types, &lists],
+            &["x.parquet", "y.parquet"],
+            &default
+        )),
         "Table definition must be provided when writing multiple tables with different definitions"
     );
     assert_eq!(names(&directory), ["a", "one.parquet"]);
@@ -461,8 +517,14 @@ fn a_destination_given_twice_fails_and_is_left_as_the_last_table() {
     let options = with_groups(RowGroups::MaxRows(4));
     let refused = write(&[other, types], &[&path, &path], &options);
     let message = invalid(refused);
-    assert!(message.starts_with("Failed to install shadow file at"), "{message}");
-    assert!(message.contains("couldn't rename temporary shadow file"), "{message}");
+    assert!(
+        message.starts_with("Failed to install shadow file at"),
+        "{message}"
+    );
+    assert!(
+        message.contains("couldn't rename temporary shadow file"),
+        "{message}"
+    );
     assert_eq!(names(&directory), ["table.parquet"]);
     assert_java_types(&read_back(&path));
 }
@@ -506,7 +568,30 @@ fn what_is_not_ported_is_refused_by_the_java_method() {
         assert!(java.ends_with(expected), "{java}");
     }
     let java = not_ported(write_one(&table, "s3://bucket/table.parquet", &default()));
-    assert!(java.ends_with("SeekableChannelsProviderLoader#load"), "{java}");
+    assert!(
+        java.ends_with("SeekableChannelsProviderLoader#load"),
+        "{java}"
+    );
+
+    // a column whose cells hold lists, which Java writes with a codec: refused by its
+    // type, before a row is read
+    let lists = read_default("lists.parquet").unwrap();
+    let nested = WriteOptions {
+        definition: Some(
+            TableDefinition::new(vec![ColumnDefinition::new(
+                "N",
+                ColumnType::vector(ColumnType::array(ColumnType::Int)),
+            )])
+            .unwrap(),
+        ),
+        ..default()
+    };
+    let java = not_ported(write_one(
+        &lists,
+        &target(&directory, "made/nested.parquet"),
+        &nested,
+    ));
+    assert!(java.ends_with("TypeInfos#getCodecAndArgs"), "{java}");
     assert!(names(&directory).is_empty());
 }
 

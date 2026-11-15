@@ -343,4 +343,156 @@ zstd = read("{DATA}/codec_zstd.parquet")
             "{layout}"
         );
     }
+
+    #[tokio::test]
+    async fn deephaven_parquet_writes_tables_and_raises_dherror() {
+        let _turn = ONE_INTERPRETER.lock().await;
+        let server = TestServer::start_with(|state| super::super::start(state).unwrap()).await;
+        let console = server.state.console.clone().unwrap();
+        let table = |name: &str| {
+            let value = server.state.scope.get(name);
+            value.unwrap().as_table().unwrap().clone()
+        };
+        let root =
+            std::env::temp_dir().join(format!("oxhaven-console-write-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let root = root.to_str().unwrap();
+
+        let changes = console.evaluate(&format!(
+            r#"
+import os
+from deephaven import dtypes, empty_table, time_table
+from deephaven.parquet import ColumnInstruction, RowGroupInfo, batch_write, delete, read, write
+
+source = empty_table(10).update(["X = i", "S = `s` + (i % 3)", "K = (int)(i / 4)"])
+write(source, "{root}/plain.parquet")
+plain = read("{root}/plain.parquet")
+write(
+    source,
+    "{root}/options.parquet",
+    table_definition={{"S": dtypes.string, "N": dtypes.int32, "X": dtypes.int32}},
+    col_instructions=[ColumnInstruction(column_name="X", parquet_column_name="ex")],
+    compression_codec_name="ZSTD",
+    max_dictionary_keys=2,
+    target_page_size=4096,
+    row_group_info=RowGroupInfo.max_rows(4),
+)
+options = read("{root}/options.parquet")
+batch_write([source.head(3), source.tail(2)], ["{root}/a/first.parquet", "{root}/a/second.parquet"])
+second = read("{root}/a/second.parquet")
+# a table that changes is written as it is
+ticking = time_table("PT1H", start_time="2024-01-01T00:00:00Z").update_view("X = (int)ii")
+write(ticking, "{root}/ticking.parquet")
+written = read("{root}/ticking.parquet")
+write(source, "{root}/gone/deep/table.parquet")
+delete("{root}/gone")
+delete("{root}/nothing")
+left = sorted(os.listdir("{root}"))
+"#
+        ));
+        assert_eq!(changes.error, None);
+        let expected: Vec<_> = (0..10).map(Some).collect();
+        assert_eq!(ints(&*table("plain"), "X"), expected);
+        assert_eq!(ints(&*table("options"), "ex"), expected);
+        assert_eq!(ints(&*table("options"), "N"), [None; 10]);
+        let options = table("options");
+        let names: Vec<_> = options
+            .definition()
+            .columns()
+            .iter()
+            .map(|c| c.name.clone())
+            .collect();
+        assert_eq!(names, ["S", "N", "ex"]);
+        assert_eq!(ints(&*table("second"), "X"), [8, 9].map(Some));
+        let written = ints(&*table("written"), "X");
+        assert!(
+            !written.is_empty(),
+            "the time table has its first row when it is made"
+        );
+        let expected: Vec<_> = (0..written.len() as i32).map(Some).collect();
+        assert_eq!(written, expected);
+        let left = console.evaluate(
+            "assert left == ['a', 'options.parquet', 'plain.parquet', 'ticking.parquet'], left",
+        );
+        assert_eq!(left.error, None);
+
+        // every failure is a DHError with the reference's message, then the cause
+        let failure = |code: &str, message: &str| {
+            let code = format!("from deephaven.parquet import *\nfrom deephaven import empty_table\nsource = empty_table(4).update('X = i')\n{code}");
+            let error = console.evaluate(&code).error.expect("the write fails");
+            let last = error.trim_end().lines().last().unwrap().to_string();
+            let prefix = format!("deephaven.dherror.DHError: {message} : ");
+            let text = last.strip_prefix(&prefix);
+            text.unwrap_or_else(|| panic!("not a DHError of a write: {last}"))
+                .to_string()
+        };
+        const WRITE: &str = "failed to write to parquet data.";
+        const BATCH: &str = "write multiple tables to parquet data failed.";
+        let no_extension = failure(&format!(r#"write(source, "{root}/table")"#), WRITE);
+        assert!(
+            no_extension.ends_with("does not end in .parquet extension"),
+            "{no_extension}"
+        );
+        assert_eq!(
+            failure(
+                &format!(r#"batch_write([source], ["{root}/a.parquet", "{root}/b.parquet"])"#),
+                BATCH
+            ),
+            "Number of sources and destinations must match"
+        );
+        assert_eq!(
+            failure(
+                &format!(
+                    r#"write(source.head(0), "{root}/a.parquet", row_group_info=RowGroupInfo.max_rows(2))"#
+                ),
+                WRITE
+            ),
+            "Number of groups must be at least 1, got: 0"
+        );
+        for (argument, java) in [
+            (
+                "generate_metadata_files=True",
+                "ParquetMetadataFileWriterImpl#writeMetadataFiles",
+            ),
+            ("index_columns=[['X']]", "Builder#addAllIndexColumns"),
+            (
+                "compression_codec_name='LZO'",
+                "DeephavenCompressorAdapterFactory#getByName",
+            ),
+            (
+                "special_instructions=object()",
+                "Builder#setSpecialInstructions",
+            ),
+        ] {
+            let refused = failure(
+                &format!(r#"write(source, "{root}/refused.parquet", {argument})"#),
+                WRITE,
+            );
+            assert!(
+                refused.starts_with("not ported yet: ") && refused.contains(java),
+                "{refused}"
+            );
+        }
+        let partitioned = failure(
+            &format!(r#"write_partitioned(source, "{root}/partitioned")"#),
+            WRITE,
+        );
+        assert!(
+            partitioned.contains("Table must have partitioning columns to write partitioned data"),
+            "{partitioned}"
+        );
+        let constructor = console
+            .evaluate("from deephaven.parquet import RowGroupInfo\nRowGroupInfo.max_groups(0)");
+        assert!(constructor.error.unwrap().contains("RuntimeError"));
+        let mut left: Vec<_> = std::fs::read_dir(root)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            ["a", "options.parquet", "plain.parquet", "ticking.parquet"]
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

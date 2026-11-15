@@ -163,7 +163,11 @@ impl WriteOptions {
                     other.name
                 )));
             }
-            if column.codec.as_deref().is_some_and(|codec| !codec.is_empty()) {
+            if column
+                .codec
+                .as_deref()
+                .is_some_and(|codec| !codec.is_empty())
+            {
                 return Err(not_ported(
                     "io.deephaven.parquet.table.ParquetInstructions.Builder#addColumnCodec",
                     format_args!("a codec for column {name}"),
@@ -350,11 +354,9 @@ fn schema_field(column: &OutColumn) -> Result<TypePtr, WriteError> {
 /// the elements of a list under the name they have in the file.
 fn arrow_type(column_type: &ColumnType) -> DataType {
     match column_type.list_element() {
-        Some(element) => DataType::List(Arc::new(Field::new(
-            "element",
-            element.arrow_type(),
-            true,
-        ))),
+        Some(element) => {
+            DataType::List(Arc::new(Field::new("element", element.arrow_type(), true)))
+        }
         None => column_type.arrow_type(),
     }
 }
@@ -375,9 +377,15 @@ fn to_file_type(values: ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, 
             values.data_type()
         )));
     };
-    let elements = sentinels_to_nulls(list.values()).map_err(|failure| problem(&failure.message))?;
+    let elements =
+        sentinels_to_nulls(list.values()).map_err(|failure| problem(&failure.message))?;
     let field = Arc::new(Field::new("element", element.arrow_type(), true));
-    let list = ListArray::try_new(field, list.offsets().clone(), elements, list.nulls().cloned());
+    let list = ListArray::try_new(
+        field,
+        list.offsets().clone(),
+        elements,
+        list.nulls().cloned(),
+    );
     Ok(Arc::new(list.map_err(|error| problem(&error))?))
 }
 
@@ -477,7 +485,9 @@ fn split_evenly(rows: u64, groups: i64) -> Result<Vec<u64>, WriteError> {
     }
     let (size, larger) = (rows / groups, rows % groups);
     let count = groups.min(rows);
-    Ok((0..count).map(|group| size + u64::from(group < larger)).collect())
+    Ok((0..count)
+        .map(|group| size + u64::from(group < larger))
+        .collect())
 }
 
 /// Behavior: `RowGroupTableIteratorVisitor#splitByMaxRows`
@@ -516,7 +526,11 @@ fn as_key(values: &ArrayRef) -> ArrayRef {
 ///
 /// Behavior: `RowGroupTableIteratorVisitor.SplitByGroupsIterator`, which partitions the
 /// table by the columns after `#ensureOrderedForGrouping` has checked the order
-fn runs(batch: &RecordBatch, columns: &[OutColumn], names: &[String]) -> Result<Vec<u64>, WriteError> {
+fn runs(
+    batch: &RecordBatch,
+    columns: &[OutColumn],
+    names: &[String],
+) -> Result<Vec<u64>, WriteError> {
     let mut keys = Vec::with_capacity(names.len());
     for name in names {
         let Some(index) = columns.iter().position(|column| column.name == *name) else {
@@ -534,7 +548,9 @@ fn runs(batch: &RecordBatch, columns: &[OutColumn], names: &[String]) -> Result<
         }
         keys.push(as_key(batch.column(index)));
     }
-    let fields = keys.iter().map(|key| SortField::new(key.data_type().clone()));
+    let fields = keys
+        .iter()
+        .map(|key| SortField::new(key.data_type().clone()));
     let problem = |error: arrow::error::ArrowError| invalid(error.to_string());
     let converter = RowConverter::new(fields.collect()).map_err(problem)?;
     let rows = converter.convert_columns(&keys).map_err(problem)?;
@@ -571,7 +587,10 @@ fn row_group_sizes(
         RowGroups::Single => vec![rows],
         RowGroups::MaxGroups(groups) => split_evenly(rows, *groups)?,
         RowGroups::MaxRows(max_rows) => split_by_max_rows(rows, *max_rows)?,
-        RowGroups::ByGroups { columns: names, max_rows } => {
+        RowGroups::ByGroups {
+            columns: names,
+            max_rows,
+        } => {
             let mut sizes = Vec::new();
             for run in runs(batch, columns, names)? {
                 match max_rows {
@@ -680,7 +699,10 @@ fn plan(
                 }
                 let values = table.column(index).chunk(&rows);
                 let values = values.map_err(|failure| {
-                    invalid(format!("Failed to write column {}: {}", column.name, failure.message))
+                    invalid(format!(
+                        "Failed to write column {}: {}",
+                        column.name, failure.message
+                    ))
                 })?;
                 to_file_type(values, &column.column_type)?
             }
@@ -717,8 +739,12 @@ fn plan(
         // Java has a dictionary for strings only
         .set_dictionary_enabled(false)
         .set_key_value_metadata(Some(vec![KeyValue::new(METADATA_KEY.to_string(), info)]));
-    let max_keys = options.max_dictionary_keys.unwrap_or(DEFAULT_MAXIMUM_DICTIONARY);
-    let max_size = options.max_dictionary_size.unwrap_or(DEFAULT_MAXIMUM_DICTIONARY);
+    let max_keys = options
+        .max_dictionary_keys
+        .unwrap_or(DEFAULT_MAXIMUM_DICTIONARY);
+    let max_size = options
+        .max_dictionary_size
+        .unwrap_or(DEFAULT_MAXIMUM_DICTIONARY);
     for (index, column) in columns.iter().enumerate().filter(|(_, c)| c.strings) {
         let (max_keys, max_size) = match column.use_dictionary {
             true => (i32::MAX, i32::MAX),
@@ -753,7 +779,10 @@ fn plan(
 /// Behavior: `io.deephaven.extensions.trackedfile.LocalCompletableOutputStream#getShadowFile`,
 /// `#getBackupFile`
 fn beside(destination: &Path, prefix: &str) -> PathBuf {
-    let name = destination.file_name().unwrap_or_default().to_string_lossy();
+    let name = destination
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy();
     destination.with_file_name(format!(".{prefix}_{name}"))
 }
 
@@ -831,15 +860,20 @@ impl Written {
             // file of Java's; an Arrow schema in the footer would be a second opinion
             .with_skip_arrow_metadata(true)
             .with_parquet_schema(schema);
-        let mut writer =
-            ArrowWriter::try_new_with_options(BufWriter::new(file), plan.arrow_schema.clone(), writer_options)
-                .map_err(problem)?;
+        let mut writer = ArrowWriter::try_new_with_options(
+            BufWriter::new(file),
+            plan.arrow_schema.clone(),
+            writer_options,
+        )
+        .map_err(problem)?;
         for group in &plan.groups {
             writer.write(group).map_err(problem)?;
             writer.flush().map_err(problem)?;
         }
         let file = writer.into_inner().map_err(problem)?;
-        let file = file.into_inner().map_err(|error| io(&shadow, error.error()))?;
+        let file = file
+            .into_inner()
+            .map_err(|error| io(&shadow, error.error()))?;
         file.sync_all().map_err(|error| io(&shadow, error))
     }
 
@@ -973,6 +1007,10 @@ pub fn write(
     }
     let columns = out_columns(definition, options)?;
     let codec = compression(options.compression.as_deref().unwrap_or("SNAPPY"))?;
+    for column in &columns {
+        // a type that cannot be written is refused before anything is read or made
+        schema_field(column)?;
+    }
 
     let mut written = Written::default();
     let all = || {
