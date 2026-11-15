@@ -11,7 +11,7 @@ use super::{
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::ops::sort::testing::{keys, shifts, static_table, Ticking};
-use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, StringArray};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -361,12 +361,98 @@ fn em() -> EmSpec {
     }
 }
 
+/// The cells of the vector column at `column`: null, or the `int` elements.
+fn int_vectors(table: &dyn Table, column: usize) -> Vec<Option<Vec<Option<i32>>>> {
+    let cells = TableSnapshot::current(table).unwrap().columns[column].clone();
+    let cells = cells.as_any().downcast_ref::<ListArray>().unwrap();
+    cells
+        .iter()
+        .map(|cell| {
+            cell.map(|cell| {
+                let cell = cell.as_any().downcast_ref::<Int32Array>().unwrap();
+                cell.iter().collect()
+            })
+        })
+        .collect()
+}
+
+fn cell(values: &[i32]) -> Option<Vec<Option<i32>>> {
+    Some(values.iter().copied().map(Some).collect())
+}
+
+fn rolling_group(window: RollingWindow, by: &'static [&'static str]) -> Ticking {
+    ticking(vec![op(UpdateBySpec::RollingGroup(window), &["R = I"])], by)
+}
+
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator"
-)]
-fn rolling_group_is_unported() {
-    request(UpdateBySpec::RollingGroup(RollingWindow::ticks(3, 0)));
+fn a_rolling_group_holds_the_values_of_each_window() {
+    let t = rolling_group(RollingWindow::ticks(2, 1), &[]);
+    assert_eq!(
+        t.result.definition().columns()[R].column_type,
+        ColumnType::vector(ColumnType::Int)
+    );
+    assert_eq!(
+        int_vectors(&*t.result, R),
+        vec![
+            cell(&[1, 2]),
+            cell(&[1, 2, 3]),
+            cell(&[2, 3, 4]),
+            cell(&[3, 4, 5]),
+            cell(&[4, 5])
+        ]
+    );
+    // Per bucket, and a window ahead of its row, which is empty at the end of the bucket.
+    let t = rolling_group(RollingWindow::ticks(-1, 2), &["K"]);
+    assert_eq!(
+        int_vectors(&*t.result, R),
+        vec![cell(&[5]), cell(&[]), cell(&[]), cell(&[]), cell(&[])]
+    );
+}
+
+#[test]
+fn a_rolling_group_over_no_rows_is_empty_where_the_other_operators_fail() {
+    let t = rolling_group(RollingWindow::ticks(0, 0), &[]);
+    assert_eq!(int_vectors(&*t.result, R), vec![cell(&[]); 5]);
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2]))]);
+    let window = || RollingWindow::ticks(0, 0);
+    let both = [
+        op(UpdateBySpec::RollingGroup(window()), &["R = I"]),
+        op(UpdateBySpec::RollingSum(window()), &["Q = I"]),
+    ];
+    let error = update_by(&source, &both, &[] as &[&str]).err().unwrap();
+    assert!(error.to_string().contains("Assertion failed"), "{error}");
+}
+
+#[test]
+fn a_rolling_group_writes_the_rows_whose_window_holds_the_change() {
+    let t = rolling_group(RollingWindow::ticks(2, 0), &[]);
+    let update = t
+        .step(TableChange::new().add([25], row("a", 10, 0.0)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![25], vec![], vec![30], ModifiedColumnSet::of([R]))
+    );
+    assert_eq!(int_vectors(&*t.result, R)[4], cell(&[10, 4]));
+    let update = t
+        .step(TableChange::new().modify([0], [(1, ints(&[7]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![0, 10], ModifiedColumnSet::of([1, R]))
+    );
+    assert_eq!(int_vectors(&*t.result, R)[1], cell(&[7, 2]));
+    // A column that is no input writes nothing.
+    let update = t
+        .step(TableChange::new().modify([0], [(2, doubles(&[9.0]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![0], ModifiedColumnSet::of([2]))
+    );
+    let update = t.step(TableChange::new().remove([20])).unwrap();
+    assert_eq!(keys(&update.modified), vec![25]);
+    assert_eq!(int_vectors(&*t.result, R)[2], cell(&[2, 10]));
 }
 
 #[test]
@@ -527,6 +613,16 @@ fn everything() -> Vec<UpdateByOperation> {
             },
             &["Wa4 = L", "Wa5 = Y", "Wa6 = F"],
         ),
+        op(
+            UpdateBySpec::RollingGroup(window(3, 0)),
+            &["G1 = I", "G2 = D", "G3 = S", "G4 = B", "G5 = T", "G6 = K"],
+        ),
+        op(
+            UpdateBySpec::RollingGroup(window(-1, 3)),
+            &["G7 = C", "G8 = F"],
+        ),
+        op(UpdateBySpec::RollingGroup(window(0, 0)), &["G9 = L"]),
+        op(UpdateBySpec::RollingGroup(window(2, 2)), &["G10 = Y"]),
     ]
 }
 
@@ -687,6 +783,82 @@ fn a_row_without_a_timestamp_is_in_no_window() {
 }
 
 #[test]
+fn a_rolling_group_in_time_holds_the_rows_of_the_window() {
+    let group = || vec![op(UpdateBySpec::RollingGroup(time(2, 0)), &["R = I"])];
+    let t = timed(group(), &[]);
+    let rows123 = || cell(&[1, 2, 3]);
+    assert_eq!(
+        int_vectors(&*t.result, TR),
+        vec![cell(&[1]), rows123(), rows123(), cell(&[4]), cell(&[5])]
+    );
+    // A row at 102 is in its own window and in none after it; rows 10 and 20 are in its.
+    let update = t
+        .step(TableChange::new().add([25], timed_row("a", 9, Some(102))))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![25], vec![], vec![], ModifiedColumnSet::empty())
+    );
+    assert_eq!(int_vectors(&*t.result, TR)[3], cell(&[1, 2, 3, 9]));
+    let update = t.step(TableChange::new().remove([10])).unwrap();
+    assert_eq!(keys(&update.modified), vec![20, 25]);
+    assert_eq!(int_vectors(&*t.result, TR)[2], cell(&[1, 3, 9]));
+    // A window that holds no row is an empty vector.
+    let t = timed(
+        vec![op(UpdateBySpec::RollingGroup(time(-1, 3)), &["R = I"])],
+        &[],
+    );
+    assert_eq!(
+        int_vectors(&*t.result, TR),
+        vec![cell(&[2, 3]), cell(&[]), cell(&[]), cell(&[]), cell(&[])]
+    );
+}
+
+/// Behavior: the `invert` of the affected rows in
+/// io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingBase#processWindowBucketOperatorSet
+#[test]
+fn a_rolling_group_in_time_fails_on_a_row_without_a_timestamp_before_one_with() {
+    let group = || vec![op(UpdateBySpec::RollingGroup(time(2, 0)), &["R = I"])];
+    let stamps = |stamps: &[Option<i64>]| {
+        static_table(&[
+            ("I", ColumnType::Int, ints(&[1, 2, 3])),
+            ("T", ColumnType::Long, longs(stamps)),
+        ])
+    };
+    let run = |source: &Arc<dyn Table>, operations: &[UpdateByOperation]| {
+        update_by(source, operations, &[] as &[&str])
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    };
+    let refused = Err("keys argument has elements not in the rowSet".to_owned());
+    for failing in [[None, Some(1), Some(2)], [Some(1), None, Some(2)]] {
+        assert_eq!(run(&stamps(&failing), &group()), refused);
+        // The other operators have nothing against it.
+        let sum = [op(UpdateBySpec::RollingSum(time(2, 0)), &["R = I"])];
+        assert_eq!(run(&stamps(&failing), &sum), Ok(()));
+    }
+    // Rows without a timestamp after every row that has one, or nothing else, are
+    // answered, with a null and not an empty vector.
+    for answered in [[Some(1), Some(2), None], [None, None, None]] {
+        let source = stamps(&answered);
+        let result = update_by(&source, &group(), &[] as &[&str]).ok().unwrap();
+        assert_eq!(int_vectors(&*result, 2)[2], None);
+    }
+}
+
+#[test]
+fn a_rolling_group_in_time_takes_the_timestamp_column() {
+    let t = timed(
+        vec![op(UpdateBySpec::RollingGroup(time(1, 0)), &["R = T"])],
+        &[],
+    );
+    assert_eq!(
+        t.result.definition().columns()[TR].column_type,
+        ColumnType::vector(ColumnType::Long)
+    );
+}
+
+#[test]
 fn a_decreasing_timestamp_fails_the_result() {
     let em = || {
         op(
@@ -795,8 +967,13 @@ fn bad_requests_in_time_are_errors() {
 /// Rewrites the timestamps that `change` gives added rows and modified rows of `table` in
 /// column `column` so that the table's timestamps never decrease in key order: each takes
 /// a value between those of the rows around it that keep theirs, picked by the value the
-/// change had for it. Nulls stay.
-fn rising(mut change: TableChange, table: &dyn Table, column: usize) -> TableChange {
+/// change had for it. Nulls stay, unless `stamp_all`.
+fn rising(
+    mut change: TableChange,
+    table: &dyn Table,
+    column: usize,
+    stamp_all: bool,
+) -> TableChange {
     let snapshot = TableSnapshot::current(table).unwrap();
     let stamps = snapshot.columns[column]
         .as_any()
@@ -833,7 +1010,8 @@ fn rising(mut change: TableChange, table: &dyn Table, column: usize) -> TableCha
     let modified_keys: Vec<i64> = update.modified.iter().collect();
     let generated = |values: &ArrayRef, index: usize| {
         let values = values.as_any().downcast_ref::<Int64Array>().unwrap();
-        values.is_valid(index).then(|| values.value(index))
+        let value = values.is_valid(index).then(|| values.value(index));
+        value.or(stamp_all.then_some(0))
     };
     let mut new_added = vec![None; added.len()];
     let mut new_modified = vec![None; modified_keys.len()];
@@ -979,10 +1157,47 @@ fn everything_in_time() -> Vec<UpdateByOperation> {
             },
             &["Wa3 = L"],
         ),
+        op(
+            UpdateBySpec::RollingGroup(RollingWindow::ticks(2, 1)),
+            &["G8 = F"],
+        ),
+    ]
+}
+
+/// Rolling groups in time, which fail on a row without a timestamp, sharing their windows
+/// with other operators and not.
+fn groups_in_time() -> Vec<UpdateByOperation> {
+    vec![
+        op(
+            UpdateBySpec::RollingGroup(time(5, 0)),
+            &["G1 = I", "G2 = S", "G3 = T"],
+        ),
+        op(UpdateBySpec::RollingSum(time(5, 0)), &["Rs1 = I"]),
+        op(UpdateBySpec::RollingGroup(time(-2, 6)), &["G4 = D"]),
+        op(
+            UpdateBySpec::RollingGroup(time(4, 4)),
+            &["G5 = X", "G6 = B"],
+        ),
+        op(UpdateBySpec::RollingGroup(time(0, 0)), &["G7 = L"]),
+        op(UpdateBySpec::RollingCount(time(0, 0)), &["Rc1 = L"]),
     ]
 }
 
 fn random_updates_in_time(by: &'static [&'static str]) {
+    random_updates_with(by, everything_in_time, Some(2));
+}
+
+fn random_updates_of_groups_in_time(by: &'static [&'static str]) {
+    random_updates_with(by, groups_in_time, None);
+}
+
+/// Random updates of a table with a timestamp column `T`, which has no timestamp in the
+/// row at `unstamped` and in some of the rows that come, or in none.
+fn random_updates_with(
+    by: &'static [&'static str],
+    operations: fn() -> Vec<UpdateByOperation>,
+    unstamped: Option<usize>,
+) {
     let types = [
         ("K", ColumnType::String),
         ("B", ColumnType::Boolean),
@@ -1004,13 +1219,18 @@ fn random_updates_in_time(by: &'static [&'static str]) {
             .iter()
             .map(|(name, column_type)| (*name, column_type.clone(), random.values(column_type, 6)))
             .collect();
-        columns[t_index].2 = longs(&[Some(0), Some(3), None, Some(3), Some(7), Some(12)]);
+        let mut stamps = [Some(0), Some(3), Some(3), Some(3), Some(7), Some(12)];
+        if let Some(row) = unstamped {
+            stamps[row] = None;
+        }
+        columns[t_index].2 = longs(&stamps);
         let t = Ticking::new([0, 2, 4, 6, 8, 10], &columns, move |source| {
-            update_by(source, &everything_in_time(), by).unwrap()
+            update_by(source, &operations(), by).unwrap()
         });
         for _ in 0..30 {
             let table = t.script.table();
-            let change = rising(random.next_change(&*table, 5), &*table, t_index);
+            let change = random.next_change(&*table, 5);
+            let change = rising(change, &*table, t_index, unstamped.is_none());
             t.step(change);
         }
     }
@@ -1024,4 +1244,14 @@ fn random_updates_in_time_match_a_recompute_without_buckets() {
 #[test]
 fn random_updates_in_time_match_a_recompute_with_buckets() {
     random_updates_in_time(&["K"]);
+}
+
+#[test]
+fn random_updates_of_groups_in_time_match_a_recompute_without_buckets() {
+    random_updates_of_groups_in_time(&[]);
+}
+
+#[test]
+fn random_updates_of_groups_in_time_match_a_recompute_with_buckets() {
+    random_updates_of_groups_in_time(&["K"]);
 }
