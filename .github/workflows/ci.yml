@@ -9,6 +9,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+# The repository is public, so anyone can open a pull request from a fork. No job needs to
+# write, and no job uses a secret: the token is read-only.
+permissions:
+  contents: read
+
 # A new push to a pull request replaces its run. Runs on main finish, so that every commit
 # there, each merged pull request among them, keeps its own result. Their group is the
 # commit, not the branch: a group holds one waiting run, and a newer one would replace it.
