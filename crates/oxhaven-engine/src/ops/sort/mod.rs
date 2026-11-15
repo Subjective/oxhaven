@@ -19,6 +19,7 @@ pub(crate) mod testing;
 mod tests;
 
 use crate::ops::merge::positional;
+use crate::table::{memoized, CopyType};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use std::fmt;
@@ -124,11 +125,13 @@ impl From<TableFailure> for SortError {
 
 /// The rows of `parent` ordered by `columns`: the first column decides, later columns break
 /// ties, and rows equal in every column keep the parent's order, initially and after every
-/// update. With no columns the result is `parent` itself.
+/// update. With no columns the result is `parent` itself, and so it is for one column that
+/// `parent` is the result of a sort by, in the same direction.
 ///
-/// The result of sorting a static table is flat, or `parent` itself when its rows are
-/// already in order. The result of sorting a refreshing table is not flat, except for a
-/// blink table, whose sort is the sorted rows of each cycle.
+/// The result of sorting a static table is flat, or, when its rows are already in order,
+/// a copy of `parent` with its row keys and attributes. The result of sorting a refreshing
+/// table is not flat, except for a blink table, whose sort is the sorted rows of each
+/// cycle. The sort of a copy is a copy, with the attributes Java copies for a sort.
 ///
 /// # Panics
 /// With `unported!` for an absolute sort of a `Char` column.
@@ -148,7 +151,8 @@ pub fn sort(parent: &Arc<dyn Table>, columns: &[SortColumn]) -> Result<Arc<dyn T
 pub fn reverse(parent: &Arc<dyn Table>) -> Result<Arc<dyn Table>, SortError> {
     let mut attributes = TableAttributes::default();
     attributes.blink = parent.attributes().blink;
-    Ok(positional(parent, true, attributes, false)?)
+    let result = positional(parent, true, attributes, false)?;
+    Ok(memoized(parent, CopyType::Reverse, false, result)?)
 }
 
 /// The first `size` rows of `parent`, or all of them if it has fewer.

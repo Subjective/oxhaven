@@ -17,8 +17,8 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, ints, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
-    TableChange,
+    at_least_for, definition, ints, strings, test_seeds, ConsistencyChecker, RandomUpdates,
+    Recorder, ScriptedTable, TableChange,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -831,7 +831,7 @@ fn random_updates_match_the_static_path_and_the_model() {
     ];
     let key_sets: [&[&str]; 5] = [&["G"], &["S", "Z"], &["D"], &["Z", "G", "S"], &[]];
     let mut updates = 0;
-    for seed in 0..90 {
+    for seed in test_seeds(0..90) {
         let graph = graph();
         let mut random = RandomUpdates::new(seed);
         // Which tables tick: both, the left one, the set.
@@ -920,5 +920,5 @@ fn random_updates_match_the_static_path_and_the_model() {
         }
         updates += cases.iter().map(|case| case.1.updates_seen()).sum::<u64>();
     }
-    assert!(updates > 5000, "{updates} updates");
+    assert!(updates > at_least_for(5000, 0..90), "{updates} updates");
 }

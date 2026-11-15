@@ -90,6 +90,23 @@ the differential tests decide. When the two conflict on results, `PARITY.md` win
 
 You own your task until its pull request is green: watch CI and fix your own failures.
 
+### Seed budget
+
+Randomized tests take their seeds from `oxhaven_testkit::test_seeds`, and scale any floor on the
+work they did with `at_least_for`. The environment variable `OXHAVEN_TEST_SEEDS` sets how many
+seeds run:
+
+- unset or `quick`: the first fifth of each range, and at least two seeds. This is what
+  `cargo test` and the `rust` job of a pull request run.
+- `full`: every seed. The `nightly` workflow (`.github/workflows/nightly.yml`) runs
+  `OXHAVEN_TEST_SEEDS=full cargo test --workspace` on `main` every day, and on demand from the
+  Actions tab.
+
+Write a new seed loop as `for seed in test_seeds(0..40)`, with the full range, never as a bare
+range and never with a smaller range to save time. Run the full budget for your crate before
+you finish a change to an incremental path: `OXHAVEN_TEST_SEEDS=full cargo test -p <crate>`.
+A seed that fails only in the nightly run is a failure like any other.
+
 There is no routine code review. A second agent audits only what the checks above cannot see:
 `unsafe` code, contract changes and oracle changes. An audit finding must come with evidence, a
 failing test or seed, and gets one round. Style and structure are not audit findings.

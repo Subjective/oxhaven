@@ -2,16 +2,32 @@ name: ci
 on:
   push:
     branches: [main]
+    # A commit that only writes the run log changes nothing these jobs check. The
+    # pull_request trigger has no filter: the required checks must report on every one.
+    paths-ignore:
+      - "runlog/**"
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+# A new push to a pull request replaces its run. Runs on main finish, so that every commit
+# there, each merged pull request among them, keeps its own result. Their group is the
+# commit, not the branch: a group holds one waiting run, and a newer one would replace it.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Line tables keep file and line in backtraces and leave out the rest of the debug info, which
+# the workspace crates would otherwise write and link on every run.
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   rust:
+    # The randomized tests run with the quick seed budget here and with every seed in
+    # nightly.yml. See "Seed budget" in PORTING.md.
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2

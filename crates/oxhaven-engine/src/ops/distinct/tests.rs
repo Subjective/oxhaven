@@ -12,8 +12,8 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
-    definition, doubles, ints, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
-    TableChange,
+    at_least_for, definition, doubles, ints, strings, test_seeds, ConsistencyChecker,
+    RandomUpdates, Recorder, ScriptedTable, TableChange,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -581,7 +581,7 @@ fn random_updates_match_the_model() {
     ];
     let key_sets: [&[&str]; 5] = [&["G"], &["S", "Z"], &["D"], &["Z", "G", "S"], &[]];
     let mut updates = 0;
-    for seed in 0..60 {
+    for seed in test_seeds(0..60) {
         let graph = graph();
         let mut random = RandomUpdates::new(seed);
         let size = if seed % 5 == 0 { 0 } else { 8 };
@@ -619,7 +619,7 @@ fn random_updates_match_the_model() {
                 .split_off(before)
                 .pop()
                 .map(|event| event.unwrap());
-            updates += usize::from(update.is_some());
+            updates += u64::from(update.is_some());
             for (result, checker, model, expected) in &mut cases {
                 if update.is_some() {
                     *expected = model.step(&*source, update.as_ref());
@@ -641,5 +641,5 @@ fn random_updates_match_the_model() {
             }
         }
     }
-    assert!(updates > 1000, "{updates} updates");
+    assert!(updates > at_least_for(1000, 0..60), "{updates} updates");
 }

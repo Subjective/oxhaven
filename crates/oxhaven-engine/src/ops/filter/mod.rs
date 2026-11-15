@@ -26,7 +26,9 @@ pub use condition::{
     Value,
 };
 
-use crate::table::{is_add_only, is_append_only, QueryTable, TableSpec};
+use crate::table::{
+    is_add_only, is_append_only, mark, marks, memoized, CopyType, QueryTable, TableSpec,
+};
 use filters::{FilterSpec, Resolved};
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::RowSet;
@@ -268,9 +270,25 @@ pub(crate) fn where_attributes(parent: &dyn Table) -> TableAttributes {
     attributes
 }
 
+/// Whether Java memoizes the result of a `where` with this filter: a match filter and a
+/// pattern filter, and a conjunction or disjunction of those. A match that Java hands on
+/// to a formula is a formula here, and neither that nor a range filter is memoized.
+///
+/// Behavior: the `canMemoize` of io.deephaven.engine.table.impl.select.MatchFilter,
+/// `WhereFilterPatternImpl` and `ComposedFilter`, and the default in `WhereFilter`
+fn is_memoized(filter: &Resolved) -> bool {
+    match filter {
+        Resolved::Match { .. } | Resolved::Pattern { .. } => true,
+        Resolved::Range { .. } | Resolved::Condition { .. } => false,
+        Resolved::And(parts) | Resolved::Or(parts) => parts.iter().all(is_memoized),
+    }
+}
+
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#whereInternal. The result has the
 /// parent's column sources, the attributes of [`where_attributes`], and the parent's input
-/// table (`INPUT_TABLE_ATTRIBUTE` is copied for `CopyAttributeOperation.Filter`).
+/// table (`INPUT_TABLE_ATTRIBUTE` is copied for `CopyAttributeOperation.Filter`), and it
+/// is sorted by the columns its parent is. Asked of a copy, with filters that Java
+/// memoizes, the answer is a copy: see [`memoized`].
 fn where_resolved(
     parent: &Arc<dyn Table>,
     filters: Vec<Resolved>,
@@ -286,6 +304,7 @@ fn where_resolved(
     if flat.is_empty() {
         return Ok(parent.clone());
     }
+    let is_memoized = flat.iter().all(is_memoized);
     let mut columns = BTreeSet::new();
     let mut reads_arrays = false;
     for filter in &flat {
@@ -310,7 +329,11 @@ fn where_resolved(
             operator.on_update(result, upstream)
         }))
     })?;
-    Ok(result)
+    mark(&result, CopyType::Filter.sort_marks(&marks(&**parent)));
+    if !is_memoized {
+        return Ok(result);
+    }
+    Ok(memoized(parent, CopyType::Filter, false, result)?)
 }
 
 fn where_specs(

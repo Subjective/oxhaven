@@ -23,6 +23,7 @@
 
 pub(crate) mod eval;
 mod names;
+pub(crate) mod vectors;
 
 use crate::types::Numeric;
 use oxhaven_contracts::expr::{BinaryOp, FormulaError, Literal, UnaryOp};
@@ -299,6 +300,8 @@ pub(crate) enum Kernel {
     TimeOrder(TimeOrder),
     InstantLowerBin,
     InstantUpperBin,
+    /// A function or method of a vector or an array.
+    Vector(vectors::VectorFn),
 }
 
 /// A call to an evaluated function.
@@ -418,6 +421,9 @@ pub(crate) fn resolve(
             no_overload()
         });
     };
+    if types.iter().any(|t| t.list_element().is_some()) {
+        return vectors::resolve(name, &types);
+    }
     let call = |kernel: Kernel, parameters: Vec<ColumnType>, result: ColumnType| {
         Ok(Resolved::Call(Call {
             kernel,

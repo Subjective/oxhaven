@@ -24,6 +24,7 @@
 //! `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
 //! `DeferredViewTable`, which serves source tables that are not in memory.
 
+mod array_formula;
 mod materialize;
 mod plan;
 mod sources;
@@ -31,8 +32,9 @@ mod sources;
 #[cfg(test)]
 mod tests;
 
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
+pub use array_formula::ArrayFormula;
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -280,7 +282,7 @@ pub fn drop_columns<S: AsRef<str>>(
             },
         ))
     })?;
-    Ok(table)
+    Ok(memoized(parent, CopyType::DropColumns, false, table)?)
 }
 
 /// A result that has the parent's rows.
@@ -356,7 +358,16 @@ fn computed_on_read<S: AsRef<str>>(
         }
         Ok((result, passes_changes_through(&plan, flavor)))
     })?;
-    Ok(table)
+    let copy_type = match flavor {
+        Flavor::View => CopyType::View,
+        Flavor::UpdateView => CopyType::UpdateView,
+        // Behavior: QueryTable#lazyUpdate does not memoize its result
+        _ => return Ok(table),
+    };
+    if !plan.is_memoized() {
+        return Ok(table);
+    }
+    Ok(memoized(parent, copy_type, false, table)?)
 }
 
 /// The operator of a result that stores nothing: the parent's change is the result's, with
