@@ -811,6 +811,82 @@ async fn a_malformed_batch_is_refused_as_a_whole() {
     assert_eq!(refused.code(), Code::FailedPrecondition);
 }
 
+/// The status of a definition of an export that is already defined.
+fn assert_defined_twice(status: &Status) {
+    assert_eq!(status.code(), Code::InvalidArgument);
+    let id = status
+        .message()
+        .strip_prefix("Details Logged w/ID '")
+        .and_then(|rest| rest.strip_suffix('\''))
+        .unwrap_or_else(|| panic!("not an error id: {}", status.message()));
+    assert_eq!(id.len(), 36, "{id}");
+}
+
+#[tokio::test]
+async fn an_export_id_is_defined_once_by_a_call_or_by_a_batch() {
+    let mut c = Connected::start().await;
+    let request = c.auth(empty(ticket(1), 3));
+    c.client.empty_table(request).await.unwrap();
+
+    // one-shot, by the same operation and by another
+    let request = c.auth(empty(ticket(1), 4));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    let request = c.auth(FetchTableRequest {
+        source_id: by_ticket(1),
+        result_id: ticket(1),
+    });
+    assert_defined_twice(&c.client.fetch_table(request).await.unwrap_err());
+    assert_eq!(*c.table(1).row_set(), RowSet::flat(3));
+
+    // in a batch the id is refused before any operation runs, wherever it stands, and
+    // the ids named before it are taken and never resolve
+    let refused = c
+        .batch(vec![
+            Op::EmptyTable(empty(ticket(2), 2)),
+            Op::EmptyTable(empty(ticket(1), 4)),
+            Op::EmptyTable(empty(ticket(3), 2)),
+        ])
+        .await
+        .unwrap_err();
+    assert_defined_twice(&refused);
+    let session = c.server.session(&c.bearer);
+    assert_eq!(session.get_export(2).unwrap().state(), ExportState::Unknown);
+    let request = c.auth(empty(ticket(2), 7));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    // the one named after it was not reached
+    let request = c.auth(empty(ticket(3), 7));
+    c.client.empty_table(request).await.unwrap();
+
+    // one id twice in one batch
+    let refused = c
+        .batch(vec![
+            Op::EmptyTable(empty(ticket(5), 1)),
+            fetch(by_offset(0), None),
+            Op::EmptyTable(empty(ticket(5), 2)),
+        ])
+        .await
+        .unwrap_err();
+    assert_defined_twice(&refused);
+    assert_eq!(session.get_export(5).unwrap().state(), ExportState::Unknown);
+
+    // an id whose work failed is defined all the same
+    let request = c.auth(SelectOrUpdateRequest {
+        result_id: ticket(6),
+        source_id: by_ticket(1),
+        column_specs: vec!["X = Nope + 1".to_string()],
+    });
+    let failed = c.client.update(request).await.unwrap_err();
+    assert_eq!(failed.code(), Code::InvalidArgument);
+    let request = c.auth(empty(ticket(6), 1));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    // one whose request was refused is not
+    let request = c.auth(empty(ticket(7), -1));
+    let refused = c.client.empty_table(request).await.unwrap_err();
+    assert_eq!(refused.message(), "Size must be greater than zero");
+    let request = c.auth(empty(ticket(7), 1));
+    c.client.empty_table(request).await.unwrap();
+}
+
 #[tokio::test]
 async fn a_failed_batch_operation_fails_its_dependents_and_ends_the_stream_with_its_status() {
     let mut c = Connected::start().await;
