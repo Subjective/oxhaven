@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update-by operation failed. : io.deephaven.engine.table.impl.locations.TableDataException: Encountered NaN value during Exponential Moving output processing",
+      "operation": "table update-by operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build an OperationControl object. : AttributeError: 'str' object has no attribute 'value'",
+      "operation": "failed to build an OperationControl object."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a time-decay EMA UpdateByOperation. : java.time.format.DateTimeParseException: Text cannot be parsed to a Duration",
+      "operation": "failed to create a time-decay EMA UpdateByOperation."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a time-decay EMS UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: WindowScale.timestampCol() must not be an empty string",
+      "operation": "failed to create a time-decay EMS UpdateByOperation."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a tick-decay EM Min UpdateByOperation. : RuntimeError: no matching Java method overloads found",
+      "operation": "failed to create a tick-decay EM Min UpdateByOperation."
+    }
+  ]
+}

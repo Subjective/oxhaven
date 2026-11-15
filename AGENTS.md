@@ -18,8 +18,9 @@ Before changing anything, read, in this order:
 | `crates/oxhaven-testkit` | Reference implementations of the contracts, self-consistency checker |
 | `crates/oxhaven-rowset` | Row sets, shift data, tracking row sets |
 | `crates/oxhaven-column` | Arrow-backed column sources |
-| `crates/oxhaven-engine` | Update graph, tables, table operations |
+| `crates/oxhaven-engine` | Update graph, tables, table operations, tables read from storage |
 | `crates/oxhaven-expr` | Formula parser, type checker, evaluator |
+| `crates/oxhaven-parquet` | Parquet files as tables |
 | `crates/oxhaven-proto` | Generated protocol types |
 | `crates/oxhaven-server` | gRPC services, sessions, Barrage |
 | `oracle/` | Differential harness, fuzzer, recorded Java results. Protected. |

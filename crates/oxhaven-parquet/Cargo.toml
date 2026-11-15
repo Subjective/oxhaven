@@ -1,0 +1,16 @@
+[package]
+name = "oxhaven-parquet"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+arrow.workspace = true
+oxhaven-column = { path = "../oxhaven-column" }
+oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-engine = { path = "../oxhaven-engine" }
+parquet.workspace = true
+serde_json.workspace = true

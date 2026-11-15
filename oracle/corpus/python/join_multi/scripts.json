@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build a MultiJoinTable object. : deephaven.dherror.DHError: on parameter is not permitted when MultiJoinInput objects are provided. : on parameter is not permitted when MultiJoinInput objects are provided.",
+      "operation": "failed to build a MultiJoinTable object."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build a MultiJoinTable object. : deephaven.dherror.DHError: input must be a Table, a sequence of Tables, a MultiJoinInput, or a sequence of MultiJoinInputs. : input must be a Table, a sequence of Tables, a MultiJoinInput, or a sequence of MultiJoinInputs.",
+      "operation": "failed to build a MultiJoinTable object."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build a MultiJoinTable object. : RuntimeError: ambiguous Java method call, too many matching method overloads found",
+      "operation": "failed to build a MultiJoinTable object."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build a MultiJoinTable object. : RuntimeError: java.lang.IllegalArgumentException: Column A defined in table 0 and table 1",
+      "operation": "failed to build a MultiJoinTable object."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to build a MultiJoinInput object. : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"K,A\"",
+      "operation": "failed to build a MultiJoinInput object."
+    },
+    {
+      "step": 6,
+      "outcome": "ok"
+    }
+  ]
+}

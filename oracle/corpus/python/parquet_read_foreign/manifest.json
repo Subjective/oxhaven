@@ -1,0 +1,62 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_foreign",
+  "scenario_sha256": "ff9088e3eea25f3bda82bf714d1f815ab55547f459f9d7e8e97255b9e987c26a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "foreign",
+      "file": "step000.foreign.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "middle",
+      "file": "step000.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "copied",
+      "file": "step000.copied.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "int96",
+      "file": "step000.int96.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "signed",
+      "file": "step000.signed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "small",
+      "file": "step000.small.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "gzip_pages",
+      "file": "step000.gzip_pages.arrow",
+      "rows": 20
+    },
+    {
+      "step": 0,
+      "table": "lz4_pages",
+      "file": "step000.lz4_pages.arrow",
+      "rows": 20
+    }
+  ]
+}

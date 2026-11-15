@@ -1,0 +1,103 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : java.nio.file.NoSuchFileException: /tmp/oxhaven_parquet_read_errors/flat/nope.parquet",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : java.nio.file.NoSuchFileException: /tmp/oxhaven_parquet_read_errors/nope",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Unable to infer schema for a partitioned parquet table when there are no initial parquet files",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Unable to have a refreshing single parquet file",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Parquet file must end in .parquet, found: /tmp/oxhaven_parquet_read_errors/flat/",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : java.nio.file.NotDirectoryException: /tmp/oxhaven_parquet_read_errors/flat/part0.parquet",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: io.deephaven.engine.table.impl.locations.TableDataException: Parquet metadata file file:/tmp/oxhaven_parquet_read_errors/flat/_metadata does not exist",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : ValueError: must specify the parquet column name for read.",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Cannot add new mapping from parquetColumnName=X to columnName=B: already mapped to columnName=A",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Supplied ColumnDefinitions include duplicate names [P]",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.UnsupportedOperationException: Encountered unsupported multi-column field V: found columns V/key_value/key and V/key_value/value",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.UnsupportedOperationException: Unsupported maximum repetition level 2 in column V/list/element/list/element",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: Cannot convert empty source to URI",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table select operation failed. : io.deephaven.UncheckedDeephavenException: Unsigned long value 9223372036854775808 is too large to be represented as a long",
+      "operation": "table select operation failed."
+    }
+  ]
+}

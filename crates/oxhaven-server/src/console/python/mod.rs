@@ -15,10 +15,12 @@
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
 
+mod checks;
 #[cfg(test)]
 mod column_tests;
 pub mod env;
 mod ops;
+mod parquet;
 #[cfg(test)]
 mod tests;
 
@@ -358,7 +360,9 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(column_definitions, &native)?)?;
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         ops::register(&native)?;
+        checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");
