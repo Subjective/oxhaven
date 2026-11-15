@@ -113,7 +113,7 @@ arrow_typed = to_table(pd.DataFrame({
     "String": pd.Series(["a", NA, "c"], dtype=pd.ArrowDtype(pa.string())),
     "Naive": pd.Series([pd.Timestamp("2024-01-01"), NA, pd.Timestamp("2024-01-02")],
                        dtype=pd.ArrowDtype(pa.timestamp("ns"))),
-    "List": pd.Series([[1, 2], None, []], dtype=pd.ArrowDtype(pa.list_(pa.int32()))),
+    "List": pd.Series([[1, 2], None, []], dtype=pd.ArrowDtype(pa.list_(pa.field("", pa.int32())))),
     "Plain": [1.5, 2.5, 3.5],
 }))
 renamed = to_table(pd.DataFrame({"a b": [1], "A-B.c": [2.5], "x": ["y"]}))

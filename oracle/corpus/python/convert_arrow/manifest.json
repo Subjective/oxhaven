@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "convert_arrow",
-  "scenario_sha256": "22d7765f58fec87bb4fc7eeb4d33a56e73339a43be84d2f6a536dcfad1fa7281",
+  "scenario_sha256": "88fb32682101cdd8e00b9177f76bdaf5baa0cf5772e3c7e539ecaf2c067126be",
   "reference": "42.9",
   "entries": [
     {

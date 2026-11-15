@@ -51,13 +51,23 @@ from_arrow = to_table(pa.table({
     "Naive": pa.array([1, None, 1704067200000000000], pa.timestamp("ns")),
     "Utc": pa.array([1, None, 1704067200000000000], pa.timestamp("ns", tz="UTC")),
 }))
+
+
+def elements(kind):
+    # the element field named as Java names it
+    return pa.list_(pa.field("", kind))
+
+
 lists = to_table(pa.table({
-    "Ints": pa.array([[1, None], None, []], pa.list_(pa.int32())),
-    "Strings": pa.array([["a", None], None, ["b"]], pa.list_(pa.string())),
-    "Doubles": pa.array([[1.5], None, [2.5, 3.5]], pa.list_(pa.float64())),
-    "Bools": pa.array([[True, None], None, [False]], pa.list_(pa.bool_())),
-    "Times": pa.array([[1, None], None, [2]], pa.list_(pa.timestamp("ns", tz="UTC"))),
+    "Ints": pa.array([[1, None], None, []], elements(pa.int32())),
+    "Strings": pa.array([["a", None], None, ["b"]], elements(pa.string())),
+    "Doubles": pa.array([[1.5], None, [2.5, 3.5]], elements(pa.float64())),
+    "Bools": pa.array([[True, None], None, [False]], elements(pa.bool_())),
+    "Times": pa.array([[1, None], None, [2]], elements(pa.timestamp("ns", tz="UTC"))),
 }))
+# a table made from Arrow keeps the name the element field had
+named = pa.table({"X": pa.array([[1]], pa.list_(pa.field("x", pa.int32())))})
+assert str(to_arrow(to_table(named)).schema.field("X").type) == "list<x: int32>"
 nested = pa.table({"Nested": pa.array([[[1], None], None, [[2, 3]]], pa.list_(pa.list_(pa.int32())))})
 assert to_arrow(to_table(nested)).to_pydict() == nested.to_pydict()
 letters = pa.table({"A": [1, 2, 3], "B": ["x", "y", "z"]})

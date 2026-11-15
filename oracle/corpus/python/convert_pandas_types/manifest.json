@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "convert_pandas_types",
-  "scenario_sha256": "50842df565575cb2b11f52d7cdf967416d6fed260244fae2aeeb948d60a15c7b",
+  "scenario_sha256": "57d6a44a1b6c65993bddc55e7e29bbffc1ff3cc1a2316e82c0feecbae065cd61",
   "reference": "42.9",
   "entries": [
     {
