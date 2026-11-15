@@ -97,6 +97,69 @@ impl SteppedUpdateGraph {
         self.lock.released(wait)
     }
 
+    /// Takes the shared side of the graph lock until [`SteppedUpdateGraph::release_shared`]
+    /// on the same thread: what [`UpdateGraph::with_shared_lock`] does for a closure, for a
+    /// holder that is not one, such as a `with` block of a script. Re-entrant.
+    ///
+    /// # Panics
+    /// If called from inside a cycle of this graph, where it could only wait for itself.
+    ///
+    /// Behavior: io.deephaven.engine.updategraph.UpdateGraphLock#sharedLock
+    pub fn acquire_shared(&self) {
+        assert!(
+            !self.current_thread_processes_updates(),
+            "the update graph's lock is taken from inside an update cycle"
+        );
+        self.lock.acquire_shared();
+    }
+
+    /// Gives up one hold taken with [`SteppedUpdateGraph::acquire_shared`].
+    ///
+    /// # Panics
+    /// If this thread holds neither side of the lock.
+    pub fn release_shared(&self) {
+        self.lock.release_shared();
+    }
+
+    /// Takes the exclusive side of the graph lock until
+    /// [`SteppedUpdateGraph::release_exclusive`] on the same thread: no cycle runs and no
+    /// other thread holds the lock. Re-entrant. The holder may take the shared side, so
+    /// table operations run on its thread, and a wait for a cycle
+    /// ([`UpdateGraph::run_cycle`], [`SteppedUpdateGraph::waiting_for_cycle`]) gives the
+    /// hold up and takes it again.
+    ///
+    /// # Panics
+    /// If called from inside a cycle of this graph, or by a thread that holds the shared
+    /// side and not the exclusive one: the lock cannot be upgraded, as in Java.
+    ///
+    /// Behavior: io.deephaven.engine.updategraph.UpdateGraphLock#exclusiveLock
+    pub fn acquire_exclusive(&self) {
+        assert!(
+            !self.current_thread_processes_updates(),
+            "the update graph's lock is taken from inside an update cycle"
+        );
+        self.lock.acquire_exclusive();
+    }
+
+    /// Gives up one hold taken with [`SteppedUpdateGraph::acquire_exclusive`].
+    ///
+    /// # Panics
+    /// If this thread does not hold the exclusive side.
+    pub fn release_exclusive(&self) {
+        self.lock.release_exclusive();
+    }
+
+    /// Whether this thread holds the shared side of the graph lock.
+    pub fn holds_shared(&self) -> bool {
+        self.lock.holds_shared()
+    }
+
+    /// Whether this thread holds the exclusive side of the graph lock through
+    /// [`SteppedUpdateGraph::acquire_exclusive`]. A thread that runs a cycle does not.
+    pub fn holds_exclusive(&self) -> bool {
+        self.lock.holds_exclusive()
+    }
+
     /// One cycle, on this thread.
     fn cycle(&self) {
         let _exclusive = self.lock.exclusive();
