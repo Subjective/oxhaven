@@ -7,7 +7,7 @@
 //! computed from scratch.
 
 use super::{
-    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::ops::sort::testing::{keys, shifts, static_table, Ticking};
@@ -18,6 +18,16 @@ use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{test_seeds, RandomUpdates, TableChange, TableSnapshot};
 use std::sync::Arc;
+
+/// `update_by` with the formula compiler, which the count-where operators and the rolling
+/// formula need.
+fn update_by(
+    source: &Arc<dyn Table>,
+    operations: &[UpdateByOperation],
+    by: &[&str],
+) -> Result<Arc<dyn Table>, UpdateByError> {
+    update_by_with(source, operations, by, &oxhaven_expr::Compiler)
+}
 
 fn op(spec: UpdateBySpec, columns: &[&str]) -> UpdateByOperation {
     UpdateByOperation::new(spec, columns)
@@ -348,11 +358,6 @@ fn bad_requests_are_errors() {
     assert!(refused(&[delta], &[]).contains("Can not perform"));
 }
 
-fn request(spec: UpdateBySpec) {
-    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2]))]);
-    let _ = update_by(&source, &[op(spec, &["R = I"])], &[] as &[&str]);
-}
-
 fn em() -> EmSpec {
     EmSpec {
         window: WindowScale::Ticks(5.0),
@@ -455,15 +460,510 @@ fn a_rolling_group_writes_the_rows_whose_window_holds_the_change() {
     assert_eq!(int_vectors(&*t.result, R)[2], cell(&[2, 10]));
 }
 
+fn cum_where(result: &str, filters: &[&str]) -> UpdateByOperation {
+    let spec = UpdateBySpec::CumCountWhere {
+        result_column: result.into(),
+        filters: filters.iter().map(|f| f.to_string()).collect(),
+    };
+    op(spec, &[])
+}
+
+fn rolling_where(result: &str, filters: &[&str], window: RollingWindow) -> UpdateByOperation {
+    let spec = UpdateBySpec::RollingCountWhere {
+        window,
+        result_column: result.into(),
+        filters: filters.iter().map(|f| f.to_string()).collect(),
+    };
+    op(spec, &[])
+}
+
+fn long_values(table: &dyn Table, column: usize) -> Vec<Option<i64>> {
+    let snapshot = TableSnapshot::current(table).unwrap();
+    let values = snapshot.columns[column]
+        .as_any()
+        .downcast_ref::<Int64Array>()
+        .unwrap();
+    values.iter().collect()
+}
+
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"
-)]
-fn cum_count_where_is_unported() {
-    request(UpdateBySpec::CumCountWhere {
-        result_column: "R".into(),
-        filters: vec!["I > 0".into()],
-    });
+fn a_cumulative_count_where_recomputes_from_the_first_change_on() {
+    // `I` is 1 to 5 and `D` 0.5 to 4.5: rows 20, 30 and 40 pass.
+    let t = ticking(vec![cum_where("R", &["I > 2", "D + 0 < 9"])], &[]);
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 0, 1, 2, 3].map(Some).to_vec()
+    );
+    // A row that does not pass changes no count, and the rows after it are recomputed.
+    let update = t
+        .step(TableChange::new().add([15], row("a", 0, 0.0)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (
+            vec![15],
+            vec![],
+            vec![20, 30, 40],
+            ModifiedColumnSet::of([R])
+        )
+    );
+    // A modified column of either filter recomputes from the row on; another does not.
+    let update = t
+        .step(TableChange::new().modify([10], [(1, ints(&[7]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![10, 15, 20, 30, 40]);
+    assert_eq!(update.modified_columns, ModifiedColumnSet::of([1, R]));
+    let update = t
+        .step(TableChange::new().modify([30], [(2, doubles(&[10.0]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![30, 40]);
+    assert_eq!(update.modified_columns, ModifiedColumnSet::of([2, R]));
+    let update = t
+        .step(TableChange::new().modify([10], [(0, texts(&["z"]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![10], ModifiedColumnSet::of([0]))
+    );
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 1, 1, 2, 2, 3].map(Some).to_vec()
+    );
+    let update = t.step(TableChange::new().remove([10])).unwrap();
+    assert_eq!(keys(&update.modified), vec![15, 20, 30, 40]);
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 0, 1, 1, 2].map(Some).to_vec()
+    );
+}
+
+#[test]
+fn a_cumulative_count_where_counts_within_each_bucket() {
+    let t = ticking(vec![cum_where("R", &["I > 1"])], &["K"]);
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 1, 1, 2, 2].map(Some).to_vec()
+    );
+    // Row 20 moves from bucket a to bucket b.
+    let update = t
+        .step(TableChange::new().modify([20], [(0, texts(&["b"]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![20, 30, 40]);
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 1, 2, 3, 1].map(Some).to_vec()
+    );
+}
+
+#[test]
+fn a_rolling_count_where_recomputes_the_rows_whose_window_holds_the_change() {
+    let window = RollingWindow::ticks(2, 0);
+    let t = ticking(vec![rolling_where("R", &["I > 2"], window)], &[]);
+    assert_eq!(
+        long_values(&*t.result, R),
+        [0, 0, 1, 2, 2].map(Some).to_vec()
+    );
+    let update = t
+        .step(TableChange::new().modify([10], [(1, ints(&[7]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![10, 20], ModifiedColumnSet::of([1, R]))
+    );
+    // A column the filter does not read.
+    let update = t
+        .step(TableChange::new().modify([10], [(2, doubles(&[9.0]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![10], ModifiedColumnSet::of([2]))
+    );
+    let update = t.step(TableChange::new().remove([20])).unwrap();
+    assert_eq!(keys(&update.modified), vec![30]);
+    assert_eq!(long_values(&*t.result, R), [0, 1, 2, 2].map(Some).to_vec());
+}
+
+#[test]
+fn a_rolling_count_where_in_time_has_no_count_for_a_row_without_a_timestamp() {
+    let t = timed(vec![rolling_where("R", &["I != 3"], time(1, 0))], &[]);
+    // Timestamps 100, 101, 101, 105, 110; row 20 does not pass.
+    assert_eq!(
+        long_values(&*t.result, TR),
+        [1, 2, 2, 1, 1].map(Some).to_vec()
+    );
+    let update = t
+        .step(TableChange::new().modify([10], [(3, longs(&[None]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![10, 20]);
+    assert_eq!(
+        long_values(&*t.result, TR),
+        vec![Some(1), None, Some(1), Some(1), Some(1)]
+    );
+}
+
+#[test]
+fn a_count_where_filter_that_fails_on_a_row_fails_the_result() {
+    // A formula that is null for a row.
+    let filter = "I == 9 ? (Boolean)null : true";
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 9]))]);
+    assert!(matches!(
+        update_by(&source, &[cum_where("R", &[filter])], &[]),
+        Err(UpdateByError::Failed(_))
+    ));
+    // A match that became a formula fails on the first rows, in Java's copy of it.
+    match update_by(&source, &[cum_where("R", &["I == I"])], &[]) {
+        Err(UpdateByError::Failed(failure)) => assert_eq!(
+            failure.message,
+            "Cannot read the array length because \"keys\" is null"
+        ),
+        other => panic!("{:?}", other.map(|_| ())),
+    }
+}
+
+#[test]
+fn count_where_requests_java_refuses_are_errors() {
+    let window = || RollingWindow::ticks(2, 0);
+    for (operations, message) in [
+        (vec![cum_where("R", &["Nope > 3"])], "Nope"),
+        (vec![cum_where("R", &["I + 1"])], "boolean required"),
+        (
+            vec![cum_where("R", &["i > 3"])],
+            "UpdateBy CountWhere operator does not support refreshing filters",
+        ),
+        (
+            vec![rolling_where("R", &["I > 0", "I + k > 3"], window())],
+            "UpdateBy CountWhere operator does not support refreshing filters",
+        ),
+        (vec![cum_where("R", &["I_.size() > 3"])], "I_"),
+        (
+            vec![cum_where("R", &["I > 0"]), cum_where("R", &["I > 1"])],
+            "resulting column names must be unique {R}",
+        ),
+        (
+            vec![rolling_where("R", &["I > 0"], RollingWindow::ticks(-3, 2))],
+            "non-negative",
+        ),
+    ] {
+        let refused = refused(&operations, &[]);
+        assert!(refused.contains(message), "{refused}");
+    }
+    // A window that holds no row fails Java's assertion.
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2]))]);
+    let empty = rolling_where("R", &["I > 0"], RollingWindow::ticks(0, 0));
+    match update_by(&source, &[empty], &[]) {
+        Err(UpdateByError::Failed(failure)) => assert_eq!(
+            failure.message,
+            "Assertion failed: asserted buffer.size() >= 1, instead buffer.size() == 0."
+        ),
+        other => panic!("{:?}", other.map(|_| ())),
+    }
+    // Without a compiler for the filters.
+    assert!(matches!(
+        super::update_by(&source, &[cum_where("R", &["I > 0"])], &[] as &[&str]),
+        Err(UpdateByError::InvalidArgument(_))
+    ));
+}
+
+/// A rolling formula of the token `x` over each of `columns`.
+fn formula(formula: &str, columns: &[&str], window: RollingWindow) -> UpdateByOperation {
+    let spec = UpdateBySpec::RollingFormula {
+        window,
+        formula: formula.into(),
+        param_token: Some("x".into()),
+    };
+    op(spec, columns)
+}
+
+/// A rolling formula `Result = expression` over the columns of the table.
+fn formula_of(formula: &str, window: RollingWindow) -> UpdateByOperation {
+    let spec = UpdateBySpec::RollingFormula {
+        window,
+        formula: formula.into(),
+        param_token: None,
+    };
+    op(spec, &[])
+}
+
+#[test]
+fn a_rolling_formula_recomputes_the_rows_whose_window_holds_a_change_it_reads() {
+    // `I` is 1 to 5 and `D` 0.5 to 4.5.
+    let window = || RollingWindow::ticks(2, 0);
+    let t = ticking(
+        vec![
+            formula("sum(x)", &["R = I"], window()),
+            formula_of("M = sum(I) + len(D)", window()),
+        ],
+        &[],
+    );
+    assert_eq!(
+        long_values(&*t.result, R),
+        [1, 3, 5, 7, 9].map(Some).to_vec()
+    );
+    assert_eq!(
+        long_values(&*t.result, R + 1),
+        [2, 5, 7, 9, 11].map(Some).to_vec()
+    );
+    // A change of `I` recomputes both in the windows that hold the row.
+    let update = t
+        .step(TableChange::new().modify([20], [(1, ints(&[10]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (
+            vec![],
+            vec![],
+            vec![20, 30],
+            ModifiedColumnSet::of([1, R, R + 1])
+        )
+    );
+    assert_eq!(
+        long_values(&*t.result, R),
+        [1, 3, 12, 14, 9].map(Some).to_vec()
+    );
+    // A change of `D` recomputes only the formula that reads it, and one of `K` neither.
+    let update = t
+        .step(TableChange::new().modify([30], [(2, doubles(&[7.0]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![30, 40]);
+    assert_eq!(update.modified_columns, ModifiedColumnSet::of([2, R + 1]));
+    let update = t
+        .step(TableChange::new().modify([30], [(0, texts(&["z"]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![30], ModifiedColumnSet::of([0]))
+    );
+}
+
+fn text_values(table: &dyn Table, column: &str) -> Vec<Option<String>> {
+    let index = table.definition().index_of(column).unwrap();
+    let snapshot = TableSnapshot::current(table).unwrap();
+    let values = snapshot.columns[index]
+        .as_any()
+        .downcast_ref::<StringArray>()
+        .unwrap();
+    values.iter().map(|v| v.map(String::from)).collect()
+}
+
+#[test]
+fn a_bucket_column_is_a_scalar_in_a_formula_without_a_token() {
+    let source = static_table(&[
+        ("K", ColumnType::String, texts(&["a", "b", "a"])),
+        ("S", ColumnType::String, texts(&["x", "y", "x"])),
+        ("I", ColumnType::Int, ints(&[1, 2, 3])),
+    ]);
+    let window = || RollingWindow::ticks(2, 0);
+    let result = update_by(&source, &[formula_of("R = K + sum(I)", window())], &["K"]).unwrap();
+    let texts = |values: [&str; 3]| values.map(|v| Some(v.to_string())).to_vec();
+    assert_eq!(text_values(&*result, "R"), texts(["a1", "b2", "a4"]));
+    // Without buckets `K` is the vector of the window.
+    let result = update_by(
+        &source,
+        &[formula_of("R = countObj(K) + sum(I)", window())],
+        &[],
+    )
+    .unwrap();
+    let index = result.definition().index_of("R").unwrap();
+    assert_eq!(long_values(&*result, index), [2, 5, 7].map(Some).to_vec());
+    // Java hands the formula the value of the first bucket column for the one it reads.
+    let result = update_by(
+        &source,
+        &[formula_of("R = K + sum(I)", window())],
+        &["S", "K"],
+    )
+    .unwrap();
+    assert_eq!(text_values(&*result, "R"), texts(["x1", "y2", "x4"]));
+}
+
+#[test]
+fn rolling_formula_requests_java_refuses_are_errors() {
+    let window = || RollingWindow::ticks(2, 0);
+    for (operations, message) in [
+        (vec![formula("sum(x) + I", &["R = I"], window())], "I"),
+        (vec![formula("nope(x)", &["R = I"], window())], "nope"),
+        (vec![formula("sum(x)", &["R = K"], window())], "sum"),
+        (vec![formula("sum(x)", &["R = Nope"], window())], "Nope"),
+        (vec![formula_of("R = sum(I) + i", window())], "i, ii, k"),
+        (vec![formula_of("R = sum(Nope)", window())], "Nope"),
+        (
+            vec![formula_of("R == sum(I)", window())],
+            "Unable to parse formula 'R == sum(I)', expected form '<newColumn>=<expression>'",
+        ),
+        (
+            vec![formula_of("1R = sum(I)", window())],
+            "Invalid column name \"1R\"",
+        ),
+        (
+            vec![
+                formula_of("R = sum(I)", window()),
+                formula("sum(x)", &["R = I"], window()),
+            ],
+            "resulting column names must be unique {R}",
+        ),
+        (
+            vec![formula_of("R = sum(I)", RollingWindow::ticks(-3, 2))],
+            "non-negative",
+        ),
+    ] {
+        let refused = refused(&operations, &[]);
+        assert!(refused.contains(message), "{refused}");
+    }
+    let refused = refused(&[formula_of("R = sum(K)", window())], &["K"]);
+    assert!(refused.contains("sum"), "{refused}");
+    // Without a compiler for the formula.
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2]))]);
+    for operation in [
+        formula("sum(x)", &["R = I"], window()),
+        formula_of("R = sum(I)", window()),
+    ] {
+        assert!(matches!(
+            super::update_by(&source, &[operation], &[] as &[&str]),
+            Err(UpdateByError::InvalidArgument(_))
+        ));
+    }
+}
+
+#[test]
+fn a_rolling_formula_fails_where_java_does() {
+    let source = static_table(&[
+        ("I", ColumnType::Int, ints(&[1, 2])),
+        ("L", ColumnType::Long, longs(&[Some(1), Some(2)])),
+        ("S", ColumnType::String, texts(&["a", "b"])),
+        ("B", ColumnType::Boolean, random_free_booleans()),
+    ]);
+    let empty = || RollingWindow::ticks(0, 0);
+    let window = || RollingWindow::ticks(2, 0);
+    for (operation, message) in [
+        // A window that holds no row fails Java's assertion, or its buffer.
+        (
+            formula("sum(x)", &["R = I"], empty()),
+            "Assertion failed: asserted intWindowValues.size() >= 1, instead intWindowValues.size() == 0.",
+        ),
+        (
+            formula("sum(x)", &["R = L"], empty()),
+            "Assertion failed: asserted longWindowValues.size() >= 1, instead longWindowValues.size() == 0.",
+        ),
+        (
+            formula("countObj(x)", &["R = S"], empty()),
+            "Assertion failed: asserted charWindowValues.size() >= 1, instead charWindowValues.size() == 0.",
+        ),
+        (
+            formula_of("R = sum(I)", empty()),
+            "java.util.NoSuchElementException",
+        ),
+        // `len` of a window of objects, and a window of a `Boolean` column without a token.
+        (
+            formula("len(x)", &["R = S"], window()),
+            "class [Ljava.lang.Object; cannot be cast to class [Ljava.lang.String;",
+        ),
+        (
+            formula_of("R = countObj(B)", window()),
+            "class io.deephaven.chunk.ResettableWritableLongChunk cannot be cast to class \
+             io.deephaven.chunk.ObjectChunk",
+        ),
+        // A `Boolean` result over a column of objects.
+        (
+            formula("x.isEmpty()", &["R = S"], window()),
+            "class java.lang.Boolean cannot be cast to class java.lang.Byte",
+        ),
+    ] {
+        match update_by(&source, &[operation], &[]) {
+            Err(UpdateByError::Failed(failure)) => assert_eq!(failure.message, message),
+            other => panic!("{:?}", other.map(|_| ())),
+        }
+    }
+    // A formula that reads no column has no window to fail.
+    let constant = update_by(&source, &[formula_of("R = 7", empty())], &[]).unwrap();
+    let index = constant.definition().index_of("R").unwrap();
+    assert_eq!(
+        constant.definition().columns()[index].column_type,
+        ColumnType::Int
+    );
+}
+
+fn formula_request(operation: UpdateByOperation, by: &[&str]) {
+    let source = static_table(&[
+        ("I", ColumnType::Int, ints(&[1, 2])),
+        ("L", ColumnType::Long, longs(&[Some(1), Some(2)])),
+        ("B", ColumnType::Boolean, random_free_booleans()),
+    ]);
+    let _ = update_by(&source, &[operation], by);
+}
+
+#[test]
+#[should_panic(expected = "outside a window Java throws NoSuchElementException")]
+fn an_element_of_a_window_is_unported() {
+    formula_request(
+        formula("x.get(0)", &["R = I"], RollingWindow::ticks(2, 0)),
+        &[],
+    );
+}
+
+#[test]
+#[should_panic(expected = "which are 0 in Java")]
+fn a_row_variable_in_a_formula_with_a_token_is_unported() {
+    formula_request(
+        formula("sum(x) + i", &["R = I"], RollingWindow::ticks(2, 0)),
+        &[],
+    );
+}
+
+#[test]
+#[should_panic(expected = "a rolling formula that reads two bucket columns")]
+fn a_formula_of_two_bucket_columns_is_unported() {
+    formula_request(
+        formula_of("R = I + L", RollingWindow::ticks(2, 0)),
+        &["I", "L"],
+    );
+}
+
+#[test]
+#[should_panic(expected = "a rolling formula whose result is of type Vector(Boolean)")]
+fn a_vector_of_booleans_as_the_result_is_unported() {
+    formula_request(formula("x", &["R = B"], RollingWindow::ticks(2, 0)), &[]);
+}
+
+fn count_where_request(filters: &[&str]) {
+    let source = static_table(&[
+        ("I", ColumnType::Int, ints(&[1, 2])),
+        ("L", ColumnType::Long, longs(&[Some(1), Some(2)])),
+        ("B", ColumnType::Boolean, random_free_booleans()),
+    ]);
+    let _ = update_by(&source, &[cum_where("R", filters)], &[]);
+}
+
+fn random_free_booleans() -> ArrayRef {
+    Arc::new(arrow::array::BooleanArray::from(vec![true, false]))
+}
+
+#[test]
+#[should_panic(expected = "a count-where without filters")]
+fn a_count_where_without_filters_is_unported() {
+    count_where_request(&[]);
+}
+
+#[test]
+#[should_panic(expected = "a count-where filter with i, ii, k or a column array")]
+fn a_comparison_with_a_row_variable_is_unported() {
+    count_where_request(&["I > ii"]);
+}
+
+#[test]
+#[should_panic(expected = "the Java server shuts down")]
+fn a_comparison_of_columns_before_a_boolean_filter_is_unported() {
+    count_where_request(&["I < L", "B == true"]);
+}
+
+#[test]
+fn a_comparison_of_columns_after_a_boolean_filter_is_answered() {
+    let source = static_table(&[
+        ("I", ColumnType::Int, ints(&[1, 2])),
+        ("L", ColumnType::Long, longs(&[Some(5), Some(0)])),
+        ("B", ColumnType::Boolean, random_free_booleans()),
+    ]);
+    let filters = ["B != null", "I < L"];
+    let table = update_by(&source, &[cum_where("R", &filters)], &[]).unwrap();
+    assert_eq!(long_values(&*table, 3), vec![Some(1), Some(1)]);
 }
 
 #[test]
@@ -623,6 +1123,26 @@ fn everything() -> Vec<UpdateByOperation> {
         ),
         op(UpdateBySpec::RollingGroup(window(0, 0)), &["G9 = L"]),
         op(UpdateBySpec::RollingGroup(window(2, 2)), &["G10 = Y"]),
+        cum_where("Cw1", &["I > 0"]),
+        cum_where("Cw2", &["D >= 0", "S != null", "L % 2 == 0"]),
+        cum_where("Cw3", &["B == true"]),
+        cum_where("Cw4", &["isNull(T) || isNull(C)"]),
+        cum_where("Cw5", &["K in `a`, `b`"]),
+        rolling_where("Rw1", &["I > 0"], window(3, 0)),
+        rolling_where("Rw2", &["F < 0", "Y != null"], window(2, 2)),
+        rolling_where("Rw3", &["H + I > 0"], window(-1, 3)),
+        rolling_where("Rw4", &["S > `m`"], window(1, 0)),
+        rolling_where("Rw5", &["I < L"], window(4, 1)),
+        formula("sum(x)", &["Fm1 = I", "Fm2 = D", "Fm3 = Y"], window(3, 0)),
+        formula(
+            "len(x) > 1 ? last(x) - first(x) : 0",
+            &["Fm4 = L"],
+            window(2, 2),
+        ),
+        formula("countObj(x)", &["Fm5 = S"], window(-1, 3)),
+        formula("x", &["Fm6 = H"], window(1, 1)),
+        formula_of("Fm7 = sum(I) + countObj(S) + avg(D)", window(3, 0)),
+        formula_of("Fm8 = max(L) > 0 ? count(I) : -count(F)", window(2, 1)),
     ]
 }
 
@@ -1161,6 +1681,17 @@ fn everything_in_time() -> Vec<UpdateByOperation> {
             UpdateBySpec::RollingGroup(RollingWindow::ticks(2, 1)),
             &["G8 = F"],
         ),
+        rolling_where("Rw1", &["I > 0"], time(5, 0)),
+        rolling_where("Rw2", &["D < 0 || isNull(D)", "S != null"], time(-2, 6)),
+        rolling_where("Rw3", &["H + I > 4"], time(3, 3)),
+        rolling_where("Rw4", &["S in `a`, `b`"], time(0, 0)),
+        rolling_where("Rw5", &["L != null"], RollingWindow::ticks(2, 1)),
+        formula("sum(x)", &["Fm1 = I", "Fm2 = D"], time(5, 0)),
+        formula("x.size()", &["Fm3 = S"], time(-2, 6)),
+        formula_of("Fm4 = sum(I) - count(D)", time(3, 3)),
+        formula_of("Fm5 = len(H)", time(0, 0)),
+        formula("avg(x)", &["Fm6 = L"], RollingWindow::ticks(2, 1)),
+        cum_where("Cw1", &["T != null", "I + H > 0"]),
     ]
 }
 
