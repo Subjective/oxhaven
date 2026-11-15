@@ -3,7 +3,9 @@
 use super::plan::{self, Kind, Origin, Plan, Sources, Step};
 use super::sources::{ByPosition, ConstantSource, FormulaInput};
 use super::{result_attributes, spec, Flavor, SelectError};
-use crate::table::{holds_values, memoized, tracked_source, CopyType, QueryTable, TableSpec};
+use crate::table::{
+    holds_values, mark, marks, memoized, tracked_source, CopyType, Marks, QueryTable, TableSpec,
+};
 use arrow::array::ArrayRef;
 use oxhaven_column::{FlatSource, RedirectedSource, RowRedirection, WritableSource};
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
@@ -37,6 +39,14 @@ pub(super) fn stored<S: AsRef<str>>(
         })?,
         _ => QueryTable::new_static(static_result(parent, &plan, flavor)?),
     };
+    // Behavior: QueryTable#selectOrUpdate copies no attribute but the sortable columns
+    mark(
+        &table,
+        Marks {
+            sortable: super::rename::sortable_after_select(&marks(&**parent), &plan),
+            ..Marks::default()
+        },
+    );
     if !plan.is_memoized() {
         return Ok(table);
     }

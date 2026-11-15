@@ -9,7 +9,8 @@ use super::keys::{KeyEncoder, SortKey};
 use super::{SortColumn, SortDirection, SortError};
 use crate::ops::merge::flattened_shift_data;
 use crate::table::{
-    copy_of, mark, marks, memoized, reads_through, CopyType, Marks, QueryTable, TableSpec,
+    copy_of, java_hash_order, mark, marks, memoized, reads_through, CopyType, Marks, QueryTable,
+    TableSpec, IDENTITY_REDIRECTION,
 };
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
@@ -134,15 +135,103 @@ fn first_column(columns: &[SortColumn]) -> Option<(&str, bool)> {
     ))
 }
 
+/// What Java notes of the row redirection of a sort result.
+enum Redirection {
+    /// A sort of a blink table, which notes nothing.
+    Unnoted,
+    /// A sort of a static table.
+    Static,
+    /// A sort of a refreshing table, which also keeps its reverse lookup.
+    Refreshing,
+}
+
 /// The marks of a new sort result: those of `parent` that a sort copies, the first sort
-/// column, and for `redirected` what Java notes of the row redirection.
-fn sorted_marks(parent: &dyn Table, first: (&str, bool), redirected: Option<bool>) -> Marks {
-    let mut marks = CopyType::Sort.sort_marks(&marks(parent));
-    marks.sorted.insert(first.0.to_string(), first.1);
-    if let Some(redirected) = redirected {
-        marks.identity_sort = Some(!redirected);
+/// column, and what Java notes of the row redirection. A sort by an absolute value has no
+/// first column and keeps only what Java's three operations for it keep: the restriction
+/// of the sorting.
+///
+/// The redirected column Java names is the last column that is read through the
+/// redirection, which here is the last column: Java leaves a column whose source has one
+/// value for every row (`RowKeyAgnosticChunkSource`) as it is, and no source says so here.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortOperation#populateRedirectedColumns,
+/// #setSorted and #setReverseLookup
+fn sorted_marks(
+    parent: &dyn Table,
+    first: Option<(&str, bool)>,
+    redirection: Redirection,
+) -> Marks {
+    let copied = CopyType::Sort.sort_marks(&marks(parent));
+    let Some((column, descending)) = first else {
+        return Marks {
+            sortable: copied.sortable,
+            ..Marks::default()
+        };
+    };
+    let mut marks = copied;
+    if !matches!(redirection, Redirection::Unnoted) {
+        let last = parent.definition().columns().last();
+        marks.sort_redirection =
+            Some(last.map_or_else(|| IDENTITY_REDIRECTION.to_string(), |c| c.name.clone()));
+        marks.reverse_lookup = matches!(redirection, Redirection::Refreshing);
     }
+    marks.set_sorted(column, descending);
     marks
+}
+
+/// Refuses a sort by a column that the restriction of `parent` does not name.
+///
+/// Behavior: io.deephaven.engine.table.impl.BaseTable#assertSortable and the message of
+/// io.deephaven.engine.exceptions.NotSortableException, which names the refused columns
+/// in the order of a `HashSet` of them
+fn assert_sortable(parent: &dyn Table, columns: &[SortColumn]) -> Result<(), SortError> {
+    let of_parent = marks(parent);
+    let Some(sortable) = of_parent.sortable_columns() else {
+        return Ok(());
+    };
+    let names: Vec<&str> = columns
+        .iter()
+        .map(|column| column.column.as_str())
+        .collect();
+    let refused: Vec<String> = java_hash_order(&names, false)
+        .into_iter()
+        .filter(|name| !sortable.contains(&name.as_str()))
+        .collect();
+    if refused.is_empty() {
+        return Ok(());
+    }
+    let refused = refused.join(", ");
+    Err(SortError::NotSortable(format!(
+        "Sorting is not allowed on this table, but was attempted on: {refused} but was \
+         attempted on: {refused}"
+    )))
+}
+
+/// Behavior: io.deephaven.engine.table.impl.BaseGridAttributes#restrictSortTo and
+/// io.deephaven.engine.table.impl.LiveAttributeMap#withAttributes, which returns the table
+/// itself when it has the attribute with this value already
+pub(super) fn restrict_sort_to<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    columns: &[S],
+) -> Result<Arc<dyn Table>, SortError> {
+    let definition = parent.definition();
+    let missing: Vec<String> = columns
+        .iter()
+        .map(|column| column.as_ref())
+        .filter(|column| definition.index_of(column).is_none())
+        .map(str::to_string)
+        .collect();
+    if !missing.is_empty() {
+        return Err(SortError::NoSuchColumn(missing));
+    }
+    let names: Vec<&str> = columns.iter().map(|column| column.as_ref()).collect();
+    let sortable = names.join(",");
+    if marks(&**parent).sortable.as_deref() == Some(sortable.as_str()) {
+        return Ok(parent.clone());
+    }
+    Ok(copy_of(parent, false, |marks| {
+        marks.sortable = Some(sortable)
+    })?)
 }
 
 /// A sort by one column that Java holds `parent` sorted by is `parent` itself. A sort of a
@@ -161,11 +250,12 @@ pub(super) fn sort(
     }
     let first = first_column(columns);
     if let (Some((column, descending)), 1) = (first, columns.len()) {
-        if marks(&**parent).sorted.get(column) == Some(&descending) {
+        if marks(&**parent).is_sorted_by(column, descending) {
             return Ok(parent.clone());
         }
     }
     let encoder = KeyEncoder::new(&**parent, columns)?;
+    assert_sortable(&**parent, columns)?;
     let input = carried_input_table(&**parent, columns);
     let result = if !parent.is_refreshing() {
         static_sort(parent, &encoder, input, first)?
@@ -175,6 +265,13 @@ pub(super) fn sort(
         incremental_sort(parent, encoder, input, first)?
     };
     if first.is_none() {
+        return Ok(result);
+    }
+    // Behavior: the `attributesCompatible` of the `Sort` key of
+    // io.deephaven.engine.table.impl.MemoizedOperationKey: a copy whose restriction of
+    // its sorting is not that of the table it is a copy of is sorted as any other table
+    let of_parent = marks(&**parent);
+    if of_parent.copy_of_blink.is_some() && of_parent.copy_of_sortable != of_parent.sortable {
         return Ok(result);
     }
     Ok(memoized(parent, CopyType::Sort, false, result)?)
@@ -205,14 +302,14 @@ fn static_sort(
             return Ok(parent.clone());
         };
         let of_parent = marks(&**parent);
-        if of_parent.sorted.get(column) == Some(&descending)
-            && of_parent.identity_sort == Some(true)
+        if of_parent.is_sorted_by(column, descending)
+            && of_parent.sort_redirection.as_deref() == Some(IDENTITY_REDIRECTION)
         {
             return Ok(parent.clone());
         }
         return copy_of(parent, false, |marks| {
-            marks.sorted.insert(column.to_string(), descending);
-            marks.identity_sort = Some(true);
+            marks.set_sorted(column, descending);
+            marks.sort_redirection = Some(IDENTITY_REDIRECTION.to_string());
         });
     }
     let redirection = Arc::new(WritableRowRedirection::new());
@@ -225,12 +322,7 @@ fn static_sort(
     .with_attributes(sort_attributes(&**parent))
     .flat();
     let result = QueryTable::new_static(TableSpec { input, ..spec });
-    if let Some(first) = first {
-        // Behavior: SortOperation#populateRedirectedColumns names a redirected column,
-        // and the identity if there is none
-        let redirected = !parent.definition().columns().is_empty();
-        mark(&result, sorted_marks(&**parent, first, Some(redirected)));
-    }
+    mark(&result, sorted_marks(&**parent, first, Redirection::Static));
     Ok(result)
 }
 
@@ -290,9 +382,10 @@ fn blink_sort(
         };
         Ok((spec, operator))
     })?;
-    if let Some(first) = first {
-        mark(&result, sorted_marks(&**parent, first, None));
-    }
+    mark(
+        &result,
+        sorted_marks(&**parent, first, Redirection::Unnoted),
+    );
     Ok(result)
 }
 
@@ -547,9 +640,9 @@ fn incremental_sort(
             operator.on_update(upstream)
         }))
     })?;
-    if let Some(first) = first {
-        let redirected = !parent.definition().columns().is_empty();
-        mark(&result, sorted_marks(&**parent, first, Some(redirected)));
-    }
+    mark(
+        &result,
+        sorted_marks(&**parent, first, Redirection::Refreshing),
+    );
     Ok(result)
 }

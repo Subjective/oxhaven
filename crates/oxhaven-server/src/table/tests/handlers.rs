@@ -616,13 +616,17 @@ async fn merge_appends_tables_of_the_same_columns() {
         .unwrap();
     assert_internal(&call(&mut c, merged(6, &[1, 5], "")).await.unwrap_err());
 
-    // Java's sorted merge of static tables is not ported
-    let refused = call(&mut c, merged(7, &[1, 2], "I")).await.unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
+    // with a key column, static tables are merged by it: the least next row, and the
+    // earlier table where the keys are equal
+    let response = call(&mut c, merged(7, &[1, 2], "I")).await.unwrap();
+    assert_eq!(response.size, 8);
+    assert!(response.is_static);
     assert_eq!(
-        refused.message(),
-        "not ported: io.deephaven.engine.util.TableTools#mergeSorted: a merge of static tables with a key column"
+        values(c.table(7).as_ref(), "I"),
+        ints(&[0, 0, 1, 1, 2, 3, 4, 5])
     );
+    // a key column the tables do not have: the engine's refusal
+    assert_internal(&call(&mut c, merged(8, &[1, 2], "Nope")).await.unwrap_err());
 }
 
 #[tokio::test]

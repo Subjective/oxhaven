@@ -1495,3 +1495,112 @@ fn a_vector_or_array_column_matches_null_and_nothing_else() {
     }
     assert_eq!(kept(&t, &["V == null", "A != null"]), [] as [i64; 0]);
 }
+
+// ---------------------------------------------------------------------------------------
+// where_one_of: the expectations are what Java 42.9 answered for a table of `A = i`,
+// `B = i * 2`, `C = i * 3` and `D = i * 4`
+// ---------------------------------------------------------------------------------------
+
+fn four_columns() -> Arc<dyn Table> {
+    let ints = |values: [i32; 3]| Arc::new(Int32Array::from(values.to_vec())) as ArrayRef;
+    static_table(vec![
+        ("A", ColumnType::Int, ints([0, 1, 2])),
+        ("B", ColumnType::Int, ints([0, 2, 4])),
+        ("C", ColumnType::Int, ints([0, 3, 6])),
+        ("D", ColumnType::Int, ints([0, 4, 8])),
+    ])
+}
+
+/// The positions, in the source, of the rows that one of `filters` keeps.
+fn kept_by_one_of(table: &Arc<dyn Table>, filters: &[&str]) -> Vec<i64> {
+    let result =
+        where_one_of(table, filters, &Compiler).unwrap_or_else(|e| panic!("{filters:?}: {e}"));
+    assert!(result.row_set().is_subset_of(&table.row_set()));
+    result.row_set().iter().map(|key| key / 10).collect()
+}
+
+#[test]
+fn a_row_is_kept_by_at_least_one_of_the_filters() {
+    let table = four_columns();
+    assert_eq!(kept_by_one_of(&table, &["A > 1", "B == 0"]), [0, 2]);
+    assert_eq!(
+        kept_by_one_of(&table, &["A > 1", "B == 0", "C == 3"]),
+        [0, 1, 2]
+    );
+    assert_eq!(kept_by_one_of(&table, &["A > 5", "B < 0"]), [] as [i64; 0]);
+    // one filter is that filter
+    assert_eq!(kept_by_one_of(&table, &["A > 0"]), kept(&table, &["A > 0"]));
+    // the result is a `where`: not flat, and a static one may only grow
+    let result = where_one_of(&table, &["A > 1", "B == 0", "C == 3"], &Compiler).unwrap();
+    assert!(!result.is_flat());
+    let attributes = result.attributes();
+    assert!(attributes.add_only && attributes.append_only && !attributes.blink);
+}
+
+#[test]
+fn no_filters_and_a_filter_of_no_column_are_refused() {
+    let table = four_columns();
+    let refused = |filters: &[&str]| match where_one_of(&table, filters, &Compiler) {
+        Err(error) => error.to_string(),
+        Ok(_) => panic!("{filters:?} were accepted"),
+    };
+    assert_eq!(
+        refused(&[]),
+        "Should not be constructing literal boolean WhereFilter"
+    );
+    assert_eq!(
+        refused(&["A > 1", "Q == 0"]),
+        "Column \"Q\" doesn't exist in this table, available columns: [A, B, C, D]"
+    );
+}
+
+fn one_of(
+    filters: &'static [&'static str],
+) -> impl Fn(&Arc<dyn Table>) -> Result<Arc<dyn Table>, FilterError> + Clone + Send + Sync + 'static
+{
+    move |table| where_one_of(table, filters, &Compiler)
+}
+
+#[test]
+fn random_updates_through_a_disjunction() {
+    let all = |_: &mut RandomUpdates| {};
+    assert!(
+        check_random(0..40, 60, all, one_of(&["Qty > 2", "Px < 0"])) > at_least_for(1000, 0..40)
+    );
+    assert!(
+        check_random(
+            40..80,
+            60,
+            all,
+            one_of(&["Sym in `a`, `b`", "Flag == true", "N == null"])
+        ) > at_least_for(1000, 40..80)
+    );
+    // a formula among the alternatives, and an alternative that no row passes
+    assert!(
+        check_random(
+            80..120,
+            60,
+            all,
+            one_of(&["Qty + N > 3", "Px == 0.5", "Qty > 1000000"])
+        ) > at_least_for(500, 80..120)
+    );
+    // the same rows as the conjunction of the negations leaves out
+    for seed in test_seeds(0..10) {
+        let mut random = RandomUpdates::new(seed);
+        let definition = wide();
+        let rows = RowSet::from_keys((0..40).map(|position| position * 10));
+        let columns = definition
+            .columns()
+            .iter()
+            .map(|column| random.values(&column.column_type, rows.size()))
+            .collect();
+        let table: Arc<dyn Table> = ReferenceTable::new_static(definition, rows, columns);
+        let either = kept_by_one_of(&table, &["Qty > 2", "N < 0"]);
+        let first = kept(&table, &["Qty > 2"]);
+        let second = kept(&table, &["N < 0"]);
+        let mut union: Vec<i64> = first.into_iter().chain(second).collect();
+        union.sort_unstable();
+        union.dedup();
+        assert_eq!(either, union, "seed {seed}");
+    }
+}

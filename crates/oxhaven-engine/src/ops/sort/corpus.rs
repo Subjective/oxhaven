@@ -41,6 +41,7 @@ fn sort_code(error: &SortError) -> &'static str {
             "INVALID_ARGUMENT"
         }
         SortError::Unsupported(_) => "an unsupported operation, which has no recorded code",
+        SortError::NotSortable(_) => "a restricted sort, which has no recorded code",
         SortError::Table(_) => "a failed table, which has no recorded code",
     }
 }
@@ -49,6 +50,10 @@ fn merge_code(error: &MergeError) -> &'static str {
     match error {
         MergeError::IncompatibleDefinitions(_) => "INVALID_ARGUMENT",
         MergeError::IllegalArgument(_) => "an illegal argument, which has no recorded code",
+        MergeError::Unsupported(_)
+        | MergeError::NoSuchColumn(_)
+        | MergeError::Runtime(_)
+        | MergeError::NullKey(_) => "a refused sorted merge, which has no recorded code",
         MergeError::Table(_) => "a failed table, which has no recorded code",
     }
 }

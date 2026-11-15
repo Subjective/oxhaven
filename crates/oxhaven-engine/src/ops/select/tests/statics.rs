@@ -47,11 +47,11 @@ fn flat(size: usize) -> Arc<dyn Table> {
     in_memory_table(sym_a_b(), &[batch]).unwrap()
 }
 
-fn same_source(left: &Arc<dyn ColumnSource>, right: &Arc<dyn ColumnSource>) -> bool {
+pub(super) fn same_source(left: &Arc<dyn ColumnSource>, right: &Arc<dyn ColumnSource>) -> bool {
     std::ptr::addr_eq(Arc::as_ptr(left), Arc::as_ptr(right))
 }
 
-fn column(table: &Arc<dyn Table>, name: &str) -> Arc<dyn ColumnSource> {
+pub(super) fn column(table: &Arc<dyn Table>, name: &str) -> Arc<dyn ColumnSource> {
     table.column(table.definition().index_of(name).unwrap())
 }
 

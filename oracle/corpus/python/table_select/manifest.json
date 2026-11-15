@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_select",
-  "scenario_sha256": "d941f4982e41fecb94bb008764af08431e0be17a8de8f44a91767ad10de4d124",
+  "scenario_sha256": "16b3dafc750cb4616c56d339c07aa13c73db55391631164eb0e4cecb3e59702b",
   "reference": "42.9",
   "entries": [
     {
@@ -521,6 +521,90 @@
       "step": 5,
       "table": "restricted",
       "file": "step005.restricted.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "dropped",
+      "file": "step006.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "dropped_one",
+      "file": "step006.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "distinct",
+      "file": "step006.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "distinct_pair",
+      "file": "step006.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "distinct_all",
+      "file": "step006.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "distinct_formula",
+      "file": "step006.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "described",
+      "file": "step006.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "nothing_renamed",
+      "file": "step006.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "nothing_moved",
+      "file": "step006.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "renamed",
+      "file": "step006.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "moved",
+      "file": "step006.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "moved_up",
+      "file": "step006.moved_up.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "moved_down",
+      "file": "step006.moved_down.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "restricted",
+      "file": "step006.restricted.arrow",
       "rows": 6
     }
   ]
