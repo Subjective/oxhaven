@@ -28,7 +28,7 @@ mod tests;
 
 use crate::ops::join::natural::Plan;
 use crate::ops::join::{JoinAddition, JoinError, JoinMatch, NaturalJoinType};
-use crate::table::{MergedOperator, QueryTable, TableSpec};
+use crate::table::{memoized, CopyType, MergedOperator, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use keyed::Keyed;
 use layout::{min_bits, Layout, LeftRows, RightRows};
@@ -129,10 +129,11 @@ impl MergedOperator for Operator {
 /// The result is refreshing when either table is, with one exception: a join without match
 /// columns of a refreshing table and a static table that has no rows is static, since it
 /// can never have a row. The result is not flat and has none of the add-only, append-only
-/// and blink attributes.
+/// and blink attributes. The join of a left table that is a copy is a copy: see
+/// [`memoized`]. Whether the right table is one makes no difference.
 ///
-/// Behavior: io.deephaven.engine.table.impl.QueryTable#join and
-/// io.deephaven.engine.table.impl.CrossJoinHelper#join
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#join, which memoizes the result on
+/// the left table, and io.deephaven.engine.table.impl.CrossJoinHelper#join
 pub fn cross_join(
     left: &Arc<dyn Table>,
     right: &Arc<dyn Table>,
@@ -180,7 +181,7 @@ pub fn cross_join(
         _ => QueryTable::derive_merged(&[left.clone(), right.clone()], Vec::new(), init),
     };
     match result {
-        Ok(table) => Ok(table),
+        Ok(table) => Ok(memoized(left, CopyType::None, false, table)?),
         Err(failure) => Err(refused.unwrap_or(CrossJoinError::Join(JoinError::Table(failure)))),
     }
 }

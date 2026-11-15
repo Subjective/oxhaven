@@ -3,14 +3,18 @@
 //!
 //! The attributes asserted here are what the Java server reports for the same operations:
 //! `oracle/bin/harness fuzz` over flatten, select_distinct, sort and where, seeds 251, 625
-//! and 1094, and the request cases of task 4.13.
+//! and 1094, and the request cases of tasks 4.13 and 4.15.
 
-use crate::ops::agg::{aggregate, Aggregation};
+use crate::ops::agg::{aggregate, Aggregation, Pair};
+use crate::ops::crossjoin::cross_join;
 use crate::ops::distinct::select_distinct;
 use crate::ops::filter::unstructured_filter;
+use crate::ops::join::{JoinAddition, JoinMatch};
 use crate::ops::merge::flatten;
+use crate::ops::range_join::{range_join, RangeAggregation, RangeJoinMatch};
 use crate::ops::select::{drop_columns, select, update, update_view, view};
 use crate::ops::sort::{reverse, sort, SortColumn};
+use crate::ops::ungroup::ungroup;
 use crate::table::is_copy;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -242,4 +246,65 @@ fn the_formula_operations_answer_a_copy_with_a_copy_when_every_column_is_a_colum
     assert!(!is_copy(
         &*update_view(&copy, &["T = 1"], &Compiler).unwrap()
     ));
+}
+
+/// What `where` of `table` has shows whether Java took `table` for a copy: the `where` of
+/// a static table is add-only and append-only, and that of a copy has neither.
+fn filter_is_add_only(table: &Arc<dyn Table>) -> bool {
+    add_and_append_only(&filtered(table, "K == 2")) == (true, true)
+}
+
+/// Java 42.9 reports the same for `join`, `range_join` and `ungroup` of a static table
+/// that a sort left as it was, and of the table that was sorted.
+#[test]
+fn the_cross_join_the_range_join_and_the_ungrouped_form_of_a_copy_are_copies() {
+    let right = ReferenceTable::new_static(
+        definition(&[("K", ColumnType::Long), ("P", ColumnType::Long)]),
+        RowSet::flat(3),
+        vec![longs([2, 3, 3]), longs([2, 3, 4])],
+    );
+    let right: Arc<dyn Table> = right;
+    // the left table: add-only and append-only, with a range from K to H
+    let wide = update(&in_order(), &["H = K + 1"], &Compiler).unwrap();
+    let parent = filtered(&wide, "K > 0");
+    let copy = sort(&parent, &by("K")).unwrap();
+    assert!(is_copy(&*copy));
+
+    let join = |left: &Arc<dyn Table>, right: &Arc<dyn Table>| {
+        let on = [JoinMatch::same("K")];
+        cross_join(left, right, &on, &[JoinAddition::same("P")], 10).unwrap()
+    };
+    let joined = join(&copy, &right);
+    assert!(is_copy(&*joined));
+    assert!(!filter_is_add_only(&joined));
+    assert_eq!(joined.row_set().size(), 3);
+    assert!(!is_copy(&*join(&parent, &right)));
+    assert!(filter_is_add_only(&join(&parent, &right)));
+    // only the left table decides
+    let right_copy = sort(&filtered(&right, "P > 0"), &by("P")).unwrap();
+    assert!(is_copy(&*right_copy));
+    assert!(!is_copy(&*join(&parent, &right_copy)));
+
+    let ranges = |left: &Arc<dyn Table>| {
+        let range = RangeJoinMatch::parse("K <= P <= H").unwrap();
+        let aggregations = [RangeAggregation::group([Pair::of("P")])];
+        range_join(left, &right, &[], &range, &aggregations).unwrap()
+    };
+    let ranged = ranges(&copy);
+    assert!(is_copy(&*ranged));
+    assert!(!filter_is_add_only(&ranged));
+    assert!(!is_copy(&*ranges(&parent)));
+    assert!(filter_is_add_only(&ranges(&parent)));
+
+    // a table with a column of arrays, and a copy of it
+    let grouped = filtered(&ranges(&parent), "K > 0");
+    let grouped_copy = sort(&grouped, &by("K")).unwrap();
+    assert!(is_copy(&*grouped_copy));
+    let ungrouped = ungroup(&grouped_copy, false, &[]).unwrap();
+    assert!(is_copy(&*ungrouped));
+    assert!(!filter_is_add_only(&ungrouped));
+    let of_parent = ungroup(&grouped, false, &[]).unwrap();
+    assert!(!is_copy(&*of_parent));
+    assert!(filter_is_add_only(&of_parent));
+    assert_eq!(ungrouped.row_set().size(), of_parent.row_set().size());
 }
