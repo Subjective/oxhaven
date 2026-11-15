@@ -157,20 +157,21 @@ async fn multi_join_checks_the_request_in_javas_order() {
         // the columns are read when the join is made, after every input is checked
         (vec![of(1, &["A B"], &[]), of(2, &[], &[])], no_matches),
     ];
-    for (inputs, message) in cases {
+    for (unused, (inputs, message)) in (900..).zip(cases) {
         let op = joined(10, inputs);
         let refused = refusal(&mut c, op.clone()).await;
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
 
-        // in a batch, before any operation of the batch is created
+        // in a batch, before any operation of the batch is created. The export named
+        // before the refused operation stays claimed, so each batch names another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(90), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
         assert_eq!(refused.message(), message);
-        let unused = c.server.session(&c.bearer).get_export(90).unwrap();
+        let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
 

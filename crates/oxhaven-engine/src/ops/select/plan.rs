@@ -75,6 +75,18 @@ pub(super) struct Plan {
 }
 
 impl Plan {
+    /// Whether Java memoizes the result: every listed column is another column under its
+    /// own or another name. A list without columns is left as it is.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.MemoizedOperationKey#isMemoizable
+    pub(super) fn is_memoized(&self) -> bool {
+        !self.steps.is_empty()
+            && self
+                .steps
+                .iter()
+                .all(|step| matches!(step.kind, Kind::Source(_)))
+    }
+
     pub(super) fn definition(&self) -> TableDefinition {
         definition_of(&self.published)
     }

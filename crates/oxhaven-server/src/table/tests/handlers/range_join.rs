@@ -90,7 +90,10 @@ async fn assert_invalid(c: &mut Connected, request: RangeJoinTablesRequest, mess
     assert_eq!(status.code(), Code::InvalidArgument, "{message}");
     assert_eq!(status.message(), message);
 
-    let unused = 900;
+    // the export named before the refused operation stays claimed, so each batch names
+    // another
+    static UNUSED: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(900);
+    let unused = UNUSED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let ops = vec![
         Op::EmptyTable(empty(ticket(unused), 1)),
         Op::RangeJoin(request),

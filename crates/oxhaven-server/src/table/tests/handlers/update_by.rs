@@ -696,23 +696,25 @@ async fn update_by_requests_are_checked_as_java_checks_them() {
             "Invalid column name \"1\"",
         ),
     ];
-    for (op, message) in cases {
+    for (unused, (op, message)) in (900..).zip(cases) {
         let refused = call(&mut c, op.clone()).await.unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
-        // in a batch the whole call is refused and nothing before it is created
+        // in a batch the whole call is refused and nothing before it is created. The
+        // export named before the refused operation stays claimed, so each batch names
+        // another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(3), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
+        let session = c.server.session(&c.bearer);
+        assert_ne!(
+            session.get_export(unused).unwrap().state(),
+            ExportState::Exported
+        );
     }
-    let session = c.server.session(&c.bearer);
-    assert_ne!(
-        session.get_export(3).unwrap().state(),
-        ExportState::Exported
-    );
 
     // a duration that does not parse is not one of Java's argument errors, and it is read
     // before the column is checked

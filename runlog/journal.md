@@ -453,3 +453,12 @@ Also found: squash merges carry a `Co-authored-by: Claude` trailer (GitHub adds 
 the branch commits' author) and commits use the environment's "Claude" git identity,
 against the owner's no-attribution rule. From PR 61 on the squash message is written
 explicitly. Author identity is with the owner to decide.
+
+## 2026-11-15 04:33 UTC
+
+Owner's decision on commit identity: commits are authored by him (Josh, GitHub noreply
+address) and carry a `Co-authored-by: Claude <noreply@anthropic.com>` trailer. The repo's
+local git identity is set accordingly, which worktrees inherit; squash merges get the
+trailer in an explicit message. He asked whether existing history can be rewritten; no
+rewrite or force push is to happen without his explicit go-ahead.
+PRs 62 (rolling group) and 63 (CI seed budget, main runs no longer cancelled) opened.

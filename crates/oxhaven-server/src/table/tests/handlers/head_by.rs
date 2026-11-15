@@ -100,26 +100,28 @@ async fn head_by_and_tail_by_refuse_as_java_does() {
     for (base, wrap) in [(0, Op::HeadBy as Wrap), (100, Op::TailBy as Wrap)] {
         // a negative number of rows is refused with a status of its own, before the
         // columns and the source are looked at
-        for (rows, by, source) in [
+        let negative = [
             (-1, &["S"][..], 1),
             (i64::MIN, &[][..], 1),
             (-1, &["Nope"][..], 1),
             (-1, &["Timestamp"][..], 2),
-        ] {
+        ];
+        for (unused, (rows, by, source)) in (base + 900..).zip(negative) {
             let message = format!("numRows must be >= 0 (found: {rows})");
             let op = wrap(request(10, source, rows, by));
             let refused = call(&mut c, op.clone()).await.unwrap_err();
             assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
             assert_eq!(refused.message(), message);
 
-            // in a batch, before any operation of the batch is created
+            // in a batch, before any operation of the batch is created. The export
+            // named before the refused operation stays claimed, so each batch names another
             let refused = c
-                .batch(vec![Op::EmptyTable(empty(ticket(20), 1)), op])
+                .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
                 .await
                 .unwrap_err();
             assert_eq!(refused.code(), Code::InvalidArgument);
             assert_eq!(refused.message(), message);
-            let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+            let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
             assert_ne!(unused.state(), ExportState::Exported);
         }
 
