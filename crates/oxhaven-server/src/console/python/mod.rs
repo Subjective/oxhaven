@@ -15,6 +15,7 @@
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
 
+pub mod env;
 #[cfg(test)]
 mod tests;
 
@@ -269,9 +270,12 @@ pub struct PythonSession {
 }
 
 impl PythonSession {
-    /// Starts the interpreter if this process has none yet and creates a session with no
-    /// variables. From now on the `deephaven` package runs its operations in `context`.
+    /// Starts the interpreter if this process has none yet, in the environment that
+    /// [`env::initialize`] was given or else the one the process was started in, and
+    /// creates a session with no variables. From now on the `deephaven` package runs its
+    /// operations in `context`.
     pub fn new(context: OpContext, logs: Arc<LogBuffer>) -> Result<Self, String> {
+        env::interpreter()?;
         let runtime = Arc::new(Runtime { context, logs });
         *RUNTIME.write().unwrap_or_else(PoisonError::into_inner) = Some(runtime.clone());
         Python::attach(|py| {
@@ -383,10 +387,5 @@ pub fn start(state: &mut ServerState) -> Result<(), String> {
 /// The version of the interpreter the server embeds, as `platform.python_version()` gives
 /// it.
 pub fn python_version() -> Result<String, String> {
-    Python::attach(|py| {
-        py.import("platform")?
-            .call_method0("python_version")?
-            .extract()
-    })
-    .map_err(|error: PyErr| error.to_string())
+    env::interpreter().map(|interpreter| interpreter.version)
 }
