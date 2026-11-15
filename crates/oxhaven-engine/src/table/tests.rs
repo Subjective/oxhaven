@@ -1790,3 +1790,213 @@ fn the_input_table_attribute_passes_through_the_operations_java_copies_it_for() 
     assert_eq!(longs_of(&*filtered, 1), [Some(1)]);
     assert!(other.row_set().is_empty());
 }
+
+// ---------------------------------------------------------------------------------------
+// Blink input tables
+// ---------------------------------------------------------------------------------------
+
+fn replaces(added: u64, removed: u64) -> TableUpdate {
+    TableUpdate {
+        added: RowSet::flat(added),
+        removed: RowSet::flat(removed),
+        ..TableUpdate::empty()
+    }
+}
+
+#[test]
+fn blink_input_table_shows_the_rows_added_since_the_last_cycle_for_one_cycle() {
+    let (stepper, graph) = graph();
+    let table = blink_input_table(graph.clone(), sym_qty());
+    let checker = ConsistencyChecker::attach(table.clone());
+    let recorder = Recorder::attach(table.clone());
+    let input = table.input_table().unwrap();
+    let attributes = table.attributes();
+    assert!(attributes.blink && !attributes.add_only && !attributes.append_only);
+    assert!(table.is_flat() && table.is_refreshing() && table.row_set().is_empty());
+    assert!(input.key_columns().is_empty());
+    assert_eq!(input.value_columns(), ["Sym", "Qty"]);
+
+    // An add hands the rows over and returns: no cycle runs, and nothing shows yet.
+    let start = graph.clock().step;
+    input.add(sym_qty_batch(["a", "b"], [1, 2])).unwrap();
+    input
+        .add(batch(&[("Qty", longs([3])), ("Sym", strings(["c"]))]))
+        .unwrap();
+    assert_eq!(graph.clock().step, start);
+    assert!(table.row_set().is_empty());
+
+    // The next cycle shows the rows of both adds, in the order they were added.
+    stepper.run_cycle();
+    assert_eq!(keys_of(&*table), [0, 1, 2]);
+    assert_eq!(
+        strings_of(&*table, 0),
+        ["a", "b", "c"].map(|s| Some(s.to_string()))
+    );
+    assert_eq!(longs_of(&*table, 1), [Some(1), Some(2), Some(3)]);
+    checker.assert_consistent();
+
+    // The cycle after it removes them, and shows what was added in between.
+    input.add(sym_qty_batch(["d"], [4])).unwrap();
+    stepper.run_cycle();
+    assert_eq!(keys_of(&*table), [0]);
+    assert_eq!(strings_of(&*table, 0), [Some("d".to_string())]);
+    assert_eq!(longs_of(&*table, 1), [Some(4)]);
+    checker.assert_consistent();
+
+    stepper.run_cycle();
+    assert!(table.row_set().is_empty());
+    checker.assert_consistent();
+    // A cycle with nothing to remove and nothing to show delivers no update.
+    stepper.run_cycle();
+    assert_eq!(
+        recorder.events(),
+        [Ok(replaces(3, 0)), Ok(replaces(1, 3)), Ok(replaces(0, 1))]
+    );
+}
+
+#[test]
+fn blink_input_table_refuses_deletes_and_bad_batches_and_accepts_adds_from_a_cycle() {
+    let (stepper, graph) = graph();
+    let table = blink_input_table(graph.clone(), sym_qty());
+    let recorder = Recorder::attach(table.clone());
+    let input = table.input_table().unwrap();
+
+    assert_eq!(
+        input
+            .delete(batch(&[("Sym", strings(["a"]))]))
+            .err()
+            .unwrap(),
+        failure("Table does not support deletes")
+    );
+    assert_eq!(
+        input.add(batch(&[("Sym", strings(["a"]))])).err().unwrap(),
+        failure("Table definition incompatibilities: column Qty is missing")
+    );
+    // An empty batch shows nothing.
+    input
+        .add(sym_qty_batch(Vec::<&str>::new(), Vec::new()))
+        .unwrap();
+    stepper.run_cycle();
+    assert!(recorder.events().is_empty());
+
+    // An add does not wait for a cycle, so one from inside a cycle is accepted. The rows
+    // show in the cycle after it.
+    let (input2, seen) = (input.clone(), Arc::new(Mutex::new(None)));
+    let seen2 = seen.clone();
+    struct Edits<F>(F);
+    impl<F: Fn() + Send + Sync> UpdateSource for Edits<F> {
+        fn refresh(&self) {
+            (self.0)()
+        }
+    }
+    let edits: Arc<dyn UpdateSource> = Arc::new(Edits(move || {
+        let mut seen = seen2.lock().unwrap();
+        if seen.is_none() {
+            *seen = Some(input2.add(sym_qty_batch(["a"], [1])));
+        }
+    }));
+    graph.add_source(&edits);
+    stepper.run_cycle();
+    assert_eq!(*seen.lock().unwrap(), Some(Ok(())));
+    stepper.run_cycle();
+    assert_eq!(strings_of(&*table, 0), [Some("a".to_string())]);
+    stepper.run_cycle();
+    assert!(table.row_set().is_empty());
+}
+
+fn done<E>(result: Result<Arc<dyn Table>, E>) -> Arc<dyn Table> {
+    match result {
+        Ok(table) => table,
+        Err(_) => panic!("the operation failed"),
+    }
+}
+
+#[test]
+fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
+    use oxhaven_expr::Compiler;
+    let (_stepper, graph) = graph();
+    let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
+    assert!(is_copied(&*table));
+    let sorted = done(sort(&table, &[SortColumn::descending("Qty")]));
+    let matched = done(unstructured_filter(&table, &["Qty in 1, 2"], &Compiler));
+    let copies = [
+        ("sort", sorted.clone()),
+        ("reverse", done(reverse(&table))),
+        ("flatten of where", done(flatten(&matched))),
+        ("where of a match", matched.clone()),
+        ("drop_columns", done(drop_columns(&table, &["Sym"]))),
+        (
+            "sort of sort",
+            done(sort(&sorted, &[SortColumn::ascending("Sym")])),
+        ),
+    ];
+    for (operation, copy) in &copies {
+        assert!(is_copied(&**copy) && copy.attributes().blink, "{operation}");
+        // Java copies no attribute to the `head` of a copy.
+        let first = done(head(copy, 2));
+        assert_eq!(
+            first.attributes(),
+            TableAttributes::default(),
+            "{operation}"
+        );
+        assert!(first.is_flat() && !is_copied(&*first), "{operation}");
+    }
+
+    let ranged = done(unstructured_filter(&table, &["Qty > 0"], &Compiler));
+    let originals = [
+        ("where of a range", ranged.clone()),
+        (
+            "sort of where of a range",
+            done(sort(&ranged, &[SortColumn::ascending("Qty")])),
+        ),
+        (
+            "sort by an absolute value",
+            done(sort(&table, &[SortColumn::ascending("Qty").absolute()])),
+        ),
+        ("update", done(update(&table, &["X = Qty + 1"], &Compiler))),
+        (
+            "view of a formula",
+            done(view(&table, &["X = Qty"], &Compiler)),
+        ),
+        (
+            "update_view",
+            done(update_view(&table, &["X = Qty"], &Compiler)),
+        ),
+    ];
+    for (operation, original) in &originals {
+        assert!(
+            !is_copied(&**original) && original.attributes().blink,
+            "{operation}"
+        );
+        let first = done(head(original, 2)).attributes();
+        assert!(
+            first.add_only && first.append_only && !first.blink,
+            "{operation}"
+        );
+    }
+}
+
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult: \
+                view of only column names"
+)]
+fn a_view_of_the_columns_of_a_blink_input_table_is_not_ported() {
+    use oxhaven_expr::Compiler;
+    let (_stepper, graph) = graph();
+    let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
+    let _ = view(&table, &["Qty", "Sym"], &Compiler);
+}
+
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult: \
+                select of only column names"
+)]
+fn a_select_of_the_columns_of_a_sorted_blink_input_table_is_not_ported() {
+    use oxhaven_expr::Compiler;
+    let (_stepper, graph) = graph();
+    let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
+    let sorted = done(sort(&table, &[SortColumn::descending("Qty")]));
+    let _ = select(&sorted, &[] as &[&str], &Compiler);
+}
