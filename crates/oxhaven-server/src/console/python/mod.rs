@@ -22,6 +22,7 @@
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod csv;
 mod data;
 pub mod env;
 pub mod interrupt;
@@ -379,6 +380,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
         checks::register(&native)?;

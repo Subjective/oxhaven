@@ -1,0 +1,316 @@
+{
+  "format": 2,
+  "scenario": "csv_write",
+  "scenario_sha256": "9a410db05e5d2c54cc0bb49b6dbd9b3fc206fd869041bbdb1a73726144fd0d55",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "all_lines",
+      "file": "step000.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "some_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "numbers_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "numbers_back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "source",
+      "file": "step000.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "all_lines",
+      "file": "step001.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "some_lines",
+      "file": "step001.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "numbers_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "numbers_back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "source",
+      "file": "step001.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "all_lines",
+      "file": "step002.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "some_lines",
+      "file": "step002.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "numbers_lines",
+      "file": "step002.numbers_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "numbers_back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "source",
+      "file": "step002.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "all_lines",
+      "file": "step003.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "some_lines",
+      "file": "step003.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "numbers_lines",
+      "file": "step003.numbers_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "empty_lines",
+      "file": "step003.empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "numbers_back",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "source",
+      "file": "step003.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "all_lines",
+      "file": "step004.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "some_lines",
+      "file": "step004.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "numbers_lines",
+      "file": "step004.numbers_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "empty_lines",
+      "file": "step004.empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "back",
+      "file": "step004.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "numbers_back",
+      "file": "step004.numbers_back.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "source",
+      "file": "step004.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "all_lines",
+      "file": "step005.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "some_lines",
+      "file": "step005.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "numbers_lines",
+      "file": "step005.numbers_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "empty_lines",
+      "file": "step005.empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "back",
+      "file": "step005.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "numbers_back",
+      "file": "step005.numbers_back.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "source",
+      "file": "step005.source.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "all_lines",
+      "file": "step006.all_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "some_lines",
+      "file": "step006.some_lines.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "numbers_lines",
+      "file": "step006.numbers_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "empty_lines",
+      "file": "step006.empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "back",
+      "file": "step006.back.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "numbers_back",
+      "file": "step006.numbers_back.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "source",
+      "file": "step006.source.arrow",
+      "rows": 5
+    }
+  ]
+}
