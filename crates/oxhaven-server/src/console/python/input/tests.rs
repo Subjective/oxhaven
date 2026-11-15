@@ -178,6 +178,32 @@ async fn a_synchronous_change_is_made_after_the_asynchronous_ones_asked_before_i
     );
 }
 
+/// A formula of a ticking table calls Python on the thread that runs the cycle.
+#[tokio::test]
+async fn a_function_called_in_an_update_cycle_cannot_wait_for_a_change() {
+    let python = Python::start().await;
+    python.run(SETUP);
+    python.run(
+        "rows = input_table({'K': dtypes.int32, 'S': dtypes.string})\n\
+         other = input_table({'K': dtypes.int32, 'S': dtypes.string})\n\
+         refused = []\n\
+         def copy(k) -> int:\n\
+         \x20   try:\n\
+         \x20       other.add(ks([k], ['copy']))\n\
+         \x20   except DHError as e:\n\
+         \x20       refused.append(str(e))\n\
+         \x20   return k\n\
+         copied = rows.update('C = copy(K)')\n\
+         rows.add(ks([7], ['a']))\n\
+         assert copied.size == 1, copied.size",
+    );
+    python.run(
+        "assert len(refused) == 1 and 'add to InputTable failed.' in refused[0] \\\n\
+         \x20   and 'from a listener or notification' in refused[0], refused\n\
+         assert other.size == 0, other.size",
+    );
+}
+
 #[tokio::test]
 async fn a_callback_that_raises_does_not_stop_the_changes_after_it() {
     let python = Python::start().await;

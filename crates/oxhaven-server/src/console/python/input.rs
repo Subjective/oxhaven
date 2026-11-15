@@ -146,7 +146,18 @@ fn write(queue: &Receiver<Job>, waiting: &AtomicUsize) {
 /// Makes `change` and returns once it is visible, after every change handed to the writer
 /// thread before. The calling thread must not hold the interpreter lock; it may hold the
 /// graph's shared lock inside `yielding_to_cycles`.
+///
+/// Behavior: `BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#checkBlockingEditSafety`,
+/// whose text for a thread that runs a cycle this is
 fn apply_in_order(graph: &dyn UpdateGraph, change: Change) -> Result<(), ExportError> {
+    if graph.current_thread_processes_updates() {
+        return Err(ExportError::Internal(
+            "java.lang.UnsupportedOperationException: Attempted to make a blocking input table \
+             edit from a listener or notification. This is unsupported, because it will block \
+             the update graph from making progress and hang indefinitely."
+                .to_string(),
+        ));
+    }
     let writer = Writer::get();
     if writer.waiting.load(Ordering::SeqCst) == 0 {
         return change.apply();
