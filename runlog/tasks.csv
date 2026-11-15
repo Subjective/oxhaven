@@ -94,4 +94,3 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 7.3-csv,1,agent,2026-11-15T19:31Z,,,,running,,,,"CSV read and write; ports 10950/10951"
 0.15-fuzz-coverage,1,agent,2026-11-15T05:30Z,330,372664,,merged,0,81,too-large,"Second generator for every ported operation in 13 families, known-findings file, selfcheck; 1000 seeds per family; seven open engine defects (task 4.17) and five Java defects; long run across two usage-limit stops, start time and minutes approximate"
 4.17-fuzz-findings,1,agent,2026-11-15T19:40Z,,,,running,,,,"Seven engine defects from the widened fuzzer; ports 10952/10953"
-6.10-python-input-tables,1,agent,2026-11-15T20:35Z,,,,running,,,,"Lock release while waiting, then input tables and DynamicTableWriter; ports 10954/10955"

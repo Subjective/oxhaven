@@ -648,7 +648,7 @@ and that Java reads all three. PRs 80 and 81 merged at 19:38; task 4.17 started.
 The codec agent was resumed to enable Zstandard on the same branch (PR 82). Brotli stays
 refused.
 
-## 2026-11-15 20:35 UTC: Conversion up as PR 83; input tables need a lock facility first
+## 2026-11-15 20:08 UTC: Conversion up as PR 83; input tables need a lock facility first
 
 The 6.9 agent finished conversion and declined to start 6.10, as briefed for a used-up
 context, and found why 6.10 was under-scoped: a console command holds the update graph's
@@ -658,3 +658,5 @@ assertion. Java releases the lock while waiting. Decision (orchestrator): the fa
 with the engine graph lock paths added to what it owns; no contract change is expected. The
 agent's Java observations are appended to the task file. For owner review from PR 83:
 to_arrow returns one record batch where Java returns several.
+Task 6.10 starts after PR 79 merges, because that pull request moves console commands onto
+the interpreter's own thread, which is where the lock is held.
