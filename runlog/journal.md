@@ -504,3 +504,7 @@ risk: Python functions in query strings (GIL versus update cycles).
 ## 2026-11-15 06:11 UTC
 
 PR 65 (console design, embedded Python behind the `python` feature, M6 and M7 task files) merged on green, including the first Actions run of the `python-console` job. Machine at load 24 with 6.9 GB disk free: the fuzz-coverage agent was told to run one family at a time, and no new agents start until load and disk recover.
+
+## 2026-11-15 06:25 UTC
+
+PR 66 opened (column statistics, quick filters, blink input tables). Gate reaches 78 of 83 on that branch. It also corrects a rule merged in PR 61: Java memoizes a view on a copy only for bare column names, not `view(X = K)`. For owner review: three quick-filter sub-cases and vector column statistics are refused as not ported; blink Barrage subscriptions still refused.
