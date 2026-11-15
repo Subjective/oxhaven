@@ -16,7 +16,6 @@ unlocked thread when it is off.
 """
 
 import contextlib
-import threading
 from functools import wraps
 from typing import Callable
 
@@ -53,29 +52,24 @@ def _graph(ug) -> UpdateGraph:
     return ug if isinstance(ug, UpdateGraph) else ug.update_graph
 
 
-def _main() -> bool:
-    """Whether this is the thread commands run on."""
-    return threading.current_thread() is threading.main_thread()
-
-
 def has_exclusive_lock(ug) -> bool:
     """Whether this thread holds the exclusive lock of the update graph `ug`, or of the
     graph of the table `ug`."""
     _graph(ug)
-    return _oxhaven.graph_holds(_main())[1]
+    return _oxhaven.graph_holds()[1]
 
 
 def has_shared_lock(ug) -> bool:
     """Whether this thread holds the shared lock of the update graph `ug`, or of the graph
     of the table `ug`."""
     _graph(ug)
-    return _oxhaven.graph_holds(_main())[0]
+    return _oxhaven.graph_holds()[0]
 
 
 @contextlib.contextmanager
 def _locked(ug, exclusive: bool):
     _graph(ug)
-    _oxhaven.graph_lock(exclusive, _main())
+    _oxhaven.graph_lock(exclusive)
     try:
         yield
     except Exception as e:

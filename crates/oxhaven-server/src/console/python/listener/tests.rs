@@ -74,11 +74,12 @@ async fn a_listener_is_called_in_the_cycle_with_the_rows_of_the_change() {
 src = input_table({'K': dtypes.int32, 'V': dtypes.int32}, key_cols='K')
 der = src.update('W = V + 1')
 seen = []
+command_thread = threading.get_ident()
 def on(update, is_replay):
     seen.append((
         is_replay, vals(update.added()), vals(update.removed()), vals(update.modified()),
         vals(update.modified_prev()), sorted(update.modified_columns),
-        threading.current_thread() is threading.main_thread(),
+        threading.get_ident() == command_thread,
     ))
 handle = listen(der, on)
 assert handle.started and seen == []

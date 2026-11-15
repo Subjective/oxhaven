@@ -139,29 +139,50 @@ pub(super) fn holds_the_shared_lock_only() -> bool {
     HOLDS.get().engine == Some(Side::Shared)
 }
 
-/// Whether the thread is running a console command, given that `main` says it is the
-/// interpreter's main thread: the command holds the engine's shared lock, and nothing
-/// Python took accounts for that hold.
-fn in_command(graph: &PeriodicUpdateGraph, holds: Holds, main: bool) -> bool {
-    main && holds.engine.is_none() && graph.stepped().holds_shared()
+thread_local! {
+    /// How many console commands the thread is running, one inside the other.
+    static COMMANDS: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Runs a console command: `f`, called by a thread that holds the graph's shared lock for
+/// it. Python code that `f` runs on this thread is told that it holds the exclusive lock.
+///
+/// The thread says so itself because nothing in Python does: `threading.main_thread()` is
+/// the thread that first imported `threading` before Python 3.13, which need not be the
+/// thread commands run on.
+pub(super) fn running_a_command<T>(f: impl FnOnce() -> T) -> T {
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            COMMANDS.set(COMMANDS.get() - 1);
+        }
+    }
+    COMMANDS.set(COMMANDS.get() + 1);
+    let _leave = Leave;
+    f()
+}
+
+/// Whether the thread is running a console command whose hold of the engine's shared lock
+/// nothing Python took accounts for.
+fn in_command(graph: &PeriodicUpdateGraph, holds: Holds) -> bool {
+    COMMANDS.get() > 0 && holds.engine.is_none() && graph.stepped().holds_shared()
 }
 
 /// Takes the shared or the exclusive side of the update graph's lock for the calling
-/// thread, until [`graph_unlock`]. `main` says whether the thread is the interpreter's
-/// main thread, where commands run. See the [module documentation](self).
+/// thread, until [`graph_unlock`]. See the [module documentation](self).
 ///
 /// Behavior: `io.deephaven.engine.updategraph.UpdateGraphLock.SharedLock#lock`,
 /// `ExclusiveLock#lock`: both sides are re-entrant, the shared side can be taken under the
 /// exclusive one and not the reverse, and neither can be taken by a thread that runs a
 /// cycle
 #[pyfunction]
-fn graph_lock(py: Python<'_>, exclusive: bool, main: bool) -> PyResult<()> {
+fn graph_lock(py: Python<'_>, exclusive: bool) -> PyResult<()> {
     let graph = graph()?;
     if graph.current_thread_processes_updates() {
         return Err(refused_in_a_cycle());
     }
     let mut holds = HOLDS.get();
-    let nested = holds.exclusive > 0 || in_command(&graph, holds, main);
+    let nested = holds.exclusive > 0 || in_command(&graph, holds);
     if exclusive {
         if !nested {
             if graph.stepped().holds_shared() {
@@ -229,10 +250,10 @@ fn graph_unlock(py: Python<'_>, exclusive: bool) -> PyResult<()> {
 /// Behavior: `UpdateGraphLock.SharedLock#isHeldByCurrentThread`,
 /// `ExclusiveLock#isHeldByCurrentThread`
 #[pyfunction]
-fn graph_holds(main: bool) -> PyResult<(bool, bool)> {
+fn graph_holds() -> PyResult<(bool, bool)> {
     let graph = graph()?;
     let holds = HOLDS.get();
-    let command = !graph.current_thread_processes_updates() && in_command(&graph, holds, main);
+    let command = !graph.current_thread_processes_updates() && in_command(&graph, holds);
     Ok((holds.shared > 0, holds.exclusive > 0 || command))
 }
 

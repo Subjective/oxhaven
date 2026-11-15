@@ -626,12 +626,14 @@ impl PythonSession {
         let mut snapshot = self.snapshot();
         locked(self.runtime.context.graph.as_ref(), || {
             yielding_to_cycles(|| {
-                Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
-                    |error| Changes {
-                        error: Some(format!("the Python session failed: {error}")),
-                        ..Default::default()
-                    },
-                )
+                listener::running_a_command(|| {
+                    Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
+                        |error| Changes {
+                            error: Some(format!("the Python session failed: {error}")),
+                            ..Default::default()
+                        },
+                    )
+                })
             })
         })
     }
