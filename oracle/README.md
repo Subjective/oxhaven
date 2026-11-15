@@ -24,6 +24,9 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/results.py` | Result sets and their recorded form |
 | `scenarios/static/`, `scenarios/ticking/` | The scenarios, one JSON file each |
 | `corpus/<scenario>/` | The recorded Java results of each scenario |
+| `harness/scripts.py` | Script scenarios: the format, the runner, the recordings |
+| `scenarios/python/` | The script scenarios, one Python file each |
+| `corpus/python/<scenario>/` | The recorded Java results of each script scenario |
 | `harness/formulas/` | The `formulas` command: corpus format, classifier, grid, extractors |
 | `corpus/formulas/` | The formula corpus: fixtures, cases and their recorded Java outcomes |
 | `tests/` | Tests of the harness itself; they need no server |
@@ -120,6 +123,87 @@ refuses a recording whose scenario has changed since, so a changed scenario must
 again. The recordings are committed. Re-recording changes the files byte for byte only where the
 results changed.
 
+## Script scenarios
+
+A script scenario runs Python on the server, as a user of the console or of `pydeephaven`'s
+`run_script` does, and compares the tables the script leaves in its variables. It is the gate
+of the `deephaven` package that Oxhaven writes anew (`docs/CONSOLE.md`): Java's answers are
+recorded once, and every server with a Python console can be compared with them.
+
+```bash
+# Store what the Java reference answers. Run this against the Java reference only.
+bin/harness record-scripts --url $URL
+# Compare a server that has a Python console with the recordings; needs no Java.
+bin/harness replay-scripts --url $URL
+# Only some: a name, or the start of names.
+bin/harness replay-scripts --url $URL --scripts agg_,table_sort
+# What a script leaves behind, for writing one.
+bin/harness show-scripts --url $URL --scripts agg_by
+```
+
+`replay-scripts` prints one line per scenario: `ok`, `DIFF` followed by one line per mismatch,
+`MISSING` with what Python said when the script used a name the server's package does not
+have, or `ERROR` when it could not be run. The exit status is 0 when every scenario is clean,
+1 when one differs or is missing, 2 when one could not be run or `--scripts` selects nothing.
+
+A scenario is one Python file, `scenarios/python/<name>.py`: the script, with comment lines
+that say what to do with it.
+
+```python
+# What this scenario is for.
+# oracle: results by_key, overall
+# oracle: computed by_key.Sum, overall.Sum
+from deephaven import agg, empty_table
+
+source = empty_table(9).update(["K = i % 3", "V = i * 1.5"])
+by_key = source.agg_by([agg.sum_("Sum = V")], by="K")
+overall = source.agg_by([agg.sum_("Sum = V")])
+# oracle: step
+# oracle: fails
+overall = source.agg_by([agg.sum_("Sum = NoSuchColumn")])
+```
+
+| Line | Meaning |
+| --- | --- |
+| `# oracle: results a, b` | The variables to compare. Each is read through its `s/<name>` ticket after every step |
+| `# oracle: computed a.Col` | A float column under the tolerance of A1, as an aggregation's sum is in a table scenario |
+| `# oracle: step` | What follows is the script of the next step. A step without code only waits |
+| `# oracle: fails` | The script of this step must fail on the reference |
+
+- The text before the first `step` is the script of step 0. Each script is one `run_script`
+  call, and keeps the line numbers of the file.
+- After each script the runner waits until the server has finished an update cycle, with the
+  rule of "How a ticking step is known to be finished", and then reads every result. So a
+  time table, or an input table that a script adds rows to, is compared like a ticking
+  scenario's tables.
+- A variable that cannot be read is a failure with its status code, like the table of a
+  refused operation: `NOT_FOUND` for a variable that was never assigned.
+- The server has one Python session, for every client. After a scenario the runner removes
+  every global variable that was not there before it, imported names included, so a scenario
+  can use any name and must import what it uses.
+- `record-scripts` refuses to store a script that fails without `fails`, or runs with it: a
+  script that fails by mistake must not become the expectation.
+- A name selects every scenario whose name starts with it, so name scenarios after the area
+  they gate: `table_`, `agg_`, `updateby_`, `join_`, `dtypes_`, `time_`, `input_`,
+  `convert_`, `udf_`, `listen_`.
+
+A recording is `corpus/python/<name>/`: the manifest and Arrow files of every recording, and
+`scripts.json` with the outcome of each step's script.
+
+**How a script's outcome is compared.** When the reference's script failed, the other server's
+must fail with the same Python exception type (`deephaven.dherror.DHError`, `TypeError`), and
+for a `DHError` with the same message before the cause: `table update operation failed.` of
+`table update operation failed. : Cannot find variable or class X`. The cause, the traceback
+and the text of other exceptions are not compared (`PARITY.md` A5). Variables assigned before
+the failure are compared like any other.
+
+**Missing names.** A script that fails with `ModuleNotFoundError` or `ImportError` for a module
+or name of `deephaven`, with `AttributeError` for an attribute of a `deephaven` module or of
+an object that is not a builtin, or with `TypeError` for a keyword argument that a function
+does not take, uses a name the server does not have yet. The scenario is then `missing`, not
+different: its comparison ends at that step, and what was compared before it stands.
+`rules.missing_name` is the rule.
+
 ## The replay gate
 
 CI runs one command on every pull request and on every push to `main` (the `oracle-replay` job):
@@ -128,9 +212,10 @@ CI runs one command on every pull request and on every push to `main` (the `orac
 oracle/bin/ci-replay.sh
 ```
 
-It builds `oxhaven-server`, starts it on a free port, replays every scenario against the
-recordings in `corpus/`, runs every client smoke area, stops the server, and compares what it
-saw with `replay-baseline.json`. It needs no Java server: it talks only to the Oxhaven server it
+It builds `oxhaven-server` with its Python console (`--features python`), starts it on a free
+port, replays every scenario and every script scenario against the recordings in `corpus/`,
+runs every client smoke area, stops the server, and compares what it saw with
+`replay-baseline.json`. It needs no Java server: it talks only to the Oxhaven server it
 started. To run it locally you need the Rust toolchain and a Python environment at
 `oracle/.venv`; the one from `requirements.txt` works, and `requirements-replay.txt` is the same
 pins without the Java server wheel, which is what CI installs:
@@ -141,7 +226,8 @@ oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
 oracle/bin/ci-replay.sh
 ```
 
-It takes about 20 seconds after the build (83 scenarios and 27 smoke checks). `ORACLE_GATE_PORT` fixes the port (other agents
+It takes about 35 seconds after the build (83 scenarios, 21 script scenarios and 31 smoke
+checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
 Fifteen seconds before that limit the harness writes the stack of every thread to stderr, so a
@@ -152,10 +238,24 @@ as the artifact `oracle-replay-report` when the job fails. Against a server that
 running, `bin/harness gate --url $URL` does the comparison alone.
 
 The exit status is 0 when the outcome is the baseline's, 1 when it is not, and 2 when the server
-did not build or start, exited during the run, or a scenario or check could not be run.
+did not build or start, exited during the run, a scenario or check could not be run, or a
+section was skipped.
 
-**The baseline.** `replay-baseline.json` has one line per scenario (section `replay`) and per
-smoke check (sections `client-smoke <area>`):
+**The Python console.** The script scenarios and the smoke area `console` run Python on the
+server, so the gate builds the server with the cargo feature `python`. The server then embeds
+the Python that PyO3 finds when it is built, `python3` on `PATH` or the one `PYO3_PYTHON`
+names, and needs that Python's shared library when it runs; the gate adds its directory to
+`LD_LIBRARY_PATH` (`docs/CONSOLE.md`, "Build and CI"). The embedded Python is not the one in
+`oracle/.venv`: that one runs the harness. On a machine without a Python to embed, where
+`python3` does not run or `ORACLE_GATE_PYTHON=0` is set, the gate says so, builds the server
+without the console, runs everything else, prints one `SKIPPED` line for each of the sections
+`replay-scripts` and `client-smoke console`, and ends with exit status 2: the rest of the
+outcome can be read, and the gate has not passed. `bin/harness gate --url $URL` against a
+server without a Python console does the same.
+
+**The baseline.** `replay-baseline.json` has one line per scenario (section `replay`), per
+script scenario (section `replay-scripts`) and per smoke check (sections
+`client-smoke <area>`):
 
 ```json
 "where_int": {"state": "clean"},
@@ -168,6 +268,15 @@ in `harness/rules.py`), with the status code for a failure (`failure_unexpected:
 and the metadata key for a metadata difference (`table_metadata:AddOnly`,
 `column_metadata:inputtable.isKey`). A smoke check that fails has the one kind `failed` and no
 tables.
+
+A script scenario has the same kinds for its result tables, and these for its scripts, under
+the table name `(script)`: `missing` when the script uses a name that the server's `deephaven`
+package does not have yet, `script_failure_unexpected:<exception type>` when it fails only on
+Oxhaven, `script_failure_expected` when it fails only on Java, `script_error_type:<exception
+type>` and `script_error_message` when both fail in different ways ("Script scenarios"
+below). A line with `missing` is how the baseline lists a part of the Python API that is not
+written: when the name exists, the scenario is clean and the gate asks for the promotion, or
+it differs in another way and the gate fails with `NEW KIND`.
 
 The gate is a ratchet in both directions. Each line of its verdict starts with what is wrong:
 
@@ -282,7 +391,8 @@ with a bug in that operator. It is accepted wherever a server URL is, and exists
 .venv/bin/python -m harness client-smoke session --url $URL
 ```
 
-Areas: `session`, `tables`, `flight`, `barrage`, `inputtable`. Each runs a handful of named
+Areas: `session`, `tables`, `flight`, `barrage`, `inputtable` and `console` (which needs a
+server with a Python console). Each runs a handful of named
 checks that do what a real client does in that area, through pydeephaven, a plain
 `pyarrow.flight` client (`flight`), plain gRPC calls (`session`) and the Barrage subscription
 client `pydeephaven-ticking` (`barrage`). Every check prints `ok` or `FAIL` with the reason; the
@@ -400,6 +510,10 @@ They need the recordings but no server.
 - `tests/test_gate.py`: the baseline's ratchet (what fails the gate, what counts as weakening),
   its file format, the difference kinds, and that the checked-in baseline lists every scenario
   and every smoke check.
+- `tests/test_scripts.py`: the script scenario format, reading the exception out of what
+  each server answers, the comparison of script outcomes (each kind must be reported, and
+  what counts as a missing name), and that every script scenario has a recording made from
+  its current content that agrees with its `fails` lines.
 - `tests/test_formulas.py`: the formula corpus files, the classifier, the comparison of
   formula outcomes (each kind of difference must be reported), the checks, the Java log reader.
 
@@ -435,6 +549,8 @@ cites the section of `PARITY.md` behind each rule. In short:
 - A result that the scenario marks unordered is compared as a multiset. Everything else is
   compared in order.
 - A column type the rules do not know is reported, never passed.
+- The script of a script scenario is compared by whether it fails, by the Python exception
+  type, and for a `DHError` by the message before the cause ("Script scenarios").
 
 ## Scenarios
 
@@ -592,6 +708,18 @@ to a private input table and waits for both; the second cannot be applied before
 cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and the Java citation.
 
 ## Known limits
+
+- The script scenarios compare tables only. A variable that holds anything else (a number, a
+  figure, a partitioned table) is not a result, and what a script prints is not compared.
+- A `char` column is Arrow `uint16`, which the rules do not know, so no script scenario
+  builds one (`char_col`); `tests/test_scripts.py` refuses a recording with such a column.
+- The scripts of one run share the server's one Python session. The runner removes a
+  scenario's variables afterwards, but not what a script changes elsewhere: a module it
+  patches, a listener it leaves registered.
+- A script's third-party imports are those of the Python each server embeds. Against Oxhaven
+  in the gate that is the build machine's `python3`, not `oracle/.venv`; `convert_pandas`
+  imports `deephaven.pandas` before `pandas` so that it is `missing` there, whether pandas
+  is installed or not, until the conversions exist.
 
 - The formula corpus runs every case on a static table. What a formula does on a refreshing
   table (which formulas Java refuses there, how column arrays propagate changes) is not in it.

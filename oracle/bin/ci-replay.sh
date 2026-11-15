@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
-# The replay gate: builds Oxhaven, starts it, replays every recorded Java result under
-# oracle/corpus and runs every client smoke check against it, stops it, and compares the outcome
-# with oracle/replay-baseline.json. Needs no Java server. See oracle/README.md, "The replay gate".
+# The replay gate: builds Oxhaven with its Python console, starts it, replays every recorded
+# Java result under oracle/corpus (table scenarios and script scenarios) and runs every client
+# smoke check against it, stops it, and compares the outcome with oracle/replay-baseline.json.
+# Needs no Java server. See oracle/README.md, "The replay gate".
 #
 #   oracle/bin/ci-replay.sh
 #
 # Exit status: 0 when the outcome is the baseline's; 1 when it is not; 2 when the server could
-# not be built or started, exited during the run, or a scenario or check could not be run.
+# not be built or started, exited during the run, a scenario or check could not be run, or
+# the server was built without the Python console and the sections that need it were skipped.
 #
 # Environment:
+#   ORACLE_GATE_PYTHON    0 builds the server without the Python console (exit status 2)
+#   PYO3_PYTHON           the Python to embed; default python3 on PATH
 #   ORACLE_GATE_PORT      port for the server; default 0, which lets the system pick a free one
 #   ORACLE_GATE_OUT       directory for report.json and server.log; default oracle/.run/gate
 #   ORACLE_GATE_TIMEOUT   seconds the replay and the smokes may take together; default 900
@@ -35,12 +39,32 @@ mkdir -p "$out" || fail "cannot create $out"
 rm -f "$report" "$log"
 
 echo "== build"
-(cd "$repo" && cargo build --locked -p oxhaven-server) || fail "the server did not build"
+# The script scenarios and the console smoke need the server's Python console, which is the
+# cargo feature `python`: the server then embeds the Python that PyO3 finds at build time
+# (PYO3_PYTHON, or python3 on PATH) and needs its libpython when it runs (docs/CONSOLE.md).
+# Without such a Python the server is built without the console, and the gate skips those
+# sections by name and does not pass.
+embedded="${PYO3_PYTHON:-python3}"
+features=(--features python)
+libdir=
+if [[ "${ORACLE_GATE_PYTHON:-1}" == 0 ]]; then
+  echo "replay gate: ORACLE_GATE_PYTHON=0: building without the Python console; the sections" \
+    "replay-scripts and client-smoke console will be skipped and the gate will not pass" >&2
+  features=()
+elif ! libdir="$("$embedded" -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") or "")' 2>/dev/null)"; then
+  echo "replay gate: no Python to embed ($embedded does not run): building without the" \
+    "Python console; the sections replay-scripts and client-smoke console will be skipped" \
+    "and the gate will not pass" >&2
+  features=()
+fi
+(cd "$repo" && cargo build --locked -p oxhaven-server "${features[@]}") ||
+  fail "the server did not build${features:+ with ${features[*]}; ORACLE_GATE_PYTHON=0 builds it without the Python console}"
 binary="${CARGO_TARGET_DIR:-$repo/target}/debug/oxhaven-server"
 [[ -x "$binary" ]] || fail "no server binary at $binary"
 
 echo "== start"
-NO_COLOR=1 "$binary" --host 127.0.0.1 --port "$port" --psk "$psk" >"$log" 2>&1 &
+NO_COLOR=1 LD_LIBRARY_PATH="${libdir:+$libdir:}${LD_LIBRARY_PATH:-}" \
+  "$binary" --host 127.0.0.1 --port "$port" --psk "$psk" >"$log" 2>&1 &
 server=$!
 
 stop_server() {

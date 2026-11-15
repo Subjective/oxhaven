@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "scenario": "udf_update",
+  "scenario_sha256": "e58d0f6b549106030a9b9eda5fc8aedeafd7752e923bf97c6419aa20d55334ea",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "doubled",
+      "file": "step000.doubled.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 3
+    }
+  ]
+}

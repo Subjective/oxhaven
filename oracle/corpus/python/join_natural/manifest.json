@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "join_natural",
+  "scenario_sha256": "fd23b1e7478db742c1da9e742defdb2041850f2775a4a804d91100306efe772d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "all_columns",
+      "file": "step000.all_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "some_columns",
+      "file": "step000.some_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "exact",
+      "file": "step000.exact.arrow",
+      "rows": 5
+    }
+  ]
+}
