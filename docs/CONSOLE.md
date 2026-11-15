@@ -91,9 +91,15 @@ ConsoleService (console/mod.rs)          any build
   shared lock, so no cycle runs during it; Java holds the exclusive lock, which also keeps
   other clients' operations out. Commands of one client session run one after the other on
   its serial queue.
+- **Threads**: the interpreter is started on a thread of its own, Python's main thread, and
+  every command runs there, one at a time; that is what lets a command be stopped
+  ("Stopping a running command"). Everything else that needs the interpreter (reading a
+  scope variable, a formula's variables, the scope watcher) takes its lock on the thread
+  it is called on.
 - **Output**: `sys.stdout` and `sys.stderr` are replaced by streams that hand each line to the
   server's log buffer under the levels `STDOUT` and `STDERR`. Clients read it with
-  `SubscribeToLogs`; `ExecuteCommand` does not carry output, in Java or here.
+  `SubscribeToLogs`, with the server's own log ("The log stream"); `ExecuteCommand` does
+  not carry output, in Java or here.
 - **Errors**: an exception in user code is an `OK` answer with `error_message`, and the
   variables assigned before it are still reported. An engine error reaches Python as
   `DHError` with the reference package's message for the operation and the engine's text.
@@ -227,8 +233,9 @@ importer for the `deephaven` package serves both forms.
    script scenarios so that each API task is gated against Java, as the operators are.
 3. **No isolation**: a crash in a native extension, or a Python thread that never ends, is
    the server's. The same holds for Java.
-4. **A command cannot be interrupted** (task 6.15). Java does not implement `CancelCommand`
-   either.
+4. **A command that never ends** holds the graph's lock, so no table ticks. Java has no
+   way out but a restart; here the client cancels the call ("Stopping a running
+   command"). Native code that does not return still cannot be stopped.
 5. **Deployment is coupled to a libpython minor version**: one binary per supported Python
    ("Distribution" above).
 6. **Error text** inside `error_message` is this engine's, not a Java stack trace. Clients
@@ -256,9 +263,9 @@ Stubbed or missing, each with its task:
 | Scope variables in formulas | numbers, strings and booleans; the rest is refused, see "The query scope" | no task yet |
 | The rest of the Python API | absent: `ImportError` or `AttributeError` | 6.4 to 6.12 |
 | Autocomplete | answers "nothing found" (Java without `jedi`); no `Open`/`NextAutoCompleteStream` | 6.13 |
-| The log stream | holds only what scripts print, not the server's log; never refuses a slow client; ends with the connection, not the session | 6.14 |
-| Stopping a running command | not possible | 6.15 |
-| `GetHeapInfo` | the process's resident memory of the machine's physical memory; `free_memory` is 0 | 6.14 |
+
+Done since: the log stream and `GetHeapInfo` (task 6.14, "The log stream" and "The memory
+figures"), stopping a running command (task 6.15).
 
 ## The query scope
 
@@ -317,6 +324,116 @@ Refused here though Java computes a result (`FormulaError::Unsupported` unless n
 - `where("X > 1")`, a filter that never reaches the compiler, succeeds while an `int`
   outside 64 bits is in the scope; Java fails it.
 
+## The log stream
+
+Task 6.14; `crates/oxhaven-server/src/console/logs.rs`. What Java does was read in
+`ConsoleServiceGrpcImpl.LogsClient`, `LogBuffer` and the server's `logback.xml`, and
+observed on Java 42.9.
+
+- **What is in it.** What scripts print, under `STDOUT` and `STDERR`, and the server's own
+  log: every `tracing` event from `INFO` up (the root level of Java's configuration), under
+  its level, whose names are Java's (`ERROR`, `WARN`, `INFO`). The text of a log record is
+  laid out as Java's `LOGBUFFER` appender lays it out, `thread | logger | message`, the
+  thread in 20 characters and the logger in 25; the thread is the name of the Rust thread
+  and the logger the module path of the event, cut as logback cuts package names. Both
+  servers send `Evaluating command: ...` under `INFO` and `Error running script: ...`
+  under `ERROR`, which is what the IDE's Log panel lists. The records before a client
+  subscribes are kept (1024, as Java) and sent first, the server's start among them.
+- **The second copy is not reproduced.** The Java server of the oracle sends every log
+  record again, cut into lines under `STDERR`. That is the oracle's logging configuration
+  (`oracle/bin/logback-oracle.xml` adds a console appender on the captured `System.err`,
+  so that errors can be found in the server's log file), not Java's: the configuration the
+  server ships with writes its console output around the captured stream, with the comment
+  "so we don't double up messages to the LogBuffer". A Java server started the usual way
+  sends each record once, as this server does.
+- **Descriptors 1 and 2 are not captured**, in either server. Java captures `System.out`
+  and `System.err`, the objects; this server captures Python's `sys.stdout` and
+  `sys.stderr`, the objects. What native code or a subprocess writes to the descriptors
+  (`os.write(1, ...)`, `os.system("echo ...")`) goes to the server's own output: observed
+  on Java 42.9, and tested here. Capturing the descriptors would mean redirecting them to
+  a pipe for the whole process, the server's own log included.
+- **A client that does not keep up is ended.** At most 32768 records wait for one client
+  (Java's `deephaven.console.subscribeToLogs.bufferSize`, which this server has no flag
+  for). The record that does not fit ends the stream with `RESOURCE_EXHAUSTED` and Java's
+  text; the records that were waiting are not sent, as in Java.
+- **The stream ends with the session**: `CANCELLED`, `Session closed`, as in Java.
+- **Not reproduced: the 100 ms send interval.** Java gathers records for up to 100 ms
+  before it sends them; this server sends each when it is written.
+
+## The memory figures
+
+Task 6.14; `crates/oxhaven-server/src/console/memory.rs`. Java answers `GetHeapInfo` with
+the heap of its JVM, and the IDE's memory widget shows `total_memory - free_memory` as in
+use, of `max_memory`. A process without a managed heap has no such three numbers, so each
+is the nearest it has:
+
+| Field | Java | Here |
+| --- | --- | --- |
+| `max_memory` | the largest the heap may become (`-Xmx`) | the memory the process may use: the smallest `memory.max` (or `memory.limit_in_bytes`) of its control group and the groups above it, and the machine's physical memory when none limits it |
+| `total_memory` | what the JVM has taken for the heap | the resident set of the process (`VmRSS`): everything it holds in physical memory, the engine's, the interpreter's and native libraries' |
+| `free_memory` | the part of the heap that holds no objects | what the C allocator holds and has not handed out (`mallinfo2`: `fordblks`); 0 where the C library is not glibc |
+
+The widget's bar is then the resident memory, less what the allocator can hand out again
+without asking the system, of the amount at which the kernel would end the process. The
+figures need `/proc`; without it the call is `UNIMPLEMENTED`. The interpreter's own
+allocator keeps free memory that `free_memory` does not count, so "in use" errs high.
+
+## Stopping a running command
+
+Task 6.15; `crates/oxhaven-server/src/console/python/interrupt.rs`, whose module
+documentation is the full account.
+
+**What Java does: nothing.** Observed on Java 42.9 with `time.sleep(25)` and with a loop
+of 25 seconds: after the client cancelled the `ExecuteCommand` call, and also after it
+closed its session, the command ran to its end, and the next command (of the same
+session, and of a new one) waited the remaining 23 seconds for it. `SessionState` cancels
+the export and never interrupts the thread that runs it; `CancelCommand` is not
+implemented; the web client's cancel throws `UnsupportedOperationException` before it
+sends anything. A command that never ends (`while True: pass`) therefore holds the update
+graph's lock until the Java server is restarted: no table ticks, and no other command
+runs.
+
+**What this server does: it stops the command.** This is a deliberate difference from
+Java, the one place where the console does more than the reference; the task's gate asks
+for it. It is observable only by a client that cancels a call or closes its session while
+its command runs: here the rest of the command does not happen.
+
+- A command is stopped when the client cancels its `ExecuteCommand` call (or the
+  connection is lost), and when its session ends. `CancelCommand` stays `UNIMPLEMENTED`.
+- A command that is still waiting on its session's queue then does not run at all. (Java
+  runs it when its call was cancelled, and does not when its session ended.)
+- A running Python command gets `KeyboardInterrupt` where it is. What it assigned before
+  is kept and published; its error, the traceback, is logged.
+
+**The mechanism.** Python interrupts code, and wakes it from a blocking call, only through
+a signal, whose handler runs on the interpreter's main thread. So the interpreter is
+started on a thread of its own, every command runs on that thread, a handler that raises
+`KeyboardInterrupt` is installed for `SIGUSR2`, and a stop sends that signal to that
+thread (`pthread_kill`, the one `unsafe` call). The thread that asks touches neither the
+interpreter nor its lock. When the command has ended no more signals are sent, and one
+that arrived too late is consumed before the next command, so a stop never reaches
+another command.
+
+**Limits.**
+
+- Stopped: Python code, at the next instruction (`while True: pass`); and the blocking
+  calls that Python makes interruptible, at once: `time.sleep`, waiting for a lock, an
+  event, a queue, a subprocess, a socket.
+- Not stopped: native code that does not return to the interpreter, such as a C extension
+  that loops or blocks in a call the signal does not wake. The interrupt is raised when it
+  returns. The server is then where the Java server is.
+- An engine operation in progress (`t.update(...)`, a sort) is **finished, not
+  abandoned**: it runs to its end with the interpreter lock released, its result is
+  dropped, and the interrupt is raised when it returns. No engine state is left half built.
+- Code that catches `KeyboardInterrupt` and goes on is not stopped by one request. The
+  session's end after the call's cancel is a second one.
+- Threads a script started are not interrupted, nor is anything that is not a command.
+- The process uses `SIGUSR2`. A script that installs its own handler for it disables
+  stopping. Scripts run on Python's main thread, so `signal.signal` works in them, which
+  it does not in the Java server; a script that takes `SIGINT` takes `Ctrl-C` from the
+  server.
+- Unix only.
+
 ## Differences from Java, per call
 
 Observed with `oracle/console/probe.py` on Java 42.9 and on this server; the two transcripts
@@ -329,8 +446,9 @@ list.
 | `ExecuteCommand` | `changes` and the status are the same in every case tried. `error_message` starts `Error in Python interpreter:` and holds the same Python traceback; Java's starts `java.lang.RuntimeException: Error in Python interpreter:` and continues with the JVM's stack. For an engine error the traceback names this package's files and this engine's message. |
 | `ExecuteCommand` on a console id that is never exported | none: both wait for the export |
 | `BindTableToVariable` | none |
-| `SubscribeToLogs` | script output is the same, record for record. Java also sends its server log (each line under its level and again as a `STDERR` line), including "Evaluating command" and the stack of every script error. |
-| `GetHeapInfo` | different quantities; see above |
+| `ExecuteCommand` whose call is cancelled, or whose session ends, while it runs | Java runs the command to its end; this server stops it, and the command after it finds that it did not finish ("Stopping a running command") |
+| `SubscribeToLogs` | script output is the same, record for record, and the server's log arrives under the same levels in the same layout, with this server's thread and module names and its own wording. The oracle's Java also sends each log record again as `STDERR` lines, which is its logging configuration; and Java gathers records for 100 ms ("The log stream"). A slow client and the end of the session end the stream as in Java. |
+| `GetHeapInfo` | different quantities ("The memory figures") |
 | `CancelCommand`, `CancelAutoComplete` | none: `UNIMPLEMENTED`, same text |
 | `AutoCompleteStream` | Java with `jedi` installed returns completions and does not answer `open_document`; this server answers every request with success and no items, as Java does without `jedi` |
 | `ListFields` | none for tables |
