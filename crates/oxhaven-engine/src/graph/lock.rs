@@ -1,6 +1,6 @@
 //! The update graph's reader-writer lock.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
@@ -10,6 +10,33 @@ static NEXT_LOCK_ID: AtomicU64 = AtomicU64::new(0);
 thread_local! {
     /// How many times this thread holds the shared side of each lock, by lock id.
     static SHARED_HOLDS: RefCell<BTreeMap<u64, usize>> = const { RefCell::new(BTreeMap::new()) };
+    /// How many [`yielding_to_cycles`] calls this thread is inside.
+    static YIELDING: Cell<usize> = const { Cell::new(0) };
+}
+
+/// Runs `f` as a holder of the shared lock that gives the lock up while it waits for a
+/// cycle: inside `f`, `run_cycle` called by a thread that holds the shared side of a graph's
+/// lock releases every hold the thread has, waits for the cycle, and takes the holds again
+/// before it returns. Outside such a call, `run_cycle` under the shared lock panics, because
+/// the cycle could never run.
+///
+/// A blocking write to an input table is such a wait. What the thread read from refreshing
+/// tables before the wait may have changed after it, so only a caller that does not rely on
+/// one snapshot across the write may use this: a console command, which in Java runs under
+/// the exclusive lock and gives that up while it waits on the lock's condition.
+///
+/// Behavior: io.deephaven.engine.table.impl.util.BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#waitForSequence
+/// and io.deephaven.engine.table.impl.BaseTable#awaitUpdate
+pub fn yielding_to_cycles<T>(f: impl FnOnce() -> T) -> T {
+    struct Leave;
+    impl Drop for Leave {
+        fn drop(&mut self) {
+            YIELDING.with(|depth| depth.set(depth.get() - 1));
+        }
+    }
+    YIELDING.with(|depth| depth.set(depth.get() + 1));
+    let _leave = Leave;
+    f()
 }
 
 #[derive(Default)]
@@ -67,6 +94,48 @@ impl GraphLock {
         }
         SHARED_HOLDS.with(|holds| *holds.borrow_mut().entry(self.id).or_insert(0) += 1);
         SharedGuard(self)
+    }
+
+    /// Runs `f`, which waits for a cycle, without this thread's holds of the shared side:
+    /// they are released before `f` and taken again after it, also when `f` panics. Taking
+    /// them again waits for a running or waiting cycle, as [`GraphLock::shared`] does.
+    ///
+    /// # Panics
+    /// If this thread holds the shared side and is not inside [`yielding_to_cycles`].
+    pub(super) fn released<T>(&self, f: impl FnOnce() -> T) -> T {
+        struct Retake<'a> {
+            lock: &'a GraphLock,
+            holds: usize,
+        }
+        impl Drop for Retake<'_> {
+            fn drop(&mut self) {
+                let lock = self.lock;
+                let mut state = lock.state();
+                while state.writer || state.writers_waiting > 0 {
+                    state = lock
+                        .changed
+                        .wait(state)
+                        .unwrap_or_else(PoisonError::into_inner);
+                }
+                state.readers += 1;
+                drop(state);
+                SHARED_HOLDS.with(|holds| holds.borrow_mut().insert(lock.id, self.holds));
+            }
+        }
+
+        let holds = self.shared_holds();
+        if holds == 0 {
+            return f();
+        }
+        assert!(
+            YIELDING.with(Cell::get) > 0,
+            "run_cycle called while holding the update graph's shared lock"
+        );
+        SHARED_HOLDS.with(|holds| holds.borrow_mut().remove(&self.id));
+        self.state().readers -= 1;
+        self.changed.notify_all();
+        let _retake = Retake { lock: self, holds };
+        f()
     }
 
     /// Takes the exclusive side until the guard is dropped.
