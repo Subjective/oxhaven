@@ -96,7 +96,9 @@ fn list_fields_are_described_as_java_recorded_them() {
     // a walk that finds no files does not pass.
     let expected: BTreeSet<(String, String)> = [
         ("double[]", "double"),
+        ("float[]", "float"),
         ("int[]", "int"),
+        ("io.deephaven.vector.ByteVector", "byte"),
         ("io.deephaven.vector.DoubleVector", "double"),
         ("io.deephaven.vector.FloatVector", "float"),
         ("io.deephaven.vector.IntVector", "int"),
@@ -104,10 +106,12 @@ fn list_fields_are_described_as_java_recorded_them() {
         ("io.deephaven.vector.ObjectVector", "java.lang.Boolean"),
         ("io.deephaven.vector.ObjectVector", "java.lang.String"),
         ("io.deephaven.vector.ObjectVector", "java.time.Instant"),
+        ("io.deephaven.vector.ShortVector", "short"),
         ("java.lang.Boolean[]", "java.lang.Boolean"),
         ("java.lang.String[]", "java.lang.String"),
         ("java.time.Instant[]", "java.time.Instant"),
         ("long[]", "long"),
+        ("short[]", "short"),
     ]
     .into_iter()
     .map(|(name, component)| (name.to_owned(), component.to_owned()))

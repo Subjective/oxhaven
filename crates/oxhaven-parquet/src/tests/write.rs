@@ -41,10 +41,9 @@ fn row_groups(footer: &ParquetMetaData) -> Vec<i64> {
 
 /// Whether the chunk of the column at `path` in row group `group` has a dictionary.
 fn has_dictionary(footer: &ParquetMetaData, group: usize, path: &str) -> bool {
-    let columns = footer.row_group(group).columns().iter();
+    let mut columns = footer.row_group(group).columns().iter();
     let column = columns
-        .filter(|column| column.column_path().string() == path)
-        .next()
+        .find(|column| column.column_path().string() == path)
         .unwrap();
     column.dictionary_page_offset().is_some()
 }

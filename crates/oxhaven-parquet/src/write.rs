@@ -493,7 +493,7 @@ fn split_evenly(rows: u64, groups: i64) -> Result<Vec<u64>, WriteError> {
 /// Behavior: `RowGroupTableIteratorVisitor#splitByMaxRows`
 fn split_by_max_rows(rows: u64, max_rows: i64) -> Result<Vec<u64>, WriteError> {
     let max_rows = max_rows as u64;
-    let groups = rows / max_rows + u64::from(rows % max_rows > 0);
+    let groups = rows.div_ceil(max_rows);
     split_evenly(rows, groups as i64)
 }
 
@@ -505,7 +505,7 @@ fn as_key(values: &ArrayRef) -> ArrayRef {
             let floats = values.as_primitive::<Float32Type>();
             Arc::new(floats.unary::<_, Float32Type>(|value| match value {
                 value if value.is_nan() => f32::NAN,
-                value if value == 0.0 => 0.0,
+                0.0 => 0.0, // both zeros
                 value => value,
             }))
         }
@@ -513,7 +513,7 @@ fn as_key(values: &ArrayRef) -> ArrayRef {
             let floats = values.as_primitive::<Float64Type>();
             Arc::new(floats.unary::<_, Float64Type>(|value| match value {
                 value if value.is_nan() => f64::NAN,
-                value if value == 0.0 => 0.0,
+                0.0 => 0.0, // both zeros
                 value => value,
             }))
         }
