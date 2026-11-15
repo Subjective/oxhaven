@@ -1,0 +1,280 @@
+{
+  "format": 2,
+  "scenario": "udf_errors",
+  "scenario_sha256": "8004f757bec948af4121faef5896a8e577986f249e18efe0764e8eb6dececee6",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "source",
+      "file": "step000.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "source",
+      "file": "step001.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "source",
+      "file": "step002.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "source",
+      "file": "step003.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "source",
+      "file": "step004.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "source",
+      "file": "step005.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "source",
+      "file": "step006.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "source",
+      "file": "step007.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "source",
+      "file": "step008.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 8,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "source",
+      "file": "step009.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 10,
+      "table": "source",
+      "file": "step010.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 10,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 11,
+      "table": "source",
+      "file": "step011.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 11,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 12,
+      "table": "source",
+      "file": "step012.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 12,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 13,
+      "table": "source",
+      "file": "step013.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 13,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 14,
+      "table": "source",
+      "file": "step014.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 14,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 15,
+      "table": "source",
+      "file": "step015.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 15,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 16,
+      "table": "source",
+      "file": "step016.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 16,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 17,
+      "table": "source",
+      "file": "step017.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 17,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 18,
+      "table": "source",
+      "file": "step018.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 18,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 19,
+      "table": "source",
+      "file": "step019.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 19,
+      "table": "made",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 20,
+      "table": "source",
+      "file": "step020.source.arrow",
+      "rows": 4
+    },
+    {
+      "step": 20,
+      "table": "made",
+      "file": "step020.made.arrow",
+      "rows": 4
+    }
+  ]
+}

@@ -1,0 +1,350 @@
+{
+  "format": 2,
+  "scenario": "input_errors",
+  "scenario_sha256": "62657a7abbb62c73433a3d70854a7d97a9b018f2726ef2a639628ac2de6aeb40",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "appended",
+      "file": "step000.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "written",
+      "file": "step000.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "appended",
+      "file": "step001.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "written",
+      "file": "step001.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "appended",
+      "file": "step002.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "written",
+      "file": "step002.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "appended",
+      "file": "step003.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "keyed",
+      "file": "step003.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "written",
+      "file": "step003.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "appended",
+      "file": "step004.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "keyed",
+      "file": "step004.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "written",
+      "file": "step004.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "appended",
+      "file": "step005.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "keyed",
+      "file": "step005.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "written",
+      "file": "step005.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "appended",
+      "file": "step006.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "keyed",
+      "file": "step006.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "written",
+      "file": "step006.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "appended",
+      "file": "step007.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "keyed",
+      "file": "step007.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "written",
+      "file": "step007.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "appended",
+      "file": "step008.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "keyed",
+      "file": "step008.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "written",
+      "file": "step008.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "appended",
+      "file": "step009.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "keyed",
+      "file": "step009.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "written",
+      "file": "step009.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 10,
+      "table": "appended",
+      "file": "step010.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 10,
+      "table": "keyed",
+      "file": "step010.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 10,
+      "table": "written",
+      "file": "step010.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 11,
+      "table": "appended",
+      "file": "step011.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 11,
+      "table": "keyed",
+      "file": "step011.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 11,
+      "table": "written",
+      "file": "step011.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 12,
+      "table": "appended",
+      "file": "step012.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 12,
+      "table": "keyed",
+      "file": "step012.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 12,
+      "table": "written",
+      "file": "step012.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 13,
+      "table": "appended",
+      "file": "step013.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 13,
+      "table": "keyed",
+      "file": "step013.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 13,
+      "table": "written",
+      "file": "step013.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 14,
+      "table": "appended",
+      "file": "step014.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 14,
+      "table": "keyed",
+      "file": "step014.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 14,
+      "table": "written",
+      "file": "step014.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 15,
+      "table": "appended",
+      "file": "step015.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 15,
+      "table": "keyed",
+      "file": "step015.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 15,
+      "table": "written",
+      "file": "step015.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 16,
+      "table": "appended",
+      "file": "step016.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 16,
+      "table": "keyed",
+      "file": "step016.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 16,
+      "table": "written",
+      "file": "step016.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 17,
+      "table": "appended",
+      "file": "step017.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 17,
+      "table": "keyed",
+      "file": "step017.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 17,
+      "table": "written",
+      "file": "step017.written.arrow",
+      "rows": 1
+    },
+    {
+      "step": 18,
+      "table": "appended",
+      "file": "step018.appended.arrow",
+      "rows": 1
+    },
+    {
+      "step": 18,
+      "table": "keyed",
+      "file": "step018.keyed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 18,
+      "table": "written",
+      "file": "step018.written.arrow",
+      "rows": 1
+    }
+  ]
+}

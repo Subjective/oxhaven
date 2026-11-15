@@ -1,0 +1,135 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "delete data in the InputTable failed. : RuntimeError: java.lang.UnsupportedOperationException: Table doesn't support delete operation",
+      "operation": "delete data in the InputTable failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "add to InputTable failed. : RuntimeError: io.deephaven.engine.table.TableDefinition$IncompatibleTableDefinitionException: Table definition incompatibilities: ",
+      "operation": "add to InputTable failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "async add to InputTable failed. : RuntimeError: io.deephaven.engine.table.TableDefinition$IncompatibleTableDefinitionException: Table definition incompatibilities: ",
+      "operation": "async add to InputTable failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "delete data in the InputTable failed. : RuntimeError: io.deephaven.engine.exceptions.ArgumentException: Invalid Key Table Definition: Unknown key columns: [V]",
+      "operation": "delete data in the InputTable failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "async delete data in the InputTable failed. : RuntimeError: io.deephaven.engine.exceptions.ArgumentException: Invalid Key Table Definition: Unknown key columns: [V]",
+      "operation": "async delete data in the InputTable failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "the provided table input is not suitable for input tables. : the provided table input is not suitable for input tables.",
+      "operation": "the provided table input is not suitable for input tables."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an in-memory InputTable. : ValueError: either column definitions or init table should be provided.",
+      "operation": "failed to create an in-memory InputTable."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an in-memory InputTable. : ValueError: both column definitions and init table are provided.",
+      "operation": "failed to create an in-memory InputTable."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an in-memory InputTable. : RuntimeError: io.deephaven.engine.exceptions.ArgumentException: Missing key columns in definition: [Nope], available columns: [K]",
+      "operation": "failed to create an in-memory InputTable."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.RuntimeException: Incompatible logRowPermissive call, values length=2 != setters=6",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.Boolean cannot be cast to class java.lang.Number (java.lang.Boolean and java.lang.Number are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 14,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.Byte cannot be cast to class java.lang.Boolean (java.lang.Byte and java.lang.Boolean are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 15,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Character (java.lang.String and java.lang.Character are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 16,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.Byte cannot be cast to class java.lang.Character (java.lang.Byte and java.lang.Character are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 17,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.String cannot be cast to class java.time.Instant (java.lang.String and java.time.Instant are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    },
+    {
+      "step": 18,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to write a row. : RuntimeError: java.lang.ClassCastException: class java.lang.Byte cannot be cast to class java.time.Instant (java.lang.Byte and java.time.Instant are in module java.base of loader 'bootstrap')",
+      "operation": "failed to write a row."
+    }
+  ]
+}

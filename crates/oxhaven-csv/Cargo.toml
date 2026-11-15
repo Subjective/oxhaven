@@ -1,0 +1,17 @@
+[package]
+name = "oxhaven-csv"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+arrow.workspace = true
+oxhaven-column = { path = "../oxhaven-column" }
+oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-engine = { path = "../oxhaven-engine" }
+
+[dev-dependencies]
+serde_json.workspace = true

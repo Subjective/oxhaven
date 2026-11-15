@@ -13,7 +13,8 @@
 //! Locks are taken in the order update graph, then interpreter lock. Code runs under the
 //! graph's shared lock, so no update cycle runs while a command does (Java holds the
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
-//! released while an engine operation runs.
+//! released while an engine operation runs. A command that writes to an input table and
+//! waits for the write gives the graph's lock up for that wait ([`input`]), as Java's does.
 //!
 //! Commands run on one thread, the interpreter's main thread, where a command whose
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
@@ -22,13 +23,16 @@
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod csv;
 mod data;
 pub mod env;
+mod input;
 pub mod interrupt;
 mod ops;
 mod parquet;
 #[cfg(test)]
 mod tests;
+mod udf;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -48,6 +52,7 @@ use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table};
+use oxhaven_engine::graph::yielding_to_cycles;
 use oxhaven_engine::table::{QueryTable, TableSpec};
 use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use oxhaven_proto::grpc::batch_table_request::Operation;
@@ -75,6 +80,8 @@ const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
 struct Runtime {
     context: OpContext,
     logs: Arc<LogBuffer>,
+    /// The global variables of the session, once it has them.
+    globals: OnceLock<Py<PyDict>>,
 }
 
 /// The runtime of the session created last; see the [module documentation](self).
@@ -188,6 +195,14 @@ impl Drop for CallerScope {
     }
 }
 
+/// The variables a formula compiled now on this thread may name; see
+/// [`PythonSession::current_scope`]. `None` before the first session.
+fn current_scope(py: Python<'_>) -> Option<Bound<'_, PyDict>> {
+    let caller =
+        CALLER_SCOPE.with_borrow(|scope| scope.as_ref().map(|scope| scope.bind(py).clone()));
+    caller.or_else(|| Some(runtime().ok()?.globals.get()?.bind(py).clone()))
+}
+
 /// Runs one table service operation, given in protobuf JSON form, on `sources`, which the
 /// operation's table references name by position. A formula of the operation may name the
 /// variables of the code that called the package.
@@ -205,6 +220,7 @@ fn table_op(
         .call_method0("caller_scope")?
         .extract()?;
     let _scope = CallerScope::enter(scope);
+    let _calls = udf::Operation::enter(py);
     py.detach(|| run_local(&runtime.context, op, &tables))
         .map(|table| TableHandle { table })
         .map_err(|error| PyRuntimeError::new_err(error_text(error)))
@@ -367,8 +383,11 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
+        input::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
@@ -480,11 +499,17 @@ impl PythonSession {
     /// operations in `context`.
     pub fn new(context: OpContext, logs: Arc<LogBuffer>) -> Result<Self, String> {
         env::interpreter()?;
-        let runtime = Arc::new(Runtime { context, logs });
+        let runtime = Arc::new(Runtime {
+            context,
+            logs,
+            globals: OnceLock::new(),
+        });
         *RUNTIME.write().unwrap_or_else(PoisonError::into_inner) = Some(runtime.clone());
         Python::attach(|py| {
             let helpers = bootstrap(py)?;
             let globals = helpers.call_method0("new_globals")?.cast_into::<PyDict>()?;
+            // a runtime is made for one session, so this is the only value it is given
+            let _ = runtime.globals.set(globals.clone().unbind());
             Ok(Self {
                 runtime,
                 helpers: helpers.unbind(),
@@ -529,15 +554,19 @@ impl PythonSession {
     }
 
     /// Runs `code` under the graph's lock on the calling thread, which is the
-    /// interpreter's main thread when a request to `stop` is to interrupt the code.
+    /// interpreter's main thread when a request to `stop` is to interrupt the code. The
+    /// code gives the lock up while it waits for a cycle to apply its write to an input
+    /// table.
     fn evaluate_here(&self, code: &str, stop: &Stop) -> Changes {
         let mut snapshot = self.snapshot();
         locked(self.runtime.context.graph.as_ref(), || {
-            Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(|error| {
-                Changes {
-                    error: Some(format!("the Python session failed: {error}")),
-                    ..Default::default()
-                }
+            yielding_to_cycles(|| {
+                Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
+                    |error| Changes {
+                        error: Some(format!("the Python session failed: {error}")),
+                        ..Default::default()
+                    },
+                )
             })
         })
     }
@@ -700,7 +729,13 @@ impl ScriptSession for PythonSession {
 /// the script session of the server and the holder of its query scope. Must be called
 /// inside a tokio runtime, which looks at the variables for changes from then on.
 pub fn start(state: &mut ServerState) -> Result<(), String> {
-    let session = PythonSession::new(state.op_context(), state.logs.clone())?;
+    // the operations of the Python package may call the functions of the session; a
+    // client's formulas, which are compiled with the server's own context, may not
+    let context = OpContext {
+        compiler: udf::compiler(state.scope.clone()),
+        ..state.op_context()
+    };
+    let session = PythonSession::new(context, state.logs.clone())?;
     let console = Console::new(Arc::new(session), state.applications.clone());
     state.scope.hold(console.clone());
     console.watch(CHECK_SCOPE_CHANGES_INTERVAL);
