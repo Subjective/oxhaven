@@ -20,8 +20,8 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, ints, list_of, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
-    TableChange,
+    at_least_for, definition, ints, list_of, strings, test_seeds, ConsistencyChecker,
+    RandomUpdates, Recorder, ScriptedTable, TableChange,
 };
 use std::sync::Arc;
 
@@ -967,7 +967,8 @@ fn with_large_arrays(random: &mut RandomUpdates, change: &mut TableChange) {
     }
 }
 
-/// Drives a source of `K`, `A` and `B` through random cycles for every seed. After each
+/// Drives a source of `K`, `A` and `B` through random cycles for every seed of `seeds` that
+/// the seed budget runs (`oxhaven_testkit::test_seeds`). After each
 /// cycle the result must be consistent and equal to the ungrouped table of a static copy
 /// of the source. Returns how many updates the results delivered.
 fn check_random(
@@ -980,7 +981,7 @@ fn check_random(
 ) -> u64 {
     let types = [("K", ColumnType::String), ("A", vector()), ("B", array())];
     let mut updates = 0;
-    for seed in seeds {
+    for seed in test_seeds(seeds) {
         let graph = graph();
         let mut random = RandomUpdates::new(seed);
         let size = if seed % 5 == 0 { 0 } else { 8 };
@@ -1033,25 +1034,36 @@ fn check_random(
 #[test]
 fn random_changes_of_one_array_column() {
     // Up to ten elements: the slots start with two keys and grow to sixteen.
-    assert!(check_random(0..100, false, &["A"], 1, false, true) > 2000);
+    assert!(check_random(0..100, false, &["A"], 1, false, true) > at_least_for(2000, 0..100));
     // The lists of `RandomUpdates`, with null elements, in slots that grow once.
-    assert!(check_random(100..150, false, &["A"], 1, false, false) > 1000);
+    assert!(check_random(100..150, false, &["A"], 1, false, false) > at_least_for(1000, 100..150));
     // With Java's slots, which never grow here.
-    assert!(check_random(150..200, false, &["A"], MINIMUM_BASE, false, false) > 1000);
+    assert!(
+        check_random(150..200, false, &["A"], MINIMUM_BASE, false, false)
+            > at_least_for(1000, 150..200)
+    );
     // The array column instead of the vector.
-    assert!(check_random(200..250, false, &["B"], 1, false, true) > 1000);
+    assert!(check_random(200..250, false, &["B"], 1, false, true) > at_least_for(1000, 200..250));
 }
 
 #[test]
 fn random_changes_of_two_array_columns_with_null_fill() {
-    assert!(check_random(0..100, true, &["A", "B"], 1, false, true) > 2000);
-    assert!(check_random(100..150, true, &["A", "B"], 1, false, false) > 1000);
-    assert!(check_random(150..200, true, &["B", "A"], 3, false, true) > 1000);
+    assert!(check_random(0..100, true, &["A", "B"], 1, false, true) > at_least_for(2000, 0..100));
+    assert!(
+        check_random(100..150, true, &["A", "B"], 1, false, false) > at_least_for(1000, 100..150)
+    );
+    assert!(
+        check_random(150..200, true, &["B", "A"], 3, false, true) > at_least_for(1000, 150..200)
+    );
 }
 
 #[test]
 fn random_changes_of_two_array_columns_of_one_size() {
-    assert!(check_random(0..100, false, &["A", "B"], 1, true, true) > 2000);
-    assert!(check_random(100..150, false, &["A", "B"], 1, true, false) > 1000);
-    assert!(check_random(150..200, false, &["B", "A"], 3, true, true) > 1000);
+    assert!(check_random(0..100, false, &["A", "B"], 1, true, true) > at_least_for(2000, 0..100));
+    assert!(
+        check_random(100..150, false, &["A", "B"], 1, true, false) > at_least_for(1000, 100..150)
+    );
+    assert!(
+        check_random(150..200, false, &["B", "A"], 3, true, true) > at_least_for(1000, 150..200)
+    );
 }

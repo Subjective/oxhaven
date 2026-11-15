@@ -30,5 +30,6 @@ Before changing anything, read, in this order:
 ```bash
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
+cargo test --workspace                           # quick seed budget, as on a pull request
+OXHAVEN_TEST_SEEDS=full cargo test --workspace   # every seed, as in the nightly workflow
 ```
