@@ -736,3 +736,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   input), cause not found.
 - Merged pull request 89 (7.2, Parquet write) on six green checks.
 - 6.13 (autocomplete) reported after 67 minutes; pull request 91 opened. It also fixes the stale console transcript (line numbers scrubbed) and raises the oracle-replay job timeout from 15 to 25 minutes.
+- Merged pull request 91 (6.13, autocomplete) on six green checks.
