@@ -536,8 +536,8 @@ impl Aggregator {
     }
 
     /// Moves the shifted rows within the row sets of their groups. Does nothing if no
-    /// operator needs group rows. No operator is told: a shift changes no value and no
-    /// order, so no result, and the row sets are right for the next recompute.
+    /// operator needs group rows. A shift changes no value and no order, so no result;
+    /// the operators that need group rows are told, for the row keys they keep.
     ///
     /// Behavior: KeyedUpdateContext#doShifts and
     /// ChunkedOperatorAggregationHelper#doNoKeyShifts, which run only for operators with
@@ -573,6 +573,11 @@ impl Aggregator {
             if let Some(group_rows) = &mut self.group_rows {
                 group_rows[slot].remove(&before);
                 group_rows[slot].insert(&after);
+            }
+            for column in &mut self.ops {
+                if column.plan.op.needs_group_rows() {
+                    column.plan.op.shifted(slot, &before, &after);
+                }
             }
         }
         Ok(())

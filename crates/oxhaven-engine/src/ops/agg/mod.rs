@@ -643,9 +643,17 @@ fn make_operator(
                 ParentKind::Blink => FirstLastMode::Arrival,
                 ParentKind::General => FirstLastMode::Tracked,
             };
+            // Behavior: AggregationProcessor#addFirstOrLastOperators gives the operator
+            // of a table that is not add-only no input columns, and
+            // ChunkedOperatorAggregationHelper.OperatorDivision then hands it the modified
+            // rows whatever column changed. So the operator watches every column.
+            let reads: Vec<usize> = match mode {
+                FirstLastMode::Tracked => (0..definition.columns().len()).collect(),
+                _ => vec![input],
+            };
             if input_type.list_element().is_some() {
                 // The cells are read by row key, so the framework need not decode the
-                // column: the operator is told when it is modified.
+                // column.
                 let op = FirstLastCell::new(
                     parent.column(input),
                     input_type.clone(),
@@ -653,15 +661,15 @@ fn make_operator(
                     mode,
                 );
                 return Ok(Some(Planned {
-                    reads: vec![input],
+                    reads,
                     ..Planned::new(Box::new(op), None)
                 }));
             }
-            Box::new(FirstLast::new(
-                input_type.clone(),
-                *spec == AggSpec::First,
-                mode,
-            ))
+            let op = FirstLast::new(input_type.clone(), *spec == AggSpec::First, mode);
+            return Ok(Some(Planned {
+                reads,
+                ..Planned::new(Box::new(op), Some(input))
+            }));
         }
         AggSpec::Var | AggSpec::Std if integer || floating => {
             Box::new(Var::new(*spec == AggSpec::Std, floating))

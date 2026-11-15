@@ -28,10 +28,23 @@ use std::path::PathBuf;
 
 /// The number of (table, step) results the fixtures must compare, and of operations Java
 /// refused. An operation that silently stops being run shows as a different count.
-const COMPARED: usize = 586;
-const REFUSED: usize = 19;
+const COMPARED: usize = 1098;
+const REFUSED: usize = 239;
 /// The number of (table, step) lists of updates the fixtures must compare.
-const UPDATES: usize = 119;
+const UPDATES: usize = 431;
+
+/// The updates that are not Java's, by the context of the comparison, with the update
+/// delivered here. Each must be met, so that none outlives its difference.
+///
+/// - A `distinct` without keys whose values were all removed is a null in Java, and the
+///   next row added, also one without a value, makes it an empty vector
+///   (`*ChunkedDistinctOperator#addChunk` makes the group's set, and reports the group
+///   modified only when the set got a value). Java's listeners are not told of that change
+///   of the cell; here they are.
+const DIFFERENT_UPDATES: [(&str, &str); 1] = [(
+    "rest_ticking.distinct_none during step 23",
+    r#"[{"added":[],"removed":[],"modified":[0],"modified_columns":["DI","DS","DD"]}]"#,
+)];
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ops/agg/fixtures")
@@ -234,6 +247,7 @@ struct Tally {
     compared: usize,
     refused: usize,
     updates: usize,
+    different_updates: usize,
 }
 
 /// The names of an operation's list `key`.
@@ -302,8 +316,13 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             }
             Err(error) if !failure.is_null() => {
                 assert_eq!(failure, "INVALID_ARGUMENT", "{context}");
+                // A filter that fails on the rows fails the first computation, which Java
+                // also reports as INVALID_ARGUMENT; nothing else may fail on the data.
+                let filtered = operation["aggs"]
+                    .as_array()
+                    .is_some_and(|aggs| aggs.iter().any(|entry| entry["agg"] == "count_where"));
                 assert!(
-                    !matches!(error, AggregateError::Failed(_)),
+                    filtered || !matches!(error, AggregateError::Failed(_)),
                     "{context}: {error} is not a refusal of the request"
                 );
                 tally.refused += 1;
@@ -364,7 +383,15 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             let context = format!("{name}.{} during step {step}", watched.name);
             let delivered = watched.drain(&context);
             let recorded = &fixture["java"]["updates"][step - 1][watched.name];
-            assert_eq!(&delivered, recorded, "{context}: the updates");
+            let different = DIFFERENT_UPDATES.iter().find(|(known, _)| *known == context);
+            if let Some((_, ours)) = different {
+                let ours: Value = serde_json::from_str(ours).expect("an update list");
+                assert_ne!(&ours, recorded, "{context}: no longer different");
+                assert_eq!(delivered, ours, "{context}: the updates");
+                tally.different_updates += 1;
+            } else {
+                assert_eq!(&delivered, recorded, "{context}: the updates");
+            }
             tally.updates += 1;
         }
     }
@@ -390,4 +417,5 @@ fn aggregations_match_the_recorded_java_fixtures() {
         (tally.compared, tally.refused, tally.updates),
         (COMPARED, REFUSED, UPDATES)
     );
+    assert_eq!(tally.different_updates, DIFFERENT_UPDATES.len());
 }

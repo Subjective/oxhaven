@@ -3,7 +3,7 @@
 use super::operator::{AggOperator, Effect, GroupReader};
 use super::values::{build, failure, Run, Scalar, Values};
 use arrow::array::{new_empty_array, new_null_array, Array, ArrayRef};
-use oxhaven_contracts::rowset::{RowKey, NULL_ROW_KEY};
+use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 use std::sync::Arc;
@@ -52,11 +52,17 @@ impl FirstLast {
         }
     }
 
-    fn tracked(&self) -> Effect {
-        if self.mode == FirstLastMode::Tracked {
-            Effect::RECOMPUTE
-        } else {
-            Effect::UNCHANGED
+    /// Whether the rows of `run`, which leave group `slot`, include the row it shows.
+    ///
+    /// Behavior: FirstOrLastChunkedOperator#updateRedirections
+    fn leaves(&self, slot: usize, run: &Run<'_>) -> Effect {
+        if self.mode != FirstLastMode::Tracked {
+            return Effect::UNCHANGED;
+        }
+        let current = self.row_key[slot];
+        Effect {
+            modified: run.row_keys().any(|row_key| row_key == current),
+            recompute: true,
         }
     }
 }
@@ -84,7 +90,20 @@ impl AggOperator for FirstLast {
         };
         let current = self.row_key[slot];
         let takes = match self.mode {
-            FirstLastMode::Tracked => return Effect::RECOMPUTE,
+            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
+            // group modified when the row it shows is another one, whatever its value.
+            FirstLastMode::Tracked => {
+                let beyond = current == NULL_ROW_KEY
+                    || if self.first {
+                        row_key < current
+                    } else {
+                        row_key > current
+                    };
+                return Effect {
+                    modified: beyond,
+                    recompute: true,
+                };
+            }
             FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
             FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
             FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
@@ -96,8 +115,33 @@ impl AggOperator for FirstLast {
         Effect::modified_if(takes)
     }
 
-    fn remove(&mut self, _slot: usize, _run: &Run<'_>) -> Effect {
-        self.tracked()
+    fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        self.leaves(slot, run)
+    }
+
+    /// Behavior: FirstOrLastChunkedOperator#modifyRowKeys, which Java calls for the
+    /// modified rows of a group whatever column changed (the operator has no input
+    /// columns, see AggregationProcessor#addFirstOrLastOperators): the result is modified
+    /// when the group's first or last row is among them.
+    fn modify(&mut self, slot: usize, _old: &Run<'_>, new: &Run<'_>) -> Effect {
+        let current = self.row_key[slot];
+        Effect {
+            modified: new.row_keys().any(|row_key| row_key == current),
+            recompute: true,
+        }
+    }
+
+    /// Behavior: FirstOrLastChunkedOperator#shiftChunk, which moves the row the group
+    /// shows without reporting the group modified.
+    fn shifted(&mut self, slot: usize, before: &RowSet, after: &RowSet) {
+        let current = self.row_key[slot];
+        if let Some((_, moved)) = before
+            .iter()
+            .zip(after.iter())
+            .find(|&(row_key, _)| row_key == current)
+        {
+            self.row_key[slot] = moved;
+        }
     }
 
     fn recompute(
@@ -178,6 +222,22 @@ impl FirstLastCell {
     }
 }
 
+impl FirstLastCell {
+    /// Whether the rows of `run`, which leave group `slot`, include the row it shows.
+    ///
+    /// Behavior: FirstOrLastChunkedOperator#updateRedirections
+    fn leaves(&self, slot: usize, run: &Run<'_>) -> Effect {
+        if self.mode != FirstLastMode::Tracked {
+            return Effect::UNCHANGED;
+        }
+        let current = self.row_key[slot];
+        Effect {
+            modified: run.row_keys().any(|row_key| row_key == current),
+            recompute: true,
+        }
+    }
+}
+
 impl AggOperator for FirstLastCell {
     fn result_type(&self) -> ColumnType {
         self.column_type.clone()
@@ -206,7 +266,20 @@ impl AggOperator for FirstLastCell {
         };
         let current = self.row_key[slot];
         let takes = match self.mode {
-            FirstLastMode::Tracked => return Effect::RECOMPUTE,
+            // Behavior: FirstOrLastChunkedOperator#updateRedirections, which reports the
+            // group modified when the row it shows is another one, whatever its value.
+            FirstLastMode::Tracked => {
+                let beyond = current == NULL_ROW_KEY
+                    || if self.first {
+                        row_key < current
+                    } else {
+                        row_key > current
+                    };
+                return Effect {
+                    modified: beyond,
+                    recompute: true,
+                };
+            }
             FirstLastMode::ByRowKey if self.first => current == NULL_ROW_KEY || row_key < current,
             FirstLastMode::ByRowKey => current == NULL_ROW_KEY || row_key > current,
             FirstLastMode::Arrival => !self.first || current == NULL_ROW_KEY,
@@ -219,11 +292,32 @@ impl AggOperator for FirstLastCell {
         Effect::RECOMPUTE
     }
 
-    fn remove(&mut self, _slot: usize, _run: &Run<'_>) -> Effect {
-        if self.mode == FirstLastMode::Tracked {
-            Effect::RECOMPUTE
-        } else {
-            Effect::UNCHANGED
+    fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        self.leaves(slot, run)
+    }
+
+    /// Behavior: FirstOrLastChunkedOperator#modifyRowKeys, which Java calls for the
+    /// modified rows of a group whatever column changed (the operator has no input
+    /// columns, see AggregationProcessor#addFirstOrLastOperators): the result is modified
+    /// when the group's first or last row is among them.
+    fn modify(&mut self, slot: usize, _old: &Run<'_>, new: &Run<'_>) -> Effect {
+        let current = self.row_key[slot];
+        Effect {
+            modified: new.row_keys().any(|row_key| row_key == current),
+            recompute: true,
+        }
+    }
+
+    /// Behavior: FirstOrLastChunkedOperator#shiftChunk, which moves the row the group
+    /// shows without reporting the group modified.
+    fn shifted(&mut self, slot: usize, before: &RowSet, after: &RowSet) {
+        let current = self.row_key[slot];
+        if let Some((_, moved)) = before
+            .iter()
+            .zip(after.iter())
+            .find(|&(row_key, _)| row_key == current)
+        {
+            self.row_key[slot] = moved;
         }
     }
 

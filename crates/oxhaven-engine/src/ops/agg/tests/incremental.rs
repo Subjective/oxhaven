@@ -4,7 +4,7 @@
 use super::*;
 use crate::graph::SteppedUpdateGraph;
 use crate::table::{append_only_input_table, tracked_source, QueryTable, RootSource, TableSpec};
-use arrow::array::{Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{BooleanArray, Float64Array, Int32Array, Int64Array, StringArray};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -474,20 +474,104 @@ fn preserved_empty_groups_keep_their_rows() {
 }
 
 #[test]
+fn first_and_last_are_modified_when_their_row_is_another_or_is_modified() {
+    // Behavior: FirstOrLastChunkedOperator#updateRedirections and #modifyRowKeys; recorded
+    // from Java in `fixtures/rest_ticking.json`, table `key_sum`.
+    let fixture = Fixture::new(
+        &kid(&[("a", 1, 0.5), ("a", 2, 1.5), ("a", 3, 2.5)]),
+        &[0, 1, 2],
+        vec![agg(AggSpec::Last, &["L = I"])],
+        &["K"],
+    );
+    // A row that is not the last, and a column the aggregation does not read.
+    let change = TableChange::new().modify([1], [(2, doubles(&[Some(8.0)]))]);
+    assert_eq!(fixture.step(change), "none");
+    // The last row, in that column.
+    let change = TableChange::new().modify([2], [(2, doubles(&[Some(8.0)]))]);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [0] columns [1]"
+    );
+    // A new last row with the value of the old one.
+    let change = TableChange::new().add([5], kid_values(&[("a", 3, 0.0)]));
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [0] columns [1]"
+    );
+    // The last row moves: not reported, and the operator still knows which it is.
+    let change = TableChange::new().shift(5, 5, 4);
+    assert_eq!(fixture.step(change), "none");
+    let change = TableChange::new().modify([9], [(2, doubles(&[Some(1.0)]))]);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [0] columns [1]"
+    );
+    // The last row goes; the one before it has the same value and is still another row.
+    assert_eq!(
+        fixture.step(TableChange::new().remove([9])),
+        "added [] removed [] modified [0] columns [1]"
+    );
+    assert_eq!(fixture.rows(), ["a|3"]);
+}
+
+#[test]
+fn count_where_follows_its_rows_and_fails_with_its_filter() {
+    let columns = [
+        ("K", ColumnType::String, strs(&["a", "b", "a"])),
+        (
+            "B",
+            ColumnType::Boolean,
+            Arc::new(BooleanArray::from(vec![true, false, true])) as ArrayRef,
+        ),
+    ];
+    let aggregations = vec![Aggregation::count_where("N", ["B"]), count("C")];
+    let fixture = Fixture::new(&columns, &[0, 1, 2], aggregations, &["K"]);
+    assert_eq!(fixture.rows(), ["a|2|2", "b|0|1"]);
+    let flag = |value: Option<bool>| Arc::new(BooleanArray::from(vec![value])) as ArrayRef;
+    // Behavior: CountWhereOperator#addChunk reports every group it is given rows of.
+    let change = TableChange::new().add([3], vec![strs(&["b"]), flag(Some(false))]);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [1] columns [1, 2]"
+    );
+    let change = TableChange::new().modify([1], [(1, flag(Some(true)))]);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [1] columns [1]"
+    );
+    assert_eq!(fixture.rows(), ["a|2|2", "b|1|2"]);
+    assert_eq!(
+        fixture.step(TableChange::new().remove([0])),
+        "added [] removed [] modified [0] columns [1, 2]"
+    );
+    assert_eq!(fixture.rows(), ["a|1|1", "b|1|2"]);
+    // A null condition fails the filter, and with it the result.
+    fixture
+        .source
+        .push(TableChange::new().add([7], vec![strs(&["a"]), flag(None)]));
+    fixture.graph.run_cycle();
+    assert!(fixture.result.is_failed());
+}
+
+#[test]
 fn an_update_that_changes_nothing_and_a_failed_parent() {
     let fixture = Fixture::new(&three_rows(), &[0, 1, 2], all_of("I"), &["K"]);
     assert_eq!(fixture.step(TableChange::new()), "none");
-    // A column no aggregation reads.
+    // A column no aggregation reads. Rows 0 and 1 are the first row of a and the only row
+    // of b, so Java reports first and last modified: FirstOrLastChunkedOperator#modifyRowKeys.
     let change = TableChange::new().modify([0, 1], [(2, doubles(&[Some(8.0), Some(9.0)]))]);
-    assert_eq!(fixture.step(change), "none");
-    assert_eq!(fixture.checker.updates_seen(), 0);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [0, 1] columns [5, 6]"
+    );
+    assert_eq!(fixture.checker.updates_seen(), 1);
     assert_eq!(fixture.rows(), ["a|4|2.0|1|3|1|3|2", "b|2|2.0|2|2|2|2|1"]);
 
     fixture.source.push_failure("the parent broke");
     fixture.graph.run_cycle();
     assert!(fixture.result.is_failed());
     let events = fixture.recorder.events();
-    let [Err(failure)] = &events[..] else {
+    let [Ok(_), Err(failure)] = &events[..] else {
         panic!("unexpected events {events:?}");
     };
     assert!(failure.message.contains("the parent broke"), "{failure}");

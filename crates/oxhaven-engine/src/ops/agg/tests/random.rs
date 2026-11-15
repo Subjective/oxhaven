@@ -43,13 +43,32 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
 ///   `NullSafeAddition#plusLong`, which drops a chunk sum that wrapped to exactly
 ///   `NULL_LONG` (`LongChunkedWeightedSumOperator#addChunk`); a null `int` value and weight
 ///   count as -2147483648 each, so two such rows do that.
-fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
-    let mut aggregations = vec![count("N")];
+fn every_aggregation(weighted_averages: bool, keyed: bool) -> Vec<Aggregation> {
+    let mut aggregations = vec![
+        count("N"),
+        Aggregation::count_where("W1", ["I > 0"]),
+        Aggregation::count_where("W2", ["D >= 0", "!isNull(L)", "S != `a`"]),
+    ];
     for (name, column_type) in &parent_columns()[3..] {
         if column_type.list_element().is_some() {
             aggregations.push(agg(AggSpec::Group, &[&format!("G{name} = {name}")]));
+            aggregations.push(agg(AggSpec::First, &[&format!("F{name} = {name}")]));
+            aggregations.push(agg(AggSpec::Last, &[&format!("L{name} = {name}")]));
             continue;
         }
+        let sentinel = match column_type {
+            ColumnType::Int => Sentinel::Long(-7),
+            ColumnType::Long => Sentinel::Int(-7),
+            ColumnType::Double => Sentinel::Float(-7.5),
+            ColumnType::Float => Sentinel::Double(-7.5),
+            ColumnType::String => Sentinel::String("many".to_string()),
+            ColumnType::Boolean => Sentinel::Boolean(false),
+            ColumnType::Char => Sentinel::Char(63),
+            ColumnType::Byte => Sentinel::Byte(-7),
+            ColumnType::Short => Sentinel::Short(-7),
+            // Java takes no sentinel for an Instant.
+            _ => Sentinel::Null,
+        };
         let mut specs = vec![
             AggSpec::Group,
             AggSpec::Min,
@@ -73,6 +92,17 @@ fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
                 include_nulls: true,
                 non_unique: Sentinel::Null,
             },
+            AggSpec::Unique {
+                include_nulls: false,
+                non_unique: sentinel.clone(),
+            },
+            AggSpec::Unique {
+                include_nulls: true,
+                non_unique: sentinel,
+            },
+            AggSpec::Distinct {
+                include_nulls: true,
+            },
             AggSpec::SortedFirst {
                 columns: vec!["D".to_string()],
             },
@@ -86,6 +116,14 @@ fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
                 columns: vec!["B".to_string(), "T".to_string(), "F".to_string()],
             },
         ];
+        // Without keys, a distinct whose values are all gone is a null where the distinct
+        // of a table without values is an empty vector: DistinctOperatorFactory's operators
+        // make the vector in `addChunk` and clear it in `removeChunk`.
+        if keyed {
+            specs.push(AggSpec::Distinct {
+                include_nulls: false,
+            });
+        }
         if !matches!(column_type, ColumnType::String | ColumnType::Instant) {
             specs.push(AggSpec::Sum);
         }
@@ -175,7 +213,7 @@ impl Run {
             !(self.weighted_averages && self.kinds[2]),
             "weighted averages are compared only without modifications"
         );
-        let aggregations = every_aggregation(self.weighted_averages);
+        let aggregations = every_aggregation(self.weighted_averages, !self.by.is_empty());
         let result = aggregate(&parent, &aggregations, self.preserve_empty, self.by)
             .expect("an aggregation");
 

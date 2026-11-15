@@ -7,7 +7,7 @@ mod incremental;
 mod random;
 mod static_tables;
 
-use super::{aggregate, AggSpec, Aggregation, Pair, Sentinel};
+use super::{aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel};
 use crate::table::in_memory_table;
 use arrow::array::{Array, ArrayRef, AsArray, RecordBatch};
 use arrow::datatypes::{
@@ -19,6 +19,22 @@ use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+/// `aggregate_with` the compiler of `oxhaven-expr`, for the filters of a count where.
+fn aggregate(
+    parent: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    preserve_empty: bool,
+    by: &[&str],
+) -> Result<Arc<dyn Table>, AggregateError> {
+    aggregate_with(
+        parent,
+        aggregations,
+        preserve_empty,
+        by,
+        &oxhaven_expr::Compiler,
+    )
+}
 
 /// `spec` with each of `pairs`, written `"Out = In"` or `"Column"`.
 fn agg(spec: AggSpec, pairs: &[&str]) -> Aggregation {
