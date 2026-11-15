@@ -712,6 +712,119 @@ assert (nothing.column_names, nothing.size) == ([], 0)
     }
 
     #[tokio::test]
+    async fn joins_the_table_service_refuses_answer_as_the_engine_of_java_answers() {
+        check(
+            r#"
+from deephaven import DHError, empty_table
+from deephaven.table import multi_join, MultiJoinInput
+def rows(t):
+    return [tuple(row.values()) for row in t.iter_dict()]
+a = empty_table(3).update(["K = i", "A = i * 10"])
+b = empty_table(2).update(["K = i + 1", "B = i * 100"])
+one = empty_table(1).update(["X = 7"])
+two = empty_table(1).update(["Y = `y`"])
+none = empty_table(0).update(["Z = 15"])
+# without key columns, one row of the row of each table, if any table has one
+m = multi_join([MultiJoinInput(one, []), MultiJoinInput(two, [])]).table
+assert (m.column_names, rows(m)) == (["X", "Y"], [(7, "y")])
+m = multi_join([one, two, none], on=[]).table
+assert (m.column_names, rows(m)) == (["X", "Y", "Z"], [(7, "y", -2147483648)])
+assert rows(multi_join([one, two], on="").table) == [(7, "y")]
+m = multi_join([MultiJoinInput(one, [], "Q = X"), MultiJoinInput(none, [], ["Z"])]).table
+assert (m.column_names, rows(m)) == (["Q", "Z"], [(7, -2147483648)])
+m = multi_join([none], on=[]).table
+assert (m.column_names, rows(m)) == (["Z"], [])
+
+left = empty_table(4).update(["K = i % 2", "Lo = i", "Hi = i + 2"])
+right = empty_table(6).update(["K = i % 2", "P = i", "R = `r` + i"])
+# without aggregations, the left table's columns
+for on in (["K", "Lo <= P <= Hi"], "Lo < P < Hi"):
+    j = left.range_join(right, on, [])
+    assert (j.column_names, rows(j)) == (["K", "Lo", "Hi"], rows(left))
+j = left.range_join(right.head(0), ["K", "<- Lo <= P <= Hi ->"], [])
+assert rows(j) == rows(left)
+
+refused = [
+    (lambda: multi_join([MultiJoinInput(a, []), MultiJoinInput(b, [])]),
+     "Column K defined in table 0 and table 1"),
+    (lambda: multi_join([MultiJoinInput(a, []), MultiJoinInput(b, "K")]),
+     "Key column mismatch for table 1, first table has key columns=[], this table has [K]"),
+    (lambda: multi_join([MultiJoinInput(a, "K"), MultiJoinInput(one, [])]),
+     "Key column mismatch for table 1, first table has key columns=[K], this table has []"),
+    (lambda: multi_join([a, one], on=[]), "Duplicate rows for table 0 on zero-key multiJoin."),
+    # every check of the tables is made without aggregations too
+    (lambda: left.range_join(right.reverse(), ["K", "Lo <= P <= Hi"], []),
+     "Encountered out of order data in right table at row key"),
+    (lambda: left.range_join(right, ["K", "Lo <= Nope <= Hi"], []),
+     "right range column Nope is missing"),
+    (lambda: left.range_join(right, ["Q", "Lo <= P <= Hi"], []),
+     'Invalid exact matches: left table has no column "Q", right table has no column "Q"'),
+    (lambda: left.range_join(right, ["K", "Lo <= P"], []),
+     "Input expression Lo <= P does not match expected pattern"),
+    (lambda: left.range_join(right, [], []),
+     "No match expressions found; must include at least a range match expression"),
+    (lambda: left.range_join(right, ["K=", "Lo <= P <= Hi"], []),
+     "Unable to parse match 'K=', expected form '<left>==<right>' or `<left>=<right>`"),
+]
+for call, text in refused:
+    try:
+        call()
+    except DHError as e:
+        assert text in str(e), str(e)
+    else:
+        raise AssertionError(text + " was answered")
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn a_keyed_transpose_answers_as_java_answers() {
+        check(
+            r#"
+from deephaven import DHError, agg, empty_table
+from deephaven.table import keyed_transpose, NewColumnBehaviorType
+def rows(t):
+    return [tuple(row.values()) for row in t.iter_dict()]
+src = empty_table(8).update(["Id = i", "R = i % 2", "C = `c` + (i % 3)", "V = i"])
+t = keyed_transpose(src, agg.sum_("V"), "R", "C")
+assert (t.column_names, rows(t)) == (["R", "c0", "c1", "c2"], [(0, 6, 4, 2), (1, 3, 8, 5)])
+t = keyed_transpose(src.head(4), [agg.sum_("V"), agg.count_("N")], ["R"], ["C"],
+                    new_column_behavior=NewColumnBehaviorType.IGNORE)
+assert t.column_names == ["R", "V_c0", "N_c0", "V_c1", "N_c1", "V_c2", "N_c2"]
+null = -9223372036854775808
+assert rows(t) == [(0, 0, 1, null, null, 2, 1), (1, 3, 1, 1, 1, null, null)]
+# a column of the rows and of the columns; a value that is no column name
+t = keyed_transpose(src, agg.sum_("V"), "R", "R")
+assert (t.column_names, rows(t)) == (["R", "column_0", "column_1"], [(0, 12, null), (1, null, 16)])
+# initial groups give columns and rows that the table has no values for
+groups = empty_table(2).update(["R = 9", "C = `c` + (i * 2 + 1)"])
+t = keyed_transpose(src.head(4), agg.sum_("V"), "R", "C", initial_groups=groups)
+assert t.column_names == ["R", "c1", "c3", "c0", "c2"]
+assert rows(t) == [(9, null, null, null, null), (1, 1, null, 3, null), (0, null, null, 0, 2)]
+refused = [
+    (lambda: keyed_transpose(src, [], "R", "C"), "No aggregations defined"),
+    (lambda: keyed_transpose(src, agg.sum_("V"), [], "C"), "No rowByColumns defined"),
+    (lambda: keyed_transpose(src, agg.sum_("V"), "R", []), "No columnByColumns defined"),
+    (lambda: keyed_transpose(src.head(0), agg.sum_("V"), "R", "C"),
+     "The source table has no values for column by columns"),
+    (lambda: keyed_transpose(src.update("C = `-`"), agg.sum_("V"), "R", "C"),
+     "Can not legalize column name -"),
+]
+for call, text in refused:
+    try:
+        call()
+    except DHError as e:
+        assert str(e).startswith("keyed_transpose operation failed. : "), str(e)
+        assert text in str(e), str(e)
+    else:
+        raise AssertionError(text + " was answered")
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
     async fn the_attributes_of_a_table_are_those_java_gives_it() {
         check(
             r#"
