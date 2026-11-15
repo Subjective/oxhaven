@@ -33,7 +33,7 @@ from pydeephaven import DHError, Session, agg
 from pydeephaven.ticket import SharedTicket
 
 from . import rules
-from .connect import PSK_AUTH_TYPE, open_session, parse_url
+from .connect import PSK_AUTH_TYPE, collect_garbage, open_session, parse_url
 from .runner import failure_code
 
 AREAS = ("session", "tables", "flight", "barrage", "inputtable")
@@ -795,6 +795,8 @@ def describe(error: BaseException) -> str:
 def run_checks(area: str, url: str) -> Iterator[tuple[str, Exception | None]]:
     """Runs every check of `area` against `url`; yields each name with what it failed with."""
     for name, check in _AREAS[area](url):
+        # a check may open its sessions itself, and the last check has left garbage
+        collect_garbage()
         try:
             check()
         except Exception as error:  # noqa: BLE001 - a client error is a failed check too
