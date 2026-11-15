@@ -1,7 +1,7 @@
 //! `&& || !`, and what the type checker refuses.
 
 use super::*;
-use oxhaven_contracts::expr::{Expr, Literal, UnaryOp};
+use oxhaven_contracts::expr::{Expr, UnaryOp};
 
 #[test]
 fn and_or_and_not_follow_their_truth_tables() {
