@@ -283,6 +283,21 @@ async fn a_table_definition_is_a_mapping_of_column_definitions() {
             "DataType: String = int, java.lang.String"
         ]
     );
+
+    // Java answers with a row that says so; the contracts have no partitioning columns
+    let refused = error(
+        &python,
+        "from deephaven.column import ColumnType\n\
+         TableDefinition([col_def('P', d.string, column_type=ColumnType.PARTITIONING)]).table",
+    );
+    assert!(
+        refused.contains(
+            "NotImplementedError: not ported: \
+             io.deephaven.engine.table.ColumnDefinition#isPartitioning: the engine has no \
+             partitioning columns (P)"
+        ),
+        "{refused}"
+    );
 }
 
 #[tokio::test]

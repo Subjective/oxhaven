@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "dtypes_new_table",
-  "scenario_sha256": "3c65e3db22c47733991dee90e39f6b7945ca54518760c0741ad6e042e84b65c5",
+  "scenario_sha256": "6e252dfa2e79c5e0dfe74e00b5233442d62e7a2dca4fcd9bacd43da6fd51d144",
   "reference": "42.9",
   "entries": [
     {
@@ -12,15 +12,39 @@
     },
     {
       "step": 0,
+      "table": "with_none",
+      "file": "step000.with_none.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
       "table": "with_nulls",
       "file": "step000.with_nulls.arrow",
       "rows": 2
     },
     {
       "step": 0,
+      "table": "wrapped",
+      "file": "step000.wrapped.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
       "table": "explicit",
       "file": "step000.explicit.arrow",
       "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "arrays",
+      "file": "step000.arrays.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "file": "step000.twice.arrow",
+      "rows": 1
     }
   ]
 }

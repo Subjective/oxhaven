@@ -8,7 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple, Union
 import _oxhaven
 
 from . import _engine, dtypes
-from .column import ColumnDefinition, col_def
+from .column import ColumnDefinition, ColumnType, col_def
 from .dherror import DHError
 
 
@@ -91,6 +91,12 @@ class TableDefinition(Mapping):
         """
         handle = self._handle
         if handle is None:
+            for column in self.values():
+                if column.column_type is not ColumnType.NORMAL:
+                    raise dtypes._java_time.NotPorted(
+                        "io.deephaven.engine.table.ColumnDefinition#isPartitioning",
+                        f"the engine has no partitioning columns ({column.name})",
+                    )
             # the meta table of a table without rows that has these columns
             handle = _engine.new_table(
                 [(column.name, dtypes._engine_type(column.data_type), []) for column in self.values()]

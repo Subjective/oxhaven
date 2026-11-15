@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "dtypes_errors",
+  "scenario_sha256": "3ae703d711f47e64344f62df90125841c7c6a8fc0e18186c065f6181aad9e847",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "file": "step001.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "file": "step002.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "file": "step003.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "kept",
+      "file": "step004.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "kept",
+      "file": "step005.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "kept",
+      "file": "step006.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "kept",
+      "file": "step007.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "kept",
+      "file": "step008.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "kept",
+      "file": "step009.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 10,
+      "table": "kept",
+      "file": "step010.kept.arrow",
+      "rows": 1
+    }
+  ]
+}
