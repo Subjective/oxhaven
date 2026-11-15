@@ -8,9 +8,9 @@ use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
+mod asof;
 mod range_join;
 mod ungroup;
-mod range_join;
 mod update_by;
 
 /// What the Java server answers for any exception out of the engine.
