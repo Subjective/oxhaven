@@ -98,17 +98,115 @@ ConsoleService (console/mod.rs)          any build
 
 ## Build and CI
 
-- PyO3 0.27 finds `python3` on `PATH` at build time and links its shared libpython; the server
-  then needs that libpython at run time. No Python is needed for the default build.
+- PyO3 0.27 finds `python3` on `PATH` at build time, or the Python `PYO3_PYTHON` names, and
+  links its shared libpython; the server then needs that libpython at run time
+  (`LD_LIBRARY_PATH`, if it is not in a directory the loader searches). No Python is needed
+  for the default build.
 - This machine: Python 3.13.18 in `/usr/local`, `libpython3.13.so` present, links and runs.
-- GitHub Actions: the job `python-console` in `.github/workflows/ci.yml` installs Python 3.13
-  with `actions/setup-python`, as the `oracle-replay` job already does, and runs clippy and
-  the console tests with the feature. The `rust` and `oracle-replay` jobs are unchanged and
-  build without it.
-- A third-party package a user imports has to be importable by the embedded interpreter,
-  which today means installed for the Python that the server was linked against. Honouring a
-  virtual environment, and shipping the server as a wheel so that `pip` owns the
-  environment, are task 6.16.
+- **Supported Python versions: 3.11 to 3.13.** 3.11 is the oldest that pandas 3 and
+  pyarrow 26 install on, the versions the reference's recordings were made with; 3.13 is
+  the newest the reference package declares and the one the oracle is pinned to.
+- GitHub Actions (`.github/workflows/ci.yml`):
+  - `python-console` runs clippy and the whole test suite of `oxhaven-server` with the
+    feature, once on the oldest and once on the newest supported Python
+    (`actions/setup-python`). It installs no packages and names no environment, so the
+    tests of the server may import only the standard library: they have to pass on every
+    supported Python, with whatever is or is not installed for it.
+  - `oracle-replay` builds the server with the feature (`oracle/bin/ci-replay.sh` does) and
+    runs the script scenarios against it. What needs numpy, pandas or pyarrow is gated
+    there, in the pinned environment described below.
+  - `rust` builds without the feature.
+
+## The Python environment
+
+The interpreter in the server is the libpython the server was linked against. Which
+standard library and which installed packages it sees is decided when the server starts
+(`console/python/env.rs`), in this order:
+
+1. `--python-home <directory>`: a virtual environment (a directory with `pyvenv.cfg`) or the
+   prefix of a Python installation (as `PYTHONHOME` names one).
+2. The directory `VIRTUAL_ENV` names, which is what activating a virtual environment sets.
+3. Neither: the installation the linked Python finds by itself, with that installation's
+   own site-packages. This is the Python the server was built with when it has not moved.
+
+`--python-path <directories>`, separated as in `PATH`, adds directories that are searched
+before the environment's own, as `PYTHONPATH` does (which is honoured too). They are plain
+module directories: `.pth` files in them are not read.
+
+In a virtual environment the interpreter starts as that environment's `python` would: it
+reads `pyvenv.cfg`, takes the standard library from the base installation and the packages
+from the environment, and with `include-system-site-packages = false`, the default, does not
+see the base installation's packages. The `deephaven` package is always the server's own
+(the embedded importer comes first), whatever the environment has installed.
+
+**The environment must be one of the linked Python's minor version.** Packages with native
+code are built for one minor version, and an environment of another keeps them in a
+directory this interpreter does not look in. The server checks before it starts the
+interpreter (the version in `pyvenv.cfg`, and the directory `lib/pythonX.Y`) and refuses
+to start:
+
+```
+the Python environment /home/me/venv is for Python 3.12, and this server is linked against
+Python 3.13: name an environment made with Python 3.13, or build the server against Python
+3.12 (PYO3_PYTHON, docs/CONSOLE.md)
+```
+
+A server with a console in a new environment:
+
+```bash
+python3 -m venv /tmp/console-env                 # the python3 the server was built with
+/tmp/console-env/bin/pip install numpy
+VIRTUAL_ENV=/tmp/console-env oxhaven-server      # or: . /tmp/console-env/bin/activate
+# or: oxhaven-server --python-home /tmp/console-env
+```
+
+The server logs `Python console: Python 3.13.18, packages from /tmp/console-env`, and
+`import numpy` works in the console. `GetConfigurationConstants` reports the interpreter's
+version as `python.version`, as Java does when its console is Python; a server without a
+Python console leaves the key out.
+
+### The same packages in CI and on a developer's machine
+
+A script scenario's outcome can depend on what is installed: `import pandas` fails on a
+runner whose Python has no pandas and works on a machine that has it. So the replay gate
+does not use whatever the linked Python happens to have. It runs the server in the
+harness's environment, `oracle/.venv`, which is made from `oracle/requirements-replay.txt`:
+numpy, pandas and pyarrow in the versions the Java reference had when the recordings were
+made. The `oracle-replay` job sets `VIRTUAL_ENV` to it; locally, do the same:
+
+```bash
+VIRTUAL_ENV=$PWD/oracle/.venv oracle/bin/ci-replay.sh
+```
+
+`oracle/.venv` has to be made by the `python3` that the server is built with, which is
+Python 3.13 in both places: the pins install on no other supported version, and the server
+refuses an environment of another one. Without `VIRTUAL_ENV` the gate's server uses the
+linked Python's own packages, and its outcome is that machine's.
+
+### Distribution: a binary per Python minor version
+
+The server stays a binary that embeds the interpreter, linked against one libpython minor
+version per build, and finds its packages as above. The alternative, the server as an
+extension module in a wheel (`pip install`, then `python -m oxhaven`, as `deephaven-server`
+starts Java), was weighed and not built:
+
+- It does not remove the coupling to a Python version. PyO3's stable-ABI build (`abi3`)
+  would, but the console needs what the stable ABI does not have, among it the
+  initialization configuration used here and, with task 6.11, buffer access for numpy; a
+  wheel without `abi3` is one build per minor version, as the binary is.
+- It needs a second build of the crate that the tests cannot share: an extension module
+  must not link libpython, and the test binaries embed it. Every check would run twice or
+  the wheel would go untested.
+- The process then belongs to Python: the main thread, signal handling and the interpreter
+  lock are Python's, and the server's runtime has to live inside them. With the binary the
+  server owns the process and Python is a library in it, which is also what the lock order
+  above assumes.
+- What it would buy, `pip` owning the environment, a virtual environment already gives:
+  `pip install` what the scripts need into it and start the server there.
+
+A wheel remains possible later as packaging around the same crate; nothing here rules it
+out. What a release has to ship is one binary per supported Python minor version, each
+needing that version's libpython on the machine.
 
 ## Risks
 
@@ -123,7 +221,8 @@ ConsoleService (console/mod.rs)          any build
    the server's. The same holds for Java.
 4. **A command cannot be interrupted** (task 6.15). Java does not implement `CancelCommand`
    either.
-5. **Deployment is coupled to a libpython version** until task 6.16.
+5. **Deployment is coupled to a libpython minor version**: one binary per supported Python
+   ("Distribution" above).
 6. **Error text** inside `error_message` is this engine's, not a Java stack trace. Clients
    show it and do not parse it; `PARITY.md` A5 does not compare error text.
 
@@ -152,7 +251,6 @@ Stubbed or missing, each with its task:
 | Autocomplete | answers "nothing found" (Java without `jedi`); no `Open`/`NextAutoCompleteStream` | 6.13 |
 | The log stream | holds only what scripts print, not the server's log; never refuses a slow client; ends with the connection, not the session | 6.14 |
 | Stopping a running command | not possible | 6.15 |
-| Third-party packages, virtual environments, the Python version in `GetConfigurationConstants` | the linked Python's own site-packages; no version reported | 6.16 |
 | `GetHeapInfo` | the process's resident memory of the machine's physical memory; `free_memory` is 0 | 6.14 |
 
 ## Differences from Java, per call
