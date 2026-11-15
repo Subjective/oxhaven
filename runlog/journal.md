@@ -592,3 +592,16 @@ rule otherwise stands. The author of the Parquet read task was resumed with the 
 Correction, 19:05 UTC: the 7.1 author could not be resumed, because an agent whose worktree
 has been removed cannot be resumed. Task 7.1b went to a fresh agent. Lesson for the run: keep
 an author's worktree until its likely follow-ups are done, disk allowing.
+
+## 2026-11-15 19:20 UTC: Console logs and cancel (PR 79) held for an owner decision
+
+Task 6.15 assumed Java interrupts a command whose call is cancelled. The agent probed Java 42.9
+and found it never does: the command runs to its end after cancel and after session close.
+The task's gate still demanded a stop, and the agent followed the gate, so PR 79 stops such a
+command (SIGUSR2 to the interpreter thread, KeyboardInterrupt). That is a difference from Java
+not listed in PARITY.md, and allowed differences need the owner's sign-off, so the pull
+request is open but not to be merged until he chooses: keep the stop and record it, put it
+behind a flag that defaults to Java's behaviour, or remove it. Orchestrator error: the task
+file stated Java's behaviour without checking it. Also noted: the console transcript carries
+traceback line numbers of table.py, which go stale with every Python API change; the probe
+should scrub them (follow-up).
