@@ -9,12 +9,12 @@ use crate::ops::filter::unstructured_filter;
 use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
 use crate::ops::merge::{flatten, merge};
 use crate::ops::select::{drop_columns, update};
-use crate::ops::sort::testing::{frozen, graph};
+use crate::ops::sort::testing::{cells, frozen, graph};
 use crate::ops::sort::{head, reverse, sort, SortColumn};
 use crate::ops::ungroup::ungroup;
 use crate::ops::update_by::{update_by, UpdateByOperation, UpdateBySpec};
 use crate::table::{in_memory_table, keyed_input_table};
-use arrow::array::{Array, ArrayRef, RecordBatch};
+use arrow::array::{Array, ArrayRef, Int32Array, RecordBatch};
 use arrow::datatypes::{Field, Schema};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -219,14 +219,160 @@ fn first_and_last_of_a_list_column_are_whole_cells() {
     assert_eq!(columns[2].to_data(), last.to_data());
 }
 
+/// A static table of a key `G`, a vector column `V` and its row number `S`, one row for
+/// each of `rows`. A `None` among the elements is a null element.
+fn vectors(rows: &[(&str, &[Option<i32>])]) -> Arc<dyn Table> {
+    let vector = ColumnType::vector(ColumnType::Int);
+    let elements: Int32Array = rows.iter().flat_map(|(_, cells)| cells.iter()).collect();
+    let columns = [
+        (
+            "G",
+            ColumnType::String,
+            strings(rows.iter().map(|(key, _)| *key)),
+        ),
+        (
+            "V",
+            vector.clone(),
+            list_of(
+                &vector,
+                rows.iter().map(|(_, cells)| Some(cells.len())),
+                Arc::new(elements),
+            ),
+        ),
+        ("S", ColumnType::Int, ints(0..rows.len() as i32)),
+    ];
+    let fields: Vec<Field> = columns
+        .iter()
+        .map(|(name, column_type, _)| Field::new(*name, column_type.arrow_type(), true))
+        .collect();
+    let arrays: Vec<ArrayRef> = columns.iter().map(|(_, _, cells)| cells.clone()).collect();
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), arrays).unwrap();
+    let names: Vec<(&str, ColumnType)> = columns
+        .iter()
+        .map(|(name, column_type, _)| (*name, column_type.clone()))
+        .collect();
+    in_memory_table(definition(&names), &[batch]).unwrap()
+}
+
+/// The cells of the column `A` that `spec` makes of `input`, by `G` or of the whole table.
+fn aggregated(table: &Arc<dyn Table>, spec: AggSpec, input: &str, by: &[&str]) -> Vec<String> {
+    let aggregation = Aggregation::columns(spec, [Pair::new("A", input)]);
+    let result = aggregate(table, &[aggregation], false, by).unwrap();
+    let column = result.definition().index_of("A").unwrap();
+    cells(&*result, column)
+}
+
+fn median() -> AggSpec {
+    AggSpec::Median {
+        average_evenly_divided: true,
+    }
+}
+
+fn percentile(percentile: f64) -> AggSpec {
+    AggSpec::Percentile {
+        percentile,
+        average_evenly_divided: false,
+    }
+}
+
+fn unique() -> AggSpec {
+    AggSpec::Unique {
+        include_nulls: false,
+        non_unique: Sentinel::Null,
+    }
+}
+
+/// A vector is a `Comparable` in Java, so the aggregations that compare objects take a
+/// vector column: a vector is less than another if its first element that differs is, or
+/// if it is the start of the other. The expected cells are what the reference answers for
+/// the same vectors made by `group_by` (`tasks/4.17-fuzz-findings.md`, A2).
+///
+/// Behavior: `makeMinOrMaxOperator`, `visit(AggSpecPercentile)`,
+/// `makeCountDistinctOperator`, `makeUniqueOperator` and `addSortedFirstOrLastOperator` of
+/// io.deephaven.engine.table.impl.by.AggregationProcessor over
+/// io.deephaven.vector.IntVector#compareTo
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-                makeMinOrMaxOperator for a column of type Vector(Int)"
-)]
-fn min_of_a_list_column_is_not_ported() {
-    let min = Aggregation::columns(AggSpec::Min, [Pair::of("V")]);
-    let _ = aggregate(&listed(), &[min], false, &["G"]);
+fn aggregations_that_compare_take_a_vector_column_in_the_order_of_its_elements() {
+    let some = |cells: &[i32]| cells.iter().copied().map(Some).collect::<Vec<_>>();
+    let (long, four, seven) = (some(&[5, 3]), some(&[4]), some(&[7]));
+    let table = vectors(&[("a", &long), ("a", &four), ("b", &seven)]);
+    let by_key = |spec: AggSpec| aggregated(&table, spec, "V", &["G"]);
+    let of_all = |spec: AggSpec| aggregated(&table, spec, "V", &[]);
+    assert_eq!(by_key(AggSpec::Min), ["[4]", "[7]"]);
+    assert_eq!(by_key(AggSpec::Max), ["[5, 3]", "[7]"]);
+    assert_eq!(of_all(AggSpec::Min), ["[4]"]);
+    assert_eq!(of_all(AggSpec::Max), ["[7]"]);
+    // Of two values the median is the greater: the mean of two vectors is not taken.
+    assert_eq!(by_key(median()), ["[5, 3]", "[7]"]);
+    assert_eq!(of_all(median()), ["[5, 3]"]);
+    assert_eq!(by_key(percentile(0.25)), ["[4]", "[7]"]);
+    assert_eq!(of_all(percentile(0.25)), ["[5, 3]"]);
+    let count = AggSpec::CountDistinct { count_nulls: false };
+    assert_eq!(by_key(count.clone()), ["2", "1"]);
+    assert_eq!(of_all(count.clone()), ["3"]);
+    assert_eq!(by_key(unique()), ["null", "[7]"]);
+    assert_eq!(of_all(unique()), ["null"]);
+    // A scalar picked by the order of the vectors, and a vector by the order of a scalar.
+    let by_vector = |first: bool| {
+        let columns = vec!["V".to_string()];
+        let spec = match first {
+            true => AggSpec::SortedFirst { columns },
+            false => AggSpec::SortedLast { columns },
+        };
+        aggregated(&table, spec, "S", &["G"])
+    };
+    assert_eq!(by_vector(true), ["1", "2"]);
+    assert_eq!(by_vector(false), ["0", "2"]);
+    let by_scalar = AggSpec::SortedLast {
+        columns: vec!["S".to_string()],
+    };
+    assert_eq!(by_key(by_scalar), ["[4]", "[7]"]);
+
+    // Equal vectors are one value.
+    let (five, six) = (some(&[5]), some(&[6]));
+    let table = vectors(&[("a", &five), ("a", &five), ("a", &six), ("b", &seven)]);
+    let by_key = |spec: AggSpec| aggregated(&table, spec, "V", &["G"]);
+    assert_eq!(by_key(count), ["2", "1"]);
+    assert_eq!(by_key(unique()), ["null", "[7]"]);
+    assert_eq!(by_key(median()), ["[5]", "[7]"]);
+    assert_eq!(aggregated(&table, median(), "V", &[]), ["[6]"]);
+    let table = vectors(&[("a", &five), ("a", &five), ("b", &seven)]);
+    assert_eq!(aggregated(&table, unique(), "V", &["G"]), ["[5]", "[7]"]);
+
+    // A null element is less than any other, and the start of a vector less than it.
+    let rows: [(&str, &[Option<i32>]); 5] = [
+        ("a", &[None, Some(1)]),
+        ("a", &[Some(i32::MIN + 1)]),
+        ("a", &[None]),
+        ("a", &[None, Some(1), Some(0)]),
+        ("a", &[]),
+    ];
+    let table = vectors(&rows);
+    let of_all = |spec: AggSpec| aggregated(&table, spec, "V", &[]);
+    assert_eq!(of_all(AggSpec::Min), ["[]"]);
+    assert_eq!(of_all(AggSpec::Max), ["[-2147483647]"]);
+    assert_eq!(of_all(percentile(0.25)), ["[null]"]);
+    assert_eq!(of_all(median()), ["[null, 1]"]);
+    assert_eq!(of_all(percentile(0.75)), ["[null, 1, 0]"]);
+
+    // The null cell and the empty cell of `listed` are a null and a value.
+    let by_key = |spec: AggSpec| aggregated(&listed(), spec, "V", &["G"]);
+    assert_eq!(by_key(AggSpec::Min), ["[]", "null"]);
+    assert_eq!(by_key(AggSpec::Max), ["[1, 2]", "null"]);
+    let count_nulls = AggSpec::CountDistinct { count_nulls: true };
+    assert_eq!(by_key(count_nulls), ["2", "1"]);
+    let result = aggregate(
+        &listed(),
+        &[Aggregation::columns(AggSpec::Min, [Pair::of("V")])],
+        false,
+        &["G"],
+    )
+    .unwrap();
+    let vector = ColumnType::vector(ColumnType::Int);
+    assert_eq!(result.definition().columns()[1].column_type, vector);
+    let column = TableSnapshot::current(&*result).unwrap().columns[1].clone();
+    let expected = list_of(&vector, [Some(0), None], ints([]));
+    assert_eq!(column.to_data(), expected.to_data());
 }
 
 /// The message of the panic `f` ends in.
@@ -238,78 +384,74 @@ fn panic_of(f: impl FnOnce() + std::panic::UnwindSafe) -> String {
     }
 }
 
+/// The distinct values of a vector column would be a vector of vectors, and an array is
+/// not a `Comparable` in Java, which fails when it first compares two of them.
 #[test]
-fn aggregations_that_compare_or_store_list_cells_are_not_ported() {
-    let cases = [
-        (
-            AggSpec::Median {
-                average_evenly_divided: true,
-            },
-            "visit(AggSpecPercentile)",
-        ),
-        (
-            AggSpec::Percentile {
-                percentile: 0.25,
-                average_evenly_divided: false,
-            },
-            "visit(AggSpecPercentile)",
-        ),
-        (
-            AggSpec::CountDistinct { count_nulls: false },
-            "makeCountDistinctOperator",
-        ),
-        (
-            AggSpec::Unique {
-                include_nulls: false,
-                non_unique: Sentinel::Null,
-            },
-            "makeUniqueOperator",
-        ),
-        (
-            AggSpec::Distinct {
-                include_nulls: false,
-            },
-            "makeDistinctOperator",
-        ),
-        (
-            AggSpec::SortedFirst {
-                columns: vec!["K".to_string()],
-            },
-            "addSortedFirstOrLastOperator",
-        ),
-        (
-            AggSpec::SortedLast {
-                columns: vec!["K".to_string()],
-            },
-            "addSortedFirstOrLastOperator",
-        ),
-    ];
-    for (spec, java_method) in cases {
-        let aggregation = Aggregation::columns(spec.clone(), [Pair::of("V")]);
-        let message = panic_of(move || {
-            let _ = aggregate(&listed(), &[aggregation], false, &["G"]);
-        });
-        assert_eq!(
-            message,
-            format!(
-                "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-                 {java_method} for a column of type Vector(Int)"
-            ),
-            "{spec:?}"
-        );
-    }
-    // a scalar column picked by the order of a list column
-    let by_list = AggSpec::SortedFirst {
-        columns: vec!["V".to_string()],
+fn aggregations_of_a_list_column_that_are_not_ported() {
+    let distinct = AggSpec::Distinct {
+        include_nulls: false,
     };
-    let aggregation = Aggregation::columns(by_list, [Pair::of("K")]);
+    let aggregation = Aggregation::columns(distinct, [Pair::of("V")]);
     let message = panic_of(move || {
         let _ = aggregate(&listed(), &[aggregation], false, &["G"]);
     });
-    assert!(
-        message.ends_with("addSortedFirstOrLastOperator for a column of type Vector(Int)"),
-        "{message}"
+    assert_eq!(
+        message,
+        "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
+         makeDistinctOperator for a column of type Vector(Int)"
     );
+
+    let array = ColumnType::array(ColumnType::Int);
+    let nested = ColumnType::vector(ColumnType::vector(ColumnType::Int));
+    for (column_type, name) in [(array, "Array(Int)"), (nested, "Vector(Vector(Int))")] {
+        let cases = [
+            (AggSpec::Min, "makeMinOrMaxOperator"),
+            (AggSpec::Max, "makeMinOrMaxOperator"),
+            (median(), "visit(AggSpecPercentile)"),
+            (percentile(0.25), "visit(AggSpecPercentile)"),
+            (
+                AggSpec::CountDistinct { count_nulls: false },
+                "makeCountDistinctOperator",
+            ),
+            (unique(), "makeUniqueOperator"),
+            (
+                AggSpec::SortedFirst {
+                    columns: vec!["K".to_string()],
+                },
+                "addSortedFirstOrLastOperator",
+            ),
+        ];
+        let names = [("K", ColumnType::Int), ("L", column_type)];
+        let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
+        for (spec, java_method) in cases {
+            let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
+            let message = panic_of(move || {
+                let _ = aggregate(&table(), &[aggregation], false, &["K"]);
+            });
+            assert_eq!(
+                message,
+                format!(
+                    "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
+                     {java_method} for a column of type {name}"
+                ),
+                "{spec:?}"
+            );
+        }
+        // a scalar column picked by the order of a list column
+        let by_list = AggSpec::SortedFirst {
+            columns: vec!["L".to_string()],
+        };
+        let aggregation = Aggregation::columns(by_list, [Pair::of("K")]);
+        let message = panic_of(move || {
+            let _ = aggregate(&table(), &[aggregation], false, &[]);
+        });
+        assert!(
+            message.ends_with(&format!(
+                "addSortedFirstOrLastOperator for a column of type {name}"
+            )),
+            "{message}"
+        );
+    }
 }
 
 #[test]
@@ -479,4 +621,40 @@ fn a_match_filter_of_a_list_column_takes_null_only() {
 #[should_panic(expected = "unported: io.deephaven.engine.table.impl.select.RangeFilter#init")]
 fn a_range_filter_of_a_list_column_is_not_ported() {
     let _ = unstructured_filter(&listed(), &["V > null"], &Compiler);
+}
+
+/// Java gives the minimum, maximum, median, percentile and unique value of a vector of
+/// Booleans or Instants as a column without a component type, which a client receives as
+/// lists of strings. That is not reproduced. The aggregations that count, or that read
+/// the input column, are answered.
+#[test]
+fn a_stored_vector_of_booleans_or_instants_is_not_ported() {
+    for element in [ColumnType::Boolean, ColumnType::Instant] {
+        let names = [("K", ColumnType::Int), ("L", ColumnType::vector(element))];
+        let table = || -> Arc<dyn Table> { in_memory_table(definition(&names), &[]).unwrap() };
+        for spec in [
+            AggSpec::Min,
+            AggSpec::Max,
+            median(),
+            percentile(0.5),
+            unique(),
+        ] {
+            let aggregation = Aggregation::columns(spec.clone(), [Pair::of("L")]);
+            let message = panic_of(move || {
+                let _ = aggregate(&table(), &[aggregation], false, &["K"]);
+            });
+            assert!(
+                message.ends_with("whose result Java gives without its component type"),
+                "{spec:?}: {message}"
+            );
+        }
+        let sorted = AggSpec::SortedLast {
+            columns: vec!["K".to_string()],
+        };
+        let count = AggSpec::CountDistinct { count_nulls: false };
+        for spec in [AggSpec::First, AggSpec::Last, sorted, count] {
+            let aggregation = Aggregation::columns(spec, [Pair::of("L")]);
+            aggregate(&table(), &[aggregation], false, &["K"]).unwrap();
+        }
+    }
 }

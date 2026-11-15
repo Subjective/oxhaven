@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::graph::SteppedUpdateGraph;
+use crate::ops::agg::aggregate_all_with;
 use crate::table::{append_only_input_table, tracked_source, QueryTable, RootSource, TableSpec};
 use arrow::array::{BooleanArray, Float64Array, Int32Array, Int64Array, StringArray};
 use oxhaven_column::WritableSource;
@@ -848,6 +849,81 @@ fn an_add_only_parent_gives_a_flat_result() {
         ]
     );
     assert_eq!(checker.updates_seen(), 1);
+}
+
+/// Java copies `AppendOnly` from the parent to a first of every column, and to nothing
+/// else: not to a last of every column, and not to the same first asked for by column.
+/// An aggregation of that result then takes it as a table that only adds rows, so its own
+/// result is flat whatever its keys.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#aggAllBy with
+/// io.deephaven.engine.table.impl.AggAllByCopyAttributes, as the reference answers
+/// `tasks/4.17-fuzz-findings/F3-first-appendonly.json` and `F8-isflat.json`
+#[test]
+fn a_first_of_every_column_of_an_append_only_table_is_append_only() {
+    let graph = SteppedUpdateGraph::new();
+    let (definition, initial) = batch(&kid(&[("a", 5, 0.0), ("b", 1, 0.5)]));
+    let parent: Arc<dyn Table> =
+        append_only_input_table(graph.clone(), definition, Some(&initial)).expect("an input");
+    assert!(parent.attributes().append_only);
+    let all_by = |spec: AggSpec, by: &[&str]| {
+        let pairs = ["K", "I", "D"]
+            .into_iter()
+            .filter(|name| !by.contains(name))
+            .map(Pair::of);
+        aggregate_all_with(&parent, spec, pairs, by, &oxhaven_expr::Compiler)
+            .expect("an aggregation of every column")
+    };
+    let append_only = {
+        let mut attributes = TableAttributes::default();
+        attributes.append_only = true;
+        attributes
+    };
+
+    let first = all_by(AggSpec::First, &["K"]);
+    assert_eq!(first.attributes(), append_only);
+    assert_eq!(all_by(AggSpec::First, &[]).attributes(), append_only);
+    let last = all_by(AggSpec::Last, &["K"]);
+    assert_eq!(last.attributes(), TableAttributes::default());
+    let by_column = agg_by(&parent, &[agg(AggSpec::First, &["I", "D"])], &["K"]);
+    assert_eq!(by_column.attributes(), TableAttributes::default());
+
+    // A keyed aggregation of a table that removes or modifies rows is not flat.
+    let of_first = agg_by(&first, &[agg(AggSpec::First, &["A = I"])], &["D"]);
+    assert!(of_first.is_flat());
+    let of_last = agg_by(&last, &[agg(AggSpec::First, &["A = I"])], &["D"]);
+    assert!(!of_last.is_flat());
+
+    let recorder = Recorder::attach(first.clone());
+    let checker = {
+        let (parent, first) = (parent.clone(), first.clone());
+        ConsistencyChecker::attach_with_recompute(first.clone(), move || {
+            let pairs = [Pair::of("I"), Pair::of("D")];
+            let from_scratch = aggregate_all_with(
+                &static_copy(&*parent),
+                AggSpec::First,
+                pairs,
+                &["K"],
+                &oxhaven_expr::Compiler,
+            )
+            .expect("an aggregation of every column");
+            in_order_of(&*from_scratch, &*first, 1)
+        })
+    };
+    let writer = parent.input_table().expect("an input table");
+    let (_, more) = batch(&kid(&[("b", 7, 1.5), ("c", 9, 2.5), ("a", 3, 3.5)]));
+    writer.add(more).expect("an add");
+    graph.run_cycle();
+    checker.assert_consistent();
+    assert_eq!(rows(&*first), ["a|5|0.0", "b|1|0.5", "c|9|2.5"]);
+    assert_eq!(rows(&*of_first), ["0.0|5", "0.5|1", "2.5|9"]);
+    // What the attribute promises: rows are only added, after the rows there are.
+    let events = recorder.events();
+    assert_eq!(events.len(), 1);
+    let update = events[0].as_ref().expect("an update");
+    assert_eq!(update.added, RowSet::from_range(2, 2));
+    assert!(update.removed.is_empty() && update.modified.is_empty());
+    assert!(update.shifted.is_empty());
 }
 
 /// A blink table of columns `K` and `I`: each cycle its rows are replaced by the next

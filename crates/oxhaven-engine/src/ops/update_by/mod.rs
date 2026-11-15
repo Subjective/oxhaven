@@ -76,6 +76,10 @@ fn failure(message: impl Into<String>) -> TableFailure {
     }
 }
 
+/// What Java throws when a minimum or maximum of a Boolean column is given rows.
+const BOOLEAN_AS_OBJECTS: &str = "class io.deephaven.chunk.ResettableWritableByteChunk cannot be \
+    cast to class io.deephaven.chunk.ObjectChunk";
+
 /// What `delta` gives for a value whose predecessor is null or missing.
 ///
 /// Behavior: io.deephaven.api.updateby.DeltaControl and its `NullBehavior`

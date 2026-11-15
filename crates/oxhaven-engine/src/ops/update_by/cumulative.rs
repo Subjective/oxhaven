@@ -8,7 +8,7 @@ use super::values::{
     double_array, double_result, long_array, long_result, narrowed_floats, narrowed_ints, pick,
     Values,
 };
-use super::{failure, DeltaControl};
+use super::{failure, DeltaControl, BOOLEAN_AS_OBJECTS};
 use arrow::array::ArrayRef;
 use arrow::compute::concat;
 use oxhaven_contracts::schema::ColumnType;
@@ -47,8 +47,10 @@ impl Cumulative {
                 Float | Double => Some(Double),
                 _ => None,
             },
+            // A Boolean is a `Comparable`, so Java makes its operator of objects for it,
+            // which fails once it is given rows: see `accumulate`.
             Cumulative::Min | Cumulative::Max => match input {
-                Byte | Char | Short | Int | Long | Instant | Float | Double | String => {
+                Byte | Char | Short | Int | Long | Instant | Float | Double | String | Boolean => {
                     Some(input.clone())
                 }
                 _ => None,
@@ -81,6 +83,13 @@ impl Cumulative {
         let output = self
             .output_type(input)
             .ok_or_else(|| failure("no cumulative operator for this column type"))?;
+        if matches!(self, Cumulative::Min | Cumulative::Max) && *input == ColumnType::Boolean {
+            // Behavior: io.deephaven.engine.table.impl.updateby.internal.BaseObjectBinaryOperator
+            // .Context#setValueChunks, which casts the chunk of bytes that a Boolean column is
+            // read as to a chunk of objects. It is called for every chunk of rows, so a table
+            // without rows has the operation, and loses it with its first row.
+            return Err(failure(BOOLEAN_AS_OBJECTS));
+        }
         match self {
             Cumulative::Sum | Cumulative::Product => {
                 let seed = match seed {
