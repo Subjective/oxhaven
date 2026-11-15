@@ -5,6 +5,7 @@
 mod corpus;
 mod statics;
 mod ticking;
+mod vectors;
 
 use super::*;
 use arrow::array::{Array, ArrayRef, AsArray, Int64Array};

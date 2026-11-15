@@ -423,7 +423,7 @@ fn an_input_table_keyed_by_a_list_column_is_not_ported() {
 }
 
 #[test]
-fn a_list_column_is_copied_by_name_and_a_formula_that_reads_one_is_refused() {
+fn a_list_column_is_copied_by_name_and_read_by_a_formula() {
     let table = listed();
     // `X = V` is a copy of the column, not a formula.
     let copied = update(&table, &["X = V"], &Compiler).unwrap();
@@ -433,15 +433,31 @@ fn a_list_column_is_copied_by_name_and_a_formula_that_reads_one_is_refused() {
     assert_eq!(cells[3].to_data(), cells[2].to_data());
     assert_eq!(cells[3].null_count(), 1);
 
-    let refused = update(&table, &["X = isNull(V)"], &Compiler);
+    // The cells are [1, 2], null and [].
+    let computed = update(&table, &["X = isNull(V)", "S = sum(V)"], &Compiler).unwrap();
+    let cells = TableSnapshot::current(&*computed).unwrap().columns;
+    let flags: ArrayRef = Arc::new(arrow::array::BooleanArray::from(vec![false, true, false]));
+    let sums: ArrayRef = Arc::new(arrow::array::Int64Array::from(vec![Some(3), None, None]));
+    assert_eq!(cells[3].to_data(), flags.to_data());
+    assert_eq!(cells[4].to_data(), sums.to_data());
+    let kept = unstructured_filter(&table, &["isNull(V)"], &Compiler).unwrap();
+    let keys = TableSnapshot::current(&*kept).unwrap().columns[0].clone();
+    assert_eq!(keys.to_data(), ints([2]).to_data());
+
+    // A vector of vectors is not read yet.
+    let nested = ColumnType::vector(vector.clone());
+    let cells = list_of(&nested, [Some(1)], list_of(&vector, [Some(1)], ints([1])));
+    let fields = vec![Field::new("N", nested.arrow_type(), true)];
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), vec![cells]).unwrap();
+    let table: Arc<dyn Table> = in_memory_table(definition(&[("N", nested)]), &[batch]).unwrap();
+    let refused = update(&table, &["X = len(N)"], &Compiler);
     let message = refused.err().map(|error| error.to_string());
     assert!(
         message
             .as_deref()
-            .is_some_and(|message| message.contains("column V of type Vector(Int)")),
+            .is_some_and(|message| message.contains("column N of type Vector(Vector(Int))")),
         "{message:?}"
     );
-    assert!(unstructured_filter(&table, &["isNull(V)"], &Compiler).is_err());
 }
 
 #[test]

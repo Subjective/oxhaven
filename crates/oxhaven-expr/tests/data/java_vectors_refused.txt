@@ -1,0 +1,272 @@
+java-rejects	update	array(AI)	function array() with a vector or array argument
+java-fails	update	vec(VI)	function vec() with a vector or array argument
+java-rejects	update	array(AD)	function array() with a vector or array argument
+java-fails	update	vec(VD)	function vec() with a vector or array argument
+java-accepts	update	R == 2 ? null : VB.get(0)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	R == 2 ? null : VB[N]	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	update	R == 2 ? null : VI.get(NF)	method call .get() on a value of a vector type
+java-rejects	update	R == 2 ? null : VI[NF]	an index on a value of a vector type
+java-rejects	update	R == 2 ? null : VI.get(1.0)	method call .get() on a value of a vector type
+java-rejects	update	R == 2 ? null : VI[1.0]	an index on a value of a vector type
+java-rejects	update	R == 2 ? null : VD.get(NF)	method call .get() on a value of a vector type
+java-rejects	update	R == 2 ? null : VD[NF]	an index on a value of a vector type
+java-rejects	update	R == 2 ? null : VD.get(1.0)	method call .get() on a value of a vector type
+java-rejects	update	R == 2 ? null : VD[1.0]	an index on a value of a vector type
+java-accepts	update	R == 2 ? null : VS.subVector(1, 3)	method call .subVector() on a value of a vector type
+java-accepts	update	R == 2 ? null : VB.subVector(1, 3)	method call .subVector() on a value of a vector type
+java-accepts	update	R == 2 ? null : VT.subVector(1, 3)	method call .subVector() on a value of a vector type
+java-fails	update	R == 2 ? null : VI.subVector(0, N)	unported: io.deephaven.vector.IntVector#subVector: a null index, which Java takes for the lowest int or long
+java-fails	update	R == 2 ? null : VI.subVector(1L, NL)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 1 beyond to 0
+java-fails	update	R == 2 ? null : VI.subVector(2, 1)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 2 beyond to 1
+java-fails	update	R == 2 ? null : VI.subVector(N, 2)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 5 beyond to 2
+java-fails	update	R == 2 ? null : VD.subVector(0, N)	unported: io.deephaven.vector.IntVector#subVector: a null index, which Java takes for the lowest int or long
+java-fails	update	R == 2 ? null : VD.subVector(1L, NL)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 1 beyond to 0
+java-fails	update	R == 2 ? null : VD.subVector(2, 1)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 2 beyond to 1
+java-fails	update	R == 2 ? null : VD.subVector(N, 2)	unported: io.deephaven.engine.table.vectors.IntVectorColumnWrapper#subVector: from 5 beyond to 2
+java-fails	update	AB[0]	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	R == 1 || R == 2 ? null : AB[0]	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	update	len(AI) > 4 ? AI[NL] : null	an index on a value of an array type
+java-rejects	update	len(AI) > 4 ? AI[1L] : null	an index on a value of an array type
+java-rejects	update	AI.get(0)	method call .get() on a value of an array type
+java-rejects	update	AI.size()	method call .size() on a value of an array type
+java-rejects	update	VI.length	field access .length on a value of a vector type
+java-rejects	update	len(AD) > 4 ? AD[NL] : null	an index on a value of an array type
+java-rejects	update	len(AD) > 4 ? AD[1L] : null	an index on a value of an array type
+java-rejects	update	AD.get(0)	method call .get() on a value of an array type
+java-rejects	update	AD.size()	method call .size() on a value of an array type
+java-rejects	update	VD.length	field access .length on a value of a vector type
+java-accepts	update	firstObj(VB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	firstObj(AB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	lastObj(VB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	lastObj(AB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	update	count(VS)	function count() with a vector or array argument
+java-rejects	update	count(VB)	function count() with a vector or array argument
+java-rejects	update	count(VT)	function count() with a vector or array argument
+java-rejects	update	count(AS)	function count() with a vector or array argument
+java-rejects	update	count(AB)	function count() with a vector or array argument
+java-rejects	update	count(AT)	function count() with a vector or array argument
+java-rejects	update	first(VS)	function first() with a vector or array argument
+java-rejects	update	first(VB)	function first() with a vector or array argument
+java-rejects	update	first(VT)	function first() with a vector or array argument
+java-rejects	update	first(AS)	function first() with a vector or array argument
+java-rejects	update	first(AB)	function first() with a vector or array argument
+java-rejects	update	first(AT)	function first() with a vector or array argument
+java-rejects	update	last(VS)	function last() with a vector or array argument
+java-rejects	update	last(VB)	function last() with a vector or array argument
+java-rejects	update	last(VT)	function last() with a vector or array argument
+java-rejects	update	last(AS)	function last() with a vector or array argument
+java-rejects	update	last(AB)	function last() with a vector or array argument
+java-rejects	update	last(AT)	function last() with a vector or array argument
+java-rejects	update	sum(VS)	function sum() with a vector or array argument
+java-rejects	update	sum(VB)	function sum() with a vector or array argument
+java-rejects	update	sum(VT)	function sum() with a vector or array argument
+java-rejects	update	sum(AS)	function sum() with a vector or array argument
+java-rejects	update	sum(AB)	function sum() with a vector or array argument
+java-rejects	update	sum(AT)	function sum() with a vector or array argument
+java-rejects	update	min(VS)	function min() with a vector or array argument
+java-rejects	update	min(VB)	function min() with a vector or array argument
+java-rejects	update	min(VT)	function min() with a vector or array argument
+java-rejects	update	min(AS)	function min() with a vector or array argument
+java-rejects	update	min(AB)	function min() with a vector or array argument
+java-rejects	update	min(AT)	function min() with a vector or array argument
+java-rejects	update	max(VS)	function max() with a vector or array argument
+java-rejects	update	max(VB)	function max() with a vector or array argument
+java-rejects	update	max(VT)	function max() with a vector or array argument
+java-rejects	update	max(AS)	function max() with a vector or array argument
+java-rejects	update	max(AB)	function max() with a vector or array argument
+java-rejects	update	max(AT)	function max() with a vector or array argument
+java-accepts	update	minObj(VS)	function minObj() with a vector or array argument
+java-accepts	update	minObj(VB)	function minObj() with a vector or array argument
+java-accepts	update	minObj(VT)	function minObj() with a vector or array argument
+java-accepts	update	minObj(AS)	function minObj() with a vector or array argument
+java-accepts	update	minObj(AB)	function minObj() with a vector or array argument
+java-accepts	update	minObj(AT)	function minObj() with a vector or array argument
+java-accepts	update	maxObj(VS)	function maxObj() with a vector or array argument
+java-accepts	update	maxObj(VB)	function maxObj() with a vector or array argument
+java-accepts	update	maxObj(VT)	function maxObj() with a vector or array argument
+java-accepts	update	maxObj(AS)	function maxObj() with a vector or array argument
+java-accepts	update	maxObj(AB)	function maxObj() with a vector or array argument
+java-accepts	update	maxObj(AT)	function maxObj() with a vector or array argument
+java-accepts	update	countDistinctObj(VS)	function countDistinctObj() with a vector or array argument
+java-accepts	update	countDistinctObj(VB)	function countDistinctObj() with a vector or array argument
+java-accepts	update	countDistinctObj(VT)	function countDistinctObj() with a vector or array argument
+java-accepts	update	countDistinctObj(AS)	function countDistinctObj() with a vector or array argument
+java-accepts	update	countDistinctObj(AB)	function countDistinctObj() with a vector or array argument
+java-accepts	update	countDistinctObj(AT)	function countDistinctObj() with a vector or array argument
+java-accepts	update	distinctObj(VS)	function distinctObj() with a vector or array argument
+java-accepts	update	distinctObj(VB)	function distinctObj() with a vector or array argument
+java-accepts	update	distinctObj(VT)	function distinctObj() with a vector or array argument
+java-accepts	update	distinctObj(AS)	function distinctObj() with a vector or array argument
+java-accepts	update	distinctObj(AB)	function distinctObj() with a vector or array argument
+java-accepts	update	distinctObj(AT)	function distinctObj() with a vector or array argument
+java-accepts	update	reverseObj(VS)	function reverseObj() with a vector or array argument
+java-accepts	update	reverseObj(VB)	function reverseObj() with a vector or array argument
+java-accepts	update	reverseObj(VT)	function reverseObj() with a vector or array argument
+java-accepts	update	reverseObj(AS)	function reverseObj() with a vector or array argument
+java-accepts	update	reverseObj(AB)	function reverseObj() with a vector or array argument
+java-accepts	update	reverseObj(AT)	function reverseObj() with a vector or array argument
+java-accepts	update	sortObj(VS)	function sortObj() with a vector or array argument
+java-accepts	update	sortObj(VB)	function sortObj() with a vector or array argument
+java-accepts	update	sortObj(VT)	function sortObj() with a vector or array argument
+java-accepts	update	sortObj(AS)	function sortObj() with a vector or array argument
+java-accepts	update	sortObj(AB)	function sortObj() with a vector or array argument
+java-accepts	update	sortObj(AT)	function sortObj() with a vector or array argument
+java-rejects	update	reverse(VS)	function reverse() with a vector or array argument
+java-rejects	update	reverse(VB)	function reverse() with a vector or array argument
+java-rejects	update	reverse(VT)	function reverse() with a vector or array argument
+java-rejects	update	reverse(AS)	function reverse() with a vector or array argument
+java-rejects	update	reverse(AB)	function reverse() with a vector or array argument
+java-rejects	update	reverse(AT)	function reverse() with a vector or array argument
+java-rejects	update	sort(VS)	function sort() with a vector or array argument
+java-rejects	update	sort(VB)	function sort() with a vector or array argument
+java-rejects	update	sort(VT)	function sort() with a vector or array argument
+java-rejects	update	sort(AS)	function sort() with a vector or array argument
+java-rejects	update	sort(AB)	function sort() with a vector or array argument
+java-rejects	update	sort(AT)	function sort() with a vector or array argument
+java-rejects	update	distinct(VS)	function distinct() with a vector or array argument
+java-rejects	update	distinct(VB)	function distinct() with a vector or array argument
+java-rejects	update	distinct(VT)	function distinct() with a vector or array argument
+java-rejects	update	distinct(AS)	function distinct() with a vector or array argument
+java-rejects	update	distinct(AB)	function distinct() with a vector or array argument
+java-rejects	update	distinct(AT)	function distinct() with a vector or array argument
+java-rejects	update	countDistinct(VS)	function countDistinct() with a vector or array argument
+java-rejects	update	countDistinct(VB)	function countDistinct() with a vector or array argument
+java-rejects	update	countDistinct(VT)	function countDistinct() with a vector or array argument
+java-rejects	update	countDistinct(AS)	function countDistinct() with a vector or array argument
+java-rejects	update	countDistinct(AB)	function countDistinct() with a vector or array argument
+java-rejects	update	countDistinct(AT)	function countDistinct() with a vector or array argument
+java-accepts	update	arrayObj(VS)	function arrayObj() with a vector or array argument
+java-accepts	update	arrayObj(VB)	function arrayObj() with a vector or array argument
+java-accepts	update	arrayObj(VT)	function arrayObj() with a vector or array argument
+java-rejects	update	arrayObj(AS)	function arrayObj() with a vector or array argument
+java-rejects	update	arrayObj(AB)	function arrayObj() with a vector or array argument
+java-rejects	update	arrayObj(AT)	function arrayObj() with a vector or array argument
+java-accepts	update	absAvg(VI)	function absAvg() with a vector or array argument
+java-accepts	update	absAvg(AD)	function absAvg() with a vector or array argument
+java-accepts	update	absAvg(VC)	function absAvg() with a vector or array argument
+java-accepts	update	ste(VI)	function ste() with a vector or array argument
+java-accepts	update	ste(AD)	function ste() with a vector or array argument
+java-accepts	update	ste(VC)	function ste() with a vector or array argument
+java-accepts	update	tstat(VI)	function tstat() with a vector or array argument
+java-accepts	update	tstat(AD)	function tstat() with a vector or array argument
+java-accepts	update	tstat(VC)	function tstat() with a vector or array argument
+java-accepts	update	countPos(VI)	function countPos() with a vector or array argument
+java-accepts	update	countPos(AD)	function countPos() with a vector or array argument
+java-accepts	update	countPos(VC)	function countPos() with a vector or array argument
+java-accepts	update	countNeg(VI)	function countNeg() with a vector or array argument
+java-accepts	update	countNeg(AD)	function countNeg() with a vector or array argument
+java-accepts	update	countNeg(VC)	function countNeg() with a vector or array argument
+java-accepts	update	countZero(VI)	function countZero() with a vector or array argument
+java-accepts	update	countZero(AD)	function countZero() with a vector or array argument
+java-accepts	update	countZero(VC)	function countZero() with a vector or array argument
+java-accepts	update	indexOfMax(VI)	function indexOfMax() with a vector or array argument
+java-accepts	update	indexOfMax(AD)	function indexOfMax() with a vector or array argument
+java-accepts	update	indexOfMax(VC)	function indexOfMax() with a vector or array argument
+java-accepts	update	indexOfMin(VI)	function indexOfMin() with a vector or array argument
+java-accepts	update	indexOfMin(AD)	function indexOfMin() with a vector or array argument
+java-accepts	update	indexOfMin(VC)	function indexOfMin() with a vector or array argument
+java-accepts	update	cumprod(VI)	function cumprod() with a vector or array argument
+java-accepts	update	cumprod(AD)	function cumprod() with a vector or array argument
+java-accepts	update	cumprod(VC)	function cumprod() with a vector or array argument
+java-accepts	update	cummin(VI)	function cummin() with a vector or array argument
+java-accepts	update	cummin(AD)	function cummin() with a vector or array argument
+java-accepts	update	cummin(VC)	function cummin() with a vector or array argument
+java-accepts	update	cummax(VI)	function cummax() with a vector or array argument
+java-accepts	update	cummax(AD)	function cummax() with a vector or array argument
+java-accepts	update	cummax(VC)	function cummax() with a vector or array argument
+java-accepts	update	forwardFill(VI)	function forwardFill() with a vector or array argument
+java-accepts	update	forwardFill(AD)	function forwardFill() with a vector or array argument
+java-accepts	update	forwardFill(VC)	function forwardFill() with a vector or array argument
+java-accepts	update	rank(VI)	function rank() with a vector or array argument
+java-accepts	update	rank(AD)	function rank() with a vector or array argument
+java-accepts	update	rank(VC)	function rank() with a vector or array argument
+java-accepts	update	rankDescending(VI)	function rankDescending() with a vector or array argument
+java-accepts	update	rankDescending(AD)	function rankDescending() with a vector or array argument
+java-accepts	update	rankDescending(VC)	function rankDescending() with a vector or array argument
+java-rejects	update	unbox(VI)	function unbox() with a vector or array argument
+java-rejects	update	unbox(AD)	function unbox() with a vector or array argument
+java-rejects	update	unbox(VC)	function unbox() with a vector or array argument
+java-accepts	update	enlist(VI)	function enlist() with a vector or array argument
+java-accepts	update	enlist(AD)	function enlist() with a vector or array argument
+java-accepts	update	enlist(VC)	function enlist() with a vector or array argument
+java-accepts	update	percentile(0.5, VD)	function percentile() with a vector or array argument
+java-accepts	update	percentile(0.5, AI)	function percentile() with a vector or array argument
+java-fails	update	nth(1, VI)	function nth() with a vector or array argument
+java-fails	update	nth(1, AD)	function nth() with a vector or array argument
+java-accepts	update	firstIndexOf(1, VI)	function firstIndexOf() with a vector or array argument
+java-accepts	update	countDistinct(VI, true)	function countDistinct() with a vector or array argument
+java-accepts	update	distinct(AD, true)	function distinct() with a vector or array argument
+java-fails	update	wsum(VI, VD)	function wsum() with a vector or array argument
+java-fails	update	wavg(AD, AI)	function wavg() with a vector or array argument
+java-accepts	update	cov(VD, VD)	function cov() with a vector or array argument
+java-accepts	update	cor(AI, AI)	function cor() with a vector or array argument
+java-fails	update	wvar(VD, VI)	function wvar() with a vector or array argument
+java-accepts	update	diff(1, VI)	function diff() with a vector or array argument
+java-accepts	update	concat(VI, VI)	function concat() with a vector or array argument
+java-accepts	update	concat(AI, AI)	function concat() with a vector or array argument
+java-fails	update	in(1, VI)	function in() with a vector or array argument
+java-fails	update	in(1, AI)	function in() with a vector or array argument
+java-fails	update	replaceIfNull(VI, 0)	function replaceIfNull() with a vector or array argument
+java-fails	update	replaceIfNull(AD, 0.0)	function replaceIfNull() with a vector or array argument
+java-accepts	update	repeat(I, 2)	function repeat()
+java-rejects	update	sum(VI, VI)	function sum() with a vector or array argument
+java-rejects	update	sum(VI, 1)	function sum() with a vector or array argument
+java-rejects	update	len(VI, VI)	function len() with a vector or array argument
+java-rejects	update	sum()	function sum()
+java-rejects	update	len()	function len()
+java-rejects	update	min(VI, 1)	function min() with a vector or array argument
+java-rejects	update	max(AI, AI)	function max() with a vector or array argument
+java-rejects	update	abs(VI)	function abs() with a vector or array argument
+java-rejects	update	sqrt(AD)	function sqrt() with a vector or array argument
+java-rejects	update	isNaN(VD)	function isNaN() with a vector or array argument
+java-rejects	update	pow(VI, 2)	function pow() with a vector or array argument
+java-accepts	update	sum(I)	function sum()
+java-accepts	update	avg(I)	function avg()
+java-rejects	update	len(I)	function len()
+java-accepts	update	sum(I, I)	function sum()
+java-accepts	update	count(I)	function count()
+java-accepts	update	first(I)	function first()
+java-fails	update	VI + 1	operator + on a vector or array
+java-fails	update	VI + VI	operator + on a vector or array
+java-fails	update	AI * 2	operator * on a vector or array
+java-fails	update	VI == VI	operator == on a vector or array
+java-fails	update	AI == AI	operator == on a vector or array
+java-rejects	update	VI != AI	operator != on a vector or array
+java-fails	update	VI < VI	operator < on a vector or array
+java-fails	update	AD >= AD	operator >= on a vector or array
+java-accepts	update	VS + `x`	operator + on a vector or array
+java-accepts	update	`x` + AI	operator + on a vector or array
+java-fails	update	(int) VI	cast of Vector(Int) to int
+java-fails	update	(double) AD	cast of Array(Double) to double
+java-rejects	update	R > 3 ? VI : AI	?: with a vector or array branch and a branch of another type
+java-rejects	update	R > 3 ? VI : VD	?: with a vector or array branch and a branch of another type
+java-rejects	update	I[0]	an index on a value of type int
+java-rejects	update	R[N]	an index on a value of type int
+java-rejects	update	VI.toArray()	method call .toArray() on a value of a vector type
+java-fails	update	VI.getDirect()	method call .getDirect() on a value of a vector type
+java-fails	update	VI.copyToArray()	method call .copyToArray() on a value of a vector type
+java-fails	update	VI.intSize()	method call .intSize() on a value of a vector type
+java-fails	update	VI.subVectorByPositions(null)	null literal as an argument of .subVectorByPositions()
+java-fails	update	VI.hashCode()	method call .hashCode() on a value of a vector type
+java-fails	update	VI.toString()	method call .toString() on a value of a vector type
+java-fails	update	VI.equals(VI)	method call .equals() on a value of a vector type
+java-fails	update	VI.iterator()	method call .iterator() on a value of a vector type
+java-rejects	update	VI.get()	method call .get() on a value of a vector type
+java-rejects	update	VI.get(0, 1)	method call .get() on a value of a vector type
+java-rejects	update	VI.subVector(1)	method call .subVector() on a value of a vector type
+java-rejects	update	VI.size(1)	method call .size() on a value of a vector type
+java-rejects	update	VI.get(`a`)	method call .get() on a value of a vector type
+java-rejects	update	VI.get(true)	method call .get() on a value of a vector type
+java-rejects	update	VI[`a`]	an index on a value of a vector type
+java-rejects	update	AI[`a`]	an index on a value of an array type
+java-rejects	update	AI[true]	an index on a value of an array type
+java-rejects	update	AI[1.5]	an index on a value of an array type
+java-rejects	update	AI[N][0]	an index on a value of type int
+java-rejects	update	AI.length()	method call .length() on a value of an array type
+java-fails	update	firstObj(VB) && R > 0	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	R == 2 ? null : VB.get(1)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-accepts	update	R == 2 ? null : VT.subVector(0, 2)	method call .subVector() on a value of a vector type
+java-accepts	update	R == 2 ? null : VB.subVector(-1, 1)	method call .subVector() on a value of a vector type
+java-rejects	where	firstObj(VB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	where	R != 2 && VB.get(0)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	where	R != 2 && VB[0]	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
