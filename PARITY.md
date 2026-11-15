@@ -191,6 +191,28 @@ The limits are those of `docs/CONSOLE.md`, "Stopping a running command":
 - an engine operation in progress is finished, not abandoned;
 - `CancelCommand` stays `UNIMPLEMENTED`.
 
+### A8. Symbolic links that lead out of the storage directory
+
+Approved by the owner on 2026-11-15.
+
+Java's storage service checks the text of a client's path only: the path is resolved against
+the storage directory, normalized, and has to start with that directory
+(`server/src/main/java/io/deephaven/server/notebook/FilesystemStorageServiceGrpcImpl.java:
+FilesystemStorageServiceGrpcImpl#resolveOrThrow`). A symbolic link inside the directory that
+points out of it passes that check, and Java reads, writes, creates, moves and deletes where
+the link leads.
+
+Rule: after Java's check, Oxhaven's storage service also requires the real location of the
+path, with links followed, to be inside the storage directory.
+
+- A call whose path has its real location outside the directory is refused with
+  `INVALID_ARGUMENT: Invalid path: <path>`, where Java carries the call out.
+- `ListItems` lists a link that leads out of the directory as a file of size 0 with no etag,
+  where Java lists what the link points to.
+
+Nothing else of the storage service is covered. The recorded cases are `DIFFERENCES` in
+`crates/oxhaven-server/src/storage/root_tests.rs`.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same

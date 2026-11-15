@@ -749,3 +749,18 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   (`FetchObject`, `MessageStream`). Follow-ups 7.6.1 to 7.6.6 are in the task file.
 - 23:05 UTC: the owner chose to keep the storage symlink check and record the difference. The author of pull request 90 was resumed to add the PARITY.md entry.
 - Merged pull request 92 (7.6, partitioned tables first slice) on green checks.
+- 23:45 UTC: 6.12 (Python listeners) follow-up done; pull request 93 opened. My request
+  to match Java's `modified_prev` was wrong: the agent's probe shows Java returns the
+  previous values of other rows, or nulls, when the cycle shifts rows. Recorded as a Java
+  defect for the owner (J6), not reproduced. My second request quoted the wrong Java
+  error text; the agent used the text Java actually raises.
+
+## 2026-11-16 00:05 UTC
+
+- Pull request 93 went red on the Python 3.11 job. Cause, found and reproduced by the
+  author: `threading.main_thread()` is the first thread to import `threading` before
+  Python 3.13, so "is this a command" was wrong on 3.11 and 3.12. Replaced by a
+  thread-local set by the command runner. The CI matrix caught a real product bug that
+  the agent's local 3.13 run could not; agents should run the server tests on the oldest
+  supported Python too when they touch the Python package (`PYO3_PYTHON=/usr/bin/python3.11`).
+- Pull request 90: PARITY.md A8 added after the owner's ruling; waiting on checks.
