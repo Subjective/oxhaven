@@ -632,3 +632,18 @@ before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
 The owner chose "Stop it, record the difference" for PR 79. The author was resumed to add the
 allowed difference to PARITY.md (that entry only) and rerun the gate; the pull request merges
 when green.
+
+## 2026-11-15 19:46 UTC: Only Snappy enabled (PR 82); two findings behind the approval
+
+The owner's approval named BSD-3-Clause for Snappy, Zstandard and Brotli. The agent found
+that zstd-sys is BSD-3-Clause AND BSD-2-Clause, outside what was approved, and that Java's
+packaged server has no Brotli codec, so reading Brotli would succeed where Java fails. It
+enabled Snappy only and reported both. Zstandard is back with the owner as a decision card;
+Brotli stays refused, which is what parity asks for. The orchestrator's licence question to
+the owner had been wrong on both points: it assumed all three crates were BSD-3-Clause only
+and that Java reads all three. PRs 80 and 81 merged at 19:38; task 4.17 started.
+
+## 2026-11-15 19:44 UTC: Owner allowed BSD-2-Clause for zstd-sys only
+
+The codec agent was resumed to enable Zstandard on the same branch (PR 82). Brotli stays
+refused.

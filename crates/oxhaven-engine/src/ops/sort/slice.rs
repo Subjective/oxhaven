@@ -1,4 +1,5 @@
-//! `head`, `tail` and `slice`: the parent's rows at a range of positions.
+//! `head`, `tail` and `slice`, and their forms that take a share of the table: the
+//! parent's rows at a range of positions.
 //!
 //! The result is a sub-table: it has the parent's columns and a subset of its row keys.
 //! On a blink table, whose rows last one cycle, `head` and `tail` instead collect rows as
@@ -63,7 +64,7 @@ pub(super) fn head(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>,
         let result = blink_to_append_only(parent, size as u64)?;
         return Ok(memoized(parent, CopyType::None, false, result)?);
     }
-    Ok(slice_like(parent, 0, size)?)
+    Ok(slice_like(parent, Bounds::Positions(0, size))?)
 }
 
 /// The last `size` rows.
@@ -90,7 +91,7 @@ pub(super) fn tail(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>,
         }
         return Ok(ring(parent, size as u64)?);
     }
-    Ok(slice_like(parent, -size, 0)?)
+    Ok(slice_like(parent, Bounds::Positions(-size, 0))?)
 }
 
 /// The rows at positions `first..last`. A negative position counts from the end, and a
@@ -118,7 +119,137 @@ pub(super) fn slice(
             "Can not slice with a first position ({first}) after last position ({last})"
         )));
     }
-    Ok(slice_like(parent, first, last)?)
+    Ok(slice_like(parent, Bounds::Positions(first, last))?)
+}
+
+/// Behavior: `QueryTable#unsupportedForBlinkTables`
+fn refuse_blink(parent: &dyn Table, operation: &str) -> Result<(), SortError> {
+    if is_blink(parent) {
+        return Err(SortError::Unsupported(format!(
+            "Blink tables do not support {operation}; use BlinkTableTools.blinkToAppendOnly \
+             to accumulate full history"
+        )));
+    }
+    Ok(())
+}
+
+/// Behavior: the range check of io.deephaven.engine.table.impl.QueryTable#headPct and
+/// #tailPct, which a NaN passes
+fn check_share(percent: f64) -> Result<(), SortError> {
+    if !(0.0..=1.0).contains(&percent) && !percent.is_nan() {
+        return Err(SortError::IllegalArgument(format!(
+            "percentage of rows must be between [0,1]: percent={}",
+            java_double(percent)
+        )));
+    }
+    Ok(())
+}
+
+/// A double as Java prints it, for the values a refused share can have.
+///
+/// Behavior: `java.lang.Double#toString`
+fn java_double(value: f64) -> String {
+    if value.is_infinite() {
+        let sign = if value < 0.0 { "-" } else { "" };
+        return format!("{sign}Infinity");
+    }
+    if value.is_nan() {
+        return "NaN".to_string();
+    }
+    let magnitude = value.abs();
+    if magnitude != 0.0 && !(1e-3..1e7).contains(&magnitude) {
+        let text = format!("{value:E}");
+        return match text.split_once('E') {
+            Some((digits, exponent)) if !digits.contains('.') => format!("{digits}.0E{exponent}"),
+            _ => text,
+        };
+    }
+    if value.fract() == 0.0 {
+        format!("{value:.1}")
+    } else {
+        format!("{value}")
+    }
+}
+
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#headPct
+pub(super) fn head_pct(parent: &Arc<dyn Table>, percent: f64) -> Result<Arc<dyn Table>, SortError> {
+    refuse_blink(&**parent, "headPct")?;
+    check_share(percent)?;
+    Ok(slice_like(parent, Bounds::HeadShare(percent))?)
+}
+
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#tailPct
+pub(super) fn tail_pct(parent: &Arc<dyn Table>, percent: f64) -> Result<Arc<dyn Table>, SortError> {
+    refuse_blink(&**parent, "tailPct")?;
+    check_share(percent)?;
+    Ok(slice_like(parent, Bounds::TailShare(percent))?)
+}
+
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#slicePct and
+/// io.deephaven.engine.table.impl.SliceLikeOperation#slicePct
+pub(super) fn slice_pct(
+    parent: &Arc<dyn Table>,
+    start: f64,
+    end: f64,
+) -> Result<Arc<dyn Table>, SortError> {
+    refuse_blink(&**parent, "slicePct")?;
+    // a NaN passes Java's check
+    let outside = |share: f64| !(0.0..=1.0).contains(&share) && !share.is_nan();
+    if outside(start) || outside(end) {
+        return Err(SortError::IllegalArgument(format!(
+            "Cannot slice with start percentage ({}) and end percentage ({}), percentages \
+             must be between [0, 1]",
+            java_double(start),
+            java_double(end)
+        )));
+    }
+    Ok(slice_like(parent, Bounds::Share(start, end))?)
+}
+
+/// Which rows a slice selects: a range of positions, or a share of the table, which moves
+/// as the table grows and shrinks.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Bounds {
+    /// `first..last`, a negative position counted from the end.
+    Positions(i64, i64),
+    /// The first rows: the share of the size, rounded up.
+    HeadShare(f64),
+    /// The last rows: the share of the size, rounded up.
+    TailShare(f64),
+    /// From one share of the size to another, each rounded down.
+    Share(f64, f64),
+}
+
+impl Bounds {
+    /// The first and last position for a table of `size` rows, as `slice` takes them.
+    /// A product that is NaN is position 0, as Java's cast to `long` makes it.
+    ///
+    /// Behavior: `getFirstPositionInclusive` and `getLastPositionExclusive` of the
+    /// operations io.deephaven.engine.table.impl.SliceLikeOperation#slice, #headPct,
+    /// #tailPct and #slicePct make
+    fn positions(self, size: u64) -> (i64, i64) {
+        let size = size as f64;
+        match self {
+            Bounds::Positions(first, last) => (first, last),
+            Bounds::HeadShare(share) => (0, (share * size).ceil() as i64),
+            Bounds::TailShare(share) => (-((share * size).ceil() as i64), 0),
+            Bounds::Share(start, end) => {
+                ((start * size).floor() as i64, (end * size).floor() as i64)
+            }
+        }
+    }
+
+    /// Whether the result of slicing a flat table is flat.
+    ///
+    /// Behavior: the `mayBeFlat` each operation is made with
+    fn may_be_flat(self) -> bool {
+        match self {
+            Bounds::Positions(first, _) => first == 0,
+            Bounds::HeadShare(_) => true,
+            Bounds::TailShare(_) => false,
+            Bounds::Share(start, _) => start == 0.0,
+        }
+    }
 }
 
 /// The rows of `rows` that a slice selects.
@@ -144,40 +275,56 @@ fn slice_of(rows: &RowSet, first: i64, last: i64) -> RowSet {
 
 /// Behavior: the attributes set by io.deephaven.engine.table.impl.SliceLikeOperation#initialize
 /// with io.deephaven.engine.table.impl.BaseTable#isAddOnly and #isAppendOnly
-fn slice_attributes(parent: &dyn Table, first: i64, last: i64) -> TableAttributes {
+///
+/// The first rows of a share keep both attributes of an append-only parent, and the last
+/// rows of a share keep neither. A share from one point to another is treated as a slice
+/// at the positions it has when the operation is made: so it is append-only when its
+/// parent is, though rows leave it as the parent grows, and add-only when its parent is
+/// and its end is at position 0 then.
+fn slice_attributes(parent: &dyn Table, bounds: Bounds) -> TableAttributes {
     let inherited = parent.attributes();
     let parent_add_only = !parent.is_refreshing() || inherited.add_only || inherited.append_only;
     let parent_append_only = !parent.is_refreshing()
         || inherited.append_only
         || (inherited.add_only && parent.is_flat());
     let mut attributes = TableAttributes::default();
-    // With a first position counted from the end, rows leave as the parent grows.
-    if first >= 0 {
-        // With a fixed last position, rows may have to leave when rows are added before it.
-        attributes.add_only = parent_add_only && last <= 0;
-        attributes.append_only = parent_append_only;
+    let (first, last) = bounds.positions(parent.row_set().size());
+    match bounds {
+        Bounds::HeadShare(_) => {
+            attributes.add_only = parent_append_only;
+            attributes.append_only = parent_append_only;
+        }
+        Bounds::TailShare(_) => {}
+        // With a first position counted from the end, rows leave as the parent grows.
+        Bounds::Positions(..) | Bounds::Share(..) if first >= 0 => {
+            // With a fixed last position, rows may have to leave when rows are added
+            // before it.
+            attributes.add_only = parent_add_only && last <= 0;
+            attributes.append_only = parent_append_only;
+        }
+        Bounds::Positions(..) | Bounds::Share(..) => {}
     }
     attributes
 }
 
 /// Behavior: io.deephaven.engine.table.impl.SliceLikeOperation#initialize and #onUpdate
-fn slice_like(
-    parent: &Arc<dyn Table>,
-    first: i64,
-    last: i64,
-) -> Result<Arc<QueryTable>, TableFailure> {
+fn slice_like(parent: &Arc<dyn Table>, bounds: Bounds) -> Result<Arc<QueryTable>, TableFailure> {
+    let selected = move |rows: &RowSet| {
+        let (first, last) = bounds.positions(rows.size());
+        slice_of(rows, first, last)
+    };
     QueryTable::derive(parent, || {
         let mut spec = TableSpec::new(
             parent.definition().clone(),
-            slice_of(&parent.row_set(), first, last),
+            selected(&parent.row_set()),
             parent_columns(parent),
         )
-        .with_attributes(slice_attributes(&**parent, first, last));
-        spec.flat = parent.is_flat() && first == 0;
+        .with_attributes(slice_attributes(&**parent, bounds));
+        spec.flat = parent.is_flat() && bounds.may_be_flat();
 
         let parent = parent.clone();
         let operator = move |result: &QueryTable, upstream: &TableUpdate| {
-            let wanted = slice_of(&parent.row_set(), first, last);
+            let wanted = selected(&parent.row_set());
             let mut rows = (*result.row_set()).clone();
 
             let mut removed = upstream.removed.intersect(&rows);

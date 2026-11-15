@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_where",
-  "scenario_sha256": "b2014f24f0d8f695d79029cb904371fb9dabda1a846952f352e3be5c3fc0c09e",
+  "scenario_sha256": "0532cd1f80f73ae815b7f9e27219564bd2166f247cca1b73c9cbba037da38fae",
   "reference": "42.9",
   "entries": [
     {
@@ -66,6 +66,34 @@
       }
     },
     {
+      "step": 0,
+      "table": "in_any",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "in_none",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "not_in_any",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "not_in_none",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
       "step": 1,
       "table": "one",
       "file": "step001.one.arrow",
@@ -124,6 +152,118 @@
       "table": "one_of",
       "file": "step001.one_of.arrow",
       "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "in_any",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "in_none",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "not_in_any",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "not_in_none",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "one",
+      "file": "step002.one.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "both",
+      "file": "step002.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "none",
+      "file": "step002.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "everything",
+      "file": "step002.everything.arrow",
+      "rows": 12
+    },
+    {
+      "step": 2,
+      "table": "in_keys",
+      "file": "step002.in_keys.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "not_in_keys",
+      "file": "step002.not_in_keys.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "in_pairs",
+      "file": "step002.in_pairs.arrow",
+      "rows": 9
+    },
+    {
+      "step": 2,
+      "table": "in_renamed",
+      "file": "step002.in_renamed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "only_one_of",
+      "file": "step002.only_one_of.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "one_of",
+      "file": "step002.one_of.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "in_any",
+      "file": "step002.in_any.arrow",
+      "rows": 12
+    },
+    {
+      "step": 2,
+      "table": "in_none",
+      "file": "step002.in_none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "not_in_any",
+      "file": "step002.not_in_any.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "not_in_none",
+      "file": "step002.not_in_none.arrow",
+      "rows": 12
     }
   ]
 }

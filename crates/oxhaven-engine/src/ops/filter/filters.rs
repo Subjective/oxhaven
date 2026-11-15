@@ -155,7 +155,10 @@ fn no_column(name: &str, definition: &TableDefinition) -> String {
         .iter()
         .map(|c| c.name.as_str())
         .collect();
-    format!("Column \"{name}\" doesn't exist in this table, available columns: {names:?}")
+    format!(
+        "Column \"{name}\" doesn't exist in this table, available columns: [{}]",
+        names.join(", ")
+    )
 }
 
 /// Behavior: io.deephaven.engine.table.impl.select.AbstractConditionFilter#init and

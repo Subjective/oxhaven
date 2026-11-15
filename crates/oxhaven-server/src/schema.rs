@@ -46,6 +46,9 @@ pub struct SchemaContext {
     pub input_table: Option<InputTableColumns>,
     /// The columns that hold a preview of the values of another table's column, by name.
     pub previews: HashMap<String, PreviewColumn>,
+    /// The columns the table may be sorted by, for a table whose sorting is restricted:
+    /// the names of its `SortableColumns` attribute.
+    pub sortable: Option<Vec<String>>,
 }
 
 /// The column names an input table reports as its keys and its values. A table derived
@@ -90,6 +93,7 @@ impl SchemaContext {
                 values: input.value_columns(),
             }),
             previews: previews_of(table),
+            sortable: oxhaven_engine::table::sortable_columns(table),
         }
     }
 }
@@ -398,8 +402,14 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
             let mut metadata = HashMap::new();
             let preview = context.previews.get(name);
             // Java writes the entry only when it is true. A preview class is not
-            // `Comparable` and has no comparator.
-            if preview.is_none() && is_sortable(&column.column_type) {
+            // `Comparable` and has no comparator. Where the sorting is restricted to
+            // names that are not all columns, Java fails with a `NullPointerException`
+            // and sends no schema; here such a name is passed over.
+            let allowed = context
+                .sortable
+                .as_ref()
+                .is_none_or(|sortable| sortable.iter().any(|allowed| allowed == name));
+            if preview.is_none() && allowed && is_sortable(&column.column_type) {
                 put(&mut metadata, "isSortable", TRUE);
             }
             for (key, suffix) in [
