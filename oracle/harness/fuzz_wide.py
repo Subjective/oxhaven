@@ -834,10 +834,14 @@ class _Wide(_Generator):
                 stamp_column = [(rc, right.type_of(rc))]
         else:
             if exact and (kind != "join" or self.chance(0.85)):
-                for key in rng.sample(exact, 2 if len(exact) > 1 and self.chance(0.15) else 1):
-                    if key[1] not in used_right:
-                        on.append(self.match(key))
-                        used_right.add(key[1])
+                key = rng.choice(exact)
+                on.append(self.match(key))
+                used_right.add(key[1])
+                if self.chance(0.15):
+                    second = rng.choice(pairs)  # a second match column
+                    if second[0] != key[0] and second[1] != key[1]:
+                        on.append(self.match(second))
+                        used_right.add(second[1])
             elif kind != "join":
                 return False
             rows = left.rows * max(right.rows, 1) if kind == "join" else left.rows

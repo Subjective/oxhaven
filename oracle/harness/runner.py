@@ -435,11 +435,15 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
         tables[op["name"]] = Failure(code)
 
 
-def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
+def run_scenario(scenario: sc.Scenario, url: str, fresh: ResultSet | None = None) -> ResultSet:
     """Runs `scenario` on the server at `url`.
 
     Step 0 is the state after the inputs are loaded and the operations applied. Step k (from 1)
     is the state after the k-th entry of `steps`.
+
+    With `fresh`, the operations are applied once more after every step, to the inputs as
+    they are then, and those results are put into `fresh` under the same step and table: what
+    the server answers from scratch, next to what it kept up to date.
     """
     out = ResultSet(scenario.name)
     try:
@@ -502,6 +506,11 @@ def run_scenario(scenario: sc.Scenario, url: str) -> ResultSet:
             assert barrier is not None
             barrier.wait()
             _snapshot(session, scenario, tables, number, out)
+            if fresh is not None:
+                again = {item.name: tables[item.name] for item in scenario.inputs}
+                for op in scenario.operations:
+                    _define(session, again, op)
+                _snapshot(session, scenario, again, number, fresh)
     except Exception as error:
         raise RunError(f"scenario {scenario.name} failed on {url}: {_describe(error)}") from error
     finally:
@@ -530,6 +539,12 @@ class Target:
 
     def run(self, scenario: sc.Scenario) -> ResultSet:
         return run_scenario(scenario, self.url)
+
+    def run_fresh(self, scenario: sc.Scenario) -> tuple[ResultSet, ResultSet]:
+        """The results kept up to date through the steps, and the results of the same
+        operations applied again after each step (`run_scenario`, `fresh`)."""
+        fresh = ResultSet(scenario.name)
+        return run_scenario(scenario, self.url, fresh), fresh
 
 
 def open_target(url: str) -> Target:
