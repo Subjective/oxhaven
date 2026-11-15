@@ -7,7 +7,6 @@
 
 use oxhaven_contracts::graph::{ClockValue, Notification, UpdateGraph, UpdateSource};
 use oxhaven_engine::graph::SteppedUpdateGraph;
-use std::cell::Cell;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
@@ -18,11 +17,6 @@ use std::time::{Duration, Instant};
 /// Behavior: `PeriodicUpdateGraph#getDefaultTargetCycleDurationMillis` (the default of the
 /// `PeriodicUpdateGraph.targetCycleDurationMillis` property)
 pub const DEFAULT_TARGET_CYCLE_DURATION: Duration = Duration::from_millis(1000);
-
-thread_local! {
-    /// How many `with_shared_lock` calls of a periodic graph this thread is inside.
-    static SHARED_DEPTH: Cell<usize> = const { Cell::new(0) };
-}
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
@@ -181,48 +175,41 @@ impl UpdateGraph for PeriodicUpdateGraph {
     }
 
     /// Requests a cycle and waits until a cycle that started after the request has
-    /// finished. The cycle runs on the driver thread.
+    /// finished. The cycle runs on the driver thread. A thread that holds the shared lock
+    /// inside `oxhaven_engine::graph::yielding_to_cycles` gives its holds up while it waits
+    /// and has them again when this returns.
     ///
     /// # Panics
-    /// If called from inside a cycle, or by a thread inside `with_shared_lock`: the cycle
-    /// it waits for could never run. If the graph has stopped.
+    /// If called from inside a cycle, or by a thread inside `with_shared_lock` that is not
+    /// inside `yielding_to_cycles`: the cycle it waits for could never run. If the graph
+    /// has stopped.
     fn run_cycle(&self) {
         assert!(
             !self.graph.current_thread_processes_updates(),
             "run_cycle called from inside an update cycle"
         );
-        assert!(
-            SHARED_DEPTH.with(Cell::get) == 0,
-            "run_cycle called while holding the update graph's shared lock"
-        );
-        let mut schedule = lock(&self.driver.schedule);
-        // A cycle that is running now started before this request and may have missed what
-        // the caller did, so only the next one counts.
-        let wanted = schedule.started + 1;
-        schedule.requested = true;
-        self.driver.wake.notify_all();
-        while schedule.completed < wanted {
-            assert!(
-                !schedule.stopped,
-                "Cannot request refresh when UpdateGraph is no longer running."
-            );
-            schedule = self
-                .driver
-                .done
-                .wait(schedule)
-                .unwrap_or_else(PoisonError::into_inner);
-        }
+        self.graph.waiting_for_cycle(|| {
+            let mut schedule = lock(&self.driver.schedule);
+            // A cycle that is running now started before this request and may have missed
+            // what the caller did, so only the next one counts.
+            let wanted = schedule.started + 1;
+            schedule.requested = true;
+            self.driver.wake.notify_all();
+            while schedule.completed < wanted {
+                assert!(
+                    !schedule.stopped,
+                    "Cannot request refresh when UpdateGraph is no longer running."
+                );
+                schedule = self
+                    .driver
+                    .done
+                    .wait(schedule)
+                    .unwrap_or_else(PoisonError::into_inner);
+            }
+        });
     }
 
     fn with_shared_lock(&self, f: &mut dyn FnMut()) {
-        struct Depth;
-        impl Drop for Depth {
-            fn drop(&mut self) {
-                SHARED_DEPTH.with(|depth| depth.set(depth.get() - 1));
-            }
-        }
-        SHARED_DEPTH.with(|depth| depth.set(depth.get() + 1));
-        let _depth = Depth;
         self.graph.with_shared_lock(f);
     }
 
@@ -239,6 +226,7 @@ mod tests {
     use oxhaven_contracts::graph::locked;
     use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
     use oxhaven_contracts::table::Table;
+    use oxhaven_engine::graph::yielding_to_cycles;
     use oxhaven_engine::table::append_only_input_table;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -372,6 +360,55 @@ mod tests {
     fn waiting_for_a_cycle_under_the_shared_lock_is_refused() {
         let graph = PeriodicUpdateGraph::start(None);
         locked(graph.as_ref(), || graph.run_cycle());
+    }
+
+    #[test]
+    fn a_yielding_holder_waits_for_a_cycle_and_holds_the_lock_again() {
+        let graph = PeriodicUpdateGraph::start(None);
+        let counter = counted(&graph);
+        locked(graph.as_ref(), || {
+            locked(graph.as_ref(), || {
+                yielding_to_cycles(|| graph.run_cycle());
+                assert_eq!(counter.0.load(Ordering::SeqCst), 1);
+            });
+            // The holds are back: a requested cycle waits for this thread.
+            graph.request_cycle();
+            std::thread::sleep(Duration::from_millis(60));
+            assert_eq!(counter.0.load(Ordering::SeqCst), 1);
+        });
+        wait_for("the cycle that waited for the holder", || {
+            counter.0.load(Ordering::SeqCst) == 2
+        });
+    }
+
+    #[test]
+    fn a_yielding_holder_writes_to_an_input_table_and_reads_the_rows() {
+        let graph = PeriodicUpdateGraph::start(None);
+        let definition =
+            TableDefinition::new(vec![ColumnDefinition::new("X", ColumnType::Int)]).unwrap();
+        let table = append_only_input_table(graph.clone(), definition, None).unwrap();
+        let input = table.input_table().unwrap();
+        let values: ArrayRef = Arc::new(Int32Array::from(vec![1, 2, 3]));
+        let rows = RecordBatch::try_from_iter([("X", values)]).unwrap();
+
+        // Another holder of the shared lock does not stop the write for longer than it
+        // holds the lock.
+        let (held, is_held) = std::sync::mpsc::channel();
+        let other = std::thread::spawn({
+            let graph = graph.clone();
+            move || {
+                locked(graph.as_ref(), || {
+                    held.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(60));
+                });
+            }
+        });
+        is_held.recv().unwrap();
+        locked(graph.as_ref(), || {
+            yielding_to_cycles(|| input.add(rows).unwrap());
+            assert_eq!(table.row_set().size(), 3);
+        });
+        other.join().unwrap();
     }
 
     struct Panics(AtomicU64);

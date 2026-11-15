@@ -141,6 +141,30 @@ fn rows_of(table: &Arc<dyn Table>) -> Result<RecordBatch, ExportError> {
     .map_err(|problem| internal(problem.to_string()))
 }
 
+/// A change to an input table that has passed the checks made when it is asked for, with
+/// the rows as they were then: what Java queues for the table's next cycle.
+///
+/// Behavior: `io.deephaven.engine.table.impl.util.BaseArrayBackedInputTable.PendingChange`
+pub struct Change {
+    pub input: Arc<dyn InputTable>,
+    pub rows: RecordBatch,
+    pub delete: bool,
+}
+
+impl Change {
+    /// Makes the change and returns once it is visible in the table. `DATA_LOSS` if it
+    /// fails while it is applied.
+    pub fn apply(self) -> Result<(), ExportError> {
+        if self.delete {
+            let done = self.input.delete(self.rows);
+            done.map_err(|_| Status::data_loss("Error deleting table from inputtable").into())
+        } else {
+            let done = self.input.add(self.rows);
+            done.map_err(|_| Status::data_loss("Error adding table to input table").into())
+        }
+    }
+}
+
 /// Adds the rows of `rows` to the input table `target` and returns once they are visible.
 /// In a keyed input table a row replaces the row with the same key. A blink input table
 /// returns once it has the rows, and shows them during the next update cycle only.
@@ -152,6 +176,22 @@ fn rows_of(table: &Arc<dyn Table>) -> Result<RecordBatch, ExportError> {
 /// Behavior: `io.deephaven.server.table.inputtables.InputTableServiceGrpcImpl#addTableToInputTable`,
 /// `io.deephaven.engine.util.input.InputTableUpdater#validateAddOrModify`
 pub fn add_table(target: &ExportValue, rows: &ExportValue) -> Result<(), ExportError> {
+    match checked_add(target, rows)? {
+        Some(change) => change.apply(),
+        None => Ok(()),
+    }
+}
+
+/// The checks of [`add_table`] and the rows to add as they are now; `None` when there is
+/// no row to add.
+///
+/// Behavior: `InputTableUpdater#validateAddOrModify` and
+/// `BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#snapshotData`, which `#add` and
+/// `#addAsync` both run before the change is queued
+pub fn checked_add(
+    target: &ExportValue,
+    rows: &ExportValue,
+) -> Result<Option<Change>, ExportError> {
     let target = table_of(target, "inputTable")?;
     let input = input_table_of(target)?;
     let rows = table_of(rows, "tableToAdd")?;
@@ -165,13 +205,12 @@ pub fn add_table(target: &ExportValue, rows: &ExportValue) -> Result<(), ExportE
         ))
         .into());
     }
-    let batch = rows_of(rows)?;
-    if batch.num_rows() == 0 {
-        return Ok(());
-    }
-    input
-        .add(batch)
-        .map_err(|_| Status::data_loss("Error adding table to input table").into())
+    let rows = rows_of(rows)?;
+    Ok((rows.num_rows() > 0).then_some(Change {
+        input,
+        rows,
+        delete: false,
+    }))
 }
 
 /// Deletes from the input table `target` the rows whose keys are the rows of `keys`, and
@@ -185,6 +224,21 @@ pub fn add_table(target: &ExportValue, rows: &ExportValue) -> Result<(), ExportE
 /// `io.deephaven.engine.util.input.InputTableUpdater#validateDelete`,
 /// `io.deephaven.engine.table.impl.util.AppendOnlyArrayBackedInputTable.AppendOnlyArrayBackedInputTableUpdater#validateDelete`
 pub fn delete_table(target: &ExportValue, keys: &ExportValue) -> Result<(), ExportError> {
+    match checked_delete(target, keys)? {
+        Some(change) => change.apply(),
+        None => Ok(()),
+    }
+}
+
+/// The checks of [`delete_table`] and the keys to delete as they are now; `None` when
+/// there is no key.
+///
+/// Behavior: `InputTableUpdater#validateDelete` and `#snapshotData`, which `#delete` and
+/// `#deleteAsync` both run before the change is queued
+pub fn checked_delete(
+    target: &ExportValue,
+    keys: &ExportValue,
+) -> Result<Option<Change>, ExportError> {
     let target = table_of(target, "inputTable")?;
     let input = input_table_of(target)?;
     let keys = table_of(keys, "tableToRemove")?;
@@ -232,13 +286,12 @@ pub fn delete_table(target: &ExportValue, keys: &ExportValue) -> Result<(), Expo
             "Table does not support deletes".to_string(),
         ));
     }
-    let batch = rows_of(keys)?;
-    if batch.num_rows() == 0 {
-        return Ok(());
-    }
-    input
-        .delete(batch)
-        .map_err(|_| Status::data_loss("Error deleting table from inputtable").into())
+    let rows = rows_of(keys)?;
+    Ok((rows.num_rows() > 0).then_some(Change {
+        input,
+        rows,
+        delete: true,
+    }))
 }
 
 /// Behavior: `io.deephaven.server.table.inputtables.InputTableServiceGrpcImpl`

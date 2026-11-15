@@ -1084,6 +1084,34 @@ fn append_only_input_table_starts_with_its_initial_rows() {
     checker.assert_consistent();
 }
 
+#[test]
+fn a_yielding_holder_of_the_shared_lock_writes_and_sees_its_rows() {
+    let (_stepper, graph) = graph();
+    let table = append_only_input_table(graph.clone(), sym_qty(), None).unwrap();
+    let checker = ConsistencyChecker::attach(table.clone());
+    locked(&*graph, || {
+        crate::graph::yielding_to_cycles(|| {
+            let input = table.input_table().unwrap();
+            input.add(sym_qty_batch(["a", "b"], [1, 2])).unwrap();
+            // The change is in the table inside the same hold, as in a Java command.
+            assert_eq!(longs_of(&*table, 1), [Some(1), Some(2)]);
+            input.add(sym_qty_batch(["c"], [3])).unwrap();
+            assert_eq!(longs_of(&*table, 1), [Some(1), Some(2), Some(3)]);
+        });
+    });
+    checker.assert_consistent();
+}
+
+#[test]
+#[should_panic(expected = "run_cycle called while holding the update graph's shared lock")]
+fn a_holder_of_the_shared_lock_that_does_not_yield_cannot_write() {
+    let (_stepper, graph) = graph();
+    let table = append_only_input_table(graph.clone(), sym_qty(), None).unwrap();
+    locked(&*graph, || {
+        let _ = table.input_table().unwrap().add(sym_qty_batch(["a"], [1]));
+    });
+}
+
 /// Long enough for a thread that is not blocked to make progress.
 const SETTLE: Duration = Duration::from_millis(150);
 
