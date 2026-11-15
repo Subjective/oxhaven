@@ -159,7 +159,9 @@ def test_the_checked_in_baseline_lists_every_scenario_and_every_smoke_area() -> 
     baseline = bl.load(ORACLE / "replay-baseline.json")
     scenarios = {s.name for s in sc.load_all(ORACLE / "scenarios")}
     assert set(baseline[gate.REPLAY]) == scenarios
-    assert set(baseline) == {gate.REPLAY} | {gate.smoke_section(a) for a in smoke.AREAS}
+    # the script scenarios of the third section are checked in tests/test_scripts.py
+    assert set(baseline) == {gate.REPLAY, gate.REPLAY_SCRIPTS} | {
+        gate.smoke_section(a) for a in smoke.AREAS}
     for area in smoke.AREAS:
         # Building the list of checks does not connect.
         names = {name for name, _ in smoke._AREAS[area]("dh://127.0.0.1:1")}  # noqa: SLF001

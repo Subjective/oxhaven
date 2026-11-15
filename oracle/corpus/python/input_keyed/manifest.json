@@ -1,0 +1,44 @@
+{
+  "format": 2,
+  "scenario": "input_keyed",
+  "scenario_sha256": "cc53cae9022f15ffbd1ac4072f951f8dddd770ae474e9403de3036870ed97422",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "large",
+      "file": "step000.large.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "large",
+      "file": "step001.large.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "large",
+      "file": "step002.large.arrow",
+      "rows": 1
+    }
+  ]
+}

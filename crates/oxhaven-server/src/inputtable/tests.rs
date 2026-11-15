@@ -367,13 +367,58 @@ fn create_input_table_checks_the_request_and_says_what_is_not_ported() {
     assert_eq!(unknown_key.code(), Code::InvalidArgument);
 
     for not_ported in [
-        refused(request(Kind::Blink(Blink {}))),
         refused(request(keyed(&[]))),
         refused(request(keyed(&["V"]))),
     ] {
         assert_eq!(not_ported.code(), Code::Unimplemented, "{not_ported:?}");
         assert!(not_ported.message().starts_with("not ported yet: "));
     }
+}
+
+/// What Java answers is recorded from Java 42.9 with a client that sends the requests raw:
+/// the Python client refuses a delete of a table without key columns before it is sent.
+#[test]
+fn a_blink_input_table_shows_added_rows_for_one_cycle_and_refuses_deletes() {
+    let graph = graph();
+    let table = create_input_table(graph.clone(), &request(Kind::Blink(Blink {})), None).unwrap();
+    let attributes = table.attributes();
+    assert!(attributes.blink && !attributes.add_only && !attributes.append_only);
+    assert!(table.is_flat() && table.is_refreshing());
+    let input = table.input_table().unwrap();
+    assert!(input.key_columns().is_empty());
+    assert_eq!(input.value_columns(), ["K", "S", "V"]);
+
+    // The add returns once the table has the rows; the next cycle shows them, and the
+    // cycle after it removes them.
+    let target = value(&table);
+    add_table(&target, &value(&captured_rows())).unwrap();
+    assert!(contents(&table).is_empty());
+    graph.run_cycle();
+    assert_eq!(contents(&table), [(1, Some("a".to_owned())), (2, None)]);
+    graph.run_cycle();
+    assert!(contents(&table).is_empty());
+
+    // Java: INVALID_ARGUMENT "Provided tables's columns are not compatible: ..."
+    let status = status_of(add_table(&target, &value(&keys(&[1]))).unwrap_err());
+    assert_eq!(status.code(), Code::InvalidArgument);
+    assert!(status
+        .message()
+        .starts_with("Provided tables's columns are not compatible: "));
+
+    // Java: INVALID_ARGUMENT "Details Logged w/ID ..." for every delete: the default
+    // `validateDelete` finds a column that is not a key, and `deleteAsync` is not there.
+    let no_columns: Arc<dyn Table> = oxhaven_engine::table::empty_table(1);
+    for key_table in [keys(&[1]), captured_rows(), no_columns.clone()] {
+        let error = delete_table(&target, &value(&key_table)).unwrap_err();
+        assert!(matches!(error, ExportError::Internal(_)), "{error:?}");
+    }
+    // An append-only input table refuses with a message of its own.
+    let appended = create_input_table(graph, &request(append_only()), None).unwrap();
+    let status = status_of(delete_table(&value(&appended), &value(&no_columns)).unwrap_err());
+    assert_eq!(
+        status.message(),
+        "Provided input table does not support delete."
+    );
 }
 
 fn add_request(input: i32, rows: i32) -> AddTableRequest {

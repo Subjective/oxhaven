@@ -21,8 +21,8 @@ use super::{Call, Kernel, Resolved};
 use crate::parse::{INDEX_METHOD, LENGTH_FIELD};
 use crate::types::Numeric;
 use arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, Int32Array, Int64Array, ListArray, PrimitiveArray,
-    UInt64Array,
+    Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int32Array, Int64Array, ListArray,
+    PrimitiveArray, UInt64Array,
 };
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::{DataType, Field};
@@ -86,6 +86,29 @@ pub(crate) enum VectorFn {
     Distinct,
     Reverse,
     CumSum,
+    CumProd,
+    CumMin,
+    CumMax,
+    AbsAvg,
+    /// `ste`: the standard error.
+    Ste,
+    TStat,
+    CountPos,
+    CountNeg,
+    CountZero,
+    IndexOfMax,
+    IndexOfMin,
+    /// `percentile(double, vector)`: the list is the second argument.
+    Percentile,
+    /// `diff(int, vector)`: the list is the second argument.
+    Diff,
+    /// `diff(int, array)`: fails for a null array.
+    ArrayDiff,
+    /// `wsum`, `wavg`, `cov` and `cor` of two lists.
+    WSum,
+    WAvg,
+    Cov,
+    Cor,
     /// `array(vector)`: the same cells as an array, null for null.
     Array,
     /// `vec(array)`: the same cells as a vector; fails for null.
@@ -144,13 +167,72 @@ fn refuse_boolean_element(result: &ColumnType) -> Result<(), FormulaError> {
 /// of `float` and `double`; `double` for `avg`, `var`, `std` and `median`; the element for
 /// `min`, `max`, `first` and `last`; `long` for the counts and `len`; an array of the
 /// element for `sort`, `sortDescending`, `distinct` and `reverse`; `long[]` or `double[]`
-/// for `cumsum`.
+/// for `cumsum` and `cumprod`; `double` for `absAvg`, `ste` and `tstat`; `long` for
+/// `countPos`, `countNeg`, `countZero`, `indexOfMax` and `indexOfMin`; an array of the
+/// element for `cummin` and `cummax`.
+///
+/// Of the overloads with a second argument: `percentile(double, vector)` gives the
+/// element; `diff(int, vector)`, which no `char` has, an array of the element;
+/// `wsum(vector, vector)` a `long` when neither element is a `float` or `double` and a
+/// `double` otherwise; `wavg`, `cov` and `cor` a `double`. Either of two lists is a vector
+/// or an array.
 pub(crate) fn resolve(name: &str, types: &[ColumnType]) -> Result<Resolved, FormulaError> {
     let refused = || {
         Err(unsupported(format!(
             "function {name}() with a vector or array argument"
         )))
     };
+    let primitive_list = |column_type: &ColumnType| {
+        column_type
+            .list_element()
+            .filter(|element| is_primitive(element))
+            .cloned()
+    };
+    if let [first, second] = types {
+        let resolved = match (name, primitive_list(first), primitive_list(second)) {
+            // A `double` parameter takes any number but a `char`, which is refused here.
+            ("percentile", None, Some(element))
+                if Numeric::of(first).is_some() && *first != ColumnType::Char =>
+            {
+                call(
+                    VectorFn::Percentile,
+                    vec![ColumnType::Double, second.clone()],
+                    element,
+                )
+            }
+            ("diff", None, Some(element))
+                if matches!(
+                    first,
+                    ColumnType::Byte | ColumnType::Short | ColumnType::Int
+                ) && element != ColumnType::Char =>
+            {
+                let function = if matches!(second, ColumnType::Vector(_)) {
+                    VectorFn::Diff
+                } else {
+                    VectorFn::ArrayDiff
+                };
+                call(
+                    function,
+                    vec![ColumnType::Int, second.clone()],
+                    ColumnType::array(element),
+                )
+            }
+            ("wsum" | "wavg" | "cov" | "cor", Some(values), Some(weights)) => {
+                let (function, result) = match name {
+                    "wsum" if is_floating(&values) || is_floating(&weights) => {
+                        (VectorFn::WSum, ColumnType::Double)
+                    }
+                    "wsum" => (VectorFn::WSum, ColumnType::Long),
+                    "wavg" => (VectorFn::WAvg, ColumnType::Double),
+                    "cov" => (VectorFn::Cov, ColumnType::Double),
+                    _ => (VectorFn::Cor, ColumnType::Double),
+                };
+                call(function, types.to_vec(), result)
+            }
+            _ => return refused(),
+        };
+        return Ok(resolved);
+    }
     let [list] = types else {
         return refused();
     };
@@ -188,6 +270,17 @@ pub(crate) fn resolve(name: &str, types: &[ColumnType]) -> Result<Resolved, Form
         "distinct" => (VectorFn::Distinct, ColumnType::array(element.clone())),
         "reverse" => (VectorFn::Reverse, ColumnType::array(element.clone())),
         "cumsum" => (VectorFn::CumSum, ColumnType::array(sum_type)),
+        "cumprod" => (VectorFn::CumProd, ColumnType::array(sum_type)),
+        "cummin" => (VectorFn::CumMin, ColumnType::array(element.clone())),
+        "cummax" => (VectorFn::CumMax, ColumnType::array(element.clone())),
+        "absAvg" => (VectorFn::AbsAvg, ColumnType::Double),
+        "ste" => (VectorFn::Ste, ColumnType::Double),
+        "tstat" => (VectorFn::TStat, ColumnType::Double),
+        "countPos" => (VectorFn::CountPos, ColumnType::Long),
+        "countNeg" => (VectorFn::CountNeg, ColumnType::Long),
+        "countZero" => (VectorFn::CountZero, ColumnType::Long),
+        "indexOfMax" => (VectorFn::IndexOfMax, ColumnType::Long),
+        "indexOfMin" => (VectorFn::IndexOfMin, ColumnType::Long),
         "array" if matches!(list, ColumnType::Vector(_)) => {
             (VectorFn::Array, ColumnType::array(element.clone()))
         }
@@ -300,10 +393,21 @@ pub(super) trait Element: Number + arrow::datatypes::ArrowNativeType {
     fn half_sum(self, other: Self) -> f64;
     /// Java's `Float.NaN` or `Double.NaN`.
     fn nan() -> Self;
+    /// Where the type stands in Java's binary numeric promotion: 0 for the types that
+    /// become `int`, then `long`, `float` and `double`.
+    const RANK: u8;
+    /// Java's conversion to `float`.
+    fn single(self) -> f32;
+    /// `(T) (self - other)` as Java computes it: wrapping for an integer type.
+    fn difference(self, other: Self) -> Self;
+    /// `Math.min(self, other)`: for a floating type NaN if either is, and `-0.0` below `0.0`.
+    fn least(self, other: Self) -> Self;
+    /// `Math.max(self, other)`.
+    fn greatest(self, other: Self) -> Self;
 }
 
 macro_rules! integer_element {
-    ($native:ty, $sum:ty) => {
+    ($native:ty, $sum:ty, $rank:expr) => {
         impl Element for $native {
             const FLOATING: bool = false;
             fn double(self) -> f64 {
@@ -327,12 +431,25 @@ macro_rules! integer_element {
             fn nan() -> Self {
                 unreachable!("an integer is never NaN")
             }
+            const RANK: u8 = $rank;
+            fn single(self) -> f32 {
+                self as f32
+            }
+            fn difference(self, other: Self) -> Self {
+                self.wrapping_sub(other)
+            }
+            fn least(self, other: Self) -> Self {
+                self.min(other)
+            }
+            fn greatest(self, other: Self) -> Self {
+                self.max(other)
+            }
         }
     };
 }
 
 macro_rules! floating_element {
-    ($native:ty) => {
+    ($native:ty, $rank:expr) => {
         impl Element for $native {
             const FLOATING: bool = true;
             fn double(self) -> f64 {
@@ -366,17 +483,42 @@ macro_rules! floating_element {
             fn nan() -> Self {
                 <$native>::NAN
             }
+            const RANK: u8 = $rank;
+            fn single(self) -> f32 {
+                self as f32
+            }
+            fn difference(self, other: Self) -> Self {
+                self - other
+            }
+            fn least(self, other: Self) -> Self {
+                if self.is_nan() || other.is_nan() {
+                    <$native>::NAN
+                } else if self.order(&other) == Ordering::Greater {
+                    other
+                } else {
+                    self
+                }
+            }
+            fn greatest(self, other: Self) -> Self {
+                if self.is_nan() || other.is_nan() {
+                    <$native>::NAN
+                } else if self.order(&other) == Ordering::Less {
+                    other
+                } else {
+                    self
+                }
+            }
         }
     };
 }
 
-integer_element!(i8, i32);
-integer_element!(i16, i32);
-integer_element!(u16, i32);
-integer_element!(i32, i32);
-integer_element!(i64, i64);
-floating_element!(f32);
-floating_element!(f64);
+integer_element!(i8, i32, 0);
+integer_element!(i16, i32, 0);
+integer_element!(u16, i32, 0);
+integer_element!(i32, i32, 0);
+integer_element!(i64, i64, 1);
+floating_element!(f32, 2);
+floating_element!(f64, 3);
 
 /// The elements of one list entry, read in place from the child array.
 struct Cells<'a, T: Element> {
@@ -707,13 +849,15 @@ fn distinct<T: Element>(cells: &Cells<T>, out: &mut Vec<T>) {
 /// Behavior: `Numeric#cumsum(IntVector)` and its relatives for the integer types: a
 /// running `long` sum that wraps. A null element repeats the sum so far, which is null
 /// until an element is not; a sum equal to the null `long` counts as none.
-fn integer_cumsum<T: Element>(cells: &Cells<T>, out: &mut Vec<i64>) {
+///
+/// `Numeric#cumprod(IntVector)` and its relatives are the same with a product.
+fn integer_cumulate<T: Element>(cells: &Cells<T>, out: &mut Vec<i64>, add: fn(i64, i64) -> i64) {
     let mut sum = i64::MIN;
     for element in cells.iter() {
         sum = match element {
             None => sum,
             Some(element) if sum == i64::MIN => element.long(),
-            Some(element) => sum.wrapping_add(element.long()),
+            Some(element) => add(sum, element.long()),
         };
         out.push(sum);
     }
@@ -722,7 +866,9 @@ fn integer_cumsum<T: Element>(cells: &Cells<T>, out: &mut Vec<i64>) {
 /// Behavior: `Numeric#cumsum(DoubleVector)` and `#cumsum(FloatVector)`: a running `double`
 /// sum as for the integers, where from a NaN element on, or after a sum that is NaN, every
 /// element is NaN.
-fn floating_cumsum<T: Element>(cells: &Cells<T>, out: &mut Vec<f64>) {
+///
+/// `Numeric#cumprod(DoubleVector)` and `#cumprod(FloatVector)` are the same with a product.
+fn floating_cumulate<T: Element>(cells: &Cells<T>, out: &mut Vec<f64>, add: fn(f64, f64) -> f64) {
     let null = <f64 as crate::eval::numeric::JavaPrimitive>::NULL;
     let mut elements = cells.iter();
     let Some(first) = elements.next() else {
@@ -737,9 +883,340 @@ fn floating_cumsum<T: Element>(cells: &Cells<T>, out: &mut Vec<f64>) {
             _ if poisoned => f64::NAN,
             None => sum,
             Some(element) if sum == null => element.double(),
-            Some(element) => sum + element.double(),
+            Some(element) => add(sum, element.double()),
         };
         out.push(sum);
+    }
+}
+
+/// Behavior: `Numeric#cummin(IntVector)`, `#cummax(IntVector)` and their relatives: the
+/// least, or greatest, element so far by `Math.min` or `Math.max`, null until an element
+/// is not null. A NaN stays.
+fn running<T: Element>(cells: &Cells<T>, out: &mut Vec<T>, choose: fn(T, T) -> T) {
+    let mut so_far: Option<T> = None;
+    for element in cells.iter() {
+        so_far = match (so_far, element) {
+            (None, element) => element,
+            (so_far, None) => so_far,
+            (Some(so_far), Some(element)) => Some(choose(so_far, element)),
+        };
+        out.push(so_far.unwrap_or(T::NULL));
+    }
+}
+
+/// Behavior: `Numeric#absAvg(IntVector)` and its relatives: the average of `Math.abs` of
+/// the elements that are not null. For `float` and `double`, NaN at a NaN element and
+/// positive infinity at an infinite one, whichever comes first. Null when no element is
+/// not null. A `char` has no sign: `absAvg(CharVector)` is `avg`.
+fn abs_avg<T: Element>(cells: &Cells<T>) -> Option<f64> {
+    let mut sum = 0.0_f64;
+    let mut count = 0.0_f64;
+    for element in cells.present() {
+        if element.is_nan() {
+            return Some(f64::NAN);
+        }
+        if element.is_infinite() {
+            return Some(f64::INFINITY);
+        }
+        sum += if T::FLOATING {
+            element.double().abs()
+        } else {
+            element.abs_long() as f64
+        };
+        count += 1.0;
+    }
+    (count > 0.0).then(|| sum / count)
+}
+
+/// Behavior: `Numeric#ste(IntVector)` and its relatives: `std` over the square root of the
+/// number of elements that are not null; null when `std` is.
+fn ste<T: Element>(cells: &Cells<T>) -> Option<f64> {
+    let std = var(cells)?.sqrt();
+    Some(std / (cells.present().count() as f64).sqrt())
+}
+
+fn count_where<T: Element>(cells: &Cells<T>, counts: impl Fn(T) -> bool) -> Option<i64> {
+    Some(cells.present().filter(|element| counts(*element)).count() as i64)
+}
+
+/// Behavior: `Numeric#indexOfMax(IntVector)`, `#indexOfMin(IntVector)` and their
+/// relatives: the position of the first of the greatest, or least, elements that are not
+/// null, an infinity among them. For `float` and `double`, null when an element is NaN.
+/// Null when there is no element that is not null.
+fn index_of_extreme<T: Element>(cells: &Cells<T>, max: bool) -> Option<i64> {
+    let mut best: Option<(T, i64)> = None;
+    for (index, element) in cells.iter().enumerate() {
+        let Some(element) = element else {
+            continue;
+        };
+        if element.is_nan() {
+            return None;
+        }
+        let better = best.is_none_or(|(best, _)| if max { element > best } else { element < best });
+        if better {
+            best = Some((element, index as i64));
+        }
+    }
+    best.map(|(_, index)| index)
+}
+
+/// `values[row]` as Java reads a `double` argument: a null is the value Java reserves.
+fn double_at(values: &Float64Array, row: usize) -> f64 {
+    if values.is_valid(row) {
+        values.value(row)
+    } else {
+        <f64 as crate::eval::numeric::JavaPrimitive>::NULL
+    }
+}
+
+/// Behavior: `Numeric#percentile(double, IntVector)` and its relatives: null for a null or
+/// empty vector, then `IllegalArgumentException` for a percentile outside 0 to 1; NaN when
+/// a `float` or `double` element is NaN; otherwise, of the `n` elements that are not null,
+/// in order, the one at `Math.round(percentile * (n - 1))`; null when every element is
+/// null. A NaN percentile is neither below 0 nor above 1 and rounds to position 0.
+fn percentile<T: Element>(
+    percentiles: &Float64Array,
+    list: &ListArray,
+) -> Result<ArrayRef, TableFailure> {
+    let mut results: Vec<Option<T>> = Vec::with_capacity(list.len());
+    for (row, cells) in each_cells::<T>(list).enumerate() {
+        let Some(cells) = cells.filter(|cells| cells.len() > 0) else {
+            results.push(None);
+            continue;
+        };
+        let percentile = double_at(percentiles, row);
+        if !(0.0..=1.0).contains(&percentile) && !percentile.is_nan() {
+            return Err(failure(format!(
+                "java.lang.IllegalArgumentException: Invalid percentile = {percentile}"
+            )));
+        }
+        let mut sorted: Vec<T> = cells.present().collect();
+        results.push(if sorted.iter().any(|element| element.is_nan()) {
+            Some(T::nan())
+        } else if sorted.is_empty() {
+            None
+        } else {
+            sorted.sort_unstable_by(T::order);
+            // `as` takes a NaN to 0, as Java's `Math.round` does.
+            Some(sorted[(percentile * (sorted.len() - 1) as f64).round() as usize])
+        });
+    }
+    let values: PrimitiveArray<T::Arrow> = results
+        .into_iter()
+        .map(|value| value.filter(|value| *value != T::NULL))
+        .collect();
+    Ok(Arc::new(values))
+}
+
+/// Behavior: `Numeric#diff(int, IntVector)` and its relatives: for each position, the
+/// element `stride` positions on less the element, in the element's type, null when
+/// either is null or the other position is outside the vector. A null stride is the
+/// lowest `int`. `Numeric#diff(int, int...)` wraps its array in a vector, which requires
+/// an array that is not null.
+fn diff<T: Element>(
+    strides: &Int32Array,
+    list: &ListArray,
+    array: bool,
+) -> Result<ArrayRef, TableFailure> {
+    let mut elements: Vec<Option<T>> = Vec::with_capacity(list.values().len());
+    let mut lengths = Vec::with_capacity(list.len());
+    for (row, cells) in each_cells::<T>(list).enumerate() {
+        let Some(cells) = cells else {
+            if array {
+                return Err(failure(
+                    "io.deephaven.base.verify.RequirementFailure: diff() of a null array",
+                ));
+            }
+            lengths.push(None);
+            continue;
+        };
+        let stride = if strides.is_valid(row) {
+            strides.value(row)
+        } else {
+            i32::MIN
+        };
+        let values: Vec<Option<T>> = cells.iter().collect();
+        for (index, value) in values.iter().enumerate() {
+            // Java adds in `int`; a position below zero is outside the vector.
+            let ahead = (index as i32).wrapping_add(stride);
+            let ahead = usize::try_from(ahead)
+                .ok()
+                .and_then(|at| values.get(at).copied().flatten());
+            elements.push(match (value, ahead) {
+                (Some(value), Some(ahead)) => {
+                    Some(ahead.difference(*value)).filter(|difference| *difference != T::NULL)
+                }
+                _ => None,
+            });
+        }
+        lengths.push(Some(values.len()));
+    }
+    let elements: PrimitiveArray<T::Arrow> = elements.into_iter().collect();
+    lists(Arc::new(elements), lengths.into_iter())
+}
+
+/// `a * b` as Java computes it for operands of the two types: in `int` or `long`, where
+/// it wraps, or in `float` or `double`.
+///
+/// Behavior: binary numeric promotion, JLS 5.6.2
+fn product<A: Element, B: Element>(a: A, b: B) -> f64 {
+    match A::RANK.max(B::RANK) {
+        0 => (a.long() as i32).wrapping_mul(b.long() as i32) as f64,
+        1 => a.long().wrapping_mul(b.long()) as f64,
+        2 => f64::from(a.single() * b.single()),
+        _ => a.double() * b.double(),
+    }
+}
+
+/// The pairs of elements of two lists of one length; `None` for a pair with a null.
+fn pairs<'a, A: Element, B: Element>(
+    values: &'a Cells<A>,
+    weights: &'a Cells<B>,
+) -> impl Iterator<Item = Option<(A, B)>> + 'a {
+    values
+        .iter()
+        .zip(weights.iter())
+        .map(|(a, b)| Some((a?, b?)))
+}
+
+/// Behavior: `Numeric#wsum(IntVector, IntVector)` and its relatives where neither element
+/// is a `float` or `double`: the sum of the products in a `long` that wraps, over the
+/// pairs where neither is null; null when there is none.
+fn integer_wsum<A: Element, B: Element>(values: &Cells<A>, weights: &Cells<B>) -> Option<i64> {
+    let mut sum = 0_i64;
+    let mut any = false;
+    for (value, weight) in pairs(values, weights).flatten() {
+        sum = sum.wrapping_add(value.long().wrapping_mul(weight.long()));
+        any = true;
+    }
+    any.then_some(sum)
+}
+
+/// Behavior: `Numeric#wsum(DoubleVector, IntVector)` and its relatives where an element
+/// is a `float` or `double`: NaN at a NaN element of either, also one whose partner is
+/// null; otherwise the sum of the products in `double` over the pairs where neither is
+/// null; null when there is none.
+fn floating_wsum<A: Element, B: Element>(values: &Cells<A>, weights: &Cells<B>) -> Option<f64> {
+    let mut sum = 0.0_f64;
+    let mut any = false;
+    for (value, weight) in values.iter().zip(weights.iter()) {
+        if value.is_some_and(|v| v.is_nan()) || weight.is_some_and(|w| w.is_nan()) {
+            return Some(f64::NAN);
+        }
+        if let (Some(value), Some(weight)) = (value, weight) {
+            sum += value.double() * weight.double();
+            any = true;
+        }
+    }
+    any.then_some(sum)
+}
+
+/// Behavior: `Numeric#wavg(IntVector, IntVector)` and its relatives: NaN at a NaN element
+/// of either; otherwise, over the pairs where neither is null, the sum of the products,
+/// each computed in the type Java promotes the two to, over the sum of the weights; null
+/// when there is no such pair.
+fn wavg<A: Element, B: Element>(values: &Cells<A>, weights: &Cells<B>) -> Option<f64> {
+    let (mut sum, mut weight_sum) = (0.0_f64, 0.0_f64);
+    let mut any = false;
+    for (value, weight) in values.iter().zip(weights.iter()) {
+        if value.is_some_and(|v| v.is_nan()) || weight.is_some_and(|w| w.is_nan()) {
+            return Some(f64::NAN);
+        }
+        if let (Some(value), Some(weight)) = (value, weight) {
+            sum += product(value, weight);
+            weight_sum += weight.double();
+            any = true;
+        }
+    }
+    any.then(|| sum / weight_sum)
+}
+
+/// Behavior: `Numeric#cov(IntVector, IntVector)`, `#cor(IntVector, IntVector)` and their
+/// relatives: NaN at a NaN or infinite element of either; otherwise, over the pairs where
+/// neither is null, from the sums, the sums of squares and the sum of the products, each
+/// product computed in the type Java promotes its operands to. Null when there is no such
+/// pair.
+fn cov_or_cor<A: Element, B: Element>(
+    values: &Cells<A>,
+    others: &Cells<B>,
+    correlation: bool,
+) -> Option<f64> {
+    let (mut sum0, mut sum0_sq, mut sum1, mut sum1_sq, mut sum01) = (0.0_f64, 0.0, 0.0, 0.0, 0.0);
+    let mut count = 0.0_f64;
+    for (value, other) in values.iter().zip(others.iter()) {
+        if value.is_some_and(|v| v.is_nan() || v.is_infinite())
+            || other.is_some_and(|v| v.is_nan() || v.is_infinite())
+        {
+            return Some(f64::NAN);
+        }
+        if let (Some(value), Some(other)) = (value, other) {
+            sum0 += value.double();
+            sum0_sq += product(value, value);
+            sum1 += other.double();
+            sum1_sq += product(other, other);
+            sum01 += product(value, other);
+            count += 1.0;
+        }
+    }
+    if count == 0.0 {
+        return None;
+    }
+    let cov = sum01 / count - sum0 * sum1 / count / count;
+    if !correlation {
+        return Some(cov);
+    }
+    let var0 = sum0_sq / count - sum0 * sum0 / count / count;
+    let var1 = sum1_sq / count - sum1 * sum1 / count / count;
+    Some(cov / (var0 * var1).sqrt())
+}
+
+/// One value per row from the entries of two lists: null when either entry is null or
+/// `f` gives none, and a failure when the two have different lengths.
+fn reduce_two<A: Element, B: Element, R: Number>(
+    first: &ListArray,
+    second: &ListArray,
+    different: impl Fn(usize, usize) -> String,
+    f: impl Fn(&Cells<A>, &Cells<B>) -> Option<R>,
+) -> Result<ArrayRef, TableFailure> {
+    let values = each_cells::<A>(first)
+        .zip(each_cells::<B>(second))
+        .map(|entries| {
+            let (Some(first), Some(second)) = entries else {
+                return Ok(None);
+            };
+            if first.len() != second.len() {
+                return Err(failure(different(first.len(), second.len())));
+            }
+            Ok(f(&first, &second).filter(|value| *value != R::NULL))
+        })
+        .collect::<Result<PrimitiveArray<R::Arrow>, TableFailure>>()?;
+    Ok(Arc::new(values))
+}
+
+fn of_two<A: Element, B: Element>(
+    function: VectorFn,
+    first: &ListArray,
+    second: &ListArray,
+) -> Result<ArrayRef, TableFailure> {
+    let sizes = |a: usize, b: usize| {
+        format!("java.lang.IllegalArgumentException: Incompatible input sizes: {a}, {b}")
+    };
+    let lengths = |_: usize, _: usize| {
+        "java.lang.IllegalArgumentException: Input arrays are different lengths!".to_string()
+    };
+    match function {
+        VectorFn::WSum if A::FLOATING || B::FLOATING => {
+            reduce_two::<A, B, f64>(first, second, sizes, floating_wsum)
+        }
+        VectorFn::WSum => reduce_two::<A, B, i64>(first, second, sizes, integer_wsum),
+        VectorFn::WAvg => reduce_two::<A, B, f64>(first, second, sizes, wavg),
+        VectorFn::Cov => {
+            reduce_two::<A, B, f64>(first, second, lengths, |a, b| cov_or_cor(a, b, false))
+        }
+        VectorFn::Cor => {
+            reduce_two::<A, B, f64>(first, second, lengths, |a, b| cov_or_cor(a, b, true))
+        }
+        other => unreachable!("{other:?} is not a function of two lists"),
     }
 }
 
@@ -765,8 +1242,31 @@ fn typed<T: Element>(function: VectorFn, list: &ListArray) -> Result<ArrayRef, T
         VectorFn::Sort => map_lists::<T, T>(list, |c, out| sort(c, false, out))?,
         VectorFn::SortDescending => map_lists::<T, T>(list, |c, out| sort(c, true, out))?,
         VectorFn::Distinct => map_lists::<T, T>(list, distinct)?,
-        VectorFn::CumSum if T::FLOATING => map_lists::<T, f64>(list, floating_cumsum)?,
-        VectorFn::CumSum => map_lists::<T, i64>(list, integer_cumsum)?,
+        VectorFn::CumSum if T::FLOATING => {
+            map_lists::<T, f64>(list, |c, out| floating_cumulate(c, out, |a, b| a + b))?
+        }
+        VectorFn::CumSum => {
+            map_lists::<T, i64>(list, |c, out| integer_cumulate(c, out, i64::wrapping_add))?
+        }
+        VectorFn::CumProd if T::FLOATING => {
+            map_lists::<T, f64>(list, |c, out| floating_cumulate(c, out, |a, b| a * b))?
+        }
+        VectorFn::CumProd => {
+            map_lists::<T, i64>(list, |c, out| integer_cumulate(c, out, i64::wrapping_mul))?
+        }
+        VectorFn::CumMin => map_lists::<T, T>(list, |c, out| running(c, out, T::least))?,
+        VectorFn::CumMax => map_lists::<T, T>(list, |c, out| running(c, out, T::greatest))?,
+        VectorFn::AbsAvg => reduce::<T, f64>(list, abs_avg),
+        VectorFn::Ste => reduce::<T, f64>(list, ste),
+        // Behavior: `Numeric#tstat`: `avg` over `ste`, null when either is.
+        VectorFn::TStat => reduce::<T, f64>(list, |c| Some(avg(c)? / ste(c)?)),
+        // Behavior: `Numeric#countPos`, `#countNeg` and `#countZero`: the elements that are
+        // not null and above, below or equal to zero, which `-0.0` is and NaN is not.
+        VectorFn::CountPos => reduce::<T, i64>(list, |c| count_where(c, |e| e > T::default())),
+        VectorFn::CountNeg => reduce::<T, i64>(list, |c| count_where(c, |e| e < T::default())),
+        VectorFn::CountZero => reduce::<T, i64>(list, |c| count_where(c, |e| e == T::default())),
+        VectorFn::IndexOfMax => reduce::<T, i64>(list, |c| index_of_extreme(c, true)),
+        VectorFn::IndexOfMin => reduce::<T, i64>(list, |c| index_of_extreme(c, false)),
         other => unreachable!("{other:?} does not depend on the element type"),
     })
 }
@@ -852,11 +1352,35 @@ fn relabel(list: &ListArray) -> ArrayRef {
 }
 
 /// Evaluates a function of a vector or array: `arguments[0]` is the list column and the
-/// rest are the `long` (for [`VectorFn::ArrayGet`], `int`) index arguments.
+/// rest are the `long` (for [`VectorFn::ArrayGet`], `int`) index arguments. `percentile`
+/// and `diff` have the list second, and `wsum`, `wavg`, `cov` and `cor` take two lists.
 pub(super) fn evaluate(
     function: VectorFn,
     arguments: &[ArrayRef],
 ) -> Result<ArrayRef, TableFailure> {
+    match function {
+        VectorFn::Percentile => {
+            let list = arguments[1].as_list::<i32>();
+            return in_element_type!(list, |T| percentile::<T>(arguments[0].as_primitive(), list));
+        }
+        VectorFn::Diff | VectorFn::ArrayDiff => {
+            let list = arguments[1].as_list::<i32>();
+            let array = function == VectorFn::ArrayDiff;
+            return in_element_type!(list, |T| diff::<T>(
+                arguments[0].as_primitive(),
+                list,
+                array
+            ));
+        }
+        VectorFn::WSum | VectorFn::WAvg | VectorFn::Cov | VectorFn::Cor => {
+            let first = arguments[0].as_list::<i32>();
+            let second = arguments[1].as_list::<i32>();
+            return in_element_type!(first, |A| in_element_type!(second, |B| of_two::<A, B>(
+                function, first, second
+            )));
+        }
+        _ => {}
+    }
     let list = arguments[0].as_list::<i32>();
     match function {
         // Behavior: `Basic#len(LongSizedDataStructure)` and `#len(int[])`: null for null.

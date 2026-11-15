@@ -2,12 +2,17 @@
 //!
 //! The engine has sum, abs_sum, avg, min, max, first, last, var, std, median, percentile,
 //! count_distinct, distinct, unique, weighted_avg, weighted_sum, sorted_first, sorted_last,
-//! group, count and count_where. A request for any other aggregation (formula, partition,
-//! the row keys, approximate_percentile, t_digest, freeze), or for initial groups, is
-//! refused with `UNIMPLEMENTED` and the name of what is missing.
+//! group, formula (in both forms), count and count_where. A request for any other
+//! aggregation (partition, the row keys, approximate_percentile, t_digest, freeze), or for
+//! initial groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
 //!
-//! Java checks the filters of a count where with its `ColumnExpressionValidator`; see
-//! `select.rs` for why the formula compiler makes the same refusals here.
+//! Java checks the filters of a count where and the formulas of a formula aggregation with
+//! its `ColumnExpressionValidator` (`AggregateGrpcImpl#validateFormulas`,
+//! `AggSpecFormulaValidator`) before the engine sees them; see `select.rs` for why the
+//! formula compiler makes the same refusals here. Java validates a formula with a
+//! parameter token against every column of the grouped table, and the engine then compiles
+//! it against its one input column; a formula either refuses is refused here, by the
+//! engine, with the same status.
 
 use super::prelude::*;
 use oxhaven_engine::ops::agg::{
@@ -172,7 +177,11 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
         Some(SpecType::Distinct(distinct)) => Ok(AggSpec::Distinct {
             include_nulls: distinct.include_nulls,
         }),
-        Some(SpecType::Formula(_)) => missing("formula"),
+        // Behavior: `AggSpecAdapter#adapt(AggSpecFormula)`
+        Some(SpecType::Formula(formula)) => Ok(AggSpec::Formula {
+            formula: formula.formula.clone(),
+            param_token: formula.param_token.clone(),
+        }),
         Some(SpecType::Freeze(_)) => missing("freeze"),
         Some(SpecType::Group(_)) => Ok(AggSpec::Group),
         Some(SpecType::TDigest(_)) => missing("t_digest"),
@@ -262,6 +271,30 @@ fn pair(text: &str) -> Result<Pair, ExportError> {
         Some((output, input)) => Ok(Pair::new(column_name(output)?, column_name(input)?)),
         None => Ok(Pair::of(column_name(text)?)),
     }
+}
+
+/// The output column and the expression of a formula aggregation: `Column = expression`,
+/// or the name of a column, which is then both.
+///
+/// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#adapt(Selectable)`, which
+/// takes only the raw form, and `io.deephaven.api.Selectable#parse`
+fn selectable(selectable: Option<&proto::Selectable>) -> Result<(String, String), ExportError> {
+    let Some(proto::selectable::Type::Raw(text)) = selectable.and_then(|s| s.r#type.as_ref())
+    else {
+        return Err(ExportError::Internal(
+            "Unsupported Selectable type (TYPE_NOT_SET) in Aggregation.".to_string(),
+        ));
+    };
+    let Some((name, expression)) = text.split_once('=') else {
+        let name = column_name(text)?;
+        return Ok((name.clone(), name));
+    };
+    if expression.is_empty() || expression.starts_with('=') {
+        return Err(ExportError::Internal(format!(
+            "Unable to parse formula '{text}', expected form '<newColumn>=<expression>'"
+        )));
+    }
+    Ok((column_name(name)?, expression.to_string()))
 }
 
 /// The engine panics with `unported!` for a count where without filters, whose count Java
@@ -371,7 +404,10 @@ impl TableOp for Aggregate {
                 Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
                 Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
                 Some(AggregationType::Partition(_)) => return Err(missing("partition")),
-                Some(AggregationType::Formula(_)) => return Err(missing("formula")),
+                Some(AggregationType::Formula(formula)) => {
+                    let (column, expression) = selectable(formula.selectable.as_ref())?;
+                    Aggregation::formula(column, expression)
+                }
                 // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
                 // `ColumnName#of` takes the name as it is.
                 Some(AggregationType::CountWhere(count)) => Aggregation::count_where(

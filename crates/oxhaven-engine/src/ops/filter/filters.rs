@@ -6,6 +6,7 @@
 
 use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
+use super::search;
 use arrow::array::{Array, AsArray, BooleanArray, StringArray};
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
@@ -104,6 +105,11 @@ pub(super) enum FilterSpec {
     And(Vec<FilterSpec>),
     /// Behavior: io.deephaven.engine.table.impl.select.DisjunctiveFilter
     Or(Vec<FilterSpec>),
+    /// A quick filter: the text searched for in every column, or in those named. Which
+    /// columns can hold the text is known only with the table; see [`search::expand`].
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter
+    Search { text: String, columns: Vec<String> },
 }
 
 /// A filter that has been checked against a table definition.
@@ -118,11 +124,23 @@ pub(super) enum Resolved {
         op: RangeOp,
         pivot: Key,
     },
+    /// The values from `lower` to `upper`, each end included or not.
+    Between {
+        column: usize,
+        lower: Key,
+        upper: Key,
+        lower_inclusive: bool,
+        upper_inclusive: bool,
+    },
     Pattern {
         column: usize,
         matcher: Matcher,
         invert_pattern: bool,
     },
+    /// No row.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.WhereNoneFilter
+    Nothing,
     Condition {
         formula: Arc<dyn Formula>,
         text: String,
@@ -314,6 +332,7 @@ pub(super) fn resolve(
             invert_pattern,
         } => resolve_pattern(column, pattern, *ignore_case, *invert_pattern, definition),
         FilterSpec::Condition(text) => resolve_condition(text, definition, compiler),
+        FilterSpec::Search { text, columns } => search::expand(definition, text, columns),
         FilterSpec::And(specs) => {
             let mut parts = Vec::new();
             for part in resolve_all(specs)? {
@@ -352,6 +371,9 @@ enum Cells {
     /// `float` widened, and `double`.
     Float(Vec<Option<f64>>),
     Str(StringArray),
+    /// A vector or an array, which Java's filters see as an object: whether each cell is
+    /// not null.
+    Object(Vec<bool>),
 }
 
 fn read(
@@ -361,20 +383,18 @@ fn read(
     use_prev: bool,
 ) -> Result<Cells, TableFailure> {
     let source = table.column(column);
-    // Java filters a vector or an array column as a column of objects: a null test and a
-    // match against null work, and what else does is not ported.
-    if source.column_type().list_element().is_some() {
-        oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
-            "a filter of a column of type {:?}",
-            source.column_type()
-        );
-    }
     let chunk = if use_prev {
         source.prev_chunk(rows)?
     } else {
         source.chunk(rows)?
     };
+    // Java filters a vector or an array column as a column of objects, of which a match
+    // filter can only hold null.
+    if source.column_type().list_element().is_some() {
+        return Ok(Cells::Object(
+            (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
+        ));
+    }
     let values = sentinels_to_nulls(&chunk)?;
     macro_rules! widen {
         ($kind:ident, $arrow:ty, $to:ty) => {
@@ -508,6 +528,18 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 })
                 .collect()
         }
+        // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, and
+        // `MatchFilter.ColumnTypeConvertorFactory#getConvertor` makes no value but null
+        // for such a column.
+        Cells::Object(valid) => {
+            if let Some(key) = keys.iter().find(|key| **key != Key::Null) {
+                return Err(wrong_key(key));
+            }
+            Ok(valid
+                .iter()
+                .map(|valid| !valid && !keys.is_empty())
+                .collect())
+        }
     }
 }
 
@@ -600,6 +632,64 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 })
                 .collect()
         }
+        Cells::Object(_) => oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.select.RangeFilter#init",
+            "a range filter of a vector or array column"
+        ),
+    })
+}
+
+/// Whether each cell lies between `lower` and `upper`, in the order of [`in_range`]: null
+/// lowest and, for floating point values, NaN highest.
+///
+/// Behavior: io.deephaven.engine.table.impl.chunkfilter.DoubleRangeComparator#makeDoubleFilter,
+/// `FloatRangeComparator#makeFloatFilter` and `LongRangeComparator#makeLongFilter`, with
+/// io.deephaven.util.compare.DoubleComparisons and `LongComparisons`
+fn between(
+    cells: &Cells,
+    lower: &Key,
+    upper: &Key,
+    lower_inclusive: bool,
+    upper_inclusive: bool,
+) -> Result<Vec<bool>, TableFailure> {
+    let keep = |from_lower: Ordering, from_upper: Ordering| {
+        (from_lower == Ordering::Greater || (lower_inclusive && from_lower == Ordering::Equal))
+            && (from_upper == Ordering::Less || (upper_inclusive && from_upper == Ordering::Equal))
+    };
+    Ok(match cells {
+        Cells::Int(values) => {
+            let end = |key: &Key| match key {
+                Key::Null => Ok(None),
+                Key::Int(value) => Ok(Some(*value)),
+                other => Err(wrong_key(other)),
+            };
+            let (lower, upper) = (end(lower)?, end(upper)?);
+            values
+                .iter()
+                .map(|value| keep(value.cmp(&lower), value.cmp(&upper)))
+                .collect()
+        }
+        Cells::Float(values) => {
+            let end = |key: &Key| match key {
+                Key::Null => Ok(None),
+                Key::Float(value) => Ok(Some(*value)),
+                other => Err(wrong_key(other)),
+            };
+            let (lower, upper) = (end(lower)?, end(upper)?);
+            let order = |value: &Option<f64>, end: &Option<f64>| match (value, end) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(value), Some(end)) => compare_floats(*value, *end),
+            };
+            values
+                .iter()
+                .map(|value| keep(order(value, &lower), order(value, &upper)))
+                .collect()
+        }
+        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) => {
+            return Err(failure("a range of two ends needs a column of numbers"))
+        }
     })
 }
 
@@ -650,6 +740,18 @@ impl Resolved {
                 let mask = in_range(&read(table, *column, selection, use_prev)?, *op, pivot)?;
                 Ok(selected(selection, mask))
             }
+            Resolved::Between {
+                column,
+                lower,
+                upper,
+                lower_inclusive,
+                upper_inclusive,
+            } => {
+                let cells = read(table, *column, selection, use_prev)?;
+                let mask = between(&cells, lower, upper, *lower_inclusive, *upper_inclusive)?;
+                Ok(selected(selection, mask))
+            }
+            Resolved::Nothing => Ok(RowSet::empty()),
             // Behavior: WhereFilterPatternImpl#find, #findPatternInverted, #matches,
             // #matchesPatternInverted: a null value is never kept.
             Resolved::Pattern {
@@ -737,10 +839,12 @@ impl Resolved {
         match self {
             Resolved::Match { column, .. }
             | Resolved::Range { column, .. }
+            | Resolved::Between { column, .. }
             | Resolved::Pattern { column, .. } => {
                 columns.insert(*column);
                 false
             }
+            Resolved::Nothing => false,
             Resolved::Condition { formula, .. } => {
                 columns.extend(
                     formula

@@ -406,6 +406,79 @@ fn minimum_and_maximum_survive_the_removal_of_the_extreme() {
     assert_eq!(fixture.rows(), [""; 0]);
 }
 
+/// The steps and results are those of Java 42.9 for a keyed input table (rows 0.0 and
+/// -0.0; delete the second; write 0.0 over the first; add -0.0; add -1.0 and 1.0; delete
+/// them; delete the first; write 0.0 over the third and add -0.0).
+#[test]
+fn a_zero_minimum_and_maximum_have_the_sign_java_shows() {
+    let zeros = |values: &[f64]| doubles(&values.iter().map(|v| Some(*v)).collect::<Vec<_>>());
+    // The result depends on the history, so a static copy does not give it.
+    let fixture = Fixture::with(
+        &[("D", ColumnType::Double, zeros(&[0.0, -0.0]))],
+        &[0, 1],
+        vec![
+            agg(AggSpec::Min, &["Lo = D"]),
+            agg(AggSpec::Max, &["Hi = D"]),
+        ],
+        &[],
+        false,
+        false,
+    );
+    // Rows that arrive together are sorted, the negative zero first.
+    assert_eq!(fixture.rows(), ["-0.0|-0.0"]);
+
+    // The entry of the zeros keeps its sign when the row that gave it leaves.
+    assert_eq!(fixture.step(TableChange::new().remove([1])), "none");
+    assert_eq!(fixture.rows(), ["-0.0|-0.0"]);
+
+    // The only zero is replaced by a positive one. The entry is now positive, and the
+    // cell is not written, because the two compare equal.
+    let change = TableChange::new().modify([0], [(0, zeros(&[0.0]))]);
+    assert_eq!(fixture.step(change), "none");
+    assert_eq!(fixture.rows(), ["-0.0|-0.0"]);
+    let change = TableChange::new().add([2], vec![zeros(&[-0.0])]);
+    assert_eq!(fixture.step(change), "none");
+    assert_eq!(fixture.rows(), ["-0.0|-0.0"]);
+
+    // Once the cells have held other values they show the entry.
+    let change = TableChange::new().add([3, 4], vec![zeros(&[-1.0, 1.0])]);
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [0] columns [0, 1]"
+    );
+    assert_eq!(fixture.rows(), ["-1.0|1.0"]);
+    assert_eq!(
+        fixture.step(TableChange::new().remove([3, 4])),
+        "added [] removed [] modified [0] columns [0, 1]"
+    );
+    assert_eq!(fixture.rows(), ["0.0|0.0"]);
+
+    assert_eq!(fixture.step(TableChange::new().remove([0])), "none");
+    assert_eq!(fixture.rows(), ["0.0|0.0"]);
+    let change = TableChange::new()
+        .modify([2], [(0, zeros(&[0.0]))])
+        .add([6], vec![zeros(&[-0.0])]);
+    assert_eq!(fixture.step(change), "none");
+    assert_eq!(fixture.rows(), ["0.0|0.0"]);
+}
+
+/// A static table and one that only adds rows keep the first zero they are given.
+#[test]
+fn a_zero_minimum_of_rows_that_never_leave_is_the_first_one() {
+    let parent = static_table(&[(
+        "D",
+        ColumnType::Double,
+        doubles(&[Some(0.0), Some(-0.0), Some(3.0)]),
+    )]);
+    let aggregations = [
+        agg(AggSpec::Min, &["Lo = D"]),
+        agg(AggSpec::Max, &["Hi = D"]),
+    ];
+    assert_eq!(rows(&*agg_by(&parent, &aggregations, &[])), ["0.0|3.0"]);
+    let parent = static_table(&[("D", ColumnType::Double, doubles(&[Some(-0.0), Some(0.0)]))]);
+    assert_eq!(rows(&*agg_by(&parent, &aggregations, &[])), ["-0.0|-0.0"]);
+}
+
 #[test]
 fn without_keys_the_row_comes_and_goes_with_the_rows_of_the_table() {
     let empty = [("I", ColumnType::Int, ints(&[]))];

@@ -4,7 +4,7 @@
 //! | --- | --- |
 //! | [`QueryTable`] | The concrete `Table`: row set, columns, attributes, listeners, and what feeds it |
 //! | [`in_memory_table`], [`uploaded_table`], [`empty_table`] | Static tables |
-//! | [`append_only_input_table`], [`keyed_input_table`] | Tables written through `Table::input_table` |
+//! | [`append_only_input_table`], [`keyed_input_table`], [`blink_input_table`] | Tables written through `Table::input_table` |
 //! | [`time_table`] | A row per period of an injected [`TimeSource`] |
 //!
 //! # How to write an operator
@@ -92,9 +92,9 @@ mod tests;
 pub(crate) use copied::is_copy;
 pub(crate) use copied::{copy_of, mark, marks, memoized, CopyType, Marks};
 pub use in_memory::{empty_table, in_memory_table, uploaded_table};
-pub use input::{append_only_input_table, keyed_input_table};
+pub use input::{append_only_input_table, blink_input_table, keyed_input_table};
 pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator};
-pub(crate) use storage::{forget_reads_through, register_reads_through};
+pub(crate) use storage::{forget_reads_through, register_reads_through, shared_reads_through};
 pub use storage::{holds_values, reads_through};
 pub use time::{time_table, TimeSource, TimeTableOptions, WallClock};
 

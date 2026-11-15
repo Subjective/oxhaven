@@ -72,15 +72,25 @@ pub(super) struct Plan {
     /// Whether no step passes through a parent column that holds its values, which is what
     /// lets a static `select` give its result new row keys.
     pub may_flatten: bool,
+    /// Whether every listed column is a name alone, without an `=`.
+    pub only_names: bool,
 }
 
 impl Plan {
-    /// Whether Java memoizes the result: every listed column is another column under its
-    /// own or another name. A list without columns is left as it is.
+    /// Whether Java memoizes the result: every listed column is the name of a column and
+    /// nothing else. A list without columns is left as it is.
     ///
-    /// Behavior: io.deephaven.engine.table.impl.MemoizedOperationKey#isMemoizable
+    /// `X = K` is not memoized, though it is another column under another name: Java's
+    /// server reads a text with an `=` as a `SwitchColumn`, which decides what it is when
+    /// the operation runs, and only a `SourceColumn` or a `ReinterpretedColumn` is
+    /// memoized. Seen on Java 42.9: `view(K)` of a blink input table, which is a copy, is
+    /// not a blink table, and `view(X = K)` of it is.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.MemoizedOperationKey#isMemoizable and
+    /// io.deephaven.engine.table.impl.select.SelectColumnFactory#getExpressions
     pub(super) fn is_memoized(&self) -> bool {
         !self.steps.is_empty()
+            && self.only_names
             && self
                 .steps
                 .iter()
@@ -336,6 +346,7 @@ pub(super) fn analyze<S: AsRef<str>>(
     };
     let mut steps: Vec<Step> = Vec::with_capacity(columns.len());
     let mut may_flatten = true;
+    let mut only_names = true;
 
     for text in columns {
         let text = text.as_ref();
@@ -351,6 +362,7 @@ pub(super) fn analyze<S: AsRef<str>>(
         let written = text
             .split_once('=')
             .map(|(_, expression)| expression.trim());
+        only_names &= written.is_none();
         let named = match (&assignment.expr, written) {
             (Expr::Column(source), None) => Some(source),
             (Expr::Column(source), Some(written)) if written == source => Some(source),
@@ -443,6 +455,7 @@ pub(super) fn analyze<S: AsRef<str>>(
         steps,
         published,
         may_flatten,
+        only_names,
     })
 }
 

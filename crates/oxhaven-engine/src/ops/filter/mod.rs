@@ -15,6 +15,7 @@ mod factory;
 mod filters;
 mod literal;
 mod pattern;
+mod search;
 
 #[cfg(test)]
 mod corpus_tests;
@@ -270,16 +271,18 @@ pub(crate) fn where_attributes(parent: &dyn Table) -> TableAttributes {
     attributes
 }
 
-/// Whether Java memoizes the result of a `where` with this filter: a match filter and a
-/// pattern filter, and a conjunction or disjunction of those. A match that Java hands on
-/// to a formula is a formula here, and neither that nor a range filter is memoized.
+/// Whether Java memoizes the result of a `where` with this filter: a match filter, a
+/// pattern filter and the filter that accepts no row, and a conjunction or disjunction of
+/// those. A match that Java hands on to a formula is a formula here, and neither that nor
+/// a range filter is memoized.
 ///
 /// Behavior: the `canMemoize` of io.deephaven.engine.table.impl.select.MatchFilter,
-/// `WhereFilterPatternImpl` and `ComposedFilter`, and the default in `WhereFilter`
+/// `WhereFilterPatternImpl`, `WhereNoneFilter` and `ComposedFilter`, and the default in
+/// `WhereFilter`
 fn is_memoized(filter: &Resolved) -> bool {
     match filter {
-        Resolved::Match { .. } | Resolved::Pattern { .. } => true,
-        Resolved::Range { .. } | Resolved::Condition { .. } => false,
+        Resolved::Match { .. } | Resolved::Pattern { .. } | Resolved::Nothing => true,
+        Resolved::Range { .. } | Resolved::Between { .. } | Resolved::Condition { .. } => false,
         Resolved::And(parts) | Resolved::Or(parts) => parts.iter().all(is_memoized),
     }
 }

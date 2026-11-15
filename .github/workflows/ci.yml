@@ -35,14 +35,36 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
+  python-console:
+    # The Python console embeds CPython, so it is a cargo feature that the rust job builds
+    # without: this job lints it and runs its unit tests, and oracle-replay runs a server
+    # that has it. See docs/CONSOLE.md.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Let the test binary find the libpython it is linked against
+        run: |
+          libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          echo "LD_LIBRARY_PATH=$libdir:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p oxhaven-server --features python --all-targets -- -D warnings
+      - run: "cargo test -p oxhaven-server --features python --lib -- console::"
+
   oracle-replay:
-    # Builds the server, starts it, and compares it with the recorded Java results and the
-    # client smoke checks, against oracle/replay-baseline.json. See oracle/README.md.
+    # Builds the server with its Python console, starts it, and compares it with the recorded
+    # Java results (table scenarios and script scenarios) and the client smoke checks, against
+    # oracle/replay-baseline.json. See oracle/README.md.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      # This Python runs the harness (oracle/.venv is made from it) and is the one the
+      # server embeds: ci-replay.sh builds with `--features python`, PyO3 takes `python3`
+      # from PATH, and the script puts its libpython on the server's library path.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

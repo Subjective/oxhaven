@@ -9,6 +9,7 @@ use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
 mod asof;
+mod column_statistics;
 mod head_by;
 mod multi_join;
 mod range_join;
@@ -453,6 +454,58 @@ async fn sort_refuses_as_java_does() {
     assert_eq!(accepted.size, 6);
 }
 
+/// What Java 42.9 answers shows the three operations an absolute sort is: the attributes
+/// are those `dropColumns` keeps, and a column named like the one it adds is dropped.
+#[tokio::test]
+async fn an_absolute_sort_is_an_update_view_a_sort_and_a_drop_columns() {
+    use SortDirection::{Ascending, Reverse};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 9).await;
+    let filter = UnstructuredFilterTableRequest {
+        result_id: ticket(1),
+        source_id: by_ticket(9),
+        filters: vec!["I >= 0".to_string()],
+    };
+    call(&mut c, Op::UnstructuredFilter(filter)).await.unwrap();
+    let add_only = |table: Arc<dyn Table>| {
+        let attributes = table.attributes();
+        (attributes.add_only, attributes.append_only)
+    };
+    assert_eq!(add_only(c.table(1)), (true, true));
+
+    // The rows are in order already. A sort then answers a copy with the attributes of
+    // its parent; with an absolute value the copy is of the `updateView` result, and
+    // `dropColumns` of a copy is a copy without them.
+    call(&mut c, sorted(2, vec![sort_by(Ascending, "I")]))
+        .await
+        .unwrap();
+    assert_eq!(add_only(c.table(2)), (true, true));
+    call(&mut c, sorted(3, vec![absolute(sort_by(Ascending, "I"))]))
+        .await
+        .unwrap();
+    assert_eq!(add_only(c.table(3)), (false, false));
+    assert_eq!(values(c.table(3).as_ref(), "I"), ints(&[0, 1, 2, 3, 4, 5]));
+
+    // A column of the source named like an added one is replaced and then dropped,
+    // sorted by or not.
+    call(&mut c, Op::Update(formulas(1, 4, &["__ABS__N = I"])))
+        .await
+        .unwrap();
+    for (result, descriptor, expected) in [
+        (5, sort_by(Ascending, "N"), [3, 2, 4, 1, 5, 0]),
+        (6, sort_by(Reverse, "N"), [5, 4, 3, 2, 1, 0]),
+    ] {
+        let sort = SortTableRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(4),
+            sorts: vec![absolute(descriptor)],
+        };
+        call(&mut c, Op::Sort(sort)).await.unwrap();
+        assert_eq!(column_names(c.table(result).as_ref()), ["I", "N", "S"]);
+        assert_eq!(values(c.table(result).as_ref(), "I"), ints(&expected));
+    }
+}
+
 // ---------------------------------------------------------------- head, tail, slice
 
 fn rows(result: i32, num_rows: i64) -> HeadOrTailRequest {
@@ -754,6 +807,51 @@ async fn filter_keeps_the_rows_every_condition_accepts() {
 }
 
 #[tokio::test]
+async fn filter_searches_every_column_that_can_hold_the_text() {
+    use proto::condition::Data;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let search = |text: &str, columns: &[&str]| {
+        condition(Data::Search(proto::SearchCondition {
+            search_string: text.to_string(),
+            optional_references: columns
+                .iter()
+                .map(|column| proto::Reference {
+                    column_name: column.to_string(),
+                })
+                .collect(),
+        }))
+    };
+    let filter = |result: i32, filter: proto::Condition| {
+        Op::Filter(FilterTableRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(1),
+            filters: vec![filter],
+        })
+    };
+
+    // text that is not a number is looked for in the string column only
+    call(&mut c, filter(2, search("A", &[]))).await.unwrap();
+    assert_eq!(values(c.table(2).as_ref(), "I"), ints(&[0, 2, 4]));
+    // a number is looked for in every column: I is 2 in one row, N in another
+    call(&mut c, filter(3, search("2", &[]))).await.unwrap();
+    assert_eq!(values(c.table(3).as_ref(), "I"), ints(&[1, 2]));
+    // only the named columns are searched; a name that is not a column is ignored
+    call(&mut c, filter(4, search("2", &["N", "Missing"])))
+        .await
+        .unwrap();
+    assert_eq!(values(c.table(4).as_ref(), "I"), ints(&[1]));
+    // no column can hold the text: no rows, not an error
+    let none = call(&mut c, filter(5, search("2", &["S"]))).await.unwrap();
+    assert_eq!(none.size, 0);
+
+    let negated = condition(Data::Not(Box::new(proto::NotCondition {
+        filter: Some(Box::new(search("a", &[]))),
+    })));
+    assert_internal(&call(&mut c, filter(6, negated)).await.unwrap_err());
+}
+
+#[tokio::test]
 async fn a_condition_with_a_part_that_is_not_set_is_an_internal_error() {
     use proto::compare_condition::CompareOperation;
     use proto::condition::Data;
@@ -949,6 +1047,112 @@ async fn aggregate_has_distinct_count_where_sentinels_and_outputs_named_like_key
         values(table.as_ref(), "I"),
         texts(&["[0, 2, 4]", "[1, 3, 5]"])
     );
+}
+
+fn agg_formula(selectable: Option<&str>) -> proto::Aggregation {
+    proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::Formula(
+            proto::aggregation::AggregationFormula {
+                selectable: Some(proto::Selectable {
+                    r#type: selectable.map(|raw| proto::selectable::Type::Raw(raw.to_string())),
+                }),
+            },
+        )),
+    }
+}
+
+#[tokio::test]
+async fn aggregate_has_formulas_in_both_forms() {
+    use proto::agg_spec::{AggSpecFormula, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let each = |formula: &str, param_token: &str| {
+        Type::Formula(AggSpecFormula {
+            formula: formula.to_string(),
+            param_token: param_token.to_string(),
+        })
+    };
+    // S = a has I = 0, 2, 4 and N = 3, 1, -1; S = b has I = 1, 3, 5 and N = 2, 0, -2.
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(each("sum(each)", "each"), &["E = I", "N"]),
+            agg_formula(Some("M = sum(I) * count(N)")),
+            agg_formula(Some(" K=S + len(I) ")),
+            agg_formula(Some("I")),
+        ],
+        &["S"],
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(2);
+    assert_eq!(
+        column_types(table.as_ref()),
+        [
+            "S: String",
+            "E: Long",
+            "N: Long",
+            "M: Long",
+            "K: String",
+            "I: Vector(Int)"
+        ]
+    );
+    let column = |name: &str| values(table.as_ref(), name);
+    assert_eq!(column("E"), ints(&[6, 9]));
+    assert_eq!(column("N"), ints(&[3, 0]));
+    assert_eq!(column("M"), ints(&[18, 27]));
+    assert_eq!(column("K"), texts(&["a3", "b3"]));
+    assert_eq!(column("I"), texts(&["[0, 2, 4]", "[1, 3, 5]"]));
+
+    // The formula of every column but the group-by columns.
+    let all = |result: i32, formula: &str| {
+        Op::AggregateAll(AggregateAllRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(1),
+            spec: Some(agg_spec(each(formula, "x"))),
+            group_by_columns: texts(&["S"]),
+        })
+    };
+    call(&mut c, all(3, "max(x) - len(x)")).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(
+        column_types(table.as_ref()),
+        ["S: String", "I: Long", "N: Long"]
+    );
+    assert_eq!(values(table.as_ref(), "I"), ints(&[1, 2]));
+    assert_eq!(values(table.as_ref(), "N"), ints(&[0, -1]));
+
+    // What Java refuses is an internal error, as its exceptions are.
+    let refused = [
+        agg_columns(each("nope(each)", "each"), &["I"]),
+        agg_columns(each("sum(each) + sum(N)", "each"), &["I"]),
+        agg_columns(each("sum(each)", ""), &["I"]),
+        agg_formula(Some("M = nope(I)")),
+        agg_formula(Some("M = sum(I) + i")),
+        agg_formula(Some("M = sum(I_)")),
+        agg_formula(Some("sum(I)")),
+        agg_formula(Some("M == sum(I)")),
+        agg_formula(Some("M =")),
+        agg_formula(Some("1M = sum(I)")),
+        agg_formula(None),
+    ];
+    for (index, aggregation) in refused.into_iter().enumerate() {
+        let request = aggregated(10 + index as i32, vec![aggregation.clone()], &["S"]);
+        let status = call(&mut c, request).await.unwrap_err();
+        assert_eq!(status.code(), Code::InvalidArgument, "{aggregation:?}");
+        assert!(
+            status.message().starts_with("Details Logged w/ID '"),
+            "{aggregation:?}: {status:?}"
+        );
+    }
+    assert_internal(&call(&mut c, all(30, "nope(x)")).await.unwrap_err());
+    // Java evaluates `i` in a formula with a token; this server does not.
+    let request = aggregated(
+        31,
+        vec![agg_columns(each("len(x) + i", "x"), &["I"])],
+        &["S"],
+    );
+    let status = call(&mut c, request).await.unwrap_err();
+    assert_eq!(status.code(), Code::Unimplemented, "{status:?}");
 }
 
 fn unique(

@@ -14,6 +14,8 @@ runs all its checks and the command exits non-zero if any failed.
     barrage     a Barrage subscription (pydeephaven-ticking): the client-side replica follows
                 adds, modifies, deletes and row shifts and equals a snapshot after each change
     inputtable  append-only and keyed input tables: add, replace, delete, rejected changes
+    console     the Python console through pydeephaven: run_script, open_table, bind_table, a
+                script error as DHError, the tables the session lists
 
 The status codes checked are the ones the Java server returns; PARITY.md, Must match, item 7.
 """
@@ -36,7 +38,9 @@ from . import rules
 from .connect import PSK_AUTH_TYPE, collect_garbage, open_session, parse_url
 from .runner import failure_code
 
-AREAS = ("session", "tables", "flight", "barrage", "inputtable")
+AREAS = ("session", "tables", "flight", "barrage", "inputtable", "console")
+# The areas that need the server's Python console (`scripts.has_python_console`).
+PYTHON_AREAS = ("console",)
 _CONFIG_RPC = "/io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants"
 
 
@@ -775,12 +779,118 @@ def inputtable_checks(url: str) -> list[tuple[str, Callable[[], None]]]:
     ]
 
 
+# ---------------------------------------------------------------- console
+
+
+def console_checks(url: str) -> list[tuple[str, Callable[[], None]]]:
+    """The Python console as pydeephaven uses it. The server has one Python session, so
+    every check removes the variables it made, whether it passed or not."""
+
+    def forget(session: Session, *names: str) -> None:
+        session.run_script(f"for _smoke_name in {names!r}:\n"
+                           "    globals().pop(_smoke_name, None)\n"
+                           "del _smoke_name")
+
+    def run_script_and_open_table() -> None:
+        with open_session(url) as session, open_session(url) as other:
+            try:
+                session.run_script("from deephaven import empty_table\n"
+                                   "smoke_made = empty_table(3).update(['X = i * 2'])\n")
+                table = session.open_table("smoke_made")
+                expect_table(table.to_arrow(), {"X": [0, 2, 4]}, "a table made by a script")
+                expect_table(table.update(["Y = X + 1"]).to_arrow(),
+                             {"X": [0, 2, 4], "Y": [1, 3, 5]},
+                             "a client operation on a table made by a script")
+                expect_table(other.open_table("smoke_made").to_arrow(), {"X": [0, 2, 4]},
+                             "the table opened from another session")
+                session.run_script("smoke_made = smoke_made.where('X > 0')")
+                expect_table(session.open_table("smoke_made").to_arrow(), {"X": [2, 4]},
+                             "the variable after a second script replaced it")
+                expect_table(table.to_arrow(), {"X": [0, 2, 4]},
+                             "the table opened before the variable was replaced")
+                expect_failure(lambda: session.open_table("smoke_never_assigned"), None,
+                               "opening a variable that was never assigned")
+            finally:
+                forget(session, "smoke_made")
+            expect_failure(lambda: session.open_table("smoke_made"), None,
+                           "opening a variable that a script deleted")
+
+    def bind_table() -> None:
+        with open_session(url) as session:
+            try:
+                session.bind_table("smoke_bound", session.empty_table(4).update(["X = i"]))
+                expect_table(session.open_table("smoke_bound").to_arrow(),
+                             {"X": [0, 1, 2, 3]}, "a table bound to a variable")
+                session.run_script("smoke_from_bound = smoke_bound.where('X > 1')")
+                expect_table(session.open_table("smoke_from_bound").to_arrow(), {"X": [2, 3]},
+                             "a table a script made from the bound variable")
+            finally:
+                forget(session, "smoke_bound", "smoke_from_bound")
+
+    def script_error() -> None:
+        def error_of(script: str, what: str) -> str:
+            try:
+                session.run_script(script)
+            except DHError as error:
+                return str(error)
+            raise SmokeFailure(f"{what}: expected a DHError, but the script ran")
+
+        with open_session(url) as session:
+            try:
+                text = error_of("from deephaven import empty_table\n"
+                                "smoke_kept = empty_table(2)\n"
+                                "raise ValueError('smoke says no')\n", "a script that raises")
+                expect("ValueError: smoke says no" in text,
+                       f"the error of a script that raises does not name the exception: {text!r}")
+                expect_equal(session.open_table("smoke_kept").to_arrow().num_rows, 2,
+                             "rows of the table assigned before the script raised")
+                text = error_of("smoke_kept.update('Y = NoSuchColumn')",
+                                "a script whose table operation fails")
+                expect("table update operation failed." in text,
+                       f"the error of a failed update does not say what failed: {text!r}")
+                text = error_of("smoke_kept = = 1", "a script that is not Python")
+                expect("SyntaxError" in text, f"a syntax error is not named: {text!r}")
+                session.run_script("smoke_kept = smoke_kept.head(1)")
+                expect_equal(session.open_table("smoke_kept").to_arrow().num_rows, 1,
+                             "rows after a script that ran after the failed ones")
+            finally:
+                forget(session, "smoke_kept")
+
+    def tables_of_the_scope() -> None:
+        with open_session(url) as session:
+            try:
+                session.run_script("from deephaven import empty_table\n"
+                                   "smoke_listed = empty_table(1)\n"
+                                   "smoke_not_a_table = 5\n")
+                session.bind_table("smoke_bound_listed", session.empty_table(1))
+                names = session.tables
+                for name in ("smoke_listed", "smoke_bound_listed"):
+                    expect(name in names, f"the session's tables lack {name}: {names}")
+                expect("smoke_not_a_table" not in names,
+                       f"the session's tables list a variable that is not a table: {names}")
+                expect("empty_table" not in names,
+                       f"the session's tables list an imported function: {names}")
+            finally:
+                forget(session, "smoke_listed", "smoke_not_a_table", "smoke_bound_listed")
+            names = session.tables
+            expect("smoke_listed" not in names and "smoke_bound_listed" not in names,
+                   f"the session's tables list deleted variables: {names}")
+
+    return [
+        ("run_script and open_table", run_script_and_open_table),
+        ("bind_table", bind_table),
+        ("a script error is a DHError", script_error),
+        ("the session's tables are the tables of the scope", tables_of_the_scope),
+    ]
+
+
 _AREAS: dict[str, Callable[[str], list[tuple[str, Callable[[], None]]]]] = {
     "session": session_checks,
     "tables": tables_checks,
     "flight": flight_checks,
     "barrage": barrage_checks,
     "inputtable": inputtable_checks,
+    "console": console_checks,
 }
 
 

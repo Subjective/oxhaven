@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "scenario": "agg_by",
+  "scenario_sha256": "ba01a9056759e5c2f8e7a9991c775e66b9322c4d081488793c0d2865d3e30202",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_key",
+      "file": "step000.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "overall",
+      "file": "step000.overall.arrow",
+      "rows": 1
+    }
+  ]
+}

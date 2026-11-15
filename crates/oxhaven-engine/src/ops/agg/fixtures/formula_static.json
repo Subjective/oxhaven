@@ -1,0 +1,1771 @@
+{
+ "name": "formula_static",
+ "description": "Formula aggregation of task 4.1d on static tables: the formula with a parameter token (AggSpecFormula) and the formula over several columns (Aggregation.Formula), with and without keys, over every column type and of an empty table; result types; the tokens that are and are not replaced; key columns in a formula; and what Java refuses.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "F", "type": "float32"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}, {"name": "T", "type": "timestamp"}, {"name": "C", "type": "char"}, {"name": "Y", "type": "int8"}, {"name": "H", "type": "int16"}], "rows": [
+   ["a", 1, 10, 100, 1.5, 0.5, "x", true, 1000, 65, 1, 300],
+   ["b", 2, null, 200, "NaN", 1.5, null, false, 2000, 66, null, -300],
+   ["a", 1, -3, null, -0.0, null, "y", null, null, null, -2, null],
+   ["b", 1, 20, 9223372036854775807, null, "Infinity", "x", true, 3000, 67, 127, 32767],
+   ["a", 2, 2147483647, 5, 2.5, -2.5, "", false, 1000, 65, -127, 7],
+   [null, 1, 0, 0, 0.0, 0.0, "z", true, 0, 0, 0, 0],
+   ["c", 3, null, null, null, null, null, null, null, null, null, null],
+   ["a", 1, 10, 7, 1.5, 0.5, "x", true, 5000, 97, 3, 3]
+  ]},
+  {"name": "e", "columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "D", "type": "float64"}, {"name": "F", "type": "float32"}, {"name": "S", "type": "string"}, {"name": "B", "type": "bool"}, {"name": "T", "type": "timestamp"}, {"name": "C", "type": "char"}, {"name": "Y", "type": "int8"}, {"name": "H", "type": "int16"}], "rows": [
+  ]}
+ ],
+ "operations": [
+  {"name": "sum_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "sum_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "avg_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "avg_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "avg(each)", "param": "each"}]},
+  {"name": "min_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "min(each)", "param": "each"}]},
+  {"name": "min_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "min(each)", "param": "each"}]},
+  {"name": "max_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "max(each)", "param": "each"}]},
+  {"name": "max_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "max(each)", "param": "each"}]},
+  {"name": "count_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "count(each)", "param": "each"}]},
+  {"name": "count_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "count(each)", "param": "each"}]},
+  {"name": "first_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "first(each)", "param": "each"}]},
+  {"name": "first_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "first(each)", "param": "each"}]},
+  {"name": "last_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "last(each)", "param": "each"}]},
+  {"name": "last_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "last(each)", "param": "each"}]},
+  {"name": "median_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "median(each)", "param": "each"}]},
+  {"name": "median_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "median(each)", "param": "each"}]},
+  {"name": "std_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "std(each)", "param": "each"}]},
+  {"name": "std_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "std(each)", "param": "each"}]},
+  {"name": "var_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "var(each)", "param": "each"}]},
+  {"name": "var_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "var(each)", "param": "each"}]},
+  {"name": "absSum_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "absSum_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "absSum(each)", "param": "each"}]},
+  {"name": "product_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "product(each)", "param": "each"}]},
+  {"name": "product_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "product(each)", "param": "each"}]},
+  {"name": "countDistinct_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "countDistinct_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "countDistinct(each)", "param": "each"}]},
+  {"name": "len_I_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_I_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_L_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_L_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_D_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_D_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_F_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_F_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_Y_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_Y_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_H_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_H_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_C_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "len(each)", "param": "each"}]},
+  {"name": "len_C_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "len(each)", "param": "each"}]},
+  {"name": "identity_I", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "each", "param": "each"}]},
+  {"name": "size_I", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NI=I"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_I", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_I", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_I", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = I"}]},
+  {"name": "bare_I", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "I"}]},
+  {"name": "identity_L", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "each", "param": "each"}]},
+  {"name": "size_L", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NL=L"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_L", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_L", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["L"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_L", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = L"}]},
+  {"name": "bare_L", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "L"}]},
+  {"name": "identity_D", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "each", "param": "each"}]},
+  {"name": "size_D", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["ND=D"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_D", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_D", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_D", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = D"}]},
+  {"name": "bare_D", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "D"}]},
+  {"name": "identity_F", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "each", "param": "each"}]},
+  {"name": "size_F", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NF=F"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_F", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_F", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["F"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_F", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = F"}]},
+  {"name": "bare_F", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "F"}]},
+  {"name": "identity_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "each", "param": "each"}]},
+  {"name": "size_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NS=S"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_S", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = S"}]},
+  {"name": "bare_S", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "S"}]},
+  {"name": "size_B", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NB=B"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "multi_identity_B", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = B"}]},
+  {"name": "bare_B", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "B"}]},
+  {"name": "size_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NT=T"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_T", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = T"}]},
+  {"name": "bare_T", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "T"}]},
+  {"name": "identity_C", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "each", "param": "each"}]},
+  {"name": "size_C", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NC=C"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_C", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_C", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["C"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_C", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = C"}]},
+  {"name": "bare_C", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "C"}]},
+  {"name": "identity_Y", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "each", "param": "each"}]},
+  {"name": "size_Y", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NY=Y"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_Y", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_Y", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["Y"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_Y", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = Y"}]},
+  {"name": "bare_Y", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "Y"}]},
+  {"name": "identity_H", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "each", "param": "each"}]},
+  {"name": "size_H", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["NH=H"], "formula": "each.size() + len(each)", "param": "each"}]},
+  {"name": "get_H", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "each.get(1)", "param": "each"}]},
+  {"name": "index_H", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["H"], "formula": "each[2]", "param": "each"}]},
+  {"name": "multi_identity_H", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "V = H"}]},
+  {"name": "bare_H", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "H"}]},
+  {"name": "firstObj_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "firstObj(each)", "param": "each"}]},
+  {"name": "lastObj_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "lastObj(each)", "param": "each"}]},
+  {"name": "countObj_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "countObj(each)", "param": "each"}]},
+  {"name": "first_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "first(each)", "param": "each"}]},
+  {"name": "count_S", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "count(each)", "param": "each"}]},
+  {"name": "countObj_B", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["B"], "formula": "countObj(each)", "param": "each"}]},
+  {"name": "first_B", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["B"], "formula": "first(each)", "param": "each"}]},
+  {"name": "count_B", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["B"], "formula": "count(each)", "param": "each"}]},
+  {"name": "firstObj_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "firstObj(each)", "param": "each"}]},
+  {"name": "lastObj_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "lastObj(each)", "param": "each"}]},
+  {"name": "countObj_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "countObj(each)", "param": "each"}]},
+  {"name": "first_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "first(each)", "param": "each"}]},
+  {"name": "count_T", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["T"], "formula": "count(each)", "param": "each"}]},
+  {"name": "each_pairs", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["A=I", "B=D", "C2=L", "I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_two_keys", "op": "agg", "source": "t", "by": ["K", "G"], "aggs": [{"agg": "formula", "cols": ["I", "D"], "formula": "max(each)", "param": "each"}]},
+  {"name": "each_by_double", "op": "agg", "source": "t", "by": ["D"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_token_x", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "sum(I)", "param": "I"}]},
+  {"name": "each_token_inside", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "len(e) + sum(e)", "param": "e"}]},
+  {"name": "each_token_digit_before", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "1e + len(e)", "param": "e"}]},
+  {"name": "each_token_digit_after", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(e) + e1", "param": "e"}]},
+  {"name": "each_token_underscore", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(e) + _e", "param": "e"}]},
+  {"name": "each_token_empty", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each)", "param": ""}]},
+  {"name": "each_token_absent", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(I)", "param": "each"}]},
+  {"name": "each_token_absent_other", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["D"], "formula": "sum(I)", "param": "each"}]},
+  {"name": "each_constant", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "3", "param": "each"}]},
+  {"name": "each_constant_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "`c`", "param": "each"}]},
+  {"name": "each_of_key", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "cols": ["G"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_of_key_renamed", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "cols": ["A=G"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_onto_key", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "cols": ["G=I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_reads_other", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each) + sum(D)", "param": "each"}]},
+  {"name": "each_reads_key", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each) + G", "param": "each"}]},
+  {"name": "each_column_array", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(I_)", "param": "each"}]},
+  {"name": "each_unknown_function", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "nope(each)", "param": "each"}]},
+  {"name": "each_syntax", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each", "param": "each"}]},
+  {"name": "each_unknown_input", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["Nope"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_unknown_key", "op": "agg", "source": "t", "by": ["Nope"], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_duplicate_output", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["A=I", "A=D"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_sum_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["S"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_ternary", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I", "D"], "formula": "len(each) > 2 ? first(each) : last(each)", "param": "each"}]},
+  {"name": "each_arithmetic", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I", "L"], "formula": "(double) sum(each) / len(each) - avg(each)", "param": "each"}]},
+  {"name": "each_sorted", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I", "D"], "formula": "sort(each)", "param": "each"}]},
+  {"name": "each_empty_k", "op": "agg", "source": "e", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["I", "D"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_empty_n", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "formula", "cols": ["I", "D"], "formula": "sum(each)", "param": "each"}]},
+  {"name": "each_empty_bad", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "formula", "cols": ["I"], "formula": "nope(each)", "param": "each"}]},
+  {"name": "multi_two", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I) / count(D)"}]},
+  {"name": "multi_two_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "Out = sum(I) / count(D)"}]},
+  {"name": "multi_key", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "formula": "Out = G + sum(I)"}]},
+  {"name": "multi_key_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = isNull(K) ? -1 : count(I)"}]},
+  {"name": "multi_key_only", "op": "agg", "source": "t", "by": ["G"], "aggs": [{"agg": "formula", "formula": "Out = G * 2"}]},
+  {"name": "multi_key_copy", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = K"}]},
+  {"name": "multi_two_keys", "op": "agg", "source": "t", "by": ["K", "G"], "aggs": [{"agg": "formula", "formula": "Out = G + len(I)"}, {"agg": "formula", "formula": "Out2 = isNull(K)"}]},
+  {"name": "multi_constant", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = 3"}]},
+  {"name": "multi_constant_n", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "formula", "formula": "Out = 3"}]},
+  {"name": "multi_spaces", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "  Out  =  sum(I)  "}]},
+  {"name": "multi_several", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "A = sum(I)"}, {"agg": "formula", "formula": "B = max(D)"}, {"agg": "formula", "formula": "C2 = len(S)"}]},
+  {"name": "multi_mixed", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "sum", "cols": ["SI=I"]}, {"agg": "formula", "formula": "M = sum(I)"}, {"agg": "group", "cols": ["GI=I"]}, {"agg": "formula", "cols": ["EI=I"], "formula": "sum(each)", "param": "each"}, {"agg": "formula", "formula": "M2 = sum(D)"}, {"agg": "count", "column": "N"}]},
+  {"name": "multi_group_first", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["GI=I"]}, {"agg": "formula", "formula": "M = sum(D)"}]},
+  {"name": "multi_each_group_multi", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "cols": ["EL=L"], "formula": "sum(each)", "param": "each"}, {"agg": "group", "cols": ["GI=I"]}, {"agg": "formula", "formula": "M = sum(D)"}]},
+  {"name": "multi_onto_key", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "K = sum(I)"}]},
+  {"name": "multi_ternary", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = first(I) > 2 ? `big` : `small`"}]},
+  {"name": "multi_sizes", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = S.size() + I.size() + len(B) + T.size()"}]},
+  {"name": "multi_row_variable_i", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I) + i"}]},
+  {"name": "multi_row_variable_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I) + k"}]},
+  {"name": "multi_column_array", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I_)"}]},
+  {"name": "multi_unknown_function", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = nope(I)"}]},
+  {"name": "multi_syntax", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I"}]},
+  {"name": "multi_unknown_column", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(Nope)"}]},
+  {"name": "multi_reads_output", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "A = sum(I)"}, {"agg": "formula", "formula": "B = A + 1"}]},
+  {"name": "multi_duplicate", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "A = sum(I)"}, {"agg": "formula", "formula": "A = sum(L)"}]},
+  {"name": "multi_equals", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out == sum(I)"}]},
+  {"name": "multi_no_expression", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out ="}]},
+  {"name": "multi_key_as_vector", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(G)"}]},
+  {"name": "multi_empty_k", "op": "agg", "source": "e", "by": ["K"], "aggs": [{"agg": "formula", "formula": "Out = sum(I) / count(D)"}]},
+  {"name": "multi_empty_n", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "formula", "formula": "Out = sum(I) / count(D)"}]},
+  {"name": "multi_empty_constant", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "formula", "formula": "Out = 3"}]}
+ ],
+ "results": ["sum_I_k", "sum_I_n", "sum_L_k", "sum_L_n", "sum_D_k", "sum_D_n", "sum_F_k", "sum_F_n", "sum_Y_k", "sum_Y_n", "sum_H_k", "sum_H_n", "sum_C_k", "sum_C_n", "avg_I_k", "avg_I_n", "avg_L_k", "avg_L_n", "avg_D_k", "avg_D_n", "avg_F_k", "avg_F_n", "avg_Y_k", "avg_Y_n", "avg_H_k", "avg_H_n", "avg_C_k", "avg_C_n", "min_I_k", "min_I_n", "min_L_k", "min_L_n", "min_D_k", "min_D_n", "min_F_k", "min_F_n", "min_Y_k", "min_Y_n", "min_H_k", "min_H_n", "min_C_k", "min_C_n", "max_I_k", "max_I_n", "max_L_k", "max_L_n", "max_D_k", "max_D_n", "max_F_k", "max_F_n", "max_Y_k", "max_Y_n", "max_H_k", "max_H_n", "max_C_k", "max_C_n", "count_I_k", "count_I_n", "count_L_k", "count_L_n", "count_D_k", "count_D_n", "count_F_k", "count_F_n", "count_Y_k", "count_Y_n", "count_H_k", "count_H_n", "count_C_k", "count_C_n", "first_I_k", "first_I_n", "first_L_k", "first_L_n", "first_D_k", "first_D_n", "first_F_k", "first_F_n", "first_Y_k", "first_Y_n", "first_H_k", "first_H_n", "first_C_k", "first_C_n", "last_I_k", "last_I_n", "last_L_k", "last_L_n", "last_D_k", "last_D_n", "last_F_k", "last_F_n", "last_Y_k", "last_Y_n", "last_H_k", "last_H_n", "last_C_k", "last_C_n", "median_I_k", "median_I_n", "median_L_k", "median_L_n", "median_D_k", "median_D_n", "median_F_k", "median_F_n", "median_Y_k", "median_Y_n", "median_H_k", "median_H_n", "median_C_k", "median_C_n", "std_I_k", "std_I_n", "std_L_k", "std_L_n", "std_D_k", "std_D_n", "std_F_k", "std_F_n", "std_Y_k", "std_Y_n", "std_H_k", "std_H_n", "std_C_k", "std_C_n", "var_I_k", "var_I_n", "var_L_k", "var_L_n", "var_D_k", "var_D_n", "var_F_k", "var_F_n", "var_Y_k", "var_Y_n", "var_H_k", "var_H_n", "var_C_k", "var_C_n", "absSum_I_k", "absSum_I_n", "absSum_L_k", "absSum_L_n", "absSum_D_k", "absSum_D_n", "absSum_F_k", "absSum_F_n", "absSum_Y_k", "absSum_Y_n", "absSum_H_k", "absSum_H_n", "absSum_C_k", "absSum_C_n", "product_I_k", "product_I_n", "product_L_k", "product_L_n", "product_D_k", "product_D_n", "product_F_k", "product_F_n", "product_Y_k", "product_Y_n", "product_H_k", "product_H_n", "product_C_k", "product_C_n", "countDistinct_I_k", "countDistinct_I_n", "countDistinct_L_k", "countDistinct_L_n", "countDistinct_D_k", "countDistinct_D_n", "countDistinct_F_k", "countDistinct_F_n", "countDistinct_Y_k", "countDistinct_Y_n", "countDistinct_H_k", "countDistinct_H_n", "countDistinct_C_k", "countDistinct_C_n", "len_I_k", "len_I_n", "len_L_k", "len_L_n", "len_D_k", "len_D_n", "len_F_k", "len_F_n", "len_Y_k", "len_Y_n", "len_H_k", "len_H_n", "len_C_k", "len_C_n", "identity_I", "size_I", "get_I", "index_I", "multi_identity_I", "bare_I", "identity_L", "size_L", "get_L", "index_L", "multi_identity_L", "bare_L", "identity_D", "size_D", "get_D", "index_D", "multi_identity_D", "bare_D", "identity_F", "size_F", "get_F", "index_F", "multi_identity_F", "bare_F", "identity_S", "size_S", "get_S", "index_S", "multi_identity_S", "bare_S", "size_B", "multi_identity_B", "bare_B", "size_T", "get_T", "index_T", "multi_identity_T", "bare_T", "identity_C", "size_C", "get_C", "index_C", "multi_identity_C", "bare_C", "identity_Y", "size_Y", "get_Y", "index_Y", "multi_identity_Y", "bare_Y", "identity_H", "size_H", "get_H", "index_H", "multi_identity_H", "bare_H", "firstObj_S", "lastObj_S", "countObj_S", "first_S", "count_S", "countObj_B", "first_B", "count_B", "firstObj_T", "lastObj_T", "countObj_T", "first_T", "count_T", "each_pairs", "each_two_keys", "each_by_double", "each_token_x", "each_token_inside", "each_token_digit_before", "each_token_digit_after", "each_token_underscore", "each_token_empty", "each_token_absent", "each_token_absent_other", "each_constant", "each_constant_none", "each_of_key", "each_of_key_renamed", "each_onto_key", "each_reads_other", "each_reads_key", "each_column_array", "each_unknown_function", "each_syntax", "each_unknown_input", "each_unknown_key", "each_duplicate_output", "each_sum_string", "each_ternary", "each_arithmetic", "each_sorted", "each_empty_k", "each_empty_n", "each_empty_bad", "multi_two", "multi_two_n", "multi_key", "multi_key_string", "multi_key_only", "multi_key_copy", "multi_two_keys", "multi_constant", "multi_constant_n", "multi_spaces", "multi_several", "multi_mixed", "multi_group_first", "multi_each_group_multi", "multi_onto_key", "multi_ternary", "multi_sizes", "multi_row_variable_i", "multi_row_variable_k", "multi_column_array", "multi_unknown_function", "multi_syntax", "multi_unknown_column", "multi_reads_output", "multi_duplicate", "multi_equals", "multi_no_expression", "multi_key_as_vector", "multi_empty_k", "multi_empty_n", "multi_empty_constant"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "sum_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483664],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "sum_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147483684]
+   ]},
+   "sum_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 112],
+    ["b", -9223372036854775609],
+    [null, 0],
+    ["c", null]
+   ]},
+   "sum_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-9223372036854775497]
+   ]},
+   "sum_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "sum_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "sum_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "sum_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["Infinity"]
+   ]},
+   "sum_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -125],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "sum_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "sum_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 310],
+    ["b", 32467],
+    [null, 0],
+    ["c", null]
+   ]},
+   "sum_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [32777]
+   ]},
+   "sum_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 227],
+    ["b", 133],
+    [null, 0],
+    ["c", null]
+   ]},
+   "sum_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [360]
+   ]},
+   "avg_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 536870916.0],
+    ["b", 20.0],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_I_n": {"columns": [{"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [357913947.3333333]
+   ]},
+   "avg_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 37.333333333333336],
+    ["b", 4.611686018427388e+18],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_L_n": {"columns": [{"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5372286728091292e+18]
+   ]},
+   "avg_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.375],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "avg_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["Infinity"]
+   ]},
+   "avg_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -31.25],
+    ["b", 127.0],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_Y_n": {"columns": [{"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0.3333333333333333]
+   ]},
+   "avg_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 103.33333333333333],
+    ["b", 16233.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_H_n": {"columns": [{"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5462.833333333333]
+   ]},
+   "avg_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 75.66666666666667],
+    ["b", 66.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "avg_C_n": {"columns": [{"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [60.0]
+   ]},
+   "min_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -3],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "min_I_n": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-3]
+   ]},
+   "min_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 200],
+    [null, 0],
+    ["c", null]
+   ]},
+   "min_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "min_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.0],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "min_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "min_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -2.5],
+    ["b", 1.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "min_F_n": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-2.5]
+   ]},
+   "min_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "min_Y_n": {"columns": [{"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-127]
+   ]},
+   "min_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", -300],
+    [null, 0],
+    ["c", null]
+   ]},
+   "min_H_n": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-300]
+   ]},
+   "min_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65],
+    ["b", 66],
+    [null, 0],
+    ["c", null]
+   ]},
+   "min_C_n": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "max_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483647],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "max_I_n": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147483647]
+   ]},
+   "max_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 100],
+    ["b", 9223372036854775807],
+    [null, 0],
+    ["c", null]
+   ]},
+   "max_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9223372036854775807]
+   ]},
+   "max_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "max_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "max_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "max_F_n": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["Infinity"]
+   ]},
+   "max_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "max_Y_n": {"columns": [{"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [127]
+   ]},
+   "max_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300],
+    ["b", 32767],
+    [null, 0],
+    ["c", null]
+   ]},
+   "max_H_n": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [32767]
+   ]},
+   "max_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 97],
+    ["b", 67],
+    [null, 0],
+    ["c", null]
+   ]},
+   "max_C_n": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [97]
+   ]},
+   "count_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_D_n": {"columns": [{"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_F_n": {"columns": [{"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "count_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "count_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "first_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 10],
+    ["b", null],
+    [null, 0],
+    ["c", null]
+   ]},
+   "first_I_n": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10]
+   ]},
+   "first_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 100],
+    ["b", 200],
+    [null, 0],
+    ["c", null]
+   ]},
+   "first_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [100]
+   ]},
+   "first_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "first_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5]
+   ]},
+   "first_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.5],
+    ["b", 1.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "first_F_n": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0.5]
+   ]},
+   "first_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", null],
+    [null, 0],
+    ["c", null]
+   ]},
+   "first_Y_n": {"columns": [{"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1]
+   ]},
+   "first_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300],
+    ["b", -300],
+    [null, 0],
+    ["c", null]
+   ]},
+   "first_H_n": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [300]
+   ]},
+   "first_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65],
+    ["b", 66],
+    [null, 0],
+    ["c", null]
+   ]},
+   "first_C_n": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [65]
+   ]},
+   "last_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 10],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "last_I_n": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10]
+   ]},
+   "last_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7],
+    ["b", 9223372036854775807],
+    [null, 0],
+    ["c", null]
+   ]},
+   "last_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7]
+   ]},
+   "last_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", null],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "last_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5]
+   ]},
+   "last_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "last_F_n": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0.5]
+   ]},
+   "last_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "last_Y_n": {"columns": [{"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "last_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 32767],
+    [null, 0],
+    ["c", null]
+   ]},
+   "last_H_n": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "last_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 97],
+    ["b", 67],
+    [null, 0],
+    ["c", null]
+   ]},
+   "last_C_n": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [97]
+   ]},
+   "median_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 10.0],
+    ["b", 20.0],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_I_n": {"columns": [{"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10.0]
+   ]},
+   "median_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7.0],
+    ["b", -4.611686018427388e+18],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_L_n": {"columns": [{"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [53.5]
+   ]},
+   "median_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "median_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0.5]
+   ]},
+   "median_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.5],
+    ["b", 127.0],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_Y_n": {"columns": [{"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0.5]
+   ]},
+   "median_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7.0],
+    ["b", 16233.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_H_n": {"columns": [{"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5.0]
+   ]},
+   "median_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65.0],
+    ["b", 66.5],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "median_C_n": {"columns": [{"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [65.5]
+   ]},
+   "std_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1073741820.6666666],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_I_n": {"columns": [{"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [876706524.6658145]
+   ]},
+   "std_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 54.28013755816517],
+    ["b", 6.521908912666392e+18],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_L_n": {"columns": [{"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3.7654258663581604e+18]
+   ]},
+   "std_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.0307764064044151],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "std_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.7320508075688772],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "std_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 63.86639700708555],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_Y_n": {"columns": [{"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [80.33845073603715]
+   ]},
+   "std_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 170.330071723502],
+    ["b", 23381.899933495566],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_H_n": {"columns": [{"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [13377.601121526486]
+   ]},
+   "std_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 18.47520861406799],
+    ["b", 0.7071067811865476],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "std_C_n": {"columns": [{"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [31.949960876345372]
+   ]},
+   "var_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.1529214974485682e+18],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_I_n": {"columns": [{"name": "I", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7.686143303916105e+17]
+   ]},
+   "var_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2946.333333333333],
+    ["b", 4.253529586511731e+37],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_L_n": {"columns": [{"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.4178431955039104e+37]
+   ]},
+   "var_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.0625],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "var_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3.0],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "var_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4078.9166666666665],
+    ["b", "NaN"],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_Y_n": {"columns": [{"name": "Y", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6454.266666666666]
+   ]},
+   "var_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 29012.333333333336],
+    ["b", 546713244.5],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_H_n": {"columns": [{"name": "H", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [178960211.76666668]
+   ]},
+   "var_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 341.3333333333321],
+    ["b", 0.5],
+    [null, "NaN"],
+    ["c", null]
+   ]},
+   "var_C_n": {"columns": [{"name": "C", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1020.8]
+   ]},
+   "absSum_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483670],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "absSum_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147483690]
+   ]},
+   "absSum_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 112],
+    ["b", -9223372036854775609],
+    [null, 0],
+    ["c", null]
+   ]},
+   "absSum_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-9223372036854775497]
+   ]},
+   "absSum_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "absSum_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "absSum_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3.5],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "absSum_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["Infinity"]
+   ]},
+   "absSum_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 133],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "absSum_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [260]
+   ]},
+   "absSum_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 310],
+    ["b", 33067],
+    [null, 0],
+    ["c", null]
+   ]},
+   "absSum_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [33377]
+   ]},
+   "absSum_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 227],
+    ["b", 133],
+    [null, 0],
+    ["c", null]
+   ]},
+   "absSum_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [360]
+   ]},
+   "product_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -644245094100],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "product_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "product_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3500],
+    ["b", -200],
+    [null, 0],
+    ["c", null]
+   ]},
+   "product_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "product_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.0],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "product_D_n": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "product_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.625],
+    ["b", "Infinity"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "product_F_n": {"columns": [{"name": "F", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["NaN"]
+   ]},
+   "product_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 762],
+    ["b", 127],
+    [null, 0],
+    ["c", null]
+   ]},
+   "product_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "product_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 6300],
+    ["b", -9830100],
+    [null, 0],
+    ["c", null]
+   ]},
+   "product_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "product_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 409825],
+    ["b", 4422],
+    [null, 0],
+    ["c", null]
+   ]},
+   "product_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "countDistinct_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "countDistinct_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "countDistinct_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_D_n": {"columns": [{"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "countDistinct_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_F_n": {"columns": [{"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "countDistinct_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "countDistinct_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "countDistinct_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "countDistinct_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "len_I_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_I_n": {"columns": [{"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_L_k": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_L_n": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_D_k": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_D_n": {"columns": [{"name": "D", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_F_k": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_F_n": {"columns": [{"name": "F", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_Y_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_Y_n": {"columns": [{"name": "Y", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_H_k": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_H_n": {"columns": [{"name": "H", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "len_C_k": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 2],
+    [null, 1],
+    ["c", 1]
+   ]},
+   "len_C_n": {"columns": [{"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "identity_I": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, -3, 2147483647, 10]],
+    ["b", [null, 20]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "size_I": {"columns": [{"name": "K", "type": "string"}, {"name": "NI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_I": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -3],
+    ["b", 20],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_I": {"columns": [{"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-3]
+   ]},
+   "multi_identity_I": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, -3, 2147483647, 10]],
+    ["b", [null, 20]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_I": {"columns": [{"name": "I", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, null, -3, 20, 2147483647, 0, null, 10]]
+   ]},
+   "identity_L": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "vector<int64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [100, null, 5, 7]],
+    ["b", [200, 9223372036854775807]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "size_L": {"columns": [{"name": "K", "type": "string"}, {"name": "NL", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_L": {"columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", 9223372036854775807],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_L": {"columns": [{"name": "L", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null]
+   ]},
+   "multi_identity_L": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<int64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [100, null, 5, 7]],
+    ["b", [200, 9223372036854775807]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_L": {"columns": [{"name": "L", "type": "vector<int64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[100, 200, null, 9223372036854775807, 5, 0, null, 7]]
+   ]},
+   "identity_D": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1.5, -0.0, 2.5, 1.5]],
+    ["b", ["NaN", null]],
+    [null, [0.0]],
+    ["c", [null]]
+   ]},
+   "size_D": {"columns": [{"name": "K", "type": "string"}, {"name": "ND", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_D": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.0],
+    ["b", null],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_D": {"columns": [{"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-0.0]
+   ]},
+   "multi_identity_D": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1.5, -0.0, 2.5, 1.5]],
+    ["b", ["NaN", null]],
+    [null, [0.0]],
+    ["c", [null]]
+   ]},
+   "bare_D": {"columns": [{"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1.5, "NaN", -0.0, null, 2.5, 0.0, null, 1.5]]
+   ]},
+   "identity_F": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "vector<float32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [0.5, null, -2.5, 0.5]],
+    ["b", [1.5, "Infinity"]],
+    [null, [0.0]],
+    ["c", [null]]
+   ]},
+   "size_F": {"columns": [{"name": "K", "type": "string"}, {"name": "NF", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_F": {"columns": [{"name": "K", "type": "string"}, {"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", "Infinity"],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_F": {"columns": [{"name": "F", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null]
+   ]},
+   "multi_identity_F": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<float32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [0.5, null, -2.5, 0.5]],
+    ["b", [1.5, "Infinity"]],
+    [null, [0.0]],
+    ["c", [null]]
+   ]},
+   "bare_F": {"columns": [{"name": "F", "type": "vector<float32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[0.5, 1.5, null, "Infinity", -2.5, 0.0, null, 0.5]]
+   ]},
+   "identity_S": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", ["x", "y", "", "x"]],
+    ["b", [null, "x"]],
+    [null, ["z"]],
+    ["c", [null]]
+   ]},
+   "size_S": {"columns": [{"name": "K", "type": "string"}, {"name": "NS", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_S": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "y"],
+    ["b", "x"],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_S": {"columns": [{"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["y"]
+   ]},
+   "multi_identity_S": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", ["x", "y", "", "x"]],
+    ["b", [null, "x"]],
+    [null, ["z"]],
+    ["c", [null]]
+   ]},
+   "bare_S": {"columns": [{"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [["x", null, "y", "x", "", "z", null, "x"]]
+   ]},
+   "size_B": {"columns": [{"name": "K", "type": "string"}, {"name": "NB", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "multi_identity_B": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<bool>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [true, null, false, true]],
+    ["b", [false, true]],
+    [null, [true]],
+    ["c", [null]]
+   ]},
+   "bare_B": {"columns": [{"name": "B", "type": "vector<bool>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[true, false, null, true, false, true, null, true]]
+   ]},
+   "size_T": {"columns": [{"name": "K", "type": "string"}, {"name": "NT", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_T": {"columns": [{"name": "K", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", 3000],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_T": {"columns": [{"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null]
+   ]},
+   "multi_identity_T": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1000, null, 1000, 5000]],
+    ["b", [2000, 3000]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_T": {"columns": [{"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1000, 2000, null, 3000, 1000, 0, null, 5000]]
+   ]},
+   "identity_C": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "vector<char>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [65, null, 65, 97]],
+    ["b", [66, 67]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "size_C": {"columns": [{"name": "K", "type": "string"}, {"name": "NC", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_C": {"columns": [{"name": "K", "type": "string"}, {"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", 67],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_C": {"columns": [{"name": "C", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null]
+   ]},
+   "multi_identity_C": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<char>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [65, null, 65, 97]],
+    ["b", [66, 67]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_C": {"columns": [{"name": "C", "type": "vector<char>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[65, 66, null, 67, 65, 0, null, 97]]
+   ]},
+   "identity_Y": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "vector<int8>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, -2, -127, 3]],
+    ["b", [null, 127]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "size_Y": {"columns": [{"name": "K", "type": "string"}, {"name": "NY", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_Y": {"columns": [{"name": "K", "type": "string"}, {"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -2],
+    ["b", 127],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_Y": {"columns": [{"name": "Y", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [-2]
+   ]},
+   "multi_identity_Y": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<int8>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, -2, -127, 3]],
+    ["b", [null, 127]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_Y": {"columns": [{"name": "Y", "type": "vector<int8>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, null, -2, 127, -127, 0, null, 3]]
+   ]},
+   "identity_H": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "vector<int16>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [300, null, 7, 3]],
+    ["b", [-300, 32767]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "size_H": {"columns": [{"name": "K", "type": "string"}, {"name": "NH", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 8],
+    ["b", 4],
+    [null, 2],
+    ["c", 2]
+   ]},
+   "get_H": {"columns": [{"name": "K", "type": "string"}, {"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", 32767],
+    [null, null],
+    ["c", null]
+   ]},
+   "index_H": {"columns": [{"name": "H", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null]
+   ]},
+   "multi_identity_H": {"columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "vector<int16>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [300, null, 7, 3]],
+    ["b", [-300, 32767]],
+    [null, [0]],
+    ["c", [null]]
+   ]},
+   "bare_H": {"columns": [{"name": "H", "type": "vector<int16>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[300, -300, null, 32767, 7, 0, null, 3]]
+   ]},
+   "firstObj_S": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x"],
+    ["b", null],
+    [null, "z"],
+    ["c", null]
+   ]},
+   "lastObj_S": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "x"],
+    ["b", "x"],
+    [null, "z"],
+    ["c", null]
+   ]},
+   "countObj_S": {"columns": [{"name": "K", "type": "string"}, {"name": "S", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "first_S": {"failure": "INVALID_ARGUMENT"},
+   "count_S": {"failure": "INVALID_ARGUMENT"},
+   "countObj_B": {"columns": [{"name": "K", "type": "string"}, {"name": "B", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "first_B": {"failure": "INVALID_ARGUMENT"},
+   "count_B": {"failure": "INVALID_ARGUMENT"},
+   "firstObj_T": {"columns": [{"name": "K", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1000],
+    ["b", 2000],
+    [null, 0],
+    ["c", null]
+   ]},
+   "lastObj_T": {"columns": [{"name": "K", "type": "string"}, {"name": "T", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5000],
+    ["b", 3000],
+    [null, 0],
+    ["c", null]
+   ]},
+   "countObj_T": {"columns": [{"name": "K", "type": "string"}, {"name": "T", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 1],
+    ["c", 0]
+   ]},
+   "first_T": {"failure": "INVALID_ARGUMENT"},
+   "count_T": {"failure": "INVALID_ARGUMENT"},
+   "each_pairs": {"columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "int64"}, {"name": "B", "type": "float64"}, {"name": "C2", "type": "int64"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483664, 5.5, 112, 2147483664],
+    ["b", 20, "NaN", -9223372036854775609, 20],
+    [null, 0, 0.0, 0, 0],
+    ["c", null, null, null, null]
+   ]},
+   "each_two_keys": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 10, 1.5],
+    ["b", 2, null, "NaN"],
+    ["b", 1, 20, null],
+    ["a", 2, 2147483647, 2.5],
+    [null, 1, 0, 0.0],
+    ["c", 3, null, null]
+   ]},
+   "each_by_double": {"columns": [{"name": "D", "type": "float64"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.5, 20],
+    ["NaN", null],
+    [-0.0, -3],
+    [null, 20],
+    [2.5, 2147483647]
+   ]},
+   "each_token_x": {"columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5.5],
+    ["b", "NaN"],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "each_token_inside": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483668],
+    ["b", 22],
+    [null, 1],
+    ["c", null]
+   ]},
+   "each_token_digit_before": {"failure": "INVALID_ARGUMENT"},
+   "each_token_digit_after": {"failure": "INVALID_ARGUMENT"},
+   "each_token_underscore": {"failure": "INVALID_ARGUMENT"},
+   "each_token_empty": {"failure": "INVALID_ARGUMENT"},
+   "each_token_absent": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483664],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "each_token_absent_other": {"failure": "INVALID_ARGUMENT"},
+   "each_constant": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 3],
+    [null, 3],
+    ["c", 3]
+   ]},
+   "each_constant_none": {"columns": [{"name": "I", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["c"]
+   ]},
+   "each_of_key": {"columns": [{"name": "G", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5],
+    [4],
+    [3]
+   ]},
+   "each_of_key_renamed": {"columns": [{"name": "G", "type": "int32"}, {"name": "A", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 5],
+    [2, 4],
+    [3, 3]
+   ]},
+   "each_onto_key": {"columns": [{"name": "G", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [37],
+    [2147483647],
+    [null]
+   ]},
+   "each_reads_other": {"failure": "INVALID_ARGUMENT"},
+   "each_reads_key": {"failure": "INVALID_ARGUMENT"},
+   "each_column_array": {"failure": "INVALID_ARGUMENT"},
+   "each_unknown_function": {"failure": "INVALID_ARGUMENT"},
+   "each_syntax": {"failure": "INVALID_ARGUMENT"},
+   "each_unknown_input": {"failure": "INVALID_ARGUMENT"},
+   "each_unknown_key": {"failure": "INVALID_ARGUMENT"},
+   "each_duplicate_output": {"failure": "INVALID_ARGUMENT"},
+   "each_sum_string": {"failure": "INVALID_ARGUMENT"},
+   "each_ternary": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 10, 1.5],
+    ["b", 20, null],
+    [null, 0, 0.0],
+    ["c", null, null]
+   ]},
+   "each_arithmetic": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "float64"}, {"name": "L", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.0, -9.333333333333336],
+    ["b", -10.0, -9.223372036854776e+18],
+    [null, 0.0, 0.0],
+    ["c", null, null]
+   ]},
+   "each_sorted": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "array<int32>"}, {"name": "D", "type": "array<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [-3, 10, 10, 2147483647], [-0.0, 1.5, 1.5, 2.5]],
+    ["b", [null, 20], [null, "NaN"]],
+    [null, [0], [0.0]],
+    ["c", [null], [null]]
+   ]},
+   "each_empty_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int64"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "each_empty_n": {"columns": [{"name": "I", "type": "int64"}, {"name": "D", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "each_empty_bad": {"failure": "INVALID_ARGUMENT"},
+   "multi_two": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 536870916.0],
+    ["b", 20.0],
+    [null, 0.0],
+    ["c", null]
+   ]},
+   "multi_two_n": {"columns": [{"name": "Out", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [357913947.3333333]
+   ]},
+   "multi_key": {"columns": [{"name": "G", "type": "int32"}, {"name": "Out", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 38],
+    [2, 2147483649],
+    [3, null]
+   ]},
+   "multi_key_string": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 1],
+    [null, -1],
+    ["c", 0]
+   ]},
+   "multi_key_only": {"columns": [{"name": "G", "type": "int32"}, {"name": "Out", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 4],
+    [3, 6]
+   ]},
+   "multi_key_copy": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "a"],
+    ["b", "b"],
+    [null, null],
+    ["c", "c"]
+   ]},
+   "multi_two_keys": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "Out", "type": "int64"}, {"name": "Out2", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 4, false],
+    ["b", 2, 3, false],
+    ["b", 1, 2, false],
+    ["a", 2, 3, false],
+    [null, 1, 2, true],
+    ["c", 3, 4, false]
+   ]},
+   "multi_constant": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 3],
+    [null, 3],
+    ["c", 3]
+   ]},
+   "multi_constant_n": {"columns": [{"name": "Out", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "multi_spaces": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483664],
+    ["b", 20],
+    [null, 0],
+    ["c", null]
+   ]},
+   "multi_several": {"columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "int64"}, {"name": "B", "type": "float64"}, {"name": "C2", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2147483664, 2.5, 4],
+    ["b", 20, "NaN", 2],
+    [null, 0, 0.0, 1],
+    ["c", null, null, 1]
+   ]},
+   "multi_mixed": {"failure": "INVALID_ARGUMENT"},
+   "multi_group_first": {"columns": [{"name": "K", "type": "string"}, {"name": "GI", "type": "vector<int32>"}, {"name": "M", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, -3, 2147483647, 10], 5.5],
+    ["b", [null, 20], "NaN"],
+    [null, [0], 0.0],
+    ["c", [null], null]
+   ]},
+   "multi_each_group_multi": {"failure": "INVALID_ARGUMENT"},
+   "multi_onto_key": {"columns": [{"name": "K", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147483664],
+    [20],
+    [0],
+    [null]
+   ]},
+   "multi_ternary": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "big"],
+    ["b", "small"],
+    [null, "small"],
+    ["c", "small"]
+   ]},
+   "multi_sizes": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 16],
+    ["b", 8],
+    [null, 4],
+    ["c", 4]
+   ]},
+   "multi_row_variable_i": {"failure": "INVALID_ARGUMENT"},
+   "multi_row_variable_k": {"failure": "INVALID_ARGUMENT"},
+   "multi_column_array": {"failure": "INVALID_ARGUMENT"},
+   "multi_unknown_function": {"failure": "INVALID_ARGUMENT"},
+   "multi_syntax": {"failure": "INVALID_ARGUMENT"},
+   "multi_unknown_column": {"failure": "INVALID_ARGUMENT"},
+   "multi_reads_output": {"failure": "INVALID_ARGUMENT"},
+   "multi_duplicate": {"failure": "INVALID_ARGUMENT"},
+   "multi_equals": {"failure": "INVALID_ARGUMENT"},
+   "multi_no_expression": {"failure": "INVALID_ARGUMENT"},
+   "multi_key_as_vector": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 3],
+    [null, 1],
+    ["c", 3]
+   ]},
+   "multi_empty_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Out", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "multi_empty_n": {"columns": [{"name": "Out", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "multi_empty_constant": {"columns": [{"name": "Out", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]}
+  }
+ ]}
+}

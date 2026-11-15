@@ -29,6 +29,7 @@ mod fixtures;
 #[cfg(test)]
 mod tests;
 
+use crate::table::{memoized, CopyType};
 use operator::Ungrouped;
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
@@ -179,10 +180,12 @@ fn arrays_of(source: &dyn Table, index: usize) -> Arc<dyn ArrayColumn> {
 /// the size of its largest array and the shorter ones are filled with nulls.
 ///
 /// A source without array columns, ungrouped without `columns`, is returned as it is. A
-/// named column must exist and be an array; the first that is not is the error.
+/// named column must exist and be an array; the first that is not is the error. The
+/// ungrouped form of a copy is a copy: see [`memoized`].
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#ungroup(boolean, Collection) and
-/// io.deephaven.engine.table.impl.UngroupOperation
+/// io.deephaven.engine.table.impl.UngroupOperation, whose result is memoized
+/// (UngroupOperation#getMemoizedOperationKey)
 pub fn ungroup(
     source: &Arc<dyn Table>,
     null_fill: bool,
@@ -230,5 +233,6 @@ fn ungroup_with_base(
         index,
         arrays: arrays_of(&**source, index),
     });
-    operator::ungroup_arrays(source, null_fill, ungrouped.collect(), minimum_base)
+    let result = operator::ungroup_arrays(source, null_fill, ungrouped.collect(), minimum_base)?;
+    Ok(memoized(source, CopyType::None, false, result)?)
 }

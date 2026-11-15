@@ -257,6 +257,7 @@ handlers! {
     apply_preview_columns { ApplyPreviewColumns => Handler }
     asof { Aj => Aj, Raj => Raj, AsOfJoin => AsOfJoin }
     aggregate { Aggregate => Aggregate, AggregateAll => AggregateAll, ComboAggregate => ComboAggregate }
+    column_statistics { ColumnStatistics => Handler }
     create_input_table { CreateInputTable => Handler }
     crossjoin { CrossJoin => Handler }
     distinct { SelectDistinct => Handler, WhereIn => WhereIn }

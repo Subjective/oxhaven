@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "dtypes_new_table",
+  "scenario_sha256": "3c65e3db22c47733991dee90e39f6b7945ca54518760c0741ad6e042e84b65c5",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "typed",
+      "file": "step000.typed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "with_nulls",
+      "file": "step000.with_nulls.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "explicit",
+      "file": "step000.explicit.arrow",
+      "rows": 3
+    }
+  ]
+}

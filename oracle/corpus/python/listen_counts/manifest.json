@@ -1,0 +1,32 @@
+{
+  "format": 2,
+  "scenario": "listen_counts",
+  "scenario_sha256": "d0c47d988ae0b6c11aa71580b9cce97ae9c62818308fb9cbe5daac8da467fcc6",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "seen",
+      "file": "step000.seen.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "seen",
+      "file": "step001.seen.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "seen",
+      "file": "step002.seen.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "seen",
+      "file": "step003.seen.arrow",
+      "rows": 2
+    }
+  ]
+}

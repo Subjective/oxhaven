@@ -488,3 +488,53 @@ are made under the Claude identity, and squash merges use GitHub's default messa
 shows the owner and Claude as co-authors. The repo-local identity override is removed.
 Commits between 04:33 and 04:37 (run-log entries and the squash of PR 61) were made under
 the owner's identity and stay as they are. No history rewrite.
+
+## 2026-11-15 06:05 UTC
+
+PRs 61 to 64 merged; main is at 74 of 83 scenarios. The `rust` job now takes about 6.5
+minutes (was 13 to 16).
+Architecture decision for the console (PR 65, for owner review): CPython embedded in the
+server through PyO3 behind cargo feature `python`; Oxhaven's own `deephaven` package with
+the reference's names and signatures (nothing copied; the reference package is under the
+Deephaven Community License); table methods go through the existing table-service
+handlers; scope is the interpreter's globals. A slice works end to end in the IDE and
+with pydeephaven `run_script`. Task files 6.2 to 6.18 and 7.1 to 7.11 written. Largest
+risk: Python functions in query strings (GIL versus update cycles).
+
+## 2026-11-15 06:11 UTC
+
+PR 65 (console design, embedded Python behind the `python` feature, M6 and M7 task files) merged on green, including the first Actions run of the `python-console` job. Machine at load 24 with 6.9 GB disk free: the fuzz-coverage agent was told to run one family at a time, and no new agents start until load and disk recover.
+
+## 2026-11-15 06:25 UTC
+
+PR 66 opened (column statistics, quick filters, blink input tables). Gate reaches 78 of 83 on that branch. It also corrects a rule merged in PR 61: Java memoizes a view on a copy only for bare column names, not `view(X = K)`. For owner review: three quick-filter sub-cases and vector column statistics are refused as not ported; blink Barrage subscriptions still refused.
+
+## 2026-11-15 06:35 UTC
+
+PR 66 merged on green. Main is at 78 of 83 replay scenarios clean. Remaining: formula aggregation (2) and update_by count-where and rolling formula (3), both in flight.
+
+## 2026-11-15 07:18 UTC
+
+PR 67 (formula aggregation) opened; after updating it with main it failed to compile: PR 66 and it both changed `ops/filter/filters.rs` and the textual merge was clean but a match lost an arm. Author agent resumed to reconcile and rerun the gate. Lesson: two tasks edited the same file in parallel; a branch update is not proof of a compatible merge, CI on the merged head is.
+
+PR 68 (Python script oracle, task 6.3) opened. The agent tried to make `check-baseline-change.sh` ignore sections the base lacks and the permission system refused the edit; it left the script alone and reported it. The script exits 1 on added entries, so the outcome on CI decides whether that needs an owner decision.
+
+## 2026-11-15 07:21 UTC
+
+PR 68 merged on green. The replay gate now builds with the Python console and carries two new sections: console smokes (4 clean) and recorded scripts (2 of 21 clean, 17 missing API names, 2 differing). Branches in flight must merge main before their final gate run.
+
+## 2026-11-15 07:40 UTC
+
+PR 69 opened (second parity fixes). Fuzz against Java is now clean in every family except two known classes, both owner questions: tables that fail mid-cycle (Java keeps serving the last snapshot; 65 of 3000 default seeds, 463 of 3000 join seeds) and one as-of join incremental difference (seed 1297). Java surprise recorded: seed 1526, Java throws ArrayIndexOutOfBounds in UnionRedirection while building the duplicate-right-key message.
+
+## 2026-11-15 07:32 UTC
+
+PR 67 merged on green after the author fixed the merge break (one match arm). Main is at 80 of 83 replay scenarios clean; the remaining three are the update_by count-where and rolling formula scenarios, in flight.
+
+## 2026-11-15 07:38 UTC
+
+PR 69 (second parity fixes) merged on green, on a head that included PR 67.
+
+## 2026-11-15 08:20 UTC
+
+Task 6.4 (Python table core) came back with the gate red by design: about a quarter of the listed Python methods need engine operators no task owned (head_pct family, rename/move columns, restrict_sort_to, where of an OR, merge_sorted of static tables, attributes). The agent refused to change protected baseline lines on its own and set the task to blocked, which is the right behaviour. Decision (mine, for owner review): record the four `table_*` lines as `differs` with the real failure kinds under the `oracle-change` label, and open task 4.16 for the operators, whose gate is promoting those lines to clean. Reason: the lines said `missing` because the Python names did not exist; they now exist and refuse honestly, and the baseline should say what is true. Size verdict for 6.4: the Python surface fit, the planning missed engine dependencies.
