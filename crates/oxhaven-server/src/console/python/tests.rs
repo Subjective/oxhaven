@@ -30,7 +30,7 @@ use super::super::{Changes, Console, Variable};
 use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 
-static ONE_INTERPRETER: Mutex<()> = Mutex::const_new(());
+pub(super) static ONE_INTERPRETER: Mutex<()> = Mutex::const_new(());
 
 /// A server with a Python console whose session has no variables.
 struct Python {

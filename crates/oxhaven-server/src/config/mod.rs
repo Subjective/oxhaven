@@ -2,6 +2,7 @@
 //!
 //! Behavior: `io.deephaven.server.config.ConfigServiceGrpcImpl`
 
+use crate::console::Console;
 use crate::session::{current_session, AuthHandler, AuthHandlers, PSK_AUTH_TYPE};
 use oxhaven_proto::grpc::config_service_server::ConfigService;
 use oxhaven_proto::grpc::config_value::Kind;
@@ -47,9 +48,9 @@ impl ConfigGrpc {
     ///
     /// The keys are those of the reference server's `authentication.client.configuration.list`
     /// and `client.configuration.list` in `dh-defaults.prop`, with the values of that file
-    /// for the settings of the web client. `java.version`, `groovy.version` and
-    /// `python.version` are left out, as the reference server leaves out a key it has no
-    /// value for: this server runs none of them.
+    /// for the settings of the web client. `java.version` and `groovy.version` are left
+    /// out, as the reference server leaves out a key it has no value for: this server runs
+    /// neither. `python.version` is added by [`ConfigGrpc::with_python_version`].
     pub fn new(auth_handlers: &AuthHandlers, token_expire_ms: i64) -> Self {
         let handlers = auth_handlers
             .iter()
@@ -74,6 +75,35 @@ impl ConfigGrpc {
             ]),
         }
     }
+
+    /// Adds `python.version`, the version of the interpreter of the Python console, or
+    /// leaves the key out when there is none.
+    ///
+    /// Behavior: `io.deephaven.integrations.python.PythonDeephavenSession#setPythonVersion`
+    pub fn with_python_version(mut self, version: Option<String>) -> Self {
+        self.configuration
+            .extend(values(version.map(|version| ("python.version", version))));
+        self
+    }
+}
+
+/// The version of the Python that `console` runs, as `platform.python_version()` gives it;
+/// `None` when the server has no Python console, or the interpreter does not say.
+///
+/// Behavior: `io.deephaven.integrations.python.PythonDeephavenSession#setPythonVersion`
+pub fn python_version(console: Option<&Console>) -> Option<String> {
+    #[cfg(feature = "python")]
+    if console.is_some_and(|console| console.console_type() == "python") {
+        return match crate::console::python::python_version() {
+            Ok(version) => Some(version),
+            Err(error) => {
+                tracing::warn!("Unable to retrieve python version: {error}");
+                None
+            }
+        };
+    }
+    let _ = console;
+    None
 }
 
 #[tonic::async_trait]
