@@ -696,23 +696,25 @@ async fn update_by_requests_are_checked_as_java_checks_them() {
             "Invalid column name \"1\"",
         ),
     ];
-    for (op, message) in cases {
+    for (unused, (op, message)) in (900..).zip(cases) {
         let refused = call(&mut c, op.clone()).await.unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
-        // in a batch the whole call is refused and nothing before it is created
+        // in a batch the whole call is refused and nothing before it is created. The
+        // export named before the refused operation stays claimed, so each batch names
+        // another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(3), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
+        let session = c.server.session(&c.bearer);
+        assert_ne!(
+            session.get_export(unused).unwrap().state(),
+            ExportState::Exported
+        );
     }
-    let session = c.server.session(&c.bearer);
-    assert_ne!(
-        session.get_export(3).unwrap().state(),
-        ExportState::Exported
-    );
 
     // a duration that does not parse is not one of Java's argument errors, and it is read
     // before the column is checked
@@ -828,16 +830,33 @@ async fn the_standard_deviations_and_the_weighted_average_reach_the_engine() {
 }
 
 #[tokio::test]
+async fn a_rolling_group_is_answered() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let group = |rev, fwd| {
+        operation(
+            proto_rolling!(RollingGroup, UpdateByRollingGroup, ticks(rev), ticks(fwd)),
+            &["Group = N"],
+        )
+    };
+    let answered = call(&mut c, request(2, 1, vec![group(2.0, 0.0)], &[]))
+        .await
+        .unwrap();
+    assert!(answered.success, "{answered:?}");
+    // A window of negative size is refused as for the other rolling operators.
+    let refused = call(&mut c, request(3, 1, vec![group(-3.0, 2.0)], &[]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+}
+
+#[tokio::test]
 async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let mut c = Connected::start().await;
     numbers(&mut c, 1).await;
     let factory = "io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory\
                    .OperationVisitor";
     let cases = [
-        (
-            proto_rolling!(RollingGroup, UpdateByRollingGroup, ticks(2.0), ticks(0.0)),
-            "makeRollingGroupOperator",
-        ),
         (
             Spec::RollingFormula(spec::UpdateByRollingFormula {
                 reverse_window_scale: ticks(2.0),

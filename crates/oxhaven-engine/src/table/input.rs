@@ -1,6 +1,8 @@
 //! Input tables: tables whose rows are written through the `InputTable` contract.
 
-use super::{arrange_columns, failure, tracked_source, QueryTable, RootSource, TableSpec};
+use super::{
+    arrange_columns, failure, mark, tracked_source, Marks, QueryTable, RootSource, TableSpec,
+};
 use arrow::array::ArrayRef;
 use arrow::record_batch::RecordBatch;
 use arrow::row::{RowConverter, SortField};
@@ -109,8 +111,8 @@ pub fn keyed_input_table(
 /// An input table that shows each added row for one update cycle: the rows added since the
 /// last cycle are the table's rows during the next one, and are removed by the cycle after
 /// it. The table is flat, starts without rows and has the blink attribute. It has no key
-/// columns, and `delete` is an error. Java holds it as a copy of its publisher's table, see
-/// [`is_copied`](super::is_copied).
+/// columns, and `delete` is an error. It is a copy, as [`super::copied`] says of one: Java
+/// makes it by adding the `InputTable` attribute to its publisher's table.
 ///
 /// `add` returns once the rows are handed over, before a cycle has shown them. Java's `add`
 /// reads the columns it needs by name and ignores the others; here the batch must have
@@ -139,14 +141,12 @@ pub fn blink_input_table(
     )
     .with_attributes(attributes);
     spec.flat = true;
-    // Behavior: TablePublisher#inputTable, whose `withAttributes` copies the adapter's table
-    spec.copied = true;
     let writer = Writer {
         definition,
         key_columns: None,
         columns,
     };
-    QueryTable::root(graph, spec, |table| {
+    let table = QueryTable::root(graph, spec, |table| {
         let input = Arc::new(BlinkInput {
             table,
             writer,
@@ -156,7 +156,15 @@ pub fn blink_input_table(
             source: input.clone(),
             input: Some(input),
         }
-    })
+    });
+    // Behavior: TablePublisher#inputTable, whose `withAttributes` copies the adapter's
+    // blink table
+    let marks = Marks {
+        copy_of_blink: Some(true),
+        ..Marks::default()
+    };
+    mark(&table, marks);
+    table
 }
 
 fn make(

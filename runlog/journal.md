@@ -441,3 +441,50 @@ Contract gap for owner review (from PR 60): no column type for preview columns a
 table attributes for column descriptions or the uploaded schema; the server keeps them in
 side registries that table operations do not carry.
 Possible bug to check: head_by over a table whose only column is the key fails internally.
+
+## 2026-11-15 04:25 UTC
+
+Owner asked why main shows failed runs. Cause: `concurrency.cancel-in-progress` on the
+main ref; each run-log push cancels the run of the merge commit before it. No PR was
+merged on a red head. One real failure on main: run 235 (23:39 UTC, the harness hang,
+fixed by PR 56). Fix assigned to the CI test-time task: cancel only pull request runs and
+skip push runs for runlog-only commits. Until then run-log commits are batched.
+Also found: squash merges carry a `Co-authored-by: Claude` trailer (GitHub adds it from
+the branch commits' author) and commits use the environment's "Claude" git identity,
+against the owner's no-attribution rule. From PR 61 on the squash message is written
+explicitly. Author identity is with the owner to decide.
+
+## 2026-11-15 04:33 UTC
+
+Owner's decision on commit identity: commits are authored by him (Josh, GitHub noreply
+address) and carry a `Co-authored-by: Claude <noreply@anthropic.com>` trailer. The repo's
+local git identity is set accordingly, which worktrees inherit; squash merges get the
+trailer in an explicit message. He asked whether existing history can be rewritten; no
+rewrite or force push is to happen without his explicit go-ahead.
+PRs 62 (rolling group) and 63 (CI seed budget, main runs no longer cancelled) opened.
+
+## 2026-11-15 04:36 UTC
+
+Owner asked whether main's history can be rewritten after all implementation is done,
+keeping order. Yes: recorded as a final task. Scope: change only the author of the older
+commits to the owner and add the Claude co-author trailer where missing; keep commit
+order, dates, messages and content. It needs a force push of main, so it waits for the
+owner's explicit confirmation at that time and for no branches to be open.
+Launched: console and Python session design spike (6.1), second parity fixes (4.15).
+History rewrite task, added steps: push a backup branch of the old main first; after the
+rewrite verify that the final tree hash, and the tree of every commit in order, equal the
+originals before force pushing; keep the backup branch until the owner says to drop it.
+Merged pull requests cannot be changed by this: their pages keep the original commits.
+
+## 2026-11-15 04:36 UTC (later)
+
+Owner decided to leave existing history as it is. The history rewrite task is dropped.
+Going forward stays: owner as author, Claude co-author trailer.
+
+## 2026-11-15 04:38 UTC
+
+Owner settled the identity question: keep things as they were. Branch and run-log commits
+are made under the Claude identity, and squash merges use GitHub's default message, which
+shows the owner and Claude as co-authors. The repo-local identity override is removed.
+Commits between 04:33 and 04:37 (run-log entries and the squash of PR 61) were made under
+the owner's identity and stay as they are. No history rewrite.

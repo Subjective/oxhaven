@@ -78,6 +78,7 @@
 //!   Hold the parents strongly if you read them.
 //! - Two or more refreshing parents need [`QueryTable::derive_merged`], never two results.
 
+mod copied;
 mod in_memory;
 mod input;
 mod query_table;
@@ -87,11 +88,12 @@ mod time;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) use copied::is_copy;
+pub(crate) use copied::{copy_of, mark, marks, memoized, CopyType, Marks};
 pub use in_memory::{empty_table, in_memory_table, uploaded_table};
 pub use input::{append_only_input_table, blink_input_table, keyed_input_table};
-pub use query_table::{
-    is_copied, MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator,
-};
+pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator};
 pub(crate) use storage::{forget_reads_through, register_reads_through};
 pub use storage::{holds_values, reads_through};
 pub use time::{time_table, TimeSource, TimeTableOptions, WallClock};

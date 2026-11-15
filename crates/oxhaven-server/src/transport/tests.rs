@@ -529,7 +529,8 @@ async fn a_grpc_web_call_is_a_grpc_call_with_its_trailers_in_the_body() {
         content_type_echo(),
         grpc_request("/x", "application/grpc-web+proto"),
     )
-    .await;
+    .await
+    .unwrap();
     assert_eq!(response.headers()[CONTENT_TYPE], "application/grpc-web");
     let body = response.into_body().collect().await.unwrap();
     assert!(body.trailers().is_none());
@@ -541,7 +542,9 @@ async fn a_grpc_web_call_is_a_grpc_call_with_its_trailers_in_the_body() {
 
 #[tokio::test]
 async fn a_native_grpc_call_passes_through_unchanged() {
-    let response = browser::call(content_type_echo(), grpc_request("/x", "application/grpc")).await;
+    let response = browser::call(content_type_echo(), grpc_request("/x", "application/grpc"))
+        .await
+        .unwrap();
     assert_eq!(response.headers()[CONTENT_TYPE], "application/grpc");
     let body = response.into_body().collect().await.unwrap();
     assert_eq!(body.trailers().unwrap()["grpc-status"], "0");
@@ -559,7 +562,123 @@ async fn a_call_without_an_answer_ends_at_the_clients_timeout() {
         browser::call(content_type_echo(), request),
     )
     .await
-    .expect("the call ends");
+    .expect("the call ends")
+    .unwrap();
     assert_eq!(response.headers()["grpc-status"], "1");
     assert_eq!(response.headers()["grpc-message"], "Timeout%20expired");
+}
+
+/// A service that ends every call with `status`: as the whole response at `/only`, and
+/// otherwise after one message.
+fn ending_with(status: Status) -> GrpcService {
+    BoxCloneSyncService::new(tower::service_fn(move |request: Request<Body>| {
+        let status = status.clone();
+        async move {
+            if request.uri().path() == "/only" {
+                return Ok(status.into_http());
+            }
+            let mut trailers = HeaderMap::new();
+            status.add_header(&mut trailers).unwrap();
+            let frames: Vec<Result<Frame<Bytes>, Status>> = vec![
+                Ok(Frame::data(Bytes::from_static(b"message"))),
+                Ok(Frame::trailers(trailers)),
+            ];
+            let mut response =
+                Response::new(Body::new(StreamBody::new(tokio_stream::iter(frames))));
+            response
+                .headers_mut()
+                .insert(CONTENT_TYPE, "application/grpc".parse().unwrap());
+            Ok(response)
+        }
+    }))
+}
+
+/// The reason hyper resets a stream with when a body ends in `error`.
+fn reset_reason(error: &(dyn std::error::Error + 'static)) -> Option<h2::Reason> {
+    let mut source = Some(error);
+    while let Some(error) = source {
+        if let Some(reset) = error.downcast_ref::<h2::Error>() {
+            return reset.reason();
+        }
+        source = error.source();
+    }
+    None
+}
+
+#[tokio::test]
+async fn a_native_call_whose_status_message_ends_in_a_space_is_reset() {
+    let refused = || ending_with(Status::invalid_argument("invalid table reference: "));
+
+    // the status is the whole response: no response at all
+    let reset = browser::call(refused(), grpc_request("/only", "application/grpc"))
+        .await
+        .unwrap_err();
+    assert_eq!(reset.reason(), Some(h2::Reason::CANCEL));
+
+    // the status follows messages: they are sent, and the stream is reset where the
+    // trailers would be
+    let response = browser::call(refused(), grpc_request("/stream", "application/grpc"))
+        .await
+        .unwrap();
+    let mut body = response.into_body();
+    let first = body.frame().await.unwrap().unwrap();
+    assert_eq!(first.into_data().unwrap(), Bytes::from_static(b"message"));
+    let failed = body.frame().await.unwrap().unwrap_err();
+    assert_eq!(reset_reason(&failed), Some(h2::Reason::CANCEL));
+}
+
+#[tokio::test]
+async fn a_status_message_that_does_not_end_in_a_space_is_sent() {
+    for message in [
+        "column(s) not found: Z",
+        "column(s) not found:  Z",
+        " leading",
+        "column(s) not found: Z\t",
+        "column(s) not found: Z\n",
+        "column(s) not found: Z \t",
+        "column(s) not found: Z\u{a0}",
+        // the three characters, not an escaped space
+        "column(s) not found: Z%20",
+        "",
+    ] {
+        let service = || ending_with(Status::failed_precondition(message));
+        let response = browser::call(service(), grpc_request("/only", "application/grpc"))
+            .await
+            .unwrap_or_else(|_| panic!("reset for {message:?}"));
+        assert_eq!(response.headers()["grpc-status"], "9", "{message:?}");
+
+        let response = browser::call(service(), grpc_request("/stream", "application/grpc"))
+            .await
+            .unwrap();
+        let body = response.into_body().collect().await;
+        let body = body.unwrap_or_else(|_| panic!("reset for {message:?}"));
+        assert_eq!(body.trailers().unwrap()["grpc-status"], "9", "{message:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_status_message_that_ends_in_a_space_is_reset_whatever_else_it_holds() {
+    for message in [" ", "Z  ", "column(s) not found: Z \u{e9} ", "100% "] {
+        let service = ending_with(Status::failed_precondition(message));
+        let reset = browser::call(service, grpc_request("/only", "application/grpc")).await;
+        assert_eq!(
+            reset.err().and_then(|reset| reset.reason()),
+            Some(h2::Reason::CANCEL),
+            "{message:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_grpc_web_call_keeps_a_status_message_that_ends_in_a_space() {
+    let service = ending_with(Status::invalid_argument("invalid table reference: "));
+    let response = browser::call(service, grpc_request("/stream", "application/grpc-web"))
+        .await
+        .unwrap();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let text = String::from_utf8_lossy(&body);
+    assert!(
+        text.contains("grpc-message: invalid table reference: \r\n"),
+        "{text}"
+    );
 }

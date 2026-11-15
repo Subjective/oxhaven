@@ -6,7 +6,9 @@ use crate::ops::sort::testing::{frozen, graph};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use oxhaven_testkit::{definition, ConsistencyChecker, RandomUpdates, ScriptedTable};
+use oxhaven_testkit::{
+    at_least_for, definition, test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable,
+};
 use std::sync::Arc;
 use NaturalJoinType::{ErrorOnDuplicate, ExactlyOneMatch, FirstMatch, LastMatch};
 
@@ -192,29 +194,36 @@ fn run(seed: u64, steps: usize, live: Live, tally: &mut Tally) {
     }
 }
 
+const SEEDS: std::ops::Range<u64> = 0..40;
+
 fn run_all(live: Live) -> Tally {
     let mut tally = Tally::default();
-    for seed in 0..40 {
+    for seed in test_seeds(SEEDS) {
         run(seed, 30, live, &mut tally);
     }
     tally
 }
 
+/// Enough of both outcomes that neither check is idle.
+fn assert_enough(tally: &Tally) {
+    let (compared, failed) = (at_least_for(5000, SEEDS), at_least_for(100, SEEDS));
+    assert!(
+        tally.compared as u64 > compared && tally.failed as u64 > failed,
+        "{tally:?}"
+    );
+}
+
 #[test]
 fn random_updates_of_both_tables() {
-    let tally = run_all(Live::Both);
-    // Enough of both outcomes that neither check is idle.
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(Live::Both));
 }
 
 #[test]
 fn random_updates_of_the_left_table() {
-    let tally = run_all(Live::Left);
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(Live::Left));
 }
 
 #[test]
 fn random_updates_of_the_right_table() {
-    let tally = run_all(Live::Right);
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(Live::Right));
 }

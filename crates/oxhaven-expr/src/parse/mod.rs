@@ -17,6 +17,14 @@ use oxhaven_contracts::expr::{
 };
 use oxhaven_contracts::schema::ColumnType;
 
+/// The method name given to `receiver[index]`, which is parsed as a method call on
+/// `receiver`. It is not an identifier, so no formula can spell it.
+pub(crate) const INDEX_METHOD: &str = "[]";
+
+/// The method name given to `receiver.length`, the length of a Java array, which is
+/// parsed as a method call on `receiver` without arguments. No formula can spell it.
+pub(crate) const LENGTH_FIELD: &str = ".length";
+
 fn syntax(message: impl Into<String>) -> FormulaError {
     FormulaError::Syntax(message.into())
 }
@@ -376,10 +384,17 @@ impl Parser {
                                 .and_then(|at| self.tokens.get(at)),
                             Some((Token::Identifier(_), _))
                         );
-                        let Some(scope) = static_field_scope(&expr).filter(|_| bare) else {
-                            return Err(unsupported(format!("field access .{name}")));
+                        expr = match static_field_scope(&expr).filter(|_| bare) {
+                            Some(scope) => Expr::Column(format!("{scope}.{name}")),
+                            // The only field of a value the language reads: the type
+                            // checker refuses it for anything but a Java array.
+                            None if name == "length" => Expr::MethodCall {
+                                receiver: Box::new(expr),
+                                method: LENGTH_FIELD.to_string(),
+                                arguments: Vec::new(),
+                            },
+                            None => return Err(unsupported(format!("field access .{name}"))),
                         };
-                        expr = Expr::Column(format!("{scope}.{name}"));
                         self.position += 2;
                     }
                     _ => {
@@ -393,15 +408,27 @@ impl Parser {
                         Expr::Column(name) => name.strip_suffix('_').filter(|c| !c.is_empty()),
                         _ => None,
                     };
-                    let Some(column) = column.map(str::to_string) else {
-                        return Err(unsupported("array access [...]"));
-                    };
+                    let column = column.map(str::to_string);
+                    // `QueryLanguageParser#visit(ArrayAccessExpr)` refuses these two.
+                    if matches!(expr, Expr::Literal(_)) {
+                        return Err(syntax("Invalid expression: indexing into literal value"));
+                    }
                     self.position += 1;
                     let position = self.expression()?;
                     self.expect("]")?;
-                    expr = Expr::ColumnArrayAccess {
-                        column,
-                        position: Box::new(position),
+                    expr = match column {
+                        Some(column) => Expr::ColumnArrayAccess {
+                            column,
+                            position: Box::new(position),
+                        },
+                        // An index into any other value: the type checker knows whether
+                        // the value is a Java array, which is indexed, or something else,
+                        // on which Java calls `get`.
+                        None => Expr::MethodCall {
+                            receiver: Box::new(expr),
+                            method: INDEX_METHOD.to_string(),
+                            arguments: vec![position],
+                        },
                     };
                 }
                 Some("++") | Some("--") => {
@@ -922,6 +949,34 @@ mod tests {
     /// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)`; the type checker resolves the
     /// qualified name.
     #[test]
+    fn indexing_any_other_value_is_a_method_call_the_type_checker_resolves() {
+        let index = |receiver: Expr, position: i32| Expr::MethodCall {
+            receiver: Box::new(receiver),
+            method: INDEX_METHOD.to_string(),
+            arguments: vec![int(position)],
+        };
+        assert_eq!(parse_expression("A[0]"), Ok(index(column("A"), 0)));
+        assert_eq!(parse_expression("_[0]"), Ok(index(column("_"), 0)));
+        assert_eq!(
+            parse_expression("f(A)[1][2]"),
+            Ok(index(
+                index(
+                    Expr::Call {
+                        function: "f".to_string(),
+                        arguments: vec![column("A")],
+                    },
+                    1
+                ),
+                2
+            ))
+        );
+        assert!(matches!(
+            parse_expression("3[0]"),
+            Err(FormulaError::Syntax(_))
+        ));
+    }
+
+    #[test]
     fn a_field_of_a_boxed_numeric_class_is_a_qualified_name() {
         assert_eq!(
             parse_expression("D == Double.NaN"),
@@ -955,9 +1010,6 @@ mod tests {
             ("(Double).NaN", "field access .NaN"),
             ("Double.NaN.x", "field access .x"),
             ("java.lang.Double.NaN", "field access .lang"),
-            ("A[0]", "array access [...]"),
-            ("f(A)[0]", "array access [...]"),
-            ("_[0]", "array access [...]"),
             ("new String(`a`)", "object creation (new)"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];

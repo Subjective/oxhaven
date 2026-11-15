@@ -43,7 +43,7 @@ fn round_double(value: f64) -> i64 {
 }
 
 /// A Java primitive numeric type, with the operations the library applies to all of them.
-trait Number: JavaPrimitive + PartialOrd + std::fmt::Display {
+pub(super) trait Number: JavaPrimitive + PartialOrd + std::fmt::Display {
     /// Java's `(int)` cast.
     fn int(self) -> i32;
     fn is_nan(self) -> bool;
@@ -711,6 +711,7 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         | Kernel::TimeOrder(_)
         | Kernel::InstantLowerBin
         | Kernel::InstantUpperBin => time(kernel, arguments),
+        Kernel::Vector(function) => super::vectors::evaluate(function, arguments),
         _ => in_number_type!(arguments[0], |T| numeric::<T>(kernel, arguments, None)),
     }
 }

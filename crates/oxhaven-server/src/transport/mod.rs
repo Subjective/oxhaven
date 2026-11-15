@@ -78,32 +78,34 @@ struct Front {
 }
 
 impl Front {
-    async fn handle(&self, request: Request<Incoming>) -> Response<Body> {
+    /// Answers a request. An error is a stream that is reset instead of answered, which
+    /// only a gRPC call over HTTP/2 can be: see [`browser::call`].
+    async fn handle(&self, request: Request<Incoming>) -> Result<Response<Body>, h2::Error> {
         let origin = request.headers().get(ORIGIN).cloned();
         let preflight = browser::is_preflight(&request);
         let mut response = if preflight {
             browser::preflight()
         } else {
-            self.route(request).await
+            self.route(request).await?
         };
         browser::add_response_headers(&mut response, origin.as_ref(), preflight);
-        response
+        Ok(response)
     }
 
-    async fn route(&self, request: Request<Incoming>) -> Response<Body> {
+    async fn route(&self, request: Request<Incoming>) -> Result<Response<Body>, h2::Error> {
         if !ALLOWED_METHODS.contains(request.method()) {
-            return crate::web::error(StatusCode::METHOD_NOT_ALLOWED);
+            return Ok(crate::web::error(StatusCode::METHOD_NOT_ALLOWED));
         }
         if websocket::is_upgrade(&request) {
-            return websocket::accept(self.websockets.clone(), request);
+            return Ok(websocket::accept(self.websockets.clone(), request));
         }
         if browser::is_grpc(request.headers()) {
             if request.version() != Version::HTTP_2 {
-                return browser::not_http2(request.headers());
+                return Ok(browser::not_http2(request.headers()));
             }
             return browser::call(self.grpc.clone(), request.map(Body::new)).await;
         }
-        match *request.method() {
+        Ok(match *request.method() {
             Method::GET => crate::web::get(self.web.as_deref(), &request).await,
             Method::OPTIONS => {
                 // Java's file servlet answers this, and names methods of its own
@@ -114,7 +116,7 @@ impl Front {
                 response
             }
             _ => crate::web::error(StatusCode::METHOD_NOT_ALLOWED),
-        }
+        })
     }
 }
 
@@ -162,7 +164,7 @@ pub(crate) async fn serve(
         let front = front.clone();
         let service = service_fn(move |request| {
             let front = front.clone();
-            async move { Ok::<_, Infallible>(front.handle(request).await) }
+            async move { front.handle(request).await }
         });
         let connection = graceful.watch(
             builder

@@ -194,7 +194,9 @@ impl TableGrpc {
         request: BatchTableRequest,
     ) -> Result<CreationStream, Status> {
         // step 1: an export for every operation, so that operations can refer to each
-        // other whatever their order
+        // other whatever their order. Each is claimed here, so a batch that is refused in
+        // this step or the next leaves the exports it has claimed defined and unresolved,
+        // and has run none of its operations.
         let mut operations = Vec::with_capacity(request.ops.len());
         let mut builders = Vec::with_capacity(request.ops.len());
         for operation in request.ops {
@@ -204,11 +206,13 @@ impl TableGrpc {
             let operation = bind(op)?;
             operation.validate()?;
             let result_id = operation.result_id();
-            builders.push(if result_id.is_empty() {
+            let mut builder = if result_id.is_empty() {
                 session.non_export()?
             } else {
                 session.new_export_for_ticket(result_id, "resultId")?
-            });
+            };
+            builder.claim()?;
+            builders.push(builder);
             operations.push(operation);
         }
 
@@ -301,8 +305,9 @@ impl TableGrpc {
                         "invalid table reference: batch_offset: {offset}\n"
                     ))
                 }),
-            // Java throws this too, but the reference server's stream is reset before the
-            // status is sent; see the task notes.
+            // The reference as protobuf's text format prints it is empty, so the message
+            // ends in a space: the transport resets the stream instead of sending it
+            // (`crate::transport`), and the client sees `CANCELLED`.
             None => Err(Status::invalid_argument("invalid table reference: ")),
         }
     }

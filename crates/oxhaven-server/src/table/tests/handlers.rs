@@ -1797,19 +1797,20 @@ async fn join_columns_are_read_first_and_left_join_is_unimplemented() {
         "Unable to parse expression: \"A B\": A B",
         "Failed to get expression for all matched patterns: S=in",
     ];
-    for (op, message) in unparsable.into_iter().zip(messages) {
+    for (unused, (op, message)) in (900..).zip(unparsable.into_iter().zip(messages)) {
         let refused = call(&mut c, op.clone()).await.unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
 
-        // in a batch, before any operation of the batch is created
+        // in a batch, before any operation of the batch is created. The export named
+        // before the refused operation stays claimed, so each batch names another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(20), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
         assert_eq!(refused.message(), message);
-        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
 }
@@ -1941,24 +1942,25 @@ async fn where_in_requests_are_checked_as_java_checks_them() {
             "Ticket is empty",
         ),
     ];
-    for (request, message) in cases {
+    for (unused, (request, message)) in (900..).zip(cases) {
         let refused = call(&mut c, Op::WhereIn(request.clone()))
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
 
-        // in a batch, before any operation of the batch is created
+        // in a batch, before any operation of the batch is created. The export named
+        // before the refused operation stays claimed, so each batch names another
         let refused = c
             .batch(vec![
-                Op::EmptyTable(empty(ticket(20), 1)),
+                Op::EmptyTable(empty(ticket(unused), 1)),
                 Op::WhereIn(request),
             ])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
         assert_eq!(refused.message(), message);
-        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
 }
@@ -2119,19 +2121,20 @@ async fn cross_join_refuses_as_java_does() {
             "Failed to get expression for all matched patterns: S=in",
         ),
     ];
-    for (op, message) in unparsable {
+    for (unused, (op, message)) in (900..).zip(unparsable) {
         let refused = call(&mut c, op.clone()).await.unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
 
-        // in a batch, before any operation of the batch is created
+        // in a batch, before any operation of the batch is created. The export named
+        // before the refused operation stays claimed, so each batch names another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(20), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
         assert_eq!(refused.message(), message);
-        let unused = c.server.session(&c.bearer).get_export(20).unwrap();
+        let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
 

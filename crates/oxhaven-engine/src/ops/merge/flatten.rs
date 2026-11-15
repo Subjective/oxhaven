@@ -4,7 +4,9 @@
 //! `p` of some sequence of parent rows. Rows that keep their place in the sequence across an
 //! update are shifted; the others are removed and added.
 
-use crate::table::{is_copied, reads_through, QueryTable, TableSpec};
+use crate::table::{
+    copy_of, mark, marks, memoized, reads_through, CopyType, QueryTable, TableSpec,
+};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{RedirectedSource, RowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, NULL_ROW_KEY};
@@ -163,10 +165,6 @@ pub(crate) fn positional(
         let mut spec = TableSpec::new(definition, RowSet::flat(parent.row_set().size()), columns)
             .with_attributes(attributes);
         spec.flat = flat;
-        // Behavior: the `Flatten` and `Reverse` keys of
-        // io.deephaven.engine.table.impl.MemoizedOperationKey, which a copy shares with its
-        // original whatever their attributes
-        spec.copied = is_copied(&**parent);
         if keeps_input_table {
             spec = spec.with_input_table_of(&**parent);
         }
@@ -205,8 +203,10 @@ pub(crate) fn positional(
 
 /// The rows of `parent` in the same order at the row keys `0..size`.
 ///
-/// A table that is already flat is returned as it is. The result keeps the append-only and
-/// blink attributes of its parent.
+/// A table that is already flat is returned as it is. A static table whose row set is
+/// flat is answered with a copy of it that is flat. Otherwise the result keeps the
+/// append-only and blink attributes of its parent, and is sorted by the columns its parent
+/// is; asked of a copy, the answer is then a copy: see [`memoized`].
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#flatten,
 /// io.deephaven.engine.table.impl.FlattenOperation and the `Flatten` entries of the
@@ -215,25 +215,19 @@ pub fn flatten(parent: &Arc<dyn Table>) -> Result<Arc<dyn Table>, TableFailure> 
     if parent.is_flat() {
         return Ok(parent.clone());
     }
-    if !parent.is_refreshing() {
-        let rows = parent.row_set();
-        if *rows == RowSet::flat(rows.size()) {
-            // Already flat and never changing: the same table, marked flat.
-            let definition = parent.definition().clone();
-            let columns = (0..definition.columns().len())
-                .map(|index| parent.column(index))
-                .collect();
-            let spec = TableSpec::new(definition, (*rows).clone(), columns)
-                .with_attributes(parent.attributes())
-                .flat();
-            return Ok(QueryTable::new_static(spec));
-        }
+    let rows = parent.row_set();
+    if !parent.is_refreshing() && *rows == RowSet::flat(rows.size()) {
+        // Already flat and never changing: a copy of the table, marked flat. Java does
+        // not memoize this one, so it is the answer for a copy too.
+        return copy_of(parent, true, |_| ());
     }
     let inherited = parent.attributes();
     let mut attributes = TableAttributes::default();
     attributes.append_only = inherited.append_only;
     attributes.blink = inherited.blink;
-    Ok(positional(parent, false, attributes, true)?)
+    let result = positional(parent, false, attributes, true)?;
+    mark(&result, CopyType::Flatten.sort_marks(&marks(&**parent)));
+    memoized(parent, CopyType::Flatten, false, result)
 }
 
 #[cfg(test)]

@@ -1916,7 +1916,7 @@ fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
     use oxhaven_expr::Compiler;
     let (_stepper, graph) = graph();
     let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
-    assert!(is_copied(&*table));
+    assert!(is_copy(&*table));
     let sorted = done(sort(&table, &[SortColumn::descending("Qty")]));
     let matched = done(unstructured_filter(&table, &["Qty in 1, 2"], &Compiler));
     let copies = [
@@ -1931,7 +1931,7 @@ fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
         ),
     ];
     for (operation, copy) in &copies {
-        assert!(is_copied(&**copy) && copy.attributes().blink, "{operation}");
+        assert!(is_copy(&**copy) && copy.attributes().blink, "{operation}");
         // Java copies no attribute to the `head` of a copy.
         let first = done(head(copy, 2));
         assert_eq!(
@@ -1939,7 +1939,7 @@ fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
             TableAttributes::default(),
             "{operation}"
         );
-        assert!(first.is_flat() && !is_copied(&*first), "{operation}");
+        assert!(first.is_flat(), "{operation}");
     }
 
     let ranged = done(unstructured_filter(&table, &["Qty > 0"], &Compiler));
@@ -1965,7 +1965,7 @@ fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
     ];
     for (operation, original) in &originals {
         assert!(
-            !is_copied(&**original) && original.attributes().blink,
+            !is_copy(&**original) && original.attributes().blink,
             "{operation}"
         );
         let first = done(head(original, 2)).attributes();
@@ -1976,27 +1976,51 @@ fn a_blink_input_table_is_a_copy_and_so_are_the_results_java_remembers() {
     }
 }
 
+/// Recorded from Java 42.9: the schemas of `view(K)`, `select()` and their `head` of a blink
+/// input table carry `IsFlat` and no other attribute, the `head` of `select()` has no row
+/// two cycles after an add, and `count_by` of `view(K)` has no row then.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult: \
-                view of only column names"
-)]
-fn a_view_of_the_columns_of_a_blink_input_table_is_not_ported() {
+fn a_view_of_the_columns_of_a_blink_input_table_is_not_a_blink_table() {
     use oxhaven_expr::Compiler;
-    let (_stepper, graph) = graph();
-    let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
-    let _ = view(&table, &["Qty", "Sym"], &Compiler);
-}
-
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult: \
-                select of only column names"
-)]
-fn a_select_of_the_columns_of_a_sorted_blink_input_table_is_not_ported() {
-    use oxhaven_expr::Compiler;
-    let (_stepper, graph) = graph();
-    let table: Arc<dyn Table> = blink_input_table(graph.clone(), sym_qty());
+    let (stepper, graph) = graph();
+    let blink = blink_input_table(graph.clone(), sym_qty());
+    let input = blink.input_table().unwrap();
+    let table: Arc<dyn Table> = blink;
     let sorted = done(sort(&table, &[SortColumn::descending("Qty")]));
-    let _ = select(&sorted, &[] as &[&str], &Compiler);
+    let named = [
+        ("view", done(view(&table, &["Qty", "Sym"], &Compiler))),
+        ("select", done(select(&table, &[] as &[&str], &Compiler))),
+        ("select of sort", done(select(&sorted, &["Sym"], &Compiler))),
+    ];
+    let firsts: Vec<Arc<dyn Table>> = named
+        .iter()
+        .map(|(_, result)| done(head(result, 1)))
+        .collect();
+    for ((operation, result), first) in named.iter().zip(&firsts) {
+        for table in [result, first] {
+            assert_eq!(
+                table.attributes(),
+                TableAttributes::default(),
+                "{operation}"
+            );
+            assert!(
+                table.is_flat() && table.input_table().is_none(),
+                "{operation}"
+            );
+        }
+    }
+
+    // The rows still last one cycle, and a `head` that is not of a blink table does not
+    // keep them.
+    input.add(sym_qty_batch(["a", "b"], [1, 2])).unwrap();
+    stepper.run_cycle();
+    for ((operation, result), first) in named.iter().zip(&firsts) {
+        assert_eq!(result.row_set().size(), 2, "{operation}");
+        assert_eq!(first.row_set().size(), 1, "{operation}");
+    }
+    stepper.run_cycle();
+    for ((operation, result), first) in named.iter().zip(&firsts) {
+        assert!(result.row_set().is_empty(), "{operation}");
+        assert!(first.row_set().is_empty(), "{operation}");
+    }
 }

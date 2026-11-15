@@ -149,24 +149,6 @@ pub(super) enum Resolved {
     Or(Vec<Resolved>),
 }
 
-impl Resolved {
-    /// Whether Java remembers the result of a `where` with this filter, so that the `where`
-    /// of a copied table is a copy too (see `crate::table::is_copied`): match, pattern and
-    /// match-nothing filters and their conjunctions and disjunctions are remembered, range
-    /// filters and formulas are not.
-    ///
-    /// Behavior: the implementations of
-    /// io.deephaven.engine.table.impl.select.WhereFilter#canMemoize: `MatchFilter`,
-    /// `WhereFilterPatternImpl`, `WhereNoneFilter` and `ComposedFilter`
-    pub(super) fn can_memoize(&self) -> bool {
-        match self {
-            Resolved::Match { .. } | Resolved::Pattern { .. } | Resolved::Nothing => true,
-            Resolved::Range { .. } | Resolved::Between { .. } | Resolved::Condition { .. } => false,
-            Resolved::And(parts) | Resolved::Or(parts) => parts.iter().all(Resolved::can_memoize),
-        }
-    }
-}
-
 fn no_column(name: &str, definition: &TableDefinition) -> String {
     let names: Vec<&str> = definition
         .columns()

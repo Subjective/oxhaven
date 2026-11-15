@@ -14,8 +14,8 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, ints, list_of, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
-    TableChange,
+    at_least_for, definition, ints, list_of, strings, test_seeds, ConsistencyChecker,
+    RandomUpdates, Recorder, ScriptedTable, TableChange,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -1054,43 +1054,55 @@ fn random_run(seed: u64, head: bool, rows: i64, by: &'static [&'static str], ste
 #[test]
 fn random_changes_by_one_key() {
     let mut updates = 0;
-    for seed in 0..150 {
+    for seed in test_seeds(0..150) {
         updates += random_run(seed, true, 2, &["G"], 30);
         updates += random_run(seed, false, 2, &["G"], 30);
     }
-    assert!(updates > 6000, "only {updates} updates were checked");
+    assert!(
+        updates > at_least_for(6000, 0..150),
+        "only {updates} updates were checked"
+    );
 }
 
 #[test]
 fn random_changes_keeping_one_row_and_keeping_every_row() {
     let mut updates = 0;
-    for seed in 1000..1080 {
+    for seed in test_seeds(1000..1080) {
         updates += random_run(seed, true, 1, &["K"], 30);
         updates += random_run(seed, false, 1, &["G"], 30);
         updates += random_run(seed, false, 1000, &["K"], 30);
         updates += random_run(seed, true, i64::MAX, &["Z"], 30);
     }
-    assert!(updates > 7000, "only {updates} updates were checked");
+    assert!(
+        updates > at_least_for(7000, 1000..1080),
+        "only {updates} updates were checked"
+    );
 }
 
 #[test]
 fn random_changes_by_several_keys_and_by_a_double() {
     let mut updates = 0;
-    for seed in 2000..2080 {
+    for seed in test_seeds(2000..2080) {
         updates += random_run(seed, true, 2, &["G", "Z"], 30);
         updates += random_run(seed, false, 3, &["Z", "K", "G"], 30);
         updates += random_run(seed, false, 2, &["D"], 30);
         updates += random_run(seed, true, 3, &["V", "D"], 30);
     }
-    assert!(updates > 7000, "only {updates} updates were checked");
+    assert!(
+        updates > at_least_for(7000, 2000..2080),
+        "only {updates} updates were checked"
+    );
 }
 
 #[test]
 fn random_changes_without_keys() {
     let mut updates = 0;
-    for seed in 3000..3100 {
+    for seed in test_seeds(3000..3100) {
         updates += random_run(seed, true, 3, &[], 30);
         updates += random_run(seed, false, 3, &[], 30);
     }
-    assert!(updates > 4000, "only {updates} updates were checked");
+    assert!(
+        updates > at_least_for(4000, 3000..3100),
+        "only {updates} updates were checked"
+    );
 }
