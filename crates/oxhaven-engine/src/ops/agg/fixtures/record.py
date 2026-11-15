@@ -58,12 +58,17 @@ and the operations of the oracle's scenarios (`natural_join`, `update_view`, ...
     {"agg": "median", "cols", "average": bool}
     {"agg": "pct", "cols", "percentile": p, "average": bool}
     {"agg": "count_distinct", "cols", "count_nulls": bool}
-    {"agg": "unique", "cols", "include_nulls": bool}
+    {"agg": "unique", "cols", "include_nulls": bool, "sentinel": null | {type: value}}
+    {"agg": "distinct", "cols", "include_nulls": bool}
+    {"agg": "count_where", "column": name, "filters": [filter, ...]}
     {"agg": "weighted_avg" | "weighted_sum", "cols", "weight": column}
     {"agg": "sorted_first" | "sorted_last", "cols", "order_by": column}
     {"agg": "count", "column": name}
 
-with `cols` written `"Out=In"` or `"Col"`, as `pydeephaven.agg` takes them.
+with `cols` written `"Out=In"` or `"Col"`, as `pydeephaven.agg` takes them. The `type` of a
+non-unique sentinel is the field of the request that carries it: `byte`, `short`, `int`,
+`long`, `float`, `double`, `char`, `string` or `bool`; a floating point value may be one of
+the words `"NaN"`, `"Infinity"` and `"-Infinity"`.
 """
 
 from __future__ import annotations
@@ -77,6 +82,8 @@ from pathlib import Path
 
 import pyarrow as pa
 from pydeephaven import agg
+from pydeephaven.agg import _AggregationColumns
+from deephaven_core.proto import table_pb2
 
 ORACLE = Path(__file__).resolve().parents[6] / "oracle"
 sys.path.insert(0, str(ORACLE))
@@ -259,12 +266,36 @@ def aggregation(entry):
     if kind == "count_distinct":
         return agg.count_distinct(cols, count_nulls=entry["count_nulls"])
     if kind == "unique":
-        return agg.unique(cols, include_nulls=entry["include_nulls"])
+        return unique(cols, entry["include_nulls"], entry.get("sentinel"))
+    if kind == "distinct":
+        return agg.distinct(cols, include_nulls=entry["include_nulls"])
+    if kind == "count_where":
+        return agg.count_where(entry["column"], entry["filters"])
     if kind in ("weighted_avg", "weighted_sum"):
         return getattr(agg, kind)(entry["weight"], cols)
     if kind in ("sorted_first", "sorted_last"):
         return getattr(agg, kind)(entry["order_by"], cols)
     return getattr(agg, {"sum": "sum_", "min": "min_", "max": "max_"}.get(kind, kind))(cols)
+
+
+def unique(cols, include_nulls, sentinel):
+    """`agg.unique` with the sentinel in the field of the request that the fixture names.
+    `pydeephaven.agg.unique` picks the field from the Python type of the value, and sends
+    a `bool` as a long."""
+    if sentinel is None:
+        return agg.unique(cols, include_nulls=include_nulls)
+    ((kind, value),) = sentinel.items()
+    if isinstance(value, str) and kind in ("float", "double"):
+        value = WORDS[value]
+    spec = table_pb2.AggSpec.AggSpecNonUniqueSentinel(**{f"{kind}_value": value})
+    return _AggregationColumns(
+        agg_spec=table_pb2.AggSpec(
+            unique=table_pb2.AggSpec.AggSpecUnique(
+                include_nulls=include_nulls, non_unique_sentinel=spec
+            )
+        ),
+        cols=cols,
+    )
 
 
 def define(session, tables, op):

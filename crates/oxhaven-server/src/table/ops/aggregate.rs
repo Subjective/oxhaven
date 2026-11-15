@@ -1,12 +1,18 @@
 //! `Aggregate` and `AggregateAll`: one row per group of rows, with aggregated columns.
 //!
 //! The engine has sum, abs_sum, avg, min, max, first, last, var, std, median, percentile,
-//! count_distinct, unique (with a null non-unique sentinel), weighted_avg, weighted_sum,
-//! sorted_first, sorted_last, group and count. A request for any other aggregation, or for
-//! initial groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
+//! count_distinct, distinct, unique, weighted_avg, weighted_sum, sorted_first, sorted_last,
+//! group, count and count_where. A request for any other aggregation (formula, partition,
+//! the row keys, approximate_percentile, t_digest, freeze), or for initial groups, is
+//! refused with `UNIMPLEMENTED` and the name of what is missing.
+//!
+//! Java checks the filters of a count where with its `ColumnExpressionValidator`; see
+//! `select.rs` for why the formula compiler makes the same refusals here.
 
 use super::prelude::*;
-use oxhaven_engine::ops::agg::{aggregate, AggSpec, AggregateError, Aggregation, Pair};
+use oxhaven_engine::ops::agg::{
+    aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel as NonUnique,
+};
 use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::agg_spec::Type as SpecType;
 use oxhaven_proto::grpc::aggregation::Type as AggregationType;
@@ -130,17 +136,25 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
         }),
         Some(SpecType::Unique(unique)) => {
             let sentinel = unique.non_unique_sentinel.as_ref().and_then(|s| s.r#type.as_ref());
-            match sentinel {
-                Some(Sentinel::NullValue(_)) => Ok(AggSpec::Unique {
-                    include_nulls: unique.include_nulls,
-                }),
-                Some(_) => Err(not_ported(
-                    "io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#visit(AggSpecUnique)",
-                    "a non-unique sentinel other than null",
-                )
-                .into()),
-                None => Err(missing_one_of("AggSpec.AggSpecNonUniqueSentinel").into()),
-            }
+            // Behavior: `AggSpecAdapter#adapt(AggSpecNonUniqueSentinel)`. The casts are
+            // Java's, of values `validate_unique` has found in range.
+            let non_unique = match sentinel {
+                Some(Sentinel::NullValue(_)) => NonUnique::Null,
+                Some(Sentinel::StringValue(value)) => NonUnique::String(value.clone()),
+                Some(Sentinel::IntValue(value)) => NonUnique::Int(*value),
+                Some(Sentinel::LongValue(value)) => NonUnique::Long(*value),
+                Some(Sentinel::FloatValue(value)) => NonUnique::Float(*value),
+                Some(Sentinel::DoubleValue(value)) => NonUnique::Double(*value),
+                Some(Sentinel::BoolValue(value)) => NonUnique::Boolean(*value),
+                Some(Sentinel::ByteValue(value)) => NonUnique::Byte(*value as i8),
+                Some(Sentinel::ShortValue(value)) => NonUnique::Short(*value as i16),
+                Some(Sentinel::CharValue(value)) => NonUnique::Char(*value as u16),
+                None => return Err(missing_one_of("AggSpec.AggSpecNonUniqueSentinel").into()),
+            };
+            Ok(AggSpec::Unique {
+                include_nulls: unique.include_nulls,
+                non_unique,
+            })
         }
         Some(SpecType::WeightedAvg(weighted)) => Ok(AggSpec::WeightedAvg {
             weight: spec_column(&weighted.weight_column)?,
@@ -155,7 +169,9 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
             columns: sorted(last)?,
         }),
         Some(SpecType::ApproximatePercentile(_)) => missing("approximate_percentile"),
-        Some(SpecType::Distinct(_)) => missing("distinct"),
+        Some(SpecType::Distinct(distinct)) => Ok(AggSpec::Distinct {
+            include_nulls: distinct.include_nulls,
+        }),
         Some(SpecType::Formula(_)) => missing("formula"),
         Some(SpecType::Freeze(_)) => missing("freeze"),
         Some(SpecType::Group(_)) => Ok(AggSpec::Group),
@@ -207,6 +223,7 @@ fn excluded_by_agg_all(spec: &AggSpec, column: &str) -> bool {
         | AggSpec::First
         | AggSpec::Last
         | AggSpec::Unique { .. }
+        | AggSpec::Distinct { .. }
         | AggSpec::SortedFirst { .. }
         | AggSpec::SortedLast { .. } => false,
         // Sum, abs_sum, avg, var, std, median, percentile, count_distinct and group.
@@ -247,34 +264,38 @@ fn pair(text: &str) -> Result<Pair, ExportError> {
     }
 }
 
-/// The engine panics with `unported!` for an output that has the name of a group-by
-/// column; a request for one is refused here instead.
-fn check_outputs(aggregations: &[Aggregation], group_by: &[String]) -> Result<(), Status> {
-    let outputs = aggregations.iter().flat_map(|aggregation| match aggregation {
-        Aggregation::Columns { pairs, .. } => pairs.iter().map(|p| &p.output).collect(),
-        Aggregation::Count { column } => vec![column],
-        _ => Vec::new(),
-    });
-    for output in outputs {
-        if group_by.contains(output) {
-            return Err(not_ported(
-                "io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns",
-                format!("aggregation output {output} has the name of a group-by column"),
-            ));
+/// The engine panics with `unported!` for a count where without filters, whose count Java
+/// leaves undefined; a request for one is refused here instead.
+fn check_filters(aggregations: &[Aggregation]) -> Result<(), Status> {
+    for aggregation in aggregations {
+        if let Aggregation::CountWhere { filters, .. } = aggregation {
+            if filters.is_empty() {
+                return Err(not_ported(
+                    "io.deephaven.engine.table.impl.by.CountWhereOperator#applyFilters",
+                    "a count where without filters",
+                ));
+            }
         }
     }
     Ok(())
 }
 
 fn run(
+    context: &OpContext,
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
     preserve_empty: bool,
     group_by: &[String],
 ) -> Result<Arc<dyn Table>, ExportError> {
-    check_outputs(aggregations, group_by)?;
+    check_filters(aggregations)?;
     let group_by: Vec<&str> = group_by.iter().map(String::as_str).collect();
-    Ok(aggregate(parent, aggregations, preserve_empty, &group_by)?)
+    Ok(aggregate_with(
+        parent,
+        aggregations,
+        preserve_empty,
+        &group_by,
+        context.compiler.as_ref(),
+    )?)
 }
 
 /// Behavior: `io.deephaven.server.table.ops.AggregateGrpcImpl`
@@ -313,7 +334,7 @@ impl TableOp for Aggregate {
     }
 
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &AggregateRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -351,11 +372,17 @@ impl TableOp for Aggregate {
                 Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
                 Some(AggregationType::Partition(_)) => return Err(missing("partition")),
                 Some(AggregationType::Formula(_)) => return Err(missing("formula")),
-                Some(AggregationType::CountWhere(_)) => return Err(missing("count_where")),
+                // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
+                // `ColumnName#of` takes the name as it is.
+                Some(AggregationType::CountWhere(count)) => Aggregation::count_where(
+                    spec_column(&count.column_name)?,
+                    count.filters.iter().cloned(),
+                ),
                 None => return Err(missing_one_of("Aggregation").into()),
             });
         }
         run(
+            context,
             &sources[0],
             &aggregations,
             request.preserve_empty,
@@ -395,7 +422,7 @@ impl TableOp for AggregateAll {
     /// Behavior: `io.deephaven.engine.table.impl.QueryTable#aggAllBy` and its
     /// `singleAggregation`
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &AggregateAllRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -405,7 +432,7 @@ impl TableOp for AggregateAll {
                 .as_ref()
                 .ok_or_else(|| missing_field("AggregateAllRequest", "spec", 3))?,
         )?;
-        agg_all_by(&sources[0], kind, &request.group_by_columns)
+        agg_all_by(context, &sources[0], kind, &request.group_by_columns)
     }
 }
 
@@ -415,6 +442,7 @@ impl TableOp for AggregateAll {
 /// Behavior: `io.deephaven.engine.table.impl.QueryTable#aggAllBy` and its
 /// `singleAggregation`
 fn agg_all_by(
+    context: &OpContext,
     parent: &Arc<dyn Table>,
     kind: AggSpec,
     group_by: &[String],
@@ -444,7 +472,13 @@ fn agg_all_by(
             "aggAllBy has no columns to aggregate".to_string(),
         ));
     }
-    run(parent, &[Aggregation::columns(kind, pairs)], false, group_by)
+    run(
+        context,
+        parent,
+        &[Aggregation::columns(kind, pairs)],
+        false,
+        group_by,
+    )
 }
 
 /// The engine's spec for a combo aggregate type other than `COUNT`, which has none. A type
@@ -579,7 +613,7 @@ impl TableOp for ComboAggregate {
     /// `sumBy`, `medianBy` and the like are `aggAllBy`, and `countBy` is `aggBy` of one
     /// count) and `#comboAggregateHelper`
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &ComboAggregateRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -597,9 +631,9 @@ impl TableOp for ComboAggregate {
         if Self::is_simple(request) {
             let aggregate = &request.aggregates[0];
             if aggregate.r#type == AggType::Count as i32 {
-                return run(parent, &[count(aggregate)?], false, &group_by);
+                return run(context, parent, &[count(aggregate)?], false, &group_by);
             }
-            return agg_all_by(parent, combo_spec(aggregate)?, &group_by);
+            return agg_all_by(context, parent, combo_spec(aggregate)?, &group_by);
         }
         let definition = parent.definition();
         let mut aggregations = Vec::with_capacity(request.aggregates.len());
@@ -638,6 +672,6 @@ impl TableOp for ComboAggregate {
             }
             aggregations.push(Aggregation::columns(kind, pairs));
         }
-        run(parent, &aggregations, false, &group_by)
+        run(context, parent, &aggregations, false, &group_by)
     }
 }

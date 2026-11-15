@@ -786,6 +786,49 @@ async fn what_the_engine_refuses_is_an_internal_failure() {
     }
 }
 
+/// The values are compared with Java's in the engine's `ops/update_by/corpus.rs`.
+#[tokio::test]
+async fn the_standard_deviations_and_the_weighted_average_reach_the_engine() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let operations = vec![
+        operation(
+            proto_rolling!(RollingStd, UpdateByRollingStd, ticks(2.0), ticks(0.0)),
+            &["StdN = N"],
+        ),
+        operation(
+            Spec::RollingWavg(spec::UpdateByRollingWAvg {
+                reverse_window_scale: ticks(2.0),
+                forward_window_scale: ticks(0.0),
+                weight_column: "I".to_string(),
+            }),
+            &["WavgN = N"],
+        ),
+        operation(
+            proto_em!(EmStd, UpdateByEmStd, None, ticks(2.0)),
+            &["EmStdN = N"],
+        ),
+    ];
+    let response = call(&mut c, request(2, 1, operations, &["S"]))
+        .await
+        .unwrap();
+    assert!(response.success);
+    assert_eq!(response.size, 6);
+    // a weight column the table lacks is refused as Java refuses it
+    let no_weight = operation(
+        Spec::RollingWavg(spec::UpdateByRollingWAvg {
+            reverse_window_scale: ticks(2.0),
+            forward_window_scale: ticks(0.0),
+            weight_column: "Nope".to_string(),
+        }),
+        &["WavgN = N"],
+    );
+    let refused = call(&mut c, request(3, 1, vec![no_weight], &[]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+}
+
 #[tokio::test]
 async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let mut c = Connected::start().await;
@@ -793,18 +836,6 @@ async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let factory = "io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory\
                    .OperationVisitor";
     let cases = [
-        (
-            proto_rolling!(RollingStd, UpdateByRollingStd, ticks(2.0), ticks(0.0)),
-            "makeRollingStdOperator",
-        ),
-        (
-            Spec::RollingWavg(spec::UpdateByRollingWAvg {
-                reverse_window_scale: ticks(2.0),
-                forward_window_scale: ticks(0.0),
-                weight_column: "I".to_string(),
-            }),
-            "makeRollingWAvgOperator",
-        ),
         (
             proto_rolling!(RollingGroup, UpdateByRollingGroup, ticks(2.0), ticks(0.0)),
             "makeRollingGroupOperator",
@@ -842,10 +873,6 @@ async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
                 filters: texts(&["N > 0"]),
             }),
             "makeCountWhereOperator",
-        ),
-        (
-            proto_em!(EmStd, UpdateByEmStd, None, ticks(2.0)),
-            "makeEmStdOperator",
         ),
     ];
     // a request that fails in the export uses up its ticket

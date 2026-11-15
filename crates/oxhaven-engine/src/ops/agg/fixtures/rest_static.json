@@ -1,0 +1,1830 @@
+{
+ "name": "rest_static",
+ "description": "The aggregations of task 4.1c on static tables: distinct of every column type with and without nulls, with and without keys; unique with every kind of non-unique sentinel for every column type, the refused ones included; count where with match, range, pattern and formula filters, several filters, and the filters Java refuses; an aggregation output with the name of a group-by column; first and last of array and vector columns.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "B", "type": "bool"}, {"name": "Y", "type": "int8"}, {"name": "C", "type": "char"}, {"name": "H", "type": "int16"}, {"name": "I", "type": "int32"}, {"name": "L", "type": "int64"}, {"name": "F", "type": "float32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}, {"name": "T", "type": "timestamp"}], "rows": [
+   ["a", 1, true, 1, 65, 100, 1000, 10000000000, 1.5, 1.25, "x", 1700000000000000001],
+   ["b", 1, false, -2, 66, -200, -2000, -20000000000, -2.5, -0.0, "", 1700000000000000002],
+   ["a", 2, null, null, null, null, null, null, null, null, null, null],
+   [null, 1, true, 3, 97, 300, 3000, 30000000000, "NaN", "NaN", "z", 0],
+   ["b", 1, false, 4, 0, 400, 4000, 40000000000, "Infinity", "-Infinity", "x", -1],
+   ["a", 1, true, 127, 65535, 32767, 2147483647, 9223372036854775807, 0.0, 0.0, "a b", 1700000000000000003],
+   ["b", 2, false, -2, 66, -200, -2000, -20000000000, -2.5, 0.0, "", 1700000000000000002],
+   ["c", 3, null, null, null, null, null, null, null, null, null, null],
+   ["a", 1, true, 1, 65, 100, 1000, 10000000000, 1.5, -0.0, "x", 1700000000000000001],
+   ["d", 4, true, 5, 68, 5, 5, 5, 5.0, 5.0, "d", 5],
+   ["d", 4, true, 5, 68, 5, 5, 5, 5.0, 5.0, "d", 5]
+  ]},
+  {"name": "e", "columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}], "rows": [
+  ]},
+  {"name": "c", "columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "S", "type": "string"}], "rows": [
+   ["a", null, null, null],
+   ["b", null, null, null],
+   ["a", null, null, null]
+  ]},
+  {"name": "a", "columns": [{"name": "K", "type": "string"}, {"name": "A", "type": "array<int32>"}, {"name": "SA", "type": "array<string>"}, {"name": "DA", "type": "array<float64>"}], "rows": [
+   ["a", [1, null, 3], ["x", null, ""], [1.5, "NaN", null, -0.0]],
+   ["b", null, null, null],
+   ["a", [], [], []],
+   ["b", [7], ["y"], ["Infinity"]],
+   ["a", null, ["z"], [0.0]]
+  ]}
+ ],
+ "operations": [
+  {"name": "distinct_plain_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["B", "Y", "C", "H", "I", "L", "F", "D", "S"], "include_nulls": false}]},
+  {"name": "distinct_plain_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "distinct", "cols": ["B", "Y", "C", "H", "I", "L", "F", "D", "S", "T"], "include_nulls": false}]},
+  {"name": "distinct_plain_by_two", "op": "agg", "source": "t", "by": ["K", "G"], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DD=D"], "include_nulls": false}, {"agg": "count", "column": "N"}]},
+  {"name": "distinct_nulls_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["B", "Y", "C", "H", "I", "L", "F", "D", "S", "T"], "include_nulls": true}]},
+  {"name": "distinct_nulls_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "distinct", "cols": ["B", "Y", "C", "H", "I", "L", "F", "D", "S", "T"], "include_nulls": true}]},
+  {"name": "distinct_nulls_by_two", "op": "agg", "source": "t", "by": ["K", "G"], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DD=D"], "include_nulls": true}, {"agg": "count", "column": "N"}]},
+  {"name": "distinct_of_key", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["X=K", "G"], "include_nulls": false}]},
+  {"name": "distinct_empty_by_k", "op": "agg", "source": "e", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["I", "D"], "include_nulls": false}]},
+  {"name": "distinct_empty_none", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "distinct", "cols": ["I", "D"], "include_nulls": false}]},
+  {"name": "distinct_nulls_only_by_k", "op": "agg", "source": "c", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["I", "D", "S"], "include_nulls": false}]},
+  {"name": "distinct_nulls_only_none", "op": "agg", "source": "c", "by": [], "aggs": [{"agg": "distinct", "cols": ["I", "D", "S"], "include_nulls": false}]},
+  {"name": "distinct_nulls_only_none_counted", "op": "agg", "source": "c", "by": [], "aggs": [{"agg": "distinct", "cols": ["I", "D", "S"], "include_nulls": true}]},
+  {"name": "distinct_unknown", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["Nope"], "include_nulls": false}]},
+  {"name": "distinct_same_output", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["X=I"], "include_nulls": false}, {"agg": "sum", "cols": ["X=I"]}]},
+  {"name": "unique_B_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_B_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_B_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_B_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_B_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_B_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_B_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_B_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_B_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_B_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_B_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_B_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_B_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_B_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_B_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_B_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_B_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_B_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_B_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_B_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_B_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_B_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_B_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_B_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_B_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_B_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_B_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_B_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_B_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_B_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=B"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_Y_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_Y_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_Y_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_Y_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_Y_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_Y_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_Y_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_Y_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_Y_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_Y_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_Y_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_Y_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_Y_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_Y_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_Y_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_Y_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_Y_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_Y_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_Y_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_Y_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_Y_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_Y_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_Y_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_Y_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_Y_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_Y_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_Y_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_Y_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_Y_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_Y_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=Y"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_C_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_C_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_C_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_C_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_C_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_C_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_C_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_C_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_C_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_C_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_C_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_C_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_C_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_C_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_C_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_C_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_C_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_C_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_C_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_C_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_C_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_C_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_C_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_C_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_C_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_C_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_C_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_C_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_C_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_C_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=C"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_H_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_H_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_H_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_H_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_H_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_H_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_H_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_H_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_H_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_H_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_H_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_H_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_H_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_H_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_H_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_H_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_H_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_H_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_H_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_H_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_H_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_H_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_H_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_H_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_H_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_H_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_H_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_H_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_H_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_H_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=H"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_I_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_I_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_I_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_I_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_I_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_I_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_I_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_I_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_I_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_I_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_I_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_I_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_I_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_I_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_I_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_I_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_I_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_I_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_I_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_I_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_I_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_I_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_I_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_I_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_I_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_I_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_I_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_I_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_I_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_I_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=I"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_L_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_L_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_L_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_L_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_L_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_L_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_L_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_L_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_L_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_L_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_L_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_L_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_L_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_L_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_L_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_L_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_L_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_L_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_L_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_L_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_L_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_L_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_L_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_L_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_L_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_L_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_L_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_L_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_L_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_L_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=L"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_F_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_F_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_F_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_F_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_F_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_F_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_F_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_F_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_F_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_F_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_F_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_F_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_F_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_F_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_F_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_F_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_F_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_F_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_F_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_F_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_F_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_F_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_F_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_F_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_F_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_F_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_F_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_F_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_F_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_F_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=F"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_D_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_D_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_D_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_D_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_D_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_D_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_D_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_D_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_D_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_D_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_D_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_D_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_D_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_D_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_D_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_D_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_D_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_D_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_D_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_D_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_D_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_D_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_D_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_D_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_D_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_D_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_D_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_D_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_D_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_D_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=D"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_S_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_S_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_S_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_S_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_S_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_S_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_S_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_S_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_S_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_S_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_S_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_S_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_S_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_S_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_S_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_S_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_S_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_S_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_S_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_S_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_S_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_S_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_S_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_S_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_S_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_S_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_S_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_S_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_S_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_S_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=S"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_T_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": null}]},
+  {"name": "unique_T_byte", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"byte": 7}}]},
+  {"name": "unique_T_byte_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"byte": -128}}]},
+  {"name": "unique_T_short", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"short": 300}}]},
+  {"name": "unique_T_short_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"short": -32768}}]},
+  {"name": "unique_T_int", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"int": 70000}}]},
+  {"name": "unique_T_int_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"int": -2147483648}}]},
+  {"name": "unique_T_int_m127", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"int": -127}}]},
+  {"name": "unique_T_int_m128", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"int": -128}}]},
+  {"name": "unique_T_long", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"long": 5000000000}}]},
+  {"name": "unique_T_long_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"long": 5}}]},
+  {"name": "unique_T_long_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"long": -9223372036854775808}}]},
+  {"name": "unique_T_float_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": 1.5}}]},
+  {"name": "unique_T_float_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": 2.0}}]},
+  {"name": "unique_T_float_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": "NaN"}}]},
+  {"name": "unique_T_float_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": "Infinity"}}]},
+  {"name": "unique_T_float_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": 0.1}}]},
+  {"name": "unique_T_float_1e30", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"float": 1e+30}}]},
+  {"name": "unique_T_double_1_5", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": 1.5}}]},
+  {"name": "unique_T_double_2", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": 2.0}}]},
+  {"name": "unique_T_double_nan", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_T_double_inf", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": "-Infinity"}}]},
+  {"name": "unique_T_double_1e300", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": 1e+300}}]},
+  {"name": "unique_T_double_0_1", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": 0.1}}]},
+  {"name": "unique_T_double_m0", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": -0.0}}]},
+  {"name": "unique_T_double_3e9", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"double": 3000000000.0}}]},
+  {"name": "unique_T_char", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"char": 90}}]},
+  {"name": "unique_T_char_null", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"char": 65535}}]},
+  {"name": "unique_T_string", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"string": "zz"}}]},
+  {"name": "unique_T_bool", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["U=T"], "include_nulls": false, "sentinel": {"bool": true}}]},
+  {"name": "unique_nulls_sentinel", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["I", "S"], "include_nulls": true, "sentinel": {"long": 5}}]},
+  {"name": "unique_sentinel_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "unique", "cols": ["I", "D", "Y"], "include_nulls": false, "sentinel": {"byte": 9}}, {"agg": "unique", "cols": ["S"], "include_nulls": false, "sentinel": {"string": "many"}}]},
+  {"name": "unique_sentinel_equal_value", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["I"], "include_nulls": false, "sentinel": {"int": 5}}, {"agg": "unique", "cols": ["S"], "include_nulls": false, "sentinel": {"string": "x"}}]},
+  {"name": "where_0_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1000"]}]},
+  {"name": "where_0_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1000"]}]},
+  {"name": "where_1_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1000", "D >= 0"]}]},
+  {"name": "where_1_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1000", "D >= 0"]}]},
+  {"name": "where_2_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I == 1000 || S == `x`"]}]},
+  {"name": "where_2_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I == 1000 || S == `x`"]}]},
+  {"name": "where_3_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S in `x`, `z`"]}]},
+  {"name": "where_3_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S in `x`, `z`"]}]},
+  {"name": "where_4_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I + 1 > 2"]}]},
+  {"name": "where_4_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I + 1 > 2"]}]},
+  {"name": "where_5_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B == true"]}]},
+  {"name": "where_5_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B == true"]}]},
+  {"name": "where_6_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["isNull(I)"]}]},
+  {"name": "where_6_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["isNull(I)"]}]},
+  {"name": "where_7_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 5 && Y < 6"]}]},
+  {"name": "where_7_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 5 && Y < 6"]}]},
+  {"name": "where_8_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["true"]}]},
+  {"name": "where_8_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["true"]}]},
+  {"name": "where_9_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["K == `a`"]}]},
+  {"name": "where_9_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["K == `a`"]}]},
+  {"name": "where_10_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S icase in `X`"]}]},
+  {"name": "where_10_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S icase in `X`"]}]},
+  {"name": "where_11_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S includes any `x`"]}]},
+  {"name": "where_11_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S includes any `x`"]}]},
+  {"name": "where_12_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["D > 0"]}]},
+  {"name": "where_12_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["D > 0"]}]},
+  {"name": "where_13_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["D == NaN"]}]},
+  {"name": "where_13_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["D == NaN"]}]},
+  {"name": "where_14_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["isNaN(D)"]}]},
+  {"name": "where_14_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["isNaN(D)"]}]},
+  {"name": "where_15_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I = 1000"]}]},
+  {"name": "where_15_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I = 1000"]}]},
+  {"name": "where_16_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B == null"]}]},
+  {"name": "where_16_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B == null"]}]},
+  {"name": "where_17_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I != 1000"]}]},
+  {"name": "where_17_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I != 1000"]}]},
+  {"name": "where_18_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I == null"]}]},
+  {"name": "where_18_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I == null"]}]},
+  {"name": "where_19_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I != null"]}]},
+  {"name": "where_19_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I != null"]}]},
+  {"name": "where_20_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["T > '2020-01-01T00:00:00Z'"]}]},
+  {"name": "where_20_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["T > '2020-01-01T00:00:00Z'"]}]},
+  {"name": "where_21_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["C == 'A'"]}]},
+  {"name": "where_21_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["C == 'A'"]}]},
+  {"name": "where_22_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["F < 0"]}]},
+  {"name": "where_22_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["F < 0"]}]},
+  {"name": "where_23_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["L >= 10000000000"]}]},
+  {"name": "where_23_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["L >= 10000000000"]}]},
+  {"name": "where_24_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["G in 1, 4", "H > 0"]}]},
+  {"name": "where_24_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["G in 1, 4", "H > 0"]}]},
+  {"name": "where_25_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S not in `x`"]}]},
+  {"name": "where_25_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S not in `x`"]}]},
+  {"name": "where_26_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["Y >= 1", "Y <= 5"]}]},
+  {"name": "where_26_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["Y >= 1", "Y <= 5"]}]},
+  {"name": "where_27_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B"]}]},
+  {"name": "where_27_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["B"]}]},
+  {"name": "where_28_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["i > 2"]}]},
+  {"name": "where_28_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["i > 2"]}]},
+  {"name": "where_29_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["ii > 2"]}]},
+  {"name": "where_29_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["ii > 2"]}]},
+  {"name": "where_30_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["k > 2"]}]},
+  {"name": "where_30_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["k > 2"]}]},
+  {"name": "where_31_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I_[0] > 1"]}]},
+  {"name": "where_31_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I_[0] > 1"]}]},
+  {"name": "where_32_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I"]}]},
+  {"name": "where_32_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I"]}]},
+  {"name": "where_33_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["Nope > 1"]}]},
+  {"name": "where_33_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["Nope > 1"]}]},
+  {"name": "where_34_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > "]}]},
+  {"name": "where_34_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > "]}]},
+  {"name": "where_35_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S.startsWith(`x`)"]}]},
+  {"name": "where_35_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["S.startsWith(`x`)"]}]},
+  {"name": "where_empty_table", "op": "agg", "source": "e", "by": [], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1"]}]},
+  {"name": "where_empty_table_by_k", "op": "agg", "source": "e", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1"]}]},
+  {"name": "where_two", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1000"]}, {"agg": "count_where", "column": "M", "filters": ["I <= 1000"]}, {"agg": "count", "column": "C"}]},
+  {"name": "where_same_output", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "N", "filters": ["I > 1"]}, {"agg": "count", "column": "N"}]},
+  {"name": "key_sum", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "sum", "cols": ["K=I"]}]},
+  {"name": "key_sum_two", "op": "agg", "source": "t", "by": ["G", "K"], "aggs": [{"agg": "sum", "cols": ["K=I"]}, {"agg": "count", "column": "N"}]},
+  {"name": "key_first_of_two", "op": "agg", "source": "t", "by": ["G", "K"], "aggs": [{"agg": "max", "cols": ["G=D"]}, {"agg": "min", "cols": ["M=I"]}]},
+  {"name": "key_both", "op": "agg", "source": "t", "by": ["G", "K"], "aggs": [{"agg": "max", "cols": ["K=D"]}, {"agg": "min", "cols": ["G=I"]}]},
+  {"name": "key_count", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count", "column": "K"}]},
+  {"name": "key_count_where", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "K", "filters": ["I > 1000"]}]},
+  {"name": "key_twice", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "sum", "cols": ["K=I"]}, {"agg": "max", "cols": ["K=I"]}]},
+  {"name": "key_group", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["K=I"]}]},
+  {"name": "key_distinct", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["K=I"], "include_nulls": false}, {"agg": "last", "cols": ["Z=K"]}]},
+  {"name": "key_same_column", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "first", "cols": ["K"]}]},
+  {"name": "key_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "sum", "cols": ["K=I"]}]},
+  {"name": "arrays_first_last", "op": "agg", "source": "a", "by": ["K"], "aggs": [{"agg": "first", "cols": ["FA=A", "FS=SA"]}, {"agg": "last", "cols": ["LA=A", "LD=DA"]}]},
+  {"name": "arrays_first_last_none", "op": "agg", "source": "a", "by": [], "aggs": [{"agg": "first", "cols": ["FA=A", "FS=SA"]}, {"agg": "last", "cols": ["LA=A", "LD=DA"]}]},
+  {"name": "vectors_inner", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "group", "cols": ["I", "S", "D"]}]},
+  {"name": "vectors_first_last", "op": "agg", "source": "vectors_inner", "by": [], "aggs": [{"agg": "first", "cols": ["FI=I", "FD=D"]}, {"agg": "last", "cols": ["LI=I", "LD=D"]}]}
+ ],
+ "results": ["distinct_plain_by_k", "distinct_plain_none", "distinct_plain_by_two", "distinct_nulls_by_k", "distinct_nulls_none", "distinct_nulls_by_two", "distinct_of_key", "distinct_empty_by_k", "distinct_empty_none", "distinct_nulls_only_by_k", "distinct_nulls_only_none", "distinct_nulls_only_none_counted", "distinct_unknown", "distinct_same_output", "unique_B_null", "unique_B_byte", "unique_B_byte_null", "unique_B_short", "unique_B_short_null", "unique_B_int", "unique_B_int_null", "unique_B_int_m127", "unique_B_int_m128", "unique_B_long", "unique_B_long_5", "unique_B_long_null", "unique_B_float_1_5", "unique_B_float_2", "unique_B_float_nan", "unique_B_float_inf", "unique_B_float_0_1", "unique_B_float_1e30", "unique_B_double_1_5", "unique_B_double_2", "unique_B_double_nan", "unique_B_double_inf", "unique_B_double_1e300", "unique_B_double_0_1", "unique_B_double_m0", "unique_B_double_3e9", "unique_B_char", "unique_B_char_null", "unique_B_string", "unique_B_bool", "unique_Y_null", "unique_Y_byte", "unique_Y_byte_null", "unique_Y_short", "unique_Y_short_null", "unique_Y_int", "unique_Y_int_null", "unique_Y_int_m127", "unique_Y_int_m128", "unique_Y_long", "unique_Y_long_5", "unique_Y_long_null", "unique_Y_float_1_5", "unique_Y_float_2", "unique_Y_float_nan", "unique_Y_float_inf", "unique_Y_float_0_1", "unique_Y_float_1e30", "unique_Y_double_1_5", "unique_Y_double_2", "unique_Y_double_nan", "unique_Y_double_inf", "unique_Y_double_1e300", "unique_Y_double_0_1", "unique_Y_double_m0", "unique_Y_double_3e9", "unique_Y_char", "unique_Y_char_null", "unique_Y_string", "unique_Y_bool", "unique_C_null", "unique_C_byte", "unique_C_byte_null", "unique_C_short", "unique_C_short_null", "unique_C_int", "unique_C_int_null", "unique_C_int_m127", "unique_C_int_m128", "unique_C_long", "unique_C_long_5", "unique_C_long_null", "unique_C_float_1_5", "unique_C_float_2", "unique_C_float_nan", "unique_C_float_inf", "unique_C_float_0_1", "unique_C_float_1e30", "unique_C_double_1_5", "unique_C_double_2", "unique_C_double_nan", "unique_C_double_inf", "unique_C_double_1e300", "unique_C_double_0_1", "unique_C_double_m0", "unique_C_double_3e9", "unique_C_char", "unique_C_char_null", "unique_C_string", "unique_C_bool", "unique_H_null", "unique_H_byte", "unique_H_byte_null", "unique_H_short", "unique_H_short_null", "unique_H_int", "unique_H_int_null", "unique_H_int_m127", "unique_H_int_m128", "unique_H_long", "unique_H_long_5", "unique_H_long_null", "unique_H_float_1_5", "unique_H_float_2", "unique_H_float_nan", "unique_H_float_inf", "unique_H_float_0_1", "unique_H_float_1e30", "unique_H_double_1_5", "unique_H_double_2", "unique_H_double_nan", "unique_H_double_inf", "unique_H_double_1e300", "unique_H_double_0_1", "unique_H_double_m0", "unique_H_double_3e9", "unique_H_char", "unique_H_char_null", "unique_H_string", "unique_H_bool", "unique_I_null", "unique_I_byte", "unique_I_byte_null", "unique_I_short", "unique_I_short_null", "unique_I_int", "unique_I_int_null", "unique_I_int_m127", "unique_I_int_m128", "unique_I_long", "unique_I_long_5", "unique_I_long_null", "unique_I_float_1_5", "unique_I_float_2", "unique_I_float_nan", "unique_I_float_inf", "unique_I_float_0_1", "unique_I_float_1e30", "unique_I_double_1_5", "unique_I_double_2", "unique_I_double_nan", "unique_I_double_inf", "unique_I_double_1e300", "unique_I_double_0_1", "unique_I_double_m0", "unique_I_double_3e9", "unique_I_char", "unique_I_char_null", "unique_I_string", "unique_I_bool", "unique_L_null", "unique_L_byte", "unique_L_byte_null", "unique_L_short", "unique_L_short_null", "unique_L_int", "unique_L_int_null", "unique_L_int_m127", "unique_L_int_m128", "unique_L_long", "unique_L_long_5", "unique_L_long_null", "unique_L_float_1_5", "unique_L_float_2", "unique_L_float_nan", "unique_L_float_inf", "unique_L_float_0_1", "unique_L_float_1e30", "unique_L_double_1_5", "unique_L_double_2", "unique_L_double_nan", "unique_L_double_inf", "unique_L_double_1e300", "unique_L_double_0_1", "unique_L_double_m0", "unique_L_double_3e9", "unique_L_char", "unique_L_char_null", "unique_L_string", "unique_L_bool", "unique_F_null", "unique_F_byte", "unique_F_byte_null", "unique_F_short", "unique_F_short_null", "unique_F_int", "unique_F_int_null", "unique_F_int_m127", "unique_F_int_m128", "unique_F_long", "unique_F_long_5", "unique_F_long_null", "unique_F_float_1_5", "unique_F_float_2", "unique_F_float_nan", "unique_F_float_inf", "unique_F_float_0_1", "unique_F_float_1e30", "unique_F_double_1_5", "unique_F_double_2", "unique_F_double_nan", "unique_F_double_inf", "unique_F_double_1e300", "unique_F_double_0_1", "unique_F_double_m0", "unique_F_double_3e9", "unique_F_char", "unique_F_char_null", "unique_F_string", "unique_F_bool", "unique_D_null", "unique_D_byte", "unique_D_byte_null", "unique_D_short", "unique_D_short_null", "unique_D_int", "unique_D_int_null", "unique_D_int_m127", "unique_D_int_m128", "unique_D_long", "unique_D_long_5", "unique_D_long_null", "unique_D_float_1_5", "unique_D_float_2", "unique_D_float_nan", "unique_D_float_inf", "unique_D_float_0_1", "unique_D_float_1e30", "unique_D_double_1_5", "unique_D_double_2", "unique_D_double_nan", "unique_D_double_inf", "unique_D_double_1e300", "unique_D_double_0_1", "unique_D_double_m0", "unique_D_double_3e9", "unique_D_char", "unique_D_char_null", "unique_D_string", "unique_D_bool", "unique_S_null", "unique_S_byte", "unique_S_byte_null", "unique_S_short", "unique_S_short_null", "unique_S_int", "unique_S_int_null", "unique_S_int_m127", "unique_S_int_m128", "unique_S_long", "unique_S_long_5", "unique_S_long_null", "unique_S_float_1_5", "unique_S_float_2", "unique_S_float_nan", "unique_S_float_inf", "unique_S_float_0_1", "unique_S_float_1e30", "unique_S_double_1_5", "unique_S_double_2", "unique_S_double_nan", "unique_S_double_inf", "unique_S_double_1e300", "unique_S_double_0_1", "unique_S_double_m0", "unique_S_double_3e9", "unique_S_char", "unique_S_char_null", "unique_S_string", "unique_S_bool", "unique_T_null", "unique_T_byte", "unique_T_byte_null", "unique_T_short", "unique_T_short_null", "unique_T_int", "unique_T_int_null", "unique_T_int_m127", "unique_T_int_m128", "unique_T_long", "unique_T_long_5", "unique_T_long_null", "unique_T_float_1_5", "unique_T_float_2", "unique_T_float_nan", "unique_T_float_inf", "unique_T_float_0_1", "unique_T_float_1e30", "unique_T_double_1_5", "unique_T_double_2", "unique_T_double_nan", "unique_T_double_inf", "unique_T_double_1e300", "unique_T_double_0_1", "unique_T_double_m0", "unique_T_double_3e9", "unique_T_char", "unique_T_char_null", "unique_T_string", "unique_T_bool", "unique_nulls_sentinel", "unique_sentinel_none", "unique_sentinel_equal_value", "where_0_by_k", "where_0_none", "where_1_by_k", "where_1_none", "where_2_by_k", "where_2_none", "where_3_by_k", "where_3_none", "where_4_by_k", "where_4_none", "where_5_by_k", "where_5_none", "where_6_by_k", "where_6_none", "where_7_by_k", "where_7_none", "where_8_by_k", "where_8_none", "where_9_by_k", "where_9_none", "where_10_by_k", "where_10_none", "where_11_by_k", "where_11_none", "where_12_by_k", "where_12_none", "where_13_by_k", "where_13_none", "where_14_by_k", "where_14_none", "where_15_by_k", "where_15_none", "where_16_by_k", "where_16_none", "where_17_by_k", "where_17_none", "where_18_by_k", "where_18_none", "where_19_by_k", "where_19_none", "where_20_by_k", "where_20_none", "where_21_by_k", "where_21_none", "where_22_by_k", "where_22_none", "where_23_by_k", "where_23_none", "where_24_by_k", "where_24_none", "where_25_by_k", "where_25_none", "where_26_by_k", "where_26_none", "where_27_by_k", "where_27_none", "where_28_by_k", "where_28_none", "where_29_by_k", "where_29_none", "where_30_by_k", "where_30_none", "where_31_by_k", "where_31_none", "where_32_by_k", "where_32_none", "where_33_by_k", "where_33_none", "where_34_by_k", "where_34_none", "where_35_by_k", "where_35_none", "where_empty_table", "where_empty_table_by_k", "where_two", "where_same_output", "key_sum", "key_sum_two", "key_first_of_two", "key_both", "key_count", "key_count_where", "key_twice", "key_group", "key_distinct", "key_same_column", "key_none", "arrays_first_last", "arrays_first_last_none", "vectors_inner", "vectors_first_last"],
+ "steps": [
+ ],
+ "java": {"steps": [
+  {
+   "distinct_plain_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [true], [1, 127], [65], [100, 32767], [1000, 2147483647], [10000000000, 9223372036854775807], [0.0, 1.5], [-0.0, 1.25], ["a b", "x"]],
+    ["b", [false], [-2, 4], [0, 66], [-200, 400], [-2000, 4000], [-20000000000, 40000000000], [-2.5, "Infinity"], ["-Infinity", -0.0], ["", "x"]],
+    [null, [true], [3], [97], [300], [3000], [30000000000], null, null, ["z"]],
+    ["c", null, null, null, null, null, null, null, null, null],
+    ["d", [true], [5], [68], [5], [5], [5], [5.0], [5.0], ["d"]]
+   ]},
+   "distinct_plain_none": {"columns": [{"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[false, true], [-2, 1, 3, 4, 5, 127], [0, 65, 66, 68, 97], [-200, 5, 100, 300, 400, 32767], [-2000, 5, 1000, 3000, 4000, 2147483647], [-20000000000, 5, 10000000000, 30000000000, 40000000000, 9223372036854775807], [-2.5, 0.0, 1.5, 5.0, "Infinity"], ["-Infinity", -0.0, 1.25, 5.0], ["", "a b", "d", "x", "z"], [-1, 0, 5, 1700000000000000001, 1700000000000000002, 1700000000000000003]]
+   ]},
+   "distinct_plain_by_two": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, [1000, 2147483647], [-0.0, 1.25], 3],
+    ["b", 1, [-2000, 4000], ["-Infinity", -0.0], 2],
+    ["a", 2, null, null, 1],
+    [null, 1, [3000], null, 1],
+    ["b", 2, [-2000], [0.0], 1],
+    ["c", 3, null, null, 1],
+    ["d", 4, [5], [5.0], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, true], [null, 1, 127], [null, 65], [null, 100, 32767], [null, 1000, 2147483647], [null, 10000000000, 9223372036854775807], [null, 0.0, 1.5], [null, -0.0, 1.25], [null, "a b", "x"], [null, 1700000000000000001, 1700000000000000003]],
+    ["b", [false], [-2, 4], [0, 66], [-200, 400], [-2000, 4000], [-20000000000, 40000000000], [-2.5, "Infinity"], ["-Infinity", -0.0], ["", "x"], [-1, 1700000000000000002]],
+    [null, [true], [3], [97], [300], [3000], [30000000000], ["NaN"], ["NaN"], ["z"], [0]],
+    ["c", [null], [null], [null], [null], [null], [null], [null], [null], [null], [null]],
+    ["d", [true], [5], [68], [5], [5], [5], [5.0], [5.0], ["d"], [5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "B", "type": "vector<bool>"}, {"name": "Y", "type": "vector<int8>"}, {"name": "C", "type": "vector<char>"}, {"name": "H", "type": "vector<int16>"}, {"name": "I", "type": "vector<int32>"}, {"name": "L", "type": "vector<int64>"}, {"name": "F", "type": "vector<float32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}, {"name": "T", "type": "vector<timestamp>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, false, true], [null, -2, 1, 3, 4, 5, 127], [null, 0, 65, 66, 68, 97], [null, -200, 5, 100, 300, 400, 32767], [null, -2000, 5, 1000, 3000, 4000, 2147483647], [null, -20000000000, 5, 10000000000, 30000000000, 40000000000, 9223372036854775807], [null, -2.5, 0.0, 1.5, 5.0, "Infinity", "NaN"], [null, "-Infinity", -0.0, 1.25, 5.0, "NaN"], [null, "", "a b", "d", "x", "z"], [null, -1, 0, 5, 1700000000000000001, 1700000000000000002, 1700000000000000003]]
+   ]},
+   "distinct_nulls_by_two": {"columns": [{"name": "K", "type": "string"}, {"name": "G", "type": "int32"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, [1000, 2147483647], [-0.0, 1.25], 3],
+    ["b", 1, [-2000, 4000], ["-Infinity", -0.0], 2],
+    ["a", 2, [null], [null], 1],
+    [null, 1, [3000], ["NaN"], 1],
+    ["b", 2, [-2000], [0.0], 1],
+    ["c", 3, [null], [null], 1],
+    ["d", 4, [5], [5.0], 2]
+   ]},
+   "distinct_of_key": {"columns": [{"name": "K", "type": "string"}, {"name": "X", "type": "vector<string>"}, {"name": "G", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", ["a"], [1, 2]],
+    ["b", ["b"], [1, 2]],
+    [null, null, [1]],
+    ["c", ["c"], [3]],
+    ["d", ["d"], [4]]
+   ]},
+   "distinct_empty_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "distinct_empty_none": {"columns": [{"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "distinct_nulls_only_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null, null],
+    ["b", null, null, null]
+   ]},
+   "distinct_nulls_only_none": {"columns": [{"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[], [], []]
+   ]},
+   "distinct_nulls_only_none_counted": {"columns": [{"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "S", "type": "vector<string>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null], [null], [null]]
+   ]},
+   "distinct_unknown": {"failure": "INVALID_ARGUMENT"},
+   "distinct_same_output": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", true],
+    ["b", false],
+    [null, true],
+    ["c", null],
+    ["d", true]
+   ]},
+   "unique_B_byte": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_byte_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_short": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_short_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_int_m127": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_int_m128": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_long_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_m0": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_B_bool": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "bool"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", true],
+    ["b", false],
+    [null, true],
+    ["c", null],
+    ["d", true]
+   ]},
+   "unique_Y_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7],
+    ["b", 7],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_short": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_short_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127],
+    ["b", -127],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_int_m128": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 5],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int8"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 3],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_Y_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_Y_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65],
+    ["b", null],
+    [null, 97],
+    ["c", null],
+    ["d", 68]
+   ]},
+   "unique_C_byte": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_byte_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_short": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_short_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_int_m127": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_int_m128": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_long_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_m0": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_char": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65],
+    ["b", 90],
+    [null, 97],
+    ["c", null],
+    ["d", 68]
+   ]},
+   "unique_C_char_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "char"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 65],
+    ["b", null],
+    [null, 97],
+    ["c", null],
+    ["d", 68]
+   ]},
+   "unique_C_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_C_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7],
+    ["b", 7],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_short": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300],
+    ["b", 300],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_short_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127],
+    ["b", -127],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_int_m128": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 5],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int16"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 300],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_H_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_H_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7],
+    ["b", 7],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_short": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300],
+    ["b", 300],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_short_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -32768],
+    ["b", -32768],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_int": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 70000],
+    ["b", 70000],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_int_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127],
+    ["b", -127],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_int_m128": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 5],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 3000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_I_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_I_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7],
+    ["b", 7],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_short": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300],
+    ["b", 300],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_short_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -32768],
+    ["b", -32768],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_int": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 70000],
+    ["b", 70000],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_int_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -2147483648],
+    ["b", -2147483648],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127],
+    ["b", -127],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_int_m128": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128],
+    ["b", -128],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_long": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5000000000],
+    ["b", 5000000000],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5],
+    ["b", 5],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_long_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_double_3e9": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3000000000],
+    ["b", 3000000000],
+    [null, 30000000000],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_L_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_L_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7.0],
+    ["b", 7.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128.0],
+    ["b", -128.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_short": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300.0],
+    ["b", 300.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_short_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -32768.0],
+    ["b", -32768.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_int": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 70000.0],
+    ["b", 70000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_int_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -2147483648.0],
+    ["b", -2147483648.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127.0],
+    ["b", -127.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_int_m128": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128.0],
+    ["b", -128.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_long": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5000000000.0],
+    ["b", 5000000000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5.0],
+    ["b", 5.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_long_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -9.223372036854776e+18],
+    ["b", -9.223372036854776e+18],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_1_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", 1.5],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2.0],
+    ["b", 2.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_nan": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "NaN"],
+    ["b", "NaN"],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_inf": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "Infinity"],
+    ["b", "Infinity"],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_0_1": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.10000000149011612],
+    ["b", 0.10000000149011612],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_float_1e30": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.0000000150474662e+30],
+    ["b", 1.0000000150474662e+30],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_double_1_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", 1.5],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2.0],
+    ["b", 2.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_double_0_1": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.10000000149011612],
+    ["b", 0.10000000149011612],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.0],
+    ["b", -0.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_double_3e9": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3000000000.0],
+    ["b", 3000000000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_F_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_F_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_byte": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 7.0],
+    ["b", 7.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_byte_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128.0],
+    ["b", -128.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_short": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 300.0],
+    ["b", 300.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_short_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -32768.0],
+    ["b", -32768.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_int": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 70000.0],
+    ["b", 70000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_int_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -2147483648.0],
+    ["b", -2147483648.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_int_m127": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -127.0],
+    ["b", -127.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_int_m128": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -128.0],
+    ["b", -128.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_long": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5000000000.0],
+    ["b", 5000000000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_long_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5.0],
+    ["b", 5.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_long_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -9.223372036854776e+18],
+    ["b", -9.223372036854776e+18],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_float_1_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", 1.5],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_float_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2.0],
+    ["b", 2.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_float_0_1": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.10000000149011612],
+    ["b", 0.10000000149011612],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_float_1e30": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.0000000150474662e+30],
+    ["b", 1.0000000150474662e+30],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_1_5": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1.5],
+    ["b", 1.5],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_2": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2.0],
+    ["b", 2.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_nan": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "NaN"],
+    ["b", "NaN"],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_inf": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "-Infinity"],
+    ["b", "-Infinity"],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_1e300": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1e+300],
+    ["b", 1e+300],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_0_1": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0.1],
+    ["b", 0.1],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_m0": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -0.0],
+    ["b", -0.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_double_3e9": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3000000000.0],
+    ["b", 3000000000.0],
+    [null, null],
+    ["c", null],
+    ["d", 5.0]
+   ]},
+   "unique_D_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_D_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, "z"],
+    ["c", null],
+    ["d", "d"]
+   ]},
+   "unique_S_byte": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_byte_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_short": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_short_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_int_m127": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_int_m128": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_long_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_m0": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_S_string": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", "zz"],
+    ["b", "zz"],
+    [null, "z"],
+    ["c", null],
+    ["d", "d"]
+   ]},
+   "unique_S_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_null": {"columns": [{"name": "K", "type": "string"}, {"name": "U", "type": "timestamp"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null],
+    ["b", null],
+    [null, 0],
+    ["c", null],
+    ["d", 5]
+   ]},
+   "unique_T_byte": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_byte_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_short": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_short_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_int": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_int_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_int_m127": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_int_m128": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_long": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_long_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_long_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_float_1e30": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_1_5": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_2": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_nan": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_inf": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_1e300": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_0_1": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_m0": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_double_3e9": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_char": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_char_null": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_string": {"failure": "INVALID_ARGUMENT"},
+   "unique_T_bool": {"failure": "INVALID_ARGUMENT"},
+   "unique_nulls_sentinel": {"failure": "INVALID_ARGUMENT"},
+   "unique_sentinel_none": {"columns": [{"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "Y", "type": "int8"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9, 9.0, 9, "many"]
+   ]},
+   "unique_sentinel_equal_value": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, "x"],
+    ["b", 5, "x"],
+    [null, 3000, "z"],
+    ["c", null, null],
+    ["d", 5, "d"]
+   ]},
+   "where_0_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_0_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "where_1_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_1_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1]
+   ]},
+   "where_2_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_2_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "where_3_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_3_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4]
+   ]},
+   "where_4_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_4_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "where_5_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 0],
+    [null, 1],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_5_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "where_6_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    [null, 0],
+    ["c", 1],
+    ["d", 0]
+   ]},
+   "where_6_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "where_7_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_7_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4]
+   ]},
+   "where_8_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 3],
+    [null, 1],
+    ["c", 1],
+    ["d", 2]
+   ]},
+   "where_8_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [11]
+   ]},
+   "where_9_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 4],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_9_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4]
+   ]},
+   "where_10_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_10_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "where_11_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_11_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "where_12_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_12_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3]
+   ]},
+   "where_13_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_13_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0]
+   ]},
+   "where_14_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    [null, 1],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_14_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1]
+   ]},
+   "where_15_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_15_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "where_16_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    [null, 0],
+    ["c", 1],
+    ["d", 0]
+   ]},
+   "where_16_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "where_17_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 3],
+    [null, 1],
+    ["c", 1],
+    ["d", 2]
+   ]},
+   "where_17_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9]
+   ]},
+   "where_18_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    [null, 0],
+    ["c", 1],
+    ["d", 0]
+   ]},
+   "where_18_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "where_19_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 3],
+    [null, 1],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_19_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [9]
+   ]},
+   "where_20_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 2],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_20_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "where_21_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    [null, 0],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_21_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2]
+   ]},
+   "where_22_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 2],
+    [null, 0],
+    ["c", 1],
+    ["d", 0]
+   ]},
+   "where_22_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4]
+   ]},
+   "where_23_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 0]
+   ]},
+   "where_23_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5]
+   ]},
+   "where_24_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_24_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [7]
+   ]},
+   "where_25_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 2],
+    [null, 1],
+    ["c", 1],
+    ["d", 2]
+   ]},
+   "where_25_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [8]
+   ]},
+   "where_26_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 1],
+    [null, 1],
+    ["c", 0],
+    ["d", 2]
+   ]},
+   "where_26_none": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6]
+   ]},
+   "where_27_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_27_none": {"failure": "INVALID_ARGUMENT"},
+   "where_28_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_28_none": {"failure": "INVALID_ARGUMENT"},
+   "where_29_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_29_none": {"failure": "INVALID_ARGUMENT"},
+   "where_30_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_30_none": {"failure": "INVALID_ARGUMENT"},
+   "where_31_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_31_none": {"failure": "INVALID_ARGUMENT"},
+   "where_32_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_32_none": {"failure": "INVALID_ARGUMENT"},
+   "where_33_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_33_none": {"failure": "INVALID_ARGUMENT"},
+   "where_34_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_34_none": {"failure": "INVALID_ARGUMENT"},
+   "where_35_by_k": {"failure": "INVALID_ARGUMENT"},
+   "where_35_none": {"failure": "INVALID_ARGUMENT"},
+   "where_empty_table": {"columns": [{"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "where_empty_table_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "where_two": {"columns": [{"name": "K", "type": "string"}, {"name": "N", "type": "int64"}, {"name": "M", "type": "int64"}, {"name": "C", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 3, 4],
+    ["b", 1, 2, 3],
+    [null, 1, 0, 1],
+    ["c", 0, 1, 1],
+    ["d", 0, 2, 2]
+   ]},
+   "where_same_output": {"failure": "INVALID_ARGUMENT"},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147485647],
+    [0],
+    [3000],
+    [null],
+    [10]
+   ]},
+   "key_sum_two": {"columns": [{"name": "G", "type": "int32"}, {"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2147485647, 3],
+    [1, 2000, 2],
+    [2, null, 1],
+    [1, 3000, 1],
+    [2, -2000, 1],
+    [3, null, 1],
+    [4, 10, 2]
+   ]},
+   "key_first_of_two": {"columns": [{"name": "G", "type": "float64"}, {"name": "K", "type": "string"}, {"name": "M", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1.25, "a", 1000],
+    [-0.0, "b", -2000],
+    [null, "a", null],
+    ["NaN", null, 3000],
+    [0.0, "b", -2000],
+    [null, "c", null],
+    [5.0, "d", 5]
+   ]},
+   "key_both": {"columns": [{"name": "G", "type": "int32"}, {"name": "K", "type": "float64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1000, 1.25],
+    [-2000, -0.0],
+    [null, null],
+    [3000, "NaN"],
+    [-2000, 0.0],
+    [null, null],
+    [5, 5.0]
+   ]},
+   "key_count": {"columns": [{"name": "K", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4],
+    [3],
+    [1],
+    [1],
+    [2]
+   ]},
+   "key_count_where": {"columns": [{"name": "K", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1],
+    [1],
+    [1],
+    [0],
+    [0]
+   ]},
+   "key_twice": {"failure": "INVALID_ARGUMENT"},
+   "key_group": {"columns": [{"name": "K", "type": "vector<int32>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1000, null, 2147483647, 1000]],
+    [[-2000, 4000, -2000]],
+    [[3000]],
+    [[null]],
+    [[5, 5]]
+   ]},
+   "key_distinct": {"columns": [{"name": "K", "type": "vector<int32>"}, {"name": "Z", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1000, 2147483647], "a"],
+    [[-2000, 4000], "b"],
+    [[3000], null],
+    [null, "c"],
+    [[5], "d"]
+   ]},
+   "key_same_column": {"columns": [{"name": "K", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a"],
+    ["b"],
+    [null],
+    ["c"],
+    ["d"]
+   ]},
+   "key_none": {"columns": [{"name": "K", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2147488657]
+   ]},
+   "arrays_first_last": {"columns": [{"name": "K", "type": "string"}, {"name": "FA", "type": "array<int32>"}, {"name": "FS", "type": "array<string>"}, {"name": "LA", "type": "array<int32>"}, {"name": "LD", "type": "array<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1, null, 3], ["x", null, ""], null, [0.0]],
+    ["b", null, null, [7], ["Infinity"]]
+   ]},
+   "arrays_first_last_none": {"columns": [{"name": "FA", "type": "array<int32>"}, {"name": "FS", "type": "array<string>"}, {"name": "LA", "type": "array<int32>"}, {"name": "LD", "type": "array<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, null, 3], ["x", null, ""], null, [0.0]]
+   ]},
+   "vectors_inner": {"columns": [{"name": "K", "type": "string"}, {"name": "I", "type": "vector<int32>"}, {"name": "S", "type": "vector<string>"}, {"name": "D", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1000, null, 2147483647, 1000], ["x", null, "a b", "x"], [1.25, null, 0.0, -0.0]],
+    ["b", [-2000, 4000, -2000], ["", "x", ""], [-0.0, "-Infinity", 0.0]],
+    [null, [3000], ["z"], ["NaN"]],
+    ["c", [null], [null], [null]],
+    ["d", [5, 5], ["d", "d"], [5.0, 5.0]]
+   ]},
+   "vectors_first_last": {"columns": [{"name": "FI", "type": "vector<int32>"}, {"name": "FD", "type": "vector<float64>"}, {"name": "LI", "type": "vector<int32>"}, {"name": "LD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1000, null, 2147483647, 1000], [1.25, null, 0.0, -0.0], [5, 5], [5.0, 5.0]]
+   ]}
+  }
+ ]}
+}
