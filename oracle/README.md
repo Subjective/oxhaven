@@ -19,6 +19,8 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/runner.py` | Runs a scenario against a server URL, returns tables or failures |
 | `harness/rules.py` | **The comparison rules**, as data and code. Keep in step with `PARITY.md` |
 | `harness/fuzz.py` | Scenario generator and shrinker |
+| `harness/fuzz_wide.py` | The generator of every operation and variant (`--variants all`, `--family`) |
+| `harness/known.py`, `fuzz-known-findings.json` | Triaged differences that `fuzz` sets apart |
 | `harness/faults.py` | Fault injection, to prove the comparator sees differences |
 | `harness/smoke.py` | Client smoke checks per protocol area |
 | `harness/results.py` | Result sets and their recorded form |
@@ -321,6 +323,9 @@ OPS=$(.venv/bin/python -c "from harness import fuzz; print(','.join(sorted(fuzz.
 # Every seed, whatever differs, with the differences grouped by cause:
 .venv/bin/python -m harness fuzz --a $URL --b dh://127.0.0.1:10100 --ops $OPS --seeds 500 \
     --keep-going --out /tmp/fuzz-differences
+# One family of operations with every variant of each (see "Variants and families"):
+.venv/bin/python -m harness fuzz --a $URL --b dh://127.0.0.1:10100 --family update_by --seeds 1000 \
+    --keep-going --out /tmp/fuzz-differences
 ```
 
 A scenario is a function of the seed and the set of operations, and of nothing else
@@ -336,9 +341,49 @@ conditions: comparisons of numeric columns with literals and columns, `in`, the 
 `and`, `or`, `not` of them), `sort`, `head`, `tail`, `slice`, `reverse`, `flatten`, `view`,
 `select`, `update`, `update_view`, `lazy_update`, `drop_columns`, `select_distinct`, `merge`,
 `agg_by` (`sum`, `min`, `max`, `first`, `last`, `avg`, `count`), `head_by`, `tail_by`,
-`natural_join`, `exact_join`, `join`, `aj` and `update_by` (`cum_sum`). `--ops` with any other
-name is refused. The scenarios for a seed depend on the set of operations asked for, so a seed
-over a set without the newer operations is the scenario it always was.
+`natural_join`, `exact_join`, `join`, `aj` and `update_by` (`cum_sum`), and with the variants
+`all` (below) also `raj`, `left_join`, `where_in`, `range_join`, `multi_join`, `agg_all_by`,
+`group_by`, `ungroup`, `snapshot`, `snapshot_when` and `meta_table`. `--ops` with any other
+name is refused. The scenarios for a seed depend on the set of operations asked for and on the
+variants, so a seed over a set without the newer operations is the scenario it always was.
+
+### Variants and families
+
+There are two generators, chosen by `--variants`:
+
+- `recorded` is the generator the seeds in `runlog/journal.md` were found with. It builds the
+  first 24 operations of the list above in the variants named there, and it is not changed any
+  more: `--ops aj --seed 39` is the scenario it was when it was written down
+  (`tests/test_fuzz_wide.py` pins digests of it). It is the default whenever `--ops` names only
+  operations it builds.
+- `all` (`harness/fuzz_wide.py`) builds every operation, each with its variants: `update_by`
+  with the cumulative operators, `forward_fill`, `delta`, the `em*` family and the rolling
+  operators in ticks and in time, with windows, decays and bad-data controls; every
+  aggregation, in `agg_by` and (but for `formula`) `agg_all_by`; joins on several columns
+  and with all right columns; `raj`; `range_join` with its range rules; `multi_join`;
+  `where_in`, also inverted; structured filters on strings, timestamps and patterns; absolute
+  sorts; array columns from `group_by` and the `group` and `distinct` aggregations, into
+  `ungroup` and whatever passes columns through. Its inputs have a key column of any type
+  that can be one, a timestamp column that does not go backwards (for the time windows), and
+  right tables whose key stays unique through the steps. It is the default when `--ops` names
+  an operation only it builds. A seed means another scenario here than under `recorded`.
+
+About one request in ten is one the reference refuses (a column of a type the operation does
+not take, a window or percentile out of range, columns that do not match): a refusal is a
+result to compare like any other. The generator keeps out requests that are valid when made
+and fail the table in a later update cycle, because such a table cannot be compared (Known
+limits); the module comment of `harness/fuzz_wide.py` lists them, and also what it does not
+generate at all and why.
+
+`--family NAME` is `--ops` with a named set and the variants `all`. The families
+(`fuzz.FAMILIES`) are `update_by`, `aggregations` (`agg_by`, `agg_all_by`), `groups`
+(`group_by`, `ungroup`, `head_by`, `tail_by`), `joins` (`natural_join`, `exact_join`, `join`,
+`left_join`), `asof` (`aj`, `raj`), `range_join`, `multi_join`, `sets` (`where_in`,
+`select_distinct`), `snapshots`, `shape` (`merge`, `reverse`, `flatten`, `slice`, `head`,
+`tail`, `sort`), `filters`, `formulas` (the column operations and `meta_table`) and `all`. A
+thousand seeds of one family take five to ten minutes against two local servers.
+
+### What a run prints
 
 `fuzz` stops at the first seed whose results differ. It prints the first mismatch, shrinks the
 scenario (fewer steps, operations, rows, columns, arguments) while the two servers still differ,
@@ -372,6 +417,39 @@ fuzz: 500 seeds, 448 clean, 52 with differences in 3 groups, 0 not run
 ```
 
 To shrink one of them, run that seed alone without `--keep-going`.
+
+### Known findings
+
+A difference that has been triaged and is not fixed yet would stop every run at the same
+seed, or flood a `--keep-going` run. `fuzz-known-findings.json` lists such differences, each
+with a class (`oxhaven-bug`, `allowed-difference`, `reference-defect`, `harness`), a reason
+that cites the Java source, and a signature: the kind of mismatch, the operation, what made
+the column (the aggregation or `update_by` operator), the metadata keys, both values, and
+whether it shows at the first step or later. `harness/known.py` documents the fields.
+
+`fuzz` sets the mismatches that fit an entry apart. A scenario counts as known only if every
+one of its mismatches fits; it is then listed (`known seed 39: aj-reference-history`, or a
+`KNOWN` line per finding with `--keep-going`), still written to `--out`, and counted in the
+last line as `N more with known findings only (not counted as differences)`. A scenario with
+one mismatch that fits no entry is a difference as before, reported and shrunk by the
+mismatches that do not fit. So an entry cannot hide a difference with another signature, and
+the narrower the signature, the less it can hide: give the aggregation and both values
+wherever the cause fixes them. `--no-known` reports everything; `--known FILE` reads another
+file. Only `fuzz` reads the file: `diff`, `replay` and the gate do not, and no comparison rule
+changes.
+
+An entry with `"requires": "reference_inconsistent"` is for a result where the reference
+disagrees with itself: what it kept up to date through the steps is not what it answers when
+the same operations are applied again to the inputs as they are then. `fuzz` checks that for
+the scenario at hand before it counts the mismatch as known. The same check is a command:
+
+```bash
+# For each ticking scenario: the tables one server kept up to date against the same tables
+# made again after every step. Clean on a server that agrees with itself.
+.venv/bin/python -m harness selfcheck --url $URL --scenarios /tmp/fuzz-differences/fuzz_155.json
+```
+
+Remove an entry when its cause is fixed: nothing else notices that it no longer fits.
 
 ### A faulty server to test against
 
@@ -506,6 +584,12 @@ They need the recordings but no server.
 - `tests/test_fuzz.py`: the generator is deterministic and stays within the requested
   operations, the shrinker reaches the smallest scenario for a known difference, and the `fuzz`
   command catches and shrinks a faulty target (with an in-process stand-in for the servers).
+- `tests/test_fuzz_wide.py`: the recorded generator still builds the scenarios it built (pinned
+  digests); the wide one is deterministic, valid against its own predicted columns, mostly
+  accepted requests, draws every operation and variant, and keeps its promises about
+  timestamps and unique keys through the steps.
+- `tests/test_known.py`: what a known finding fits and what it must not, that a scenario with
+  any other mismatch is still reported and shrunk, and the comparison behind `selfcheck`.
 - `tests/test_scenario.py`: the scenario format, the `--ops` filter, the corpus, recordings.
 - `tests/test_gate.py`: the baseline's ratchet (what fails the gate, what counts as weakening),
   its file format, the difference kinds, and that the checked-in baseline lists every scenario
@@ -643,6 +727,8 @@ A scenario is one JSON document. `harness/scenario.py` validates it and rejects 
   An `update_by` operator is named after the function of `pydeephaven.updateby` that builds
   it (`cum_sum`, `delta`, `ema_tick`, `rolling_avg_time`, ...; `scenario.UPDATE_BY_OPS`), and
   `args` are that function's keyword arguments (`decay_ticks`, `rev_ticks`, `ts_col`, ...).
+  `op_control` is written as `{"on_null": "SKIP", "on_nan": "POISON"}` (the names of
+  `pydeephaven.updateby.BadDataBehavior`).
 
   A structured condition is an object with one key, shaped like the `Condition` message of
   `table.proto`: `{"and": [...]}`, `{"or": [...]}`, `{"not": condition}`,
@@ -732,10 +818,11 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   the second rewrites columns into preview types the rules do not know), and `fetch_table`
   (it returns its source; every result is already fetched). `--ops` rejects these names and
   any other name outside the table above.
-- The fuzzer builds only the operations listed under Fuzz. The joins beyond `aj`, the
-  aggregations beyond the seven first ones, `update_by` beyond `cum_sum`, `where_in`,
-  `ungroup`, `snapshot_when`, `range_join`, `multi_join` and the table sources are covered by
-  recorded scenarios only.
+- The fuzzer builds only the operations listed under Fuzz. The table sources (`time_table`,
+  `empty_table`), `column_statistics`,
+  `rolling_formula` and the `count_where` operators of `update_by` are covered by recorded
+  scenarios only, and so is anything the module comment of `harness/fuzz_wide.py` lists as
+  not generated.
 - A `time_table` is only compared through operations whose result does not depend on the
   clock: a start time far in the past with `head`, `slice` or a `where` on the timestamp.
   Nothing compares when its rows arrive.

@@ -605,3 +605,30 @@ behind a flag that defaults to Java's behaviour, or remove it. Orchestrator erro
 file stated Java's behaviour without checking it. Also noted: the console transcript carries
 traceback line numbers of table.py, which go stale with every Python API change; the probe
 should scrub them (follow-up).
+
+## 2026-11-15 19:50 UTC: Table shape operators up as PR 80; Python dtypes merged (PR 78)
+
+PR 78 merged green; its cancelled first run left no failed check, so the PR 77 fix works.
+PR 80 (task 4.16) promotes the four script lines that task 6.4 had recorded as differing.
+For owner review, differences it reports in failure paths: NullPointerException text in a
+sorted merge, a schema that Java fails to build for a restriction naming a non-column, the
+text for a non-int index in move_columns, and which column SortRowRedirection names.
+Tasks 6.9 and 6.10 (conversion, input tables) started as one run.
+
+## 2026-11-15 19:40 UTC: Widened fuzzer up as PR 81; findings become task 4.17
+
+The fuzzer now draws every ported operation. With its restrictions in place, 12 of 13
+families are clean over 1000 seeds and one seed differs (aj losing a left row). Before the
+restrictions the first wide generator had 69, 103 and 12 differing seeds in aggregations,
+groups and update_by, so the earlier "83 of 83 scenarios clean" overstated parity: the
+recorded scenarios did not reach array-column aggregations, attribute copies or in-cycle
+failures. Seven open engine defects are written up as tasks/4.17-fuzz-findings.md with the
+minimal scenarios beside it. For owner review: A5 (Java's head_by cast changes a column's
+type; reproduce or not), the serving of tables that failed in a cycle (A7, open since
+before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
+
+## 2026-11-15 19:34 UTC: Owner decided: stop a cancelled console command
+
+The owner chose "Stop it, record the difference" for PR 79. The author was resumed to add the
+allowed difference to PARITY.md (that entry only) and rerun the gate; the pull request merges
+when green.

@@ -1,0 +1,33 @@
+{
+ "format": 1,
+ "findings": [
+  {
+   "id": "agg-all-by-first-append-only",
+   "class": "oxhaven-bug",
+   "reason": "agg_all_by with first of an append-only table: Java copies the AppendOnly attribute to the result (engine/table/src/main/java/io/deephaven/engine/table/impl/BaseTable.java, APPEND_ONLY_TABLE_ATTRIBUTE is copied for CopyAttributeOperation.FirstBy, applied in QueryTable#aggAllBy for AggSpecFirst). Oxhaven's result does not carry it.",
+   "match": {"kind": "table_metadata", "operation": "agg_all_by", "producer": "first",
+             "key": "deephaven:attribute.AppendOnly,deephaven:attribute_type.AppendOnly"}
+  },
+  {
+   "id": "aj-reference-history",
+   "class": "reference-defect",
+   "reason": "aj on refreshing tables: after a step, what Java kept up to date differs from what Java answers when the same join is made again from the same rows (runlog/journal.md, 'As-of join: Java's ticking result differs from its own static result': a NaN left stamp joined to a newly added NaN right row under the rule >, and chains of aj whose left table depends on the right one keeping a match that is gone). Oxhaven gives the answer Java gives from scratch and agrees with itself. Counted only when Java's two answers do differ for the scenario at hand. Recorded seeds: --ops aj 39, 257, 1319, 1774, 2619, 2, 465, 540, 675, 1371, 1427, 1735, 2110, 2669, 2873.",
+   "match": {"kind": "value", "operation": "aj", "steps": "later",
+             "requires": "reference_inconsistent"}
+  },
+  {
+   "id": "aj-reference-history-rest",
+   "class": "reference-defect",
+   "reason": "The same as aj-reference-history, for a table with more differing cells than the comparison lists one by one: the 'truncated' note that ends such a list (recorded seed: --ops aj 675).",
+   "match": {"kind": "truncated", "operation": "aj", "steps": "later",
+             "requires": "reference_inconsistent"}
+  },
+  {
+   "id": "emstd-time-reference-history",
+   "class": "reference-defect",
+   "reason": "emstd_time over values that include an infinity, on a refreshing table: what Java keeps up to date differs from what Java answers when the same update_by is applied again to the same rows (Infinity against NaN), so there is no single reference answer. Oxhaven agrees with itself (selfcheck) and with Java's answer from scratch. Counted only when Java's two answers do differ for the scenario at hand.",
+   "match": {"kind": "value", "operation": "update_by", "producer": "emstd_time",
+             "steps": "later", "requires": "reference_inconsistent"}
+  }
+ ]
+}

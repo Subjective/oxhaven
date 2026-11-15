@@ -19,9 +19,12 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
+use oxhaven_engine::ops::select::ColumnPair;
+use oxhaven_engine::ops::{distinct, filter, merge, select, sort};
+use oxhaven_engine::table::{attribute_map, AttributeValue};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyList;
+use pyo3::types::{PyDict, PyList};
 use serde_json::Value;
 use tonic::Status;
 
@@ -40,8 +43,7 @@ type Operation = (
     fn(&OpContext, &Value, &[Arc<dyn Table>]) -> Created,
 );
 
-/// The local operations. Every one of them waits for its engine operator, and answers only
-/// the calls that Java answers without one.
+/// The local operations.
 const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
     ("keyed_transpose", keyed_transpose),
@@ -53,6 +55,7 @@ const OPERATIONS: &[Operation] = &[
     ("restrict_sort_to", restrict_sort_to),
     ("slice_pct", slice_pct),
     ("tail_pct", tail_pct),
+    ("where_in", where_in),
     ("where_one_of", where_one_of),
 ];
 
@@ -71,140 +74,145 @@ fn strings(args: &Value, name: &str) -> Result<Vec<String>, ExportError> {
         .ok_or_else(|| bad_argument(name, "a list of strings"))
 }
 
-/// The argument `name`, a number.
+/// The argument `name`, a string.
+fn text<'a>(args: &'a Value, name: &str) -> Result<&'a str, ExportError> {
+    let value = args.get(name).and_then(Value::as_str);
+    value.ok_or_else(|| bad_argument(name, "a string"))
+}
+
+/// The argument `name`, a number. JSON has no NaN and no infinity, which Python sends as
+/// the strings `"nan"`, `"inf"` and `"-inf"`.
 fn number(args: &Value, name: &str) -> Result<f64, ExportError> {
-    let value = args.get(name).and_then(Value::as_f64);
+    let value = match args.get(name) {
+        Some(Value::String(text)) => match text.as_str() {
+            "nan" => Some(f64::NAN),
+            "inf" => Some(f64::INFINITY),
+            "-inf" => Some(f64::NEG_INFINITY),
+            _ => None,
+        },
+        Some(value) => value.as_f64(),
+        None => None,
+    };
     value.ok_or_else(|| bad_argument(name, "a number"))
 }
 
-/// The argument `name`, an integer.
-fn integer(args: &Value, name: &str) -> Result<i64, ExportError> {
+/// The argument `name`, a Java `int`.
+fn integer(args: &Value, name: &str) -> Result<i32, ExportError> {
     let value = args.get(name).and_then(Value::as_i64);
-    value.ok_or_else(|| bad_argument(name, "an integer"))
+    value
+        .and_then(|value| i32::try_from(value).ok())
+        .ok_or_else(|| bad_argument(name, "an integer"))
+}
+
+/// The argument `name`, a list of `Output = Input` pairs and column names.
+///
+/// Behavior: `io.deephaven.api.Pair#from`
+fn pairs(args: &Value, name: &str) -> Result<Vec<ColumnPair>, ExportError> {
+    let texts = strings(args, name)?;
+    let pairs = texts.iter().map(|text| ColumnPair::parse(text));
+    Ok(pairs.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#headPct`
+fn head_pct(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(sort::head_pct(&sources[0], number(args, "pct")?)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#tailPct`
+fn tail_pct(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(sort::tail_pct(&sources[0], number(args, "pct")?)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#slicePct`
+fn slice_pct(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let (start, end) = (number(args, "start_pct")?, number(args, "end_pct")?);
+    Ok(sort::slice_pct(&sources[0], start, end)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#renameColumns`
+fn rename_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(select::rename_columns(&sources[0], &pairs(args, "cols")?)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#moveColumns`
+fn move_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let (index, columns) = (integer(args, "idx")?, pairs(args, "cols")?);
+    Ok(select::move_columns(&sources[0], index, &columns)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.Table#moveColumnsUp`
+fn move_columns_up(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(select::move_columns_up(&sources[0], &pairs(args, "cols")?)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.Table#moveColumnsDown`
+fn move_columns_down(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(select::move_columns_down(
+        &sources[0],
+        &pairs(args, "cols")?,
+    )?)
+}
+
+/// A `where` whose filter is a disjunction of filter strings.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#where(Filter)` of an
+/// `io.deephaven.api.filter.FilterOr`, or of `Filter#ofFalse` for no filters
+fn where_one_of(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let filters = strings(args, "filters")?;
+    Ok(filter::where_one_of(
+        &sources[0],
+        &filters,
+        context.compiler.as_ref(),
+    )?)
+}
+
+/// `where_in` and `where_not_in` with no match columns, which the table service's
+/// `where_in` refuses and Java's engine answers: every row of the first table, or none,
+/// by whether the second table has a row.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#whereIn` and `#whereNotIn`
+fn where_in(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let inverted = args.get("inverted").and_then(Value::as_bool);
+    let inverted = inverted.ok_or_else(|| bad_argument("inverted", "a boolean"))?;
+    let [left, right] = sources else {
+        return Err(bad_argument("sources", "two tables"));
+    };
+    Ok(if inverted {
+        distinct::where_not_in(left, right, &[])?
+    } else {
+        distinct::where_in(left, right, &[])?
+    })
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#restrictSortTo`
+fn restrict_sort_to(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    match sort::restrict_sort_to(&sources[0], &strings(args, "cols")?) {
+        // Behavior: `io.deephaven.engine.table.impl.NoSuchColumnException`
+        Err(sort::SortError::NoSuchColumn(missing)) => {
+            let columns = sources[0].definition().columns().iter();
+            let available: Vec<&str> = columns.map(|column| &*column.name).collect();
+            Err(ExportError::Internal(format!(
+                "Unknown column names [{}], available column names are [{}]",
+                missing.join(", "),
+                available.join(", ")
+            )))
+        }
+        result => Ok(result?),
+    }
+}
+
+/// The merge of tables that are each sorted by a column. Java's method takes static tables
+/// only, and unlike the table service's `merge` with a key column it takes no tables.
+///
+/// Behavior: `io.deephaven.engine.util.TableTools#mergeSorted`
+fn merge_sorted(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    Ok(merge::merge_sorted(sources, text(args, "order_by")?)?)
 }
 
 /// The refusal of an operation whose engine operator is not written: `UNIMPLEMENTED`
 /// naming the Java method and the call.
 fn no_operator(java: &str, call: String) -> Created {
     Err(not_ported(java, call).into())
-}
-
-const QUERY_TABLE: &str = "io.deephaven.engine.table.impl.QueryTable";
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#headPct`
-fn head_pct(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let percent = number(args, "pct")?;
-    no_operator(
-        &format!("{QUERY_TABLE}#headPct"),
-        format!("headPct({percent})"),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#tailPct`
-fn tail_pct(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let percent = number(args, "pct")?;
-    no_operator(
-        &format!("{QUERY_TABLE}#tailPct"),
-        format!("tailPct({percent})"),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#slicePct`
-fn slice_pct(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let (start, end) = (number(args, "start_pct")?, number(args, "end_pct")?);
-    no_operator(
-        &format!("{QUERY_TABLE}#slicePct"),
-        format!("slicePct({start}, {end})"),
-    )
-}
-
-/// The table itself when nothing is renamed or moved: `renameColumnsImpl`, which is also
-/// `moveColumns`, returns its table for no pairs.
-///
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#renameColumnsImpl`
-fn unchanged(columns: &[String], sources: &[Arc<dyn Table>]) -> Option<Arc<dyn Table>> {
-    columns.is_empty().then(|| sources.first().cloned())?
-}
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#renameColumns`
-fn rename_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
-    let pairs = strings(args, "cols")?;
-    if let Some(table) = unchanged(&pairs, sources) {
-        return Ok(table);
-    }
-    no_operator(
-        &format!("{QUERY_TABLE}#renameColumns"),
-        format!("renameColumns({})", pairs.join(", ")),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#moveColumns`
-fn move_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
-    let (index, columns) = (integer(args, "idx")?, strings(args, "cols")?);
-    if let Some(table) = unchanged(&columns, sources) {
-        return Ok(table);
-    }
-    no_operator(
-        &format!("{QUERY_TABLE}#moveColumns"),
-        format!("moveColumns({index}, {})", columns.join(", ")),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.Table#moveColumnsUp`
-fn move_columns_up(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
-    let columns = strings(args, "cols")?;
-    if let Some(table) = unchanged(&columns, sources) {
-        return Ok(table);
-    }
-    no_operator(
-        "io.deephaven.engine.table.Table#moveColumnsUp",
-        format!("moveColumnsUp({})", columns.join(", ")),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.Table#moveColumnsDown`
-fn move_columns_down(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
-    let columns = strings(args, "cols")?;
-    if let Some(table) = unchanged(&columns, sources) {
-        return Ok(table);
-    }
-    no_operator(
-        "io.deephaven.engine.table.Table#moveColumnsDown",
-        format!("moveColumnsDown({})", columns.join(", ")),
-    )
-}
-
-/// A `where` whose filter is a disjunction of filter strings. The engine selects rows by a
-/// disjunction, but offers it only for the conditions of the gRPC `filter` operation.
-///
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#where(Filter)` of an
-/// `io.deephaven.api.filter.FilterOr`, or of `Filter#ofFalse` for no filters
-fn where_one_of(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let filters = strings(args, "filters")?;
-    no_operator(
-        &format!("{QUERY_TABLE}#where"),
-        format!("where(Filter.or({}))", filters.join(", ")),
-    )
-}
-
-/// Behavior: `io.deephaven.engine.table.impl.QueryTable#restrictSortTo`
-fn restrict_sort_to(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let columns = strings(args, "cols")?;
-    no_operator(
-        &format!("{QUERY_TABLE}#restrictSortTo"),
-        format!("restrictSortTo({})", columns.join(", ")),
-    )
-}
-
-/// The merge of tables that are each sorted by a column, asked for tables of which one is
-/// refreshing, which Java refuses. The merge of static tables is the table service's
-/// `merge` with a key column.
-///
-/// Behavior: `io.deephaven.engine.table.impl.util.MergeSortedHelper#mergeSortedHelper`
-fn merge_sorted(_: &OpContext, _: &Value, _: &[Arc<dyn Table>]) -> Created {
-    Err(ExportError::Internal(
-        "mergeSorted does not yet support refreshing tables!".to_string(),
-    ))
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
@@ -292,20 +300,42 @@ fn is_blink(source: PyRef<'_, TableHandle>) -> bool {
     source.table.is_refreshing() && source.table.attributes().blink
 }
 
-/// The attributes of a table by name. A table here keeps the facts its operators need and
-/// not Java's attribute map, which also holds what the operations before left for the ones
-/// after (`SortedColumns`, `SortRowRedirection`, ...), so the map cannot be given.
+/// The value of an attribute that is a Java object in the reference and has no value
+/// here: what it is, for a reader to tell it is there.
+#[pyclass(module = "_oxhaven", frozen)]
+struct JavaObject {
+    class: &'static str,
+}
+
+#[pymethods]
+impl JavaObject {
+    fn __repr__(&self) -> String {
+        format!("<{}>", self.class)
+    }
+}
+
+/// The attributes of a table by name: a Boolean or a string as Java has it, and a
+/// [`JavaObject`] for an attribute whose value is an object of the Java engine
+/// (`SortReverseLookup`, `InputTable`). See `oxhaven_engine::table::attribute_map` for
+/// the attributes a table has.
 ///
 /// Behavior: `io.deephaven.engine.table.AttributeMap#getAttributes`
 #[pyfunction]
-fn attributes(_source: PyRef<'_, TableHandle>) -> PyResult<()> {
-    Err(failure(
-        not_ported(
-            "io.deephaven.engine.table.AttributeMap#getAttributes",
-            "the attribute map of a table",
-        )
-        .into(),
-    ))
+fn attributes<'py>(
+    py: Python<'py>,
+    source: PyRef<'py, TableHandle>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let map = PyDict::new(py);
+    for (name, value) in attribute_map(source.table.as_ref()) {
+        match value {
+            AttributeValue::Bool(value) => map.set_item(name, value)?,
+            AttributeValue::Text(value) => map.set_item(name, value)?,
+            AttributeValue::Object(class) => {
+                map.set_item(name, Py::new(py, JavaObject { class })?)?
+            }
+        }
+    }
+    Ok(map)
 }
 
 /// The indices of the columns `names` in `table`, or of every column for no names.
@@ -563,61 +593,148 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_operation_without_an_engine_operator_names_the_java_method() {
+    async fn the_local_operations_answer_as_java_answers() {
         check(
             r#"
-from deephaven import DHError, empty_table, merge_sorted
-t = empty_table(4).update(["A = i", "B = i % 2"])
-refused = {
-    "QueryTable#headPct": lambda: t.head_pct(0.5),
-    "QueryTable#tailPct": lambda: t.tail_pct(0.5),
-    "QueryTable#slicePct": lambda: t.slice_pct(0.25, 0.75),
-    "QueryTable#renameColumns": lambda: t.rename_columns("C = A"),
-    "QueryTable#moveColumns": lambda: t.move_columns(1, "A"),
-    "Table#moveColumnsUp": lambda: t.move_columns_up("B"),
-    "Table#moveColumnsDown": lambda: t.move_columns_down("A"),
-    "QueryTable#where": lambda: t.where_one_of(["A > 2", "B == 0"]),
-    "QueryTable#restrictSortTo": lambda: t.restrict_sort_to("A"),
-    "TableTools#mergeSorted": lambda: merge_sorted([t, t], "A"),
-    "AttributeMap#getAttributes": lambda: t.attributes(),
-}
-for java, call in refused.items():
-    try:
-        call()
-    except DHError as e:
-        assert "Unimplemented: not ported: io.deephaven." in str(e), str(e)
-        assert java in str(e), str(e)
-    else:
-        raise AssertionError(java + " was answered")
-try:
-    t.head_pct(0.5)
-except DHError as e:
-    assert str(e).startswith("table head_pct operation failed. : "), str(e)
+from deephaven import DHError, empty_table, merge, merge_sorted, time_table
+def rows(t):
+    return [tuple(row.values()) for row in t.iter_dict()]
+t = empty_table(8).update(["I = i"])
+assert rows(t.head_pct(0.5)) == [(0,), (1,), (2,), (3,)]
+assert rows(t.head_pct(0.126)) == [(0,), (1,)]
+assert rows(t.tail_pct(0.3)) == [(5,), (6,), (7,)]
+assert rows(t.slice_pct(0.25, 0.8)) == [(2,), (3,), (4,), (5,)]
+assert rows(t.slice_pct(0.8, 0.2)) == []
+# NaN is not outside 0 to 1
+assert rows(t.head_pct(float("nan"))) == [] and rows(t.tail_pct(float("nan"))) == []
+assert rows(t.slice_pct(float("nan"), 0.5)) == [(0,), (1,), (2,), (3,)]
+assert (t.head_pct(0.5).is_flat, t.tail_pct(0.3).is_flat) == (True, False)
+
+a = empty_table(3).update(["A = i", "B = i * 2", "C = i * 3", "D = i * 4"])
+swapped = a.rename_columns(["A = B", "B = A"])
+assert swapped.column_names == ["B", "A", "C", "D"] and rows(swapped)[1] == (1, 2, 3, 4)
+assert rows(a.rename_columns("B = A")) == [(0, 0, 0), (1, 3, 4), (2, 6, 8)]
+assert a.move_columns(2, ["D", "B"]).column_names == ["A", "C", "D", "B"]
+assert a.move_columns(1, "A = B").column_names == ["C", "A", "D"]
+assert a.move_columns(-3, "C").column_names == ["C", "A", "B", "D"]
+assert a.move_columns_up(["C", "B"]).column_names == ["C", "B", "A", "D"]
+assert a.move_columns_down(["D = A", "C"]).column_names == ["B", "D", "C"]
+# renaming or moving no column is the table itself
+for same in (a.rename_columns([]), a.move_columns(1, []), a.move_columns_up([]), a.move_columns_down([])):
+    assert same.j_table.is_same(a.j_table)
+assert a.coalesce().j_table.is_same(a.j_table)
+
+assert rows(a.where_one_of(["A > 1", "B == 0"])) == [(0, 0, 0, 0), (2, 4, 6, 8)]
+assert rows(a.where_one_of(["A > 1", "B == 0", "C == 3"])) == rows(a)
+# one alternative is that filter
+assert [row["A"] for row in a.where_one_of("A > 0").iter_dict()] == [1, 2]
+
+# with no columns, every row or none, by whether the other table has a row
+some, none = a.head(1), a.head(0)
+assert (a.where_in(some, []).size, a.where_in(none, []).size) == (3, 0)
+assert (a.where_not_in(some, []).size, a.where_not_in(none, []).size) == (0, 3)
+assert a.where_in(some, None).size == 3
+assert a.where_in(some, "A").size == 1
+
+r = a.restrict_sort_to("B")
+assert r.attributes() == {"SortableColumns": "B"}
+assert a.restrict_sort_to(["D", "B"]).attributes() == {"SortableColumns": "D,B"}
+assert r.restrict_sort_to("B").j_table.is_same(r.j_table)
+assert rows(r.sort_descending("B"))[0] == (2, 4, 6, 8)
+assert r.rename_columns("X = B").attributes() == {"SortableColumns": "X"}
+
+x = empty_table(3).update(["K = i", "V = i * 10"])
+y = empty_table(3).update(["K = i + 1", "V = i * 100"])
+merged = merge_sorted([x, y], "K")
+assert rows(merged) == [(0, 0), (1, 10), (1, 0), (2, 20), (2, 100), (3, 200)]
+assert (merged.is_flat, merged.is_refreshing, merged.attributes()) == (False, False, {})
+assert rows(merge_sorted([y, x], "K")) == [(0, 0), (1, 0), (1, 10), (2, 100), (2, 20), (3, 200)]
+nothing = merge_sorted([], "K")
+assert (nothing.column_names, nothing.size) == ([], 0)
 "#,
         )
         .await;
     }
 
     #[tokio::test]
-    async fn what_java_answers_without_an_operator_is_answered() {
+    async fn the_attributes_of_a_table_are_those_java_gives_it() {
+        check(
+            r#"
+from deephaven import empty_table, merge, time_table
+a = empty_table(3).update(["A = i", "B = 2 - i"])
+assert a.attributes() == {}
+assert a.sort("B").attributes() == {"SortedColumns": "B=Ascending", "SortRowRedirection": "B"}
+assert a.sort_descending("B").attributes() == {
+    "SortedColumns": "B=Descending", "SortRowRedirection": "+IDENTITY_REDIRECTION"}
+assert a.where("A > 0").attributes() == {"AddOnly": True, "AppendOnly": True}
+assert merge([a, a]).attributes() == {"MergedTable": True}
+assert merge([a, a]).rename_columns("X = A").attributes() == {"MergedTable": True}
+assert a.sort("B").rename_columns("X = A").attributes() == {}
+clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC")
+assert clock.attributes() == {"AddOnly": True, "AppendOnly": True}
+assert clock.head(1).attributes() == {"AppendOnly": True}
+assert clock.head_pct(0.5).attributes() == {"AddOnly": True, "AppendOnly": True}
+assert clock.tail_pct(0.5).attributes() == {}
+assert time_table("PT1h", blink_table=True).attributes() == {"BlinkTable": True}
+# an attribute that is a Java object in the reference is there, with a placeholder
+ticking = clock.update("K = ii % 3").sort("K").attributes()
+assert sorted(ticking) == ["SortReverseLookup", "SortRowRedirection", "SortedColumns"], ticking
+assert (ticking["SortedColumns"], ticking["SortRowRedirection"]) == ("K=Ascending", "K")
+assert repr(ticking["SortReverseLookup"]) == "<java.util.function.LongUnaryOperator>"
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn the_local_operations_refuse_what_java_refuses() {
         check(
             r#"
 from deephaven import DHError, empty_table, merge_sorted, time_table
-t = empty_table(4).update(["A = i", "B = i % 2"])
-# renaming or moving no column is the table itself
-for same in (t.rename_columns([]), t.move_columns(1, []), t.move_columns_up([]), t.move_columns_down([])):
-    assert same.j_table.is_same(t.j_table)
-assert t.coalesce().j_table.is_same(t.j_table)
-# one alternative is that filter
-assert [row["A"] for row in t.where_one_of("A > 1").iter_dict()] == [2, 3]
-# Java refuses a sorted merge of refreshing tables
+t = empty_table(8).update(["I = i"])
+a = empty_table(3).update(["A = i", "B = i * 2", "C = i * 3", "D = i * 4"])
+r = a.restrict_sort_to("B")
 clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC")
-try:
-    merge_sorted([clock, clock], "Timestamp")
-except DHError as e:
-    assert str(e) == "merge sorted operation failed. : mergeSorted does not yet support refreshing tables!", str(e)
-else:
-    raise AssertionError("merged")
+blink = time_table("PT1h", blink_table=True)
+refused = [
+    (lambda: t.head_pct(1.5), "table head_pct operation failed. : ",
+     "percentage of rows must be between [0,1]: percent=1.5"),
+    (lambda: t.tail_pct(-0.1), "table tail_pct operation failed. : ",
+     "percentage of rows must be between [0,1]: percent=-0.1"),
+    (lambda: t.slice_pct(-1.0, 0.5), "table slice_pct operation failed. : ",
+     "Cannot slice with start percentage (-1.0) and end percentage (0.5), percentages must be between [0, 1]"),
+    (lambda: blink.tail_pct(1.5), "table tail_pct operation failed. : ",
+     "Blink tables do not support tailPct; use BlinkTableTools.blinkToAppendOnly to accumulate full history"),
+    (lambda: a.rename_columns(["X = Q", "Y = A", "Y = A"]), "table rename_columns operation failed. : ",
+     "Column(s) not found: Q\nDuplicate source column(s): A\nDuplicate destination column(s): Y"),
+    (lambda: a.rename_columns("1X = A"), "table rename_columns operation failed. : ",
+     'Invalid column name "1X"'),
+    (lambda: a.move_columns(1, "Q"), "table move_columns operation failed. : ",
+     "Column(s) not found: Q"),
+    (lambda: a.where_one_of([]), "table where_one_of operation failed. : ",
+     "Should not be constructing literal boolean WhereFilter"),
+    (lambda: a.where_one_of(["A > 1", "Q == 0"]), "table where_one_of operation failed. : ",
+     'Column "Q" doesn\'t exist in this table, available columns: [A, B, C, D]'),
+    (lambda: a.restrict_sort_to(["B", "Q", "Z"]), "table restrict_sort_to operation failed. : ",
+     "Unknown column names [Q, Z], available column names are [A, B, C, D]"),
+    (lambda: r.sort("A"), "table sort operation failed. : ",
+     "Sorting is not allowed on this table, but was attempted on: A but was attempted on: A"),
+    (lambda: merge_sorted([a, a], "Q"), "merge sorted operation failed. : ",
+     "Unknown column names [Q], available column names are [A, B, C, D]"),
+    (lambda: merge_sorted([a, a.view(["A", "B", "C", "W = D"])], "A"), "merge sorted operation failed. : ",
+     "Incompatible column sources: [A, B, C, D] and [A, B, C, W]"),
+    # Java refuses a sorted merge of refreshing tables
+    (lambda: merge_sorted([clock, clock], "Timestamp"), "merge sorted operation failed. : ",
+     "mergeSorted does not yet support refreshing tables!"),
+]
+for call, failure, text in refused:
+    try:
+        call()
+    except DHError as e:
+        assert str(e).startswith(failure), str(e)
+        assert text in str(e), str(e)
+    else:
+        raise AssertionError(text + " was answered")
 "#,
         )
         .await;
