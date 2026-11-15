@@ -18,11 +18,15 @@
 //!
 //! Commands run on one thread, the interpreter's main thread, where a command whose
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
-//! interpreter does so from the thread it is called on.
+//! interpreter does so from the thread it is called on; completion (`completer`) does so
+//! while a command runs, without the graph's lock.
 
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod completer;
+#[cfg(test)]
+mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
@@ -37,6 +41,7 @@ mod udf;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::CString;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock};
 
 use arrow::array::{
@@ -61,6 +66,7 @@ use pyo3::exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
 
+use super::completer::Completer;
 use super::logs::LogBuffer;
 use super::session::{Changes, Console, ScriptSession, Stop, CHECK_SCOPE_CHANGES_INTERVAL};
 use crate::app::FormulaValue;
@@ -70,8 +76,9 @@ use crate::table::run_local;
 use crate::table::support::OpContext;
 use crate::ServerState;
 
-/// The modules of the `deephaven` package, compiled into the binary: name, whether it is a
-/// package, source. `build.rs` lists every file under `python/deephaven`.
+/// The modules of the `deephaven` and `deephaven_internal` packages, compiled into the binary:
+/// name, whether it is a package, source. `build.rs` lists every file under `python/deephaven`
+/// and `python/deephaven_internal`.
 const MODULES: &[(&str, bool, &str)] = include!(concat!(env!("OUT_DIR"), "/python_modules.rs"));
 
 const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
@@ -383,6 +390,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::write_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
@@ -490,6 +499,8 @@ pub struct PythonSession {
     /// Behavior: `AbstractScriptSession#lastSnapshot`, and the monitor of the session that
     /// `evaluateScript`, `observeScopeChanges` and `setVariable` synchronize on
     snapshot: Arc<Mutex<Py<PyDict>>>,
+    /// Whether the completion package could not be imported; see [`completer::ready`].
+    no_completer: Arc<AtomicBool>,
 }
 
 impl PythonSession {
@@ -515,6 +526,7 @@ impl PythonSession {
                 helpers: helpers.unbind(),
                 snapshot: Arc::new(Mutex::new(PyDict::new(py).unbind())),
                 globals: globals.unbind(),
+                no_completer: Arc::default(),
             })
         })
         .map_err(|error: PyErr| format!("the Python session could not start: {error}"))
@@ -546,6 +558,7 @@ impl PythonSession {
             helpers: self.helpers.clone_ref(py),
             globals: self.globals.clone_ref(py),
             snapshot: self.snapshot.clone(),
+            no_completer: self.no_completer.clone(),
         })
     }
 
@@ -722,6 +735,14 @@ impl ScriptSession for PythonSession {
                 })
                 .collect()
         })
+    }
+
+    /// `jedi` in this interpreter, if the environment has it. Takes neither the update
+    /// graph's lock nor the snapshot's, so it does not wait for a running command.
+    ///
+    /// Behavior: `ConsoleServiceGrpcImpl#autoCompleteStream`
+    fn completer(&self) -> Result<Option<Arc<dyn Completer>>, String> {
+        completer::ready(&self.helpers, &self.globals, &self.no_completer)
     }
 }
 

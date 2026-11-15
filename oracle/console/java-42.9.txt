@@ -117,7 +117,7 @@ message: error_message: "java.lang.RuntimeException: Error in Python interpreter
 call: ConsoleService/ExecuteCommand
 request: console_id { ticket: "e\001\000\000\000" } code: "w = empty_table(1).update([\"X = nosuchcolumn\"])"
 status: OK
-message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line 1374, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Cannot find variable or class nosuchcolumn\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Cannot find variable or class nosuchcolumn\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
 
 == two tables and a removal
 call: ConsoleService/ExecuteCommand
@@ -255,7 +255,7 @@ columns: A java.lang.String, B byte
 call: ConsoleService/ExecuteCommand
 request: console_id { ticket: "e\001\000\000\000" } code: "neg = t.update(\'Y = -xi\')"
 status: OK
-message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line 1374, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Assertion failed\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Assertion failed\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line <n>, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
 
 == a formula that names a list
 call: ConsoleService/ExecuteCommand
@@ -290,12 +290,75 @@ call: ConsoleService/CancelAutoComplete
 request: console_id { ticket: "e\001\000\000\000" } request_id: 1
 status: UNIMPLEMENTED: 'Method io.deephaven.proto.backplane.script.grpc.ConsoleService/CancelAutoComplete is unimplemented'
 
+== define a function to complete
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "def scaled(table, factor: int = 2) -> int:\n    \"\"\"Multiplies the size of a table.\n\n    Args:\n        table (Table): the table\n        factor (int): what to multiply by\n\n    Returns:\n        the product\n    \"\"\"\n    return table.size * factor"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
 == autocomplete stream
 call: ConsoleService/AutoCompleteStream
-request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "emp" } } console_id { ticket: "e\001\000\000\000" } request_id: 1
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "emp" } } console_id { ticket: "e\001\000\000\000" }
 request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 1 } position { character: 3 } } console_id { ticket: "e\001\000\000\000" } request_id: 2
 status: OPEN
 message: completion_items { items { length: 11 label: "empty_table" kind: 3 detail: "empty_table(size: int)" text_edit { range { start { } end { character: 3 } } text: "empty_table" } sort_text: "00000" insert_text_format: 2 documentation { kind: "plaintext" value: "Creates a table with rows but no columns.\n\nArgs:\n    size (int): the number of rows\n\nReturns:\n     a Table\n\nRaises:\n    DHError" } } success: true } request_id: 2 success: true
+
+== autocomplete: a signature and a hover of a function of the script
+call: ConsoleService/AutoCompleteStream
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "scaled(t, " } } console_id { ticket: "e\001\000\000\000" }
+request: console_id { ticket: "e\001\000\000\000" } request_id: 3 get_signature_help { text_document { uri: "inmemory://probe/1" version: 1 } position { character: 10 } }
+request: console_id { ticket: "e\001\000\000\000" } request_id: 4 get_hover { text_document { uri: "inmemory://probe/1" version: 1 } position { character: 3 } }
+status: OPEN
+message: request_id: 3 success: true signatures { signatures { label: "scaled(table, factor: int=2)" documentation { kind: "markdown" value: "Multiplies the size of a table.\n\n#### **Parameters**\n\n> **table**: *Table*  \n> the table\n\n> **factor**: *int* ⋅ (default: *2*)  \n> what to multiply by\n\n#### **Returns**\n\n> the product" } parameters { label: "table" documentation { kind: "markdown" value: "##### **table** : *Table*\n\nthe table\n\n---" } } parameters { label: "factor: int=2" documentation { kind: "markdown" value: "##### **factor** : *int*\n\nwhat to multiply by\n\n---" } } active_parameter: 1 } }
+message: request_id: 4 success: true hover { contents { kind: "markdown" value: "```python\ndef scaled(table, factor: int=2)\n```\n---\n```plaintext\nMultiplies the size of a table.\n\nArgs:\n    table (Table): the table\n    factor (int): what to multiply by\n\nReturns:\n    the product\n```" } }
+
+== autocomplete: an attribute of a table variable, typed in two edits
+call: ConsoleService/AutoCompleteStream
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "x = 1\n" } } console_id { ticket: "e\001\000\000\000" }
+request: change_document { text_document { uri: "inmemory://probe/1" version: 2 } content_changes { range { start { line: 1 } end { line: 1 } } text: "t." } } console_id { ticket: "e\001\000\000\000" }
+request: change_document { text_document { uri: "inmemory://probe/1" version: 3 } content_changes { range { start { line: 1 character: 2 } end { line: 1 character: 2 } } text: "he" } } console_id { ticket: "e\001\000\000\000" }
+request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 3 } position { line: 1 character: 4 } } console_id { ticket: "e\001\000\000\000" } request_id: 5
+status: OPEN
+message: request_id: 5 success: true
+item: 'head' detail: "head(num_rows: 'int')" sort_text: '00000' start: 2 length: 4 replaces: 1:2-1:4
+item: 'head_by' detail: "head_by(num_rows: 'int', by: 'Optional[Union[str, Sequence[str]]]'=None)" sort_text: '00001' start: 2 length: 7 replaces: 1:2-1:4
+item: 'head_pct' detail: "head_pct(pct: 'float')" sort_text: '00002' start: 2 length: 8 replaces: 1:2-1:4
+
+== autocomplete: requests that find nothing, and diagnostics
+call: ConsoleService/AutoCompleteStream
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "no_such_name_at_all" } } console_id { ticket: "e\001\000\000\000" }
+request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 1 } position { character: 19 } } console_id { ticket: "e\001\000\000\000" } request_id: 6
+request: console_id { ticket: "e\001\000\000\000" } request_id: 7 get_signature_help { text_document { uri: "inmemory://probe/1" version: 1 } position { character: 19 } }
+request: console_id { ticket: "e\001\000\000\000" } request_id: 8 get_hover { text_document { uri: "inmemory://probe/1" version: 1 } position { character: 5 } }
+request: console_id { ticket: "e\001\000\000\000" } request_id: 9 get_diagnostic { text_document { uri: "inmemory://probe/1" version: 1 } }
+request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 7 } position { character: 19 } } console_id { ticket: "e\001\000\000\000" } request_id: 10
+request: close_document { text_document { uri: "inmemory://probe/1" } } console_id { ticket: "e\001\000\000\000" }
+status: OPEN
+message: completion_items { success: true } request_id: 6 success: true
+message: request_id: 7 success: true signatures { }
+message: request_id: 8 success: true hover { contents { kind: "markdown" } }
+message: request_id: 9 success: true diagnostic { }
+message: completion_items { success: true } request_id: 10 success: true
+
+== autocomplete: a document that was never opened
+call: ConsoleService/AutoCompleteStream
+request: change_document { text_document { uri: "inmemory://probe/none" version: 2 } content_changes { range { start { } end { } } text: "x" } } console_id { ticket: "e\001\000\000\000" }
+status: INVALID_ARGUMENT: "Details Logged w/ID '<id>'"
+
+== autocomplete as a browser sends it
+call: ConsoleService/OpenAutoCompleteStream
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "empty_t" } } console_id { ticket: "e\001\000\000\000" }
+call: ConsoleService/NextAutoCompleteStream
+request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 1 } position { character: 7 } } console_id { ticket: "e\001\000\000\000" } request_id: 11
+status: OK
+message: 
+call: ConsoleService/NextAutoCompleteStream (half close)
+request: 
+status: OK
+message: 
+the open call:
+status: OK
+message: completion_items { items { length: 11 label: "empty_table" kind: 3 detail: "empty_table(size: int)" text_edit { range { start { } end { character: 7 } } text: "empty_table" } sort_text: "00000" insert_text_format: 2 documentation { kind: "plaintext" value: "Creates a table with rows but no columns.\n\nArgs:\n    size (int): the number of rows\n\nReturns:\n     a Table\n\nRaises:\n    DHError" } } success: true } request_id: 11 success: true
 
 == what the commands printed
 call: ConsoleService/SubscribeToLogs
