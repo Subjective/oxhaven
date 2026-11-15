@@ -1,6 +1,6 @@
 """Functions that create tables."""
 
-from typing import Mapping, Optional, Sequence, Union
+from typing import Mapping, Sequence, Union
 
 from . import _engine
 from .column import InputColumn
@@ -16,25 +16,86 @@ def empty_table(size: int) -> Table:
         raise DHError(e, "failed to create an empty table.") from e
 
 
-def time_table(
-    period: Union[int, str],
-    start_time: Optional[Union[int, str]] = None,
-    blink_table: bool = False,
-) -> Table:
+def _nanos_of_duration(period) -> int:
+    """The nanoseconds of a duration given as an integer, a `datetime.timedelta`, a
+    `numpy.timedelta64` or a `pandas.Timedelta`.
+
+    Behavior: `deephaven.time.to_j_duration`, for everything but a string
+    """
+    import datetime
+    import sys
+
+    if isinstance(period, int) and not isinstance(period, bool):
+        return period
+    pandas, numpy = sys.modules.get("pandas"), sys.modules.get("numpy")
+    if pandas is not None and isinstance(period, pandas.Timedelta):
+        return period.value
+    if isinstance(period, datetime.timedelta):
+        return int(period / datetime.timedelta(microseconds=1) * 1000)
+    if numpy is not None and isinstance(period, numpy.timedelta64):
+        return int(period.astype("timedelta64[ns]").astype(numpy.int64))
+    raise TypeError("Unsupported conversion: " + str(type(period)) + " -> Duration")
+
+
+def _nanos_of_instant(instant) -> int:
+    """The nanoseconds since the epoch of an instant given as an integer, a
+    `datetime.datetime` (a `pandas.Timestamp` is one) or a `numpy.datetime64`.
+
+    Behavior: `deephaven.time.to_j_instant`, for everything but a string
+    """
+    import datetime
+    import sys
+
+    if isinstance(instant, int) and not isinstance(instant, bool):
+        return instant
+    numpy = sys.modules.get("numpy")
+    if isinstance(instant, datetime.datetime):
+        # the reference's arithmetic, in floating point as there
+        epoch_time = instant.timestamp()
+        seconds = int(epoch_time)
+        return seconds * 1000000000 + int((epoch_time - seconds) * 1000000000)
+    if numpy is not None and isinstance(instant, numpy.datetime64):
+        return int(instant.astype("datetime64[ns]").astype(numpy.int64))
+    raise TypeError("Unsupported conversion: " + str(type(instant)) + " -> Instant")
+
+
+def _is_null(value) -> bool:
+    """Whether `value` is what `pandas.isnull` calls null: `None`, a NaN, a not-a-time."""
+    import sys
+
+    if value is None:
+        return True
+    pandas = sys.modules.get("pandas")
+    if pandas is not None:
+        return pandas.isnull(value) is True
+    return isinstance(value, float) and value != value
+
+
+def time_table(period, start_time=None, blink_table: bool = False) -> Table:
     """Creates a table that adds a new row on a regular interval.
 
-    `period` and `start_time` are an integer in nanoseconds or a string such as `"PT1s"`
-    and `"2024-01-01T00:00:00 ET"`; the other duration and instant types of the reference
-    package are not accepted yet.
+    `period` is an integer in nanoseconds, a string such as `"PT1s"`, a
+    `datetime.timedelta`, a `numpy.timedelta64` or a `pandas.Timedelta`. `start_time` is an
+    integer in nanoseconds since the epoch, a string such as `"2024-01-01T00:00:00 ET"`, a
+    `datetime.datetime`, a `numpy.datetime64` or a `pandas.Timestamp`; without it the table
+    starts now.
     """
     try:
+        if period is None:
+            raise ValueError("period must be specified")
+        if _is_null(period):
+            # the reference hands Java a null duration, which it refuses
+            raise ValueError("period must not be null")
         request = {"blink_table": bool(blink_table)}
-        for field, value in (("period", period), ("start_time", start_time)):
-            if value is None:
-                continue
-            if isinstance(value, bool) or not isinstance(value, (int, str)):
-                raise TypeError(f"{field} must be an int or a str, not {type(value).__name__}")
-            request[f"{field}_nanos" if isinstance(value, int) else f"{field}_string"] = value
+        if isinstance(period, str):
+            request["period_string"] = period
+        else:
+            request["period_nanos"] = _nanos_of_duration(period)
+        if start_time:
+            if isinstance(start_time, str):
+                request["start_time_string"] = start_time
+            elif not _is_null(start_time):
+                request["start_time_nanos"] = _nanos_of_instant(start_time)
         return Table(_engine.table_op("time_table", request))
     except Exception as e:
         raise DHError(e, "failed to create a time table.") from e
@@ -58,3 +119,32 @@ def new_table(cols: Union[Sequence[InputColumn], Mapping[str, Sequence]]) -> Tab
     except Exception as e:
         # the text is the reference's, "time" included
         raise DHError(e, "failed to create a new time table.") from e
+
+
+def merge(tables: Sequence[Table]) -> Table:
+    """Creates a table of the rows of the tables, which have the same columns, one table
+    after another."""
+    try:
+        handles = [table.j_table for table in tables]
+        request = {"source_ids": [_engine.source(index) for index in range(len(handles))]}
+        return Table(_engine.table_op("merge", request, handles))
+    except Exception as e:
+        raise DHError(e, "merge tables operation failed.") from e
+
+
+def merge_sorted(tables: Sequence[Table], order_by: str) -> Table:
+    """Creates a table of the rows of the tables, each of which is sorted by the column
+    `order_by`, in the order of that column."""
+    try:
+        handles = [table.j_table for table in tables]
+        if any(handle.is_refreshing() for handle in handles):
+            # the table service sorts a merge of refreshing tables, which Java's
+            # `TableTools.mergeSorted` does not
+            return Table(_engine.local_op("merge_sorted", {"order_by": order_by}, handles))
+        request = {
+            "source_ids": [_engine.source(index) for index in range(len(handles))],
+            "key_column": order_by,
+        }
+        return Table(_engine.table_op("merge", request, handles))
+    except Exception as e:
+        raise DHError(e, "merge sorted operation failed.") from e
