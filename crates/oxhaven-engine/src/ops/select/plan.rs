@@ -444,9 +444,10 @@ pub(super) fn analyze<S: AsRef<str>>(
                     .flatten()
                     .filter(|rewritten| {
                         compiled.is_ok()
-                            || rewritten.shifts.iter().all(|shift| {
-                                scope.iter().any(|named| named.name == shift.column)
-                            })
+                            || rewritten
+                                .shifts
+                                .iter()
+                                .all(|shift| scope.iter().any(|named| named.name == shift.column))
                     });
                 if let Some(rewritten) = rewritten {
                     shifted = Some(ShiftedColumn {

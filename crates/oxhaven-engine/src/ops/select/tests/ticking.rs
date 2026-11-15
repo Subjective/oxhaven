@@ -16,7 +16,9 @@ use std::sync::{Mutex, Weak};
 
 pub(super) type Operation = Arc<dyn Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync>;
 
-pub(super) fn operation(f: impl Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync + 'static) -> Operation {
+pub(super) fn operation(
+    f: impl Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync + 'static,
+) -> Operation {
     Arc::new(f)
 }
 

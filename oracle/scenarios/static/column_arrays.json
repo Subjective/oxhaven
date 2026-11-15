@@ -1,0 +1,295 @@
+{
+ "format": 1,
+ "name": "column_arrays",
+ "description": "Column arrays through the table service on a static table and on a filtered one whose row keys are not its positions: a column at a fixed distance, at a computed position, whole, in filters, and what is refused.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "D",
+     "type": "float64"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    },
+    {
+     "name": "Z",
+     "type": "bool"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     10,
+     0.5,
+     "a",
+     true
+    ],
+    [
+     2,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     30,
+     "NaN",
+     "c",
+     false
+    ],
+    [
+     4,
+     40,
+     -0.0,
+     "",
+     true
+    ],
+    [
+     5,
+     50,
+     2.5,
+     "e",
+     null
+    ],
+    [
+     6,
+     -60,
+     "Infinity",
+     "f",
+     false
+    ],
+    [
+     7,
+     70,
+     7.0,
+     "g",
+     true
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "sparse",
+   "op": "where",
+   "source": "t",
+   "filters": [
+    "K != 3"
+   ]
+  },
+  {
+   "name": "before",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = X_[i - 1]",
+    "N = D_[ii + 2]",
+    "T = S_[i - 1]",
+    "B = Z_[i + 1]",
+    "Q = P_[i + 1] + 1"
+   ]
+  },
+  {
+   "name": "sparse_before",
+   "op": "update",
+   "source": "sparse",
+   "formulas": [
+    "P = X_[i - 1]",
+    "Dx = X - X_[i - 1]",
+    "M = (D_[i - 1] + D_[i + 1]) / 2",
+    "Kk = k",
+    "I = i"
+   ]
+  },
+  {
+   "name": "computed",
+   "op": "update",
+   "source": "sparse",
+   "formulas": [
+    "F = X_[1]",
+    "L = X_[-1]",
+    "E = X_[6]",
+    "G = X_[5 - i]",
+    "H = X_[K % 3]",
+    "W = isNull(S_[i - 1])",
+    "A = Z_[0]",
+    "U = (int) X_[i - 1]"
+   ]
+  },
+  {
+   "name": "whole",
+   "op": "update",
+   "source": "sparse",
+   "formulas": [
+    "C = X_.size()",
+    "U = sum(X_)",
+    "A = avg(D_)",
+    "V = X_.subVector(i, i + 2)",
+    "R = sum(X_) - X"
+   ]
+  },
+  {
+   "name": "stored",
+   "op": "select",
+   "source": "t",
+   "formulas": [
+    "K",
+    "P = X_[i + 1]",
+    "R = P + K"
+   ]
+  },
+  {
+   "name": "viewed",
+   "op": "view",
+   "source": "sparse",
+   "formulas": [
+    "P = S_[i + 1]",
+    "K"
+   ]
+  },
+  {
+   "name": "update_viewed",
+   "op": "update_view",
+   "source": "sparse",
+   "formulas": [
+    "P = X_[i - 2] + X_[i]"
+   ]
+  },
+  {
+   "name": "lazy",
+   "op": "lazy_update",
+   "source": "sparse",
+   "formulas": [
+    "P = X_[i - 1] * 2"
+   ]
+  },
+  {
+   "name": "kept",
+   "op": "where",
+   "source": "sparse",
+   "filters": [
+    "X_[i - 1] > 10"
+   ]
+  },
+  {
+   "name": "kept_two",
+   "op": "where",
+   "source": "sparse",
+   "filters": [
+    "K > 1",
+    "isNull(X_[i - 1]) || X_[i - 1] < X_[i + 1]"
+   ]
+  },
+  {
+   "name": "kept_whole",
+   "op": "where",
+   "source": "sparse",
+   "filters": [
+    "X_[0] < X && X_.size() > i + 2"
+   ]
+  },
+  {
+   "name": "kept_boolean",
+   "op": "where",
+   "source": "sparse",
+   "filters": [
+    "Z_[0]"
+   ]
+  },
+  {
+   "name": "fails_null_boolean",
+   "op": "where",
+   "source": "sparse",
+   "filters": [
+    "Z_[i - 1]"
+   ]
+  },
+  {
+   "name": "fails_no_column",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = Nope_[i - 1]"
+   ]
+  },
+  {
+   "name": "fails_index_type",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = X_[D]"
+   ]
+  },
+  {
+   "name": "fails_shifted_name",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = X_[i - 1]",
+    "Q = __X_Shifted_Minus_1__"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "before"
+  },
+  {
+   "table": "sparse_before"
+  },
+  {
+   "table": "computed"
+  },
+  {
+   "table": "whole"
+  },
+  {
+   "table": "stored"
+  },
+  {
+   "table": "viewed"
+  },
+  {
+   "table": "update_viewed"
+  },
+  {
+   "table": "lazy"
+  },
+  {
+   "table": "kept"
+  },
+  {
+   "table": "kept_two"
+  },
+  {
+   "table": "kept_whole"
+  },
+  {
+   "table": "kept_boolean"
+  },
+  {
+   "table": "fails_null_boolean"
+  },
+  {
+   "table": "fails_no_column"
+  },
+  {
+   "table": "fails_index_type"
+  },
+  {
+   "table": "fails_shifted_name"
+  }
+ ]
+}

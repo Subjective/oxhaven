@@ -432,6 +432,10 @@ docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L5
 docs-python/reference.table-operations.update-by-operations.updateBy.L107.9.2	java-accepts	function randomInt()
 docs-python/reference.table-operations.update-by-operations.updateBy.L139.9.3	java-accepts	setup: function randomBool()
 docs-python/reference.time.calendar.calendar.L55.9.0	java-accepts	time literal '2024-01-05T00:08:00 ET'
+grid-array/extra.72	java-fails	an index on a value of a vector type
+grid-array/extra.73	java-fails	an index on a value of a vector type
+grid-array/extra.85	java-accepts	a column array of type Vector(Boolean) as the value of a formula, which Java sends as strings (io.deephaven.engine.table.vectors.ColumnVectors#of)
+grid-array/extra.94	java-accepts	operator + on a vector or array
 grid-binary/lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
 grid-binary/lt.byte.string	java-fails	ordering comparison of byte with String
 grid-binary/lt.short.boolean	java-fails	ordering comparison of short with Boolean

@@ -317,8 +317,14 @@ fn shifted_columns_follow_random_changes() {
     let cases: [(&str, &[&str]); 6] = [
         ("the row before", &["P = A_[i - 1]"]),
         ("the row two after", &["P = A_[i + 2] + B"]),
-        ("three rows before", &["X = A + B", "P = X_[i - 3]", "Q = P + 1"]),
-        ("two columns at one distance", &["P = A_[i - 2] + B_[i - 2]"]),
+        (
+            "three rows before",
+            &["X = A + B", "P = X_[i - 3]", "Q = P + 1"],
+        ),
+        (
+            "two columns at one distance",
+            &["P = A_[i - 2] + B_[i - 2]"],
+        ),
         ("a distance and the row itself", &["P = A_[i + 1] - A_[i]"]),
         ("one after another", &["P = A_[i - 1]", "Q = B_[i + 1] + P"]),
     ];
@@ -416,8 +422,7 @@ fn a_change_to_a_row_reaches_the_rows_that_read_it() {
     assert_eq!(seen.modified_columns, ModifiedColumnSet::of([2]));
 
     // An added row is the row before the one after it.
-    let seen =
-        cycle(TableChange::new().add([3], vec![strings(["e"]), longs([25]), longs([5])]));
+    let seen = cycle(TableChange::new().add([3], vec![strings(["e"]), longs([25]), longs([5])]));
     assert_eq!(seen.added, RowSet::from_keys([3]));
     assert_eq!(seen.modified, RowSet::from_keys([5]));
     assert_eq!(seen.modified_columns, ModifiedColumnSet::of([3]));
@@ -461,7 +466,12 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     refused(&["P = A_[i - 1] + A_[i + 1]"]);
     refused(&["P = A_[i - 1] + B_[i - 2]"]);
     // A static table has nothing to follow.
-    let result = update(&keyed(&[3, 7, 9]), &["P = A_[i - 1] + A_[i + 1]"], &Compiler).unwrap();
+    let result = update(
+        &keyed(&[3, 7, 9]),
+        &["P = A_[i - 1] + A_[i + 1]"],
+        &Compiler,
+    )
+    .unwrap();
     assert_eq!(values(&*result, "P"), ["null", "40", "null"]);
 }
 

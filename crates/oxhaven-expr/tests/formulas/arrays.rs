@@ -51,15 +51,9 @@ fn an_index_reads_the_row_at_that_position_and_null_outside() {
     table.assert("X_[4]", ints([None; 4]));
     table.assert("X_.get(i - 1L)", ints([None, Some(10), Some(20), None]));
     table.assert("X_[3 - i]", ints([Some(40), None, Some(20), Some(10)]));
-    table.assert(
-        "S_[i - 1]",
-        strings([None, Some("a"), None, Some("c")]),
-    );
+    table.assert("S_[i - 1]", strings([None, Some("a"), None, Some("c")]));
     // An element is a value like any other.
-    table.assert(
-        "X_[i - 1] + X_[i + 1]",
-        ints([None, None, Some(60), None]),
-    );
+    table.assert("X_[i - 1] + X_[i + 1]", ints([None, None, Some(60), None]));
     table.assert("isNull(X_[i - 1])", flags([true, false, false, true]));
 }
 
@@ -110,10 +104,7 @@ fn the_whole_column_is_a_vector_in_every_row() {
 #[test]
 fn an_element_of_a_boolean_column_array_is_a_boolean() {
     let table = table();
-    table.assert(
-        "Z_[i - 1]",
-        booleans([None, None, Some(false), Some(true)]),
-    );
+    table.assert("Z_[i - 1]", booleans([None, None, Some(false), Some(true)]));
     table.assert("Z_[2] && X > 15", flags([false, true, false, true]));
     table.assert("!Z_[1]", flags([true; 4]));
 }
@@ -266,6 +257,16 @@ fn column_arrays_that_do_not_compile() {
     for formula in ["X_[D]", "X_[S]", "X_ + 1", "X_[i - 1].size()"] {
         table.compile_error(formula);
     }
+    // Java sends the column array of a `Boolean` or `Instant` column as strings.
+    assert!(matches!(
+        table.compile_error("Z_"),
+        FormulaError::Unsupported(_)
+    ));
+    assert!(matches!(
+        table.compile_error("X > 15 ? Z_ : Z_"),
+        FormulaError::Unsupported(_)
+    ));
+    table.assert("Z_.size() + (isNull(Z_[0]) ? 1 : 0)", longs([Some(5); 4]));
     // The column array of a column of vectors is a vector of vectors.
     let grouped = TableDefinition::new(vec![ColumnDefinition::new(
         "V",

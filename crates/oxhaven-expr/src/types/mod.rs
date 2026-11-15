@@ -271,6 +271,38 @@ pub(crate) struct Checked {
     pub(crate) keys: bool,
 }
 
+/// Refuses a formula whose value is a column array of a column that is neither primitive
+/// nor a string.
+///
+/// Java makes the vector an `ObjectVector` (`io.deephaven.engine.table.vectors.ColumnVectors#of`)
+/// and the column one of `ObjectVector` without an element type, which a client receives
+/// as strings: seen on Java 42.9 for `update("R = Z_")` of a `Boolean` column, a list of
+/// `"true"` and `"false"`, and for one of an `Instant` column.
+fn refuse_object_column_array(root: &Typed) -> Result<(), FormulaError> {
+    fn is_column_array(expr: &Typed) -> bool {
+        match &expr.node {
+            Node::ColumnArray(_) => true,
+            Node::Ternary {
+                if_true, if_false, ..
+            } => is_column_array(if_true) || is_column_array(if_false),
+            _ => false,
+        }
+    }
+    let object = matches!(
+        &root.column_type,
+        ColumnType::Vector(element)
+            if matches!(**element, ColumnType::Boolean | ColumnType::Instant)
+    );
+    if object && is_column_array(root) {
+        return Err(unsupported(format!(
+            "a column array of type {:?} as the value of a formula, which Java sends as \
+             strings (io.deephaven.engine.table.vectors.ColumnVectors#of)",
+            root.column_type
+        )));
+    }
+    Ok(())
+}
+
 /// Type-checks `expr` against `definition`.
 pub(crate) fn check(
     expr: &Expr,
@@ -286,6 +318,7 @@ pub(crate) fn check(
         keys: false,
     };
     let root = checker.check(expr)?;
+    refuse_object_column_array(&root)?;
     Ok(Checked {
         root,
         columns: checker.columns,

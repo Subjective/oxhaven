@@ -293,7 +293,12 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
     }
 
     let java_type = java["type"].as_str().unwrap_or("no type");
-    let Some(kind) = kind_of(java_type) else {
+    // A vector of objects names its element type beside its own.
+    let kind = match (java_type, java["component"].as_str()) {
+        ("io.deephaven.vector.ObjectVector", Some("java.lang.String")) => Some("list<string>"),
+        _ => kind_of(java_type),
+    };
+    let Some(kind) = kind else {
         return Outcome::Differs(format!(
             "Java returns a {java_type} column; Oxhaven returns {column_type:?}"
         ));
