@@ -139,14 +139,8 @@ def merge_sorted(tables: Sequence[Table], order_by: str) -> Table:
     `order_by`, in the order of that column."""
     try:
         handles = [table.j_table for table in tables]
-        if any(handle.is_refreshing() for handle in handles):
-            # the table service sorts a merge of refreshing tables, which Java's
-            # `TableTools.mergeSorted` does not
-            return Table(_engine.local_op("merge_sorted", {"order_by": order_by}, handles))
-        request = {
-            "source_ids": [_engine.source(index) for index in range(len(handles))],
-            "key_column": order_by,
-        }
-        return Table(_engine.table_op("merge", request, handles))
+        # the table service's `merge` with a key column sorts a merge of refreshing tables
+        # and takes at least one table; Java's `TableTools.mergeSorted` does neither
+        return Table(_engine.local_op("merge_sorted", {"order_by": order_by}, handles))
     except Exception as e:
         raise DHError(e, "merge sorted operation failed.") from e

@@ -1,7 +1,7 @@
 //! `Merge`: the rows of several tables with the same columns, one table after another.
 
 use super::prelude::*;
-use oxhaven_engine::ops::merge::merge;
+use oxhaven_engine::ops::merge::{merge, merge_sorted};
 use oxhaven_engine::ops::sort::{sort, SortColumn};
 use oxhaven_proto::grpc::MergeTablesRequest;
 
@@ -39,11 +39,7 @@ impl TableOp for Handler {
             return Ok(merge(sources)?);
         }
         if !sources.iter().any(|table| table.is_refreshing()) {
-            return Err(not_ported(
-                "io.deephaven.engine.util.TableTools#mergeSorted",
-                "a merge of static tables with a key column",
-            )
-            .into());
+            return Ok(merge_sorted(sources, key_column)?);
         }
         let merged = merge(sources)?;
         Ok(sort(&merged, &[SortColumn::ascending(key_column.as_str())])?)
