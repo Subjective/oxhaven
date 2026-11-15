@@ -33,14 +33,14 @@ use crate::test_support::{with_auth, TestServer};
 pub(super) static ONE_INTERPRETER: Mutex<()> = Mutex::const_new(());
 
 /// A server with a Python console whose session has no variables.
-struct Python {
-    server: TestServer,
-    console: Arc<Console>,
+pub(super) struct Python {
+    pub(super) server: TestServer,
+    pub(super) console: Arc<Console>,
     _turn: MutexGuard<'static, ()>,
 }
 
 impl Python {
-    async fn start() -> Self {
+    pub(super) async fn start() -> Self {
         let turn = ONE_INTERPRETER.lock().await;
         let server = TestServer::start_with(|state| super::start(state).unwrap()).await;
         let console = server.state.console.clone().unwrap();
@@ -52,14 +52,14 @@ impl Python {
     }
 
     /// Runs code that must not fail.
-    fn run(&self, code: &str) -> Changes {
+    pub(super) fn run(&self, code: &str) -> Changes {
         let changes = self.console.evaluate(code);
         assert_eq!(changes.error, None, "{code}");
         changes
     }
 
     /// The table of a scope variable, as a scope ticket resolves it.
-    fn table(&self, name: &str) -> Arc<dyn Table> {
+    pub(super) fn table(&self, name: &str) -> Arc<dyn Table> {
         let value = self.server.state.scope.get(name);
         value
             .unwrap_or_else(|| panic!("no scope variable {name}"))

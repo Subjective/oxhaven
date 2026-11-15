@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_where",
-  "scenario_sha256": "45861107c1d8c142501ce2fee6996d0c3bc5c3c59337d42b9a35deddda57c540",
+  "scenario_sha256": "b2014f24f0d8f695d79029cb904371fb9dabda1a846952f352e3be5c3fc0c09e",
   "reference": "42.9",
   "entries": [
     {
@@ -24,6 +24,12 @@
     },
     {
       "step": 0,
+      "table": "everything",
+      "file": "step000.everything.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
       "table": "in_keys",
       "file": "step000.in_keys.arrow",
       "rows": 6
@@ -36,8 +42,87 @@
     },
     {
       "step": 0,
+      "table": "in_pairs",
+      "file": "step000.in_pairs.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "in_renamed",
+      "file": "step000.in_renamed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "only_one_of",
+      "file": "step000.only_one_of.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
       "table": "one_of",
-      "file": "step000.one_of.arrow",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "one",
+      "file": "step001.one.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "both",
+      "file": "step001.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "none",
+      "file": "step001.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "everything",
+      "file": "step001.everything.arrow",
+      "rows": 12
+    },
+    {
+      "step": 1,
+      "table": "in_keys",
+      "file": "step001.in_keys.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "not_in_keys",
+      "file": "step001.not_in_keys.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "in_pairs",
+      "file": "step001.in_pairs.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "in_renamed",
+      "file": "step001.in_renamed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "only_one_of",
+      "file": "step001.only_one_of.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "one_of",
+      "file": "step001.one_of.arrow",
       "rows": 5
     }
   ]

@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_first_steps",
-  "scenario_sha256": "afe381ed986d7bff168ee38b395b81f793cd51cdd1d9cdee421b5d41457799bd",
+  "scenario_sha256": "c81f62ca758147c9d2b7661529d715b5e2d00d678f3be4274392432f4d2981f5",
   "reference": "42.9",
   "entries": [
     {
@@ -51,6 +51,132 @@
       "table": "typed",
       "file": "step000.typed.arrow",
       "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "facts",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "described",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "flat",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "same",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "frozen",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "ungrouped",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "source",
+      "file": "step001.source.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "updated",
+      "file": "step001.updated.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "viewed",
+      "file": "step001.viewed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "selected",
+      "file": "step001.selected.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "file": "step001.kept.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "first",
+      "file": "step001.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "last",
+      "file": "step001.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "typed",
+      "file": "step001.typed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "facts",
+      "file": "step001.facts.arrow",
+      "rows": 18
+    },
+    {
+      "step": 1,
+      "table": "described",
+      "file": "step001.described.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "flat",
+      "file": "step001.flat.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "same",
+      "file": "step001.same.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "frozen",
+      "file": "step001.frozen.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "ungrouped",
+      "file": "step001.ungrouped.arrow",
+      "rows": 10
     }
   ]
 }

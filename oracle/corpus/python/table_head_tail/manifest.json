@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_head_tail",
-  "scenario_sha256": "7666abf91d750eae67dee35e40593ac1a38cff321c073ac34c4d3822075de202",
+  "scenario_sha256": "25e6f2b3b9742aca60861eac17a736a372f6e904361a4d9b5540dd152be57ab4",
   "reference": "42.9",
   "entries": [
     {
@@ -30,15 +30,249 @@
     },
     {
       "step": 0,
+      "table": "to_end",
+      "file": "step000.to_end.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "from_start",
+      "file": "step000.from_start.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "clock_tail",
+      "file": "step000.clock_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "clock_slice",
+      "file": "step000.clock_slice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
       "table": "half",
-      "file": "step000.half.arrow",
-      "rows": 4
+      "failure": {
+        "code": "NOT_FOUND"
+      }
     },
     {
       "step": 0,
       "table": "last_quarter",
-      "file": "step000.last_quarter.arrow",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "middle_half",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "none",
+      "file": "step001.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "everything",
+      "file": "step001.everything.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "middle",
+      "file": "step001.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "from_end",
+      "file": "step001.from_end.arrow",
       "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "to_end",
+      "file": "step001.to_end.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "from_start",
+      "file": "step001.from_start.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "clock_tail",
+      "file": "step001.clock_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "clock_slice",
+      "file": "step001.clock_slice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "half",
+      "file": "step001.half.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "last_quarter",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "middle_half",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "none",
+      "file": "step002.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "everything",
+      "file": "step002.everything.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "middle",
+      "file": "step002.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "from_end",
+      "file": "step002.from_end.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "to_end",
+      "file": "step002.to_end.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "from_start",
+      "file": "step002.from_start.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "clock_tail",
+      "file": "step002.clock_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "clock_slice",
+      "file": "step002.clock_slice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "half",
+      "file": "step002.half.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "last_quarter",
+      "file": "step002.last_quarter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "middle_half",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "none",
+      "file": "step003.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "everything",
+      "file": "step003.everything.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "middle",
+      "file": "step003.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "from_end",
+      "file": "step003.from_end.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "to_end",
+      "file": "step003.to_end.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "from_start",
+      "file": "step003.from_start.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "clock_tail",
+      "file": "step003.clock_tail.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "clock_slice",
+      "file": "step003.clock_slice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "half",
+      "file": "step003.half.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "last_quarter",
+      "file": "step003.last_quarter.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "middle_half",
+      "file": "step003.middle_half.arrow",
+      "rows": 4
     }
   ]
 }
