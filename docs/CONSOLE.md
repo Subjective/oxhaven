@@ -474,6 +474,57 @@ cycle.
 | `ring_table`, `function_generated_table`, `TableReplayer` | exist | refused by the name of the Java method: the engine has none of the three |
 | Callbacks of the asynchronous forms | called on a thread of Java's common pool, in no defined order | called on the writer thread, in the order of the calls |
 
+## Listeners, locks, liveness scopes and execution contexts
+
+Task 6.12; `crates/oxhaven-server/src/console/python/listener.rs` and the modules
+`table_listener`, `update_graph`, `liveness_scope` and `execution_context` of the package.
+
+A listener is a node of the update graph (`oxhaven_engine::graph::MergedListener`, for one
+table as for several). Its Python function is called by the update cycle, once per cycle
+in which a table it listens to changed, after its dependencies are done, and before the
+command that made the change has its `add` back. The lock rule is the one of
+`docs/PYTHON_UDF.md`: graph lock first, interpreter lock second. The cycle holds the graph
+lock and takes the interpreter lock for the call; `shared_lock`, `exclusive_lock`,
+`listen` with a replay and `await_update` release the interpreter lock before they wait
+for the graph lock. The module documentation of `listener.rs` lists the places and names
+the test that stops when one of them is taken out.
+
+A blocking input table edit on a thread inside its own `shared_lock` is refused with
+Java's text ("Attempted to make a blocking input table edit while holding the update
+graph's shared lock"): the thread keeps out the cycle it would wait for.
+
+In a listener's function, as in Java: neither lock is held, taking one is refused
+("Non-terminal notifications must not lock the update graph"), a blocking input table
+edit is refused, `await_update` fails, and table operations and `listen` work.
+
+The engine's graph lock got explicit holds for this (`SteppedUpdateGraph::acquire_shared`
+and the three beside it): a `with` block cannot be a closure. A thread that holds the
+exclusive side reads without taking the shared side, gives the hold up for the cycle of
+its own blocking write and for `await_update`, and has it again after.
+
+Observed on Java 42.9 with scripts through `pydeephaven`, and on this server with the
+same scripts:
+
+| | Java | Here |
+| --- | --- | --- |
+| The lock a command holds | exclusive | the engine's shared lock, shown to scripts as the exclusive one: `has_exclusive_lock` is true and `has_shared_lock` false in a command, both locks nest in it |
+| `shared_lock`, or an operation, on a thread while a command runs | waits for the command | does not wait: it shares the lock with the command. `exclusive_lock` waits, as in Java |
+| `auto_locking = False` | operations on a thread take no lock | no effect: the engine takes the lock for every operation |
+| Formula operations and `time_table` on a thread, or in a listener, with no `ExecutionContext` | refused: "No ExecutionContext registered" | run. `with ctx:` and `@ctx` are accepted and change nothing |
+| `make_user_exec_ctx(freeze_vars=[...])` | a context that sees only those variables, at their values of that moment | refused by the name of `ExecutionContext.Builder#captureQueryScopeVars` |
+| A table released with its liveness scope | operations fail with `LivenessStateException`; `size` and reads give the rows it had | every use raises `DHError` with a `LivenessStateException` text. A variable that holds it stays listed for clients until it is assigned again |
+| A table of a scope that something else holds | a client's export keeps it live; other holders not probed | an export, a table made from it or a listener keeps it live, and it is then the session's: no later scope releases it |
+| The update of a replay, read after the function returned | still reads the rows | reads `{}`, as every other update does on both |
+| `modified_prev()` in a cycle that also shifts rows | reads previous values at the keys after the shift, which are the previous values of other rows, or nulls where no row was: after `sort("K").flatten()` of rows 10, 20, 30, adding key 5 and changing key 20 gives `modified_prev` the row of key 30 | reads them at the keys before the shift: the row of key 20 as it was |
+| A handle that nothing refers to | the listener ends when Java collects it | ends when Python frees the handle, which is at once |
+| The thread of a listener call | one Python thread name for the update graph's thread | a new `Dummy-N` name per cycle |
+| Several listeners of one table | order not probed | called in no defined order |
+| The exception given to `on_error`, and the logged text of a failing `on_error` | text starts `java.lang.RuntimeException: Error in Python interpreter:` and ends with the JVM's stack | starts `Error in Python interpreter:` and holds the same traceback |
+
+Not observable here, so not built: the reference counts themselves (`LivenessScope`'s
+`j_scope`, `tryManage` on a dead referent), and anything of an `ExecutionContext` but its
+update graph.
+
 ## Completion
 
 Task 6.13. Java completes Python with the library `jedi`, which runs in the session's
