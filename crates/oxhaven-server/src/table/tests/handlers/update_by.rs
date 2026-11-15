@@ -828,16 +828,33 @@ async fn the_standard_deviations_and_the_weighted_average_reach_the_engine() {
 }
 
 #[tokio::test]
+async fn a_rolling_group_is_answered() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let group = |rev, fwd| {
+        operation(
+            proto_rolling!(RollingGroup, UpdateByRollingGroup, ticks(rev), ticks(fwd)),
+            &["Group = N"],
+        )
+    };
+    let answered = call(&mut c, request(2, 1, vec![group(2.0, 0.0)], &[]))
+        .await
+        .unwrap();
+    assert!(answered.success, "{answered:?}");
+    // A window of negative size is refused as for the other rolling operators.
+    let refused = call(&mut c, request(3, 1, vec![group(-3.0, 2.0)], &[]))
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
+}
+
+#[tokio::test]
 async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let mut c = Connected::start().await;
     numbers(&mut c, 1).await;
     let factory = "io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory\
                    .OperationVisitor";
     let cases = [
-        (
-            proto_rolling!(RollingGroup, UpdateByRollingGroup, ticks(2.0), ticks(0.0)),
-            "makeRollingGroupOperator",
-        ),
         (
             Spec::RollingFormula(spec::UpdateByRollingFormula {
                 reverse_window_scale: ticks(2.0),
