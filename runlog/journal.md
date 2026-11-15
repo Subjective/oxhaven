@@ -398,3 +398,13 @@ It reproduces against Java too. The harness now disables automatic collection an
 collects on its own thread between checks; the gate also dumps all thread stacks before
 its time limit. Before: 21 of 21 loop processes hung. After: 0 hangs in 490 runs.
 The defect is upstream in pydeephaven 42.9; worth reporting to Deephaven (owner's call).
+
+## 2026-11-15 01:15 UTC
+
+PRs 55 (HeadBy/TailBy handlers) and 56 (harness stall fix) merged; main is at 70 of 83.
+PR 57 opened with three of the seven remaining update_by operators; the agent ran out of
+context, so the rest (rolling group, count-where, rolling formula, validateFormulas) is a
+second task. Sizing note: numeric operators with recorded fixtures cost about 100k tokens
+each. Owner question added: EmStd after an update is seeded with the true variance here,
+Java uses the square of its previous result; results differ in the last bits and are
+compared under PARITY A1. Launched: multi_join (4.12) and three small parity fixes (4.13).
