@@ -46,7 +46,8 @@ jobs:
     # suite, on the oldest and the newest Python the project supports (docs/CONSOLE.md,
     # "Build and CI"). It installs no packages and names no environment: these tests may
     # import only the standard library. What needs numpy or pandas is a script scenario,
-    # which oracle-replay runs in a pinned environment.
+    # which oracle-replay runs in a pinned environment; the tests of completion that need
+    # jedi do not run here (they say so and pass) and run in oracle-replay.
     name: python-console (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -86,9 +87,10 @@ jobs:
   oracle-replay:
     # Builds the server with its Python console, starts it, and compares it with the recorded
     # Java results (table scenarios and script scenarios) and the client smoke checks, against
-    # oracle/replay-baseline.json. See oracle/README.md.
+    # oracle/replay-baseline.json. See oracle/README.md. Its environment has jedi, so the
+    # tests of completion in the console run here too, and must not be skipped.
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -116,6 +118,14 @@ jobs:
           ORACLE_GATE_OUT: ${{ runner.temp }}/oracle-replay
           ORACLE_GATE_TIMEOUT: "300"
         run: oracle/bin/ci-replay.sh
+      - name: Completion in the console, answered by jedi
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
+          OXHAVEN_REQUIRE_JEDI: "1"
+        run: |
+          libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          LD_LIBRARY_PATH="$libdir:${LD_LIBRARY_PATH:-}" \
+            cargo test --locked -p oxhaven-server --features python --lib -- console::python::completer_tests
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

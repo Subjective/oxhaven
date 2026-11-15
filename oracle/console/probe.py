@@ -240,7 +240,7 @@ def print_answers(status: str, answers, limit: int, labels_only: bool):
     print(f"status: {status}")
     for response in sorted(answers, key=lambda answer: answer.request_id):
         if labels_only and response.HasField("completion_items"):
-            print(f"message: request_id: {response.request_id} success: {response.success}")
+            print(f"message: request_id: {response.request_id} success: {str(response.success).lower()}")
             for item in response.completion_items.items:
                 edit = item.text_edit.range
                 print(
