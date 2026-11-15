@@ -569,7 +569,7 @@ fn a_formula_over_arrays_is_what_a_formula_aggregation_evaluates() {
     let sorted = ArrayFormula::compile(&Compiler, "sortDescending(x)", &[("x", each)]).unwrap();
     assert_eq!(sorted.result_type(), &ColumnType::array(ColumnType::Int));
     assert_eq!(
-        shown(&sorted.evaluate(&[groups.clone()]).unwrap()),
+        shown(&sorted.evaluate(std::slice::from_ref(&groups)).unwrap()),
         ["[3, 2, 1]", "[]", "[7, null]"]
     );
 

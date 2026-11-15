@@ -659,7 +659,7 @@ fn median<T: Element>(cells: &Cells<T>) -> Option<f64> {
     }
     sorted.sort_unstable_by(T::order);
     let middle = sorted.len() / 2;
-    Some(if sorted.len() % 2 == 0 {
+    Some(if sorted.len().is_multiple_of(2) {
         sorted[middle - 1].half_sum(sorted[middle])
     } else {
         sorted[middle].double()
@@ -942,10 +942,11 @@ pub(super) fn evaluate(
                 list,
                 ranges(list).enumerate().map(|(row, range)| {
                     let (start, end) = range.ok_or_else(|| null_receiver("an index"))?;
-                    let index = indexes
-                        .is_valid(row)
-                        .then(|| indexes.value(row))
-                        .unwrap_or(i32::MIN);
+                    let index = if indexes.is_valid(row) {
+                        indexes.value(row)
+                    } else {
+                        i32::MIN
+                    };
                     if index < 0 || index as usize >= end - start {
                         return Err(failure(format!(
                             "java.lang.ArrayIndexOutOfBoundsException: Index {index} out of \
