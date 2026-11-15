@@ -21,7 +21,12 @@ pub(crate) struct TestServer {
 
 impl TestServer {
     pub(crate) async fn start() -> Self {
-        let state = ServerState::new(ServerConfig {
+        Self::start_with(|_| {}).await
+    }
+
+    /// As [`TestServer::start`], with `configure` run on the state before it is served.
+    pub(crate) async fn start_with(configure: impl FnOnce(&mut ServerState)) -> Self {
+        let mut state = ServerState::new(ServerConfig {
             auth_handlers: AuthHandlers::new(vec![
                 AuthHandler::psk(PSK).unwrap(),
                 AuthHandler::Anonymous,
@@ -31,6 +36,7 @@ impl TestServer {
             target_cycle_duration: None,
         })
         .unwrap();
+        configure(&mut state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let (shutdown, stopped) = oneshot::channel::<()>();

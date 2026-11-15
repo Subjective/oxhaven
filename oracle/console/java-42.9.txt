@@ -1,0 +1,223 @@
+== console types, no session
+call: ConsoleService/GetConsoleTypes (no session)
+request: 
+status: OK
+message: console_types: "python"
+
+== start console, no session
+call: ConsoleService/StartConsole (no session)
+request: result_id { ticket: "e\001\000\000\000" } session_type: "python"
+status: UNAUTHENTICATED: ''
+
+== start console of an unknown type
+call: ConsoleService/StartConsole
+request: result_id { ticket: "e\t\000\000\000" } session_type: "groovy"
+status: FAILED_PRECONDITION: "session type 'groovy' is not supported"
+
+== start console
+call: ConsoleService/StartConsole
+request: result_id { ticket: "e\001\000\000\000" } session_type: "python"
+status: OK
+message: result_id { ticket: "e\001\000\000\000" }
+
+== start console, type in capitals
+call: ConsoleService/StartConsole
+request: result_id { ticket: "e\002\000\000\000" } session_type: "Python"
+status: OK
+message: result_id { ticket: "e\002\000\000\000" }
+
+== start console on an export id in use
+call: ConsoleService/StartConsole
+request: result_id { ticket: "e\001\000\000\000" } session_type: "python"
+status: INVALID_ARGUMENT: "Details Logged w/ID '<id>'"
+
+== heap info
+call: ConsoleService/GetHeapInfo
+request: 
+status: OK
+message: max_memory: <n> total_memory: <n> free_memory: <n>
+
+== execute without a console id
+call: ConsoleService/ExecuteCommand
+request: console_id { } code: "x = 1"
+status: FAILED_PRECONDITION: 'No consoleId supplied'
+
+== execute on an export that does not exist
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "eM\000\000\000" } code: "x = 1"
+status: DEADLINE_EXCEEDED: 'Deadline Exceeded'
+
+== import
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "from deephaven import empty_table"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== create a table
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "t = empty_table(5).update([\"X = i\"])"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/t" } type: "Table" } field_name: "t" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== replace a table
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "t = empty_table(3).update([\"X = i\"])"
+status: OK
+message: changes { updated { typed_ticket { ticket { ticket: "s/t" } type: "Table" } field_name: "t" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== a variable that is no table
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "n = 41 + 1"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== print
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "print(\"hello from the console\")\nprint(n)"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== expression statement
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "n"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== write to stderr
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "import sys\nsys.stderr.write(\"[probe] to stderr\\n\")"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== python exception
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "1 / 0"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nZeroDivisionError: division by zero\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== syntax error
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "t = = 1"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\n  File \"<string>\", line 1\n    t = = 1\n        ^\nSyntaxError: invalid syntax\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== undefined name
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "u = no_such_name"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\nNameError: name \'no_such_name\' is not defined\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== error after an assignment
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "v = empty_table(1)\nraise ValueError(\"after v\")"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<string>\", line 2, in <module>\nValueError: after v\n\n" changes { created { typed_ticket { ticket { ticket: "s/v" } type: "Table" } field_name: "v" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== bad formula
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "w = empty_table(1).update([\"X = nosuchcolumn\"])"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line 1374, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Cannot find variable or class nosuchcolumn\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: nosuchcolumn\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : nosuchcolumn\nExpression having trouble : nosuchcolumn\nException type            : io.deephaven.engine.table.impl.lang.QueryLanguageParser$ParserResolutionFailure\nException message         : Cannot find variable or class nosuchcolumn\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== two tables and a removal
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "a = t\nb = t.view([\'X\'])\ndel v"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/a" } type: "Table" } field_name: "a" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/b" } type: "Table" } field_name: "b" field_description: "query scope variable" application_id: "scope" } removed { typed_ticket { ticket { ticket: "s/v" } type: "Table" } field_name: "v" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== table set to None
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "a = None"
+status: OK
+message: changes { removed { typed_ticket { ticket { ticket: "s/a" } type: "Table" } field_name: "a" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== empty code
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" }
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== fetch the scope variable
+call: TableService/FetchTable
+request: source_id { ticket { ticket: "s/t" } } result_id { ticket: "e\003\000\000\000" }
+status: OK
+message: result_id { ticket { ticket: "e\003\000\000\000" } } success: true schema_header: "<400 bytes>" is_static: true size: 3
+
+== fetch a variable that is no table
+call: TableService/FetchTable
+request: source_id { ticket { ticket: "s/n" } } result_id { ticket: "e\004\000\000\000" }
+status: INVALID_ARGUMENT: "Details Logged w/ID '<id>'"
+
+== bind a table to a variable
+call: ConsoleService/BindTableToVariable
+request: console_id { ticket: "e\001\000\000\000" } variable_name: "bound" table_id { ticket: "e\003\000\000\000" }
+status: OK
+message: 
+
+== bind without a console id
+call: ConsoleService/BindTableToVariable
+request: variable_name: "bound2" table_id { ticket: "e\003\000\000\000" }
+status: OK
+message: 
+
+== bind without a table id
+call: ConsoleService/BindTableToVariable
+request: console_id { ticket: "e\001\000\000\000" } variable_name: "bound3"
+status: FAILED_PRECONDITION: 'No source tableId supplied'
+
+== use the bound variable
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "c = bound.head(1)\nprint(bound.size)"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/c" } type: "Table" } field_name: "c" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== cancel command
+call: ConsoleService/CancelCommand
+request: console_id { ticket: "e\001\000\000\000" } command_id { ticket: "e2\000\000\000" }
+status: UNIMPLEMENTED: 'Method io.deephaven.proto.backplane.script.grpc.ConsoleService/CancelCommand is unimplemented'
+
+== cancel autocomplete
+call: ConsoleService/CancelAutoComplete
+request: console_id { ticket: "e\001\000\000\000" } request_id: 1
+status: UNIMPLEMENTED: 'Method io.deephaven.proto.backplane.script.grpc.ConsoleService/CancelAutoComplete is unimplemented'
+
+== autocomplete stream
+call: ConsoleService/AutoCompleteStream
+request: open_document { text_document { uri: "inmemory://probe/1" language_id: "python" version: 1 text: "emp" } } console_id { ticket: "e\001\000\000\000" } request_id: 1
+request: get_completion_items { context { trigger_kind: 1 } text_document { uri: "inmemory://probe/1" version: 1 } position { character: 3 } } console_id { ticket: "e\001\000\000\000" } request_id: 2
+status: OPEN
+message: completion_items { items { length: 11 label: "empty_table" kind: 3 detail: "empty_table(size: int)" text_edit { range { start { } end { character: 3 } } text: "empty_table" } sort_text: "00000" insert_text_format: 2 documentation { kind: "plaintext" value: "Creates a table with rows but no columns.\n\nArgs:\n    size (int): the number of rows\n\nReturns:\n     a Table\n\nRaises:\n    DHError" } } success: true } request_id: 2 success: true
+
+== what the commands printed
+call: ConsoleService/SubscribeToLogs
+status: OPEN
+message: micros: <ts> log_level: "STDOUT" message: "hello from the console\n"
+message: micros: <ts> log_level: "STDOUT" message: "42\n"
+message: micros: <ts> log_level: "STDERR" message: "[probe] to stderr\n"
+message: micros: <ts> log_level: "STDOUT" message: "3\n"
+
+== field changes seen by a listener during the commands
+call: ApplicationService/ListFields
+status: OPEN
+created: typed_ticket { ticket { ticket: "s/t" } type: "Table" } field_name: "t" field_description: "query scope variable" application_id: "scope"
+updated: typed_ticket { ticket { ticket: "s/t" } type: "Table" } field_name: "t" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/v" } type: "Table" } field_name: "v" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/a" } type: "Table" } field_name: "a" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/b" } type: "Table" } field_name: "b" field_description: "query scope variable" application_id: "scope"
+removed: typed_ticket { ticket { ticket: "s/v" } type: "Table" } field_name: "v" field_description: "query scope variable" application_id: "scope"
+removed: typed_ticket { ticket { ticket: "s/a" } type: "Table" } field_name: "a" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/bound" } type: "Table" } field_name: "bound" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/bound2" } type: "Table" } field_name: "bound2" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/c" } type: "Table" } field_name: "c" field_description: "query scope variable" application_id: "scope"
+
+== release the console
+call: SessionService/Release
+request: id { ticket: "e\001\000\000\000" }
+status: OK
+message: 
+
+== execute on the released console
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "x = 1"
+status: FAILED_PRECONDITION: 'Export in state DEPENDENCY_RELEASED (related parent export id: 1)'
+
