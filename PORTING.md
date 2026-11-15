@@ -80,6 +80,23 @@ the differential tests decide. When the two conflict on results, `PARITY.md` win
 9. **Tests can fail.** For each new test, confirm it fails when the behavior is broken. A test
    that cannot fail is not evidence.
 
+## Dependencies
+
+A crate the workspace depends on, directly or through another crate, is under Apache-2.0 or
+MIT (a crate that offers a choice of licences counts when one of them is). A crate under
+anything else needs the owner's decision first; until then, leave the feature that needs it
+off and refuse by name what it would have done.
+
+One exception, approved by the owner on 2026-11-15: BSD-3-Clause is accepted for the crates
+that decode the Snappy, Zstandard and Brotli page compression of Parquet (the `snap`, `zstd`
+and `brotli` features of the `parquet` crate) and for the crates those depend on. It covers
+BSD-3-Clause only and these codecs only: no other licence, and no other use of a
+BSD-3-Clause crate. `docs/STORAGE.md`, "Dependencies", lists the crates it covers today.
+
+Within that exception, also approved by the owner on 2026-11-15: BSD-2-Clause is accepted for
+the `zstd-sys` crate alone, which holds the Zstandard C library and is under
+`BSD-3-Clause AND BSD-2-Clause`. No other crate may be under BSD-2-Clause.
+
 ## Verification every pull request must pass
 
 1. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,

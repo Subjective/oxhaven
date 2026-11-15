@@ -145,7 +145,7 @@
   "join_natural": {"state": "clean"},
   "join_range": {"state": "clean"},
   "listen_counts": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.dtypes, input_table and deephaven.table_listener are not written yet (tasks 6.8, 6.10 and 6.12)"},
-  "parquet_read_codecs": {"state": "differs", "kinds": ["failure_code:NOT_FOUND", "failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "brotli", "java_snappy", "snappy", "zstd"], "why": "Snappy, Zstandard and Brotli pages are refused: their crates are not under Apache-2.0 or MIT (docs/STORAGE.md). Java makes the Brotli table and fails to read it"},
+  "parquet_read_codecs": {"state": "differs", "kinds": ["failure_code:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "brotli"], "why": "Brotli pages are refused when the file is opened: Java makes the Brotli table and fails to read it, for want of the codec in the packaged server (docs/STORAGE.md)"},
   "parquet_read_directory": {"state": "clean"},
   "parquet_read_errors": {"state": "clean"},
   "parquet_read_foreign": {"state": "clean"},
