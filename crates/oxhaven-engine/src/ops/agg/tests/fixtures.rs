@@ -12,7 +12,7 @@
 //! PARITY.md A4 does not ask for that. It is compared because the fixtures can: the tables
 //! are aggregations of input tables, which change in the same way on both sides.
 
-use super::super::{group_by, AggregateError};
+use super::super::{aggregate_with, group_by, AggregateError};
 use super::corpus::{apply_action, assert_matches, inputs, json, list, rows_batch, run_step, text};
 use super::*;
 use crate::graph::SteppedUpdateGraph;
@@ -28,10 +28,23 @@ use std::path::PathBuf;
 
 /// The number of (table, step) results the fixtures must compare, and of operations Java
 /// refused. An operation that silently stops being run shows as a different count.
-const COMPARED: usize = 586;
-const REFUSED: usize = 19;
+const COMPARED: usize = 1098;
+const REFUSED: usize = 239;
 /// The number of (table, step) lists of updates the fixtures must compare.
-const UPDATES: usize = 119;
+const UPDATES: usize = 431;
+
+/// The updates that are not Java's, by the context of the comparison, with the update
+/// delivered here. Each must be met, so that none outlives its difference.
+///
+/// - A `distinct` without keys whose values were all removed is a null in Java, and the
+///   next row added, also one without a value, makes it an empty vector
+///   (`*ChunkedDistinctOperator#addChunk` makes the group's set, and reports the group
+///   modified only when the set got a value). Java's listeners are not told of that change
+///   of the cell; here they are.
+const DIFFERENT_UPDATES: [(&str, &str); 1] = [(
+    "rest_ticking.distinct_none during step 23",
+    r#"[{"added":[],"removed":[],"modified":[0],"modified_columns":["DI","DS","DD"]}]"#,
+)];
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ops/agg/fixtures")
@@ -43,11 +56,48 @@ fn flag(entry: &Value, name: &str) -> bool {
         .unwrap_or_else(|| panic!("{name} is not a Boolean"))
 }
 
+/// The non-unique sentinel of a `unique` entry: absent or null for none, and otherwise
+/// `{"type": value}` with the type a client sends it as; see `fixtures/record.py`.
+fn sentinel(entry: &Value) -> Sentinel {
+    let Some(given) = entry.get("sentinel").filter(|given| !given.is_null()) else {
+        return Sentinel::Null;
+    };
+    let (kind, value) = given
+        .as_object()
+        .and_then(|object| object.iter().next())
+        .expect("a sentinel of one type");
+    let integer = || value.as_i64().expect("an integer sentinel");
+    let float = || match value.as_str() {
+        Some("NaN") => f64::NAN,
+        Some("Infinity") => f64::INFINITY,
+        Some("-Infinity") => f64::NEG_INFINITY,
+        _ => value.as_f64().expect("a floating point sentinel"),
+    };
+    match kind.as_str() {
+        "byte" => Sentinel::Byte(integer() as i8),
+        "short" => Sentinel::Short(integer() as i16),
+        "int" => Sentinel::Int(integer() as i32),
+        "long" => Sentinel::Long(integer()),
+        "char" => Sentinel::Char(integer() as u16),
+        "float" => Sentinel::Float(float() as f32),
+        "double" => Sentinel::Double(float()),
+        "string" => Sentinel::String(value.as_str().expect("a string sentinel").to_string()),
+        "bool" => Sentinel::Boolean(value.as_bool().expect("a Boolean sentinel")),
+        other => panic!("no sentinel type {other}"),
+    }
+}
+
 /// The aggregation of one entry of an `agg` operation; see `fixtures/record.py`.
 fn aggregation(entry: &Value) -> Aggregation {
     let kind = text(&entry["agg"], "agg");
     if kind == "count" {
         return count(text(&entry["column"], "column"));
+    }
+    if kind == "count_where" {
+        let filters = list(&entry["filters"], "filters")
+            .iter()
+            .map(|filter| text(filter, "filter"));
+        return Aggregation::count_where(text(&entry["column"], "column"), filters);
     }
     let spec = match kind {
         "sum" => AggSpec::Sum,
@@ -70,6 +120,10 @@ fn aggregation(entry: &Value) -> Aggregation {
             count_nulls: flag(entry, "count_nulls"),
         },
         "unique" => AggSpec::Unique {
+            include_nulls: flag(entry, "include_nulls"),
+            non_unique: sentinel(entry),
+        },
+        "distinct" => AggSpec::Distinct {
             include_nulls: flag(entry, "include_nulls"),
         },
         "weighted_avg" => AggSpec::WeightedAvg {
@@ -193,6 +247,7 @@ struct Tally {
     compared: usize,
     refused: usize,
     updates: usize,
+    different_updates: usize,
 }
 
 /// The names of an operation's list `key`.
@@ -228,11 +283,12 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
                     .map(aggregation)
                     .collect();
                 computed = computed_columns(&aggregations);
-                aggregate(
+                aggregate_with(
                     source("source"),
                     &aggregations,
                     false,
                     &names(operation, "by"),
+                    &oxhaven_expr::Compiler,
                 )
             }
             "group_by" => group_by(source("source"), &names(operation, "by")),
@@ -260,8 +316,13 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             }
             Err(error) if !failure.is_null() => {
                 assert_eq!(failure, "INVALID_ARGUMENT", "{context}");
+                // A filter that fails on the rows fails the first computation, which Java
+                // also reports as INVALID_ARGUMENT; nothing else may fail on the data.
+                let filtered = operation["aggs"]
+                    .as_array()
+                    .is_some_and(|aggs| aggs.iter().any(|entry| entry["agg"] == "count_where"));
                 assert!(
-                    !matches!(error, AggregateError::Failed(_)),
+                    filtered || !matches!(error, AggregateError::Failed(_)),
                     "{context}: {error} is not a refusal of the request"
                 );
                 tally.refused += 1;
@@ -322,7 +383,17 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             let context = format!("{name}.{} during step {step}", watched.name);
             let delivered = watched.drain(&context);
             let recorded = &fixture["java"]["updates"][step - 1][watched.name];
-            assert_eq!(&delivered, recorded, "{context}: the updates");
+            let different = DIFFERENT_UPDATES
+                .iter()
+                .find(|(known, _)| *known == context);
+            if let Some((_, ours)) = different {
+                let ours: Value = serde_json::from_str(ours).expect("an update list");
+                assert_ne!(&ours, recorded, "{context}: no longer different");
+                assert_eq!(delivered, ours, "{context}: the updates");
+                tally.different_updates += 1;
+            } else {
+                assert_eq!(&delivered, recorded, "{context}: the updates");
+            }
             tally.updates += 1;
         }
     }
@@ -348,4 +419,5 @@ fn aggregations_match_the_recorded_java_fixtures() {
         (tally.compared, tally.refused, tally.updates),
         (COMPARED, REFUSED, UPDATES)
     );
+    assert_eq!(tally.different_updates, DIFFERENT_UPDATES.len());
 }
