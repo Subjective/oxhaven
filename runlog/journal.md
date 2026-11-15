@@ -546,3 +546,7 @@ PRs 70 (Python environment) and 72 (query scope) merged on green. PR 71 (Python 
 ## 2026-11-15 08:45 UTC
 
 PR 73 opened (block row set). Measured: the contract RowSet costs O(ranges) for size, get, find and single-key adds (adding one key to a 2M-range set takes 64 ms); the block row set is 100 to 30000 times faster on those and uses 1 MB instead of 32 MB, and is slower on range walks and unaligned shifts. It is not the engine row set yet: swapping it changes `RowSet::ranges` in the contracts (about 35 callers). Decision: do the swap as its own contract-change task (7.7b) once the engine branches in flight (update_by count-where, table shape operators) have merged, to avoid a workspace-wide conflict. Owner review item: the contract change and the performance trade-offs in docs/ROWSET.md.
+
+## 2026-11-15 08:54 UTC
+
+PR 74 merged on green: every replay scenario is clean (83 of 83), every client smoke clean (31 of 31), and every `UpdateBySpec` operator is ported. What the gate does not show: the `unported!` refusals listed in the pull requests, the Python script scenarios (3 of 21 clean, in progress) and the two open owner questions from the fuzzer (failed tables keep serving in Java; one as-of join incremental difference).
