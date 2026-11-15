@@ -41,6 +41,7 @@ fn sort_code(error: &SortError) -> &'static str {
             "INVALID_ARGUMENT"
         }
         SortError::Unsupported(_) => "an unsupported operation, which has no recorded code",
+        SortError::NotSortable(_) => "a restricted sort, which has no recorded code",
         SortError::Table(_) => "a failed table, which has no recorded code",
     }
 }

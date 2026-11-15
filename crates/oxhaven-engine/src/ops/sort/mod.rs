@@ -6,6 +6,8 @@
 //! | [`reverse`] | The rows in the opposite order |
 //! | [`head`], [`tail`] | The first or last rows |
 //! | [`slice`] | The rows at a range of positions, counted from either end |
+//! | [`head_pct`], [`tail_pct`], [`slice_pct`] | The rows of a share of the table |
+//! | [`restrict_sort_to`] | The table, sortable by the named columns only |
 
 mod keys;
 mod slice;
@@ -19,7 +21,7 @@ pub(crate) mod testing;
 mod tests;
 
 use crate::ops::merge::{pivoted, positional};
-use crate::table::{memoized, CopyType};
+use crate::table::{mark, marks, memoized, CopyType};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use std::fmt;
@@ -79,6 +81,9 @@ impl SortColumn {
 pub enum SortError {
     /// Java's `NoSuchColumnException`: sort columns the table does not have.
     NoSuchColumn(Vec<String>),
+    /// Java's `NotSortableException`: sort columns that the table's restriction of its
+    /// sorting does not name. The text is the exception's message.
+    NotSortable(String),
     /// An absolute sort of a column whose type has no `abs`. In Java the formula
     /// `abs(Column)` fails to compile.
     AbsoluteNotSupported {
@@ -107,9 +112,9 @@ impl fmt::Display for SortError {
                 f,
                 "cannot sort by the absolute value of {column}, a {column_type:?} column"
             ),
-            SortError::IllegalArgument(message) | SortError::Unsupported(message) => {
-                f.write_str(message)
-            }
+            SortError::IllegalArgument(message)
+            | SortError::Unsupported(message)
+            | SortError::NotSortable(message) => f.write_str(message),
             SortError::Table(failure) => failure.fmt(f),
         }
     }
@@ -157,6 +162,7 @@ pub fn reverse(parent: &Arc<dyn Table>) -> Result<Arc<dyn Table>, SortError> {
     } else {
         pivoted(parent, attributes)
     };
+    mark(&result, CopyType::Reverse.sort_marks(&marks(&**parent)));
     Ok(memoized(parent, CopyType::Reverse, false, result)?)
 }
 
@@ -187,4 +193,46 @@ pub fn tail(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>, SortEr
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#slice
 pub fn slice(parent: &Arc<dyn Table>, first: i64, last: i64) -> Result<Arc<dyn Table>, SortError> {
     slice::slice(parent, first, last)
+}
+
+/// The first rows of `parent`: `percent` of its size, a share from 0 to 1, rounded up. The
+/// result follows the size of a refreshing table: rows join it as the table grows and
+/// leave it as the table shrinks. Not supported on a blink table.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#headPct
+pub fn head_pct(parent: &Arc<dyn Table>, percent: f64) -> Result<Arc<dyn Table>, SortError> {
+    slice::head_pct(parent, percent)
+}
+
+/// The last rows of `parent`: `percent` of its size, a share from 0 to 1, rounded up.
+/// Otherwise as [`head_pct`].
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#tailPct
+pub fn tail_pct(parent: &Arc<dyn Table>, percent: f64) -> Result<Arc<dyn Table>, SortError> {
+    slice::tail_pct(parent, percent)
+}
+
+/// The rows of `parent` from the position at the share `start` of its size to the position
+/// at the share `end`, each from 0 to 1 and rounded down. An `end` before `start` selects
+/// nothing. Otherwise as [`head_pct`].
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#slicePct
+pub fn slice_pct(
+    parent: &Arc<dyn Table>,
+    start: f64,
+    end: f64,
+) -> Result<Arc<dyn Table>, SortError> {
+    slice::slice_pct(parent, start, end)
+}
+
+/// A copy of `parent` that may be sorted by `columns` only: [`sort`] refuses any other
+/// column of it, and of the tables made from it that keep the restriction. The same
+/// restriction again is `parent` itself.
+///
+/// Behavior: io.deephaven.engine.table.impl.BaseGridAttributes#restrictSortTo
+pub fn restrict_sort_to<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    columns: &[S],
+) -> Result<Arc<dyn Table>, SortError> {
+    sorted::restrict_sort_to(parent, columns)
 }
