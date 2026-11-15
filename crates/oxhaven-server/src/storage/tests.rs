@@ -1,5 +1,6 @@
-//! What Java answers to `ListItems` is replayed in `crate::ide` (the `storage_*` cases).
-//! The tests here cover the pieces of it and the calls that are refused.
+//! A server without a storage directory. What Java answers to `ListItems` on a new storage
+//! is replayed in `crate::ide` (the `storage_*` cases); the tests here cover the pieces of
+//! it and the calls that are refused. `root_tests` has the server with a directory.
 
 use oxhaven_proto::grpc::storage_service_client::StorageServiceClient;
 use oxhaven_proto::grpc::{
