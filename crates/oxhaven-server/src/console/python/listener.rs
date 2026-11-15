@@ -656,3 +656,6 @@ pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_function(wrap_pyfunction!(await_update, native)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;
