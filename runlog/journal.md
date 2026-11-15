@@ -572,3 +572,12 @@ Snappy is what Java writes by default).
 
 PR 77 changes the `python-console` aggregate job from `always()` to `!cancelled()`, so the run
 that a label event cancels no longer leaves a failed check on the commit.
+
+## 2026-11-15 18:52 UTC: Usage limit stop, 09:46 to 18:52 UTC
+
+All four running agents (0.15 fuzz coverage, 6.14 console logs and cancel, 4.16 table shape
+operators, 6.8 Python dtypes) stopped at about 09:46 UTC on the model usage limit, and the run
+was idle for nine hours until the owner reset it. The machine restarted in between, so servers
+and builds were lost; the worktrees and pushed branches were intact (one uncommitted file in
+4.16, one in 6.14, six unpushed commits in 6.14). All four were resumed in their existing
+context rather than restarted. Cost of the stop: nine hours of wall time, no lost work found.
