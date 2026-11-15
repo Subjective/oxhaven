@@ -18,7 +18,11 @@ fn python_files(root: &Path, directory: &Path, found: &mut Vec<PathBuf>) -> io::
         if path.is_dir() {
             python_files(root, &path, found)?;
         } else if path.extension().is_some_and(|extension| extension == "py") {
-            found.push(path.strip_prefix(root).expect("under the root").to_path_buf());
+            found.push(
+                path.strip_prefix(root)
+                    .expect("under the root")
+                    .to_path_buf(),
+            );
         }
     }
     found.sort();
