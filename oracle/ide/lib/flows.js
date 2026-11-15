@@ -349,7 +349,63 @@ module.exports = (t) => {
     return `${language} console: ${grid.name} scrolled to row ${grid.bottom[0]} and back, sorted by ${grid.sort.column} descending, filtered to ${grid.filter.column} = ${grid.filter.value}`;
   }
 
-  return { notebook: routeNotebook, log: routeLog, grid: routeGrid };
+  // ---------------------------------------------------------------------------------------
+  // errors: a command that fails, and a variable that goes away while its panel is open
+  // ---------------------------------------------------------------------------------------
+
+  async function routeErrors(ctx) {
+    const { page, opts, expected, shot } = ctx;
+    const language = await openConsole(ctx);
+    const commands = commandsFor(ctx, 'errors', language);
+    const gone = expected.errors.gone;
+    const marker = `ide-error-${unique()}`;
+    let seen = await countCalls(ctx);
+
+    // A failing command is an answer, not a failed call: the call ends with OK. What the
+    // console shows of the error is the record the server logs for it, which arrives on the
+    // log stream: one line, "Error running script", that opens to the error's text.
+    ctx.trace.mark('fail');
+    await runCommand(page, commands.fail.replace('{marker}', marker));
+    seen = await expectCall(ctx, 'ConsoleService/ExecuteCommand', [marker], seen);
+    const shows = commands.shows.replace('{marker}', marker);
+    const head = page.locator('.console-error-text-trigger', { hasText: 'Error running script' });
+    const record = page.locator('.console-history .error-message', { has: head }).last();
+    await poll(opts.timeout, `the console shows no "Error running script" record that opens to "${shows}"`, async () => {
+      if (!(await record.count())) return { why: 'there is no such record' };
+      if (!(await record.evaluate((e) => e.classList.contains('expanded')))) await record.locator('.console-error-text-trigger').click();
+      const text = await record.innerText();
+      return text.includes(shows) ? { done: true } : { why: `the last one says ${JSON.stringify(text.slice(0, 300))}` };
+    });
+    await shot('failed');
+
+    // The console is still usable, and what the failed command assigned before it failed
+    // is there.
+    ctx.trace.mark('create');
+    await runCommand(page, commands.create);
+    seen = await expectCall(ctx, 'ConsoleService/ExecuteCommand', [gone.name], seen);
+    await expectStaticGrid(page, gone, opts.timeout);
+    await shot('created');
+
+    // Removing the variable closes its panel and releases its exports.
+    ctx.trace.mark('remove');
+    await runCommand(page, commands.remove);
+    await expectCall(ctx, 'ConsoleService/ExecuteCommand', [commands.remove], seen);
+    await poll(opts.timeout, `the panel of ${gone.name} is still open after the variable was removed`, async () => {
+      const open = await tab(page, gone.name).count();
+      const painted = await readGrid(page, gone.columns);
+      return !open && painted === undefined ? { done: true } : { why: `${open} tabs, grid ${painted === undefined ? 'gone' : 'still painted'}` };
+    });
+    await expectCall(ctx, 'SessionService/Release', [], seen);
+    const object = page.locator('.console-history button', { hasText: gone.name });
+    await poll(opts.timeout, `the console still offers to open ${gone.name}`, async () => {
+      const states = await object.evaluateAll((buttons) => buttons.map((b) => b.disabled));
+      return states.length && states.every(Boolean) ? { done: true } : { why: `its buttons are disabled: ${JSON.stringify(states)}` };
+    });
+    await shot('removed');
+    return `${language} console: "${shows}" shown for a failing command; the panel of ${gone.name} closed when the variable was removed`;
+  }
+
+  return { notebook: routeNotebook, log: routeLog, grid: routeGrid, errors: routeErrors };
 };
 
 void execFile;

@@ -40,6 +40,22 @@
     "staticName": "ide_console_static",
     "tickingName": "ide_console_ticking"
   },
+  "errors": {
+    "comment": "Route errors: `fail` raises an error with the text `{marker}` after an assignment, and the console then shows `shows`; `create` makes the table `gone` out of what `fail` assigned, and `remove` removes the variable while its panel is open.",
+    "python": {
+      "fail": "ide_errors_before = 41; raise ValueError('{marker}')",
+      "shows": "ValueError: {marker}",
+      "create": "from deephaven import new_table; from deephaven.column import int_col; ide_errors_gone = new_table([int_col('Gone', [ide_errors_before, ide_errors_before + 1])])",
+      "remove": "del ide_errors_gone"
+    },
+    "groovy": {
+      "fail": "ide_errors_before = 41; throw new IllegalStateException('{marker}')",
+      "shows": "IllegalStateException: {marker}",
+      "create": "ide_errors_gone = newTable(intCol('Gone', ide_errors_before, ide_errors_before + 1))",
+      "remove": "binding.variables.remove('ide_errors_gone')"
+    },
+    "gone": { "name": "ide_errors_gone", "columns": ["Gone"], "displayed": [["41"], ["42"]] }
+  },
   "grid": {
     "comment": "Route grid: a table of 300 rows, K = 0..299 and G = K % 7, made in the console; more rows than a viewport holds. `top` and `bottom` are its first and last painted rows; `sort.top` after sorting K descending; `filter.top` after also filtering G to the value of the first row.",
     "python": { "create": "from deephaven import empty_table; ide_grid = empty_table(300).update(['K = (int)ii', 'G = (int)(ii % 7)'])" },
