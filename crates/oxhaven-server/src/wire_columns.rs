@@ -214,6 +214,38 @@ mod tests {
         assert_eq!(column.arrow_type(), T::array(T::Byte).arrow_type());
     }
 
+    /// An array is never sent as the text of its elements, however deep it is.
+    #[test]
+    fn byte_arrays_in_arrays_of_arrays_are_binary() {
+        let bytes = ColumnType::array(ColumnType::Byte);
+        let middle = ColumnType::array(bytes.clone());
+        let outer = ColumnType::array(middle.clone());
+        let stored = cells_of(
+            &outer,
+            [Some(1), None],
+            cells_of(
+                &middle,
+                [Some(2)],
+                cells_of(
+                    &bytes,
+                    [Some(2), Some(0)],
+                    Arc::new(Int8Array::from(vec![Some(1), None])),
+                ),
+            ),
+        );
+        let column = WireColumn::described(&outer);
+        assert_eq!(column.arrow_type(), list_of(list_of(DataType::Binary)));
+        let sent = column.cells(stored).unwrap();
+        assert_eq!(sent.data_type(), &list_of(list_of(DataType::Binary)));
+        let rows = sent.as_list::<i32>();
+        assert!(rows.is_null(1));
+        let middle = rows.value(0);
+        let binary = middle.as_list::<i32>().value(0);
+        let binary = binary.as_binary::<i32>();
+        assert_eq!(binary.value(0), [1u8, 0x80].as_slice());
+        assert_eq!(binary.value(1), [0u8; 0].as_slice());
+    }
+
     fn strings_of(cells: &ArrayRef) -> Vec<Option<Vec<Option<Vec<Option<String>>>>>> {
         cells
             .as_list::<i32>()

@@ -1300,6 +1300,11 @@ fn list_fields_are_the_arrays_and_vectors_java_makes_of_them() {
     );
     let large = DataType::LargeList(Arc::new(Field::new("item", DataType::Int32, true)));
     assert_eq!(code(field(large, &[])), invalid);
+    let object_vectors = format!("{object_vector}[]");
+    assert_eq!(
+        code(field(list(texts()), &[("type", &object_vectors)])),
+        invalid
+    );
     assert_eq!(
         code(field(
             list(texts()),

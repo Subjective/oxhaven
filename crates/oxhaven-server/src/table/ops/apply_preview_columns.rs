@@ -219,7 +219,8 @@ fn wrapped_columns(
         .iter()
         .filter_map(|column| {
             let preview = previews.get(&column.name);
-            let list = preview.is_none() && column.column_type.list_element().is_some();
+            // a preview is a `String` column to the engine, so never a list
+            let list = column.column_type.list_element().is_some();
             let type_name = match preview {
                 Some(preview) => preview.java_type.into(),
                 None => java_type_name(&column.column_type),
@@ -640,6 +641,9 @@ mod tests {
         let flags: ArrayRef = Arc::new(BooleanArray::from(vec![Some(true), None]));
         let previewed = preview_texts(Kind::Display, &ColumnType::Boolean, &flags);
         assert_eq!(texts(&previewed), [Some("true"), None]);
+        let long: ArrayRef = Arc::new(StringArray::from(vec!["x".repeat(MAX_CHARACTERS + 5)]));
+        let previewed = preview_texts(Kind::Display, &ColumnType::String, &long);
+        assert_eq!(previewed.value(0), "x".repeat(MAX_CHARACTERS));
         let instants: ArrayRef =
             Arc::new(TimestampNanosecondArray::from(vec![Some(0), None]).with_timezone("UTC"));
         let previewed = preview_texts(Kind::Display, &ColumnType::Instant, &instants);
@@ -726,6 +730,91 @@ mod tests {
         );
         // and the first preview is still what it was
         assert_eq!(previews_of(&*result)["Xs"].java_type, ARRAY_PREVIEW);
+    }
+
+    /// A preview column of a refreshing table reads the previous values of its source
+    /// when asked for previous values.
+    #[test]
+    fn the_preview_of_a_refreshing_table_follows_it() {
+        use oxhaven_contracts::graph::UpdateGraph;
+        use oxhaven_engine::graph::SteppedUpdateGraph;
+        use oxhaven_testkit::{definition, ints, list_of, ScriptedTable, TableChange};
+        let stepper = SteppedUpdateGraph::new();
+        let graph: Arc<dyn UpdateGraph> = stepper.clone();
+        let vector = ColumnType::vector(ColumnType::Int);
+        let source = ScriptedTable::new(
+            graph,
+            definition(&[("Xs", vector.clone())]),
+            RowSet::from_keys([0, 1]),
+            vec![list_of(&vector, [Some(1), Some(2)], ints([1, 2, 3]))],
+        );
+        let table: Arc<dyn Table> = source.table();
+        let formula = PreviewCompiler {
+            kinds: [("Xs".to_owned(), Kind::Array)].into(),
+        }
+        .compile(
+            &PreviewCompiler {
+                kinds: HashMap::new(),
+            }
+            .parse("preview(Xs)")
+            .unwrap(),
+            table.definition(),
+        )
+        .unwrap();
+        assert_eq!(formula.columns(), ["Xs".to_owned()]);
+        assert_eq!(formula.result_type(), &ColumnType::String);
+
+        struct Seen {
+            formula: Arc<dyn Formula>,
+            table: Arc<dyn Table>,
+            texts: std::sync::Mutex<Vec<Vec<Option<String>>>>,
+        }
+        impl oxhaven_contracts::graph::Dependency for Seen {
+            fn satisfied(&self, _step: u64) -> bool {
+                true
+            }
+        }
+        impl oxhaven_contracts::table::UpdateListener for Seen {
+            fn on_update(
+                &self,
+                _update: &oxhaven_contracts::update::TableUpdate,
+            ) -> Result<(), TableFailure> {
+                let read = |use_prev: bool| {
+                    let rows = if use_prev {
+                        self.table.prev_row_set()
+                    } else {
+                        self.table.row_set()
+                    };
+                    let values = self.formula.evaluate(&*self.table, &rows, use_prev).unwrap();
+                    let values = values.as_string::<i32>();
+                    values.iter().map(|text| text.map(str::to_owned)).collect()
+                };
+                let mut texts = self.texts.lock().unwrap();
+                texts.push(read(true));
+                texts.push(read(false));
+                Ok(())
+            }
+            fn on_failure(&self, _failure: &TableFailure) {}
+        }
+        let seen = Arc::new(Seen {
+            formula,
+            table: table.clone(),
+            texts: Default::default(),
+        });
+        let listener: Arc<dyn oxhaven_contracts::table::UpdateListener> = seen.clone();
+        table.add_listener(&listener);
+        source.push(
+            TableChange::new().modify([1], [(0, list_of(&vector, [Some(0)], ints([])))]),
+        );
+        stepper.run_cycle();
+        let text = |value: &str| Some(value.to_owned());
+        assert_eq!(
+            *seen.texts.lock().unwrap(),
+            [
+                vec![text("[1]"), text("[2,3]")],
+                vec![text("[1]"), text("[]")]
+            ]
+        );
     }
 
     #[test]
