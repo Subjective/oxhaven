@@ -11,12 +11,18 @@ use tokio::time::Instant;
 use tonic::Status;
 
 use super::resolver::application_field_ticket;
+use super::scope::scope_ticket;
 use crate::session::{ExportValue, OnCloseId, Session};
 
 /// The application id Java keeps for the variables of the query scope.
 ///
 /// Behavior: `io.deephaven.server.appmode.AppFieldId#SCOPE_ID`
 const SCOPE_ID: &str = "scope";
+
+/// The description of every query scope variable in the list of fields.
+///
+/// Behavior: `ApplicationServiceGrpcImpl#QUERY_SCOPE_DESCRIPTION`
+const SCOPE_DESCRIPTION: &str = "query scope variable";
 
 /// The shortest time between two messages to the clients that listen for field changes, so
 /// that an application that sets fields in a loop sends one message, not one per field.
@@ -247,6 +253,32 @@ impl Applications {
     #[cfg(test)]
     pub(crate) fn subscription_count(&self) -> usize {
         self.lock().subscriptions.len()
+    }
+
+    /// Notes that the query scope variable `name` now holds a value clients can open, of
+    /// the type `type_name`, or with `None` that it no longer does. Clients see the
+    /// variables as fields of the application id `scope`, with the ticket `s/<name>`.
+    ///
+    /// Behavior: `ApplicationServiceGrpcImpl#onScopeChanges`,
+    /// `io.deephaven.server.appmode.AppFieldId#fromScopeName`
+    pub fn scope_changed(&self, name: &str, type_name: Option<&str>) {
+        let info = type_name.map(|type_name| FieldInfo {
+            typed_ticket: Some(TypedTicket {
+                ticket: Some(Ticket {
+                    ticket: scope_ticket(name),
+                }),
+                r#type: type_name.to_string(),
+            }),
+            field_name: name.to_string(),
+            field_description: SCOPE_DESCRIPTION.to_string(),
+            application_name: String::new(),
+            application_id: SCOPE_ID.to_string(),
+        });
+        let id = FieldId {
+            application_id: SCOPE_ID.to_string(),
+            field_name: name.to_string(),
+        };
+        self.changed(&mut self.lock(), id, info);
     }
 
     /// Notes that a field changed and sees to it that clients are told: now, if nobody is
