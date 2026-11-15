@@ -581,3 +581,10 @@ was idle for nine hours until the owner reset it. The machine restarted in betwe
 and builds were lost; the worktrees and pushed branches were intact (one uncommitted file in
 4.16, one in 6.14, six unpushed commits in 6.14). All four were resumed in their existing
 context rather than restarted. Cost of the stop: nine hours of wall time, no lost work found.
+
+## 2026-11-15 19:02 UTC: Owner approved BSD-3-Clause for the Parquet codecs
+
+The owner answered the open licence question: the Snappy, Zstandard and Brotli codec crates
+(BSD-3-Clause) may be used. The exception is for these Parquet codecs only; the Apache-2.0/MIT
+rule otherwise stands. The author of the Parquet read task was resumed with the follow-up
+(task 7.1b, branch task/7.1b-parquet-codecs).
