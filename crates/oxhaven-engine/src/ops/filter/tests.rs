@@ -17,8 +17,8 @@ use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::shift::{RowSetShiftData, ShiftRange};
 use oxhaven_expr::Compiler;
 use oxhaven_testkit::{
-    assert_tables_equal, definition, longs, strings, ConsistencyChecker, RandomUpdates, Recorder,
-    ReferenceTable, ScriptedTable, TableChange, TableSnapshot,
+    assert_tables_equal, at_least_for, definition, longs, strings, test_seeds, ConsistencyChecker,
+    RandomUpdates, Recorder, ReferenceTable, ScriptedTable, TableChange, TableSnapshot,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -1276,7 +1276,8 @@ fn wide() -> TableDefinition {
     ])
 }
 
-/// Drives `operation` over a random parent for `cycles` cycles per seed, checking after
+/// Drives `operation` over a random parent for `cycles` cycles per seed of `seeds` that the
+/// seed budget runs (`oxhaven_testkit::test_seeds`), checking after
 /// every cycle that each update is consistent and that the result equals the static path
 /// run on the parent's rows. Returns the number of updates the result delivered.
 fn check_random(
@@ -1290,7 +1291,7 @@ fn check_random(
         + 'static,
 ) -> u64 {
     let mut updates = 0;
-    for seed in seeds {
+    for seed in test_seeds(seeds) {
         let stepper = SteppedUpdateGraph::new();
         let graph: Arc<dyn UpdateGraph> = stepper.clone();
         let mut random = RandomUpdates::new(seed);
@@ -1331,10 +1332,15 @@ fn strings_op(
 #[test]
 fn random_updates_through_range_filters() {
     let all = |_: &mut RandomUpdates| {};
-    assert!(check_random(0..40, 60, all, strings_op(&["Qty > 0"])) > 1000);
-    assert!(check_random(40..80, 60, all, strings_op(&["Px > 0"])) > 1000);
-    assert!(check_random(80..120, 60, all, strings_op(&["Px <= 0.5", "N >= -3"])) > 1000);
-    assert!(check_random(120..140, 60, all, strings_op(&["Sym < `d`"])) > 500);
+    assert!(check_random(0..40, 60, all, strings_op(&["Qty > 0"])) > at_least_for(1000, 0..40));
+    assert!(check_random(40..80, 60, all, strings_op(&["Px > 0"])) > at_least_for(1000, 40..80));
+    assert!(
+        check_random(80..120, 60, all, strings_op(&["Px <= 0.5", "N >= -3"]))
+            > at_least_for(1000, 80..120)
+    );
+    assert!(
+        check_random(120..140, 60, all, strings_op(&["Sym < `d`"])) > at_least_for(500, 120..140)
+    );
 }
 
 #[test]
@@ -1346,33 +1352,44 @@ fn random_updates_through_match_filters() {
             60,
             all,
             strings_op(&["Sym in `a`, `b`, `c`", "Qty != 3"])
-        ) > 1000
+        ) > at_least_for(1000, 0..40)
     );
-    assert!(check_random(40..80, 60, all, strings_op(&["Px in NaN, 0.5, null, -1"])) > 500);
-    assert!(check_random(80..120, 60, all, strings_op(&["Px != 0", "Flag == true"])) > 500);
-    assert!(check_random(120..140, 60, all, strings_op(&["N == null"])) > 200);
+    assert!(
+        check_random(40..80, 60, all, strings_op(&["Px in NaN, 0.5, null, -1"]))
+            > at_least_for(500, 40..80)
+    );
+    assert!(
+        check_random(80..120, 60, all, strings_op(&["Px != 0", "Flag == true"]))
+            > at_least_for(500, 80..120)
+    );
+    assert!(
+        check_random(120..140, 60, all, strings_op(&["N == null"])) > at_least_for(200, 120..140)
+    );
     assert!(
         check_random(
             140..160,
             60,
             all,
             strings_op(&["Sym icase not in `A`, `B`"])
-        ) > 500
+        ) > at_least_for(500, 140..160)
     );
 }
 
 #[test]
 fn random_updates_through_formulas_and_patterns() {
     let all = |_: &mut RandomUpdates| {};
-    assert!(check_random(0..40, 60, all, strings_op(&["Px == Px"])) > 1000);
-    assert!(check_random(40..80, 60, all, strings_op(&["Qty * 2 > N + 1"])) > 1000);
+    assert!(check_random(0..40, 60, all, strings_op(&["Px == Px"])) > at_least_for(1000, 0..40));
+    assert!(
+        check_random(40..80, 60, all, strings_op(&["Qty * 2 > N + 1"]))
+            > at_least_for(1000, 40..80)
+    );
     assert!(
         check_random(
             80..120,
             60,
             all,
             strings_op(&["!isNull(Flag)", "Flag", "Qty < N"])
-        ) > 500
+        ) > at_least_for(500, 80..120)
     );
     assert!(
         check_random(
@@ -1380,7 +1397,7 @@ fn random_updates_through_formulas_and_patterns() {
             60,
             all,
             strings_op(&["Sym includes any `a`, `c`", "Qty >= 0"])
-        ) > 500
+        ) > at_least_for(500, 120..150)
     );
 }
 
@@ -1395,7 +1412,7 @@ fn random_updates_of_one_kind_at_a_time() {
         };
         let updates = check_random(0..15, 50, only, strings_op(&["Qty > 0", "Px == Px"]));
         // With removes only the table is soon empty.
-        assert!(updates > 20, "kind {kind}: {updates}");
+        assert!(updates > at_least_for(20, 0..15), "kind {kind}: {updates}");
     }
 }
 
@@ -1432,7 +1449,7 @@ fn random_updates_through_structured_conditions() {
         )),
     ];
     let operation = move |table: &Arc<dyn Table>| filter(table, &conditions, &Compiler);
-    assert!(check_random(0..40, 60, all, operation) > 1000);
+    assert!(check_random(0..40, 60, all, operation) > at_least_for(1000, 0..40));
 }
 
 #[test]
@@ -1442,5 +1459,5 @@ fn a_where_of_a_where_stays_consistent() {
         let first = unstructured_filter(table, &["Qty > -5"], &Compiler)?;
         unstructured_filter(&first, &["Px < 1", "Sym != `a`"], &Compiler)
     };
-    assert!(check_random(0..40, 60, all, operation) > 1000);
+    assert!(check_random(0..40, 60, all, operation) > at_least_for(1000, 0..40));
 }

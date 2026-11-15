@@ -204,6 +204,42 @@ impl Stamped {
         out
     }
 
+    /// Fails where Java fails to find the positions of the rows `affected`, whose
+    /// timestamps are `stamps`, among the rows that have a timestamp. Java looks for them
+    /// when an operator of the window wants positions, which the rolling group does, and
+    /// its row sets refuse a key they do not hold, each kind in its own way: one that is a
+    /// single range of keys refuses a key below the range and ignores one above it; one
+    /// with gaps refuses every key it lacks; an empty one refuses nothing. So a rolling
+    /// group in time fails when it computes a row without a timestamp that stands before a
+    /// row with one, and does not when the rows without one come last, or are all there is.
+    ///
+    /// The row keys here are not Java's (PARITY.md A4), so for a ticking table this agrees
+    /// with Java only as far as the keys do; and a Java row set too large for its sorted
+    /// ranges (`RspBitmap`) tests less than this.
+    ///
+    /// Behavior: the `bucketRowSet.invert(ctx.affectedRows)` of
+    /// io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingBase#processWindowBucketOperatorSet,
+    /// with io.deephaven.engine.rowset.impl.singlerange.SingleRange#ixInvertOnNew and
+    /// io.deephaven.engine.rowset.impl.sortedranges.SortedRanges#ixInvertOnNew
+    pub(super) fn positions_exist(
+        &self,
+        affected: &RowSet,
+        stamps: &[Option<i64>],
+    ) -> Result<(), TableFailure> {
+        let (Some(&first), Some(&last)) = (self.keys.first(), self.keys.last()) else {
+            return Ok(());
+        };
+        let one_range = (last - first) as usize + 1 == self.keys.len();
+        let mut unstamped = affected
+            .iter()
+            .zip(stamps)
+            .filter_map(|(key, stamp)| stamp.is_none().then_some(key));
+        if unstamped.any(|key| !one_range || key < first) {
+            return Err(failure("keys argument has elements not in the rowSet"));
+        }
+        Ok(())
+    }
+
     /// The rows that have a timestamp.
     pub(super) fn rows(&self) -> RowSet {
         RowSet::from_keys(self.keys.iter().copied())
