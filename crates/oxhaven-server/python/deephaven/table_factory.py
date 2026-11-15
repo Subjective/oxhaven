@@ -67,7 +67,9 @@ def _is_null(value) -> bool:
         return True
     pandas = sys.modules.get("pandas")
     if pandas is not None:
-        return pandas.isnull(value) is True
+        # a boolean for one value, an array for a collection
+        null = pandas.isnull(value)
+        return bool(null) if getattr(null, "ndim", 0) == 0 else False
     return isinstance(value, float) and value != value
 
 
