@@ -39,8 +39,9 @@ use tonic::Status;
 
 use super::codec::ColumnSet;
 use super::writer::{subscription_messages, BarrageMessage, ModColumn, SubView, WireOptions};
-use crate::flight::{schema_message, wire_schema};
+use crate::flight::{schema_message, wire_columns, wire_schema};
 use crate::table::support::internal_status;
+use crate::wire_columns::WireColumn;
 
 /// Behavior: `io.deephaven.extensions.barrage.util.BarrageUtil#MIN_SNAPSHOT_CELL_COUNT`
 pub(super) const MIN_SNAPSHOT_CELL_COUNT: u64 = 1 << 13;
@@ -207,6 +208,8 @@ pub struct Producer {
     /// The schema every subscriber is sent, and per column whether its field is nullable.
     schema: Schema,
     nullable: Vec<bool>,
+    /// How each column is sent; see [`wire_columns`].
+    wire: Vec<WireColumn>,
     state: Mutex<State>,
     /// Held by the thread that runs the propagation job.
     run_lock: Mutex<()>,
@@ -276,14 +279,14 @@ pub(super) fn construct_snapshot(
             .sub_set_for_positions(forward, false)
             .union(&rows_added.sub_set_for_positions(reverse, true)),
     };
-    let definition = table.definition();
-    let mut add_columns = Vec::with_capacity(definition.columns().len());
-    let mut mod_columns = Vec::with_capacity(definition.columns().len());
-    for (index, column) in definition.columns().iter().enumerate() {
+    let wire = wire_columns(table);
+    let mut add_columns = Vec::with_capacity(wire.len());
+    let mut mod_columns = Vec::with_capacity(wire.len());
+    for (index, column) in wire.iter().enumerate() {
         let wanted = columns.is_none_or(|columns| columns.contains(index));
-        let empty = new_empty_array(&column.column_type.arrow_type());
+        let empty = new_empty_array(&column.arrow_type());
         add_columns.push(if wanted && !rows_included.is_empty() {
-            table.column(index).chunk(&rows_included)?
+            column.cells(table.column(index).chunk(&rows_included)?)?
         } else {
             empty.clone()
         });
@@ -357,6 +360,7 @@ impl Producer {
         };
         let schema = wire_schema(&table);
         let nullable = nullable_columns(&table, &schema);
+        let wire = wire_columns(&table);
         let producer = Arc::new_cyclic(|this| Producer {
             table,
             graph,
@@ -364,6 +368,7 @@ impl Producer {
             update_interval_ms,
             schema,
             nullable,
+            wire,
             state: Mutex::new(State::default()),
             run_lock: Mutex::new(()),
             needs_run: AtomicBool::new(false),
@@ -631,7 +636,8 @@ impl Producer {
             let mut data = vec![None; count];
             if !rows.is_empty() {
                 for column in columns.iter().filter(|column| *column < count) {
-                    data[column] = Some(self.table.column(column).chunk(rows)?);
+                    let stored = self.table.column(column).chunk(rows)?;
+                    data[column] = Some(self.wire[column].cells(stored)?);
                 }
             }
             Ok::<_, TableFailure>(data)
@@ -1185,13 +1191,7 @@ impl Producer {
         state: &mut State,
         deltas: &[Delta],
     ) -> Result<BarrageMessage, TableFailure> {
-        let types: Vec<_> = self
-            .table
-            .definition()
-            .columns()
-            .iter()
-            .map(|column| column.column_type.arrow_type())
-            .collect();
+        let types: Vec<_> = self.wire.iter().map(WireColumn::arrow_type).collect();
         let (first, last) = match (deltas.first(), deltas.last()) {
             (Some(first), Some(last)) => (first, last),
             _ => return Err(failure("no updates to aggregate")),

@@ -9,6 +9,7 @@
 //! unspecified there and here. The bytes are therefore compared after decoding, never as
 //! bytes.
 
+use crate::wire_columns::wire_type;
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
@@ -58,7 +59,7 @@ impl SchemaContext {
 /// column. `BarrageUtil.ATTR_DH_PREFIX + ATTR_COMPONENT_TYPE_TAG`.
 pub const COMPONENT_TYPE_KEY: &str = "deephaven:componentType";
 
-const OBJECT_VECTOR: &str = "io.deephaven.vector.ObjectVector";
+pub(crate) const OBJECT_VECTOR: &str = "io.deephaven.vector.ObjectVector";
 
 /// The Java vector class of a primitive element type, or `None` for an element that Java
 /// holds in an `ObjectVector`.
@@ -181,42 +182,6 @@ fn is_sortable(column_type: &ColumnType) -> bool {
     }
 }
 
-/// Stops at a column type whose Arrow field Java does not derive from the column type
-/// alone, so that [`ColumnType::arrow_type`] is not the type Java declares.
-///
-/// Behavior: `BarrageUtil#arrowTypeFor` (a `byte[]` is `Binary`), `BarrageUtil#arrowFieldFor`
-/// (the elements of an `ObjectVector` that is itself an element have no class, and are
-/// declared as strings)
-fn require_described_as_stored(name: &str, column_type: &ColumnType) {
-    let mut at = column_type;
-    let mut outermost = true;
-    loop {
-        match at {
-            ColumnType::Array(element) if **element == ColumnType::Byte => {
-                oxhaven_contracts::unported!(
-                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowTypeFor",
-                    "column {name} of type {column_type:?}: a byte[] is sent as Binary"
-                )
-            }
-            ColumnType::Vector(element)
-                if !outermost && primitive_vector_name(element).is_none() =>
-            {
-                oxhaven_contracts::unported!(
-                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowFieldFor",
-                    "column {name} of type {column_type:?}: the elements of an inner \
-                     ObjectVector are sent as strings"
-                )
-            }
-            _ => {}
-        }
-        match at.list_element() {
-            Some(element) => at = element,
-            None => return,
-        }
-        outermost = false;
-    }
-}
-
 /// The inverse of [`java_type_name`] for the types that are not arrays or vectors, for
 /// schemas a client sends; see [`column_type_for_java_names`] for all of them.
 pub fn column_type_for_java_name(name: &str) -> Option<ColumnType> {
@@ -316,17 +281,14 @@ fn input_table_metadata(definition: &TableDefinition, keys: &[String]) -> String
 /// Every field is nullable and carries `deephaven:type` and `deephaven:isSortable`; format
 /// columns and input table key and value columns are marked as Java marks them. An array or
 /// vector column also carries `deephaven:componentType`, and its field is a list whose
-/// element field has the empty name, is nullable and has no metadata.
+/// element field has the empty name, is nullable and has no metadata. The Arrow type of
+/// a field is [`crate::wire_columns::wire_type`] of its column type, which is not the type
+/// the engine stores for a `byte[]` and for a vector of vectors of objects.
 ///
 /// An input table also carries `deephaven:tableMetadata`.
 ///
 /// Not emitted: column descriptions, and restrictions on the values of an input table's
 /// columns, neither of which a table in this engine can carry yet.
-///
-/// # Panics
-/// By `unported!`, for a column whose Arrow type Java does not derive from the column type
-/// alone: a `byte[]` at any depth, and a vector of non-primitive elements that is itself
-/// an element.
 ///
 /// Behavior: `BarrageUtil#makeSchema`, `BarrageUtil#columnDefinitionsToFields`,
 /// `BarrageUtil#arrowFieldFor`
@@ -338,7 +300,6 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
         .map(|column| {
             let name = column.name.as_str();
             let mut metadata = HashMap::new();
-            require_described_as_stored(name, &column.column_type);
             // Java writes the entry only when it is true.
             if is_sortable(&column.column_type) {
                 put(&mut metadata, "isSortable", TRUE);
@@ -377,7 +338,7 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                 };
                 put(&mut metadata, key, TRUE);
             }
-            Field::new(name, column.column_type.arrow_type(), true).with_metadata(metadata)
+            Field::new(name, wire_type(&column.column_type), true).with_metadata(metadata)
         })
         .collect();
     let mut metadata = schema_metadata(context);

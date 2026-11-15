@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, AsArray};
+use arrow::array::{Array, ArrayRef, AsArray, ListArray};
 use arrow::buffer::Buffer;
 use arrow::datatypes::{DataType, Field, Schema, SchemaRef, TimeUnit, TimestampNanosecondType};
 use arrow::ipc;
@@ -16,7 +16,9 @@ use oxhaven_engine::table::uploaded_table;
 use tonic::Status;
 
 use super::wire::remember_uploaded;
-use crate::schema::{column_type_for_java_name, TYPE_KEY};
+use crate::schema::{
+    column_type_for_java_names, java_type_name, COMPONENT_TYPE_KEY, OBJECT_VECTOR, TYPE_KEY,
+};
 
 /// Why data a client sent was refused.
 #[derive(Clone, Debug)]
@@ -43,7 +45,8 @@ const GET_DEFAULT_TYPE: &str = "io.deephaven.extensions.barrage.util.BarrageUtil
 const CONVERT_ARROW_SCHEMA: &str =
     "io.deephaven.extensions.barrage.util.BarrageUtil#convertArrowSchema";
 
-/// The column type Java gives a field that does not name one.
+/// The column type Java gives a field that does not name one. A list is an array of what
+/// its element field would be by the same rule, whatever that field's metadata says.
 ///
 /// Behavior: `io.deephaven.extensions.barrage.util.BarrageUtil#getDefaultType(Field, Class)`
 fn default_type(field: &Field) -> Result<ColumnType, Status> {
@@ -60,6 +63,22 @@ fn default_type(field: &Field) -> Result<ColumnType, Status> {
         DataType::Timestamp(_, zone) if zone.as_deref().is_none_or(|zone| zone == "UTC") => {
             ColumnType::Instant
         }
+        DataType::List(element) => {
+            if *element.data_type() == DataType::Boolean && !element.is_nullable() {
+                // Java makes a `boolean[]`, which no column type is
+                return Err(not_ported(
+                    GET_DEFAULT_TYPE,
+                    format_args!("field '{}': a list of non-nullable Bool", field.name()),
+                ));
+            }
+            ColumnType::array(default_type(element)?)
+        }
+        // Java has a default for a ListView and a FixedSizeList, and none for this
+        DataType::LargeList(_) => {
+            return Err(Status::invalid_argument(
+                "Schema did not include `deephaven:type` metadata for field of type LargeList",
+            ))
+        }
         other => {
             return Err(not_ported(
                 GET_DEFAULT_TYPE,
@@ -67,6 +86,150 @@ fn default_type(field: &Field) -> Result<ColumnType, Status> {
             ))
         }
     })
+}
+
+/// Whether `name` is `io.deephaven.vector.ObjectVector`, or an array of it at any depth.
+fn names_object_vector(name: &str) -> bool {
+    name.trim_end_matches("[]") == OBJECT_VECTOR
+}
+
+/// The column type a Java class name stands for by itself: a scalar, a vector of a
+/// primitive, or an array of either.
+///
+/// An `ObjectVector` does not say what its elements are. Java reads the elements of one
+/// that is itself an element as `Object`, finds no reader for them, and refuses the
+/// upload.
+///
+/// Behavior: `BarrageUtil#convertArrowSchema` (the class lookup),
+/// `io.deephaven.extensions.barrage.chunk.DefaultChunkReaderFactory#newReader` (the
+/// refusal)
+fn type_named(field: &Field, name: &str) -> Result<ColumnType, Status> {
+    if names_object_vector(name) {
+        return Err(Status::invalid_argument(format!(
+            "No known Barrage ChunkReader for the elements of {name} in field '{}'",
+            field.name()
+        )));
+    }
+    column_type_for_java_names(name, None).ok_or_else(|| {
+        not_ported(
+            CONVERT_ARROW_SCHEMA,
+            format_args!("field '{}' of type {name}", field.name()),
+        )
+    })
+}
+
+/// The column type of a field a client sent: the class its `deephaven:type` names, with
+/// the elements its `deephaven:componentType` names if the class is an `ObjectVector`, or
+/// else what the Arrow type alone says.
+///
+/// - Without `deephaven:type`, a list is an array: `list<int32>` is an `int[]`, a list of
+///   lists an `int[][]`. A component type does not change that.
+/// - An `ObjectVector` without a component type has the elements its element field would
+///   be by default, so `list<utf8>` is an `ObjectVector` of `String`.
+/// - A component type that is not the element class of the type is refused, as is an
+///   `ObjectVector` of a primitive.
+///
+/// Behavior: `BarrageUtil#convertArrowSchema`,
+/// `io.deephaven.engine.table.ColumnDefinition#fromGenericType` (the component type
+/// check)
+fn column_type_of(field: &Field) -> Result<ColumnType, Status> {
+    let metadata = |key| field.metadata().get(key).map(String::as_str);
+    let component = metadata(COMPONENT_TYPE_KEY);
+    let column_type = match metadata(TYPE_KEY) {
+        None => default_type(field)?,
+        // Java turns the primitive into the boxed type, which can hold a null
+        Some("boolean") => ColumnType::Boolean,
+        Some(OBJECT_VECTOR) => {
+            let element = match (component, field.data_type()) {
+                (Some(component), _) => type_named(field, component)?,
+                (None, DataType::List(element)) => default_type(element)?,
+                (None, other) => {
+                    return Err(Status::invalid_argument(format!(
+                        "No known Barrage ChunkReader for arrow type {other} to {OBJECT_VECTOR}"
+                    )))
+                }
+            };
+            ColumnType::vector(element)
+        }
+        Some(name) => type_named(field, name)?,
+    };
+    let Some(element) = column_type.list_element() else {
+        return Ok(column_type);
+    };
+    let type_name = java_type_name(&column_type);
+    let element_name = java_type_name(element);
+    let invalid = |component: &str| {
+        Status::invalid_argument(format!(
+            "Invalid component type {component} for data type {type_name}"
+        ))
+    };
+    if let Some(component) = component.filter(|component| *component != element_name) {
+        return Err(invalid(component));
+    }
+    // The elements of an ObjectVector are objects; a vector of a primitive has its own
+    // class, which `ColumnType::vector` of a primitive already is.
+    if metadata(TYPE_KEY) == Some(OBJECT_VECTOR) && type_name != OBJECT_VECTOR {
+        return Err(invalid(&element_name));
+    }
+    Ok(column_type)
+}
+
+/// Whether record batches of `arrow_type` hold the cells of `column_type` as this engine
+/// stores them, up to the names and nullability of the element fields and the time zone
+/// of a timestamp. `Err` says how the two are at odds.
+///
+/// Behavior: `DefaultChunkReaderFactory#newReader`, which has readers for many more
+/// pairs; those answer `UNIMPLEMENTED` here. A list is only read as an array or vector,
+/// and nothing else is read as one.
+fn check_readable(
+    field: &Field,
+    column_type: &ColumnType,
+    arrow_type: &DataType,
+) -> Result<(), Status> {
+    let no_reader = || {
+        Status::invalid_argument(format!(
+            "No known Barrage ChunkReader for arrow type {arrow_type} to {}",
+            java_type_name(column_type)
+        ))
+    };
+    let other_reader = || {
+        not_ported(
+            "io.deephaven.extensions.barrage.chunk.DefaultChunkReaderFactory#newReader",
+            format_args!(
+                "field '{}': reading Arrow type {arrow_type} as {column_type:?}",
+                field.name()
+            ),
+        )
+    };
+    let is_list = matches!(
+        arrow_type,
+        DataType::List(_)
+            | DataType::LargeList(_)
+            | DataType::FixedSizeList(..)
+            | DataType::ListView(_)
+            | DataType::LargeListView(_)
+    );
+    match (column_type.list_element(), arrow_type) {
+        (Some(element), DataType::List(sent)) => check_readable(field, element, sent.data_type()),
+        // a `byte[]` is also read from Binary, which is not ported
+        (Some(ColumnType::Byte), DataType::Binary | DataType::FixedSizeBinary(_)) => {
+            Err(other_reader())
+        }
+        (Some(_), _) if !is_list => Err(no_reader()),
+        (None, _) if is_list => Err(no_reader()),
+        (Some(_), _) => Err(other_reader()),
+        (None, DataType::Timestamp(TimeUnit::Nanosecond, zone))
+            if *column_type == ColumnType::Instant =>
+        {
+            if zone.as_deref().is_none_or(|zone| zone == "UTC") {
+                Ok(())
+            } else {
+                Err(other_reader())
+            }
+        }
+        (None, _) if column_type.arrow_type() == *arrow_type => Ok(()),
+        (None, _) => Err(other_reader()),
+    }
 }
 
 /// Whether a column name needs no change to be a legal one. Java renames the others.
@@ -96,33 +259,8 @@ pub fn convert_schema(schema: &Schema) -> Result<TableDefinition, Status> {
                 format_args!("column name '{}'", field.name()),
             ));
         }
-        let column_type = match field.metadata().get(TYPE_KEY).map(String::as_str) {
-            None => default_type(field)?,
-            // Java turns the primitive into the boxed type, which can hold a null
-            Some("boolean") => ColumnType::Boolean,
-            Some(name) => column_type_for_java_name(name).ok_or_else(|| {
-                not_ported(
-                    CONVERT_ARROW_SCHEMA,
-                    format_args!("field '{}' of type {name}", field.name()),
-                )
-            })?,
-        };
-        let direct = match (&column_type, field.data_type()) {
-            (ColumnType::Instant, DataType::Timestamp(TimeUnit::Nanosecond, zone)) => {
-                zone.as_deref().is_none_or(|zone| zone == "UTC")
-            }
-            (column_type, arrow_type) => column_type.arrow_type() == *arrow_type,
-        };
-        if !direct {
-            return Err(not_ported(
-                "io.deephaven.extensions.barrage.chunk.DefaultChunkReaderFactory#newReader",
-                format_args!(
-                    "field '{}': reading Arrow type {} as {column_type:?}",
-                    field.name(),
-                    field.data_type()
-                ),
-            ));
-        }
+        let column_type = column_type_of(field)?;
+        check_readable(field, &column_type, field.data_type())?;
         columns.push(ColumnDefinition::new(field.name().clone(), column_type));
     }
     TableDefinition::new(columns).map_err(|duplicate| {
@@ -256,7 +394,7 @@ impl TableUpload {
         let batches = self
             .batches
             .iter()
-            .map(|batch| stored_batch(batch, &stored))
+            .map(|batch| stored_batch(batch, &layout.definition, &stored))
             .collect::<Result<Vec<_>, _>>()?;
         let table: Arc<dyn Table> = uploaded_table(layout.definition, &batches)
             .map_err(|failure| UploadError::Internal(failure.message))?;
@@ -308,29 +446,58 @@ fn read_batch(
     }
 }
 
-/// A batch as the table stores it: each column in the Arrow type of its column type, and
-/// null wherever Java would hold its null sentinel, which is where the client sent a null
-/// and also where it sent the sentinel value itself.
+/// A column as the table stores it: in the Arrow type of its column type, and null wherever
+/// Java would hold its null sentinel, which is where the client sent a null and also where
+/// it sent the sentinel value itself. The same holds for the elements of an array or
+/// vector, at every depth.
 ///
 /// Behavior: the readers of `io.deephaven.extensions.barrage.chunk.DefaultChunkReaderFactory`,
-/// which write `QueryConstants` nulls into the chunks the table's columns are filled from
-fn stored_batch(batch: &RecordBatch, stored: &SchemaRef) -> Result<RecordBatch, UploadError> {
+/// which write `QueryConstants` nulls into the chunks the table's columns are filled from;
+/// `io.deephaven.extensions.barrage.chunk.ListChunkReader`, which reads the elements with
+/// the reader of their type
+fn stored_column(column: &ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, String> {
+    if let Some(element) = column_type.list_element() {
+        let cells = column
+            .as_list_opt::<i32>()
+            .ok_or_else(|| format!("{} is not a list", column.data_type()))?;
+        let DataType::List(field) = column_type.arrow_type() else {
+            return Err(format!("{column_type:?} is not stored as a list"));
+        };
+        let elements = stored_column(cells.values(), element)?;
+        let stored = ListArray::try_new(
+            field,
+            cells.offsets().clone(),
+            elements,
+            cells.nulls().cloned(),
+        );
+        return match stored {
+            Ok(stored) => Ok(Arc::new(stored)),
+            Err(problem) => Err(problem.to_string()),
+        };
+    }
+    let column: ArrayRef = match column.as_primitive_opt::<TimestampNanosecondType>() {
+        // Only the time zone of a timestamp can differ. The values are nanoseconds
+        // since the epoch whatever the zone says, as Java reads them.
+        Some(instants) if *column.data_type() != column_type.arrow_type() => {
+            Arc::new(instants.clone().with_timezone("UTC"))
+        }
+        _ => column.clone(),
+    };
+    sentinels_to_nulls(&column).map_err(|failure| failure.message)
+}
+
+/// A batch as the table stores it: see [`stored_column`].
+fn stored_batch(
+    batch: &RecordBatch,
+    definition: &TableDefinition,
+    stored: &SchemaRef,
+) -> Result<RecordBatch, UploadError> {
     let internal = |problem: String| UploadError::Internal(problem);
     let columns = batch
         .columns()
         .iter()
-        .zip(stored.fields())
-        .map(|(column, field)| {
-            let column: ArrayRef = match column.as_primitive_opt::<TimestampNanosecondType>() {
-                // Only the time zone of a timestamp can differ. The values are nanoseconds
-                // since the epoch whatever the zone says, as Java reads them.
-                Some(instants) if column.data_type() != field.data_type() => {
-                    Arc::new(instants.clone().with_timezone("UTC"))
-                }
-                _ => column.clone(),
-            };
-            sentinels_to_nulls(&column).map_err(|failure| internal(failure.message))
-        })
+        .zip(definition.columns())
+        .map(|(column, declared)| stored_column(column, &declared.column_type).map_err(internal))
         .collect::<Result<Vec<_>, _>>()?;
     RecordBatch::try_new_with_options(
         stored.clone(),

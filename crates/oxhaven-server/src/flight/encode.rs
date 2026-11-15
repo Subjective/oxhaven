@@ -235,15 +235,23 @@ impl BatchWriter {
                 });
             }
             // Behavior: io.deephaven.extensions.barrage.chunk.VarBinaryChunkWriter
-            DataType::Utf8 => {
-                let values = array.as_string::<i32>();
+            // A `byte[]` is written by the same writer: its bytes where a string has
+            // its UTF-8.
+            DataType::Utf8 | DataType::Binary => {
+                let values: Vec<Option<&[u8]>> = match array.as_string_opt::<i32>() {
+                    Some(strings) => strings
+                        .iter()
+                        .map(|value| value.map(str::as_bytes))
+                        .collect(),
+                    None => array.as_binary::<i32>().iter().collect(),
+                };
                 let mut offsets = Vec::with_capacity(4 * (values.len() + 1));
                 let mut data = Vec::new();
                 if !values.is_empty() {
                     offsets.extend_from_slice(&0i32.to_le_bytes());
                 }
-                for value in values.iter() {
-                    data.extend_from_slice(value.unwrap_or_default().as_bytes());
+                for value in values {
+                    data.extend_from_slice(value.unwrap_or_default());
                     let end = i32::try_from(data.len()).map_err(|_| {
                         EncodeError("a string column is too large for one record batch".into())
                     })?;
