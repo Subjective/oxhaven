@@ -642,3 +642,8 @@ enabled Snappy only and reported both. Zstandard is back with the owner as a dec
 Brotli stays refused, which is what parity asks for. The orchestrator's licence question to
 the owner had been wrong on both points: it assumed all three crates were BSD-3-Clause only
 and that Java reads all three. PRs 80 and 81 merged at 19:38; task 4.17 started.
+
+## 2026-11-15 19:44 UTC: Owner allowed BSD-2-Clause for zstd-sys only
+
+The codec agent was resumed to enable Zstandard on the same branch (PR 82). Brotli stays
+refused.
