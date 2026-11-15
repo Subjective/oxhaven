@@ -31,7 +31,7 @@ use oxhaven_proto::flight::FlightData;
 use oxhaven_proto::grpc::create_input_table_request::input_table_kind::{InMemoryKeyBacked, Kind};
 use oxhaven_proto::grpc::create_input_table_request::{Definition, InputTableKind};
 use oxhaven_proto::grpc::CreateInputTableRequest;
-use oxhaven_testkit::{definition, RandomUpdates, ScriptedTable};
+use oxhaven_testkit::{definition, ints, list_of, RandomUpdates, ScriptedTable, TableChange};
 use prost::Message;
 use tokio::sync::mpsc;
 use tonic::{Status, Streaming};
@@ -99,7 +99,7 @@ fn columns_of(message: &FlightData, schema: &Schema) -> Vec<ArrayRef> {
         };
         let node = nodes.next().unwrap();
         let count = match field.data_type() {
-            DataType::Utf8 => 3,
+            DataType::Utf8 | DataType::Binary => 3,
             _ => 2,
         };
         let mut parts: Vec<Buffer> = (next_buffer..next_buffer + count)
@@ -648,6 +648,59 @@ fn clients_hold_the_rows_of_the_table_after_every_propagation() {
 
 /// A table that fails ends its subscriptions with the error Java gives for any failure
 /// that is not a status: the id of a log entry.
+/// A `byte[]` column is stored as a list and sent as `Binary`, a null element as the byte
+/// `0x80`: in the first snapshot, for added rows and for modified rows.
+#[test]
+fn a_column_sent_in_another_type_is_converted_in_snapshots_and_updates() {
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let bytes = ColumnType::array(ColumnType::Byte);
+    let cells = |lengths: Vec<Option<usize>>, values: Vec<Option<i8>>| {
+        list_of(&bytes, lengths, Arc::new(Int8Array::from(values)))
+    };
+    let source = ScriptedTable::new(
+        graph,
+        definition(&[("K", ColumnType::Int), ("B", bytes.clone())]),
+        RowSet::from_keys([0, 1]),
+        vec![
+            ints([1, 2]),
+            cells(vec![Some(2), None], vec![Some(1), None]),
+        ],
+    );
+    let table: Arc<dyn Table> = source.table();
+    let scheduler = Arc::new(ManualScheduler::default());
+    let producer = Producer::new(table.clone(), scheduler.clone(), 0);
+    let collector = Arc::new(Collector::default());
+    producer
+        .add_subscription(collector.clone(), WireOptions::default(), None, None, false)
+        .unwrap();
+    scheduler.drain();
+    let mut messages = std::mem::take(&mut *collector.messages.lock().unwrap());
+    let schema = schema_of(&messages.remove(0)).expect("the schema comes first");
+    assert_eq!(schema.field(1).data_type(), &DataType::Binary);
+    let text = |cell: &str| Some(cell.to_owned());
+    let updates = updates_of(&messages, &schema);
+    assert_eq!(updates.len(), 1);
+    assert_eq!(updates[0].added[1], [text("0180"), None]);
+
+    source.push(
+        TableChange::new()
+            .add([5], vec![ints([3]), cells(vec![Some(1)], vec![Some(7)])])
+            .modify(
+                [0],
+                [(1, cells(vec![Some(3)], vec![None, Some(2), Some(-1)]))],
+            ),
+    );
+    stepper.run_cycle();
+    scheduler.drain();
+    let messages = std::mem::take(&mut *collector.messages.lock().unwrap());
+    let updates = updates_of(&messages, &schema);
+    assert_eq!(updates.len(), 1);
+    assert_eq!(updates[0].added[1], [text("07")]);
+    assert_eq!(updates[0].modified[1], [text("8002ff")]);
+    assert!(collector.ended.lock().unwrap().is_none());
+}
+
 #[test]
 fn a_failed_table_ends_its_subscriptions_with_an_error() {
     let stepper = SteppedUpdateGraph::new();

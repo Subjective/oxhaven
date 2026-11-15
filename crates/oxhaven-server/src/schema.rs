@@ -9,12 +9,14 @@
 //! unspecified there and here. The bytes are therefore compared after decoding, never as
 //! bytes.
 
+use crate::wire_columns::wire_type;
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 /// Prefix of every Deephaven metadata key. `BarrageUtil.ATTR_DH_PREFIX`.
 pub const METADATA_PREFIX: &str = "deephaven:";
@@ -42,6 +44,8 @@ pub struct SchemaContext {
     /// The key and value columns of the input table the table has the `InputTable`
     /// attribute of; `None` for a table without the attribute.
     pub input_table: Option<InputTableColumns>,
+    /// The columns that hold a preview of the values of another table's column, by name.
+    pub previews: HashMap<String, PreviewColumn>,
 }
 
 /// The column names an input table reports as its keys and its values. A table derived
@@ -85,15 +89,66 @@ impl SchemaContext {
                 keys: input.key_columns(),
                 values: input.value_columns(),
             }),
+            previews: previews_of(table),
         }
     }
+}
+
+/// A column of text that stands for the values of a column a user interface could not
+/// show: what `ApplyPreviewColumns` puts in the place of that column.
+///
+/// In Java such a column has a type of its own, a class that holds the text. A column type
+/// here cannot say so; the column is a `String` column to the engine, and this says what
+/// a client is told about it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PreviewColumn {
+    /// The Java class of the column: `deephaven:type`.
+    pub java_type: &'static str,
+    /// `deephaven:description`: Java's entry for the column in the table attribute
+    /// `ColumnDescriptions`.
+    pub description: String,
+}
+
+/// The preview columns of tables, by the table that has them.
+///
+/// Java keeps the class in the column definition and the description in a table
+/// attribute. A table here has no place for either, so they are kept beside the table,
+/// found by the table's address, and forgotten when the table is dropped.
+static PREVIEWS: Mutex<Vec<TablePreviews>> = Mutex::new(Vec::new());
+
+/// A table and its preview columns.
+type TablePreviews = (Weak<dyn Table>, HashMap<String, PreviewColumn>);
+
+/// Remembers that these columns of `table` are previews.
+///
+/// Behavior: `io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable`
+/// (the column types of its `updateView`, and the `COLUMN_DESCRIPTIONS_ATTRIBUTE` it sets)
+pub fn remember_previews(table: &Arc<dyn Table>, previews: HashMap<String, PreviewColumn>) {
+    let mut all = PREVIEWS.lock().unwrap_or_else(PoisonError::into_inner);
+    all.retain(|(table, _)| table.strong_count() > 0);
+    all.push((Arc::downgrade(table), previews));
+}
+
+/// The preview columns of `table`; none for a table that is not the result of
+/// `ApplyPreviewColumns`. A table derived from such a result has none either: in Java its
+/// columns keep their class and lose their description.
+pub fn previews_of(table: &dyn Table) -> HashMap<String, PreviewColumn> {
+    let wanted: *const () = (table as *const dyn Table).cast();
+    let all = PREVIEWS.lock().unwrap_or_else(PoisonError::into_inner);
+    all.iter()
+        .find_map(|(candidate, previews)| {
+            // a dropped table's address may belong to another table by now
+            let live = candidate.upgrade()?;
+            (Arc::as_ptr(&live).cast::<()>() == wanted).then(|| previews.clone())
+        })
+        .unwrap_or_default()
 }
 
 /// Field metadata key holding the Java class name of the elements of an array or vector
 /// column. `BarrageUtil.ATTR_DH_PREFIX + ATTR_COMPONENT_TYPE_TAG`.
 pub const COMPONENT_TYPE_KEY: &str = "deephaven:componentType";
 
-const OBJECT_VECTOR: &str = "io.deephaven.vector.ObjectVector";
+pub(crate) const OBJECT_VECTOR: &str = "io.deephaven.vector.ObjectVector";
 
 /// The Java vector class of a primitive element type, or `None` for an element that Java
 /// holds in an `ObjectVector`.
@@ -216,42 +271,6 @@ fn is_sortable(column_type: &ColumnType) -> bool {
     }
 }
 
-/// Stops at a column type whose Arrow field Java does not derive from the column type
-/// alone, so that [`ColumnType::arrow_type`] is not the type Java declares.
-///
-/// Behavior: `BarrageUtil#arrowTypeFor` (a `byte[]` is `Binary`), `BarrageUtil#arrowFieldFor`
-/// (the elements of an `ObjectVector` that is itself an element have no class, and are
-/// declared as strings)
-fn require_described_as_stored(name: &str, column_type: &ColumnType) {
-    let mut at = column_type;
-    let mut outermost = true;
-    loop {
-        match at {
-            ColumnType::Array(element) if **element == ColumnType::Byte => {
-                oxhaven_contracts::unported!(
-                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowTypeFor",
-                    "column {name} of type {column_type:?}: a byte[] is sent as Binary"
-                )
-            }
-            ColumnType::Vector(element)
-                if !outermost && primitive_vector_name(element).is_none() =>
-            {
-                oxhaven_contracts::unported!(
-                    "io.deephaven.extensions.barrage.util.BarrageUtil#arrowFieldFor",
-                    "column {name} of type {column_type:?}: the elements of an inner \
-                     ObjectVector are sent as strings"
-                )
-            }
-            _ => {}
-        }
-        match at.list_element() {
-            Some(element) => at = element,
-            None => return,
-        }
-        outermost = false;
-    }
-}
-
 /// The inverse of [`java_type_name`] for the types that are not arrays or vectors, for
 /// schemas a client sends; see [`column_type_for_java_names`] for all of them.
 pub fn column_type_for_java_name(name: &str) -> Option<ColumnType> {
@@ -301,6 +320,12 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     if context.input_table.is_some() {
         // The value is the updater object, which Java cannot send and marks as such.
         put(&mut metadata, "unsent.attribute.InputTable", "");
+    }
+    if !context.previews.is_empty() {
+        // `ColumnPreviewManager#makePreviewTable` sets both; one is a map and the other a
+        // table, and Java sends neither.
+        put(&mut metadata, "unsent.attribute.ColumnDescriptions", "");
+        put(&mut metadata, "unsent.attribute.PreviewParentTable", "");
     }
     metadata
 }
@@ -352,17 +377,14 @@ fn input_table_metadata(definition: &TableDefinition, input: &InputTableColumns)
 /// Every field is nullable and carries `deephaven:type` and `deephaven:isSortable`; format
 /// columns and input table key and value columns are marked as Java marks them. An array or
 /// vector column also carries `deephaven:componentType`, and its field is a list whose
-/// element field has the empty name, is nullable and has no metadata.
+/// element field has the empty name, is nullable and has no metadata. The Arrow type of
+/// a field is [`crate::wire_columns::wire_type`] of its column type, which is not the type
+/// the engine stores for a `byte[]` and for a vector of vectors of objects.
 ///
 /// An input table also carries `deephaven:tableMetadata`.
 ///
 /// Not emitted: column descriptions, and restrictions on the values of an input table's
 /// columns, neither of which a table in this engine can carry yet.
-///
-/// # Panics
-/// By `unported!`, for a column whose Arrow type Java does not derive from the column type
-/// alone: a `byte[]` at any depth, and a vector of non-primitive elements that is itself
-/// an element.
 ///
 /// Behavior: `BarrageUtil#makeSchema`, `BarrageUtil#columnDefinitionsToFields`,
 /// `BarrageUtil#arrowFieldFor`
@@ -374,9 +396,10 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
         .map(|column| {
             let name = column.name.as_str();
             let mut metadata = HashMap::new();
-            require_described_as_stored(name, &column.column_type);
-            // Java writes the entry only when it is true.
-            if is_sortable(&column.column_type) {
+            let preview = context.previews.get(name);
+            // Java writes the entry only when it is true. A preview class is not
+            // `Comparable` and has no comparator.
+            if preview.is_none() && is_sortable(&column.column_type) {
                 put(&mut metadata, "isSortable", TRUE);
             }
             for (key, suffix) in [
@@ -389,9 +412,18 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                     put(&mut metadata, key, &format_column);
                 }
             }
-            put(&mut metadata, "type", &java_type_name(&column.column_type));
-            if let Some(component) = java_component_type_name(&column.column_type) {
-                put(&mut metadata, "componentType", &component);
+            match preview {
+                // Java sends a class it has no Arrow type for as the text of its values
+                Some(preview) => {
+                    put(&mut metadata, "type", preview.java_type);
+                    put(&mut metadata, "description", &preview.description);
+                }
+                None => {
+                    put(&mut metadata, "type", &java_type_name(&column.column_type));
+                    if let Some(component) = java_component_type_name(&column.column_type) {
+                        put(&mut metadata, "componentType", &component);
+                    }
+                }
             }
             if name == ROW_STYLE_COLUMN {
                 put(&mut metadata, "isRowStyle", TRUE);
@@ -414,7 +446,7 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                 Some(InputRole::Value) => put(&mut metadata, "inputtable.isValue", TRUE),
                 None => {}
             }
-            Field::new(name, column.column_type.arrow_type(), true).with_metadata(metadata)
+            Field::new(name, wire_type(&column.column_type), true).with_metadata(metadata)
         })
         .collect();
     let mut metadata = schema_metadata(context);
