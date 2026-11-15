@@ -564,4 +564,197 @@ mod tests {
             format!("{}?", "x".repeat(MAX_CHARACTERS - 1))
         );
     }
+
+    fn texts(array: &StringArray) -> Vec<Option<&str>> {
+        array.iter().collect()
+    }
+
+    /// Recorded from Java 2026-11-15, `ApplyPreviewColumns` with `convert_arrays` over
+    /// uploaded `list<int32>` cells of 0, 1, 2, 5, 6 and 12 elements and a null cell, as
+    /// `int[]` and as `IntVector`, and over an `ObjectVector` of `IntVector`.
+    #[test]
+    fn an_array_or_vector_is_previewed_by_its_first_five_elements() {
+        use oxhaven_testkit::{ints, list_of};
+        let elements = |n: usize| (0..n).map(|i| [Some(1), None, Some(-3)][i % 3]);
+        let lengths = [0, 1, 2, 5, 6, 12];
+        let values: ArrayRef = Arc::new(arrow::array::Int32Array::from_iter(
+            lengths.iter().flat_map(|n| elements(*n)),
+        ));
+        let expected = [
+            Some("[]"),
+            Some("[1]"),
+            Some("[1, ]"),
+            Some("[1, ,-3,1, ]"),
+            Some("[1, ,-3,1, , ...]"),
+            Some("[1, ,-3,1, , ...]"),
+            None,
+        ];
+        for column_type in [
+            ColumnType::array(ColumnType::Int),
+            ColumnType::vector(ColumnType::Int),
+        ] {
+            let cells = list_of(
+                &column_type,
+                lengths.iter().map(|n| Some(*n)).chain([None]),
+                values.clone(),
+            );
+            let previewed = preview_texts(Kind::Array, &column_type, &cells);
+            assert_eq!(texts(&previewed), expected, "{column_type:?}");
+        }
+
+        // a vector inside shows ten of its elements
+        let inner = ColumnType::vector(ColumnType::Int);
+        let outer = ColumnType::vector(inner.clone());
+        let cells = list_of(
+            &outer,
+            [Some(2), Some(6)],
+            list_of(
+                &inner,
+                [Some(12), Some(0), Some(1), None, Some(1), Some(1), Some(1), Some(1)],
+                ints((0..17).map(|i| i % 12)),
+            ),
+        );
+        let previewed = preview_texts(Kind::Array, &outer, &cells);
+        assert_eq!(
+            texts(&previewed),
+            [
+                Some("[[0,1,2,3,4,5,6,7,8,9, ...],[]]"),
+                Some("[[0], ,[1],[2],[3], ...]")
+            ]
+        );
+    }
+
+    /// Recorded from Java 2026-11-15: `ApplyPreviewColumns` that lists only `int`, over
+    /// `float`, `char`, `Boolean` and `Instant` columns.
+    #[test]
+    fn any_other_value_is_previewed_by_its_text() {
+        use arrow::array::{
+            BooleanArray, Float32Array, TimestampNanosecondArray, UInt16Array,
+        };
+        let floats: ArrayRef = Arc::new(Float32Array::from(vec![Some(1.0e7), None, Some(0.1)]));
+        let previewed = preview_texts(Kind::Display, &ColumnType::Float, &floats);
+        assert_eq!(texts(&previewed), [Some("1.0E7"), None, Some("0.1")]);
+        let chars: ArrayRef = Arc::new(UInt16Array::from(vec![Some(0x41), Some(0xe9), None]));
+        let previewed = preview_texts(Kind::Display, &ColumnType::Char, &chars);
+        assert_eq!(texts(&previewed), [Some("A"), Some("\u{e9}"), None]);
+        let flags: ArrayRef = Arc::new(BooleanArray::from(vec![Some(true), None]));
+        let previewed = preview_texts(Kind::Display, &ColumnType::Boolean, &flags);
+        assert_eq!(texts(&previewed), [Some("true"), None]);
+        let instants: ArrayRef =
+            Arc::new(TimestampNanosecondArray::from(vec![Some(0), None]).with_timezone("UTC"));
+        let previewed = preview_texts(Kind::Display, &ColumnType::Instant, &instants);
+        assert_eq!(texts(&previewed), [Some("1970-01-01T00:00:00Z"), None]);
+    }
+
+    fn lists_table(column_type: ColumnType) -> Arc<dyn Table> {
+        use arrow::datatypes::{Field, Schema};
+        use arrow::record_batch::RecordBatch;
+        use oxhaven_testkit::{ints, list_of};
+        let definition = TableDefinition::new(vec![
+            ColumnDefinition::new("Id", ColumnType::Int),
+            ColumnDefinition::new("Xs", column_type.clone()),
+        ])
+        .unwrap();
+        let element = column_type.list_element().unwrap();
+        let elements = if element.list_element().is_some() {
+            list_of(element, [Some(1), Some(2), Some(3)], ints(1..=6))
+        } else {
+            ints(1..=3)
+        };
+        let cells = list_of(&column_type, [Some(2), None, Some(1)], elements);
+        let schema = Schema::new(vec![
+            Field::new("Id", arrow::datatypes::DataType::Int32, true),
+            Field::new("Xs", cells.data_type().clone(), true),
+        ]);
+        let batch = RecordBatch::try_new(Arc::new(schema), vec![ints([7, 8, 9]), cells]).unwrap();
+        oxhaven_engine::table::in_memory_table(definition, &[batch]).unwrap()
+    }
+
+    fn column_texts(table: &dyn Table, name: &str) -> Vec<Option<String>> {
+        let index = table.definition().index_of(name).unwrap();
+        let values = table.column(index).chunk(&table.row_set()).unwrap();
+        let values = values.as_string::<i32>();
+        values.iter().map(|text| text.map(str::to_owned)).collect()
+    }
+
+    #[test]
+    fn the_preview_table_has_text_columns_and_says_what_they_were() {
+        let source = lists_table(ColumnType::vector(ColumnType::Int));
+        let listed = names(&["int"]);
+
+        // nothing to replace: the table itself
+        let same = preview_table(&source, &listed, false).unwrap();
+        assert!(Arc::ptr_eq(&same, &source));
+        assert!(previews_of(&*same).is_empty());
+
+        let result = preview_table(&source, &listed, true).unwrap();
+        let types: Vec<&ColumnType> = result
+            .definition()
+            .columns()
+            .iter()
+            .map(|column| &column.column_type)
+            .collect();
+        assert_eq!(types, [&ColumnType::Int, &ColumnType::String]);
+        assert_eq!(
+            column_texts(&*result, "Xs"),
+            [Some("[1,2]".to_owned()), None, Some("[3]".to_owned())]
+        );
+        let previews = previews_of(&*result);
+        assert_eq!(previews.len(), 1);
+        assert_eq!(
+            previews["Xs"],
+            PreviewColumn {
+                java_type: ARRAY_PREVIEW,
+                description: "Preview of type: io.deephaven.vector.IntVector".to_owned(),
+            }
+        );
+
+        // the preview of that: both columns as the text of their values
+        let again = preview_table(&result, &names(&["long"]), true).unwrap();
+        assert_eq!(
+            column_texts(&*again, "Id"),
+            ["7", "8", "9"].map(|text| Some(text.to_owned()))
+        );
+        assert_eq!(column_texts(&*again, "Xs"), column_texts(&*result, "Xs"));
+        let previews = previews_of(&*again);
+        assert_eq!(previews["Id"].java_type, DISPLAY_WRAPPER);
+        assert_eq!(previews["Xs"].java_type, DISPLAY_WRAPPER);
+        assert_eq!(
+            previews["Xs"].description,
+            "Preview of type: io.deephaven.engine.table.impl.preview.ArrayPreview\n\
+             Preview of type: io.deephaven.vector.IntVector"
+        );
+        // and the first preview is still what it was
+        assert_eq!(previews_of(&*result)["Xs"].java_type, ARRAY_PREVIEW);
+    }
+
+    #[test]
+    fn a_vector_of_vectors_is_previewed() {
+        let source = lists_table(ColumnType::vector(ColumnType::vector(ColumnType::Int)));
+        let result = preview_table(&source, &names(&["int"]), true).unwrap();
+        assert_eq!(
+            column_texts(&*result, "Xs"),
+            [Some("[[1],[2,3]]".to_owned()), None, Some("[[4,5,6]]".to_owned())]
+        );
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "unported: java.lang.Object#toString: the preview of column Xs of type \
+                    Array(Array(Int))"
+    )]
+    fn the_preview_of_arrays_in_an_array_is_not_ported() {
+        let source = lists_table(ColumnType::array(ColumnType::array(ColumnType::Int)));
+        let _ = preview_table(&source, &names(&["int"]), true);
+    }
+
+    #[test]
+    #[should_panic(expected = "unported: java.lang.Object#toString")]
+    fn the_preview_of_arrays_in_a_vector_of_vectors_is_not_ported() {
+        let inner = ColumnType::vector(ColumnType::array(ColumnType::Int));
+        assert!(holds_array(&inner));
+        assert!(!holds_array(&ColumnType::vector(ColumnType::Int)));
+        let source = lists_table(ColumnType::vector(ColumnType::array(ColumnType::Int)));
+        let _ = preview_table(&source, &[], false);
+    }
 }
