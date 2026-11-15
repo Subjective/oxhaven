@@ -456,13 +456,8 @@ def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
                         seen["first"] += 1
                         assert op["by"] == [c for c, _ in source][:len(op["by"])], (
                             doc["name"], op)
-                    elif agg in ("group", "distinct"):
-                        # arrays of arrays
+                    else:
                         assert not any(t.startswith("list:") for t in rest), (doc["name"], op)
-                    elif agg in ("min", "max", "median", "pct", "unique"):
-                        assert not {"list:bool", "list:timestamp"} & set(rest), (
-                            doc["name"], op)
-                        seen["compared arrays"] += any(t.startswith("list:") for t in rest)
                     if agg == "distinct":
                         assert "timestamp" not in rest, (doc["name"], op)
                 elif kind == "agg_by":
@@ -478,5 +473,4 @@ def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
                     assert not arrays & {"list:string", "list:bool", "list:timestamp"}, (
                         doc["name"], op)
     assert seen["first"] > 5 and seen["distinct"] > 3
-    assert seen["compared arrays"] > 5
     assert seen["head_by"] > 20 and seen["tail_by"] > 20
