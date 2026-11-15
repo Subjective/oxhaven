@@ -120,7 +120,7 @@ engine_errors_are_internal!(SelectError, SortError, MergeError, FilterError);
 ///
 /// Java has the behavior, so this status has no Java counterpart. It exists so that a
 /// request the engine cannot serve yet is refused by name and the server keeps running.
-pub(super) fn unported_status(panic: &(dyn std::any::Any + Send)) -> Option<Status> {
+pub(crate) fn unported_status(panic: &(dyn std::any::Any + Send)) -> Option<Status> {
     let message = panic
         .downcast_ref::<String>()
         .map(String::as_str)

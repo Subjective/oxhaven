@@ -403,7 +403,11 @@ impl TableOp for Aggregate {
                 }
                 Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
                 Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
-                Some(AggregationType::Partition(_)) => return Err(missing("partition")),
+                // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
+                Some(AggregationType::Partition(partition)) => Aggregation::Partition {
+                    column: column_name(&partition.column_name)?,
+                    include_group_by_columns: partition.include_group_by_columns,
+                },
                 Some(AggregationType::Formula(formula)) => {
                     let (column, expression) = selectable(formula.selectable.as_ref())?;
                     Aggregation::formula(column, expression)
