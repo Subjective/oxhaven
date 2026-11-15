@@ -135,6 +135,12 @@ impl AggOperator for SortedFirstLast {
         self.output_type.clone()
     }
 
+    /// Behavior: SortedFirstOrLastChunkedOperator#getResultColumns, each an
+    /// io.deephaven.engine.table.impl.sources.RedirectedColumnSource
+    fn holds_results(&self) -> bool {
+        false
+    }
+
     fn needs_group_rows(&self) -> bool {
         true
     }

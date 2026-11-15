@@ -447,6 +447,14 @@ impl AggOperator for SortedValues {
         }
     }
 
+    /// Behavior: the `getResultColumns` of the distinct operators, such as
+    /// io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.DoubleChunkedDistinctOperator,
+    /// each an io.deephaven.engine.table.impl.by.ssmcountdistinct.SsmBackedColumnSource; the
+    /// count and unique operators have array sources.
+    fn holds_results(&self) -> bool {
+        !matches!(self.mode, SetMode::Distinct { .. })
+    }
+
     fn ensure_slots(&mut self, slots: usize) {
         if self.sets.len() < slots {
             self.sets.resize(slots, Multiset::default());
