@@ -7,7 +7,8 @@ use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_testkit::{ConsistencyChecker, RandomUpdates, ScriptedTable};
 
-/// The parent's columns: three to group by, and one of each type to aggregate.
+/// The parent's columns: three to group by, and one of each type to aggregate. The last
+/// two hold vectors and arrays, which only `group` aggregates.
 fn parent_columns() -> Vec<(&'static str, ColumnType)> {
     vec![
         ("K", ColumnType::String),
@@ -23,6 +24,8 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
         ("C", ColumnType::Char),
         ("Y", ColumnType::Byte),
         ("H", ColumnType::Short),
+        ("V", ColumnType::vector(ColumnType::Int)),
+        ("A", ColumnType::array(ColumnType::String)),
     ]
 }
 
@@ -43,7 +46,12 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
 fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
     let mut aggregations = vec![count("N")];
     for (name, column_type) in &parent_columns()[3..] {
+        if column_type.list_element().is_some() {
+            aggregations.push(agg(AggSpec::Group, &[&format!("G{name} = {name}")]));
+            continue;
+        }
         let mut specs = vec![
+            AggSpec::Group,
             AggSpec::Min,
             AggSpec::Max,
             AggSpec::First,

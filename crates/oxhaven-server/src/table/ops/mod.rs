@@ -269,6 +269,7 @@ handlers! {
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
+    range_join { RangeJoin => Handler }
     select {
         Update => Update,
         LazyUpdate => LazyUpdate,
@@ -280,6 +281,7 @@ handlers! {
     snapshot { Snapshot => Snapshot, SnapshotWhen => SnapshotWhen }
     sort { Sort => Handler }
     time_table { TimeTable => Handler }
+    ungroup { Ungroup => Handler }
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }

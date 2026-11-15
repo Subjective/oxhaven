@@ -2,6 +2,7 @@
 
 mod corpus;
 mod fixtures;
+mod group;
 mod incremental;
 mod random;
 mod static_tables;
@@ -85,6 +86,11 @@ fn cell(array: &ArrayRef, row: usize) -> String {
             .as_primitive::<TimestampNanosecondType>()
             .value(row)
             .to_string(),
+        DataType::List(_) => {
+            let elements = array.as_list::<i32>().value(row);
+            let cells: Vec<String> = (0..elements.len()).map(|at| cell(&elements, at)).collect();
+            format!("[{}]", cells.join(", "))
+        }
         _ => array_value_to_string(array, row).expect("a printable value"),
     }
 }

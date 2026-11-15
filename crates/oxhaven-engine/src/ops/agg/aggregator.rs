@@ -60,6 +60,11 @@ impl Marks {
         slots
     }
 
+    /// Whether any slot is marked with `bit`.
+    fn any(&self, bit: u8) -> bool {
+        self.touched.iter().any(|&slot| self.state[slot] & bit != 0)
+    }
+
     fn clear(&mut self) {
         for slot in self.touched.drain(..) {
             self.state[slot] = 0;
@@ -688,8 +693,9 @@ impl Aggregator {
     ///
     /// A row is added when its group gets its first row and removed when it loses its
     /// last (with `preserve_empty`, a row is added for a new group and never removed). A
-    /// row that stays is modified if an operator said its result changed, and the modified
-    /// columns are the results of those operators. Nothing is ever shifted.
+    /// row that stays is modified if an operator said its result changed. The modified
+    /// columns are the results of the operators that said so of any group, also of one
+    /// whose row is added or removed. Nothing is ever shifted.
     ///
     /// Behavior: KeyedUpdateContext#computeDownstreamIndicesAndCopyKeys with
     /// ChunkedOperatorAggregationHelper#extractDownstreamModifiedColumnSet, and the
@@ -712,10 +718,19 @@ impl Aggregator {
         let key_columns = self.keys.as_ref().map_or(0, |keys| keys.columns.len());
         let mut modified = Vec::new();
         let mut modified_columns = Vec::new();
-        for (index, slots) in modified_by_op.into_iter().enumerate() {
-            if !slots.is_empty() {
-                modified_columns.push(key_columns + index);
-                modified.extend(slots.into_iter().map(|slot| slot as RowKey));
+        for slots in modified_by_op {
+            modified.extend(slots.into_iter().map(|slot| slot as RowKey));
+        }
+        // Behavior: ChunkedOperatorAggregationHelper#extractDownstreamModifiedColumnSet
+        // with `modifiedOperators`, which is set for an operator that said in any chunk
+        // that some group's state changed, whatever became of the group. So if any row is
+        // modified, the modified columns are those of every operator whose result changed
+        // for any group this cycle, also for one that is new or gone.
+        if !modified.is_empty() {
+            for (index, column) in self.ops.iter().enumerate() {
+                if column.marks.any(MODIFIED) {
+                    modified_columns.push(key_columns + index);
+                }
             }
         }
         let row_set = |slots: Vec<usize>| RowSet::from_keys(slots.into_iter().map(|s| s as RowKey));

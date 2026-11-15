@@ -13,36 +13,36 @@ use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{ConsistencyChecker, Recorder, ScriptedTable, TableChange};
 use std::sync::{Mutex, Weak};
 
-fn strs(values: &[&str]) -> ArrayRef {
+pub(super) fn strs(values: &[&str]) -> ArrayRef {
     Arc::new(StringArray::from(values.to_vec()))
 }
 
-fn ints(values: &[Option<i32>]) -> ArrayRef {
+pub(super) fn ints(values: &[Option<i32>]) -> ArrayRef {
     Arc::new(values.iter().copied().collect::<Int32Array>())
 }
 
-fn int(value: i32) -> ArrayRef {
+pub(super) fn int(value: i32) -> ArrayRef {
     ints(&[Some(value)])
 }
 
-fn doubles(values: &[Option<f64>]) -> ArrayRef {
+pub(super) fn doubles(values: &[Option<f64>]) -> ArrayRef {
     Arc::new(values.iter().copied().collect::<Float64Array>())
 }
 
 /// An aggregation of a scripted table, with a checker and a recorder on the result.
-struct Fixture {
-    graph: Arc<SteppedUpdateGraph>,
-    source: Arc<ScriptedTable>,
-    result: Arc<dyn Table>,
-    checker: Arc<ConsistencyChecker>,
-    recorder: Arc<Recorder>,
+pub(super) struct Fixture {
+    pub(super) graph: Arc<SteppedUpdateGraph>,
+    pub(super) source: Arc<ScriptedTable>,
+    pub(super) result: Arc<dyn Table>,
+    pub(super) checker: Arc<ConsistencyChecker>,
+    pub(super) recorder: Arc<Recorder>,
 }
 
 impl Fixture {
     /// `recompute` says whether the result must equal, after every cycle, the aggregation
     /// of a static copy of the parent. It must not where the result is defined by its
     /// history: preserved empty groups, and sums that passed a null sentinel or rounded.
-    fn with(
+    pub(super) fn with(
         columns: &[(&str, ColumnType, ArrayRef)],
         row_keys: &[RowKey],
         aggregations: Vec<Aggregation>,
@@ -83,7 +83,7 @@ impl Fixture {
         }
     }
 
-    fn new(
+    pub(super) fn new(
         columns: &[(&str, ColumnType, ArrayRef)],
         row_keys: &[RowKey],
         aggregations: Vec<Aggregation>,
@@ -94,7 +94,7 @@ impl Fixture {
 
     /// Gives the parent `change` in one cycle. Returns the update the result delivered, as
     /// [`describe`] prints it, or `"none"`.
-    fn step(&self, change: TableChange) -> String {
+    pub(super) fn step(&self, change: TableChange) -> String {
         let before = self.recorder.events().len();
         self.source.push(change);
         self.graph.run_cycle();
@@ -107,7 +107,7 @@ impl Fixture {
         }
     }
 
-    fn rows(&self) -> Vec<String> {
+    pub(super) fn rows(&self) -> Vec<String> {
         rows(&*self.result)
     }
 }
@@ -129,7 +129,7 @@ fn describe(update: &TableUpdate, columns: usize) -> String {
 }
 
 /// Columns `K`, `I` and `D` with the given rows.
-fn kid(rows: &[(&str, i32, f64)]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
+pub(super) fn kid(rows: &[(&str, i32, f64)]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
     vec![
         (
             "K",
@@ -150,11 +150,11 @@ fn kid(rows: &[(&str, i32, f64)]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
 }
 
 /// The values of rows to add to a `kid` table.
-fn kid_values(rows: &[(&str, i32, f64)]) -> Vec<ArrayRef> {
+pub(super) fn kid_values(rows: &[(&str, i32, f64)]) -> Vec<ArrayRef> {
     kid(rows).into_iter().map(|(_, _, values)| values).collect()
 }
 
-fn three_rows() -> Vec<(&'static str, ColumnType, ArrayRef)> {
+pub(super) fn three_rows() -> Vec<(&'static str, ColumnType, ArrayRef)> {
     kid(&[("a", 1, 0.5), ("b", 2, 1.5), ("a", 3, 2.5)])
 }
 
@@ -652,7 +652,7 @@ fn an_add_only_parent_gives_a_flat_result() {
 
 /// A blink table of columns `K` and `I`: each cycle its rows are replaced by the next
 /// queued rows, at row keys from zero.
-struct BlinkSource {
+pub(super) struct BlinkSource {
     table: Weak<QueryTable>,
     columns: [Arc<WritableSource>; 2],
     queued: Mutex<Vec<Vec<(&'static str, i32)>>>,
@@ -693,7 +693,7 @@ impl UpdateSource for BlinkSource {
     }
 }
 
-fn blink_table(graph: &Arc<SteppedUpdateGraph>) -> (Arc<QueryTable>, Arc<BlinkSource>) {
+pub(super) fn blink_table(graph: &Arc<SteppedUpdateGraph>) -> (Arc<QueryTable>, Arc<BlinkSource>) {
     let dyn_graph: Arc<dyn UpdateGraph> = graph.clone();
     let columns = [
         tracked_source(&dyn_graph, ColumnType::String),
