@@ -8,6 +8,7 @@ use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::table::{Table, TableFailure};
 
 use crate::schema::table_schema;
+use crate::wire_columns::WireColumn;
 
 /// The schemas clients uploaded, by the table made from each.
 ///
@@ -75,6 +76,28 @@ pub fn wire_schema(table: &Arc<dyn Table>) -> Schema {
         String::new(),
     );
     Schema::new_with_metadata(fields, metadata)
+}
+
+/// How each column of `table` is sent, in the order of its definition: in the Arrow type
+/// [`wire_schema`] declares for it. For a table a client uploaded that is the layout the
+/// table stores, which is the layout the client sent.
+///
+/// Behavior: `io.deephaven.extensions.barrage.BarrageMessageWriterImpl` (the chunk
+/// writers it makes from the fields of the table's schema)
+pub fn wire_columns(table: &Arc<dyn Table>) -> Vec<WireColumn> {
+    let uploaded = uploaded_schema(table).is_some();
+    table
+        .definition()
+        .columns()
+        .iter()
+        .map(|column| {
+            if uploaded {
+                WireColumn::stored(&column.column_type)
+            } else {
+                WireColumn::described(&column.column_type)
+            }
+        })
+        .collect()
 }
 
 /// The rows of a table at one moment, in row set order.

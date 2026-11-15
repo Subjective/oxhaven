@@ -636,7 +636,7 @@ fn bitmaps_are_whole_words_and_sentinels_lie_under_nulls() {
     assert_eq!(batch.body[24], b'c');
 }
 
-const PUT_CASES: [&str; 11] = [
+const PUT_CASES: [&str; 16] = [
     "put_plain",
     "put_typed",
     "put_no_nulls",
@@ -648,6 +648,11 @@ const PUT_CASES: [&str; 11] = [
     "put_timestamp_no_zone",
     "put_not_nullable",
     "put_sentinels",
+    "put_list_arrays",
+    "put_list_long_arrays",
+    "put_list_nested_arrays",
+    "put_list_vectors",
+    "put_list_vectors_of_arrays",
 ];
 
 #[tokio::test]
@@ -669,6 +674,81 @@ async fn uploads_answer_what_java_answers() {
         assert!(acknowledged
             .iter()
             .all(|result| result.app_metadata.is_empty()));
+
+        assert_eq!(server.get_schema(id).await.unwrap(), java_schema, "{case}");
+        let info = server
+            .flight()
+            .get_flight_info(server.authorized(export_descriptor(id)))
+            .await
+            .unwrap()
+            .into_inner();
+        assert_info_matches(case, &info, &java_schema);
+        let sent = server.do_get(id).await.unwrap();
+        assert_do_get_matches(case, &sent, &java_schema);
+    }
+}
+
+/// The types the web IDE asks `ApplyPreviewColumns` to leave as they are.
+const UNPREVIEWED_TYPES: [&str; 23] = [
+    "byte",
+    "java.lang.Byte",
+    "char",
+    "java.lang.Character",
+    "short",
+    "java.lang.Short",
+    "int",
+    "java.lang.Integer",
+    "long",
+    "java.lang.Long",
+    "float",
+    "java.lang.Float",
+    "double",
+    "java.lang.Double",
+    "boolean",
+    "java.lang.Boolean",
+    "java.lang.String",
+    "java.math.BigDecimal",
+    "java.math.BigInteger",
+    "java.time.Instant",
+    "java.time.ZonedDateTime",
+    "java.time.LocalDate",
+    "java.time.LocalTime",
+];
+
+#[tokio::test]
+async fn previews_of_uploaded_lists_answer_what_java_answers() {
+    use oxhaven_proto::grpc::table_service_client::TableServiceClient;
+    use oxhaven_proto::grpc::{table_reference, ApplyPreviewColumnsRequest, TableReference};
+
+    let server = Server::start().await;
+    for (source, case) in [
+        ("put_list_arrays", "preview_list_arrays"),
+        ("put_list_long_arrays", "preview_list_long_arrays"),
+        ("put_list_vectors", "preview_list_vectors"),
+    ] {
+        let messages = fixture_messages(&format!("{source}.put"));
+        server.do_put(messages).await.unwrap();
+        let uploaded = export_of(&fixture_info(source));
+        let id = export_of(&fixture_info(case));
+        let java_schema = fixture_schema(case);
+
+        let request = ApplyPreviewColumnsRequest {
+            source_id: Some(TableReference {
+                r#ref: Some(table_reference::Ref::Ticket(
+                    crate::session::export_id_to_ticket(uploaded),
+                )),
+            }),
+            result_id: Some(crate::session::export_id_to_ticket(id)),
+            convert_arrays: true,
+            unpreviewed_types: UNPREVIEWED_TYPES.map(str::to_owned).to_vec(),
+        };
+        let created = TableServiceClient::new(server.channel.clone())
+            .apply_preview_columns(server.authorized(request))
+            .await
+            .unwrap_or_else(|status| panic!("{case}: {status:?}"))
+            .into_inner();
+        assert!(created.success && created.is_static, "{case}: {created:?}");
+        assert_eq!(schema_of_ipc(&created.schema_header), java_schema, "{case}");
 
         assert_eq!(server.get_schema(id).await.unwrap(), java_schema, "{case}");
         let info = server
@@ -732,6 +812,12 @@ async fn refused_uploads_get_the_status_codes_of_java() {
         ("refused_second_schema", 2006),
         ("refused_garbage_batch", 2009),
         ("refused_too_few_columns", 2010),
+        ("refused_list_component", 2101),
+        ("refused_list_object_vector_of_int", 2102),
+        ("refused_list_object_vector_of_object_vector", 2103),
+        ("refused_list_as_int", 2104),
+        ("refused_int_as_array", 2105),
+        ("refused_large_list", 2106),
     ] {
         let java = fixture_lines(&format!("{case}.status"));
         assert_eq!(refused(&server, case, id).await, java, "{case}");
@@ -1047,7 +1133,7 @@ fn typed(java_type: &str) -> std::collections::HashMap<String, String> {
 #[test]
 fn schemas_this_server_cannot_store_are_unimplemented() {
     let unsupported = |field: Field| {
-        let status = convert_schema(&Schema::new(vec![field])).unwrap_err();
+        let status = status_of(convert_schema(&Schema::new(vec![field])).unwrap_err());
         assert_eq!(status.code(), Code::Unimplemented, "{status:?}");
         assert!(
             status.message().starts_with("not ported yet: "),
@@ -1059,11 +1145,13 @@ fn schemas_this_server_cannot_store_are_unimplemented() {
     unsupported(Field::new("X", DataType::Utf8, true).with_metadata(typed("java.math.BigDecimal")));
     unsupported(Field::new("a b", DataType::Int32, true));
 
-    let duplicate = convert_schema(&Schema::new(vec![
-        Field::new("X", DataType::Int32, true),
-        Field::new("X", DataType::Int32, true),
-    ]))
-    .unwrap_err();
+    let duplicate = status_of(
+        convert_schema(&Schema::new(vec![
+            Field::new("X", DataType::Int32, true),
+            Field::new("X", DataType::Int32, true),
+        ]))
+        .unwrap_err(),
+    );
     assert_eq!(duplicate.code(), Code::InvalidArgument);
 
     let converted = convert_schema(&Schema::new(vec![
@@ -1080,6 +1168,177 @@ fn schemas_this_server_cannot_store_are_unimplemented() {
             ("Bo", ColumnType::Boolean)
         ])
     );
+}
+
+/// Recorded from Java 2026-11-15 by uploading each field and reading the schema of the
+/// table back (the class names Java gave the column), and for the refusals the status.
+#[test]
+fn list_fields_are_the_arrays_and_vectors_java_makes_of_them() {
+    use ColumnType as T;
+    const VECTOR: &str = "io.deephaven.vector.";
+    let list = |element: DataType| DataType::List(Arc::new(Field::new("item", element, true)));
+    let field = |data_type: DataType, entries: &[(&str, &str)]| {
+        let metadata: std::collections::HashMap<String, String> = entries
+            .iter()
+            .map(|(key, value)| (format!("deephaven:{key}"), (*value).to_owned()))
+            .collect();
+        Field::new("X", data_type, true).with_metadata(metadata)
+    };
+    let converted = |field: Field| {
+        convert_schema(&Schema::new(vec![field])).map(|definition| {
+            let column = &definition.columns()[0];
+            column.column_type.clone()
+        })
+    };
+    let ints = || list(DataType::Int32);
+    let texts = || list(DataType::Utf8);
+    let object_vector = format!("{VECTOR}ObjectVector");
+    let int_vector = format!("{VECTOR}IntVector");
+
+    for (field, expected) in [
+        // without a type: arrays, whatever the depth
+        (field(ints(), &[]), T::array(T::Int)),
+        (field(list(DataType::Int8), &[]), T::array(T::Byte)),
+        (field(list(DataType::Boolean), &[]), T::array(T::Boolean)),
+        (
+            field(list(DataType::Timestamp(TimeUnit::Nanosecond, None)), &[]),
+            T::array(T::Instant),
+        ),
+        (field(list(texts()), &[]), T::array(T::array(T::String))),
+        // a component type that agrees changes nothing
+        (field(ints(), &[("componentType", "int")]), T::array(T::Int)),
+        // the named class
+        (field(ints(), &[("type", "int[]")]), T::array(T::Int)),
+        (field(ints(), &[("type", &int_vector)]), T::vector(T::Int)),
+        (
+            field(list(ints()), &[("type", &format!("{int_vector}[]"))]),
+            T::array(T::vector(T::Int)),
+        ),
+        (
+            field(list(texts()), &[("type", "java.lang.String[][]")]),
+            T::array(T::array(T::String)),
+        ),
+        // a vector of objects: of the elements' default type, or of the component type
+        (
+            field(texts(), &[("type", &object_vector)]),
+            T::vector(T::String),
+        ),
+        (
+            field(list(DataType::Boolean), &[("type", &object_vector)]),
+            T::vector(T::Boolean),
+        ),
+        (
+            field(
+                list(ints()),
+                &[("type", &object_vector), ("componentType", "int[]")],
+            ),
+            T::vector(T::array(T::Int)),
+        ),
+        (
+            field(
+                list(ints()),
+                &[("type", &object_vector), ("componentType", &int_vector)],
+            ),
+            T::vector(T::vector(T::Int)),
+        ),
+    ] {
+        let described = format!("{field:?}");
+        match converted(field) {
+            Ok(column_type) => assert_eq!(column_type, expected, "{described}"),
+            Err(error) => panic!("{described}: {error:?}"),
+        }
+    }
+
+    // Java throws an IllegalArgumentException for these, which the client sees as an
+    // error id and later readers of the export as a failed dependency.
+    for (field, message) in [
+        (
+            field(ints(), &[("type", "int[]"), ("componentType", "long")]),
+            "Invalid component type long for data type int[]",
+        ),
+        (
+            field(ints(), &[("componentType", "long")]),
+            "Invalid component type long for data type int[]",
+        ),
+        (
+            field(ints(), &[("type", &int_vector), ("componentType", "long")]),
+            "Invalid component type long for data type io.deephaven.vector.IntVector",
+        ),
+        (
+            field(ints(), &[("type", &object_vector)]),
+            "Invalid component type int for data type io.deephaven.vector.IntVector",
+        ),
+        (
+            field(
+                ints(),
+                &[("type", &object_vector), ("componentType", "int")],
+            ),
+            "Invalid component type int for data type io.deephaven.vector.IntVector",
+        ),
+    ] {
+        let described = format!("{field:?}");
+        match converted(field) {
+            Err(UploadError::Internal(text)) => assert_eq!(text, message, "{described}"),
+            other => panic!("{described}: {other:?}"),
+        }
+    }
+
+    // and answers these with a status
+    let code = |field: Field| {
+        let described = format!("{field:?}");
+        match converted(field) {
+            Err(UploadError::Status(status)) => status.code(),
+            other => panic!("{described}: {other:?}"),
+        }
+    };
+    let invalid = Code::InvalidArgument;
+    assert_eq!(code(field(ints(), &[("type", "int")])), invalid);
+    assert_eq!(code(field(DataType::Int32, &[("type", "int[]")])), invalid);
+    assert_eq!(
+        code(field(DataType::Int32, &[("type", &object_vector)])),
+        invalid
+    );
+    let large = DataType::LargeList(Arc::new(Field::new("item", DataType::Int32, true)));
+    assert_eq!(code(field(large, &[])), invalid);
+    let object_vectors = format!("{object_vector}[]");
+    assert_eq!(
+        code(field(list(texts()), &[("type", &object_vectors)])),
+        invalid
+    );
+    assert_eq!(
+        code(field(
+            list(texts()),
+            &[("type", &object_vector), ("componentType", &object_vector)]
+        )),
+        invalid
+    );
+
+    // What Java reads and this server does not yet.
+    let unported = Code::Unimplemented;
+    // a list of longs read as ints, and Java's INVALID_ARGUMENT for ints read as strings
+    assert_eq!(
+        code(field(list(DataType::Int64), &[("type", "int[]")])),
+        unported
+    );
+    assert_eq!(
+        code(field(ints(), &[("type", "java.lang.String[]")])),
+        unported
+    );
+    // an ObjectVector of boxed ints
+    assert_eq!(
+        code(field(
+            ints(),
+            &[
+                ("type", &object_vector),
+                ("componentType", "java.lang.Integer")
+            ]
+        )),
+        unported
+    );
+    // `boolean[]`, which has no nulls
+    let flags = DataType::List(Arc::new(Field::new("item", DataType::Boolean, false)));
+    assert_eq!(code(field(flags, &[])), unported);
+    assert_eq!(code(field(list(DataType::Binary), &[])), unported);
 }
 
 mod locking {

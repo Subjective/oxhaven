@@ -6,6 +6,7 @@ pub mod config;
 pub mod console;
 pub mod flight;
 pub mod inputtable;
+pub mod java_text;
 pub mod schema;
 pub mod session;
 pub mod storage;
@@ -13,6 +14,7 @@ pub mod table;
 pub mod transport;
 pub mod update_graph;
 pub mod web;
+pub mod wire_columns;
 
 #[cfg(test)]
 mod ide;
