@@ -271,7 +271,7 @@ fn completion_items(
     request: &GetCompletionItemsRequest,
 ) -> Result<GetCompletionItemsResponse, String> {
     let document = request.text_document.clone().unwrap_or_default();
-    let position = request.position.clone().unwrap_or_default();
+    let position = request.position.unwrap_or_default();
     let found = completer.completions(
         &document.uri,
         document.version,
