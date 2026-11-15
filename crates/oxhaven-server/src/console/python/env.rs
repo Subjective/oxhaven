@@ -23,6 +23,8 @@ use std::sync::OnceLock;
 use pyo3::ffi;
 use pyo3::prelude::*;
 
+use super::interrupt;
+
 /// The environment variable that an activated virtual environment sets to its directory.
 pub const VIRTUAL_ENV: &str = "VIRTUAL_ENV";
 
@@ -223,7 +225,8 @@ fn c_path(path: &Path) -> Result<CString, String> {
 }
 
 /// Initializes the interpreter with `layout` and releases the interpreter lock, so that
-/// any thread can take it with `Python::attach`.
+/// any thread can take it with `Python::attach`. The calling thread becomes Python's main
+/// thread, the one its signal handlers run on.
 ///
 /// The interpreter must not be initialized yet.
 fn start_interpreter(layout: &Layout) -> Result<(), String> {
@@ -296,7 +299,9 @@ fn start(env: &PythonEnv) -> Result<Interpreter, String> {
     let layout = layout(env, linked_version())?;
     // SAFETY: `Py_IsInitialized` may be called at any time.
     if unsafe { ffi::Py_IsInitialized() } == 0 {
-        start_interpreter(&layout)?;
+        // on a thread of its own, where commands run and can be stopped
+        let layout = layout.clone();
+        interrupt::start_main_thread(move || start_interpreter(&layout))?;
     } else if layout != Layout::Linked {
         return Err(
             "the Python interpreter of this process was started before its environment \

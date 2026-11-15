@@ -8,7 +8,7 @@
 //! ([`ScopeHolder`]), so there is one set of variables: what code assigns, what a client
 //! publishes and what a ticket names are the same thing.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use oxhaven_contracts::table::Table;
@@ -104,6 +104,76 @@ impl Changes {
     }
 }
 
+/// What a running command is interrupted with: given by the script session for as long as
+/// its command runs.
+type Interrupt = Box<dyn Fn() + Send>;
+
+#[derive(Default)]
+struct StopState {
+    requested: bool,
+    interrupt: Option<Interrupt>,
+}
+
+/// The request to stop one command, shared by whoever may ask for it (the call that sent
+/// the command, when its client cancels it or its session ends) and the script session
+/// that runs the command.
+///
+/// A request that comes before the command starts keeps it from running; one that comes
+/// while it runs interrupts it, as far as the language can be interrupted; one that comes
+/// after it does nothing.
+///
+/// No Java counterpart: the Java server never stops a command. See
+/// `docs/CONSOLE.md`, "Stopping a running command".
+#[derive(Default)]
+pub struct Stop {
+    state: Mutex<StopState>,
+}
+
+impl Stop {
+    pub fn new() -> Arc<Self> {
+        Arc::default()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, StopState> {
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Asks for the command to stop. May be called any number of times, from any thread;
+    /// each call interrupts a command that is running.
+    pub fn request(&self) {
+        let mut state = self.lock();
+        state.requested = true;
+        if let Some(interrupt) = &state.interrupt {
+            interrupt();
+        }
+    }
+
+    pub fn is_requested(&self) -> bool {
+        self.lock().requested
+    }
+
+    /// For the script session, when its command is about to run: from now on a request
+    /// calls `interrupt`, until [`Stop::disarm`]. Returns false, and keeps nothing, if the
+    /// stop was requested already: the command must not run.
+    ///
+    /// `interrupt` runs on the thread that asks, while no other request and no
+    /// [`Stop::disarm`] can run; it must not block.
+    pub fn arm(&self, interrupt: impl Fn() + Send + 'static) -> bool {
+        let mut state = self.lock();
+        if state.requested {
+            return false;
+        }
+        state.interrupt = Some(Box::new(interrupt));
+        true
+    }
+
+    /// For the script session, when its command has ended: no request interrupts anything
+    /// from now on, and none is doing so when this returns.
+    pub fn disarm(&self) {
+        self.lock().interrupt = None;
+    }
+}
+
 /// The language side of a console, and the holder of its variables.
 ///
 /// Behavior: `io.deephaven.engine.util.ScriptSession`, and the abstract methods of
@@ -118,8 +188,11 @@ pub trait ScriptSession: Send + Sync {
     /// at, which is what the code changed if [`ScriptSession::observe`] was called just
     /// before. An error in the code is not an error of this call: it is `Changes::error`.
     ///
+    /// The session does not run code whose `stop` was requested, and ends code that runs
+    /// when it is requested, if it can ([`Stop::arm`]); either is an error of the code.
+    ///
     /// Behavior: `ScriptSession#evaluateScript(String)`
-    fn evaluate(&self, code: &str) -> Changes;
+    fn evaluate(&self, code: &str, stop: &Arc<Stop>) -> Changes;
 
     /// Looks at the variables and reports what changed since they were last looked at, by
     /// this call, by [`ScriptSession::evaluate`] or by [`ScriptSession::put`].
@@ -181,13 +254,20 @@ impl Console {
             .eq_ignore_ascii_case(session_type)
     }
 
-    /// Runs `code`. What changed before it, outside any command, is published first, so
-    /// that the answer holds what the code changed; that is published too.
+    /// Runs `code`, which nothing can stop. What changed before it, outside any command,
+    /// is published first, so that the answer holds what the code changed; that is
+    /// published too.
     ///
     /// Behavior: `AbstractScriptSession#evaluateScript`
     pub fn evaluate(&self, code: &str) -> Changes {
+        self.evaluate_stoppable(code, &Stop::new())
+    }
+
+    /// As [`Console::evaluate`], for code that a request to `stop` keeps from running or
+    /// interrupts.
+    pub fn evaluate_stoppable(&self, code: &str, stop: &Arc<Stop>) -> Changes {
         self.observe();
-        let changes = self.session.evaluate(code);
+        let changes = self.session.evaluate(code, stop);
         self.publish(&changes);
         changes
     }
