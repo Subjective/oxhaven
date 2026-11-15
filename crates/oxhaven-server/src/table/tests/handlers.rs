@@ -2005,6 +2005,48 @@ async fn a_cross_join_of_a_refreshing_table_follows_it() {
     assert_eq!(result_size, 6 * right_size);
 }
 
+#[tokio::test]
+async fn a_cross_join_of_a_refreshing_table_and_a_static_table_without_rows_is_static() {
+    let mut c = Connected::start().await;
+    call(&mut c, Op::TimeTable(ticking_time_table(ticket(1))))
+        .await
+        .unwrap();
+    call(&mut c, Op::EmptyTable(empty(ticket(2), 0)))
+        .await
+        .unwrap();
+    call(&mut c, Op::EmptyTable(empty(ticket(3), 2)))
+        .await
+        .unwrap();
+    let join = |result, left, right| {
+        Op::CrossJoin(proto::CrossJoinTablesRequest {
+            result_id: ticket(result),
+            left_id: by_ticket(left),
+            right_id: by_ticket(right),
+            ..Default::default()
+        })
+    };
+    // Java's server answers `is_static` for the refreshing table on either side of a
+    // static table without rows, and not for one with rows
+    for (result, left, right, is_static) in [
+        (10, 1, 2, true),
+        (11, 2, 1, true),
+        (12, 1, 3, false),
+        (13, 3, 1, false),
+    ] {
+        let response = call(&mut c, join(result, left, right)).await.unwrap();
+        assert_eq!(response.is_static, is_static, "{left} x {right}");
+        assert_eq!(c.table(result).is_refreshing(), !is_static);
+    }
+    tokio::time::sleep(Duration::from_millis(5)).await;
+    c.cycle().await;
+    let graph = c.server.state.graph.clone();
+    let sizes = locked(graph.as_ref(), || {
+        [10, 11, 12, 13].map(|result| c.table(result).row_set().size())
+    });
+    assert_eq!(sizes[..2], [0, 0]);
+    assert!(sizes[2] > 0 && sizes[3] > 0, "{sizes:?}");
+}
+
 // ---------------------------------------------------------------- snapshots
 
 fn snapshot_of(result: i32, source: Option<TableReference>) -> Op {

@@ -190,19 +190,17 @@ fn graph_of(table: &Arc<dyn Table>) -> Option<Arc<dyn UpdateGraph>> {
     table.update_graph().filter(|_| table.is_refreshing())
 }
 
-/// Whether a join without match columns never changes although one of its tables does:
-/// the other table is static and has no rows, so there is no pair and there never will be
-/// one. Java listens to neither table then, and a result that listens to nothing is a
-/// static table. When both tables are refreshing Java listens to both, with or without
-/// rows.
+/// Whether one of the tables is static and has no rows, so that a join without match
+/// columns has no pair and never will have one. Java does not listen to the other table
+/// then, even if it is refreshing, and a result that listens to nothing is a static table.
+/// When both tables are refreshing Java listens to both, with or without rows.
 ///
 /// Behavior: the listeners at the end of
 /// io.deephaven.engine.table.impl.CrossJoinHelper#zeroKeyColumnsJoin, where a table is
 /// empty when `Table#isEmpty` says so: its size is 0
 fn unheard(left: &dyn Table, right: &dyn Table) -> bool {
     let never_has_rows = |table: &dyn Table| !table.is_refreshing() && table.row_set().is_empty();
-    (left.is_refreshing() && never_has_rows(right))
-        || (right.is_refreshing() && never_has_rows(left))
+    never_has_rows(left) || never_has_rows(right)
 }
 
 /// Reads both tables and returns the result's initial state with the operator.
