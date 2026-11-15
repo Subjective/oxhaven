@@ -16,7 +16,8 @@
 
 use super::prelude::*;
 use oxhaven_engine::ops::agg::{
-    aggregate_all_with, aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel as NonUnique,
+    aggregate_all_with, aggregate_seeded, aggregate_with, AggSpec, AggregateError, Aggregation,
+    Pair, Sentinel as NonUnique,
 };
 use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::agg_spec::Type as SpecType;
@@ -318,17 +319,23 @@ fn run(
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
     preserve_empty: bool,
+    initial_groups: Option<&Arc<dyn Table>>,
     group_by: &[String],
 ) -> Result<Arc<dyn Table>, ExportError> {
     check_filters(aggregations)?;
     let group_by: Vec<&str> = group_by.iter().map(String::as_str).collect();
-    Ok(aggregate_with(
-        parent,
-        aggregations,
-        preserve_empty,
-        &group_by,
-        context.compiler.as_ref(),
-    )?)
+    let compiler = context.compiler.as_ref();
+    Ok(match initial_groups {
+        Some(initial_groups) => aggregate_seeded(
+            parent,
+            aggregations,
+            preserve_empty,
+            initial_groups,
+            &group_by,
+            compiler,
+        )?,
+        None => aggregate_with(parent, aggregations, preserve_empty, &group_by, compiler)?,
+    })
 }
 
 /// Behavior: `io.deephaven.server.table.ops.AggregateGrpcImpl`
@@ -371,13 +378,6 @@ impl TableOp for Aggregate {
         request: &AggregateRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
-        if request.initial_groups_id.is_some() {
-            return Err(not_ported(
-                "io.deephaven.engine.table.impl.QueryTable#aggBy",
-                "initial groups",
-            )
-            .into());
-        }
         let missing = |name: &str| {
             ExportError::Status(not_ported(
                 "io.deephaven.server.table.ops.AggregationAdapter#adapt",
@@ -426,6 +426,7 @@ impl TableOp for Aggregate {
             &sources[0],
             &aggregations,
             request.preserve_empty,
+            request.initial_groups_id.as_ref().and(sources.get(1)),
             &request.group_by_columns,
         )
     }
@@ -672,7 +673,7 @@ impl TableOp for ComboAggregate {
         if Self::is_simple(request) {
             let aggregate = &request.aggregates[0];
             if aggregate.r#type == AggType::Count as i32 {
-                return run(context, parent, &[count(aggregate)?], false, &group_by);
+                return run(context, parent, &[count(aggregate)?], false, None, &group_by);
             }
             return agg_all_by(context, parent, combo_spec(aggregate)?, &group_by);
         }
@@ -713,6 +714,6 @@ impl TableOp for ComboAggregate {
             }
             aggregations.push(Aggregation::columns(kind, pairs));
         }
-        run(context, parent, &aggregations, false, &group_by)
+        run(context, parent, &aggregations, false, None, &group_by)
     }
 }

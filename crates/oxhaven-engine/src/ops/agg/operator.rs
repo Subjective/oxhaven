@@ -194,6 +194,15 @@ pub trait AggOperator: Send {
         Effect::UNCHANGED
     }
 
+    /// Tells the operator that `slot` is an initial group, before any row is given. Java
+    /// gives every operator an empty chunk for each initial group, through the path of an
+    /// aggregation without keys; this is for an operator that an empty chunk changes.
+    ///
+    /// Behavior: the `doIndexedAddition` of
+    /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#initialKeyTableAddition,
+    /// which calls the singleton IterativeChunkedAggregationOperator#addChunk
+    fn seeded(&mut self, _slot: usize) {}
+
     /// Whether a change of this operator's results puts its column into the modified
     /// column set of the result's update.
     ///
