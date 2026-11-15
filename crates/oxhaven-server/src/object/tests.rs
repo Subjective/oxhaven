@@ -137,7 +137,10 @@ async fn fetch_object_answers_what_java_answers() {
         .await
         .unwrap()
         .into_inner();
-    assert_ne!(check_opened(server, &again.data, &again.typed_export_ids), first);
+    assert_ne!(
+        check_opened(server, &again.data, &again.typed_export_ids),
+        first
+    );
 
     assert_eq!(
         refused(fetch(Some(2), "")).await,
@@ -207,7 +210,10 @@ async fn a_message_stream_sends_the_object_once_and_ends_when_the_client_does() 
             "Data message sent before Connect message",
         ),
         (
-            vec![connect(2, "PartitionedTable"), connect(2, "PartitionedTable")],
+            vec![
+                connect(2, "PartitionedTable"),
+                connect(2, "PartitionedTable"),
+            ],
             Code::FailedPrecondition,
             "Already sent a connect request, cannot send another",
         ),

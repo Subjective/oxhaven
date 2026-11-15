@@ -566,8 +566,10 @@ pub(super) fn empty(definition: TableDefinition) -> Result<Arc<QueryTable>, Tabl
         .iter()
         .map(|column| {
             let empty = new_empty_array(&column.column_type.arrow_type());
-            Ok(Arc::new(FlatSource::new(column.column_type.clone(), empty)?)
-                as Arc<dyn ColumnSource>)
+            Ok(
+                Arc::new(FlatSource::new(column.column_type.clone(), empty)?)
+                    as Arc<dyn ColumnSource>,
+            )
         })
         .collect::<Result<_, TableFailure>>()?;
     Ok(QueryTable::new_static(TableSpec::new(

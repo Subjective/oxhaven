@@ -443,10 +443,7 @@ mod tests {
             let stored: ArrayRef = Arc::new(arrow::array::Int64Array::from(vec![Some(41), None]));
             let sent = column.cells(stored).unwrap();
             let sent = sent.as_string::<i32>();
-            assert_eq!(
-                sent.iter().collect::<Vec<_>>(),
-                [Some("QueryTable"), None]
-            );
+            assert_eq!(sent.iter().collect::<Vec<_>>(), [Some("QueryTable"), None]);
         }
     }
 }

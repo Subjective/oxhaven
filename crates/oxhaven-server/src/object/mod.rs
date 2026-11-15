@@ -42,10 +42,9 @@ fn open(
     value: &ExportValue,
 ) -> Result<ServerData, ExportError> {
     let Some(partitioned) = partitioned_of(value) else {
-        return Err(Status::not_found(format!(
-            "No ObjectType found, expected type '{expected}'"
-        ))
-        .into());
+        return Err(
+            Status::not_found(format!("No ObjectType found, expected type '{expected}'")).into(),
+        );
     };
     if expected != TYPE_NAME {
         return Err(Status::failed_precondition(format!(
@@ -73,7 +72,10 @@ fn named(source: Option<TypedTicket>) -> Result<(String, Vec<u8>), Status> {
     if source.r#type.is_empty() {
         return Err(Status::invalid_argument("No type supplied"));
     }
-    let ticket = source.ticket.map(|ticket| ticket.ticket).unwrap_or_default();
+    let ticket = source
+        .ticket
+        .map(|ticket| ticket.ticket)
+        .unwrap_or_default();
     if ticket.is_empty() {
         return Err(Status::invalid_argument("No ticket supplied"));
     }

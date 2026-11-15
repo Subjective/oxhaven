@@ -67,9 +67,7 @@ impl fmt::Display for PartitionedError {
             PartitionedError::Aggregate(error) => error.fmt(f),
             PartitionedError::IllegalArgument(message)
             | PartitionedError::Unsupported(message)
-            | PartitionedError::IllegalState(message) => {
-                f.write_str(message)
-            }
+            | PartitionedError::IllegalState(message) => f.write_str(message),
             PartitionedError::Table(failure) => failure.fmt(f),
         }
     }

@@ -80,7 +80,12 @@ fn partition_request(table: i32, result: i32, keys: &[&str]) -> PartitionByReque
     }
 }
 
-fn get_request(partitioned: i32, keys: i32, result: i32, behavior: UniqueBehavior) -> GetTableRequest {
+fn get_request(
+    partitioned: i32,
+    keys: i32,
+    result: i32,
+    behavior: UniqueBehavior,
+) -> GetTableRequest {
     GetTableRequest {
         partitioned_table: Some(export_id_to_ticket(partitioned)),
         key_table_ticket: Some(export_id_to_ticket(keys)),
@@ -170,7 +175,9 @@ async fn service_calls_answer_what_java_answers() {
         contents(&table(20)),
         [(1, 1.0), (1, 3.0), (2, 2.0), (2, 5.0), (3, 4.0)]
     );
-    let of_table = service().merge(server.authorized(merge_request(1, 21))).await;
+    let of_table = service()
+        .merge(server.authorized(merge_request(1, 21)))
+        .await;
     refused(of_table.unwrap_err(), Code::InvalidArgument, LOGGED);
 
     // GetTable
@@ -233,7 +240,11 @@ async fn service_calls_answer_what_java_answers() {
     let keys_are_partitioned = service()
         .get_table(server.authorized(get_request(10, 10, 38, unique)))
         .await;
-    refused(keys_are_partitioned.unwrap_err(), Code::InvalidArgument, LOGGED);
+    refused(
+        keys_are_partitioned.unwrap_err(),
+        Code::InvalidArgument,
+        LOGGED,
+    );
 }
 
 #[tokio::test]
