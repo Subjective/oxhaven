@@ -245,22 +245,43 @@ fn an_array_without_a_comparator_is_not_marked_sortable() {
     );
 }
 
+/// As Java sent them 2026-11-15: `head` of an uploaded `list<int8>` column came back as
+/// `binary`, and `group_by` of `group_by` of a `String` column as `list<list<utf8>>`, both
+/// with the class names of the column type.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.extensions.barrage.util.BarrageUtil#arrowTypeFor: \
-                column X of type Vector(Array(Byte)): a byte[] is sent as Binary"
-)]
-fn the_schema_of_a_byte_array_is_not_ported() {
-    let _ = field_of(ColumnType::vector(ColumnType::array(ColumnType::Byte)));
-}
+fn a_byte_array_is_binary_and_an_inner_object_vector_holds_text() {
+    let bytes = field_of(ColumnType::array(ColumnType::Byte));
+    assert_eq!(bytes.data_type(), &DataType::Binary);
+    assert_eq!(bytes.metadata()[TYPE_KEY], "byte[]");
+    assert_eq!(bytes.metadata()[COMPONENT_TYPE_KEY], "byte");
 
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.extensions.barrage.util.BarrageUtil#arrowFieldFor: \
-                column X of type Array(Vector(String))"
-)]
-fn the_schema_of_an_inner_object_vector_is_not_ported() {
-    let _ = field_of(ColumnType::array(ColumnType::vector(ColumnType::String)));
+    let element = |data_type| Arc::new(Field::new("", data_type, true));
+    let byte_arrays = field_of(ColumnType::vector(ColumnType::array(ColumnType::Byte)));
+    assert_eq!(
+        byte_arrays.data_type(),
+        &DataType::List(element(DataType::Binary))
+    );
+    assert_eq!(byte_arrays.metadata()[COMPONENT_TYPE_KEY], "byte[]");
+
+    let texts = DataType::List(element(DataType::List(element(DataType::Utf8))));
+    for inner in [ColumnType::String, ColumnType::Boolean, ColumnType::Instant] {
+        let vectors = field_of(ColumnType::vector(ColumnType::vector(inner.clone())));
+        assert_eq!(vectors.data_type(), &texts, "{inner:?}");
+        assert_eq!(
+            vectors.metadata()[TYPE_KEY],
+            "io.deephaven.vector.ObjectVector"
+        );
+        assert_eq!(
+            vectors.metadata()[COMPONENT_TYPE_KEY],
+            "io.deephaven.vector.ObjectVector"
+        );
+        let arrays = field_of(ColumnType::array(ColumnType::vector(inner)));
+        assert_eq!(arrays.data_type(), &texts);
+        assert_eq!(
+            arrays.metadata()[TYPE_KEY],
+            "io.deephaven.vector.ObjectVector[]"
+        );
+    }
 }
 
 #[test]
@@ -378,7 +399,7 @@ fn read_column(
             let elements = read_column(element.data_type(), nodes, buffers, body);
             (vec![offsets], vec![elements.to_data()])
         }
-        DataType::Utf8 => (vec![buffer(), buffer()], vec![]),
+        DataType::Utf8 | DataType::Binary => (vec![buffer(), buffer()], vec![]),
         _ => (vec![buffer()], vec![]),
     };
     if length == 0 {
@@ -555,6 +576,81 @@ fn a_slice_of_a_list_column_is_sent_with_offsets_from_zero() {
         int_cells(&batch.body, batch.buffers[3]),
         [i32::MIN, 5, 6, 7, 8, 0]
     );
+}
+
+/// A `byte[]` column and a vector of vectors of strings are stored as lists and sent as
+/// `Binary` and as lists of lists of text, by `DoGet` and in a Barrage snapshot.
+#[test]
+fn columns_sent_in_another_type_are_converted_by_do_get_and_in_a_snapshot() {
+    let bytes = ColumnType::array(ColumnType::Byte);
+    let inner = ColumnType::vector(ColumnType::Boolean);
+    let vectors = ColumnType::vector(inner.clone());
+    let definition = definition(&[("B", bytes.clone()), ("V", vectors.clone())]);
+    let stored: Vec<ArrayRef> = vec![
+        list_of(
+            &bytes,
+            [Some(2), None, Some(0)],
+            Arc::new(arrow::array::Int8Array::from(vec![Some(1), None])),
+        ),
+        list_of(
+            &vectors,
+            [Some(2), Some(0), None],
+            list_of(
+                &inner,
+                [Some(2), None],
+                Arc::new(arrow::array::BooleanArray::from(vec![Some(true), None])),
+            ),
+        ),
+    ];
+    let fields: Vec<Field> = definition
+        .columns()
+        .iter()
+        .map(|column| Field::new(&column.name, column.column_type.arrow_type(), true))
+        .collect();
+    let batch = RecordBatch::try_new(Arc::new(Schema::new(fields)), stored).unwrap();
+    let table: Arc<dyn Table> = in_memory_table(definition, &[batch]).unwrap();
+
+    let element = |data_type| Arc::new(Field::new("", data_type, true));
+    let texts = DataType::List(element(DataType::List(element(DataType::Utf8))));
+    let check = |batch: &Batch, context: &str| {
+        use arrow::array::AsArray;
+        let mut nodes = batch.nodes.iter();
+        let mut buffers = batch.buffers.iter();
+        let binary = read_column(&DataType::Binary, &mut nodes, &mut buffers, &batch.body);
+        let lists = read_column(&texts, &mut nodes, &mut buffers, &batch.body);
+        assert!(
+            nodes.next().is_none() && buffers.next().is_none(),
+            "{context}"
+        );
+        let binary = binary.as_binary::<i32>();
+        let binary: Vec<Option<&[u8]>> = binary.iter().collect();
+        assert_eq!(
+            binary,
+            [Some([1u8, 0x80].as_slice()), None, Some([].as_slice())],
+            "{context}"
+        );
+        let rows = lists.as_list::<i32>();
+        assert!(rows.is_valid(1) && rows.value(1).is_empty() && rows.is_null(2));
+        let first = rows.value(0);
+        let first = first.as_list::<i32>();
+        assert!(first.is_null(1), "{context}");
+        let elements = first.value(0);
+        let elements: Vec<Option<&str>> = elements.as_string::<i32>().iter().collect();
+        assert_eq!(elements, [Some("true"), None], "{context}");
+    };
+
+    let messages = do_get_messages(&table).unwrap();
+    assert_eq!(messages.len(), 2);
+    let schema = schema_of_message(&messages[0]);
+    assert_eq!(schema.field(0).data_type(), &DataType::Binary);
+    assert_eq!(schema.field(1).data_type(), &texts);
+    check(&batch_of(&messages[1]), "DoGet");
+
+    let options = WireOptions::default();
+    let messages =
+        snapshot_request_messages(&table, &[true, true], None, None, false, options).unwrap();
+    assert_eq!(messages.len(), 1);
+    check(&batch_of(&messages[0]), "snapshot");
 }
 
 fn nullable() -> Vec<bool> {
