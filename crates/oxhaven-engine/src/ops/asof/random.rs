@@ -6,7 +6,7 @@ use crate::ops::sort::testing::{frozen, graph};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use oxhaven_testkit::{definition, ConsistencyChecker, RandomUpdates, ScriptedTable};
+use oxhaven_testkit::{definition, test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable};
 use std::sync::Arc;
 
 const COLUMNS: [(&str, ColumnType); 8] = [
@@ -158,22 +158,31 @@ fn run(seed: u64, steps: usize, live: Live) -> usize {
     compared
 }
 
+/// The seeds of a full run: 40, of which the 10 multiples of four start with a left table
+/// without rows.
+const SEEDS: std::ops::Range<u64> = 0..40;
+
 fn run_all(live: Live) -> usize {
-    (0..40).map(|seed| run(seed, 30, live)).sum()
+    test_seeds(SEEDS).map(|seed| run(seed, 30, live)).sum()
 }
 
 #[test]
 fn random_updates_of_both_tables() {
-    assert_eq!(run_all(Live::Both), 40 * 30 * JOINS.len() * RULES.len());
+    let seeds = test_seeds(SEEDS).count();
+    assert_eq!(run_all(Live::Both), seeds * 30 * JOINS.len() * RULES.len());
 }
 
 #[test]
 fn random_updates_of_the_left_table() {
-    assert_eq!(run_all(Live::Left), 40 * 30 * JOINS.len() * RULES.len());
+    let seeds = test_seeds(SEEDS).count();
+    assert_eq!(run_all(Live::Left), seeds * 30 * JOINS.len() * RULES.len());
 }
 
 #[test]
 fn random_updates_of_the_right_table() {
     // One seed in four starts with a left table without rows, whose joins are static.
-    assert_eq!(run_all(Live::Right), 30 * 30 * JOINS.len() * RULES.len());
+    let seeds = test_seeds(SEEDS)
+        .filter(|seed| !seed.is_multiple_of(4))
+        .count();
+    assert_eq!(run_all(Live::Right), seeds * 30 * JOINS.len() * RULES.len());
 }

@@ -1167,17 +1167,18 @@ async fn replay(case: &str, table: impl Fn(&Server) -> Arc<dyn Table>, exact: bo
 
 #[tokio::test]
 async fn subscriptions_to_a_ticking_table_leave_clients_with_what_java_leaves_them() {
-    for case in [
-        "sub_full",
-        "sub_viewport",
-        "sub_reverse",
-        "sub_columns",
-        "sub_as_list",
-        "sub_as_list_viewport",
-    ] {
-        // Java cut the changes of a step into messages by its own timing
-        replay(case, |server| keyed_input_table(server, 6), false).await;
-    }
+    // Java cut the changes of a step into messages by its own timing
+    let case = |case| replay(case, |server| keyed_input_table(server, 6), false);
+    // Each case has its own server and spends its time waiting for that server to go
+    // quiet, so the cases wait together.
+    tokio::join!(
+        case("sub_full"),
+        case("sub_viewport"),
+        case("sub_reverse"),
+        case("sub_columns"),
+        case("sub_as_list"),
+        case("sub_as_list_viewport"),
+    );
 }
 
 #[tokio::test]

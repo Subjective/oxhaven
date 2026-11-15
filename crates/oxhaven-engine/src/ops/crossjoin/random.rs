@@ -7,7 +7,9 @@ use crate::ops::sort::testing::{frozen, graph};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
-use oxhaven_testkit::{definition, ConsistencyChecker, RandomUpdates, ScriptedTable};
+use oxhaven_testkit::{
+    at_least_for, definition, test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable,
+};
 use std::sync::Arc;
 
 const COLUMNS: [(&str, ColumnType); 7] = [
@@ -136,28 +138,31 @@ fn run(seed: u64, steps: usize, live: Live, size: u64) -> usize {
     compared
 }
 
-fn run_all(live: Live) -> usize {
+/// The seeds of the runs of small tables, which do most of the comparisons.
+const SMALL: std::ops::Range<u64> = 0..30;
+
+fn run_all(live: Live) -> u64 {
     let mut compared = 0;
-    for seed in 0..30 {
+    for seed in test_seeds(SMALL) {
         compared += run(seed, 25, live, 6);
     }
-    for seed in 100..104 {
+    for seed in test_seeds(100..104) {
         compared += run(seed, 10, live, 40);
     }
-    compared
+    compared as u64
 }
 
 #[test]
 fn random_updates_of_both_tables() {
-    assert!(run_all(Live::Both) > 10_000);
+    assert!(run_all(Live::Both) > at_least_for(10_000, SMALL));
 }
 
 #[test]
 fn random_updates_of_the_left_table() {
-    assert!(run_all(Live::Left) > 10_000);
+    assert!(run_all(Live::Left) > at_least_for(10_000, SMALL));
 }
 
 #[test]
 fn random_updates_of_the_right_table() {
-    assert!(run_all(Live::Right) > 10_000);
+    assert!(run_all(Live::Right) > at_least_for(10_000, SMALL));
 }

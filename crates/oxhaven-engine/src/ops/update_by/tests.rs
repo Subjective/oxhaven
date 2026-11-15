@@ -16,7 +16,7 @@ use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
-use oxhaven_testkit::{RandomUpdates, TableChange, TableSnapshot};
+use oxhaven_testkit::{test_seeds, RandomUpdates, TableChange, TableSnapshot};
 use std::sync::Arc;
 
 fn op(spec: UpdateBySpec, columns: &[&str]) -> UpdateByOperation {
@@ -544,7 +544,7 @@ fn random_updates(by: &'static [&'static str]) {
         ("S", ColumnType::String),
         ("T", ColumnType::Instant),
     ];
-    for seed in 0..24 {
+    for seed in test_seeds(0..24) {
         let mut random = RandomUpdates::new(seed);
         let columns: Vec<(&str, ColumnType, ArrayRef)> = types
             .iter()
@@ -998,7 +998,7 @@ fn random_updates_in_time(by: &'static [&'static str]) {
         ("T", ColumnType::Long),
     ];
     let t_index = types.len() - 1;
-    for seed in 0..24 {
+    for seed in test_seeds(0..24) {
         let mut random = RandomUpdates::new(seed);
         let mut columns: Vec<(&str, ColumnType, ArrayRef)> = types
             .iter()

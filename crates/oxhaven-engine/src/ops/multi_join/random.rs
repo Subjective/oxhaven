@@ -15,8 +15,8 @@ use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_testkit::{
-    definition, ConsistencyChecker, RandomUpdates, ReferenceTable, ScriptedTable, TableChange,
-    TableSnapshot,
+    at_least_for, definition, test_seeds, ConsistencyChecker, RandomUpdates, ReferenceTable,
+    ScriptedTable, TableChange, TableSnapshot,
 };
 use std::sync::{Arc, Mutex};
 
@@ -282,35 +282,41 @@ fn run(seed: u64, steps: usize, live: [bool; TABLES], tally: &mut Tally) {
     }
 }
 
+const SEEDS: std::ops::Range<u64> = 0..120;
+
 fn run_all(live: [bool; TABLES]) -> Tally {
     let mut tally = Tally::default();
-    for seed in 0..120 {
+    for seed in test_seeds(SEEDS) {
         run(seed, 20, live, &mut tally);
     }
     tally
 }
 
+/// Enough of both outcomes that neither check is idle.
+fn assert_enough(tally: &Tally) {
+    let (compared, failed) = (at_least_for(5000, SEEDS), at_least_for(100, SEEDS));
+    assert!(
+        tally.compared as u64 > compared && tally.failed as u64 > failed,
+        "{tally:?}"
+    );
+}
+
 #[test]
 fn random_updates_of_all_tables() {
-    let tally = run_all(LIVE[0]);
-    // Enough of both outcomes that neither check is idle.
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(LIVE[0]));
 }
 
 #[test]
 fn random_updates_of_the_first_table() {
-    let tally = run_all(LIVE[1]);
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(LIVE[1]));
 }
 
 #[test]
 fn random_updates_of_the_last_table() {
-    let tally = run_all(LIVE[2]);
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(LIVE[2]));
 }
 
 #[test]
 fn random_updates_of_the_last_two_tables() {
-    let tally = run_all(LIVE[3]);
-    assert!(tally.compared > 5000 && tally.failed > 100, "{tally:?}");
+    assert_enough(&run_all(LIVE[3]));
 }

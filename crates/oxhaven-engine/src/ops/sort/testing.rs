@@ -11,8 +11,8 @@ use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
-    definition, ConsistencyChecker, RandomUpdates, Recorder, ReferenceTable, ScriptedTable,
-    TableChange, TableSnapshot,
+    definition, test_seeds, ConsistencyChecker, RandomUpdates, Recorder, ReferenceTable,
+    ScriptedTable, TableChange, TableSnapshot,
 };
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, Weak};
@@ -246,7 +246,7 @@ pub(crate) fn operation<'a>(
 }
 
 /// Drives `sources` scripted tables of `columns` through `steps` random cycles for every
-/// seed, with every operation built on them before the first cycle. After each cycle each
+/// seed of `seeds` that the seed budget runs (`oxhaven_testkit::test_seeds`), with every operation built on them before the first cycle. After each cycle each
 /// result must be consistent and equal to the same operation on static copies of the
 /// sources. A source changes in about two cycles out of three.
 pub(crate) fn check_random(
@@ -256,7 +256,7 @@ pub(crate) fn check_random(
     columns: &[(&str, ColumnType)],
     operations: &[Operation],
 ) {
-    for seed in seeds {
+    for seed in test_seeds(seeds) {
         let graph = graph();
         let mut random = RandomUpdates::new(seed);
         let scripts: Vec<Arc<ScriptedTable>> = (0..sources)
