@@ -4,7 +4,7 @@ use crate::graph::SteppedUpdateGraph;
 use crate::table::{tracked_source, QueryTable, RootSource, TableSpec};
 use arrow::array::{Array, ArrayRef};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
-use oxhaven_column::WritableSource;
+use oxhaven_column::{FlatSource, WritableSource};
 use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
@@ -40,6 +40,23 @@ pub(crate) fn static_table(columns: Columns) -> Arc<dyn Table> {
     let (definition, values) = split(columns);
     let size = values.first().map_or(0, |v: &ArrayRef| v.len());
     ReferenceTable::new_static(definition, RowSet::flat(size as u64), values)
+}
+
+/// A flat static table of the engine with the given columns, as `empty_table` and
+/// `new_table` make one in Java: not a copy of another table.
+pub(crate) fn flat_table(columns: Columns) -> Arc<dyn Table> {
+    let (definition, values) = split(columns);
+    let size = values.first().map_or(0, |v: &ArrayRef| v.len());
+    let sources = definition
+        .columns()
+        .iter()
+        .zip(values)
+        .map(|(column, values)| {
+            let source = FlatSource::new(column.column_type.clone(), values).unwrap();
+            Arc::new(source) as Arc<dyn ColumnSource>
+        })
+        .collect();
+    QueryTable::new_static(TableSpec::new(definition, RowSet::flat(size as u64), sources).flat())
 }
 
 /// A scripted table with the given columns at `keys`.

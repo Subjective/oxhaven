@@ -1,14 +1,15 @@
 """The `Table` class."""
 
 from collections import namedtuple
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from enum import Enum, auto
 from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 import _oxhaven
 
-from . import _engine
+from . import _engine, dtypes
 from .agg import Aggregation
+from .column import ColumnDefinition, ColumnType, col_def
 from .dherror import DHError
 
 
@@ -45,60 +46,100 @@ class NewColumnBehaviorType(Enum):
     IGNORE = "IGNORE"
 
 
-class _JavaType(str):
-    """The Java name of a column type, shown bare as the reference's `DType` is."""
-
-    def __repr__(self):
-        return str(self)
-
-
-class ColumnDefinition:
-    """The name and the type of one column.
-
-    The stand-in for `deephaven.column.ColumnDefinition` until `deephaven.dtypes` exists
-    (task 6.8): `data_type` is the Java name of the type (`int`, `java.lang.String`), which
-    is what the reference's `DType` prints.
-    """
-
-    def __init__(self, name: str, data_type: str):
-        self.name = name
-        self.data_type = _JavaType(data_type)
-
-    def __repr__(self):
-        return f"ColumnDefinition(name={self.name!r}, data_type={self.data_type!r})"
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, ColumnDefinition)
-            and self.name == other.name
-            and self.data_type == other.data_type
-        )
-
-    def __hash__(self):
-        return hash((self.name, self.data_type))
-
-
 class TableDefinition(Mapping):
     """The columns of a table: a mapping from column name to column definition, in column
     order.
 
-    Behavior: `deephaven.table.TableDefinition`, as far as a table gives one; building one
-    from column definitions belongs with `deephaven.dtypes` (task 6.8)
+    It is made from another table definition, from a mapping of column names to data
+    types, or from column definitions (`deephaven.column.col_def`); a table makes its own
+    from its handle, where the reference takes the Java table definition.
+
+    Behavior: `deephaven.table.TableDefinition`
     """
 
-    def __init__(self, table: "Table"):
-        self._handle = table.j_table
-        self._dict = {
-            name: ColumnDefinition(name, type_name)
-            for name, type_name in self._handle.columns()
-        }
+    def __init__(self, table_definition):
+        self._handle = None
+        if isinstance(table_definition, TableDefinition):
+            columns = list(table_definition.values())
+        elif isinstance(table_definition, _oxhaven.TableHandle):
+            self._handle = table_definition
+            columns = [
+                ColumnDefinition(
+                    name, dtypes._from_java_name(type_name), dtypes._from_java_name(component)
+                )
+                for name, type_name, component in _engine.native.column_definitions(table_definition)
+            ]
+        elif isinstance(table_definition, Mapping):
+            for name in table_definition.keys():
+                if not isinstance(name, str):
+                    raise DHError(
+                        f"Expected TableDefinitionLike Mapping to contain str keys, found type {type(name)}"
+                    )
+            for data_type in table_definition.values():
+                if not isinstance(data_type, dtypes.DType):
+                    raise DHError(
+                        "Expected TableDefinitionLike Mapping to contain DType values, found type "
+                        f"{type(data_type)}"
+                    )
+            columns = [col_def(name, data_type) for name, data_type in table_definition.items()]
+        elif isinstance(table_definition, Iterable):
+            columns = list(table_definition)
+            for column in columns:
+                if not isinstance(column, ColumnDefinition):
+                    raise DHError(
+                        "Expected TableDefinitionLike Iterable to contain ColumnDefinition values, "
+                        f"found type {type(column)}"
+                    )
+        else:
+            raise DHError(f"Unexpected TableDefinitionLike type: {type(table_definition)}")
+        names = [column.name for column in columns]
+        duplicates = sorted({name for name in names if names.count(name) > 1}, key=names.index)
+        if duplicates:
+            # Behavior: `io.deephaven.engine.table.TableDefinition#checkDuplicateNames`
+            raise RuntimeError(
+                "java.lang.IllegalArgumentException: Supplied ColumnDefinitions include "
+                f"duplicate names [{', '.join(duplicates)}]"
+            )
+        self._dict = dict(zip(names, columns))
+
+    @property
+    def j_object(self):
+        """The reference's Java table definition; here the definition itself."""
+        return self
 
     @property
     def table(self) -> "Table":
-        """A table that describes the columns, one row each."""
-        return Table(_engine.table_op("meta_table", _engine.sourced({}), [self._handle]))
+        """A table that describes the columns, one row each.
 
-    def __getitem__(self, key):
+        Behavior: `io.deephaven.engine.util.TableTools#metaTable`
+        """
+        handle = self._handle
+        if handle is None:
+            for column in self.values():
+                if column.column_type is not ColumnType.NORMAL:
+                    raise dtypes._java_time.NotPorted(
+                        "io.deephaven.engine.table.ColumnDefinition#isPartitioning",
+                        f"the engine has no partitioning columns ({column.name})",
+                    )
+            # the meta table of a table without rows that has these columns
+            handle = _engine.new_table(
+                [(column.name, dtypes._engine_type(column.data_type), []) for column in self.values()]
+            )
+        return Table(_engine.table_op("meta_table", _engine.sourced({}), [handle]))
+
+    def keys(self):
+        """The column names, as a view of a dict."""
+        return self._dict.keys()
+
+    def items(self):
+        """The pairs of column name and column definition, as a view of a dict."""
+        return self._dict.items()
+
+    def values(self):
+        """The column definitions, as a view of a dict."""
+        return self._dict.values()
+
+    def __getitem__(self, key) -> ColumnDefinition:
         return self._dict[key]
 
     def __iter__(self):
@@ -107,11 +148,21 @@ class TableDefinition(Mapping):
     def __len__(self) -> int:
         return len(self._dict)
 
+    def __contains__(self, item: Any) -> bool:
+        return item in self._dict
+
     def __eq__(self, other):
         return isinstance(other, TableDefinition) and list(self.values()) == list(other.values())
 
+    def __ne__(self, other):
+        return not self == other
+
     def __hash__(self):
         return hash(tuple(self.values()))
+
+    def __str__(self):
+        # Behavior: `io.deephaven.engine.table.TableDefinition#toString`
+        return f"TableDefinition {{columns=[{', '.join(map(str, self.values()))}]}}"
 
 
 # How a numpy array is made of the values the engine hands out, by Java type name.
@@ -142,6 +193,14 @@ def _numpy_array(type_name: str, values: list):
     return np.array(values, dtype=np.object_)
 
 
+def _share(value):
+    """A share of a table's rows as the arguments of a local operation carry it: JSON has
+    no NaN and no infinity, which go as the text Python prints for them."""
+    if isinstance(value, float) and (value != value or abs(value) == float("inf")):
+        return repr(value)
+    return value
+
+
 class Table:
     """A Deephaven table: a handle to a table of the engine.
 
@@ -155,7 +214,7 @@ class Table:
         if not isinstance(j_table, _oxhaven.TableHandle):
             raise DHError(message=f"not a table handle: {type(j_table).__name__}")
         self.j_table = j_table
-        self._definition = TableDefinition(self)
+        self._definition = TableDefinition(j_table)
 
     @property
     def j_object(self):
@@ -222,8 +281,8 @@ class Table:
         return all(col in self._definition for col in _engine.to_sequence(cols))
 
     def attributes(self) -> Dict[str, Any]:
-        """The attributes of the table. Not available yet: the engine keeps no attribute
-        map (`io.deephaven.engine.table.AttributeMap#getAttributes`)."""
+        """The attributes of the table by name. An attribute whose value is an object of
+        the Java engine has a placeholder for its value."""
         try:
             return _engine.native.attributes(self.j_table)
         except Exception as e:
@@ -294,7 +353,7 @@ class Table:
         return rows()
 
     def _numpy_chunks(self, cols, chunk_size: int) -> Generator[list, None, None]:
-        types = {col.name: col.data_type for col in self.columns}
+        types = {col.name: col.data_type.j_name for col in self.columns}
         for chunk in self._chunks(cols, chunk_size, True):
             yield [(name, _numpy_array(types[name], values)) for name, values in chunk]
 
@@ -488,13 +547,16 @@ class Table:
 
     def _where_in(self, filter_table: "Table", cols, inverted: bool, failure: str) -> "Table":
         try:
+            handles = [self.j_table, filter_table.j_table]
+            if not _engine.to_sequence(cols):
+                # the table service refuses a `where_in` without match columns
+                return Table(_engine.local_op("where_in", {"inverted": inverted}, handles))
             request = {
                 "left_id": _engine.source(0),
                 "right_id": _engine.source(1),
                 "inverted": inverted,
                 "columns_to_match": _engine.to_sequence(cols),
             }
-            handles = [self.j_table, filter_table.j_table]
             return Table(_engine.table_op("where_in", request, handles))
         except Exception as e:
             raise DHError(e, failure) from e
@@ -523,7 +585,9 @@ class Table:
 
     def head_pct(self, pct: float) -> "Table":
         """A new table with the first `pct` of the rows, `pct` from 0 to 1."""
-        return self._local_op("head_pct", {"pct": pct}, "table head_pct operation failed.")
+        return self._local_op(
+            "head_pct", {"pct": _share(pct)}, "table head_pct operation failed."
+        )
 
     def tail(self, num_rows: int) -> "Table":
         """A new table with the last `num_rows` rows."""
@@ -532,7 +596,9 @@ class Table:
 
     def tail_pct(self, pct: float) -> "Table":
         """A new table with the last `pct` of the rows, `pct` from 0 to 1."""
-        return self._local_op("tail_pct", {"pct": pct}, "table tail_pct operation failed.")
+        return self._local_op(
+            "tail_pct", {"pct": _share(pct)}, "table tail_pct operation failed."
+        )
 
     def slice(self, start: int, stop: int) -> "Table":
         """A new table with the rows from position `start` up to `stop`; a negative
@@ -548,7 +614,7 @@ class Table:
         """A new table with the rows from `start_pct` to `end_pct` of the table."""
         return self._local_op(
             "slice_pct",
-            {"start_pct": start_pct, "end_pct": end_pct},
+            {"start_pct": _share(start_pct), "end_pct": _share(end_pct)},
             "table slice_pct operation failed.",
         )
 

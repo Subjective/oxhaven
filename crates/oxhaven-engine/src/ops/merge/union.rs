@@ -5,7 +5,7 @@
 //! when a constituent outgrows its slot, the slots after it move up and their rows shift.
 
 use super::MergeError;
-use crate::table::{reads_through, QueryTable, TableSpec};
+use crate::table::{mark, reads_through, Marks, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use arrow::array::{new_empty_array, Array, ArrayRef};
 use oxhaven_contracts::graph::{ClockPhase, UpdateGraph};
@@ -487,6 +487,15 @@ pub fn merge(tables: &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, MergeError> {
             },
         ))
     })?;
+    // Behavior: io.deephaven.engine.table.impl.sources.UnionSourceManager's result has
+    // `Table.MERGED_TABLE_ATTRIBUTE`
+    mark(
+        &result,
+        Marks {
+            merged: true,
+            ..Marks::default()
+        },
+    );
     Ok(result)
 }
 

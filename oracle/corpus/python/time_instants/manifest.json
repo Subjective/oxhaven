@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "time_instants",
-  "scenario_sha256": "e162dfb30f403a83d97d7c80b6e81219ad55002839d4c34ccd6e9c3a31b20e64",
+  "scenario_sha256": "4182651517f318db2deb066cee41c5bd21b88fb44e70fadac8053b3c2119a552",
   "reference": "42.9",
   "entries": [
     {
@@ -15,6 +15,12 @@
       "table": "shifted",
       "file": "step000.shifted.arrow",
       "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "mixed",
+      "file": "step000.mixed.arrow",
+      "rows": 16
     }
   ]
 }

@@ -1,0 +1,101 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.time.DateTimeException: Invalid value for MonthOfYear (valid values 1 - 12): 13",
+      "operation": ""
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.lang.RuntimeException: No matching time zone: Nowhere",
+      "operation": ""
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "TypeError",
+      "text": "Unsupported conversion: <class 'float'> -> Instant"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : RuntimeError: io.deephaven.time.DateTimeUtils$DateTimeParseException: Cannot parse time zone: Nowhere/None",
+      "operation": ""
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.lang.RuntimeException: No matching time zone: Z",
+      "operation": ""
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "TypeError",
+      "text": "Unsupported conversion: <class 'int'> -> TimeZone"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.time.DateTimeException: Invalid value for MonthOfYear (valid values 1 - 12): 13",
+      "operation": ""
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.time.DateTimeException: Invalid value for HourOfDay (valid values 0 - 23): 25",
+      "operation": ""
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : RuntimeError: java.time.DateTimeException: Invalid value for NanoOfDay (valid values 0 - 86399999999999): 1704164645000000007",
+      "operation": ""
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.lang.RuntimeException: No time zone provided",
+      "operation": ""
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.time.format.DateTimeParseException: Text cannot be parsed to a Duration",
+      "operation": ""
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : java.time.format.DateTimeParseException: Text cannot be parsed to a Period",
+      "operation": ""
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : RuntimeError: java.lang.IllegalArgumentException: Alias for time zone is already present: time_zone=Asia/Tokyo",
+      "operation": ""
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": " : RuntimeError: java.lang.IllegalArgumentException: Time zone already exists with the alias name: alias=ET",
+      "operation": ""
+    }
+  ]
+}

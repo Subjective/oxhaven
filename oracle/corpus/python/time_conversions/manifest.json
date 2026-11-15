@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "scenario": "time_conversions",
+  "scenario_sha256": "2f916b84162fa2e3b9b45707ba32fcba3aede4dfdfeb13da084bc818b653092f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "to_java",
+      "file": "step000.to_java.arrow",
+      "rows": 45
+    },
+    {
+      "step": 0,
+      "table": "to_python",
+      "file": "step000.to_python.arrow",
+      "rows": 17
+    }
+  ]
+}

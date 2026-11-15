@@ -17,8 +17,8 @@ The rules, in the order they are applied to one result of one step:
 2. Row count is exact (Must match, item 2).
 3. Rows are compared by position, never by row key (Must match, item 3; A4). A result that the
    scenario marks unordered is compared as a multiset (A3); in v42.9 no operation qualifies.
-4. Cells (Must match, items 4 and 5). Null equals only null. Booleans, integers, strings and
-   timestamps are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
+4. Cells (Must match, items 4 and 5). Null equals only null. Booleans, integers, `char`
+   (Arrow `uint16`, Wire representation), strings and timestamps are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
    so 0.0 differs from -0.0 (A2 is proposed, not in force).
 5. Computed floats (A1). A float or double cell produced by `sum`, `avg` or an accumulating
    `update_by` operator, or by a formula that calls a library function that is not correctly
@@ -171,6 +171,8 @@ def comparison_class(arrow_type: pa.DataType) -> str | None:
     if (
         pat.is_boolean(arrow_type)
         or pat.is_signed_integer(arrow_type)
+        # `char`, the one unsigned type on the wire (PARITY.md, Wire representation)
+        or arrow_type == pa.uint16()
         or pat.is_string(arrow_type)
         or pat.is_timestamp(arrow_type)
     ):
@@ -571,6 +573,37 @@ def compare(
             out.append(Mismatch(scenario, table, step, EXTRA_TABLE, expected="absent",
                                 actual="present"))
     return out
+
+
+# Operations whose result depends on when it was made or on the changes it has seen, not only
+# on what its sources hold now.
+HISTORY_DEPENDENT = frozenset({"snapshot", "snapshot_when", "time_table"})
+
+
+def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
+                       rules: Rules = DEFAULT_RULES) -> list[Mismatch]:
+    """Compares the results one server kept up to date through the steps (`kept`, the
+    expected side) with what it answers for the same operations applied again after each
+    step (`fresh`; see `runner.run_scenario`). Empty when the server agrees with itself.
+
+    Computed floats get the A1 tolerance: an incremental sum and a sum from scratch add in
+    different orders. Tables that depend on a `HISTORY_DEPENDENT` operation are left out.
+    """
+    depends: set[str] = set()
+    for op in scenario.operations:
+        if op["op"] in HISTORY_DEPENDENT or depends.intersection(
+                op[key] for key in ("source", "left", "right", "trigger") if key in op
+        ) or depends.intersection(op.get("sources", ())) or depends.intersection(
+                item["table"] for item in op.get("inputs", ())):
+            depends.add(op["name"])
+    both = ResultSet(kept.scenario)
+    again = ResultSet(fresh.scenario)
+    for step, table in fresh.keys():
+        if table not in depends:
+            both.put(step, table, kept.get(step, table))
+            again.put(step, table, fresh.get(step, table))
+    unordered = frozenset(r.table for r in scenario.results if not r.ordered)
+    return compare(both, again, unordered, computed_columns(scenario.operations), rules)
 
 
 # What Python says when a name is not there. The module or class must be one of the

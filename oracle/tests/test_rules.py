@@ -239,6 +239,25 @@ def test_integers_have_no_tolerance():
     assert (found[0].expected, found[0].actual) == (2**62, 2**62 + 1)
 
 
+def test_chars_are_exact_code_units_and_no_other_unsigned_type_is_known():
+    chars = lambda *units: table(C=pa.array(units, pa.uint16()))  # noqa: E731
+    assert diff(chars(97, None, 65534), chars(97, None, 65534)) == []
+    found = diff(chars(97, None, 65534), chars(98, 0, None))
+    assert kinds(found) == [rules.VALUE] * 3
+    assert [(m.row, m.expected, m.actual) for m in found] == [
+        (0, 97, 98), (1, None, 0), (2, 65534, None)]
+    # a char is not the short with the same bits
+    short = table(C=pa.array([97], pa.int16()))
+    assert kinds(diff(chars(97), short)) == [rules.COLUMN_TYPE]
+    arrays = table(C=pa.array([[97, None], None], pa.list_(pa.uint16())))
+    other = table(C=pa.array([[97, 0], None], pa.list_(pa.uint16())))
+    assert diff(arrays, arrays) == []
+    assert kinds(diff(arrays, other)) == [rules.VALUE]
+    for unsigned in (pa.uint8(), pa.uint32(), pa.uint64()):
+        unknown = table(X=pa.array([1], unsigned))
+        assert kinds(diff(unknown, unknown)) == [rules.UNSUPPORTED_TYPE]
+
+
 def test_timestamps_are_exact_to_the_nanosecond():
     a = table(T=pa.array([1700000000000000000], pa.timestamp("ns", tz="UTC")))
     b = table(T=pa.array([1700000000000000001], pa.timestamp("ns", tz="UTC")))
