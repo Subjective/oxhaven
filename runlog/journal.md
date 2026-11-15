@@ -747,3 +747,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   Contract change made on the architect's judgment, for the owner's review:
   `ColumnType::Table(TableClass)`. The run also started the object service of 7.10
   (`FetchObject`, `MessageStream`). Follow-ups 7.6.1 to 7.6.6 are in the task file.
+- 23:05 UTC: the owner chose to keep the storage symlink check and record the difference. The author of pull request 90 was resumed to add the PARITY.md entry.
