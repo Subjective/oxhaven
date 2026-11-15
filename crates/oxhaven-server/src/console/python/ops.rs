@@ -51,6 +51,7 @@ type Operation = (
 /// the calls that Java answers without one.
 const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
+    ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
     ("move_columns", move_columns),
     ("move_columns_down", move_columns_down),
@@ -211,6 +212,15 @@ fn merge_sorted(_: &OpContext, _: &Value, _: &[Arc<dyn Table>]) -> Created {
     Err(ExportError::Internal(
         "mergeSorted does not yet support refreshing tables!".to_string(),
     ))
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
+fn keyed_transpose(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+    let (rows, columns) = (strings(args, "row_by_cols")?, strings(args, "col_by_cols")?);
+    no_operator(
+        "io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose",
+        format!("keyedTranspose by {rows:?} and {columns:?}"),
+    )
 }
 
 /// The status of an `unported!` panic, which names what is missing.

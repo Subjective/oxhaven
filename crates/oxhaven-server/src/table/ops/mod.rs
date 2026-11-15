@@ -76,6 +76,13 @@ use oxhaven_proto::grpc::{TableReference, Ticket};
 use std::sync::Arc;
 use tonic::Status;
 
+/// What the Python package checks when it builds an argument of an operation
+/// (`console/python/checks.rs`).
+#[cfg(feature = "python")]
+pub(crate) use self::{
+    time_table::parse_duration_nanos, update_by::check_operation as check_update_by_operation,
+};
+
 /// What handler files import.
 pub mod prelude {
     pub use super::super::support::{

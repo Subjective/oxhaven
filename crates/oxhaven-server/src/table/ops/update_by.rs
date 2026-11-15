@@ -487,6 +487,16 @@ fn operation(operation: &ProtoOperation) -> Result<UpdateByOperation, Refusal> {
     Ok(UpdateByOperation { spec, columns })
 }
 
+/// Checks one operation as a request's operations are checked, for the Python package,
+/// which makes an operation before it has a request. The error is Java's message.
+#[cfg(feature = "python")]
+pub(crate) fn check_operation(operation: &ProtoOperation) -> Result<(), String> {
+    match self::operation(operation) {
+        Ok(_) => Ok(()),
+        Err(Refusal::Argument(message) | Refusal::Exception(message)) => Err(message),
+    }
+}
+
 /// The operations of a request, read and checked in Java's order. The group-by columns
 /// are used as they are given, without trimming.
 ///
