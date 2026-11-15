@@ -24,6 +24,9 @@ pub(super) enum Rolling {
     Max,
     Count,
     Product,
+    Std,
+    /// The average of the input weighted by a second column.
+    WAvg,
 }
 
 /// A window in rows: the `rev` rows up to and including the current row, and the `fwd` rows
@@ -238,7 +241,8 @@ impl Rolling {
     ///
     /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor
     /// #makeRollingSumOperator, #makeRollingAvgOperator, #makeRollingMinMaxOperator,
-    /// #makeRollingProductOperator and #makeRollingCountOperator
+    /// #makeRollingProductOperator, #makeRollingCountOperator, #makeRollingStdOperator and
+    /// #makeRollingWAvgOperator
     pub(super) fn output_type(self, input: &ColumnType) -> Option<ColumnType> {
         use ColumnType::*;
         match self {
@@ -247,7 +251,7 @@ impl Rolling {
                 Float | Double => Some(Double),
                 _ => None,
             },
-            Rolling::Avg => match input {
+            Rolling::Avg | Rolling::Std => match input {
                 Boolean | Byte | Char | Short | Int | Long | Float | Double => Some(Double),
                 _ => None,
             },
@@ -260,7 +264,7 @@ impl Rolling {
             // An Instant column reaches ObjectRollingCountOperator as a chunk of longs and
             // the operation fails with a ClassCastException.
             Rolling::Count => (*input != Instant).then_some(Long),
-            Rolling::Product => match input {
+            Rolling::Product | Rolling::WAvg => match input {
                 Byte | Char | Short | Int | Long | Float | Double => Some(Double),
                 _ => None,
             },
@@ -268,11 +272,13 @@ impl Rolling {
     }
 
     /// The result for each slide of the window over `influencers`, the input values of the
-    /// influencer rows in order.
+    /// influencer rows in order. `weights` holds the type and the values of the weight
+    /// column for the same rows, for the operator that has one.
     pub(super) fn evaluate(
         self,
         input: &ColumnType,
         influencers: &ArrayRef,
+        weights: Option<(&ColumnType, &ArrayRef)>,
         slides: &[Slide],
     ) -> Result<ArrayRef, TableFailure> {
         let output = self
@@ -302,7 +308,19 @@ impl Rolling {
             held = held - slide.pop + slide.push;
         }
         let window = Window::over(&values, slides);
+        let doubles = |values: &Values| match values {
+            Values::Int(v) => Ok(v.iter().map(|v| v.map(|v| v as f64)).collect()),
+            Values::Float(v) => Ok(v.clone()),
+            Values::Text(_) => Err(failure("no rolling operator for this column type")),
+        };
         Ok(match (self, &values) {
+            (Rolling::Std, _) => double_array(stds(&doubles(&values)?, window)),
+            (Rolling::WAvg, _) => {
+                let (weight_type, weights) =
+                    weights.ok_or_else(|| failure("a weighted average without weights"))?;
+                let weights = doubles(&Values::read(weights, weight_type)?)?;
+                double_array(weighted_averages(&doubles(&values)?, &weights, window))
+            }
             (Rolling::Count, _) => {
                 long_array(window.map(|w| Some((w.end - w.start - w.nulls) as i64)))
             }
@@ -521,12 +539,22 @@ impl<T: Copy> PairwiseRing<T> {
     const INITIAL_CAPACITY: usize = 64;
 
     fn new(identity: T, leaf: fn(T, T) -> T, tree: fn(T, T) -> T) -> Self {
+        Self::with_capacity(Self::INITIAL_CAPACITY, identity, leaf, tree)
+    }
+
+    /// `capacity` is a power of two.
+    fn with_capacity(
+        capacity: usize,
+        identity: T,
+        leaf: fn(T, T) -> T,
+        tree: fn(T, T) -> T,
+    ) -> Self {
         PairwiseRing {
-            slots: vec![identity; Self::INITIAL_CAPACITY],
+            slots: vec![identity; capacity],
             head: 0,
             tail: 0,
             identity,
-            tree_nodes: vec![identity; Self::INITIAL_CAPACITY],
+            tree_nodes: vec![identity; capacity],
             calc_head: 0,
             calc_tail: 0,
             leaf,
@@ -816,20 +844,134 @@ fn sum_doubles(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
     })
 }
 
+/// A sum that passes a null up the tree: the one function of the buffers of the rolling
+/// average and weighted average.
+fn add_slots(a: f64, b: f64) -> f64 {
+    if a == NULL_DOUBLE {
+        b
+    } else if b == NULL_DOUBLE {
+        a
+    } else {
+        a + b
+    }
+}
+
+/// Behavior: java.lang.Math#ulp(double) for a finite value
+fn ulp(value: f64) -> f64 {
+    let magnitude = value.abs();
+    if magnitude == f64::MAX {
+        // 2^971, the distance to the value below.
+        return f64::MAX - f64::from_bits(f64::MAX.to_bits() - 1);
+    }
+    f64::from_bits(magnitude.to_bits() + 1) - magnitude
+}
+
+/// Behavior: `BUFFER_INITIAL_CAPACITY` of the rolling standard deviation and weighted
+/// average operators
+const WIDE_INITIAL_CAPACITY: usize = 128;
+
+/// The sample standard deviation of each window, from a pairwise sum of the values and one
+/// of their squares. NaN for a window with one value, or with a sum that is not finite.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.rollingstd.DoubleRollingStdOperator.Context
+/// #push, #pop and #writeToOutputChunk, and the operators of the other primitive types, which
+/// widen each value to `double` before they square it
+fn stds(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
+    let ring = || PairwiseRing::with_capacity(WIDE_INITIAL_CAPACITY, 0.0, sum_slots, |a, b| a + b);
+    let (mut sums, mut squares) = (ring(), ring());
+    window
+        .map(|w| {
+            sums.pop(w.popped.len());
+            squares.pop(w.popped.len());
+            let pushed = &values[w.pushed.clone()];
+            sums.push(pushed.iter().map(|v| raw_double(*v)));
+            squares.push(pushed.iter().map(|v| v.map_or(NULL_DOUBLE, |v| v * v)));
+            let count = w.end - w.start - w.nulls;
+            if count == 0 {
+                return None;
+            }
+            if count == 1 {
+                return Some(f64::NAN);
+            }
+            // The buffers are evaluated only for a window with two values or more, which
+            // matters to what their trees hold afterwards.
+            let square_sum = squares.evaluate();
+            let sum = sums.evaluate();
+            if !square_sum.is_finite() || !sum.is_finite() {
+                return Some(f64::NAN);
+            }
+            let count = count as f64;
+            let eps = ulp(square_sum);
+            let squared_mean = sum * (sum / count);
+            let delta = square_sum - squared_mean;
+            // Zero when the difference is within the rounding of the sum of squares.
+            let variance = if (delta / eps).abs() > 1.0 {
+                delta / (count - 1.0)
+            } else {
+                0.0
+            };
+            Some(variance.sqrt())
+        })
+        .collect()
+}
+
+/// The sum of weight times value over the sum of the weights, for the rows of each window
+/// that have both. Neither sum is tested: weights that add up to zero give NaN or an
+/// infinity.
+///
+/// Behavior: io.deephaven.engine.table.impl.updateby.rollingwavg.BasePrimitiveRollingWAvgOperator.Context
+/// #pop and #writeToOutputChunk, with `push` of DoubleRollingWAvgOperator and the operators
+/// of the other primitive types; the weights are widened by
+/// io.deephaven.engine.table.impl.util.cast.ToDoubleCast
+fn weighted_averages(
+    values: &[Option<f64>],
+    weights: &[Option<f64>],
+    window: Window,
+) -> Vec<Option<f64>> {
+    let ring = || PairwiseRing::with_capacity(WIDE_INITIAL_CAPACITY, 0.0, add_slots, add_slots);
+    let (mut products, mut weight_sums) = (ring(), ring());
+    // Java counts a null when it pushes a row without a value or a weight, and takes one
+    // off when it pops a product that reads as null, which a product of two values can.
+    let mut reads_null = std::collections::VecDeque::new();
+    let mut nulls = 0i64;
+    window
+        .map(|w| {
+            for _ in w.popped.clone() {
+                if reads_null.pop_front() == Some(true) {
+                    nulls -= 1;
+                }
+            }
+            products.pop(w.popped.len());
+            weight_sums.pop(w.popped.len());
+            let pushed: Vec<(f64, f64)> = w
+                .pushed
+                .clone()
+                .map(|i| match (values[i], weights[i]) {
+                    (Some(value), Some(weight)) => (weight * value, weight),
+                    _ => {
+                        nulls += 1;
+                        (NULL_DOUBLE, NULL_DOUBLE)
+                    }
+                })
+                .collect();
+            reads_null.extend(pushed.iter().map(|(product, _)| *product == NULL_DOUBLE));
+            products.push(pushed.iter().map(|(product, _)| *product));
+            weight_sums.push(pushed.iter().map(|(_, weight)| *weight));
+            if (w.end - w.start) as i64 == nulls {
+                None
+            } else {
+                let product_sum = products.evaluate();
+                double_result(product_sum / weight_sums.evaluate())
+            }
+        })
+        .collect()
+}
+
 /// Behavior: io.deephaven.engine.table.impl.updateby.rollingavg.DoubleRollingAvgOperator.Context
 /// #writeToOutputChunk and the one function of its buffer, which unlike the sum's passes a
 /// null up the tree
 fn avg_doubles(values: &[Option<f64>], window: Window) -> Vec<Option<f64>> {
-    fn add(a: f64, b: f64) -> f64 {
-        if a == NULL_DOUBLE {
-            b
-        } else if b == NULL_DOUBLE {
-            a
-        } else {
-            a + b
-        }
-    }
-    PairwiseRing::new(0.0, add, add).replay(values, window, raw_double, |w, sum| {
+    PairwiseRing::new(0.0, add_slots, add_slots).replay(values, window, raw_double, |w, sum| {
         let count = w.end - w.start - w.nulls;
         (count != 0)
             .then(|| sum() / count as f64)
@@ -945,4 +1087,22 @@ fn float_extremes(
             current
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ulp;
+
+    /// Behavior: java.lang.Math#ulp(double): the distance to the next value larger in
+    /// magnitude, `Double.MIN_VALUE` for a zero, and 2^971 for `Double.MAX_VALUE`.
+    #[test]
+    fn ulp_is_the_distance_to_the_next_larger_magnitude() {
+        assert_eq!(ulp(1.0), f64::EPSILON);
+        assert_eq!(ulp(1.5), f64::EPSILON);
+        assert_eq!(ulp(-4.0), 4.0 * f64::EPSILON);
+        assert_eq!(ulp(0.0), f64::from_bits(1));
+        assert_eq!(ulp(f64::MIN_POSITIVE), f64::from_bits(1));
+        assert_eq!(ulp(f64::MAX), 2f64.powi(971));
+        assert_eq!(ulp(-f64::MAX), 2f64.powi(971));
+    }
 }

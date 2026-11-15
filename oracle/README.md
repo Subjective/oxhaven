@@ -144,6 +144,8 @@ oracle/bin/ci-replay.sh
 It takes about 20 seconds after the build (83 scenarios and 27 smoke checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
+Fifteen seconds before that limit the harness writes the stack of every thread to stderr, so a
+run that stalls shows what it was waiting for.
 The output directory holds `server.log` and `report.json`: every scenario and check with its
 state, its difference kinds, each mismatch in full, and its duration. CI uploads the directory
 as the artifact `oracle-replay-report` when the job fails. Against a server that is already

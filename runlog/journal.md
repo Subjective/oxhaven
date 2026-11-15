@@ -388,3 +388,23 @@ PR 55 opened (HeadBy and TailBy handlers, cross join zero-key fix). Its agent hi
 gate hang once and captured a stack: the hang was in the harness client, with
 pydeephaven's `Table.__del__` making an RPC from the gRPC channel thread. Passed to the
 stall investigation as a lead to verify; if it holds, the fix belongs in the harness.
+
+## 2026-11-15 00:50 UTC
+
+Stall explained (PR 56). It is a deadlock in the Python client, not the server:
+pydeephaven's `Table.__del__` makes a blocking RPC, failed calls leave tables in
+reference cycles, and the collector can run that finalizer inside gRPC's channel code.
+It reproduces against Java too. The harness now disables automatic collection and
+collects on its own thread between checks; the gate also dumps all thread stacks before
+its time limit. Before: 21 of 21 loop processes hung. After: 0 hangs in 490 runs.
+The defect is upstream in pydeephaven 42.9; worth reporting to Deephaven (owner's call).
+
+## 2026-11-15 01:15 UTC
+
+PRs 55 (HeadBy/TailBy handlers) and 56 (harness stall fix) merged; main is at 70 of 83.
+PR 57 opened with three of the seven remaining update_by operators; the agent ran out of
+context, so the rest (rolling group, count-where, rolling formula, validateFormulas) is a
+second task. Sizing note: numeric operators with recorded fixtures cost about 100k tokens
+each. Owner question added: EmStd after an update is seeded with the true variance here,
+Java uses the square of its previous result; results differ in the last bits and are
+compared under PARITY A1. Launched: multi_join (4.12) and three small parity fixes (4.13).
