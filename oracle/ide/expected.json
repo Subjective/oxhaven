@@ -2,79 +2,27 @@
   "comment": "What the IDE acceptance test expects. `displayed` is the text the IDE grid paints with its default formats, observed on the Java reference; `rows` is what the JS API returns. app.d/ide_tables.py builds these tables on Java.",
   "static": {
     "name": "ide_static",
-    "columns": [
-      "Id",
-      "Sym",
-      "Price"
-    ],
-    "types": [
-      "int",
-      "java.lang.String",
-      "double"
-    ],
+    "columns": ["Id", "Sym", "Price"],
+    "types": ["int", "java.lang.String", "double"],
     "rows": [
-      [
-        1,
-        "AAPL",
-        101.5
-      ],
-      [
-        2,
-        "MSFT",
-        202.25
-      ],
-      [
-        3,
-        "GOOG",
-        303.125
-      ],
-      [
-        4,
-        "AMZN",
-        404.0
-      ],
-      [
-        5,
-        "OXHV",
-        505.75
-      ]
+      [1, "AAPL", 101.5],
+      [2, "MSFT", 202.25],
+      [3, "GOOG", 303.125],
+      [4, "AMZN", 404.0],
+      [5, "OXHV", 505.75]
     ],
     "displayed": [
-      [
-        "1",
-        "AAPL",
-        "101.5000"
-      ],
-      [
-        "2",
-        "MSFT",
-        "202.2500"
-      ],
-      [
-        "3",
-        "GOOG",
-        "303.1250"
-      ],
-      [
-        "4",
-        "AMZN",
-        "404.0000"
-      ],
-      [
-        "5",
-        "OXHV",
-        "505.7500"
-      ]
+      ["1", "AAPL", "101.5000"],
+      ["2", "MSFT", "202.2500"],
+      ["3", "GOOG", "303.1250"],
+      ["4", "AMZN", "404.0000"],
+      ["5", "OXHV", "505.7500"]
     ]
   },
   "ticking": {
     "comment": "The last `rows` ticks of a counter: N is consecutive and grows, Sq is N squared. Timestamp is not compared (it is painted in the browser's time zone).",
     "name": "ide_ticking",
-    "columns": [
-      "Timestamp",
-      "N",
-      "Sq"
-    ],
+    "columns": ["Timestamp", "N", "Sq"],
     "counter": "N",
     "square": "Sq",
     "rows": 3
@@ -92,78 +40,70 @@
     "staticName": "ide_console_static",
     "tickingName": "ide_console_ticking"
   },
+  "errors": {
+    "comment": "Route errors: `fail` raises an error with the text `{marker}` after an assignment, and the console then shows `shows`; `create` makes the table `gone` out of what `fail` assigned, and `remove` removes the variable while its panel is open.",
+    "python": {
+      "fail": "ide_errors_before = 41; raise ValueError('{marker}')",
+      "shows": "ValueError: {marker}",
+      "create": "from deephaven import new_table; from deephaven.column import int_col; ide_errors_gone = new_table([int_col('Gone', [ide_errors_before, ide_errors_before + 1])])",
+      "remove": "del ide_errors_gone"
+    },
+    "groovy": {
+      "fail": "ide_errors_before = 41; throw new IllegalStateException('{marker}')",
+      "shows": "IllegalStateException: {marker}",
+      "create": "ide_errors_gone = newTable(intCol('Gone', ide_errors_before, ide_errors_before + 1))",
+      "remove": "binding.variables.remove('ide_errors_gone')"
+    },
+    "gone": { "name": "ide_errors_gone", "columns": ["Gone"], "displayed": [["41"], ["42"]] }
+  },
+  "grid": {
+    "comment": "Route grid: a table of 300 rows, K = 0..299 and G = K % 7, made in the console; more rows than a viewport holds. `top` and `bottom` are its first and last painted rows; `sort.top` after sorting K descending; `filter.top` after also filtering G to the value of the first row.",
+    "python": { "create": "from deephaven import empty_table; ide_grid = empty_table(300).update(['K = (int)ii', 'G = (int)(ii % 7)'])" },
+    "groovy": { "create": "ide_grid = emptyTable(300).update('K = (int)ii', 'G = (int)(ii % 7)')" },
+    "name": "ide_grid",
+    "columns": ["K", "G"],
+    "top": [["0", "0"], ["1", "1"], ["2", "2"]],
+    "bottom": ["299", "5"],
+    "sort": { "column": "K", "top": [["299", "5"], ["298", "4"], ["297", "3"]] },
+    "filter": { "column": "G", "value": "5", "top": [["299", "5"], ["292", "5"], ["285", "5"]] }
+  },
+  "log": {
+    "comment": "Route log: a command that prints `{marker}`, which the test replaces with a text of its own.",
+    "python": { "print": "print('{marker}')" },
+    "groovy": { "print": "println('{marker}')" }
+  },
+  "notebook": {
+    "comment": "Route notebook: the lines typed into a new notebook, per console type. The last line runs by itself (Run Selected) and makes the table `selected`; the whole notebook (Run) also makes the static table under another name. `comment` starts a comment of the language.",
+    "python": {
+      "extension": "py",
+      "lines": [
+        "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col",
+        "ide_notebook_static = new_table([int_col('Id', [1, 2, 3, 4, 5]), string_col('Sym', ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV']), double_col('Price', [101.5, 202.25, 303.125, 404.0, 505.75])])",
+        "from deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col('Sel', [7, 8])])"
+      ],
+      "comment": "#",
+      "staticName": "ide_notebook_static",
+      "selected": { "name": "ide_notebook_selected", "columns": ["Sel"], "displayed": [["7"], ["8"]] }
+    },
+    "groovy": {
+      "extension": "groovy",
+      "lines": [
+        "ide_notebook_static = newTable(intCol('Id', 1, 2, 3, 4, 5), stringCol('Sym', 'AAPL', 'MSFT', 'GOOG', 'AMZN', 'OXHV'), doubleCol('Price', 101.5d, 202.25d, 303.125d, 404.0d, 505.75d))",
+        "ide_notebook_selected = newTable(intCol('Sel', 7, 8))"
+      ],
+      "comment": "//",
+      "staticName": "ide_notebook_static",
+      "selected": { "name": "ide_notebook_selected", "columns": ["Sel"], "displayed": [["7"], ["8"]] }
+    }
+  },
   "rollup": {
     "comment": "Route rollup: the command typed into the console makes a rollup of six rows by Sym and Ex. `collapsed` is what the grid paints at first (the grand total and the first level), `expanded` what it paints after a click on the row of `expand`. Observed on the Java reference.",
     "commands": {
       "python": "from deephaven import new_table, agg; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col('Sym', ['AAPL', 'AAPL', 'MSFT', 'AAPL', 'MSFT', 'GOOG']), string_col('Ex', ['N', 'Q', 'N', 'N', 'Q', 'Q']), int_col('Qty', [10, 20, 30, 40, 50, 60])]).rollup(aggs=[agg.sum_('Qty'), agg.count_('Rows')], by=['Sym', 'Ex'])"
     },
-    "columns": [
-      "Group",
-      "Sym",
-      "Ex",
-      "Qty",
-      "Rows"
-    ],
+    "columns": ["Group", "Sym", "Ex", "Qty", "Rows"],
     "expand": "AAPL",
-    "collapsed": [
-      [
-        "210",
-        "6"
-      ],
-      [
-        "AAPL",
-        "AAPL",
-        "70",
-        "3"
-      ],
-      [
-        "MSFT",
-        "MSFT",
-        "80",
-        "2"
-      ],
-      [
-        "GOOG",
-        "GOOG",
-        "60",
-        "1"
-      ]
-    ],
-    "expanded": [
-      [
-        "210",
-        "6"
-      ],
-      [
-        "AAPL",
-        "AAPL",
-        "70",
-        "3"
-      ],
-      [
-        "AAPL",
-        "N",
-        "50",
-        "2"
-      ],
-      [
-        "AAPL",
-        "Q",
-        "20",
-        "1"
-      ],
-      [
-        "MSFT",
-        "MSFT",
-        "80",
-        "2"
-      ],
-      [
-        "GOOG",
-        "GOOG",
-        "60",
-        "1"
-      ]
-    ]
+    "collapsed": [["210", "6"], ["AAPL", "AAPL", "70", "3"], ["MSFT", "MSFT", "80", "2"], ["GOOG", "GOOG", "60", "1"]],
+    "expanded": [["210", "6"], ["AAPL", "AAPL", "70", "3"], ["AAPL", "N", "50", "2"], ["AAPL", "Q", "20", "1"], ["MSFT", "MSFT", "80", "2"], ["GOOG", "GOOG", "60", "1"]]
   }
 }

@@ -191,7 +191,7 @@ fn failure_text(text: String) -> PyErr {
 /// with `PrimitiveArrayConversionUtility#translateArrayBooleanToByte` and
 /// `#translateArrayInstantToLong`, as `deephaven.jcompat._j_array_to_numpy_array` reads
 /// the arrays
-fn numpy_values<'py>(
+pub(super) fn numpy_values<'py>(
     py: Python<'py>,
     column_type: &ColumnType,
     values: &ArrayRef,

@@ -7,6 +7,7 @@ use std::time::Duration;
 
 use oxhaven_server::console::logs::{self, LogBuffer};
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
+use oxhaven_server::storage::StorageRoot;
 use oxhaven_server::update_graph::DEFAULT_TARGET_CYCLE_DURATION;
 use oxhaven_server::web::WebRoot;
 use oxhaven_server::{app, serve, ServerConfig, ServerState};
@@ -36,6 +37,8 @@ Usage: oxhaven-server [options]
                             the environment's own, separated as in PATH; may be repeated
   --web-root <directory>    the web IDE's files, served at /ide/, /iframe/ and /jsapi/;
                             scripts/extract-web-root.sh makes the directory (default: none)
+  --storage-root <directory>  where the web IDE's layouts and notebooks are kept; created
+                            if missing (default: none, and the IDE can save nothing)
 ";
 
 struct Args {
@@ -50,6 +53,7 @@ struct Args {
     python_home: Option<PathBuf>,
     python_path: Vec<PathBuf>,
     web_root: Option<PathBuf>,
+    storage_root: Option<PathBuf>,
 }
 
 fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
@@ -65,6 +69,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         python_home: None,
         python_path: Vec::new(),
         web_root: None,
+        storage_root: None,
     };
     while let Some(flag) = args.next() {
         let mut value = || {
@@ -95,6 +100,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                 parsed.python_path.extend(std::env::split_paths(&paths));
             }
             "--web-root" => parsed.web_root = Some(PathBuf::from(value()?)),
+            "--storage-root" => parsed.storage_root = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
         }
@@ -182,6 +188,11 @@ async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
         target_cycle_duration: Some(args.cycle),
     })?;
     state.logs = logs;
+    if let Some(directory) = &args.storage_root {
+        let storage = StorageRoot::open(directory)?;
+        tracing::info!("Storage in {}", storage.path().display());
+        state.storage = Some(Arc::new(storage));
+    }
     if args.demo_tables {
         let application = app::demo::install(&state.applications, &state.op_context())?;
         tracing::info!(

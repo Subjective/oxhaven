@@ -16,6 +16,9 @@
 //! released while an engine operation runs. A command that writes to an input table and
 //! waits for the write gives the graph's lock up for that wait ([`input`]), as Java's does.
 //!
+//! A table listener written in Python runs in the update cycle, under the same order
+//! ([`listener`], which also has the graph lock as scripts hold it).
+//!
 //! Commands run on one thread, the interpreter's main thread, where a command whose
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
 //! interpreter does so from the thread it is called on; completion (`completer`) does so
@@ -32,6 +35,7 @@ mod data;
 pub mod env;
 mod input;
 pub mod interrupt;
+mod listener;
 mod ops;
 mod parquet;
 mod partitioned;
@@ -129,6 +133,13 @@ impl TableHandle {
                 (column.name.clone(), type_name)
             })
             .collect()
+    }
+
+    /// How many holders the engine table has, this handle among them: a client's export,
+    /// a table derived from it and a listener of it are each one. A table with one holder
+    /// ends when this handle does.
+    fn holders(&self) -> usize {
+        Arc::strong_count(&self.table)
     }
 
     /// Whether `other` refers to the same table, not an equal one.
@@ -432,6 +443,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         ops::register(&native)?;
         data::register(&native)?;
         input::register(&native)?;
+        listener::register(&native)?;
         partitioned::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
@@ -614,12 +626,14 @@ impl PythonSession {
         let mut snapshot = self.snapshot();
         locked(self.runtime.context.graph.as_ref(), || {
             yielding_to_cycles(|| {
-                Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
-                    |error| Changes {
-                        error: Some(format!("the Python session failed: {error}")),
-                        ..Default::default()
-                    },
-                )
+                listener::running_a_command(|| {
+                    Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
+                        |error| Changes {
+                            error: Some(format!("the Python session failed: {error}")),
+                            ..Default::default()
+                        },
+                    )
+                })
             })
         })
     }
@@ -812,6 +826,7 @@ pub fn start(state: &mut ServerState) -> Result<(), String> {
         compiler: udf::compiler(state.scope.clone()),
         ..state.op_context()
     };
+    listener::install(state.graph.clone());
     let session = PythonSession::new(context, state.logs.clone())?;
     let console = Console::new(Arc::new(session), state.applications.clone());
     state.scope.hold(console.clone());

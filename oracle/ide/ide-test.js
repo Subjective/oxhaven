@@ -5,6 +5,7 @@
 //   node oracle/ide/ide-test.js --url <server> [--psk <key>] [--routes panels,iframe,jsapi]
 //                               [--expected <file>] [--out <dir>] [--timeout <ms>]
 //                               [--deny Service/Method,...] [--empty Service/Method,...]
+//                               [--restart <command>]
 //
 // <server> is http://host:port or https://host:port (with --psk, or without for anonymous
 // authentication), or the oracle's form dh+psk://<key>@host:port and dh://host:port (plain http).
@@ -15,6 +16,9 @@
 //   jsapi    /jsapi/dh-core.js in an empty page: log in, fetch the tables, read a viewport
 //   console  /ide/?psk=<key>, type the commands of expected.json into the console
 //   rollup   /ide/?psk=<key>, make a rollup in the console, expand and collapse a node
+//   notebook, log, grid, errors, reconnect
+//            what a user does around the console (lib/flows.js); reconnect restarts the
+//            server with the shell command of --restart
 // The default is panels,iframe,jsapi: what a server without a console can do.
 //
 // --deny and --empty are for finding out what the IDE needs, not for the gate: the named
@@ -32,13 +36,14 @@ const faults = require('./lib/faults');
 const { routeRollup } = require('./lib/rollup');
 
 const PSK_HANDLER = 'io.deephaven.authentication.psk.PskAuthenticationHandler';
-const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup'];
+const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup', 'notebook', 'log', 'grid', 'errors', 'reconnect'];
 
 function usage(message) {
   if (message) console.error(`error: ${message}`);
   console.error(
     'usage: node oracle/ide/ide-test.js --url <http(s)://host:port | dh+psk://key@host:port | dh://host:port>\n' +
-      '         [--psk <key>] [--routes panels,iframe,jsapi,console,rollup] [--expected <file>] [--out <dir>] [--timeout <ms>]\n' +
+      '         [--psk <key>] [--routes ' + ALL_ROUTES.join(',') + ']\n' +
+      '         [--expected <file>] [--out <dir>] [--timeout <ms>] [--restart <command>]\n' +
       '         [--deny Service/Method,...] [--empty Service/Method,...]',
   );
   process.exit(2);
@@ -65,6 +70,7 @@ function parseArgs(argv) {
     else if (a === '--expected') opts.expected = value();
     else if (a === '--out') opts.out = value();
     else if (a === '--timeout') opts.timeout = Number(value());
+    else if (a === '--restart') opts.restart = value();
     else if (a === '--deny' || a === '--empty') {
       try {
         opts[a.slice(2)] = faults.parseRules(value());
@@ -129,7 +135,10 @@ function gridHook() {
   window.__ideTestGrids = () =>
     records
       .filter((r) => r.canvas.isConnected)
-      .map((r) => ({ frames: r.frames, texts: r.frame.filter((t) => t.text !== '') }));
+      .map((r) => {
+        const box = r.canvas.getBoundingClientRect();
+        return { frames: r.frames, texts: r.frame.filter((t) => t.text !== ''), box: { x: box.x, y: box.y } };
+      });
 }
 
 // The painted texts of one canvas as rows of strings: one row per distinct y, top to
@@ -147,6 +156,31 @@ function toRows(texts) {
 }
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// As toRows, keeping where each text was painted: rows of { text, x, y }, in the canvas.
+function toCells(texts) {
+  const byY = new Map();
+  for (const t of texts) {
+    const y = Math.round(t.y);
+    if (!byY.has(y)) byY.set(y, []);
+    byY.get(y).push(t);
+  }
+  return [...byY.keys()].sort((a, b) => a - b).map((y) => byY.get(y).sort((a, b) => a.x - b.x));
+}
+
+// Where the grid whose header row is `columns` painted its texts, in page coordinates:
+// rows of { text, x, y }, the header first; undefined if no canvas shows it. A click at
+// such a point lands in the cell (the grid paints a text inside its cell).
+async function locateGrid(page, columns) {
+  const grids = await page.evaluate(() => window.__ideTestGrids());
+  for (const g of grids) {
+    const rows = toCells(g.texts);
+    if (rows.length && same(rows[0].map((t) => t.text), columns)) {
+      return rows.map((row) => row.map((t) => ({ text: t.text, x: g.box.x + t.x, y: g.box.y + t.y })));
+    }
+  }
+  return undefined;
+}
 
 // The grid whose header row is `columns`: its data rows, or undefined if no canvas shows it.
 async function readGrid(page, columns) {
@@ -455,13 +489,16 @@ async function routeConsole(ctx) {
   return `${language} console: grid cells of ${expected.console.staticName} match; ${spec.name} ${spec.counter} went ${moved.from} -> ${moved.to}`;
 }
 
-const ROUTES = {
-  panels: routePanels,
-  iframe: routeIframe,
-  jsapi: routeJsapi,
-  console: routeConsole,
-  rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure }),
-};
+const ROUTES = Object.assign(
+  {
+    panels: routePanels,
+    iframe: routeIframe,
+    jsapi: routeJsapi,
+    console: routeConsole,
+    rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure }),
+  },
+  require('./lib/flows')({ Failure, poll, readGrid, locateGrid, expectStaticGrid, waitForIde, same }),
+);
 
 async function runRoute(browser, name, opts, expected) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, ignoreHTTPSErrors: true });

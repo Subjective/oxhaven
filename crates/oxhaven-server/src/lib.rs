@@ -95,6 +95,9 @@ pub struct ServerState {
     /// The static files of the web IDE, if the server has them. `None` after
     /// [`ServerState::new`]; set it before [`serve`].
     pub web_root: Option<Arc<web::WebRoot>>,
+    /// The directory `StorageService` keeps the web IDE's layouts and notebooks in, if the
+    /// server has one. `None` after [`ServerState::new`]; set it before [`serve`].
+    pub storage: Option<Arc<storage::StorageRoot>>,
 }
 
 impl ServerState {
@@ -128,6 +131,7 @@ impl ServerState {
             console: None,
             logs: Arc::new(console::logs::LogBuffer::new()),
             web_root: None,
+            storage: None,
         })
     }
 
@@ -177,7 +181,10 @@ impl ServerState {
             self.console.clone(),
             self.logs.clone(),
         )))
-        .add_service(StorageServiceServer::new(storage::StorageGrpc))
+        .add_service(
+            StorageServiceServer::new(storage::StorageGrpc::new(self.storage.clone()))
+                .max_decoding_message_size(MAX_INBOUND_MESSAGE_SIZE),
+        )
         .add_service(PartitionedTableServiceServer::new(
             partitioned::PartitionedTableGrpc::new(self.tickets.clone()),
         ))
