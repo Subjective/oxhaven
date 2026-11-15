@@ -491,7 +491,7 @@ async fn a_notebook_larger_than_the_default_message_limit_is_saved() {
             SaveFileRequest {
                 allow_overwrite: false,
                 path: "/notebooks/large.py".to_string(),
-                contents: contents.clone().into(),
+                contents: contents.clone(),
             },
             &bearer,
         ))

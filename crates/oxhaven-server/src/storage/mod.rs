@@ -222,7 +222,7 @@ impl StorageService for StorageGrpc {
         // a client that has the contents of this etag is not sent them again
         let unchanged = request.etag.as_deref() == Some(etag.as_str());
         Ok(Response::new(FetchFileResponse {
-            contents: if unchanged { Vec::new() } else { contents }.into(),
+            contents: if unchanged { Vec::new() } else { contents },
             etag: Some(etag),
         }))
     }
