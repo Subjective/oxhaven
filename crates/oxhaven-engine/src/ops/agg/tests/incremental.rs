@@ -551,6 +551,49 @@ fn count_where_follows_its_rows_and_fails_with_its_filter() {
         .push(TableChange::new().add([7], vec![strs(&["a"]), flag(None)]));
     fixture.graph.run_cycle();
     assert!(fixture.result.is_failed());
+
+    // Also in a row that is modified.
+    let aggregations = vec![Aggregation::count_where("N", ["B"])];
+    let fixture = Fixture::new(&columns, &[0, 1, 2], aggregations, &["K"]);
+    fixture
+        .source
+        .push(TableChange::new().modify([1], [(1, flag(None))]));
+    fixture.graph.run_cycle();
+    assert!(fixture.result.is_failed());
+}
+
+#[test]
+fn a_unique_value_equal_to_the_sentinel_is_no_change_from_several_values() {
+    // Behavior: the `*ChunkedUniqueOperator#updateResult` of
+    // io.deephaven.engine.table.impl.by.ssmcountdistinct.unique, which reports the group
+    // when the value it shows is another one.
+    let spec = AggSpec::Unique {
+        include_nulls: false,
+        non_unique: Sentinel::Int(3),
+    };
+    let fixture = Fixture::new(
+        &kid(&[("a", 3, 0.5), ("a", 5, 1.5), ("b", 1, 2.5)]),
+        &[0, 1, 2],
+        vec![agg(spec, &["U = I"])],
+        &["K"],
+    );
+    assert_eq!(fixture.rows(), ["a|3", "b|1"]);
+    // Only the value that is the sentinel is left.
+    assert_eq!(fixture.step(TableChange::new().remove([1])), "none");
+    assert_eq!(fixture.rows(), ["a|3", "b|1"]);
+    // Several values again.
+    let change = TableChange::new().add([4, 5], kid_values(&[("a", 7, 0.0), ("b", 2, 0.0)]));
+    assert_eq!(
+        fixture.step(change),
+        "added [] removed [] modified [1] columns [1]"
+    );
+    assert_eq!(fixture.rows(), ["a|3", "b|3"]);
+    // One value that is not the sentinel.
+    assert_eq!(
+        fixture.step(TableChange::new().remove([0])),
+        "added [] removed [] modified [0] columns [1]"
+    );
+    assert_eq!(fixture.rows(), ["a|7", "b|3"]);
 }
 
 #[test]

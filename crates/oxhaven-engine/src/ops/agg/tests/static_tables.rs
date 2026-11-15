@@ -591,6 +591,8 @@ fn a_non_unique_sentinel_shows_for_several_values_and_must_fit_the_column() {
     );
     for refused in [
         Sentinel::Long(i64::from(i32::MAX) + 1),
+        // The null value of the column's type, as a value of another type.
+        Sentinel::Long(i64::from(i32::MIN)),
         Sentinel::Double(1.5),
         Sentinel::Double(f64::NAN),
         Sentinel::String("many".to_string()),
