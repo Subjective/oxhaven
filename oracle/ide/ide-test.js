@@ -128,7 +128,10 @@ function gridHook() {
   window.__ideTestGrids = () =>
     records
       .filter((r) => r.canvas.isConnected)
-      .map((r) => ({ frames: r.frames, texts: r.frame.filter((t) => t.text !== '') }));
+      .map((r) => {
+        const box = r.canvas.getBoundingClientRect();
+        return { frames: r.frames, texts: r.frame.filter((t) => t.text !== ''), box: { x: box.x, y: box.y } };
+      });
 }
 
 // The painted texts of one canvas as rows of strings: one row per distinct y, top to
@@ -146,6 +149,31 @@ function toRows(texts) {
 }
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// As toRows, keeping where each text was painted: rows of { text, x, y }, in the canvas.
+function toCells(texts) {
+  const byY = new Map();
+  for (const t of texts) {
+    const y = Math.round(t.y);
+    if (!byY.has(y)) byY.set(y, []);
+    byY.get(y).push(t);
+  }
+  return [...byY.keys()].sort((a, b) => a - b).map((y) => byY.get(y).sort((a, b) => a.x - b.x));
+}
+
+// Where the grid whose header row is `columns` painted its texts, in page coordinates:
+// rows of { text, x, y }, the header first; undefined if no canvas shows it. A click at
+// such a point lands in the cell (the grid paints a text inside its cell).
+async function locateGrid(page, columns) {
+  const grids = await page.evaluate(() => window.__ideTestGrids());
+  for (const g of grids) {
+    const rows = toCells(g.texts);
+    if (rows.length && same(rows[0].map((t) => t.text), columns)) {
+      return rows.map((row) => row.map((t) => ({ text: t.text, x: g.box.x + t.x, y: g.box.y + t.y })));
+    }
+  }
+  return undefined;
+}
 
 // The grid whose header row is `columns`: its data rows, or undefined if no canvas shows it.
 async function readGrid(page, columns) {
@@ -456,7 +484,7 @@ async function routeConsole(ctx) {
 
 const ROUTES = Object.assign(
   { panels: routePanels, iframe: routeIframe, jsapi: routeJsapi, console: routeConsole },
-  require('./lib/flows')({ Failure, poll, readGrid, expectStaticGrid, waitForIde, same }),
+  require('./lib/flows')({ Failure, poll, readGrid, locateGrid, expectStaticGrid, waitForIde, same }),
 );
 
 async function runRoute(browser, name, opts, expected) {

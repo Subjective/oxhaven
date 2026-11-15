@@ -40,6 +40,22 @@
     "staticName": "ide_console_static",
     "tickingName": "ide_console_ticking"
   },
+  "grid": {
+    "comment": "Route grid: a table of 300 rows, K = 0..299 and G = K % 7, made in the console; more rows than a viewport holds. `top` and `bottom` are its first and last painted rows; `sort.top` after sorting K descending; `filter.top` after also filtering G to the value of the first row.",
+    "python": { "create": "from deephaven import empty_table; ide_grid = empty_table(300).update(['K = (int)ii', 'G = (int)(ii % 7)'])" },
+    "groovy": { "create": "ide_grid = emptyTable(300).update('K = (int)ii', 'G = (int)(ii % 7)')" },
+    "name": "ide_grid",
+    "columns": ["K", "G"],
+    "top": [["0", "0"], ["1", "1"], ["2", "2"]],
+    "bottom": ["299", "5"],
+    "sort": { "column": "K", "top": [["299", "5"], ["298", "4"], ["297", "3"]] },
+    "filter": { "column": "G", "value": "5", "top": [["299", "5"], ["292", "5"], ["285", "5"]] }
+  },
+  "log": {
+    "comment": "Route log: a command that prints `{marker}`, which the test replaces with a text of its own.",
+    "python": { "print": "print('{marker}')" },
+    "groovy": { "print": "println('{marker}')" }
+  },
   "notebook": {
     "comment": "Route notebook: the lines typed into a new notebook, per console type. The last line runs by itself (Run Selected) and makes the table `selected`; the whole notebook (Run) also makes the static table under another name. `comment` starts a comment of the language.",
     "python": {
