@@ -216,6 +216,12 @@ fn merge_sorted(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Crea
     Ok(merge::merge_sorted(sources, text(args, "order_by")?)?)
 }
 
+/// The refusal of an operation whose engine operator is not written: `UNIMPLEMENTED`
+/// naming the Java method and the call.
+fn no_operator(java: &str, call: String) -> Created {
+    Err(not_ported(java, call).into())
+}
+
 /// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
 fn keyed_transpose(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
     let (rows, columns) = (strings(args, "row_by_cols")?, strings(args, "col_by_cols")?);
