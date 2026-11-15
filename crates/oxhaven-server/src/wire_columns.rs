@@ -246,7 +246,10 @@ mod tests {
         assert_eq!(binary.value(1), [0u8; 0].as_slice());
     }
 
-    fn strings_of(cells: &ArrayRef) -> Vec<Option<Vec<Option<Vec<Option<String>>>>>> {
+    /// A cell of lists of texts.
+    type Texts = Option<Vec<Option<Vec<Option<String>>>>>;
+
+    fn strings_of(cells: &ArrayRef) -> Vec<Texts> {
         cells
             .as_list::<i32>()
             .iter()
