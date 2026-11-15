@@ -1,8 +1,10 @@
 //! `update_by` against the results recorded from the Java reference server in
 //! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`),
-//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`)
-//!
-//! and `fixtures/java_update_by_group.json` (`fixtures/record_java_update_by_group.py`).
+//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`),
+//! `fixtures/java_update_by_group.json` (`fixtures/record_java_update_by_group.py`),
+//! `fixtures/java_update_by_count_where.json`
+//! (`fixtures/record_java_update_by_count_where.py`) and
+//! `fixtures/java_update_by_formula.json` (`fixtures/record_java_update_by_formula.py`).
 //!
 //! Values are compared exactly, floating point cells bit for bit (any NaN equals any
 //! NaN). The tolerance of PARITY.md's allowed difference A1 is not used: the operators
@@ -11,7 +13,7 @@
 
 use super::values::Values;
 use super::{
-    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::graph::SteppedUpdateGraph;
@@ -42,6 +44,10 @@ const GROUP_LONG: usize = 28;
 const GROUP_TIMED: usize = 1;
 const GROUP_STAMPED: usize = 201;
 const GROUP_BURST: usize = 156;
+/// The count-where operators.
+const RECORDED_COUNT_WHERE: &str = include_str!("fixtures/java_update_by_count_where.json");
+/// The rolling formula.
+const RECORDED_FORMULA: &str = include_str!("fixtures/java_update_by_formula.json");
 
 fn column_type(name: &str) -> ColumnType {
     match name {
@@ -63,6 +69,9 @@ fn column_type(name: &str) -> ColumnType {
 /// `component` the element type of a vector.
 fn java_type(column: &Value) -> ColumnType {
     let java = column["java"].as_str().unwrap();
+    if let Some(element) = java.strip_suffix("[]") {
+        return ColumnType::array(column_type(element));
+    }
     let Some(vector) = java.strip_prefix("io.deephaven.vector.") else {
         return column_type(java);
     };
@@ -201,6 +210,26 @@ fn operation(op: &Value) -> UpdateByOperation {
         "ems" => UpdateBySpec::Ems(em(op)),
         "emmin" => UpdateBySpec::EmMin(em(op)),
         "emmax" => UpdateBySpec::EmMax(em(op)),
+        "cum_count_where" => UpdateBySpec::CumCountWhere {
+            result_column: op["result"].as_str().unwrap().into(),
+            filters: strings(&op["filters"])
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        "rolling_count_where" => UpdateBySpec::RollingCountWhere {
+            window: window(op),
+            result_column: op["result"].as_str().unwrap().into(),
+            filters: strings(&op["filters"])
+                .into_iter()
+                .map(String::from)
+                .collect(),
+        },
+        "rolling_formula" => UpdateBySpec::RollingFormula {
+            window: window(op),
+            formula: op["formula"].as_str().unwrap().into(),
+            param_token: op["param"].as_str().map(String::from),
+        },
         other => panic!("no operation {other}"),
     };
     let columns: Vec<&str> = op["columns"]
@@ -224,7 +253,7 @@ fn strings(value: &Value) -> Vec<&str> {
 fn run(source: &Arc<dyn Table>, ops: &Value, by: &Value) -> Result<Arc<dyn Table>, UpdateByError> {
     let operations: Vec<UpdateByOperation> =
         ops.as_array().unwrap().iter().map(operation).collect();
-    update_by(source, &operations, &strings(by))
+    update_by_with(source, &operations, &strings(by), &oxhaven_expr::Compiler)
 }
 
 /// PARITY.md, Must match item 5: bit for bit, except that every NaN is the same NaN.
@@ -286,7 +315,7 @@ fn differences_within(table: &dyn Table, columns: &Value, tolerant: &[&str]) -> 
             _ => false,
         };
         let expected: Vec<&Value> = column["values"].as_array().unwrap().iter().collect();
-        if let ColumnType::Vector(element) = &java {
+        if let Some(element) = java.list_element() {
             let expected: Vec<Option<Values>> = expected
                 .iter()
                 .map(|cell| {
@@ -527,6 +556,106 @@ fn results_over_bursts_of_rows_match_java() {
             &["R"]
         }
     });
+}
+
+#[test]
+fn static_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "static", 231);
+}
+
+#[test]
+fn long_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "long", 64);
+}
+
+/// Count-where over windows in time, in rows and cumulative, over a table with rows that
+/// have no timestamp.
+#[test]
+fn timed_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "timed", 250);
+}
+
+#[test]
+fn timed_results_of_the_count_where_with_every_timestamp_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "stamped", 250);
+}
+
+/// The scenario `timed_bucketed` ends when Java's table fails: its filters read the
+/// timestamp column, an `Instant`, and an update computes rows whose windows no row
+/// enters (see `CountWhere::rolling`).
+#[test]
+fn ticking_results_of_the_count_where_match_java() {
+    ticking_scenarios(RECORDED_COUNT_WHERE, 5);
+    let recorded: Value = serde_json::from_str(RECORDED_COUNT_WHERE).unwrap();
+    let failed: Vec<&str> = recorded["ticking"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|scenario| scenario["steps"].as_array().unwrap().last().unwrap()["failed"] == true)
+        .map(|scenario| scenario["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(failed, ["timed_bucketed"]);
+}
+
+#[test]
+fn static_results_of_the_formula_match_java() {
+    static_section(RECORDED_FORMULA, "static", 400);
+}
+
+#[test]
+fn long_results_of_the_formula_match_java() {
+    static_section(RECORDED_FORMULA, "long", 50);
+}
+
+/// The rolling formula over windows in time and in rows, over a table with rows that have
+/// no timestamp.
+#[test]
+fn timed_results_of_the_formula_match_java() {
+    static_section(RECORDED_FORMULA, "timed", 150);
+}
+
+#[test]
+fn timed_results_of_the_formula_with_every_timestamp_match_java() {
+    static_section(RECORDED_FORMULA, "stamped", 150);
+}
+
+#[test]
+fn ticking_results_of_the_formula_match_java() {
+    ticking_scenarios(RECORDED_FORMULA, 5);
+}
+
+/// The section `unported` holds formulas that Java answers, or fails for some row, and
+/// that are refused here: they call a function the expression crate refuses by name, or
+/// take an element or a part of a window, which is left `unported!`. When one of them is
+/// no longer refused, it belongs in the section `static`.
+#[test]
+fn formulas_that_are_not_ported_are_refused() {
+    let recorded: Value = serde_json::from_str(RECORDED_FORMULA).unwrap();
+    let columns = &recorded["unported"]["columns"];
+    let definition = definition(columns);
+    let values: Vec<ArrayRef> = columns
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(definition.columns())
+        .map(|(c, d)| {
+            let values: Vec<&Value> = c["values"].as_array().unwrap().iter().collect();
+            array(&d.column_type, &values)
+        })
+        .collect();
+    let size = values[0].len() as u64;
+    let source: Arc<dyn Table> = ReferenceTable::new_static(definition, RowSet::flat(size), values);
+    let cases = recorded["unported"]["cases"].as_array().unwrap();
+    assert!(cases.len() >= 40);
+    let answered: Vec<String> = cases
+        .iter()
+        .filter(|case| {
+            let run = std::panic::AssertUnwindSafe(|| run(&source, &case["ops"], &case["by"]));
+            matches!(std::panic::catch_unwind(run), Ok(Ok(_)))
+        })
+        .map(|case| format!("{} by {}", case["ops"], case["by"]))
+        .collect();
+    assert!(answered.is_empty(), "answered:\n{}", answered.join("\n"));
 }
 
 #[test]

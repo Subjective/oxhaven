@@ -171,6 +171,98 @@ request: console_id { ticket: "e\001\000\000\000" } code: "c = bound.head(1)\npr
 status: OK
 message: changes { created { typed_ticket { ticket { ticket: "s/c" } type: "Table" } field_name: "c" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
 
+== export a variable that is no table
+call: SessionService/ExportFromTicket
+request: source_id { ticket: "s/n" } result_id { ticket: "e\005\000\000\000" }
+status: OK
+message: 
+
+== publish the object to a scope ticket
+call: SessionService/PublishFromTicket
+request: source_id { ticket: "e\005\000\000\000" } result_id { ticket: "s/m" }
+status: OK
+message: 
+
+== publish a table to a scope ticket
+call: SessionService/PublishFromTicket
+request: source_id { ticket: "e\003\000\000\000" } result_id { ticket: "s/published" }
+status: OK
+message: 
+
+== read what was published in Python
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "print(m, m is n)\nprint(type(published).__module__, type(published).__name__, published.size)\nd = published.head(2)"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/d" } type: "Table" } field_name: "d" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== export a variable that does not exist
+call: SessionService/ExportFromTicket
+request: source_id { ticket: "s/nothing" } result_id { ticket: "e\006\000\000\000" }
+status: NOT_FOUND: "Could not resolve 'sourceId: variable 'nothing' not found"
+
+== a variable set by a thread
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "import threading\ndef _later():\n    global threaded\n    threaded = empty_table(2)\nthreading.Timer(0.3, _later).start()"
+status: OK
+message: changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== fetch the variable the thread set
+call: TableService/FetchTable
+request: source_id { ticket { ticket: "s/threaded" } } result_id { ticket: "e\007\000\000\000" }
+status: OK
+message: result_id { ticket { ticket: "e\007\000\000\000" } } success: true schema_header: "<216 bytes>" is_static: true size: 2
+
+== scope variables in formulas
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "xi = 41\nxl = 2**40\nxf = 1.5\nxs = \'abc\'\nxb = True\nr = empty_table(3).update([\'A = xi\', \'B = xi + i\', \'C = xl\', \'D = xf * 2\', \'E = xs + `d`\', \'F = xb\'])\nprint(r.where(\'B > xi\').size, r.where(\'E = `abcd` && xb\').size)"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/r" } type: "Table" } field_name: "r" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== fetch the table the formulas made
+call: TableService/FetchTable
+request: source_id { ticket { ticket: "s/r" } } result_id { ticket: "e\010\000\000\000" }
+status: OK
+message: result_id { ticket { ticket: "e\010\000\000\000" } } success: true schema_header: "<1208 bytes>" is_static: true size: 3
+
+== the columns of that table
+columns: A byte, B int, C long, D double, E java.lang.String, F java.lang.Boolean
+
+== a scope variable in the formula of a client
+call: TableService/Update
+request: result_id { ticket: "e\n\000\000\000" } source_id { ticket { ticket: "s/t" } } column_specs: "Z = xi + X" column_specs: "S = xs"
+status: OK
+message: result_id { ticket { ticket: "e\n\000\000\000" } } success: true schema_header: "<720 bytes>" is_static: true size: 3
+
+== the columns of the client's table
+columns: X int, Z int, S java.lang.String
+
+== a formula in a function names its locals
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "def _local():\n    xi = \'local\'\n    zz = 2\n    return empty_table(1).update([\'A = xi\', \'B = zz\'])\nlocal = _local()"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/local" } type: "Table" } field_name: "local" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
+== fetch the table the function made
+call: TableService/FetchTable
+request: source_id { ticket { ticket: "s/local" } } result_id { ticket: "e\013\000\000\000" }
+status: OK
+message: result_id { ticket { ticket: "e\013\000\000\000" } } success: true schema_header: "<568 bytes>" is_static: true size: 1
+
+== the columns of the function's table
+columns: A java.lang.String, B byte
+
+== a formula that negates a variable
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "neg = t.update(\'Y = -xi\')"
+status: OK
+message: error_message: "java.lang.RuntimeException: Error in Python interpreter:\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<string>\", line 1, in <module>\n  File \"<site-packages>/deephaven/table.py\", line 1374, in update\n    raise DHError(e, \"table update operation failed.\") from e\ndeephaven.dherror.DHError: table update operation failed. : Assertion failed\nTraceback (most recent call last):\n  File \"<site-packages>/deephaven/table.py\", line 1372, in update\n    return Table(j_table=self.j_table.update(*formulas))\n                         ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\nRuntimeError: io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: -xi\ncaused by io.deephaven.engine.table.impl.lang.QueryLanguageParser$QueryLanguageParseException: \n\nHaving trouble with the following expression:\nFull expression           : -xi\nExpression having trouble : negate(xi.shortValue())\nException type            : io.deephaven.base.verify.AssertionFailure\nException message         : Assertion failed: asserted ret.equals(result), instead ret == class java.lang.Byte, result == int.\n\n\t... 34 more\n\n\n\n" changes { } start_timestamp: <ts> end_timestamp: <ts>
+
+== a formula that names a list
+call: ConsoleService/ExecuteCommand
+request: console_id { ticket: "e\001\000\000\000" } code: "lst = [1, 2]\nbad = t.update(\'Y = lst\')"
+status: OK
+message: changes { created { typed_ticket { ticket { ticket: "s/bad" } type: "Table" } field_name: "bad" field_description: "query scope variable" application_id: "scope" } } start_timestamp: <ts> end_timestamp: <ts>
+
 == cancel command
 call: ConsoleService/CancelCommand
 request: console_id { ticket: "e\001\000\000\000" } command_id { ticket: "e2\000\000\000" }
@@ -195,6 +287,9 @@ message: micros: <ts> log_level: "STDOUT" message: "hello from the console\n"
 message: micros: <ts> log_level: "STDOUT" message: "42\n"
 message: micros: <ts> log_level: "STDERR" message: "[probe] to stderr\n"
 message: micros: <ts> log_level: "STDOUT" message: "3\n"
+message: micros: <ts> log_level: "STDOUT" message: "42 True\n"
+message: micros: <ts> log_level: "STDOUT" message: "deephaven.table Table 3\n"
+message: micros: <ts> log_level: "STDOUT" message: "2 3\n"
 
 == field changes seen by a listener during the commands
 call: ApplicationService/ListFields
@@ -209,6 +304,12 @@ removed: typed_ticket { ticket { ticket: "s/a" } type: "Table" } field_name: "a"
 created: typed_ticket { ticket { ticket: "s/bound" } type: "Table" } field_name: "bound" field_description: "query scope variable" application_id: "scope"
 created: typed_ticket { ticket { ticket: "s/bound2" } type: "Table" } field_name: "bound2" field_description: "query scope variable" application_id: "scope"
 created: typed_ticket { ticket { ticket: "s/c" } type: "Table" } field_name: "c" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/published" } type: "Table" } field_name: "published" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/d" } type: "Table" } field_name: "d" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/threaded" } type: "Table" } field_name: "threaded" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/r" } type: "Table" } field_name: "r" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/local" } type: "Table" } field_name: "local" field_description: "query scope variable" application_id: "scope"
+created: typed_ticket { ticket { ticket: "s/bad" } type: "Table" } field_name: "bad" field_description: "query scope variable" application_id: "scope"
 
 == release the console
 call: SessionService/Release

@@ -538,3 +538,15 @@ PR 69 (second parity fixes) merged on green, on a head that included PR 67.
 ## 2026-11-15 08:20 UTC
 
 Task 6.4 (Python table core) came back with the gate red by design: about a quarter of the listed Python methods need engine operators no task owned (head_pct family, rename/move columns, restrict_sort_to, where of an OR, merge_sorted of static tables, attributes). The agent refused to change protected baseline lines on its own and set the task to blocked, which is the right behaviour. Decision (mine, for owner review): record the four `table_*` lines as `differs` with the real failure kinds under the `oracle-change` label, and open task 4.16 for the operators, whose gate is promoting those lines to clean. Reason: the lines said `missing` because the Python names did not exist; they now exist and refuse honestly, and the baseline should say what is true. Size verdict for 6.4: the Python surface fit, the planning missed engine dependencies.
+
+## 2026-11-15 08:24 UTC
+
+PRs 70 (Python environment) and 72 (query scope) merged on green. PR 71 (Python table core) conflicts with both in `console/python/mod.rs`; its author is merging main and rerunning the gate. Three console tasks ran in parallel over the same module file: acceptable cost (one conflict round), but the next Python API tasks get distinct files per task.
+
+## 2026-11-15 08:45 UTC
+
+PR 73 opened (block row set). Measured: the contract RowSet costs O(ranges) for size, get, find and single-key adds (adding one key to a 2M-range set takes 64 ms); the block row set is 100 to 30000 times faster on those and uses 1 MB instead of 32 MB, and is slower on range walks and unaligned shifts. It is not the engine row set yet: swapping it changes `RowSet::ranges` in the contracts (about 35 callers). Decision: do the swap as its own contract-change task (7.7b) once the engine branches in flight (update_by count-where, table shape operators) have merged, to avoid a workspace-wide conflict. Owner review item: the contract change and the performance trade-offs in docs/ROWSET.md.
+
+## 2026-11-15 08:54 UTC
+
+PR 74 merged on green: every replay scenario is clean (83 of 83), every client smoke clean (31 of 31), and every `UpdateBySpec` operator is ported. What the gate does not show: the `unported!` refusals listed in the pull requests, the Python script scenarios (3 of 21 clean, in progress) and the two open owner questions from the fuzzer (failed tables keep serving in Java; one as-of join incremental difference).
