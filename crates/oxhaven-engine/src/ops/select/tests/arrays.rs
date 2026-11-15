@@ -219,6 +219,18 @@ fn a_shifted_column_of_a_static_select_that_gets_new_row_keys_is_unported() {
     let _ = select(&keyed(&[3, 7, 9]), &["P = A_[i - 1]"], &Compiler);
 }
 
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns"
+)]
+fn a_table_column_with_the_name_of_a_shifted_column_is_unported() {
+    let _ = update(
+        &keyed(&[3, 7, 9]),
+        &["__A_Shifted_Minus_1__ = 7", "P = A_[i - 1]"],
+        &Compiler,
+    );
+}
+
 /// Any other use of a column array is evaluated over the table's rows by the formula.
 #[test]
 fn other_uses_of_a_column_array_are_evaluated_over_the_tables_rows() {

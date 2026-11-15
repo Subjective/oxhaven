@@ -481,7 +481,7 @@ fn deciding_shift(shifts: &[Shift]) -> Option<i64> {
 ///
 /// # Panics
 /// With `unported!` for a refreshing parent and shifts at two different distances that are
-/// both not zero.
+/// both not zero, and for a parent that has a column with the name of a shifted column.
 ///
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns and
 /// the listener its `getShiftedColumns` makes
@@ -501,6 +501,15 @@ pub(crate) fn add_shifted_columns(
             ))
         })?;
         reads.push(index);
+        let name = shift.result_name();
+        if parent.definition().index_of(&name).is_some() {
+            // Java 42.9 computes the formula from its own shifted column and then drops
+            // the table's column of that name from the result.
+            unported!(
+                "io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns",
+                "a column array at a fixed distance on a table that has a column named {name}"
+            );
+        }
         definitions.push(ColumnDefinition::new(
             shift.result_name(),
             declared[index].column_type.clone(),
