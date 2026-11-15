@@ -588,3 +588,7 @@ The owner answered the open licence question: the Snappy, Zstandard and Brotli c
 (BSD-3-Clause) may be used. The exception is for these Parquet codecs only; the Apache-2.0/MIT
 rule otherwise stands. The author of the Parquet read task was resumed with the follow-up
 (task 7.1b, branch task/7.1b-parquet-codecs).
+
+Correction, 19:05 UTC: the 7.1 author could not be resumed, because an agent whose worktree
+has been removed cannot be resumed. Task 7.1b went to a fresh agent. Lesson for the run: keep
+an author's worktree until its likely follow-ups are done, disk allowing.
