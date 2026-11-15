@@ -5,6 +5,7 @@
 //! [`ScopeHolder`] the [`Scope`] asks for everything. A server without one keeps the values
 //! that clients publish in a map of its own.
 
+use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
@@ -503,6 +504,10 @@ struct Substitution<'a> {
     inner: &'a dyn FormulaCompiler,
     definition: &'a TableDefinition,
     values: BTreeMap<&'a str, FormulaValue>,
+    /// The type a `Byte` variable is given where it is an argument of a call.
+    byte_argument: ColumnType,
+    /// Whether a `Byte` variable was an argument of a call.
+    byte_arguments: Cell<bool>,
 }
 
 impl Substitution<'_> {
@@ -545,8 +550,22 @@ impl Substitution<'_> {
         })
     }
 
-    fn boxed(&self, items: &[Expr]) -> Result<Vec<Expr>, FormulaError> {
-        items.iter().map(|item| self.rewrite(item)).collect()
+    /// The arguments of a call. A `Byte` variable among them is given the type
+    /// [`Substitution::byte_argument`]; see [`ScopedCompiler::compile`].
+    fn arguments(&self, arguments: &[Expr]) -> Result<Vec<Expr>, FormulaError> {
+        arguments
+            .iter()
+            .map(|argument| match self.variable(argument) {
+                Some((_, FormulaValue::Byte(value))) if *value != i8::MIN => {
+                    self.byte_arguments.set(true);
+                    Ok(Expr::Cast {
+                        to: self.byte_argument.clone(),
+                        operand: Box::new(Expr::Literal(Literal::Int((*value).into()))),
+                    })
+                }
+                _ => self.rewrite(argument),
+            })
+            .collect()
     }
 
     fn rewrite(&self, expr: &Expr) -> Result<Expr, FormulaError> {
@@ -627,7 +646,7 @@ impl Substitution<'_> {
                 arguments,
             } => Expr::Call {
                 function: function.clone(),
-                arguments: self.boxed(arguments)?,
+                arguments: self.arguments(arguments)?,
             },
             Expr::MethodCall {
                 receiver,
@@ -645,7 +664,7 @@ impl Substitution<'_> {
                 Expr::MethodCall {
                     receiver: rewrite(receiver)?,
                     method: method.clone(),
-                    arguments: self.boxed(arguments)?,
+                    arguments: self.arguments(arguments)?,
                 }
             }
         })
@@ -804,12 +823,327 @@ impl FormulaCompiler for ScopedCompiler {
         if values.is_empty() {
             return self.inner.compile(expr, definition);
         }
-        let substitution = Substitution {
+        let mut substitution = Substitution {
             inner: self.inner.as_ref(),
             definition,
             values,
+            byte_argument: ColumnType::Byte,
+            byte_arguments: Cell::new(false),
         };
         substitution.check_filter_comparison(expr)?;
-        self.inner.compile(&substitution.rewrite(expr)?, definition)
+        let formula = self
+            .inner
+            .compile(&substitution.rewrite(expr)?, definition)?;
+        if substitution.byte_arguments.get() {
+            // Java chooses the overload of a function for a boxed `Byte` argument by rules
+            // that are not those for a `byte`: `abs` of one is a `short`, `max` of two is a
+            // `byte`. The formula is taken only if that choice cannot be seen.
+            substitution.byte_argument = ColumnType::Short;
+            let widened = self.inner.compile(&substitution.rewrite(expr)?, definition);
+            if !widened.is_ok_and(|widened| widened.result_type() == formula.result_type()) {
+                return Err(unsupported(
+                    "call with a query scope variable that is a java.lang.Byte as an \
+                     argument, where the type of the result depends on the overload Java \
+                     chooses for it"
+                        .to_string(),
+                ));
+            }
+        }
+        Ok(formula)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! The expectations are what the Java reference answered for the same formulas with
+    //! the same Python globals (Deephaven 42.9), except where a test says a formula is
+    //! unsupported here.
+
+    use super::*;
+    use arrow::array::{Array, Float32Array, Float64Array, Int32Array, Int8Array, StringArray};
+    use oxhaven_column::FlatSource;
+    use oxhaven_contracts::rowset::RowSet;
+    use oxhaven_contracts::schema::ColumnDefinition;
+    use oxhaven_contracts::table::{ColumnSource, Table};
+    use oxhaven_engine::table::{QueryTable, TableSpec};
+
+    /// A holder with fixed variables; `unreadable` is Java's failure to convert one.
+    #[derive(Default)]
+    struct Fixed {
+        values: BTreeMap<&'static str, FormulaValue>,
+        unreadable: bool,
+    }
+
+    impl ScopeHolder for Fixed {
+        fn get(&self, _name: &str) -> Option<ExportValue> {
+            None
+        }
+
+        fn put(&self, _name: &str, _value: ExportValue) -> Result<(), String> {
+            Err("fixed".to_string())
+        }
+
+        fn names(&self) -> Vec<String> {
+            self.values.keys().map(|name| name.to_string()).collect()
+        }
+
+        fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
+            if self.unreadable {
+                return Err("OverflowError: int too big to convert".to_string());
+            }
+            Ok(names
+                .iter()
+                .map(|name| self.values.get(name).cloned())
+                .collect())
+        }
+    }
+
+    /// Three rows of `X` (`int`: 0, 1, 2), `B` (`byte`), `D` (`double`), `F` (`float`: 0.5,
+    /// 1.5, 2.5) and `S` (`String`: `abc`).
+    fn table() -> Arc<dyn Table> {
+        let columns: Vec<(&str, ColumnType, arrow::array::ArrayRef)> = vec![
+            (
+                "X",
+                ColumnType::Int,
+                Arc::new(Int32Array::from(vec![0, 1, 2])),
+            ),
+            (
+                "B",
+                ColumnType::Byte,
+                Arc::new(Int8Array::from(vec![0, 1, 2])),
+            ),
+            (
+                "D",
+                ColumnType::Double,
+                Arc::new(Float64Array::from(vec![0.0, 1.0, 2.0])),
+            ),
+            (
+                "F",
+                ColumnType::Float,
+                Arc::new(Float32Array::from(vec![0.5, 1.5, 2.5])),
+            ),
+            (
+                "S",
+                ColumnType::String,
+                Arc::new(StringArray::from(vec!["abc", "abc", "abc"])),
+            ),
+        ];
+        let mut definitions = Vec::new();
+        let mut sources: Vec<Arc<dyn ColumnSource>> = Vec::new();
+        for (name, column_type, values) in columns {
+            definitions.push(ColumnDefinition::new(name, column_type.clone()));
+            sources.push(Arc::new(FlatSource::new(column_type, values).unwrap()));
+        }
+        let definition = TableDefinition::new(definitions).unwrap();
+        QueryTable::new_static(TableSpec::new(definition, RowSet::flat(3), sources))
+    }
+
+    fn compiler(holder: Fixed) -> ScopedCompiler {
+        let scope = Scope::new();
+        scope.hold(Arc::new(holder));
+        ScopedCompiler::new(Arc::new(oxhaven_expr::Compiler), scope)
+    }
+
+    /// The variables of the Java session the expectations were recorded with.
+    fn variables() -> Fixed {
+        let values = [
+            ("xi", FormulaValue::Byte(41)),
+            ("xsh", FormulaValue::Short(300)),
+            ("xint", FormulaValue::Int(100_000)),
+            ("xl", FormulaValue::Long(1 << 40)),
+            ("xf", FormulaValue::Double(1.5)),
+            ("xhalf", FormulaValue::Double(0.5)),
+            ("xtenth", FormulaValue::Double(0.1)),
+            ("xs", FormulaValue::String("abc".to_string())),
+            ("xb", FormulaValue::Boolean(true)),
+            ("xbmin", FormulaValue::Byte(i8::MIN)),
+            ("xmin", FormulaValue::Int(i32::MIN)),
+            ("xdmin", FormulaValue::Double(-f64::MAX)),
+            ("lst", FormulaValue::Other("a Python list".to_string())),
+            // a variable named like a column, like a column array and like a constant
+            ("X", FormulaValue::Byte(99)),
+            ("X_", FormulaValue::Byte(98)),
+            ("NULL_INT", FormulaValue::Byte(5)),
+        ];
+        Fixed {
+            values: values.into_iter().collect(),
+            unreadable: false,
+        }
+    }
+
+    fn compile(compiler: &ScopedCompiler, text: &str) -> Result<Arc<dyn Formula>, FormulaError> {
+        let table = table();
+        compiler.compile(&compiler.parse(text)?, table.definition())
+    }
+
+    /// The type of `text` and its value in the second row, printed.
+    fn value(compiler: &ScopedCompiler, text: &str) -> String {
+        let table = table();
+        let formula = compile(compiler, text).unwrap_or_else(|error| panic!("{text}: {error}"));
+        let values = formula
+            .evaluate(table.as_ref(), &RowSet::flat(3), false)
+            .unwrap();
+        let second = values.slice(1, 1);
+        let printed = arrow::util::display::array_value_to_string(&second, 0).unwrap();
+        format!("{:?} {printed}", formula.result_type())
+    }
+
+    #[test]
+    fn a_variable_has_the_type_java_converts_it_to_and_computes_as_its_primitive() {
+        let compiler = compiler(variables());
+        for (text, expected) in [
+            ("xi", "Byte 41"),
+            ("xsh", "Short 300"),
+            ("xint", "Int 100000"),
+            ("xl", "Long 1099511627776"),
+            ("xf", "Double 1.5"),
+            ("xs", "String abc"),
+            ("xb", "Boolean true"),
+            ("xi + 1", "Int 42"),
+            ("xi + xi", "Int 82"),
+            ("xl + i", "Long 1099511627777"),
+            ("xi / 2", "Double 20.5"),
+            ("xint * xint * xint", "Int -1530494976"),
+            ("xs + xi", "String abc41"),
+            ("xs.length()", "Int 3"),
+            ("-(xi + 1)", "Int -42"),
+            ("xb ? xi : xi", "Byte 41"),
+            ("xb ? xint : 2", "Int 100000"),
+            ("xb ? xi : null", "Byte 41"),
+            ("(long) xi", "Long 41"),
+            ("(double) xl", "Double 1099511627776.0"),
+            ("(byte) xi", "Byte 41"),
+            ("max(xi, 2)", "Int 41"),
+            ("X + xi", "Int 42"),
+        ] {
+            assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn columns_and_column_arrays_come_before_variables_and_variables_before_constants() {
+        let compiler = compiler(variables());
+        assert_eq!(value(&compiler, "X"), "Int 1");
+        assert_eq!(value(&compiler, "NULL_INT"), "Byte 5");
+        // the array of column X is not the variable X_; column arrays are not ported
+        let array = compile(&compiler, "X_").err();
+        assert!(
+            matches!(array, Some(FormulaError::Unsupported(_))),
+            "{array:?}"
+        );
+        // without the variable the name is the constant
+        let plain = self::compiler(Fixed::default());
+        assert_eq!(
+            *compile(&plain, "NULL_INT").unwrap().result_type(),
+            ColumnType::Int
+        );
+    }
+
+    #[test]
+    fn what_java_refuses_for_a_boxed_variable_is_a_type_error() {
+        let compiler = compiler(variables());
+        for text in [
+            "-xi",
+            "-xint",
+            "-xl",
+            "-xf",
+            "-xi + 1",
+            "(byte) xl",
+            "(int) xf",
+            "(short) xint",
+            "(float) xf",
+            "(char) xi",
+            "xb ? xi : 2",
+            "xb ? xi : xl",
+            "xb ? xi : (short) 2",
+            "xb ? xi : i",
+            "xb + 1",
+        ] {
+            let error = compile(&compiler, text).err();
+            assert!(
+                matches!(error, Some(FormulaError::Type(_))),
+                "{text}: {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn what_java_computes_by_rules_that_are_not_ported_is_unsupported() {
+        let compiler = compiler(variables());
+        for text in [
+            // values that are the null of their type
+            "xbmin",
+            "xmin + 1",
+            "isNull(xdmin)",
+            // other kinds of value
+            "lst",
+            // methods of boxed numbers
+            "xi.intValue()",
+            "xf.isNaN()",
+            "xb.booleanValue()",
+            // overloads chosen for a Byte: Java's abs is a short, max of two a byte
+            "abs(xi)",
+            "max(xi, xi)",
+            "max(xi, xsh)",
+            // what a filter of this text compares after converting the variable
+            "X >= xf",
+            "X == xf",
+            "xf <= X",
+            "X != xl",
+            "B < xsh",
+            "F > xtenth",
+            "S == xi",
+            "X == xb",
+        ] {
+            let error = compile(&compiler, text).err();
+            assert!(
+                matches!(error, Some(FormulaError::Unsupported(_))),
+                "{text}: {error:?}"
+            );
+        }
+        // the same comparisons where the conversion changes nothing, or inside a formula
+        for (text, expected) in [
+            ("X == xi", "Boolean false"),
+            ("X < xi", "Boolean true"),
+            ("xi > X", "Boolean true"),
+            ("D >= xhalf", "Boolean true"),
+            ("F == xf", "Boolean true"),
+            ("S == xs", "Boolean true"),
+            ("B < xi", "Boolean true"),
+            ("X >= xf && true", "Boolean false"),
+            ("X + 1 > xf", "Boolean true"),
+        ] {
+            assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+    }
+
+    #[test]
+    fn a_scope_that_cannot_be_read_fails_every_formula() {
+        let unreadable = compiler(Fixed {
+            unreadable: true,
+            ..Default::default()
+        });
+        let error = compile(&unreadable, "X + 1").err();
+        assert!(matches!(error, Some(FormulaError::Type(_))), "{error:?}");
+        // parsing, which is all Java does with a column that is copied, works
+        assert!(unreadable.parse_assignment("Y = X").is_ok());
+    }
+
+    #[test]
+    fn without_a_holder_a_published_table_is_no_formula_value() {
+        let scope = Scope::new();
+        scope.put("t", ExportValue::Table(table())).unwrap();
+        let compiler = ScopedCompiler::new(Arc::new(oxhaven_expr::Compiler), scope);
+        assert_eq!(value(&compiler, "X + 1"), "Int 2");
+        let error = compile(&compiler, "t").err();
+        assert!(
+            matches!(error, Some(FormulaError::Unsupported(_))),
+            "{error:?}"
+        );
+        let missing = compile(&compiler, "nosuch").err();
+        assert!(
+            matches!(missing, Some(FormulaError::Type(_))),
+            "{missing:?}"
+        );
     }
 }

@@ -11,12 +11,16 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use oxhaven_engine::table::empty_table;
+use oxhaven_proto::flight::flight_descriptor::DescriptorType;
+use oxhaven_proto::flight::flight_service_client::FlightServiceClient;
+use oxhaven_proto::flight::FlightDescriptor;
 use oxhaven_proto::grpc::application_service_client::ApplicationServiceClient;
+use oxhaven_proto::grpc::session_service_client::SessionServiceClient;
 use oxhaven_proto::grpc::table_reference::Ref;
 use oxhaven_proto::grpc::table_service_client::TableServiceClient;
 use oxhaven_proto::grpc::{
-    ExportedTableCreationResponse, FetchTableRequest, FieldsChangeUpdate, ListFieldsRequest,
-    TableReference, Ticket,
+    ExportRequest, ExportedTableCreationResponse, FetchTableRequest, FieldsChangeUpdate,
+    ListFieldsRequest, PublishRequest, TableReference, Ticket,
 };
 use oxhaven_proto::script::auto_complete_request::Request as CompletionRequest;
 use oxhaven_proto::script::auto_complete_response::Response as CompletionResponse;
@@ -608,4 +612,280 @@ async fn heap_info_is_the_memory_of_the_process() {
         .into_inner();
     assert!(heap.total_memory > 0 && heap.total_memory <= heap.max_memory);
     assert_eq!(heap.free_memory, 0);
+}
+
+/// A client of a server with the word console, and the session of that console, so that a
+/// test can change a variable as a thread of a real session would: outside any command.
+async fn client_and_session() -> (Client, Arc<WordSession>) {
+    let session = Arc::new(Mutex::new(None));
+    let server = TestServer::start_with(|state| {
+        *session.lock().unwrap() = Some(word_console(state));
+    })
+    .await;
+    let bearer = server.login().await;
+    let console = ConsoleServiceClient::new(server.channel.clone());
+    let client = Client {
+        server,
+        bearer,
+        console,
+    };
+    let session = session.lock().unwrap().take().unwrap();
+    (client, session)
+}
+
+async fn next_fields(fields: &mut tonic::Streaming<FieldsChangeUpdate>) -> Vec<String> {
+    let message = tokio::time::timeout(Duration::from_secs(5), fields.next()).await;
+    described(
+        &message
+            .expect("a message within five seconds")
+            .unwrap()
+            .unwrap(),
+    )
+}
+
+#[tokio::test]
+async fn a_variable_that_is_no_table_resolves_as_an_object_and_is_not_listed() {
+    let mut client = Client::start().await;
+    let noted = client.execute("make t 2\nnote n hello").await;
+    assert_eq!(
+        changes_of(&noted),
+        ["created t s/t Table [query scope variable] [scope] []"]
+    );
+
+    // Java: the variable resolves, and is not a table
+    let not_a_table = client.fetch(b"s/n", 3).await.unwrap_err();
+    assert_eq!(not_a_table.code(), Code::InvalidArgument);
+    assert!(not_a_table.message().starts_with("Details Logged w/ID '"));
+    let missing = client.fetch(b"s/nothing", 4).await.unwrap_err();
+    assert_eq!(missing.code(), Code::NotFound);
+    assert_eq!(
+        missing.message(),
+        "Could not resolve 'sourceId: variable 'nothing' not found"
+    );
+
+    // as an object it can be exported, and published under another name
+    let mut sessions = SessionServiceClient::new(client.server.channel.clone());
+    sessions
+        .export_from_ticket(with_auth(
+            ExportRequest {
+                source_id: Some(Ticket {
+                    ticket: b"s/n".to_vec(),
+                }),
+                result_id: Some(export_id_to_ticket(5)),
+            },
+            &client.bearer,
+        ))
+        .await
+        .unwrap();
+    sessions
+        .publish_from_ticket(with_auth(
+            PublishRequest {
+                source_id: Some(export_id_to_ticket(5)),
+                result_id: Some(Ticket {
+                    ticket: b"s/m".to_vec(),
+                }),
+            },
+            &client.bearer,
+        ))
+        .await
+        .unwrap();
+    let scope = &client.server.state.scope;
+    let published = scope.get("m").unwrap();
+    assert_eq!(published.downcast_ref::<String>().unwrap(), "hello");
+    assert_eq!(scope.names(), ["m", "n", "t"]);
+
+    // a table that becomes something else is removed from the list
+    let replaced = client.execute("note t now").await;
+    assert_eq!(
+        changes_of(&replaced),
+        ["removed t s/t Table [query scope variable] [scope] []"]
+    );
+}
+
+#[tokio::test]
+async fn a_table_published_to_a_scope_ticket_is_a_variable_of_the_session() {
+    let (mut client, session) = client_and_session().await;
+    let mut fields = ApplicationServiceClient::new(client.server.channel.clone())
+        .list_fields(with_auth(ListFieldsRequest {}, &client.bearer))
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(next_fields(&mut fields).await.is_empty());
+
+    client
+        .console
+        .start_console(with_auth(
+            StartConsoleRequest {
+                result_id: Some(export_id_to_ticket(1)),
+                session_type: "words".to_string(),
+            },
+            &client.bearer,
+        ))
+        .await
+        .unwrap();
+    client.execute("make t 4").await;
+    assert_eq!(
+        next_fields(&mut fields).await,
+        ["created t s/t Table [query scope variable] [scope] []"]
+    );
+    client.fetch(b"s/t", 2).await.unwrap();
+    SessionServiceClient::new(client.server.channel.clone())
+        .publish_from_ticket(with_auth(
+            PublishRequest {
+                source_id: Some(export_id_to_ticket(2)),
+                result_id: Some(Ticket {
+                    ticket: b"s/published".to_vec(),
+                }),
+            },
+            &client.bearer,
+        ))
+        .await
+        .unwrap();
+
+    // the session holds it, the listener is told without a command, and it resolves
+    let held = session.get("published").unwrap();
+    let t = session.get("t").unwrap();
+    assert!(Arc::ptr_eq(held.as_table().unwrap(), t.as_table().unwrap()));
+    assert_eq!(
+        next_fields(&mut fields).await,
+        ["created published s/published Table [query scope variable] [scope] []"]
+    );
+    let fetched = client.fetch(b"s/published", 3).await.unwrap();
+    assert_eq!(fetched.size, 4);
+}
+
+#[tokio::test]
+async fn a_variable_changed_outside_a_command_is_seen_when_the_scope_is_observed() {
+    let (mut client, session) = client_and_session().await;
+    let console = client.server.state.console.clone().unwrap();
+    let mut fields = ApplicationServiceClient::new(client.server.channel.clone())
+        .list_fields(with_auth(ListFieldsRequest {}, &client.bearer))
+        .await
+        .unwrap()
+        .into_inner();
+    assert!(next_fields(&mut fields).await.is_empty());
+
+    // nobody looks: the variable resolves, and no listener is told
+    session.set("threaded", ExportValue::Table(empty_table(7)));
+    assert_eq!(client.fetch(b"s/threaded", 2).await.unwrap().size, 7);
+    let quiet = tokio::time::timeout(Duration::from_millis(300), fields.next()).await;
+    assert!(quiet.is_err(), "told without an observation: {quiet:?}");
+
+    console.observe();
+    assert_eq!(
+        next_fields(&mut fields).await,
+        ["created threaded s/threaded Table [query scope variable] [scope] []"]
+    );
+
+    // a command reports what it changed, not what changed before it; the listener is
+    // told of both
+    session.set("before", ExportValue::Table(empty_table(1)));
+    client
+        .console
+        .start_console(with_auth(
+            StartConsoleRequest {
+                result_id: Some(export_id_to_ticket(1)),
+                session_type: "words".to_string(),
+            },
+            &client.bearer,
+        ))
+        .await
+        .unwrap();
+    let ran = client.execute("make during 1").await;
+    assert_eq!(
+        changes_of(&ran),
+        ["created during s/during Table [query scope variable] [scope] []"]
+    );
+    let mut told = next_fields(&mut fields).await;
+    if told.len() == 1 {
+        told.extend(next_fields(&mut fields).await);
+    }
+    assert_eq!(
+        told,
+        [
+            "created before s/before Table [query scope variable] [scope] []",
+            "created during s/during Table [query scope variable] [scope] []"
+        ]
+    );
+
+    // the watch looks by itself
+    console.watch(Duration::from_millis(20));
+    session.set("watched", ExportValue::Table(empty_table(1)));
+    assert_eq!(
+        next_fields(&mut fields).await,
+        ["created watched s/watched Table [query scope variable] [scope] []"]
+    );
+}
+
+#[tokio::test]
+async fn a_scope_variable_that_holds_a_table_is_a_flight() {
+    let mut client = Client::start().await;
+    client.execute("make t 5\nnote n hello").await;
+    let mut flights = FlightServiceClient::new(client.server.channel.clone());
+    let descriptor = |path: &[&str]| FlightDescriptor {
+        r#type: DescriptorType::Path as i32,
+        path: path.iter().map(|part| part.to_string()).collect(),
+        ..Default::default()
+    };
+    let info = flights
+        .get_flight_info(with_auth(descriptor(&["scope", "t"]), &client.bearer))
+        .await
+        .unwrap()
+        .into_inner();
+    assert_eq!(info.total_records, 5);
+    let ticket = info.endpoint[0].ticket.as_ref().unwrap();
+    assert_eq!(ticket.ticket.as_ref(), b"s/t");
+
+    for (path, message) in [
+        (
+            &["scope", "n"][..],
+            "Could not resolve 'request: variable 'n' not found",
+        ),
+        (
+            &["scope", "nothing"][..],
+            "Could not resolve 'request: variable 'nothing' not found",
+        ),
+    ] {
+        let status = flights
+            .get_flight_info(with_auth(descriptor(path), &client.bearer))
+            .await
+            .unwrap_err();
+        assert_eq!(status.code(), Code::NotFound, "{path:?}");
+        assert_eq!(status.message(), message);
+    }
+    let too_long = flights
+        .get_flight_info(with_auth(descriptor(&["scope", "t", "u"]), &client.bearer))
+        .await
+        .unwrap_err();
+    assert_eq!(too_long.code(), Code::FailedPrecondition);
+    assert_eq!(
+        too_long.message(),
+        "Could not resolve descriptor 'request': unexpected path length (found: /scope/t/u, \
+         expected: 2)"
+    );
+}
+
+#[test]
+fn a_change_counts_only_for_values_clients_can_open() {
+    let table = |rows| ExportValue::Table(empty_table(rows));
+    let (a, b, text) = (table(1), table(2), ExportValue::object("text".to_string()));
+    let noted = |from: Option<&ExportValue>, to: Option<&ExportValue>| {
+        let mut changes = Changes::default();
+        changes.note("v", from, to);
+        let kinds = [
+            (!changes.created.is_empty()).then_some("created"),
+            (!changes.updated.is_empty()).then_some("updated"),
+            (!changes.removed.is_empty()).then_some("removed"),
+        ];
+        kinds.into_iter().flatten().collect::<Vec<_>>().join(",")
+    };
+    assert_eq!(noted(None, Some(&a)), "created");
+    assert_eq!(noted(Some(&a), Some(&b)), "updated");
+    assert_eq!(noted(Some(&a), Some(&a.clone())), "");
+    assert_eq!(noted(Some(&a), None), "removed");
+    assert_eq!(noted(Some(&a), Some(&text)), "removed");
+    assert_eq!(noted(Some(&text), Some(&a)), "created");
+    assert_eq!(noted(Some(&text), Some(&text)), "");
+    assert_eq!(noted(None, Some(&text)), "");
+    assert_eq!(noted(None, None), "");
 }
