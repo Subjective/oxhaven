@@ -1,0 +1,248 @@
+{
+  "format": 2,
+  "scenario": "partitioned_static",
+  "scenario_sha256": "e1f1cf4bc289a56c97590c44daf5856e6dab9d9aa6599ae5d3a0dc2f76d498d7",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "underlying",
+      "file": "step000.underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "keys",
+      "file": "step000.keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merged",
+      "file": "step000.merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "third",
+      "file": "step000.third.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "found",
+      "file": "step000.found.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "dropped_underlying",
+      "file": "step000.dropped_underlying.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "dropped_first",
+      "file": "step000.dropped_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "dropped_found",
+      "file": "step000.dropped_found.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "dropped_merged",
+      "file": "step000.dropped_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "whole_underlying",
+      "file": "step000.whole_underlying.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "filtered_underlying",
+      "file": "step000.filtered_underlying.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "filtered_keys",
+      "file": "step000.filtered_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "filtered_merged",
+      "file": "step000.filtered_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "ordered_underlying",
+      "file": "step000.ordered_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ordered_merged",
+      "file": "step000.ordered_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "meta",
+      "file": "step000.meta.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "joined",
+      "file": "step000.joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "underlying",
+      "file": "step001.underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "keys",
+      "file": "step001.keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "merged",
+      "file": "step001.merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "first",
+      "file": "step001.first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "third",
+      "file": "step001.third.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "found",
+      "file": "step001.found.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "dropped_underlying",
+      "file": "step001.dropped_underlying.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "dropped_first",
+      "file": "step001.dropped_first.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "dropped_found",
+      "file": "step001.dropped_found.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "dropped_merged",
+      "file": "step001.dropped_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "whole_underlying",
+      "file": "step001.whole_underlying.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "whole",
+      "file": "step001.whole.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "filtered_underlying",
+      "file": "step001.filtered_underlying.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "filtered_keys",
+      "file": "step001.filtered_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "filtered_merged",
+      "file": "step001.filtered_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "ordered_underlying",
+      "file": "step001.ordered_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "ordered_merged",
+      "file": "step001.ordered_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "meta",
+      "file": "step001.meta.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "joined",
+      "file": "step001.joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 3
+    }
+  ]
+}

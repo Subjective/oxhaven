@@ -63,6 +63,32 @@ pub enum ColumnType {
     /// a list (`BarrageUtil#arrowTypeFor`). In memory it is a list like every other array;
     /// the server refuses to send one until that conversion is ported.
     Array(Box<ColumnType>),
+    /// A table: the type of the constituent column of a partitioned table
+    /// (`io.deephaven.engine.table.PartitionedTable#constituentColumnName`). The class is
+    /// the Java class the column's definition names.
+    ///
+    /// A cell is a handle, and a chunk of such a column an Arrow `Int64` array of handles.
+    /// The crate that made a handle turns it back into the table; for the engine that is
+    /// `oxhaven_engine::ops::partitioned::resolve`. A handle is good while the column
+    /// source it was first read from is alive, and identifies nothing afterwards. A null
+    /// cell is Java's `null` reference. Handles are not sent to clients: Java sends the
+    /// text of each table (`BarrageUtil#arrowTypeFor` gives such a column Arrow `Utf8`).
+    ///
+    /// Two cells are the same table when their handles are equal. Nothing else may be
+    /// computed from a handle: it has no order and no meaning as a number.
+    Table(TableClass),
+}
+
+/// The Java class of the cells of a [`ColumnType::Table`] column.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+#[non_exhaustive]
+pub enum TableClass {
+    /// `io.deephaven.engine.table.Table`: what a transform of a partitioned table declares
+    /// (`io.deephaven.engine.table.impl.partitioned.TableTransformationColumn`).
+    Table,
+    /// `io.deephaven.engine.table.impl.QueryTable`: what the partition aggregation declares
+    /// (`io.deephaven.engine.table.impl.by.PartitionByChunkedOperator#getResultColumns`).
+    QueryTable,
 }
 
 impl ColumnType {
@@ -126,6 +152,7 @@ impl ColumnType {
             ColumnType::Vector(element) | ColumnType::Array(element) => {
                 DataType::List(Arc::new(Field::new("", element.arrow_type(), true)))
             }
+            ColumnType::Table(_) => DataType::Int64,
         }
     }
 }
@@ -224,6 +251,16 @@ mod tests {
             ColumnType::vector(ColumnType::array(ColumnType::Int)).arrow_type(),
             DataType::List(Arc::new(Field::new("", ints, true)))
         );
+    }
+
+    #[test]
+    fn a_table_cell_is_a_handle_and_the_two_classes_are_two_types() {
+        let made = ColumnType::Table(TableClass::QueryTable);
+        let declared = ColumnType::Table(TableClass::Table);
+        assert_eq!(made.arrow_type(), DataType::Int64);
+        assert_eq!(declared.arrow_type(), DataType::Int64);
+        assert_ne!(made, declared);
+        assert_eq!(made.list_element(), None);
     }
 
     #[test]

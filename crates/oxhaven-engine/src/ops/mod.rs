@@ -17,6 +17,7 @@ pub mod merge;
 pub mod multi_join;
 #[cfg(test)]
 pub(crate) mod oracle;
+pub mod partitioned;
 pub mod range_join;
 pub mod select;
 pub mod snapshot;

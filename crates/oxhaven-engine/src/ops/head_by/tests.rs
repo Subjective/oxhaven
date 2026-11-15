@@ -237,7 +237,9 @@ fn exception(error: &HeadByError) -> &'static str {
         HeadByError::NoOtherColumns(_) | HeadByError::ArrayKey { .. } => {
             "java.lang.IllegalArgumentException"
         }
-        HeadByError::Blink => "java.lang.UnsupportedOperationException",
+        HeadByError::Blink | HeadByError::TableColumn(_) => {
+            "java.lang.UnsupportedOperationException"
+        }
         HeadByError::Failed(_) => panic!("not an exception of headBy"),
     }
 }

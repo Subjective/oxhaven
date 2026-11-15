@@ -78,8 +78,9 @@ pub use var::Var;
 pub use weighted::{WeightedFloat, WeightedLongSum};
 
 use crate::ops::filter::RowFilters;
+use crate::ops::partitioned::{Partition, ResultLink};
 use crate::ops::select::ArrayFormula;
-use crate::table::{memoized, CopyType, QueryTable, TableSpec};
+use crate::table::{memoized, CopyType, QueryTable, TableSpec, UnaryOperator};
 use aggregator::{Aggregator, Layout, Planned};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
@@ -87,7 +88,7 @@ use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::fmt;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 /// An aggregation of one input column into one output column.
 ///
@@ -407,6 +408,17 @@ pub enum Aggregation {
     /// Behavior: io.deephaven.api.agg.Formula, as
     /// io.deephaven.api.agg.Aggregation#AggFormula(String) makes one of `column = expression`
     Formula { column: String, expression: String },
+    /// A table of the rows of each group, as a column of tables named `column`: the
+    /// constituents of a partitioned table. They have the table's columns, without the
+    /// group-by columns unless `include_group_by_columns`. One per aggregation; refused
+    /// for a blink table. See [`Partition`](crate::ops::partitioned::Partition).
+    ///
+    /// Behavior: io.deephaven.api.agg.Partition, by the `visit(Partition)` of
+    /// io.deephaven.engine.table.impl.by.AggregationProcessor.NormalConverter
+    Partition {
+        column: String,
+        include_group_by_columns: bool,
+    },
 }
 
 impl Aggregation {
@@ -475,6 +487,8 @@ pub enum AggregateError {
     /// The aggregation is not defined for a blink table. Java reports this one as an
     /// `UnsupportedOperationException`.
     BlinkUnsupported(AggSpec),
+    /// What Java refuses with an `UnsupportedOperationException` and this text.
+    Unsupported(String),
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -508,6 +522,7 @@ impl fmt::Display for AggregateError {
             }
             AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
             AggregateError::InvalidSentinel(message)
+            | AggregateError::Unsupported(message)
             | AggregateError::InvalidFilter(message)
             | AggregateError::InvalidFormula(message) => f.write_str(message),
             AggregateError::BlinkUnsupported(spec) => write!(
@@ -1279,6 +1294,29 @@ impl<'a> SharedGroup<'a> {
     }
 }
 
+/// The incremental half of an aggregation.
+struct Aggregating(Mutex<Aggregator>);
+
+impl UnaryOperator for Aggregating {
+    fn on_update(
+        &self,
+        _result: &QueryTable,
+        upstream: &TableUpdate,
+    ) -> Result<TableUpdate, TableFailure> {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .on_update(upstream)
+    }
+
+    fn on_failure(&self, failure: &TableFailure) {
+        self.0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .on_failure(failure);
+    }
+}
+
 fn aggregate_inner(
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
@@ -1322,8 +1360,41 @@ fn aggregate_inner(
     // The key columns that formulas read, by their index among the key columns.
     let mut keys_read: Vec<usize> = Vec::new();
     let mut shared_group = SharedGroup::default();
+    // What tells the constituents of a partition when the result has finished a step.
+    let link = Arc::new(ResultLink::default());
+    let mut partitions = 0;
     for aggregation in aggregations {
         match aggregation {
+            Aggregation::Partition {
+                column,
+                include_group_by_columns,
+            } => {
+                // Behavior: AggregationProcessor.Converter#multiplePartitionsUnsupported
+                // and #unsupportedForBlinkTables
+                partitions += 1;
+                if partitions > 1 {
+                    return Err(AggregateError::Unsupported(
+                        "Only one AggPartition is permitted per aggregation".into(),
+                    ));
+                }
+                if kind == ParentKind::Blink {
+                    return Err(AggregateError::Unsupported(
+                        "Blink tables do not support Partition; use \
+                         BlinkTableTools.blinkToAppendOnly to accumulate full history"
+                            .into(),
+                    ));
+                }
+                let partition = Partition::new(
+                    parent,
+                    &key_columns,
+                    *include_group_by_columns,
+                    link.clone(),
+                );
+                let watched = partition.watched_columns();
+                let mut operator = Planned::new(Box::new(partition), None);
+                operator.reads = watched;
+                planned.push((column, operator));
+            }
             Aggregation::Count { column } => {
                 planned.push((column, Planned::new(Box::<Count>::default(), None)));
             }
@@ -1432,15 +1503,10 @@ fn aggregate_inner(
             attributes.append_only = true;
             spec = spec.with_attributes(attributes);
         }
-        let state = Mutex::new(aggregator);
-        let operator = move |_result: &QueryTable, upstream: &TableUpdate| {
-            state
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .on_update(upstream)
-        };
-        Ok((spec, operator))
+        Ok((spec, Aggregating(Mutex::new(aggregator))))
     })?;
+    let result: Weak<QueryTable> = Arc::downgrade(&table);
+    link.set(result);
     // Behavior: QueryTable#aggBy and #aggAllBy memoize their result. Where #aggBy puts the
     // columns in another order afterwards, with a `view` of a copy, the answer is a copy
     // with the same attributes.

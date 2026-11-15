@@ -322,7 +322,7 @@ impl Aggregator {
             } else {
                 shared_reads_through(&column.result)
             };
-            placed.push((place, source));
+            placed.push((place, column.plan.op.result_column(source)));
         }
         placed.sort_by_key(|(place, _)| *place);
         placed.into_iter().map(|(_, source)| source).collect()
@@ -601,6 +601,9 @@ impl Aggregator {
             for column in &mut self.ops {
                 if column.plan.op.needs_group_rows() {
                     column.plan.op.shifted(slot, &before, &after);
+                    if column.plan.op.recomputes_shifted() {
+                        column.marks.note(slot, Effect::RECOMPUTE);
+                    }
                 }
             }
         }
@@ -672,8 +675,18 @@ impl Aggregator {
         result
     }
 
+    /// Tells the operators that the result has failed.
+    pub fn on_failure(&mut self, failure: &TableFailure) {
+        for column in &mut self.ops {
+            column.plan.op.failed(failure);
+        }
+    }
+
     fn advance(&mut self, update: &TableUpdate) -> Result<TableUpdate, TableFailure> {
         let slots_at_start = self.slots;
+        for column in &mut self.ops {
+            column.plan.op.begin_cycle(update);
+        }
         if self.blink {
             // Behavior: ChunkedOperatorAggregationHelper#adjustForBlinkTable. The rows of
             // a blink table that leave it stay aggregated.
