@@ -3,7 +3,7 @@
 use super::plan::{self, Kind, Origin, Plan, Sources, Step};
 use super::sources::{ByPosition, ConstantSource, FormulaInput};
 use super::{result_attributes, spec, Flavor, SelectError};
-use crate::table::{holds_values, tracked_source, QueryTable, TableSpec};
+use crate::table::{holds_values, memoized, tracked_source, CopyType, QueryTable, TableSpec};
 use arrow::array::ArrayRef;
 use oxhaven_column::{FlatSource, RedirectedSource, RowRedirection, WritableSource};
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
@@ -37,7 +37,12 @@ pub(super) fn stored<S: AsRef<str>>(
         })?,
         _ => QueryTable::new_static(static_result(parent, &plan, flavor)?),
     };
-    Ok(table)
+    if !plan.is_memoized() {
+        return Ok(table);
+    }
+    // Behavior: the `Select` and `Update` flavors of
+    // MemoizedOperationKey.SelectUpdateViewOrUpdateView#copyType, which copy nothing
+    Ok(memoized(parent, CopyType::None, false, table)?)
 }
 
 /// Where a stored column's values come from.

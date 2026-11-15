@@ -70,7 +70,7 @@ pub use values::{build, Run, Scalar, Shape, Values};
 pub use var::Var;
 pub use weighted::{WeightedFloat, WeightedLongSum};
 
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use aggregator::{Aggregator, Planned};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
@@ -612,7 +612,10 @@ pub fn aggregate(
         };
         Ok((spec, operator))
     })?;
-    Ok(table)
+    // Behavior: QueryTable#aggBy and #aggAllBy memoize their result. Where #aggBy puts the
+    // columns in another order afterwards, with a `view` of a copy, the answer is a copy
+    // with the same attributes.
+    Ok(memoized(parent, CopyType::None, true, table)?)
 }
 
 /// Groups the rows of `parent` by the `group_by` columns. The result has the group-by

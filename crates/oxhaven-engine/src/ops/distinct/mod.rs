@@ -30,7 +30,7 @@ mod where_in_tests;
 
 pub use where_in::{where_in, where_not_in, WhereInError};
 
-use crate::table::{tracked_source, QueryTable, TableSpec};
+use crate::table::{memoized, tracked_source, CopyType, QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_column::WritableSource;
@@ -118,7 +118,9 @@ pub fn select_distinct(
     } else {
         with_keys(source, indices)?
     };
-    Ok(result)
+    // Behavior: QueryTable#selectDistinct memoizes its result under the key of an
+    // aggregation
+    Ok(memoized(source, CopyType::None, true, result)?)
 }
 
 /// The add-only and append-only attributes of the result: those of the source as Java
