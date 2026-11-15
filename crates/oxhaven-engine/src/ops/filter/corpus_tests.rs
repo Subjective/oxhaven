@@ -463,7 +463,7 @@ fn replay(scenario: &Json, tally: &mut Tally) {
     for input in scenario["inputs"].as_array().expect("inputs") {
         let input_name = input["name"].as_str().expect("a name").to_string();
         if input["ticking"]["blink"] == true {
-            // The engine has no blink input table.
+            // This replay does not drive a blink input table.
             tables.insert(input_name, Made::NotRun("blink input".to_string()));
             continue;
         }

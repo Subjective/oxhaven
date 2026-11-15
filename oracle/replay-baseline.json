@@ -48,7 +48,7 @@
   "ticking_agg_by": {"state": "clean"},
   "ticking_agg_by_full": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["by_key", "no_key"], "why": "no gRPC adapter for the aggregations distinct and group"},
   "ticking_aj": {"state": "clean"},
-  "ticking_blink_sort_head_tail": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["big", "bottom_one", "first_two", "last_two", "none", "rev", "seen", "seen_big_by_s", "seen_bottom_one", "seen_first_two", "seen_last_two", "seen_none", "seen_rev", "seen_sorted", "seen_top_two", "sorted_k", "top_two"], "why": "blink input tables are not ported: the server refuses the input table, so every table derived from it fails"},
+  "ticking_blink_sort_head_tail": {"state": "clean"},
   "ticking_column_statistics": {"state": "clean"},
   "ticking_empty_start": {"state": "clean"},
   "ticking_error_after_step": {"state": "clean"},

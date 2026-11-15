@@ -557,7 +557,7 @@ fn run(path: &Path, corpus: &Path, tally: &mut Tally) {
     for input in list(&scenario["inputs"]) {
         let name = text(&input["name"]).to_string();
         if input["ticking"]["blink"] == true {
-            // The engine has no blink input table.
+            // This replay does not drive a blink input table.
             tables.insert(name, Built::NotRun("blink input".to_string()));
             continue;
         }

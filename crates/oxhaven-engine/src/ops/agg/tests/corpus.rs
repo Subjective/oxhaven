@@ -287,7 +287,7 @@ pub(super) struct Input {
 pub(super) fn inputs(scenario: &Value, graph: &Arc<SteppedUpdateGraph>) -> BTreeMap<String, Input> {
     list(&scenario["inputs"], "inputs")
         .iter()
-        // The engine has no blink input table.
+        // This replay does not drive a blink input table.
         .filter(|input| input["ticking"]["blink"] != true)
         .map(|input| {
             let columns = list(&input["columns"], "columns").clone();
