@@ -575,6 +575,37 @@ def compare(
     return out
 
 
+# Operations whose result depends on when it was made or on the changes it has seen, not only
+# on what its sources hold now.
+HISTORY_DEPENDENT = frozenset({"snapshot", "snapshot_when", "time_table"})
+
+
+def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
+                       rules: Rules = DEFAULT_RULES) -> list[Mismatch]:
+    """Compares the results one server kept up to date through the steps (`kept`, the
+    expected side) with what it answers for the same operations applied again after each
+    step (`fresh`; see `runner.run_scenario`). Empty when the server agrees with itself.
+
+    Computed floats get the A1 tolerance: an incremental sum and a sum from scratch add in
+    different orders. Tables that depend on a `HISTORY_DEPENDENT` operation are left out.
+    """
+    depends: set[str] = set()
+    for op in scenario.operations:
+        if op["op"] in HISTORY_DEPENDENT or depends.intersection(
+                op[key] for key in ("source", "left", "right", "trigger") if key in op
+        ) or depends.intersection(op.get("sources", ())) or depends.intersection(
+                item["table"] for item in op.get("inputs", ())):
+            depends.add(op["name"])
+    both = ResultSet(kept.scenario)
+    again = ResultSet(fresh.scenario)
+    for step, table in fresh.keys():
+        if table not in depends:
+            both.put(step, table, kept.get(step, table))
+            again.put(step, table, fresh.get(step, table))
+    unordered = frozenset(r.table for r in scenario.results if not r.ordered)
+    return compare(both, again, unordered, computed_columns(scenario.operations), rules)
+
+
 # What Python says when a name is not there. The module or class must be one of the
 # `deephaven` package, or the object one of a class that is not a builtin: a missing attribute
 # of `None` or of a list is a defect in the script or in the package, not an absent name.

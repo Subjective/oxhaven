@@ -145,22 +145,40 @@ They wait for the column types, not for this design.
 
 | Crate | Licence | Why |
 | --- | --- | --- |
-| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend` | Apache-2.0 | The reader |
+| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend`, `snap`, `zstd` | Apache-2.0 | The reader |
 | `lz4_flex` | MIT | `LZ4` and `LZ4_RAW` pages |
 | `flate2`, `crc32fast` | MIT or Apache-2.0 | `GZIP` pages |
 | `miniz_oxide`, `adler2`, `simd-adler32` | MIT or Zlib or Apache-2.0; 0BSD or MIT or Apache-2.0; MIT | The inflate behind `flate2` (its `rust_backend`; the `zlib-rs` backend that `parquet` takes by default is under the Zlib licence only) |
 | `seq-macro`, `twox-hash` | MIT or Apache-2.0; MIT | Needed by `parquet` |
+| `snap` | BSD-3-Clause | `SNAPPY` pages |
+| `zstd`, `zstd-safe` | BSD-3-Clause | `ZSTD` pages |
+| `zstd-sys` | BSD-3-Clause and BSD-2-Clause | The Zstandard C library, compiled when the crate is built |
+| `jobserver`, `pkg-config` | MIT or Apache-2.0 | Build dependencies of `zstd-sys` |
 
 `serde_json` (already in the workspace) reads the `deephaven` footer entry.
 
-**Snappy, Zstandard and Brotli are not enabled**, because the crates that `parquet` uses
-for them are not under Apache-2.0 or MIT alone: `snap` and `zstd` are BSD-3-Clause, and
-`brotli` is BSD-3-Clause and MIT. A
-file with a column chunk in one of them is refused by name when it is opened. **This is
-the main limit of the slice**: Snappy is the default of Java's `write`, of pyarrow and of
-Spark. Enabling a codec is one word in the workspace `Cargo.toml` once the owner accepts
-the licence; nothing else changes. (The reference server as packaged has no Brotli codec
-either: it makes the table and fails when a column is read.)
+`snap`, `zstd`, `zstd-safe` and `zstd-sys` are under the exception to the licence rule
+that `PORTING.md` records ("Dependencies"): the owner accepted BSD-3-Clause for the
+Snappy, Zstandard and Brotli codec crates of `parquet` and what they depend on, on
+2026-11-15, and for nothing else. Snappy is the default of Java's `write`, of pyarrow
+and of Spark. `zstd-sys` 2.1.3 declares `BSD-3-Clause AND BSD-2-Clause`, because the
+decoders of the legacy formats in the C library are under the 2-clause licence; the
+owner accepted BSD-2-Clause for that crate alone, the same day. Building `zstd-sys`
+compiles the C library, so a build needs a C compiler.
+
+**Brotli is not enabled**, for parity and not for its licence. Its crates fit the
+exception (`brotli` is BSD-3-Clause and MIT, `brotli-decompressor` BSD-3-Clause or MIT,
+`alloc-no-stdlib` and `alloc-stdlib` BSD-3-Clause). But the reference server as packaged
+has no Brotli codec: it makes the table and fails with `INVALID_ARGUMENT` when a column
+is read, and that is what `parquet_read_codecs` recorded. A read that succeeds where
+Java fails is against `PARITY.md`, "Must match", item 7, and the replay gate reports it
+as a kind the baseline does not list (`failure_expected`). Reading Brotli therefore
+needs an allowed difference in `PARITY.md` and that kind in the baseline, both protected
+changes; with them it is one word in the workspace `Cargo.toml` and one line in
+`location.rs`.
+
+A file with a column chunk in Brotli or any other codec this build does not have
+(`LZO`) is refused by name when it is opened.
 
 ## Errors
 
@@ -185,7 +203,7 @@ In:
 - `col_instructions` for renaming a column and for `unsigned_long_target`; `file_layout`;
   the errors Java raises for a missing file, an empty directory, a layout that does not
   fit, and `is_refreshing` with a single file.
-- Uncompressed, `GZIP`, `LZ4` and `LZ4_RAW` pages.
+- Uncompressed, `SNAPPY`, `GZIP`, `ZSTD`, `LZ4` and `LZ4_RAW` pages.
 
 Out, each refused with `NotPorted`:
 
@@ -199,7 +217,7 @@ Out, each refused with `NotPorted`:
 | The types listed under "Which types" | New column types |
 | A column name that Java would change to make it legal (`a b`, `2x`, `int`) | `NameValidator#legalizeColumnName` |
 | A codec named in `col_instructions` | Codecs |
-| Snappy, Zstandard, Brotli | The owner's decision on licences |
+| Brotli | A decision on parity: the reference fails to read it ("Dependencies") |
 
 Not done and not refused, because nothing observable depends on them yet: data indexes
 and the sorted-column marks in the `deephaven` footer entry (`impl/dataindex`), pushing
@@ -232,7 +250,7 @@ written by Java's own `deephaven.parquet.write`, some by pyarrow.
 | `parquet_read_directory` | clean | Directories: the three layouts that read one, the order of files, hidden files, files with other columns, no rows |
 | `parquet_read_foreign` | clean | Files of another writer: unsigned integers, timestamps, `INT96`, row groups, Java's nulls, column instructions |
 | `parquet_read_errors` | clean | Fourteen reads that fail in Java |
-| `parquet_read_codecs` | differs | Snappy, Zstandard, Brotli |
+| `parquet_read_codecs` | differs | Snappy and Zstandard, read; Brotli, refused |
 | `parquet_read_more_types` | differs | The types without a column type |
 | `parquet_read_partitioned` | differs | Partition directories, `_metadata`, refreshing directories |
 | `parquet_read_names` | differs | Names Java makes legal |
@@ -253,6 +271,8 @@ Besides what is refused:
   convert parquet DOUBLE column to int"), and converts between some types.
 - A codec named in `col_instructions` is refused; Java takes it and ignores it for a
   column that needs none.
+- A file with Brotli pages is refused when it is opened. The reference as packaged
+  makes the table and fails when a column is read, for want of the codec.
 - An instruction that names a Parquet column and no table column is a `ValueError`
   inside the `DHError`; in Java it is a `NullPointerException` inside it.
 - A table without rows does not carry the attribute `EmptySourceTable`.
