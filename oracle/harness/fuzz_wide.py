@@ -43,9 +43,9 @@ Not generated, each for a stated reason:
   whose timestamps are all null (see `aggregation`).
 - `head_by` and `tail_by` of a table with an array column of strings, booleans or
   timestamps: the reference answers with an array of objects (see `build`).
-- `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
-  `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
-
+- `agg_all_by` with `min`, `max`, `median`, `pct` or `unique` of an array column of
+  booleans or timestamps: the reference answers with an array of strings (see
+  `build_agg_all_by`).
 - `rolling_formula_*`, `cum_count_where` and `rolling_count_where_*`: Oxhaven answered them
   `UNIMPLEMENTED` while this generator was written and has them since; they take formulas
   and filters, which need their own drawing rules, and are still to be added.
@@ -84,6 +84,10 @@ ORDER_KEEPING = frozenset({
 # Operations whose result has, per row of the first source, at most one row with its columns.
 KEY_KEEPING = ORDER_KEEPING | {"sort", "reverse"}
 _UNTYPED_ARRAYS = frozenset(LIST + kind for kind in ("string", "bool", "timestamp"))
+# `agg_all_by`: the aggregations whose result of an array of these elements the reference
+# serves as an array of strings.
+_UNTYPED_RESULTS = frozenset({"min", "max", "median", "pct", "unique"})
+_UNTYPED_ELEMENTS = frozenset(LIST + kind for kind in ("bool", "timestamp"))
 
 
 def _same(kind: str) -> str:
@@ -815,9 +819,11 @@ class _Wide(_Generator):
             # that would differ on every such draw.
             agg = "min" if agg == "first" else "max"
             accepted, result = AGGREGATIONS[agg]
-        if self.has_lists(source, by) and agg not in ("first", "last"):
-            # Oxhaven answers an aggregation of an array column UNIMPLEMENTED unless it is a
-            # first or a last (the engine lists the others as not ported).
+        if agg in _UNTYPED_RESULTS and any(kind in _UNTYPED_ELEMENTS for _, kind in rest):
+            # The reference's operators that store their result as objects make its column
+            # without a component type, so the minimum of an array of booleans or of
+            # timestamps comes back as an array of strings. Oxhaven does not reproduce that
+            # and answers UNIMPLEMENTED, so every such draw would differ.
             return False
         spec: dict[str, Any] = {"agg": agg, "columns": []}
         even = agg == "median"
