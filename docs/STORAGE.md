@@ -41,7 +41,7 @@ shapes, and each is one small thing here:
 
 | Shape | Who | What the engine offers |
 | --- | --- | --- |
-| Loaded whole when it is created | CSV (`CsvTools#readCsv` builds an in-memory table) | `table::in_memory_table`, which exists |
+| Loaded whole when it is created | CSV (`CsvTools#readCsv` builds an in-memory table) | A static `QueryTable` over in-memory columns, which exists (`docs/CSV.md`) |
 | Read on demand from locations that do not change | Parquet, later Iceberg | `source::stored_table` over `TableLocation`, this task |
 | Pushed by a feed, cycle by cycle | Kafka (`StreamToBlinkTableAdapter`) | `QueryTable` with a `RootSource`, which exists for input tables and time tables |
 
