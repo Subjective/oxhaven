@@ -30,10 +30,13 @@ The rules, in the order they are applied to one result of one step:
 A script scenario (`scripts.py`) adds one rule, applied to the script of each step before the
 results of that step are compared:
 
-7. Script outcome (Must match, item 7; A5). If the reference's script failed, the other side's
+7. Script outcome (Must match, item 7). If the reference's script failed, the other side's
    must fail too, with the same Python exception type, and for a `DHError` the same message
    before the cause (`table update operation failed.`). The cause, the traceback and the text
-   of any other exception are not compared. A script that fails because the server's
+   of any other exception are not compared (A5). The type and that part of the message are:
+   a script catches an exception by its type, and the package reproduces the reference's
+   message for each operation (`docs/CONSOLE.md`); `tasks/6.3-python-script-oracle.md` sets
+   this rule, which is stricter than A5 alone. A script that fails because the server's
    `deephaven` package lacks a name the script uses is `missing` (`missing_name`), unless the
    reference failed with that same exception type; the comparison of the scenario ends at
    that step.
