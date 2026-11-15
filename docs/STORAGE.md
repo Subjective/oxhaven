@@ -159,7 +159,8 @@ for them are not under Apache-2.0 or MIT alone: `snap` and `zstd` are BSD-3-Clau
 file with a column chunk in one of them is refused by name when it is opened. **This is
 the main limit of the slice**: Snappy is the default of Java's `write`, of pyarrow and of
 Spark. Enabling a codec is one word in the workspace `Cargo.toml` once the owner accepts
-the licence; nothing else changes.
+the licence; nothing else changes. (The reference server as packaged has no Brotli codec
+either: it makes the table and fails when a column is read.)
 
 ## Errors
 
@@ -211,18 +212,53 @@ filters down to row-group statistics, and a bound on the memory the decoded arra
 ## Gate
 
 ```bash
-cargo test -p oxhaven-engine source
+cargo test -p oxhaven-engine --lib source::
 cargo test -p oxhaven-parquet
-cargo test -p oxhaven-server --features python parquet
+cargo test -p oxhaven-server --features python --lib parquet
 oracle/bin/harness replay-scripts --url $URL --scripts parquet_
 ```
 
 The script scenarios `parquet_*` are recorded from Java 42.9. A scenario carries its
 Parquet files inside the script, base64 encoded, and writes them to a temporary directory
 before it reads them, so that the same script runs on the reference and on Oxhaven with
-no file shared between them. The files are a few kilobytes: some written by Java's own
-`deephaven.parquet.write`, some by pyarrow. `crates/oxhaven-parquet/tests/data` holds the
-same files for the Rust tests, with `README.md` saying how each was made.
+no file shared between them. The files are a few hundred bytes to a few kilobytes: some
+written by Java's own `deephaven.parquet.write`, some by pyarrow.
+`crates/oxhaven-parquet/tests/data` holds the same files for the Rust tests, with a
+`README.md` that says how each was made.
+
+| Scenario | State | Gates |
+| --- | --- | --- |
+| `parquet_read_types`, `parquet_read_lists` | clean | Files Java wrote: every column type, nulls, vectors and arrays, `GZIP` and `LZ4_RAW` |
+| `parquet_read_directory` | clean | Directories: the three layouts that read one, the order of files, hidden files, files with other columns, no rows |
+| `parquet_read_foreign` | clean | Files of another writer: unsigned integers, timestamps, `INT96`, row groups, Java's nulls, column instructions |
+| `parquet_read_errors` | clean | Fourteen reads that fail in Java |
+| `parquet_read_codecs` | differs | Snappy, Zstandard, Brotli |
+| `parquet_read_more_types` | differs | The types without a column type |
+| `parquet_read_partitioned` | differs | Partition directories, `_metadata`, refreshing directories |
+| `parquet_read_names` | differs | Names Java makes legal |
+
+The harness has no comparison for a `char` column (`unsupported_type`), so the scenarios
+compare a char column through `(int)` in a `view`. The Rust tests compare the chars
+themselves with what Java read.
+
+## Differences from Java
+
+Besides what is refused:
+
+- A file of a directory whose column has another type than the table's is refused when
+  the table is made. Java makes the table and fails when that column is read ("Cannot
+  convert parquet DOUBLE column to int"), and converts between some types.
+- A codec named in `col_instructions` is refused; Java takes it and ignores it for a
+  column that needs none.
+- An instruction that names a Parquet column and no table column is a `ValueError`
+  inside the `DHError`; in Java it is a `NullPointerException` inside it.
+- A table without rows does not carry the attribute `EmptySourceTable`.
+- The files of a directory are ordered by path; Java orders them by URI, which differs
+  for names outside ASCII.
+- A timestamp in milliseconds or microseconds too large for nanoseconds is an error when
+  it is read. What Java does with one was not looked at.
+- Error texts are this reader's, except where Java's text is short and names no class
+  (`PARITY.md` A5 does not compare them).
 
 ## Risks
 
