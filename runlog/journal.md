@@ -626,3 +626,9 @@ failures. Seven open engine defects are written up as tasks/4.17-fuzz-findings.m
 minimal scenarios beside it. For owner review: A5 (Java's head_by cast changes a column's
 type; reproduce or not), the serving of tables that failed in a cycle (A7, open since
 before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
+
+## 2026-11-15 19:34 UTC: Owner decided: stop a cancelled console command
+
+The owner chose "Stop it, record the difference" for PR 79. The author was resumed to add the
+allowed difference to PARITY.md (that entry only) and rerun the gate; the pull request merges
+when green.
