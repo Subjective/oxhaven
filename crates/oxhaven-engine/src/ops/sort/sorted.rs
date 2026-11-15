@@ -8,7 +8,7 @@
 use super::keys::{KeyEncoder, SortKey};
 use super::{SortColumn, SortError};
 use crate::ops::merge::flattened_shift_data;
-use crate::table::{reads_through, QueryTable, TableSpec};
+use crate::table::{is_copied, reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -127,7 +127,10 @@ pub(super) fn sort(
         return Ok(static_sort(parent, &encoder, input)?);
     }
     if parent.attributes().blink {
-        return Ok(blink_sort(parent, encoder, input)?);
+        // Java's server sorts by an absolute value through an `updateView` of a formula,
+        // which is a table of its own and not a copy.
+        let copied = is_copied(&**parent) && !columns.iter().any(|column| column.absolute);
+        return Ok(blink_sort(parent, encoder, input, copied)?);
     }
     Ok(incremental_sort(parent, encoder, input)?)
 }
@@ -162,12 +165,15 @@ fn static_sort(
 }
 
 /// The sort of a blink table: every cycle the result is the sorted rows of that cycle.
+/// `copied` says whether Java answers it with a copy, see [`is_copied`].
 ///
-/// Behavior: io.deephaven.engine.table.impl.SortOperation#blinkTableSort
+/// Behavior: io.deephaven.engine.table.impl.SortOperation#blinkTableSort and the `Sort` key
+/// of io.deephaven.engine.table.impl.MemoizedOperationKey
 fn blink_sort(
     parent: &Arc<dyn Table>,
     encoder: KeyEncoder,
     input: Option<Arc<dyn InputTable>>,
+    copied: bool,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
         let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
@@ -183,7 +189,8 @@ fn blink_sort(
             redirected_columns(parent, &redirection),
         )
         .with_attributes(sort_attributes(&**parent))
-        .flat();
+        .flat()
+        .copied(copied);
         let spec = TableSpec { input, ..spec };
 
         let parent = parent.clone();

@@ -27,7 +27,7 @@ pub use condition::{
     Value,
 };
 
-use crate::table::{is_add_only, is_append_only, QueryTable, TableSpec};
+use crate::table::{is_add_only, is_append_only, is_copied, QueryTable, TableSpec};
 use filters::{FilterSpec, Resolved};
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::RowSet;
@@ -292,6 +292,9 @@ fn where_resolved(
     for filter in &flat {
         reads_arrays |= filter.inputs(parent.definition(), &mut columns);
     }
+    // Behavior: io.deephaven.engine.table.impl.MemoizedOperationKey#filter, which a copy
+    // shares with its original when every filter can be remembered
+    let copied = is_copied(&**parent) && flat.iter().all(Resolved::can_memoize);
     let operator = WhereOperator {
         parent: parent.clone(),
         filters: flat,
@@ -306,7 +309,8 @@ fn where_resolved(
             .collect();
         let spec = TableSpec::new(definition, rows, columns)
             .with_attributes(where_attributes(&**parent))
-            .with_input_table_of(&**parent);
+            .with_input_table_of(&**parent)
+            .copied(copied);
         Ok((spec, move |result: &QueryTable, upstream: &TableUpdate| {
             operator.on_update(result, upstream)
         }))

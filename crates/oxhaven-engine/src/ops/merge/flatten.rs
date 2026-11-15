@@ -4,7 +4,7 @@
 //! `p` of some sequence of parent rows. Rows that keep their place in the sequence across an
 //! update are shifted; the others are removed and added.
 
-use crate::table::{reads_through, QueryTable, TableSpec};
+use crate::table::{is_copied, reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{RedirectedSource, RowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, NULL_ROW_KEY};
@@ -163,6 +163,10 @@ pub(crate) fn positional(
         let mut spec = TableSpec::new(definition, RowSet::flat(parent.row_set().size()), columns)
             .with_attributes(attributes);
         spec.flat = flat;
+        // Behavior: the `Flatten` and `Reverse` keys of
+        // io.deephaven.engine.table.impl.MemoizedOperationKey, which a copy shares with its
+        // original whatever their attributes
+        spec.copied = is_copied(&**parent);
         if keeps_input_table {
             spec = spec.with_input_table_of(&**parent);
         }

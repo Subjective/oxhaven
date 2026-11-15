@@ -5,7 +5,7 @@
 //! they pass: the first rows ever seen, or the latest.
 
 use super::SortError;
-use crate::table::{tracked_source, QueryTable, TableSpec};
+use crate::table::{is_copied, tracked_source, QueryTable, TableSpec};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -250,7 +250,14 @@ fn check_blink_update(upstream: &TableUpdate, message: &str) -> Result<(), Table
 /// `head` of a blink table: an append-only table of the first `limit` rows the blink table
 /// ever showed, starting with the rows it shows now.
 ///
+/// The result has the add-only and append-only attributes unless the blink table is one
+/// Java holds as a copy (see [`is_copied`]): then Java answers with a copy of the result it
+/// remembers for the original, and copies no attribute to it. Such a result is flat and
+/// grows the same way; only the attributes are missing.
+///
 /// Behavior: io.deephaven.engine.table.impl.BlinkTableTools#blinkToAppendOnly(Table, long)
+/// and the `BlinkToAppendOnly` key of io.deephaven.engine.table.impl.MemoizedOperationKey,
+/// whose copy type is `CopyAttributeOperation.None`
 fn blink_to_append_only(
     parent: &Arc<dyn Table>,
     limit: u64,
@@ -262,8 +269,10 @@ fn blink_to_append_only(
         copy_rows(&**parent, &initial, &columns, &rows)?;
 
         let mut attributes = TableAttributes::default();
-        attributes.add_only = true;
-        attributes.append_only = true;
+        if !is_copied(&**parent) {
+            attributes.add_only = true;
+            attributes.append_only = true;
+        }
         let spec = TableSpec::new(parent.definition().clone(), rows, as_sources(&columns))
             .with_attributes(attributes)
             .flat();

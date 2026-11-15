@@ -31,7 +31,7 @@ mod sources;
 #[cfg(test)]
 mod tests;
 
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{is_copied, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
@@ -130,8 +130,38 @@ fn result_attributes(parent: &dyn Table) -> TableAttributes {
     result
 }
 
+/// Refuses `view`, `update_view`, `select` and `update` of a blink table that Java holds as
+/// a copy (see [`is_copied`]) when every column is the name of a parent column.
+///
+/// Java remembers such an operation, answers a copy with a copy of the result it remembers
+/// for the original, and copies the blink attribute to it for none of the four. The result
+/// is then a table that is not blink over rows that last one cycle: its `head` is a slice
+/// and its aggregations forget the rows. That has not been ported. A column with a formula,
+/// `X = K` included, is not remembered, and its result is a blink table.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult with
+/// io.deephaven.engine.table.impl.MemoizedOperationKey#selectUpdateViewOrUpdateView
+fn refuse_remembered_copy<S: AsRef<str>>(parent: &Arc<dyn Table>, columns: &[S], operation: &str) {
+    let named = |column: &S| {
+        parent
+            .definition()
+            .index_of(column.as_ref().trim())
+            .is_some()
+    };
+    if parent.attributes().blink && is_copied(&**parent) && columns.iter().all(named) {
+        unported!(
+            "io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult",
+            "{operation} of only column names on a blink input table or a sort, filter, \
+             reverse or drop_columns of one, whose result Java does not make a blink table"
+        );
+    }
+}
+
 /// The listed columns, each computed from the parent's current values whenever it is read.
 /// With no columns, the parent itself.
+///
+/// # Panics
+/// With `unported!` as [`refuse_remembered_copy`] says.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#view
 pub fn view<S: AsRef<str>>(
@@ -142,6 +172,7 @@ pub fn view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
+    refuse_remembered_copy(parent, columns, "view");
     computed_on_read(parent, columns, compiler, Flavor::View)
 }
 
@@ -157,6 +188,7 @@ pub fn update_view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
+    refuse_remembered_copy(parent, columns, "update_view");
     computed_on_read(parent, columns, compiler, Flavor::UpdateView)
 }
 
@@ -204,8 +236,10 @@ pub fn select<S: AsRef<str>>(
             .iter()
             .map(|column| column.name.as_str())
             .collect();
+        refuse_remembered_copy(parent, &all, "select");
         return materialize::stored(parent, &all, compiler, Flavor::Select);
     }
+    refuse_remembered_copy(parent, columns, "select");
     materialize::stored(parent, columns, compiler, Flavor::Select)
 }
 
@@ -218,6 +252,9 @@ pub fn update<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, SelectError> {
+    if !columns.is_empty() {
+        refuse_remembered_copy(parent, columns, "update");
+    }
     materialize::stored(parent, columns, compiler, Flavor::Update)
 }
 
@@ -269,7 +306,10 @@ pub fn drop_columns<S: AsRef<str>>(
     let table = QueryTable::derive(parent, || {
         let sources = kept.iter().map(|&index| parent.column(index)).collect();
         Ok((
-            spec(parent, definition, sources, attributes),
+            // Behavior: the `DropColumns` key of
+            // io.deephaven.engine.table.impl.MemoizedOperationKey, which a copy shares with
+            // its original whatever their attributes
+            spec(parent, definition, sources, attributes).copied(is_copied(&**parent)),
             // A change to dropped columns only leaves modified rows without modified
             // columns, which the table drops before it delivers the update.
             move |_result: &QueryTable, upstream: &TableUpdate| {

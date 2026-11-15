@@ -10,7 +10,8 @@ use oxhaven_contracts::table::{
 };
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_rowset::TrackingRowSet;
-use std::sync::{Arc, PoisonError, RwLock, Weak};
+use std::collections::BTreeSet;
+use std::sync::{Arc, Mutex, PoisonError, RwLock, Weak};
 
 /// What a new table starts as: its schema, initial rows, columns and hints.
 pub struct TableSpec {
@@ -24,6 +25,8 @@ pub struct TableSpec {
     pub flat: bool,
     /// The write side of the input table this table has the `InputTable` attribute of.
     pub input: Option<Arc<dyn InputTable>>,
+    /// Whether Java holds this table as a copy of another one. See [`is_copied`].
+    pub copied: bool,
 }
 
 impl TableSpec {
@@ -40,6 +43,7 @@ impl TableSpec {
             attributes: TableAttributes::default(),
             flat: false,
             input: None,
+            copied: false,
         }
     }
 
@@ -63,6 +67,59 @@ impl TableSpec {
     pub fn flat(mut self) -> Self {
         self.flat = true;
         self
+    }
+
+    /// Marks the table as one Java holds as a copy if `copied`. See [`is_copied`].
+    pub fn copied(mut self, copied: bool) -> Self {
+        self.copied = copied;
+        self
+    }
+}
+
+/// The addresses of the live tables that Java holds as copies.
+///
+/// The `Table` contract cannot say this of a table. Until it can, the copies are recognized
+/// by address, as `storage` recognizes sources: a table registers when it is shared and
+/// leaves when it is dropped, so an address in the set always belongs to a live table.
+static COPIED: Mutex<BTreeSet<usize>> = Mutex::new(BTreeSet::new());
+
+/// Whether `table` is a blink table that Java holds as a copy of another table: a blink
+/// input table, which is its publisher's table with the `InputTable` attribute added, or
+/// the result of an operation on such a copy that Java answers from the operations its
+/// original remembers.
+///
+/// Java gives such a result the attributes that the kind of operation copies from its
+/// parent and none of the ones the operation itself sets, so `head` of a copy is not
+/// add-only and a `view` of its columns is not a blink table. Only blink tables are
+/// tracked: for the other tables the two sets of attributes modelled here are the same.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable.CopiedTable#memoizeResult
+pub fn is_copied(table: &dyn Table) -> bool {
+    let address = table as *const dyn Table as *const () as usize;
+    COPIED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .contains(&address)
+}
+
+fn shared(table: Arc<QueryTable>) -> Arc<QueryTable> {
+    if table.copied {
+        COPIED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(Arc::as_ptr(&table) as usize);
+    }
+    table
+}
+
+impl Drop for QueryTable {
+    fn drop(&mut self) {
+        if self.copied {
+            COPIED
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&(self as *const QueryTable as usize));
+        }
     }
 }
 
@@ -175,6 +232,7 @@ pub struct QueryTable {
     live: Option<Live>,
     feed: Feed,
     input: Option<Arc<dyn InputTable>>,
+    copied: bool,
 }
 
 impl QueryTable {
@@ -218,6 +276,7 @@ impl QueryTable {
             }),
             feed,
             input,
+            copied: spec.copied,
         }
     }
 
@@ -227,7 +286,7 @@ impl QueryTable {
     /// As every constructor: if the spec's columns do not match its definition, or it is
     /// flat without a flat row set.
     pub fn new_static(spec: TableSpec) -> Arc<QueryTable> {
-        Arc::new(Self::build(spec, None, Feed::Static, None))
+        shared(Arc::new(Self::build(spec, None, Feed::Static, None)))
     }
 
     /// The result of an operation on `parent`.
@@ -253,7 +312,7 @@ impl QueryTable {
         locked(&*graph, || {
             check_not_failed(&**parent)?;
             let (spec, operator) = init()?;
-            Ok(Arc::new_cyclic(|result: &Weak<QueryTable>| {
+            Ok(shared(Arc::new_cyclic(|result: &Weak<QueryTable>| {
                 let handler: Weak<dyn UpdateHandler> = result.clone();
                 let listener = ParentListener::subscribe(parent.clone(), handler);
                 let feed = Feed::Unary {
@@ -261,7 +320,7 @@ impl QueryTable {
                     operator: Box::new(operator),
                 };
                 Self::build(spec, Some(graph.clone()), feed, None)
-            }))
+            })))
         })
     }
 
@@ -294,7 +353,7 @@ impl QueryTable {
                 check_not_failed(&**parent)?;
             }
             let (spec, operator) = init()?;
-            Ok(Arc::new_cyclic(|result: &Weak<QueryTable>| {
+            Ok(shared(Arc::new_cyclic(|result: &Weak<QueryTable>| {
                 let handler: Weak<dyn MergedHandler> = result.clone();
                 let listener = MergedListener::subscribe(
                     graph.clone(),
@@ -307,7 +366,7 @@ impl QueryTable {
                     operator: Box::new(operator),
                 };
                 Self::build(spec, Some(graph.clone()), feed, None)
-            }))
+            })))
         })
     }
 
@@ -330,7 +389,7 @@ impl QueryTable {
         if let Feed::Root { _source } = &table.feed {
             graph.add_source(_source);
         }
-        table
+        shared(table)
     }
 
     /// Applies `update` to the row set and delivers it to the listeners. For the update
