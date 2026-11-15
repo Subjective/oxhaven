@@ -382,6 +382,41 @@ pub fn unstructured_filter(
     where_specs(parent, &specs, compiler)
 }
 
+/// The rows of `parent` that satisfy at least one of the filter strings, each read as
+/// [`unstructured_filter`] reads a filter string. One filter string is that filter. None
+/// is refused: Java makes the filter that accepts no row of them, and its `where` does
+/// not take that filter.
+///
+/// A row is kept by the first of the filters that accepts it, so a formula is not asked
+/// about a row that an earlier filter accepted.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#where of
+/// io.deephaven.api.filter.Filter#or of io.deephaven.api.RawString filters, through
+/// io.deephaven.engine.table.impl.select.WhereFilterAdapter and
+/// io.deephaven.engine.table.impl.select.DisjunctiveFilter
+pub fn where_one_of(
+    parent: &Arc<dyn Table>,
+    filters: &[impl AsRef<str>],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, FilterError> {
+    let mut specs = filters
+        .iter()
+        .map(|text| factory::parse_filter(text.as_ref()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(FilterError::Invalid)?;
+    let spec = match specs.len() {
+        // Behavior: `WhereFilterAdapter#of(boolean)` for `Filter#ofFalse`
+        0 => {
+            return Err(FilterError::Invalid(
+                "Should not be constructing literal boolean WhereFilter".into(),
+            ))
+        }
+        1 => specs.remove(0),
+        _ => FilterSpec::Or(specs),
+    };
+    where_specs(parent, &[spec], compiler)
+}
+
 /// The rows of `parent` that satisfy every condition, as the gRPC `filter` operation
 /// selects them.
 ///
