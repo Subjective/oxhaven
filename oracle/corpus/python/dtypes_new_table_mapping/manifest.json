@@ -1,13 +1,19 @@
 {
   "format": 2,
   "scenario": "dtypes_new_table_mapping",
-  "scenario_sha256": "8e0aa374ff57e7f586ff029e7ecd9934ef124d70c2e8e0c4d003fbbacb73f605",
+  "scenario_sha256": "daa2b75e24f0383bd1b929844e32a514e8e6282469001364f2af815757fdb116",
   "reference": "42.9",
   "entries": [
     {
       "step": 0,
       "table": "inferred",
       "file": "step000.inferred.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "with_none",
+      "file": "step000.with_none.arrow",
       "rows": 3
     }
   ]

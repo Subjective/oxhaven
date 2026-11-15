@@ -2,7 +2,7 @@
 
 from typing import Mapping, Sequence, Union
 
-from . import _engine
+from . import _engine, dtypes
 from .column import InputColumn
 from .dherror import DHError
 from .table import Table
@@ -103,21 +103,116 @@ def time_table(period, start_time=None, blink_table: bool = False) -> Table:
         raise DHError(e, "failed to create a time table.") from e
 
 
-def new_table(cols: Union[Sequence[InputColumn], Mapping[str, Sequence]]) -> Table:
-    """Creates an in-memory table from a list of input columns.
+def _mapping_values(array):
+    """The values of a pandas column with the engine's null values in place of
+    `pandas.NA`. In a nullable float column a NaN stays a NaN: pandas marks both as missing,
+    and only an entry that is missing without being a NaN is a null.
 
-    The mapping form of the reference package, which infers the column types, is not
-    accepted yet.
+    Behavior: `deephaven.pandas._map_na`, for the nullable types `convert_dtypes` gives
+    """
+    import numpy as np
+    import pandas as pd
+
+    from . import constants
+
+    if isinstance(array, np.ndarray):
+        return array
+    pd_dtype = array.dtype
+    nulls = {
+        pd.Int8Dtype: constants.NULL_BYTE,
+        pd.Int16Dtype: constants.NULL_SHORT,
+        pd.UInt16Dtype: constants.NULL_CHAR,
+        pd.Int32Dtype: constants.NULL_INT,
+        pd.Int64Dtype: constants.NULL_LONG,
+        pd.Float32Dtype: constants.NULL_FLOAT,
+        pd.Float64Dtype: constants.NULL_DOUBLE,
+    }
+    if isinstance(pd_dtype, (pd.Float32Dtype, pd.Float64Dtype)):
+        values = np.copy(array._data)
+        values[np.logical_and(array._mask, np.logical_not(np.isnan(values)))] = nulls[type(pd_dtype)]
+        return values
+    if isinstance(pd_dtype, pd.BooleanDtype):
+        # the null of a Boolean held as a byte, `BooleanUtils#NULL_BOOLEAN_AS_BYTE`
+        return np.array([constants.NULL_BYTE if v is pd.NA else v for v in array])
+    if isinstance(pd_dtype, pd.StringDtype):
+        return np.array([None if (v is pd.NA or v is np.nan) else v for v in array])
+    if type(pd_dtype) in nulls:
+        return array.fillna(nulls[type(pd_dtype)])
+    return array
+
+
+def _mapping_columns(cols: Mapping) -> list:
+    """Input columns from a mapping of column names to values, with the types pandas
+    infers for them: integers are `long`, and in a column of floating point numbers `None`
+    is a NaN, not a null.
+
+    Behavior: `deephaven.table_factory.new_table` for a mapping, which makes a
+    `pandas.DataFrame`, calls `convert_dtypes` and hands it to `deephaven.pandas.to_table`.
+    This is that function for the frame made here; `deephaven.pandas` itself is task 6.9.
+    """
+    import re
+
+    import pandas as pd
+
+    frame = pd.DataFrame(cols).convert_dtypes()
+    columns = []
+    for label in frame.columns.tolist():
+        values = frame[label].values
+        pd_dtype = frame.dtypes[label]
+        if isinstance(pd_dtype, pd.ArrowDtype):
+            raise NotImplementedError(
+                "not ported: deephaven.arrow.to_table, for a pandas column of an Arrow type"
+            )
+        if isinstance(pd_dtype, pd.CategoricalDtype):
+            pd_dtype = pd_dtype.categories.dtype
+        else:
+            pd_dtype = values.dtype
+        # Behavior: `deephaven.numpy._to_column_name`
+        name = re.sub(r"\s+", "_", re.sub(r"\W+", " ", str(label)).strip())
+        columns.append(
+            InputColumn(
+                name=name,
+                data_type=dtypes.from_np_dtype(pd_dtype),
+                input_data=_mapping_values(values),
+            )
+        )
+    return columns
+
+
+def _engine_values(data_type, values) -> list:
+    """The values of an input column as the engine takes them: an instant as its
+    nanoseconds since the epoch, in an array cell too."""
+    name = data_type.j_name
+    if name == "java.time.Instant":
+        return [None if value is None else value.epoch_nanos() for value in values]
+    component = dtypes._component_name(name)
+    if component is not None:
+        component = dtypes._from_java_name(component)
+        return [None if value is None else _engine_values(component, value) for value in values]
+    return list(values)
+
+
+def new_table(cols: Union[Sequence[InputColumn], Mapping[str, Sequence]]) -> Table:
+    """Creates an in-memory table from a list of input columns, or from a mapping of
+    column names to values, whose column types are those pandas infers.
+
+    Each column has the same number of values. Of two input columns with one name the
+    later one replaces the earlier in its place, as in the reference.
     """
     try:
         if isinstance(cols, Mapping):
-            raise TypeError("new_table from a mapping of column names to data is not supported yet")
-        columns = []
+            cols = _mapping_columns(cols)
+        columns = {}
         for col in cols:
-            if not isinstance(col, InputColumn):
-                raise TypeError(f"expected an InputColumn, not {type(col).__name__}")
-            columns.append((col.name, col.data_type, list(col.input_data)))
-        return Table(_engine.new_table(columns))
+            # the reference reads `j_column` of whatever it is given
+            values = col.j_column
+            definition = col._column_definition
+            columns[definition.name] = (
+                definition.name,
+                col._engine_type,
+                _engine_values(definition.data_type, values),
+            )
+        return Table(_engine.new_table(list(columns.values())))
     except Exception as e:
         # the text is the reference's, "time" included
         raise DHError(e, "failed to create a new time table.") from e
