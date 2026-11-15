@@ -16,14 +16,6 @@
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::sync::Arc;
 
-use arrow::array::{ArrayRef, AsArray};
-use arrow::datatypes::{
-    Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampNanosecondType,
-    UInt16Type,
-};
-use oxhaven_column::sentinel::{
-    NULL_BYTE, NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_INT, NULL_LONG, NULL_SHORT,
-};
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -36,6 +28,7 @@ use pyo3::types::{PyDict, PyList};
 use serde_json::Value;
 use tonic::Status;
 
+use super::data::cells;
 use super::{error_text, runtime, TableHandle};
 use crate::java_text::object_texts;
 use crate::session::ExportError;
@@ -246,7 +239,7 @@ fn unported_status(panic: &(dyn std::any::Any + Send)) -> Option<Status> {
 /// Runs `work` on `tables` as `table::run_local` runs a handler: under the update graph's
 /// shared lock if one of the tables is refreshing, and with an `unported!` panic answered
 /// as `UNIMPLEMENTED`.
-fn guarded<T>(
+pub(super) fn guarded<T>(
     tables: &[Arc<dyn Table>],
     work: impl FnOnce() -> Result<T, ExportError>,
 ) -> Result<T, ExportError> {
@@ -268,7 +261,7 @@ fn guarded<T>(
     }
 }
 
-fn failure(error: ExportError) -> PyErr {
+pub(super) fn failure(error: ExportError) -> PyErr {
     PyRuntimeError::new_err(error_text(error))
 }
 
@@ -369,53 +362,6 @@ fn column_indices(table: &dyn Table, names: &[String]) -> Result<Vec<usize>, Exp
         .iter()
         .filter_map(|name| definition.index_of(name))
         .collect())
-}
-
-/// The cells of one column as Python values, as the reference package's readers hand
-/// them out: a primitive is its Java value, so a null is the null constant of its type and
-/// a `char` is its code unit; a `Boolean` or `String` is the value or `None`. An `Instant`
-/// is its nanoseconds since the epoch, for a numpy `datetime64[ns]`, when `instants` asks
-/// for that; as a single value Java gives a `java.time.Instant` object, which has no
-/// counterpart yet.
-///
-/// Behavior: `io.deephaven.integrations.python.PythonTableDataReader#readChunkColumnMajor`
-/// as `deephaven._table_reader` reads its arrays
-fn cells<'py>(
-    py: Python<'py>,
-    column_type: &ColumnType,
-    values: &ArrayRef,
-    instants: bool,
-) -> PyResult<Bound<'py, PyList>> {
-    macro_rules! primitive {
-        ($arrow:ty, $null:expr) => {
-            PyList::new(
-                py,
-                values
-                    .as_primitive::<$arrow>()
-                    .iter()
-                    .map(|value| value.unwrap_or($null)),
-            )
-        };
-    }
-    match column_type {
-        ColumnType::Byte => primitive!(Int8Type, NULL_BYTE),
-        ColumnType::Short => primitive!(Int16Type, NULL_SHORT),
-        ColumnType::Int => primitive!(Int32Type, NULL_INT),
-        ColumnType::Long => primitive!(Int64Type, NULL_LONG),
-        ColumnType::Float => primitive!(Float32Type, NULL_FLOAT),
-        ColumnType::Double => primitive!(Float64Type, NULL_DOUBLE),
-        ColumnType::Char => primitive!(UInt16Type, NULL_CHAR),
-        ColumnType::Boolean => PyList::new(py, values.as_boolean().iter()),
-        ColumnType::String => PyList::new(py, values.as_string::<i32>().iter()),
-        ColumnType::Instant if instants => primitive!(TimestampNanosecondType, NULL_LONG),
-        other => Err(failure(
-            not_ported(
-                "io.deephaven.integrations.python.PythonTableDataReader#readChunkColumnMajor",
-                format!("the Python values of a column of type {other:?}"),
-            )
-            .into(),
-        )),
-    }
 }
 
 /// The values of the rows at positions `first` to `first + count` of `columns` (every
@@ -879,14 +825,9 @@ for bad, text in (
         assert str(e) == text, str(e)
     else:
         raise AssertionError(text)
-# Java gives a java.time.Instant object, which has no counterpart yet
+# an instant is a value that prints as Java's java.time.Instant does
 clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC").head(1)
-try:
-    list(clock.iter_dict())
-except DHError as e:
-    assert "PythonTableDataReader#readChunkColumnMajor" in str(e), str(e)
-else:
-    raise AssertionError("read")
+assert [str(row["Timestamp"]) for row in clock.iter_dict()] == ["2024-01-01T00:00:00Z"]
 try:
     import numpy as np
 except ImportError:

@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "columns must be of the same data type. : columns must be of the same data type.",
+      "operation": "columns must be of the same data type."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "columns - ['Nope'] not found : columns - ['Nope'] not found",
+      "operation": "columns - ['Nope'] not found"
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "columns must be of the same data type. : columns must be of the same data type.",
+      "operation": "columns must be of the same data type."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a numpy array from the table column. : AttributeError: 'int' object has no attribute 'is_refreshing'",
+      "operation": "failed to create a numpy array from the table column."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "the number of array columns 2 doesn't match the number of column names 1 : the number of array columns 2 doesn't match the number of column names 1",
+      "operation": "the number of array columns 2 doesn't match the number of column names 1"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a Deephaven Table from a Pandas DataFrame. : IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed",
+      "operation": "failed to create a Deephaven Table from a Pandas DataFrame."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (X). : TypeError: 'numpy.int64' object is not iterable",
+      "operation": "failed to create an InputColumn (X)."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (X). : ValueError: array() does not support multi-dimensional arrays",
+      "operation": "failed to create an InputColumn (X)."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a Deephaven Table from a Pandas DataFrame. : AttributeError: 'list' object has no attribute 'shape'",
+      "operation": "failed to create a Deephaven Table from a Pandas DataFrame."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (1b). : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"1b\"",
+      "operation": "failed to create an InputColumn (1b)."
+    }
+  ]
+}

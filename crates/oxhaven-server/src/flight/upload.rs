@@ -398,23 +398,46 @@ impl TableUpload {
         let Some(layout) = self.layout else {
             return Err(Status::invalid_argument("Result flight schema never provided").into());
         };
-        let fields: Vec<Field> = layout
+        layout.table(&self.batches)
+    }
+}
+
+impl Layout {
+    /// The static, flat table of `batches`, which were read with the schema sent.
+    fn table(self, batches: &[RecordBatch]) -> Result<Arc<dyn Table>, UploadError> {
+        let fields: Vec<Field> = self
             .definition
             .columns()
             .iter()
             .map(|column| Field::new(&column.name, column.column_type.arrow_type(), true))
             .collect();
         let stored = Arc::new(Schema::new(fields));
-        let batches = self
-            .batches
+        let batches = batches
             .iter()
-            .map(|batch| stored_batch(batch, &layout.definition, &stored))
+            .map(|batch| stored_batch(batch, &self.definition, &stored))
             .collect::<Result<Vec<_>, _>>()?;
-        let table: Arc<dyn Table> = uploaded_table(layout.definition, &batches)
+        let table: Arc<dyn Table> = uploaded_table(self.definition, &batches)
             .map_err(|failure| UploadError::Internal(failure.message))?;
-        remember_uploaded(&table, layout.sent.as_ref().clone());
+        remember_uploaded(&table, self.sent.as_ref().clone());
         Ok(table)
     }
+}
+
+/// The table of record batches that did not arrive as Arrow messages: those a Python
+/// library hands over in the process. `schema` is read as the schema of an upload is, and
+/// the table is the one an upload of the same batches gives.
+///
+/// Behavior: `io.deephaven.extensions.barrage.util.ArrowToTableConverter`, which
+/// `deephaven.arrow.to_table` feeds the schema and the record batches of a pyarrow table
+pub fn table_of_batches(
+    schema: &Schema,
+    batches: &[RecordBatch],
+) -> Result<Arc<dyn Table>, UploadError> {
+    let layout = Layout {
+        definition: convert_schema(schema)?,
+        sent: Arc::new(schema.clone()),
+    };
+    layout.table(batches)
 }
 
 /// Decodes one record batch. Every buffer must lie inside the body: the Arrow reader
