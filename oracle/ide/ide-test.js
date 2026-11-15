@@ -14,6 +14,7 @@
 //   iframe   /iframe/table/?name=<table>&psk=<key>
 //   jsapi    /jsapi/dh-core.js in an empty page: log in, fetch the tables, read a viewport
 //   console  /ide/?psk=<key>, type the commands of expected.json into the console
+//   rollup   /ide/?psk=<key>, make a rollup in the console, expand and collapse a node
 // The default is panels,iframe,jsapi: what a server without a console can do.
 //
 // --deny and --empty are for finding out what the IDE needs, not for the gate: the named
@@ -28,15 +29,16 @@ const fs = require('fs');
 const path = require('path');
 const { Trace, describeCalls } = require('./lib/trace');
 const faults = require('./lib/faults');
+const { routeRollup } = require('./lib/rollup');
 
 const PSK_HANDLER = 'io.deephaven.authentication.psk.PskAuthenticationHandler';
-const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console'];
+const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup'];
 
 function usage(message) {
   if (message) console.error(`error: ${message}`);
   console.error(
     'usage: node oracle/ide/ide-test.js --url <http(s)://host:port | dh+psk://key@host:port | dh://host:port>\n' +
-      '         [--psk <key>] [--routes panels,iframe,jsapi,console] [--expected <file>] [--out <dir>] [--timeout <ms>]\n' +
+      '         [--psk <key>] [--routes panels,iframe,jsapi,console,rollup] [--expected <file>] [--out <dir>] [--timeout <ms>]\n' +
       '         [--deny Service/Method,...] [--empty Service/Method,...]',
   );
   process.exit(2);
@@ -453,7 +455,13 @@ async function routeConsole(ctx) {
   return `${language} console: grid cells of ${expected.console.staticName} match; ${spec.name} ${spec.counter} went ${moved.from} -> ${moved.to}`;
 }
 
-const ROUTES = { panels: routePanels, iframe: routeIframe, jsapi: routeJsapi, console: routeConsole };
+const ROUTES = {
+  panels: routePanels,
+  iframe: routeIframe,
+  jsapi: routeJsapi,
+  console: routeConsole,
+  rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure }),
+};
 
 async function runRoute(browser, name, opts, expected) {
   const context = await browser.newContext({ viewport: { width: 1400, height: 900 }, ignoreHTTPSErrors: true });

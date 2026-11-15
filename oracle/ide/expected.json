@@ -2,27 +2,79 @@
   "comment": "What the IDE acceptance test expects. `displayed` is the text the IDE grid paints with its default formats, observed on the Java reference; `rows` is what the JS API returns. app.d/ide_tables.py builds these tables on Java.",
   "static": {
     "name": "ide_static",
-    "columns": ["Id", "Sym", "Price"],
-    "types": ["int", "java.lang.String", "double"],
+    "columns": [
+      "Id",
+      "Sym",
+      "Price"
+    ],
+    "types": [
+      "int",
+      "java.lang.String",
+      "double"
+    ],
     "rows": [
-      [1, "AAPL", 101.5],
-      [2, "MSFT", 202.25],
-      [3, "GOOG", 303.125],
-      [4, "AMZN", 404.0],
-      [5, "OXHV", 505.75]
+      [
+        1,
+        "AAPL",
+        101.5
+      ],
+      [
+        2,
+        "MSFT",
+        202.25
+      ],
+      [
+        3,
+        "GOOG",
+        303.125
+      ],
+      [
+        4,
+        "AMZN",
+        404.0
+      ],
+      [
+        5,
+        "OXHV",
+        505.75
+      ]
     ],
     "displayed": [
-      ["1", "AAPL", "101.5000"],
-      ["2", "MSFT", "202.2500"],
-      ["3", "GOOG", "303.1250"],
-      ["4", "AMZN", "404.0000"],
-      ["5", "OXHV", "505.7500"]
+      [
+        "1",
+        "AAPL",
+        "101.5000"
+      ],
+      [
+        "2",
+        "MSFT",
+        "202.2500"
+      ],
+      [
+        "3",
+        "GOOG",
+        "303.1250"
+      ],
+      [
+        "4",
+        "AMZN",
+        "404.0000"
+      ],
+      [
+        "5",
+        "OXHV",
+        "505.7500"
+      ]
     ]
   },
   "ticking": {
     "comment": "The last `rows` ticks of a counter: N is consecutive and grows, Sq is N squared. Timestamp is not compared (it is painted in the browser's time zone).",
     "name": "ide_ticking",
-    "columns": ["Timestamp", "N", "Sq"],
+    "columns": [
+      "Timestamp",
+      "N",
+      "Sq"
+    ],
     "counter": "N",
     "square": "Sq",
     "rows": 3
@@ -39,5 +91,79 @@
     },
     "staticName": "ide_console_static",
     "tickingName": "ide_console_ticking"
+  },
+  "rollup": {
+    "comment": "Route rollup: the command typed into the console makes a rollup of six rows by Sym and Ex. `collapsed` is what the grid paints at first (the grand total and the first level), `expanded` what it paints after a click on the row of `expand`. Observed on the Java reference.",
+    "commands": {
+      "python": "from deephaven import new_table, agg; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col('Sym', ['AAPL', 'AAPL', 'MSFT', 'AAPL', 'MSFT', 'GOOG']), string_col('Ex', ['N', 'Q', 'N', 'N', 'Q', 'Q']), int_col('Qty', [10, 20, 30, 40, 50, 60])]).rollup(aggs=[agg.sum_('Qty'), agg.count_('Rows')], by=['Sym', 'Ex'])"
+    },
+    "columns": [
+      "Group",
+      "Sym",
+      "Ex",
+      "Qty",
+      "Rows"
+    ],
+    "expand": "AAPL",
+    "collapsed": [
+      [
+        "210",
+        "6"
+      ],
+      [
+        "AAPL",
+        "AAPL",
+        "70",
+        "3"
+      ],
+      [
+        "MSFT",
+        "MSFT",
+        "80",
+        "2"
+      ],
+      [
+        "GOOG",
+        "GOOG",
+        "60",
+        "1"
+      ]
+    ],
+    "expanded": [
+      [
+        "210",
+        "6"
+      ],
+      [
+        "AAPL",
+        "AAPL",
+        "70",
+        "3"
+      ],
+      [
+        "AAPL",
+        "N",
+        "50",
+        "2"
+      ],
+      [
+        "AAPL",
+        "Q",
+        "20",
+        "1"
+      ],
+      [
+        "MSFT",
+        "MSFT",
+        "80",
+        "2"
+      ],
+      [
+        "GOOG",
+        "GOOG",
+        "60",
+        "1"
+      ]
+    ]
   }
 }
