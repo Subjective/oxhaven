@@ -523,14 +523,14 @@ fn a_join_without_match_columns_of_a_ticking_and_an_empty_static_table_is_static
 
     // every other pair with a refreshing table is refreshing: a static table with rows, two
     // refreshing tables with or without rows, and any join with match columns
-    let k = on(&["K"]);
-    let heard: [(&Arc<dyn Table>, &Arc<dyn Table>, &[JoinMatch]); 8] = [
-        (&left, &some_right, &[]),
-        (&some_left, &right, &[]),
-        (&left, &right, &[]),
-        (&no_left_yet, &no_right_yet, &[]),
-        (&left, &no_right_yet, &[]),
-        (&no_left_yet, &right, &[]),
+    let (none, k) = (Vec::new(), on(&["K"]));
+    let heard = [
+        (&left, &some_right, &none),
+        (&some_left, &right, &none),
+        (&left, &right, &none),
+        (&no_left_yet, &no_right_yet, &none),
+        (&left, &no_right_yet, &none),
+        (&no_left_yet, &right, &none),
         (&left, &no_right, &k),
         (&no_left, &right, &k),
     ];
