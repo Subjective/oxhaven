@@ -11,6 +11,8 @@
 //! | [`select`] | the listed ones | stored |
 //! | [`update`] | the parent's, then the listed ones | stored |
 //! | [`drop_columns`] | the parent's without the listed ones | |
+//! | [`rename_columns`] | the parent's, some under another name | |
+//! | [`move_columns`], [`move_columns_up`], [`move_columns_down`] | the parent's in another order, some under another name | |
 //!
 //! A column of the list can read the parent's columns and the columns listed before it. A
 //! listed name that exists already, in the parent or earlier in the list, replaces that
@@ -27,14 +29,18 @@
 mod array_formula;
 mod materialize;
 mod plan;
+mod rename;
 mod sources;
 
 #[cfg(test)]
 mod tests;
 
-use crate::table::{memoized, CopyType, QueryTable, TableSpec};
+use crate::table::{mark, marks, memoized, CopyType, Marks, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 pub use array_formula::ArrayFormula;
+pub use rename::{
+    move_columns, move_columns_down, move_columns_up, rename_columns, ColumnPair,
+};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -63,8 +69,11 @@ pub enum SelectError {
     },
     /// A column named on its own, or a column to drop, does not exist.
     NoSuchColumn(String),
-    /// A result column would have a reserved name.
+    /// A result column would have a reserved name, or a name is not a column name.
     InvalidName(String),
+    /// Java's `IllegalArgumentException` for the pairs of a rename or a move: a column to
+    /// rename does not exist, or a column is named twice.
+    IllegalArgument(String),
     /// A formula depends on row positions, row keys or other rows of a refreshing table
     /// whose rows can move.
     UnsafeForRefresh(String),
@@ -78,6 +87,7 @@ impl fmt::Display for SelectError {
             SelectError::Formula { column, error } => write!(f, "{column}: {error}"),
             SelectError::NoSuchColumn(message)
             | SelectError::InvalidName(message)
+            | SelectError::IllegalArgument(message)
             | SelectError::UnsafeForRefresh(message) => f.write_str(message),
             SelectError::Failed(failure) => write!(f, "{failure}"),
         }
@@ -266,6 +276,10 @@ pub fn drop_columns<S: AsRef<str>>(
     attributes.append_only = inherited.append_only;
     attributes.blink = inherited.blink;
 
+    let of_parent = marks(&**parent);
+    let mut result_marks = CopyType::DropColumns.sort_marks(&of_parent);
+    result_marks.sortable = rename::sortable_after_drop(&of_parent, &definition);
+
     let transformer =
         ModifiedColumnTransformer::new(kept.iter().enumerate().map(|(to, &from)| (from, [to])));
     let table = QueryTable::derive(parent, || {
@@ -282,6 +296,7 @@ pub fn drop_columns<S: AsRef<str>>(
             },
         ))
     })?;
+    mark(&table, result_marks);
     Ok(memoized(parent, CopyType::DropColumns, false, table)?)
 }
 
@@ -360,10 +375,20 @@ fn computed_on_read<S: AsRef<str>>(
     })?;
     let copy_type = match flavor {
         Flavor::View => CopyType::View,
-        Flavor::UpdateView => CopyType::UpdateView,
-        // Behavior: QueryTable#lazyUpdate does not memoize its result
-        _ => return Ok(table),
+        _ => CopyType::UpdateView,
     };
+    let of_parent = marks(&**parent);
+    mark(
+        &table,
+        Marks {
+            sortable: rename::sortable_after_select(&of_parent, &plan),
+            ..copy_type.sort_marks(&of_parent)
+        },
+    );
+    if flavor == Flavor::LazyUpdate {
+        // Behavior: QueryTable#lazyUpdate does not memoize its result
+        return Ok(table);
+    }
     if !plan.is_memoized() {
         return Ok(table);
     }
