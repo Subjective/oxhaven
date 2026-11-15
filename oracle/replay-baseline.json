@@ -53,7 +53,7 @@
   "ticking_empty_start": {"state": "clean"},
   "ticking_error_after_step": {"state": "clean"},
   "ticking_filter_structured": {"state": "clean"},
-  "ticking_group_ungroup_head_by": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED", "failure_unexpected:UNIMPLEMENTED"], "tables": ["head_one", "head_two", "head_zero", "tail_one", "tail_two"], "why": "no handler for head_by and tail_by; no gRPC adapter for the aggregation group"},
+  "ticking_group_ungroup_head_by": {"state": "clean"},
   "ticking_head_tail": {"state": "clean"},
   "ticking_input_tables_only": {"state": "clean"},
   "ticking_join_merge": {"state": "clean"},
