@@ -19,6 +19,7 @@
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
 //! interpreter does so from the thread it is called on.
 
+mod checks;
 pub mod env;
 pub mod interrupt;
 mod ops;
@@ -281,6 +282,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(new_table, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         ops::register(&native)?;
+        checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");

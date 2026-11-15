@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table range_join operation failed. : RuntimeError: java.lang.UnsupportedOperationException: rangeJoin[leftTable=QueryTable, rightTable=QueryTable, exactMatches=[K], rangeMatch=Lo <= V <= Hi, aggregations=[X = X aggregated with sum]]: rangeJoin only supports the \"group\" aggregation at this time - uns",
+      "operation": "table range_join operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table range_join operation failed. : RuntimeError: java.lang.IllegalArgumentException: No match expressions found; must include at least a range match expression",
+      "operation": "table range_join operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table range_join operation failed. : RuntimeError: java.lang.IllegalArgumentException: Input expression K, Lo <= V <= Hi does not match expected pattern \\A\\s*(<-)?\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(<=?)\\s*([a-zA-Z_$][a-zA-Z0-9_$]*)\\s*(->)?\\s*\\Z",
+      "operation": "table range_join operation failed."
+    }
+  ]
+}

@@ -4,6 +4,48 @@
     {
       "step": 0,
       "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table agg_by operation failed. : deephaven.dherror.DHError: No columns specified for the aggregation operation. : No columns specified for the aggregation operation.",
+      "operation": "table agg_by operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table agg_all_by operation failed. : deephaven.dherror.DHError: unsupported aggregation operation. : unsupported aggregation operation.",
+      "operation": "table agg_all_by operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table agg_by operation failed. : ValueError: missing group-by column names when initial_groups is provided.",
+      "operation": "table agg_by operation failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table agg_by operation failed. : RuntimeError: java.lang.IllegalArgumentException: AggFormula does not support reaggregating except in a rollup.",
+      "operation": "table agg_by operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"Not a name\""
+    },
+    {
+      "step": 6,
+      "outcome": "ok"
+    },
+    {
+      "step": 7,
+      "outcome": "ok"
     }
   ]
 }

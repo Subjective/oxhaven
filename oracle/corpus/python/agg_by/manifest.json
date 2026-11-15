@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "agg_by",
-  "scenario_sha256": "ba01a9056759e5c2f8e7a9991c775e66b9322c4d081488793c0d2865d3e30202",
+  "scenario_sha256": "adc63cbd672b7a698e8225d12fcb3258f61a8400cec20c16de8156af22ac32af",
   "reference": "42.9",
   "entries": [
     {
@@ -15,6 +15,775 @@
       "table": "overall",
       "file": "step000.overall.arrow",
       "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "spread",
+      "file": "step000.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "picked",
+      "file": "step000.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "sets",
+      "file": "step000.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "weighted",
+      "file": "step000.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "formulas",
+      "file": "step000.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "uniques",
+      "file": "step000.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "emptied",
+      "file": "step000.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "every_sum",
+      "file": "step000.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "every_formula",
+      "file": "step000.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "every_weighted",
+      "file": "step000.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_key",
+      "file": "step001.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "overall",
+      "file": "step001.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "spread",
+      "file": "step001.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "picked",
+      "file": "step001.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "sets",
+      "file": "step001.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "weighted",
+      "file": "step001.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "formulas",
+      "file": "step001.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "uniques",
+      "file": "step001.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "emptied",
+      "file": "step001.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "file": "step001.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "every_sum",
+      "file": "step001.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "every_formula",
+      "file": "step001.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "every_weighted",
+      "file": "step001.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_key",
+      "file": "step002.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "overall",
+      "file": "step002.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "spread",
+      "file": "step002.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "picked",
+      "file": "step002.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "sets",
+      "file": "step002.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "file": "step002.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "weighted",
+      "file": "step002.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "formulas",
+      "file": "step002.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "uniques",
+      "file": "step002.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "emptied",
+      "file": "step002.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "file": "step002.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "every_sum",
+      "file": "step002.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "every_formula",
+      "file": "step002.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "every_weighted",
+      "file": "step002.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_key",
+      "file": "step003.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "overall",
+      "file": "step003.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "spread",
+      "file": "step003.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "picked",
+      "file": "step003.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "sets",
+      "file": "step003.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "file": "step003.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "weighted",
+      "file": "step003.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "formulas",
+      "file": "step003.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "uniques",
+      "file": "step003.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "emptied",
+      "file": "step003.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "file": "step003.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "every_sum",
+      "file": "step003.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "every_formula",
+      "file": "step003.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "every_weighted",
+      "file": "step003.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_key",
+      "file": "step004.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "overall",
+      "file": "step004.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "spread",
+      "file": "step004.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "picked",
+      "file": "step004.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "sets",
+      "file": "step004.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "file": "step004.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "weighted",
+      "file": "step004.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "formulas",
+      "file": "step004.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "uniques",
+      "file": "step004.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "emptied",
+      "file": "step004.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "kept",
+      "file": "step004.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "every_sum",
+      "file": "step004.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "every_formula",
+      "file": "step004.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "every_weighted",
+      "file": "step004.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_key",
+      "file": "step005.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "overall",
+      "file": "step005.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "spread",
+      "file": "step005.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "picked",
+      "file": "step005.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "sets",
+      "file": "step005.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "file": "step005.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "weighted",
+      "file": "step005.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "formulas",
+      "file": "step005.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "uniques",
+      "file": "step005.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "emptied",
+      "file": "step005.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "kept",
+      "file": "step005.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "every_sum",
+      "file": "step005.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "every_formula",
+      "file": "step005.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "every_weighted",
+      "file": "step005.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_key",
+      "file": "step006.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "overall",
+      "file": "step006.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "spread",
+      "file": "step006.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "picked",
+      "file": "step006.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "sets",
+      "file": "step006.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "weighted",
+      "file": "step006.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "formulas",
+      "file": "step006.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "uniques",
+      "file": "step006.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "emptied",
+      "file": "step006.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "kept",
+      "file": "step006.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "every_sum",
+      "file": "step006.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "every_formula",
+      "file": "step006.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "every_weighted",
+      "file": "step006.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "partitioned",
+      "file": "step006.partitioned.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "seeded",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "by_key",
+      "file": "step007.by_key.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "overall",
+      "file": "step007.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "spread",
+      "file": "step007.spread.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "picked",
+      "file": "step007.picked.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "sets",
+      "file": "step007.sets.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "counted",
+      "file": "step007.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "weighted",
+      "file": "step007.weighted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "formulas",
+      "file": "step007.formulas.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "uniques",
+      "file": "step007.uniques.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "emptied",
+      "file": "step007.emptied.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "kept",
+      "file": "step007.kept.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "every_sum",
+      "file": "step007.every_sum.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "every_formula",
+      "file": "step007.every_formula.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "every_weighted",
+      "file": "step007.every_weighted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "partitioned",
+      "file": "step007.partitioned.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "seeded",
+      "file": "step007.seeded.arrow",
+      "rows": 5
     }
   ]
 }

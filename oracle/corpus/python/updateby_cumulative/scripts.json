@@ -4,6 +4,45 @@
     {
       "step": 0,
       "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a cumulative sum UpdateByOperation. : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"Sum of V\"",
+      "operation": "failed to create a cumulative sum UpdateByOperation."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a delta UpdateByOperation. : AttributeError: 'str' object has no attribute 'value'",
+      "operation": "failed to create a delta UpdateByOperation."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "count_where aggregation requires a string value for the 'col' argument. : count_where aggregation requires a string value for the 'col' argument.",
+      "operation": "count_where aggregation requires a string value for the 'col' argument."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update-by operation failed. : RuntimeError: java.lang.IllegalArgumentException: At least one operator must be specified",
+      "operation": "table update-by operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update-by operation failed. : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"K,N\"",
+      "operation": "table update-by operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "ok"
     }
   ]
 }
