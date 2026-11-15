@@ -489,6 +489,10 @@ lock and takes the interpreter lock for the call; `shared_lock`, `exclusive_lock
 for the graph lock. The module documentation of `listener.rs` lists the places and names
 the test that stops when one of them is taken out.
 
+A blocking input table edit on a thread inside its own `shared_lock` is refused with
+Java's text ("Attempted to make a blocking input table edit while holding the update
+graph's shared lock"): the thread keeps out the cycle it would wait for.
+
 In a listener's function, as in Java: neither lock is held, taking one is refused
 ("Non-terminal notifications must not lock the update graph"), a blocking input table
 edit is refused, `await_update` fails, and table operations and `listen` work.
@@ -505,14 +509,13 @@ same scripts:
 | --- | --- | --- |
 | The lock a command holds | exclusive | the engine's shared lock, shown to scripts as the exclusive one: `has_exclusive_lock` is true and `has_shared_lock` false in a command, both locks nest in it |
 | `shared_lock`, or an operation, on a thread while a command runs | waits for the command | does not wait: it shares the lock with the command. `exclusive_lock` waits, as in Java |
-| A blocking input table edit on a thread inside its own `shared_lock` | `UnsupportedOperationException`: cannot upgrade | the engine panics, which Python sees as `PanicException` |
 | `auto_locking = False` | operations on a thread take no lock | no effect: the engine takes the lock for every operation |
 | Formula operations and `time_table` on a thread, or in a listener, with no `ExecutionContext` | refused: "No ExecutionContext registered" | run. `with ctx:` and `@ctx` are accepted and change nothing |
 | `make_user_exec_ctx(freeze_vars=[...])` | a context that sees only those variables, at their values of that moment | refused by the name of `ExecutionContext.Builder#captureQueryScopeVars` |
 | A table released with its liveness scope | operations fail with `LivenessStateException`; `size` and reads give the rows it had | every use raises `DHError` with a `LivenessStateException` text. A variable that holds it stays listed for clients until it is assigned again |
 | A table of a scope that something else holds | a client's export keeps it live; other holders not probed | an export, a table made from it or a listener keeps it live, and it is then the session's: no later scope releases it |
 | The update of a replay, read after the function returned | still reads the rows | reads `{}`, as every other update does on both |
-| `modified_prev()` in a cycle that also shifts rows | reads previous values at the keys after the shift | reads them at the keys before the shift, which is where they were |
+| `modified_prev()` in a cycle that also shifts rows | reads previous values at the keys after the shift, which are the previous values of other rows, or nulls where no row was: after `sort("K").flatten()` of rows 10, 20, 30, adding key 5 and changing key 20 gives `modified_prev` the row of key 30 | reads them at the keys before the shift: the row of key 20 as it was |
 | A handle that nothing refers to | the listener ends when Java collects it | ends when Python frees the handle, which is at once |
 | The thread of a listener call | one Python thread name for the update graph's thread | a new `Dummy-N` name per cycle |
 | Several listeners of one table | order not probed | called in no defined order |

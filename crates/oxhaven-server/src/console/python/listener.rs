@@ -132,6 +132,13 @@ thread_local! {
     static HOLDS: Cell<Holds> = const { Cell::new(Holds { shared: 0, exclusive: 0, engine: None }) };
 }
 
+/// Whether Python code on the calling thread took the shared side of the graph lock and
+/// nothing above it: no command's hold and no exclusive one. Such a thread cannot wait for
+/// a cycle, which it keeps out itself.
+pub(super) fn holds_the_shared_lock_only() -> bool {
+    HOLDS.get().engine == Some(Side::Shared)
+}
+
 /// Whether the thread is running a console command, given that `main` says it is the
 /// interpreter's main thread: the command holds the engine's shared lock, and nothing
 /// Python took accounts for that hold.

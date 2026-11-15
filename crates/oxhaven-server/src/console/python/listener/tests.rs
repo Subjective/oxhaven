@@ -339,13 +339,21 @@ def shared():
             seen.append(src.where('K > 0').size)
         seen.append(raised(lambda: ug.exclusive_lock(src).__enter__()))
         seen.append(raised(lambda: src.await_update(10)))
+        seen.append(raised(lambda: src.add(kv([7], [70]))))
+        seen.append(raised(lambda: src.delete(kv([1], [10]).view('K'))))
     seen.append((ug.has_shared_lock(src), ug.has_exclusive_lock(src)))
     return seen
+blocking = ("java.lang.UnsupportedOperationException: Attempted to make a blocking input table edit "
+            "while holding the update graph's shared lock. This is unsupported, because it will "
+            "block the update graph from making progress and hang indefinitely.")
 upgrade = 'java.lang.UnsupportedOperationException: Cannot upgrade a shared lock to an exclusive lock'
 assert on_thread(shared) == [
     (False, False), (True, False), 1, ('RuntimeError', upgrade),
-    ('DHError', 'await_update was interrupted. : ' + upgrade), (False, False),
+    ('DHError', 'await_update was interrupted. : ' + upgrade),
+    ('DHError', 'add to InputTable failed. : ' + blocking),
+    ('DHError', 'delete data in the InputTable failed. : ' + blocking), (False, False),
 ], on_thread(shared)
+assert src.size == 1
 
 @ug.shared_locked(src)
 def read(value):
