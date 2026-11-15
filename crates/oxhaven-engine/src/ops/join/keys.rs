@@ -131,7 +131,7 @@ impl KeyColumns {
 /// written as its nanoseconds.
 ///
 /// Behavior: io.deephaven.engine.table.impl.StaticNaturalJoinStateManager#extractKeyStringFromSourceTable
-pub(super) fn key_text(key: &[Cell], types: &[ColumnType]) -> String {
+pub(crate) fn key_text(key: &[Cell], types: &[ColumnType]) -> String {
     let cells: Vec<String> = key
         .iter()
         .zip(types)

@@ -265,10 +265,12 @@ handlers! {
     fetch_table { FetchTable => Handler }
     filter { Filter => Handler }
     flatten { Flatten => Handler }
+    head_by { HeadBy => HeadBy, TailBy => TailBy }
     head_tail { Head => Head, Tail => Tail }
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
+    multi_join { MultiJoin => Handler }
     range_join { RangeJoin => Handler }
     select {
         Update => Update,

@@ -1,5 +1,5 @@
-//! Aggregations of the sorted multiset of a group's values: count distinct, unique,
-//! median and percentile.
+//! Aggregations of the sorted multiset of a group's values: count distinct, distinct,
+//! unique, median and percentile.
 //!
 //! Java keeps a segmented sorted multiset per group. Here it is a `BTreeMap` from the value
 //! to its count. Each entry also keeps the value it was created with: values that Java's
@@ -8,10 +8,13 @@
 
 use super::operator::{AggOperator, Effect};
 use super::values::{build, Run, Scalar};
-use arrow::array::ArrayRef;
+use arrow::array::{ArrayRef, ListArray};
+use arrow::buffer::{NullBuffer, OffsetBuffer};
+use arrow::datatypes::DataType;
 use oxhaven_contracts::schema::ColumnType;
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 /// A value as a multiset key: null first, then Java's ordering ([`Scalar::compare`]), in
 /// which `0.0` equals `-0.0` and NaN equals NaN.
@@ -88,8 +91,10 @@ struct Multiset {
 
 impl Multiset {
     /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#insert;
-    /// a value already present keeps the bits it was first inserted with.
-    fn insert(&mut self, runs: &[(Scalar, u64)]) {
+    /// a value already present keeps the bits it was first inserted with. Returns whether
+    /// a value was inserted that the group did not have.
+    fn insert(&mut self, runs: &[(Scalar, u64)]) -> bool {
+        let distinct = self.entries.len();
         for (value, count) in runs {
             self.entries
                 .entry(Key(value.clone()))
@@ -97,6 +102,7 @@ impl Multiset {
                 .1 += count;
             self.total += count;
         }
+        self.entries.len() != distinct
     }
 
     /// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#remove
@@ -104,7 +110,10 @@ impl Multiset {
     /// # Panics
     /// If a value is removed more often than it was inserted: the framework only removes
     /// rows it added.
-    fn remove(&mut self, runs: &[(Scalar, u64)]) {
+    ///
+    /// Returns whether the group lost a value altogether.
+    fn remove(&mut self, runs: &[(Scalar, u64)]) -> bool {
+        let distinct = self.entries.len();
         for (value, count) in runs {
             let key = Key(value.clone());
             let entry = self
@@ -120,6 +129,7 @@ impl Multiset {
                 self.entries.remove(&key);
             }
         }
+        self.entries.len() != distinct
     }
 
     /// The value at sorted position `index`, counting repeats.
@@ -181,6 +191,16 @@ pub enum SetMode {
     ///
     /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.unique.DoubleChunkedUniqueOperator
     Unique { non_unique: Scalar },
+    /// The distinct values, sorted, as a vector: null first, NaN last, and of `0.0` and
+    /// `-0.0` the one the group was given first. A group that has no values is a null, not
+    /// an empty vector, except in an aggregation without keys (`singleton`), where Java
+    /// makes the group's set when it is first given rows, whatever they hold, and drops it
+    /// only when a removal empties it.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.DoubleChunkedDistinctOperator,
+    /// whose bucketed `addChunk` skips a run without values and whose singleton `addChunk`
+    /// calls `ssmForSlot` first
+    Distinct { singleton: bool },
     /// The value at a percentile of the sorted non-null values; with `average`, for `int`,
     /// `long`, `float` and `double` columns, the mean of the two middle values when the
     /// percentile falls between them.
@@ -198,6 +218,16 @@ pub struct SortedValues {
     nulls: bool,
     nans: bool,
     sets: Vec<Multiset>,
+    /// For [`SetMode::Distinct`]: whether Java has a set for the group, which is what
+    /// tells an empty vector from a null.
+    present: Vec<bool>,
+}
+
+/// What a group's set amounts to for [`SetMode::Unique`].
+enum UniqueState {
+    Empty,
+    Unique(Scalar),
+    NonUnique,
 }
 
 impl SortedValues {
@@ -227,6 +257,18 @@ impl SortedValues {
         )
     }
 
+    /// `singleton` says the aggregation has no key columns; see [`SetMode::Distinct`].
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeDistinctOperator
+    pub fn distinct(column_type: ColumnType, include_nulls: bool, singleton: bool) -> SortedValues {
+        SortedValues::new(
+            column_type,
+            SetMode::Distinct { singleton },
+            include_nulls,
+            include_nulls,
+        )
+    }
+
     /// Behavior: io.deephaven.engine.table.impl.by.ssmpercentile.SsmChunkedPercentileOperator#SsmChunkedPercentileOperator
     pub fn percentile(column_type: ColumnType, percentile: f64, average: bool) -> SortedValues {
         // An Instant is never averaged.
@@ -249,7 +291,58 @@ impl SortedValues {
             nulls,
             nans,
             sets: Vec::new(),
+            present: Vec::new(),
         }
+    }
+
+    fn unique_state(&self, slot: usize) -> UniqueState {
+        let entries = &self.sets[slot].entries;
+        match entries.len() {
+            0 => UniqueState::Empty,
+            1 => UniqueState::Unique(entries.values().next().expect("one entry").0.clone()),
+            _ => UniqueState::NonUnique,
+        }
+    }
+
+    /// Whether Java reports the group's result changed by one step of `unique` from
+    /// `before` to the group's state now: always when the group becomes or stops being
+    /// empty, never while it stays non-unique or keeps its one value, and when it goes
+    /// between one value and several only if that value is not the sentinel, by Java's
+    /// equality, under which `-0.0` is `0.0`.
+    ///
+    /// Behavior: DoubleChunkedUniqueOperator#addToState, #removeFromState, #finishFromSsm
+    fn unique_step(&self, slot: usize, before: &UniqueState, non_unique: &Scalar) -> bool {
+        let equal = |a: &Scalar, b: &Scalar| Key(a.clone()) == Key(b.clone());
+        match (before, self.unique_state(slot)) {
+            (UniqueState::Empty, UniqueState::Empty) => false,
+            (UniqueState::Empty, _) | (_, UniqueState::Empty) => true,
+            (UniqueState::NonUnique, UniqueState::NonUnique) => false,
+            (UniqueState::Unique(held), UniqueState::Unique(now)) => !equal(held, &now),
+            (UniqueState::Unique(value), UniqueState::NonUnique) => !equal(value, non_unique),
+            (UniqueState::NonUnique, UniqueState::Unique(value)) => !equal(&value, non_unique),
+        }
+    }
+
+    /// The distinct values of `slots`, one vector each.
+    fn vectors(&self, slots: &[usize]) -> ArrayRef {
+        let mut values: Vec<&Scalar> = Vec::new();
+        let mut lengths = Vec::with_capacity(slots.len());
+        let mut valid = Vec::with_capacity(slots.len());
+        for &slot in slots {
+            let entries = &self.sets[slot].entries;
+            values.extend(entries.values().map(|(value, _)| value));
+            lengths.push(entries.len());
+            valid.push(self.present[slot]);
+        }
+        let DataType::List(field) = self.result_type().arrow_type() else {
+            unreachable!("a vector is an Arrow list");
+        };
+        Arc::new(ListArray::new(
+            field,
+            OffsetBuffer::from_lengths(lengths),
+            build(&self.column_type, values.into_iter()),
+            Some(NullBuffer::from(valid)),
+        ))
     }
 
     /// Whether the mean of two middle values is taken: only for these four types.
@@ -277,6 +370,7 @@ impl SortedValues {
                 _ => non_unique.clone(),
             },
             SetMode::Percentile { percentile, .. } => self.percentile_of(set, *percentile),
+            SetMode::Distinct { .. } => unreachable!("distinct has no scalar result"),
         }
     }
 
@@ -343,6 +437,7 @@ impl AggOperator for SortedValues {
     fn result_type(&self) -> ColumnType {
         match self.mode {
             SetMode::CountDistinct => ColumnType::Long,
+            SetMode::Distinct { .. } => ColumnType::vector(self.column_type.clone()),
             _ if self.averages()
                 && matches!(self.column_type, ColumnType::Int | ColumnType::Long) =>
             {
@@ -355,17 +450,36 @@ impl AggOperator for SortedValues {
     fn ensure_slots(&mut self, slots: usize) {
         if self.sets.len() < slots {
             self.sets.resize(slots, Multiset::default());
+            self.present.resize(slots, false);
         }
     }
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
         let runs = self.runs(run);
-        if runs.is_empty() {
-            return Effect::UNCHANGED;
+        match &self.mode {
+            // Java reports the group modified only for a value it did not have. Without
+            // keys a group that had no set gets one, which shows as an empty vector where
+            // a null was; Java does not report that, and here it is, so that no cell
+            // changes unannounced.
+            SetMode::Distinct { singleton } => {
+                let appeared = *singleton && !run.is_empty() && !self.present[slot];
+                if appeared || !runs.is_empty() {
+                    self.present[slot] = true;
+                }
+                Effect::modified_if(self.sets[slot].insert(&runs) || appeared)
+            }
+            _ if runs.is_empty() => Effect::UNCHANGED,
+            SetMode::Unique { non_unique } => {
+                let before = self.unique_state(slot);
+                self.sets[slot].insert(&runs);
+                Effect::modified_if(self.unique_step(slot, &before, non_unique))
+            }
+            _ => {
+                let before = self.value(slot);
+                self.sets[slot].insert(&runs);
+                Effect::modified_if(!before.same(&self.value(slot)))
+            }
         }
-        let before = self.value(slot);
-        self.sets[slot].insert(&runs);
-        Effect::modified_if(!before.same(&self.value(slot)))
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
@@ -373,28 +487,88 @@ impl AggOperator for SortedValues {
         if runs.is_empty() {
             return Effect::UNCHANGED;
         }
-        let before = self.value(slot);
-        self.sets[slot].remove(&runs);
-        Effect::modified_if(!before.same(&self.value(slot)))
+        match &self.mode {
+            SetMode::Distinct { .. } => {
+                let lost = self.sets[slot].remove(&runs);
+                self.present[slot] = !self.sets[slot].entries.is_empty();
+                Effect::modified_if(lost)
+            }
+            SetMode::Unique { non_unique } => {
+                let before = self.unique_state(slot);
+                self.sets[slot].remove(&runs);
+                Effect::modified_if(self.unique_step(slot, &before, non_unique))
+            }
+            _ => {
+                let before = self.value(slot);
+                self.sets[slot].remove(&runs);
+                Effect::modified_if(!before.same(&self.value(slot)))
+            }
+        }
     }
 
-    /// Count distinct and unique apply the net change; the percentile removes the old
-    /// values and then inserts the new ones.
+    /// Count distinct, distinct and unique apply the net change; the percentile removes
+    /// the old values and then inserts the new ones. Unique reports the removal and the
+    /// insertion as two steps unless the group had several values, so a group whose one
+    /// value is replaced is reported whatever the sentinel is.
     ///
     /// Behavior: DoubleChunkedCountDistinctOperator#modifyChunk,
-    /// DoubleChunkedUniqueOperator#modifyChunk, SsmChunkedPercentileOperator#modifyChunk
+    /// DoubleChunkedDistinctOperator#modifyChunk, DoubleChunkedUniqueOperator#modifyChunk
+    /// and #modifyState, SsmChunkedPercentileOperator#modifyChunk
     fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
-        let before = self.value(slot);
-        let (removed, added) = match self.mode {
-            SetMode::Percentile { .. } => (self.runs(old), self.runs(new)),
-            _ => net(self.runs(old), self.runs(new)),
-        };
-        self.sets[slot].remove(&removed);
-        self.sets[slot].insert(&added);
-        Effect::modified_if(!before.same(&self.value(slot)))
+        match &self.mode {
+            SetMode::Percentile { .. } => {
+                let before = self.value(slot);
+                let (removed, added) = (self.runs(old), self.runs(new));
+                self.sets[slot].remove(&removed);
+                self.sets[slot].insert(&added);
+                Effect::modified_if(!before.same(&self.value(slot)))
+            }
+            SetMode::CountDistinct => {
+                let before = self.value(slot);
+                let (removed, added) = net(self.runs(old), self.runs(new));
+                self.sets[slot].remove(&removed);
+                self.sets[slot].insert(&added);
+                Effect::modified_if(!before.same(&self.value(slot)))
+            }
+            SetMode::Distinct { .. } => {
+                let (removed, added) = net(self.runs(old), self.runs(new));
+                if removed.is_empty() && added.is_empty() {
+                    return Effect::UNCHANGED;
+                }
+                // The values that go and the values that come are different values, so
+                // the vector changes if either changes the set.
+                let lost = self.sets[slot].remove(&removed);
+                let gained = self.sets[slot].insert(&added);
+                self.present[slot] = !self.sets[slot].entries.is_empty();
+                Effect::modified_if(lost || gained)
+            }
+            SetMode::Unique { non_unique } => {
+                let (removed, added) = net(self.runs(old), self.runs(new));
+                let before = self.unique_state(slot);
+                if matches!(before, UniqueState::NonUnique) {
+                    self.sets[slot].remove(&removed);
+                    self.sets[slot].insert(&added);
+                    return Effect::modified_if(self.unique_step(slot, &before, non_unique));
+                }
+                let mut changed = false;
+                if !removed.is_empty() {
+                    self.sets[slot].remove(&removed);
+                    changed = self.unique_step(slot, &before, non_unique);
+                }
+                if !added.is_empty() {
+                    let between = self.unique_state(slot);
+                    self.sets[slot].insert(&added);
+                    changed |= self.unique_step(slot, &between, non_unique);
+                }
+                Effect::modified_if(changed)
+            }
+        }
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
+        if matches!(self.mode, SetMode::Distinct { .. }) {
+            return self.vectors(slots);
+        }
         let values: Vec<Scalar> = slots.iter().map(|&slot| self.value(slot)).collect();
         build(&self.result_type(), values.iter())
     }

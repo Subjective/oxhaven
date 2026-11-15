@@ -500,15 +500,143 @@ fn requests_java_refuses_are_errors() {
 }
 
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns"
-)]
-fn an_output_named_like_a_key_is_unported() {
+fn an_output_named_like_a_key_takes_the_place_of_the_key_column() {
+    // Recorded from Java in `fixtures/rest_static.json` and `fixtures/rest_ticking.json`.
     let parent = static_table(&[
-        ("K", ColumnType::String, strs(&[Some("a")])),
-        ("I", ColumnType::Int, int_opts(&[Some(1)])),
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
+        ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
     ]);
-    let _ = aggregate(&parent, &[agg(AggSpec::Sum, &["K = I"])], false, &["K"]);
+    let result = agg_by(&parent, &[agg(AggSpec::Sum, &["K = I"])], &["K"]);
+    assert_eq!(
+        schema(&*result),
+        [("K".to_string(), ColumnType::Long)],
+        "the groups are still those of the key"
+    );
+    assert_eq!(rows(&*result), ["4", "2"]);
+
+    let both = [count("N"), agg(AggSpec::Sum, &["K = I"])];
+    let result = agg_by(&parent, &both, &["K"]);
+    let names: Vec<String> = schema(&*result).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["K", "N"]);
+    assert_eq!(rows(&*result), ["4|2", "2|1"]);
+}
+
+#[test]
+fn distinct_is_a_sorted_vector_and_null_for_a_group_without_values() {
+    let parent = static_table(&[
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a"), Some("a"), Some("a")]),
+        ),
+        (
+            "I",
+            ColumnType::Int,
+            int_opts(&[Some(3), None, Some(1), None, Some(3)]),
+        ),
+    ]);
+    let specs = [
+        agg(
+            AggSpec::Distinct {
+                include_nulls: false,
+            },
+            &["D = I"],
+        ),
+        agg(
+            AggSpec::Distinct {
+                include_nulls: true,
+            },
+            &["N = I"],
+        ),
+    ];
+    let result = agg_by(&parent, &specs, &["K"]);
+    let vector = ColumnType::vector(ColumnType::Int);
+    assert_eq!(
+        schema(&*result)[1..],
+        [("D".into(), vector.clone()), ("N".into(), vector)]
+    );
+    assert_eq!(rows(&*result), ["a|[1, 3]|[null, 1, 3]", "b|null|[null]"]);
+    // Without keys the group without values is an empty vector.
+    let nulls = static_table(&[("I", ColumnType::Int, int_opts(&[None, None]))]);
+    assert_eq!(rows(&*agg_by(&nulls, &specs[..1], &[])), ["[]"]);
+}
+
+#[test]
+fn a_non_unique_sentinel_shows_for_several_values_and_must_fit_the_column() {
+    let parent = static_table(&[
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
+        ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
+    ]);
+    let unique = |non_unique: Sentinel| {
+        let spec = AggSpec::Unique {
+            include_nulls: false,
+            non_unique,
+        };
+        aggregate(&parent, &[agg(spec, &["U = I"])], false, &["K"])
+    };
+    assert_eq!(rows(&*unique(Sentinel::Int(-1)).unwrap()), ["a|-1", "b|2"]);
+    assert_eq!(rows(&*unique(Sentinel::Long(7)).unwrap()), ["a|7", "b|2"]);
+    // The null value of the column's type is a null.
+    assert_eq!(
+        rows(&*unique(Sentinel::Int(i32::MIN)).unwrap()),
+        ["a|null", "b|2"]
+    );
+    for refused in [
+        Sentinel::Long(i64::from(i32::MAX) + 1),
+        // The null value of the column's type, as a value of another type.
+        Sentinel::Long(i64::from(i32::MIN)),
+        Sentinel::Double(1.5),
+        Sentinel::Double(f64::NAN),
+        Sentinel::String("many".to_string()),
+        Sentinel::Boolean(true),
+    ] {
+        assert!(
+            matches!(
+                unique(refused.clone()),
+                Err(AggregateError::InvalidSentinel(_))
+            ),
+            "{refused:?}"
+        );
+    }
+}
+
+#[test]
+fn count_where_counts_the_rows_that_pass_every_filter() {
+    let parent = static_table(&[
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
+        ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
+    ]);
+    let where_ = |filters: &[&str]| Aggregation::count_where("N", filters.iter().copied());
+    let result = agg_by(&parent, &[where_(&["I > 1"]), count("C")], &["K"]);
+    assert_eq!(rows(&*result), ["a|1|2", "b|1|1"]);
+    let result = agg_by(&parent, &[where_(&["I > 1", "I < 3"])], &[]);
+    assert_eq!(rows(&*result), ["1"]);
+    for refused in ["i > 1", "I_[0] > 1", "Nope > 1", "I >"] {
+        assert!(
+            matches!(
+                aggregate(&parent, &[where_(&[refused])], false, &["K"]),
+                Err(AggregateError::InvalidFilter(_))
+            ),
+            "{refused}"
+        );
+    }
+    // Without a compiler there is no filter to make.
+    assert!(matches!(
+        super::super::aggregate(&parent, &[where_(&["I > 1"])], false, &["K"]),
+        Err(AggregateError::InvalidFilter(_))
+    ));
 }
 
 #[test]
