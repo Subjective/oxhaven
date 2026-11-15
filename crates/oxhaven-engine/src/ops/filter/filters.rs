@@ -371,6 +371,9 @@ enum Cells {
     /// `float` widened, and `double`.
     Float(Vec<Option<f64>>),
     Str(StringArray),
+    /// A vector or an array, which Java's filters see as an object: whether each cell is
+    /// not null.
+    Object(Vec<bool>),
 }
 
 fn read(
@@ -380,20 +383,18 @@ fn read(
     use_prev: bool,
 ) -> Result<Cells, TableFailure> {
     let source = table.column(column);
-    // Java filters a vector or an array column as a column of objects: a null test and a
-    // match against null work, and what else does is not ported.
-    if source.column_type().list_element().is_some() {
-        oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
-            "a filter of a column of type {:?}",
-            source.column_type()
-        );
-    }
     let chunk = if use_prev {
         source.prev_chunk(rows)?
     } else {
         source.chunk(rows)?
     };
+    // Java filters a vector or an array column as a column of objects, of which a match
+    // filter can only hold null.
+    if source.column_type().list_element().is_some() {
+        return Ok(Cells::Object(
+            (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
+        ));
+    }
     let values = sentinels_to_nulls(&chunk)?;
     macro_rules! widen {
         ($kind:ident, $arrow:ty, $to:ty) => {
@@ -527,6 +528,18 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 })
                 .collect()
         }
+        // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, and
+        // `MatchFilter.ColumnTypeConvertorFactory#getConvertor` makes no value but null
+        // for such a column.
+        Cells::Object(valid) => {
+            if let Some(key) = keys.iter().find(|key| **key != Key::Null) {
+                return Err(wrong_key(key));
+            }
+            Ok(valid
+                .iter()
+                .map(|valid| !valid && !keys.is_empty())
+                .collect())
+        }
     }
 }
 
@@ -619,6 +632,10 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 })
                 .collect()
         }
+        Cells::Object(_) => oxhaven_contracts::unported!(
+            "io.deephaven.engine.table.impl.select.RangeFilter#init",
+            "a range filter of a vector or array column"
+        ),
     })
 }
 
@@ -670,7 +687,7 @@ fn between(
                 .map(|value| keep(order(value, &lower), order(value, &upper)))
                 .collect()
         }
-        Cells::Bool(_) | Cells::Str(_) => {
+        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) => {
             return Err(failure("a range of two ends needs a column of numbers"))
         }
     })

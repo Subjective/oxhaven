@@ -147,9 +147,8 @@ fn sorted_marks(parent: &dyn Table, first: (&str, bool), redirected: Option<bool
 
 /// A sort by one column that Java holds `parent` sorted by is `parent` itself. A sort of a
 /// copy is answered with a copy: see [`memoized`]. A sort with a column sorted by its
-/// absolute value is neither: in Java it is three operations, and what they come to for a
-/// copy, or for a table that is already in order, is not ported; such a sort is answered
-/// as it was before copies were told apart.
+/// absolute value is neither: Java's engine has no such sort. Its server makes one of
+/// three operations, and so does the server here, which never asks for this one.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#sort and
 /// io.deephaven.engine.table.impl.SortOperation#initialize

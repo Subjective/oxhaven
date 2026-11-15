@@ -1,7 +1,7 @@
 //! `Sort`: a table ordered by columns, reversed, or both.
 
 use super::prelude::*;
-use oxhaven_contracts::schema::ColumnType;
+use oxhaven_engine::ops::select::{drop_columns, update_view};
 use oxhaven_engine::ops::sort::{reverse, sort, SortColumn};
 use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::{SortDescriptor, SortTableRequest};
@@ -13,36 +13,11 @@ fn direction(descriptor: &SortDescriptor) -> Option<SortDirection> {
     SortDirection::try_from(descriptor.direction).ok()
 }
 
-/// Java computes `abs(Column)` for every descriptor marked absolute before it looks at the
-/// directions, so the mark fails a `REVERSE` descriptor whose column has no `abs`, though
-/// such a descriptor sorts by nothing. The engine makes this check for the columns it
-/// sorts by; this makes it for the ones it is not given.
+/// The name of the column Java adds for a sort by the absolute value of `column`.
 ///
-/// Behavior: `SortTableGrpcImpl#create`, the `updateView` of
-/// `io.deephaven.engine.table.impl.AbsoluteSortColumnConventions#makeSelectable`
-fn check_unused_absolute(parent: &dyn Table, column: &str) -> Result<(), ExportError> {
-    let definition = parent.definition();
-    let Some(index) = definition.index_of(column) else {
-        return Err(ExportError::Internal(format!(
-            "abs({column}): no such column"
-        )));
-    };
-    match &definition.columns()[index].column_type {
-        ColumnType::Byte
-        | ColumnType::Short
-        | ColumnType::Int
-        | ColumnType::Long
-        | ColumnType::Float
-        | ColumnType::Double => Ok(()),
-        ColumnType::Boolean | ColumnType::String | ColumnType::Instant => Err(
-            ExportError::Internal(format!("abs({column}): no abs for the column's type")),
-        ),
-        other => Err(not_ported(
-            "io.deephaven.engine.table.impl.lang.QueryLanguageParser#visit(MethodCallExpr)",
-            format!("abs of a {other:?} column for an absolute sort"),
-        )
-        .into()),
-    }
+/// Behavior: `io.deephaven.engine.table.impl.AbsoluteSortColumnConventions#baseColumnNameToAbsoluteName`
+fn absolute_name(column: &str) -> String {
+    format!("__ABS__{column}")
 }
 
 impl TableOp for Handler {
@@ -59,8 +34,19 @@ impl TableOp for Handler {
     /// The descriptors are read in order. `REVERSE` names no column: it reverses the
     /// table, and each one inverts the direction of the descriptors after it, so that the
     /// reversal at the end leaves those columns in the direction the client asked for.
+    ///
+    /// The engine has no sort by an absolute value. For every descriptor marked absolute,
+    /// whatever its direction, a column `__ABS__<name>` with `abs(<name>)` is added with
+    /// `updateView`; the table is sorted by that column in place of the one named, and
+    /// reversed; and the added columns are dropped. So the result of such a request is the
+    /// result of `dropColumns`, with the attributes that keeps, a marked column that has
+    /// no `abs` fails the request even when nothing is sorted by it, and a column of the
+    /// source that has the name of an added one is lost.
+    ///
+    /// Java then gives the result the key column attributes of the source, which
+    /// `dropColumns` does not keep. No table has them here.
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &SortTableRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -75,10 +61,24 @@ impl TableOp for Handler {
                 .map(|sort| &sort.column_name)
                 .filter(|name| !name.is_empty()),
         )?;
-        for unused in request.sorts.iter().filter(|sort| {
-            sort.is_absolute && !matches!(direction(sort), Some(SortDirection::Ascending | SortDirection::Descending))
-        }) {
-            check_unused_absolute(parent.as_ref(), &unused.column_name)?;
+        // Java adds them last descriptor first.
+        let absolute: Vec<&SortDescriptor> = request
+            .sorts
+            .iter()
+            .rev()
+            .filter(|sort| sort.is_absolute)
+            .collect();
+        let added: Vec<String> = absolute
+            .iter()
+            .map(|sort| absolute_name(&sort.column_name))
+            .collect();
+        let mut result = parent.clone();
+        if !absolute.is_empty() {
+            let formulas: Vec<String> = absolute
+                .iter()
+                .map(|sort| format!("{} = abs({})", absolute_name(&sort.column_name), sort.column_name))
+                .collect();
+            result = update_view(&result, &formulas, context.compiler.as_ref())?;
         }
 
         let mut columns = Vec::new();
@@ -98,25 +98,26 @@ impl TableOp for Handler {
                     );
                 }
             };
-            let name = descriptor.column_name.as_str();
-            let column = if descending != reversed {
+            let name = if descriptor.is_absolute {
+                absolute_name(&descriptor.column_name)
+            } else {
+                descriptor.column_name.clone()
+            };
+            columns.push(if descending != reversed {
                 SortColumn::descending(name)
             } else {
                 SortColumn::ascending(name)
-            };
-            columns.push(if descriptor.is_absolute {
-                column.absolute()
-            } else {
-                column
             });
         }
 
-        let mut result = parent.clone();
         if !columns.is_empty() {
             result = sort(&result, &columns)?;
         }
         if reversed {
             result = reverse(&result)?;
+        }
+        if !added.is_empty() {
+            result = drop_columns(&result, &added)?;
         }
         Ok(result)
     }

@@ -460,11 +460,23 @@ fn a_list_column_is_copied_by_name_and_read_by_a_formula() {
     );
 }
 
+/// Behavior: io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor,
+/// which has no value but null for a vector.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor: \
-                column type Vector(Int)"
-)]
-fn a_match_filter_of_a_list_column_is_not_ported() {
-    let _ = unstructured_filter(&listed(), &["V == null"], &Compiler);
+fn a_match_filter_of_a_list_column_takes_null_only() {
+    let size = |filter: &str| {
+        unstructured_filter(&listed(), &[filter], &Compiler)
+            .unwrap()
+            .row_set()
+            .size()
+    };
+    assert_eq!(size("V == null"), 1);
+    assert_eq!(size("V != null"), 2);
+    assert!(unstructured_filter(&listed(), &["V == 1"], &Compiler).is_err());
+}
+
+#[test]
+#[should_panic(expected = "unported: io.deephaven.engine.table.impl.select.RangeFilter#init")]
+fn a_range_filter_of_a_list_column_is_not_ported() {
+    let _ = unstructured_filter(&listed(), &["V > null"], &Compiler);
 }

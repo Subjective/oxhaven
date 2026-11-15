@@ -423,6 +423,15 @@ fn convert_literal(column_type: &ColumnType, text: &str) -> Result<Key, String> 
                 Key::Int(nanos)
             })
         }
+        // Java has no convertor for a vector or an array: only `null` is a value of one.
+        other if other.list_element().is_some() => {
+            if text == "null" {
+                return Ok(Key::Null);
+            }
+            Err(format!(
+                "Can't create {other:?} from String Literal for value auto-conversion"
+            ))
+        }
         other => unported!(
             "io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor",
             "column type {other:?}"
