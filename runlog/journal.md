@@ -677,3 +677,10 @@ hosted runners only. PR 84 makes the workflow token read-only. Raised with the o
 repository has no LICENSE file, and it holds a `deephaven` Python package written to match
 a reference that is under the Deephaven Community License (docs/CONSOLE.md records that
 nothing was copied).
+
+## 2026-11-15 20:40 UTC: Python functions in query strings up as PR 85
+
+For owner review from PR 85: a filter whose Python function returns None fails where Java
+drops the row; an unported library name does not fall through to a Python function of the
+same name; call order of impure functions across the formulas of one update is fixed here
+and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
