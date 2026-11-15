@@ -1088,3 +1088,21 @@ fn float_extremes(
         })
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::ulp;
+
+    /// Behavior: java.lang.Math#ulp(double): the distance to the next value larger in
+    /// magnitude, `Double.MIN_VALUE` for a zero, and 2^971 for `Double.MAX_VALUE`.
+    #[test]
+    fn ulp_is_the_distance_to_the_next_larger_magnitude() {
+        assert_eq!(ulp(1.0), f64::EPSILON);
+        assert_eq!(ulp(1.5), f64::EPSILON);
+        assert_eq!(ulp(-4.0), 4.0 * f64::EPSILON);
+        assert_eq!(ulp(0.0), f64::from_bits(1));
+        assert_eq!(ulp(f64::MIN_POSITIVE), f64::from_bits(1));
+        assert_eq!(ulp(f64::MAX), 2f64.powi(971));
+        assert_eq!(ulp(-f64::MAX), 2f64.powi(971));
+    }
+}
