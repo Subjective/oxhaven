@@ -1,17 +1,18 @@
-"""Reading Parquet files as tables.
+"""Reading Parquet files as tables and writing tables as Parquet files.
 
 Behavior: `deephaven.parquet` (the names, signatures and error texts; `docs/STORAGE.md`
-lists what a read supports). Writing is not here yet: `write`, `write_partitioned`,
-`batch_write`, `delete` and `RowGroupInfo` are missing.
+lists what a read and a write support).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from . import _engine
+from . import _engine, dtypes
+from .column import ColumnType
 from .dherror import DHError
-from .table import Table
+from .table import Table, TableDefinition
 
 
 class UnsignedLongTarget(Enum):
@@ -115,3 +116,265 @@ def read(
         ))
     except Exception as e:
         raise DHError(e, "failed to read parquet data.") from e
+
+
+class RowGroupInfo:
+    """How the rows of a table are split into the row groups of a Parquet file. Make one
+    with `single_group`, `max_groups`, `max_rows` or `by_groups`.
+
+    Behavior: `deephaven.parquet.RowGroupInfo`, which wraps
+    `io.deephaven.parquet.table.metadata.RowGroupInfo`; this one holds the name of the
+    method that made it and its arguments.
+    """
+
+    def __init__(self, j_row_group_info):
+        self.j_row_group_info = j_row_group_info
+
+    @property
+    def j_object(self):
+        """The reference's Java object; here the method name, the number and the columns."""
+        return self.j_row_group_info
+
+    @classmethod
+    def single_group(cls) -> "RowGroupInfo":
+        """All rows in one row group. The default."""
+        return cls(("single_group", None, []))
+
+    @classmethod
+    def max_groups(cls, num_row_groups: int) -> "RowGroupInfo":
+        """`num_row_groups` row groups of the same size; where the rows do not divide
+        evenly, the last ones have one row fewer."""
+        if num_row_groups < 1:
+            raise RuntimeError(
+                "java.lang.IllegalArgumentException: Cannot define less than 1 RowGroup"
+            )
+        return cls(("max_groups", int(num_row_groups), []))
+
+    @classmethod
+    def max_rows(cls, max_rows: int) -> "RowGroupInfo":
+        """Row groups of at most `max_rows` rows each."""
+        if max_rows <= 0:
+            raise RuntimeError("java.lang.IllegalArgumentException: MaxRows must be positive")
+        return cls(("max_rows", int(max_rows), []))
+
+    @classmethod
+    def by_groups(cls, groups: list[str], max_rows: Optional[int] = None) -> "RowGroupInfo":
+        """One row group for each distinct value of the `groups` columns, split further
+        as `max_rows` does when it is given. The rows of a value must be next to each
+        other in the table, or the write fails."""
+        if max_rows and max_rows <= 0:
+            raise RuntimeError("java.lang.IllegalArgumentException: MaxRows must be positive")
+        groups = list(groups)
+        if not groups:
+            raise RuntimeError(
+                "java.lang.IllegalArgumentException: Must contain at least one group"
+            )
+        return cls(("by_groups", int(max_rows) if max_rows else None, groups))
+
+
+def _write_arguments(
+    table_definition,
+    col_instructions,
+    compression_codec_name,
+    max_dictionary_keys,
+    max_dictionary_size,
+    target_page_size,
+    generate_metadata_files,
+    index_columns,
+    row_group_info,
+    special_instructions,
+) -> tuple:
+    """The arguments of a write after the tables and the paths, as the native function
+    takes them.
+
+    Behavior: `deephaven.parquet._build_parquet_instructions` with `for_read=False`
+    """
+    columns = []
+    for ci in col_instructions or []:
+        if not ci.column_name:
+            raise ValueError("must specify the table column name for write.")
+        columns.append((
+            ci.column_name,
+            ci.parquet_column_name,
+            ci.codec_name or None,
+            bool(ci.use_dictionary),
+        ))
+    definition, definition_of = None, None
+    if table_definition is not None:
+        if not isinstance(table_definition, TableDefinition):
+            table_definition = TableDefinition(table_definition)
+        if table_definition._handle is not None:
+            # a table's own definition, which may have types `dtypes` has no name for
+            definition_of = table_definition._handle
+        else:
+            definition = [
+                (column.name, dtypes._engine_type(column.data_type))
+                for column in table_definition.values()
+            ]
+    if row_group_info is not None:
+        row_group_info = row_group_info.j_object
+    if special_instructions is not None:
+        raise _not_ported(
+            "io.deephaven.parquet.table.ParquetInstructions.Builder#setSpecialInstructions",
+            "special instructions for a write",
+        )
+    return (
+        definition,
+        definition_of,
+        columns,
+        compression_codec_name or None,
+        max_dictionary_keys,
+        max_dictionary_size,
+        target_page_size,
+        bool(generate_metadata_files),
+        [list(names) for names in index_columns or []],
+        row_group_info,
+    )
+
+
+def _handle(table):
+    if not isinstance(table, Table):
+        # what the reference raises when it asks the argument for its Java table
+        raise AttributeError(f"'{type(table).__name__}' object has no attribute 'j_table'")
+    return table.j_table
+
+
+def delete(path: str) -> None:
+    """Deletes a Parquet table on disk: the file at `path`, or the directory and
+    everything in it. A path that names nothing is not an error."""
+    try:
+        _engine.native.delete_parquet(path)
+    except Exception as e:
+        raise DHError(e, f"failed to delete a parquet table: {path} on disk.") from e
+
+
+def write(
+    table: Table,
+    path: str,
+    table_definition=None,
+    col_instructions: Optional[list[ColumnInstruction]] = None,
+    compression_codec_name: Optional[str] = None,
+    max_dictionary_keys: Optional[int] = None,
+    max_dictionary_size: Optional[int] = None,
+    target_page_size: Optional[int] = None,
+    generate_metadata_files: Optional[bool] = None,
+    index_columns: Optional[Sequence[Sequence[str]]] = None,
+    row_group_info: Optional[RowGroupInfo] = None,
+    special_instructions=None,
+) -> None:
+    """Writes a table to a Parquet file.
+
+    `path` must end in ".parquet"; directories that do not exist are created, and removed
+    again if the write fails. `table_definition` gives the columns of the file where they
+    are not the table's: a column the table does not have is written as nulls.
+    `compression_codec_name` defaults to "SNAPPY". `generate_metadata_files`,
+    `index_columns`, `special_instructions`, a codec in `col_instructions` and "LZO" are
+    not supported yet.
+    """
+    try:
+        arguments = _write_arguments(
+            table_definition,
+            col_instructions,
+            compression_codec_name,
+            max_dictionary_keys,
+            max_dictionary_size,
+            target_page_size,
+            generate_metadata_files,
+            index_columns,
+            row_group_info,
+            special_instructions,
+        )
+        _engine.native.write_parquet([_handle(table)], [path], *arguments)
+    except Exception as e:
+        raise DHError(e, "failed to write to parquet data.") from e
+
+
+def write_partitioned(
+    table,
+    destination_dir: str,
+    table_definition=None,
+    col_instructions: Optional[list[ColumnInstruction]] = None,
+    compression_codec_name: Optional[str] = None,
+    max_dictionary_keys: Optional[int] = None,
+    max_dictionary_size: Optional[int] = None,
+    target_page_size: Optional[int] = None,
+    base_name: Optional[str] = None,
+    generate_metadata_files: Optional[bool] = None,
+    index_columns: Optional[Sequence[Sequence[str]]] = None,
+    row_group_info: Optional[RowGroupInfo] = None,
+    special_instructions=None,
+) -> None:
+    """Writes a table as a directory tree of Parquet files, one directory level named
+    "key=value" for each partitioning column.
+
+    Not supported yet: a table of the engine has no partitioning columns, so this raises
+    what the reference raises for such a table, and refuses a `table_definition` that
+    names partitioning columns.
+    """
+    try:
+        _write_arguments(
+            table_definition,
+            col_instructions,
+            compression_codec_name,
+            max_dictionary_keys,
+            max_dictionary_size,
+            target_page_size,
+            generate_metadata_files,
+            index_columns,
+            row_group_info,
+            special_instructions,
+        )
+        if not isinstance(table, Table):
+            raise AttributeError(f"'{type(table).__name__}' object has no attribute 'j_object'")
+        definition = table.definition
+        if table_definition is not None:
+            definition = TableDefinition(table_definition)
+        if not any(c.column_type is ColumnType.PARTITIONING for c in definition.values()):
+            raise RuntimeError(
+                "java.lang.IllegalArgumentException: Table must have partitioning columns to "
+                "write partitioned data"
+            )
+        raise _not_ported(
+            "io.deephaven.parquet.table.ParquetTools#writeKeyValuePartitionedTable",
+            "a table written as directories named by its partitioning columns",
+        )
+    except Exception as e:
+        raise DHError(e, "failed to write to parquet data.") from e
+
+
+def batch_write(
+    tables: list[Table],
+    paths: list[str],
+    table_definition=None,
+    col_instructions: Optional[list[ColumnInstruction]] = None,
+    compression_codec_name: Optional[str] = None,
+    max_dictionary_keys: Optional[int] = None,
+    max_dictionary_size: Optional[int] = None,
+    target_page_size: Optional[int] = None,
+    generate_metadata_files: Optional[bool] = None,
+    index_columns: Optional[Sequence[Sequence[str]]] = None,
+    row_group_info: Optional[RowGroupInfo] = None,
+    special_instructions=None,
+):
+    """Writes tables to Parquet files, one path for each table: all of them or none.
+
+    Without `table_definition` the tables must have the same columns. The other
+    arguments are those of `write`.
+    """
+    try:
+        arguments = _write_arguments(
+            table_definition,
+            col_instructions,
+            compression_codec_name,
+            max_dictionary_keys,
+            max_dictionary_size,
+            target_page_size,
+            generate_metadata_files,
+            index_columns,
+            row_group_info,
+            special_instructions,
+        )
+        handles = [_handle(table) for table in tables]
+        _engine.native.write_parquet(handles, list(paths), *arguments)
+    except Exception as e:
+        raise DHError(e, "write multiple tables to parquet data failed.") from e

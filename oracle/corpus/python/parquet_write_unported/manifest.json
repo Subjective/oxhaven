@@ -1,0 +1,420 @@
+{
+  "format": 2,
+  "scenario": "parquet_write_unported",
+  "scenario_sha256": "35a3d4052f09584c6e6b345919f5dc32c47bf1f761849ee0fad6e395cfca4c7c",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lzo",
+      "file": "step000.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "by_class",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "metadata",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "indexed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_uri",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "nested",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "lzo",
+      "file": "step001.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "by_class",
+      "file": "step001.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "metadata",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "indexed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_uri",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "nested",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "lzo",
+      "file": "step002.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "by_class",
+      "file": "step002.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "metadata",
+      "file": "step002.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "indexed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_uri",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "nested",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "lzo",
+      "file": "step003.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "by_class",
+      "file": "step003.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "metadata",
+      "file": "step003.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "indexed",
+      "file": "step003.indexed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "by_uri",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "nested",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "lzo",
+      "file": "step004.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "by_class",
+      "file": "step004.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "metadata",
+      "file": "step004.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "indexed",
+      "file": "step004.indexed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "by_uri",
+      "file": "step004.by_uri.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "nested",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "lzo",
+      "file": "step005.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_class",
+      "file": "step005.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "metadata",
+      "file": "step005.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "indexed",
+      "file": "step005.indexed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "by_uri",
+      "file": "step005.by_uri.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "nested",
+      "file": "step005.nested.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "narrowed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "lzo",
+      "file": "step006.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_class",
+      "file": "step006.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "metadata",
+      "file": "step006.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "indexed",
+      "file": "step006.indexed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "by_uri",
+      "file": "step006.by_uri.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "nested",
+      "file": "step006.nested.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "narrowed",
+      "file": "step006.narrowed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "partitioned",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "lzo",
+      "file": "step007.lzo.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_class",
+      "file": "step007.by_class.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "metadata",
+      "file": "step007.metadata.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "indexed",
+      "file": "step007.indexed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "by_uri",
+      "file": "step007.by_uri.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "nested",
+      "file": "step007.nested.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "narrowed",
+      "file": "step007.narrowed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "partitioned",
+      "file": "step007.partitioned.arrow",
+      "rows": 3
+    }
+  ]
+}
