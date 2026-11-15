@@ -408,3 +408,14 @@ second task. Sizing note: numeric operators with recorded fixtures cost about 10
 each. Owner question added: EmStd after an update is seeded with the true variance here,
 Java uses the square of its previous result; results differ in the last bits and are
 compared under PARITY A1. Launched: multi_join (4.12) and three small parity fixes (4.13).
+
+## 2026-11-15 01:45 UTC
+
+PR 57 merged. PRs 58 (multi_join, 72/83 on its head) and 59 (aggregations, 71/83 on its
+head) open. Two scenarios (`agg_by_sets`, `ticking_agg_by_full`) now wait only on formula
+aggregation, which needs vector values in oxhaven-expr; that and update_by's rolling
+group/formula/count-where make "vectors in expressions" the next enabling task.
+Follow-ups: `min` keeps 0.0 where Java keeps -0.0 (agg fuzz seeds 337, 351, 785); stale
+`why` texts in the baseline for agg_by_sets, update_by_time_and_ema, update_by_rolling_tick.
+Owner review items added by PR 59: distinct null-to-[] reported modified; first/last
+modified decided at cycle end rather than per chunk.
