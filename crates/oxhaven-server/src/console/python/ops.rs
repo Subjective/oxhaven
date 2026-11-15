@@ -53,6 +53,7 @@ type Operation = (
 /// The local operations.
 const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
+    ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
     ("move_columns", move_columns),
     ("move_columns_down", move_columns_down),
@@ -213,6 +214,15 @@ fn restrict_sort_to(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> 
 /// Behavior: `io.deephaven.engine.util.TableTools#mergeSorted`
 fn merge_sorted(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     Ok(merge::merge_sorted(sources, text(args, "order_by")?)?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
+fn keyed_transpose(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+    let (rows, columns) = (strings(args, "row_by_cols")?, strings(args, "col_by_cols")?);
+    no_operator(
+        "io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose",
+        format!("keyedTranspose by {rows:?} and {columns:?}"),
+    )
 }
 
 /// The status of an `unported!` panic, which names what is missing.

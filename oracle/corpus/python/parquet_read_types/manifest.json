@@ -1,0 +1,56 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_types",
+  "scenario_sha256": "afe6afbf3390e23a620a16ccc09f3da51b6e9ac268be6bfce0445c4d0b977ff9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "plain",
+      "file": "step000.plain.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "gzip_pages",
+      "file": "step000.gzip_pages.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "lz4_pages",
+      "file": "step000.lz4_pages.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "by_layout",
+      "file": "step000.by_layout.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "filtered",
+      "file": "step000.filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "selected",
+      "file": "step000.selected.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "viewed",
+      "file": "step000.viewed.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "file": "step000.last.arrow",
+      "rows": 3
+    }
+  ]
+}

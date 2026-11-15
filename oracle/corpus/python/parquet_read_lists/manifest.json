@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_lists",
+  "scenario_sha256": "8babb4312b042ab0da062697436295ab19adad7292ca496551f9a76352eea90d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "lists",
+      "file": "step000.lists.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "picked",
+      "file": "step000.picked.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "copied",
+      "file": "step000.copied.arrow",
+      "rows": 2
+    }
+  ]
+}

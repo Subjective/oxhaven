@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_directory",
+  "scenario_sha256": "df7405068cba5f9278b1fd49c2f9677adfe01688bcbe2e057558778c08936cd6",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "flat",
+      "file": "step000.flat.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "key_value",
+      "file": "step000.key_value.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "first_rows",
+      "file": "step000.first_rows.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "last_rows",
+      "file": "step000.last_rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "filtered",
+      "file": "step000.filtered.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "updated",
+      "file": "step000.updated.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "visible",
+      "file": "step000.visible.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "evolved",
+      "file": "step000.evolved.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "evolved_copy",
+      "file": "step000.evolved_copy.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "no_rows",
+      "file": "step000.no_rows.arrow",
+      "rows": 0
+    }
+  ]
+}

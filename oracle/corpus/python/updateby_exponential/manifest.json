@@ -1,0 +1,224 @@
+{
+  "format": 2,
+  "scenario": "updateby_exponential",
+  "scenario_sha256": "652e064fa2c56a440ac923e21da2c35fbb57caaabf991dd8bf94c9bef1d776ae",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "by_rows",
+      "file": "step000.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "by_time",
+      "file": "step000.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "skipped",
+      "file": "step000.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "poisoned",
+      "file": "step000.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "restarted",
+      "file": "step000.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "with_context",
+      "file": "step000.with_context.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "by_rows",
+      "file": "step001.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "by_time",
+      "file": "step001.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "skipped",
+      "file": "step001.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "poisoned",
+      "file": "step001.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "restarted",
+      "file": "step001.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "with_context",
+      "file": "step001.with_context.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "by_rows",
+      "file": "step002.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "by_time",
+      "file": "step002.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "skipped",
+      "file": "step002.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "poisoned",
+      "file": "step002.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "restarted",
+      "file": "step002.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "with_context",
+      "file": "step002.with_context.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "by_rows",
+      "file": "step003.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "by_time",
+      "file": "step003.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "skipped",
+      "file": "step003.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "poisoned",
+      "file": "step003.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "restarted",
+      "file": "step003.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "with_context",
+      "file": "step003.with_context.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "by_rows",
+      "file": "step004.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "by_time",
+      "file": "step004.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "skipped",
+      "file": "step004.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "poisoned",
+      "file": "step004.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "restarted",
+      "file": "step004.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "with_context",
+      "file": "step004.with_context.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_rows",
+      "file": "step005.by_rows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_time",
+      "file": "step005.by_time.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "skipped",
+      "file": "step005.skipped.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "poisoned",
+      "file": "step005.poisoned.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "restarted",
+      "file": "step005.restarted.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "with_context",
+      "file": "step005.with_context.arrow",
+      "rows": 10
+    }
+  ]
+}

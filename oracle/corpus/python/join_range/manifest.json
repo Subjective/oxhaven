@@ -1,0 +1,80 @@
+{
+  "format": 2,
+  "scenario": "join_range",
+  "scenario_sha256": "0c367fc32e8ab2fe9be982494e1b5ae8b78472b2388f560413600c692842c600",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "inclusive",
+      "file": "step000.inclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "exclusive",
+      "file": "step000.exclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "neighbours",
+      "file": "step000.neighbours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "inclusive",
+      "file": "step001.inclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "exclusive",
+      "file": "step001.exclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "neighbours",
+      "file": "step001.neighbours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "inclusive",
+      "file": "step002.inclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "exclusive",
+      "file": "step002.exclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "neighbours",
+      "file": "step002.neighbours.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "inclusive",
+      "file": "step003.inclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "exclusive",
+      "file": "step003.exclusive.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "neighbours",
+      "file": "step003.neighbours.arrow",
+      "rows": 4
+    }
+  ]
+}

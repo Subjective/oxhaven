@@ -1,0 +1,266 @@
+{
+  "format": 2,
+  "scenario": "updateby_time",
+  "scenario_sha256": "49decc85b672819a000ca20a13d21246ed941387e0f6ef1310c593c459c77a53",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "windows",
+      "file": "step000.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "groups",
+      "file": "step000.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "windows",
+      "file": "step001.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "groups",
+      "file": "step001.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "windows",
+      "file": "step002.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "groups",
+      "file": "step002.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "windows",
+      "file": "step003.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "groups",
+      "file": "step003.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "windows",
+      "file": "step004.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "groups",
+      "file": "step004.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "windows",
+      "file": "step005.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "groups",
+      "file": "step005.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_formula",
+      "file": "step005.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "windows",
+      "file": "step006.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "groups",
+      "file": "step006.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_formula",
+      "file": "step006.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_columns",
+      "file": "step006.by_columns.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "windows",
+      "file": "step007.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "groups",
+      "file": "step007.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_formula",
+      "file": "step007.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_columns",
+      "file": "step007.by_columns.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "counted",
+      "file": "step007.counted.arrow",
+      "rows": 10
+    }
+  ]
+}
