@@ -684,3 +684,13 @@ For owner review from PR 85: a filter whose Python function returns None fails w
 drops the row; an unported library name does not fall through to a Python function of the
 same name; call order of impure functions across the formulas of one update is fixed here
 and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
+
+## 2026-11-15 20:50 UTC
+
+- Merged pull request 79 (6.14, console log and stopping a cancelled command) on six green
+  checks, after the author resolved the `Cargo.toml` conflict with pull request 82.
+- 7.3 (CSV) reported: 66 minutes, 290k tokens. Pull request 86 opened. For the owner: the
+  reader refuses date-times in zones with rules (the engine has no time zone rules), and
+  the other differences listed in the pull request and `docs/CSV.md`.
+- 6.10 started by resuming the console agent of 6.14 in its worktree, since it knows the
+  command threading that the lock release facility has to work with.
