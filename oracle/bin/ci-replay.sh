@@ -79,7 +79,11 @@ done
 echo "server $server at $url"
 
 echo "== replay and client smokes"
-timeout --signal=INT --kill-after=10 "$limit" \
+# Unbuffered, so that the output of a run that stalls ends where the run did; and shortly
+# before the limit the harness writes the stack of every thread, which shows what it waits for.
+stacks_after=$((limit > 30 ? limit - 15 : limit))
+PYTHONUNBUFFERED=1 ORACLE_STACKS_AFTER="$stacks_after" \
+  timeout --signal=INT --kill-after=10 "$limit" \
   "$here/harness" gate --url "$url" --report "$report"
 status=$?
 if [[ $status -eq 124 || $status -eq 137 ]]; then

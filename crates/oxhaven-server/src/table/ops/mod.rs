@@ -265,6 +265,7 @@ handlers! {
     fetch_table { FetchTable => Handler }
     filter { Filter => Handler }
     flatten { Flatten => Handler }
+    head_by { HeadBy => HeadBy, TailBy => TailBy }
     head_tail { Head => Head, Tail => Tail }
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
@@ -281,6 +282,7 @@ handlers! {
     snapshot { Snapshot => Snapshot, SnapshotWhen => SnapshotWhen }
     sort { Sort => Handler }
     time_table { TimeTable => Handler }
+    ungroup { Ungroup => Handler }
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }

@@ -71,18 +71,13 @@ impl ZeroKey {
     /// Behavior: the `onUpdate` function of
     /// io.deephaven.engine.table.impl.CrossJoinHelper#zeroKeyColumnsJoin. Java listens to
     /// a refreshing table only when the other is refreshing or not empty; with a static
-    /// empty partner nothing changes here either.
+    /// empty partner the result is static and this is never called (`unheard` in `mod.rs`).
     pub(super) fn on_update(
         &self,
         left_update: Option<&TableUpdate>,
         right_update: Option<&TableUpdate>,
     ) -> Result<TableUpdate, TableFailure> {
         let (left, right) = (&*self.left, &*self.right);
-        let silent = (!right.is_refreshing() && right.row_set().is_empty())
-            || (!left.is_refreshing() && left.row_set().is_empty());
-        if silent {
-            return Ok(TableUpdate::empty());
-        }
         let left_now = left.row_set();
         let right_now = right.row_set();
         let right_last = right_now.last_row_key().unwrap_or(-1);

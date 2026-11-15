@@ -341,21 +341,26 @@ fn numeric_aggregations_of_a_list_column_are_refused_as_those_of_a_string() {
 }
 
 #[test]
-fn ungroup_recognizes_a_list_column_and_cannot_read_it_yet() {
-    let expected = "unported: \
-        io.deephaven.engine.table.impl.sources.UngroupedColumnSource#getColumnSource: \
-        column V of type Vector(Int)";
-    // every array column, which is V,
-    let message = panic_of(|| {
-        let _ = ungroup(&listed(), false, &[]);
-    });
-    assert_eq!(message, expected);
-    // and V by name
-    let message = panic_of(|| {
-        let _ = ungroup(&listed(), true, &["V".to_string()]);
-    });
-    assert_eq!(message, expected);
-    // A column that is not one is still refused as Java refuses it.
+fn ungroup_replaces_a_list_column_by_its_elements() {
+    // every array column, which is V, and V by name
+    for columns in [vec![], vec!["V".to_string()]] {
+        let ungrouped = ungroup(&listed(), false, &columns).unwrap();
+        let types: Vec<&ColumnType> = ungrouped
+            .definition()
+            .columns()
+            .iter()
+            .map(|c| &c.column_type)
+            .collect();
+        assert_eq!(
+            types,
+            [&ColumnType::Int, &ColumnType::String, &ColumnType::Int]
+        );
+        // The null cell and the empty cell have no rows.
+        let snapshot = TableSnapshot::current(&*ungrouped).unwrap();
+        assert_eq!(snapshot.columns[0].to_data(), ints([1, 1]).to_data());
+        assert_eq!(snapshot.columns[2].to_data(), ints([1, 2]).to_data());
+    }
+    // A column that is not one is refused as Java refuses it.
     let refused = ungroup(&listed(), false, &["K".to_string()]);
     let message = refused.err().map(|error| error.to_string());
     assert_eq!(
