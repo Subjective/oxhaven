@@ -1,0 +1,1541 @@
+{
+ "name": "rest_ticking",
+ "description": "The aggregations of task 4.1c on a keyed input table, with the updates Java delivered: distinct, unique with a non-unique sentinel, count where and an output named like a key column, as rows join and leave groups, values are modified to and from null and to and from the sentinel, keys change, groups empty and refill, groups hold only nulls, and the table empties and refills.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "S", "type": "string"}, {"name": "D", "type": "float64"}], "ticking": {"key_columns": ["Id"]}, "rows": [
+   [1, "a", 10, "x", 1.5],
+   [2, "b", 20, null, "NaN"],
+   [3, "a", null, "", -0.0],
+   [4, "b", 20, "y", null],
+   [5, "a", 50, "x", 0.0]
+  ]}
+ ],
+ "operations": [
+  {"name": "distinct_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DS=S", "DD=D"], "include_nulls": false}, {"agg": "count", "column": "N"}]},
+  {"name": "distinct_nulls_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DS=S", "DD=D"], "include_nulls": true}]},
+  {"name": "distinct_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DS=S", "DD=D"], "include_nulls": false}]},
+  {"name": "distinct_nulls_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "distinct", "cols": ["DI=I", "DD=D"], "include_nulls": true}, {"agg": "sum", "cols": ["SI=I"]}]},
+  {"name": "unique_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["UI=I"], "include_nulls": false, "sentinel": {"int": 20}}, {"agg": "unique", "cols": ["US=S"], "include_nulls": false, "sentinel": {"string": "many"}}, {"agg": "unique", "cols": ["UD=D"], "include_nulls": false, "sentinel": {"double": 0.0}}]},
+  {"name": "unique_nulls_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "unique", "cols": ["UI=I"], "include_nulls": true, "sentinel": {"byte": -1}}, {"agg": "unique", "cols": ["UD=D"], "include_nulls": true, "sentinel": {"double": "NaN"}}]},
+  {"name": "unique_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "unique", "cols": ["UI=I"], "include_nulls": false, "sentinel": {"long": 10}}, {"agg": "unique", "cols": ["US=S"], "include_nulls": false, "sentinel": {"string": "x"}}]},
+  {"name": "where_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "Big", "filters": ["I > 15"]}, {"agg": "count_where", "column": "Xs", "filters": ["S == `x`", "D >= 0"]}, {"agg": "count", "column": "N"}]},
+  {"name": "where_none", "op": "agg", "source": "t", "by": [], "aggs": [{"agg": "count_where", "column": "Big", "filters": ["I > 15"]}, {"agg": "count_where", "column": "F", "filters": ["I % 20 == 0"]}, {"agg": "max", "cols": ["MI=I"]}]},
+  {"name": "where_formula_by_k", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count_where", "column": "Odd", "filters": ["I + D > 20", "!isNull(S)"]}]},
+  {"name": "key_sum", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "sum", "cols": ["K=I"]}, {"agg": "last", "cols": ["LS=S"]}]},
+  {"name": "key_where", "op": "agg", "source": "t", "by": ["K"], "aggs": [{"agg": "count", "column": "N"}, {"agg": "count_where", "column": "K", "filters": ["I > 15"]}]}
+ ],
+ "results": ["distinct_by_k", "distinct_nulls_by_k", "distinct_none", "distinct_nulls_none", "unique_by_k", "unique_nulls_by_k", "unique_none", "where_by_k", "where_none", "where_formula_by_k", "key_sum", "key_where"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, "a", 60, "w", 6.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[7, "c", null, null, null], [8, "c", null, null, null]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[3, "a", 10, "", -0.0]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[7, "c", 70, "c1", 7.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[1, "b", 10, "x", 1.5]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[8, "c", 70, "c1", 7.5]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[7], [8]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[9, "c", 90, "c3", 9.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[9, "c", 91, "c3", 9.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[4, "b", 20, "y", 0.0]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[2, "d", 20, null, "NaN"], [10, "a", 110, "x", 0.0]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[11, null, null, null, null], [12, "e", 120, "e", 12.5]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[12]]}, {"action": "add", "table": "t", "rows": [[13, "a", 130, "r", 13.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, "a", 61, "x", -0.0], [13, "a", 10, "x", 13.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[3, "a", null, null, null], [10, "a", null, null, null]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[6, "a", null, null, null], [13, "a", null, null, null]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[14, "a", null, null, null]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[14, "a", 5, "five", 5.0]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[1], [2], [3], [4], [6], [9], [10], [11], [13]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[15, "z", null, null, null]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[14]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[16, "z", null, null, null]]}]},
+  {"actions": [{"action": "delete", "table": "t", "rows": [[15], [16]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[3, "b", 3, "back", 3.5]]}]},
+  {"actions": [{"action": "add", "table": "t", "rows": [[1, "a", 1, "again", 1.5], [20, "b", 2, "more", 2.5]]}]}
+ ],
+ "updates": ["distinct_by_k", "distinct_nulls_by_k", "distinct_none", "distinct_nulls_none", "unique_by_k", "unique_nulls_by_k", "unique_none", "where_by_k", "where_none", "where_formula_by_k", "key_sum", "key_where"],
+ "java": {"steps": [
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50], ["", "x"], [-0.0, 1.5], 3],
+    ["b", [20], ["y"], null, 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, 10, 50], ["", "x"], [-0.0, 1.5]],
+    ["b", [20], [null, "y"], [null, "NaN"]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50], ["", "x", "y"], [-0.0, 1.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50], [null, -0.0, 1.5, "NaN"], 100]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "y", null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", 20, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 2, 3],
+    ["b", 2, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, 50]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [60, "x"],
+    [40, "y"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 3],
+    [2, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5], 4],
+    ["b", [20], ["y"], null, 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, 10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5]],
+    ["b", [20], [null, "y"], [null, "NaN"]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50, 60], ["", "w", "x", "y"], [-0.0, 1.5, 6.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50, 60], [null, -0.0, 1.5, 6.5, "NaN"], 160]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "y", null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", 20, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 2, 4],
+    ["b", 2, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 60]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [120, "w"],
+    [40, "y"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 4],
+    [2, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5], 4],
+    ["b", [20], ["y"], null, 2],
+    ["c", null, null, null, 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, 10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5]],
+    ["b", [20], [null, "y"], [null, "NaN"]],
+    ["c", [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50, 60], ["", "w", "x", "y"], [-0.0, 1.5, 6.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50, 60], [null, -0.0, 1.5, 6.5, "NaN"], 160]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "y", null],
+    ["c", null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", 20, "NaN"],
+    ["c", null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 2, 4],
+    ["b", 2, 0, 2],
+    ["c", 0, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 60]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [120, "w"],
+    [40, "y"],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 4],
+    [2, 2],
+    [0, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5], 4],
+    ["b", [20], ["y"], null, 2],
+    ["c", null, null, null, 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5]],
+    ["b", [20], [null, "y"], [null, "NaN"]],
+    ["c", [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50, 60], ["", "w", "x", "y"], [-0.0, 1.5, 6.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50, 60], [null, -0.0, 1.5, 6.5, "NaN"], 170]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "y", null],
+    ["c", null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", 20, "NaN"],
+    ["c", null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 2, 4],
+    ["b", 2, 0, 2],
+    ["c", 0, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 60]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [130, "w"],
+    [40, "y"],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 4],
+    [2, 2],
+    [0, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5], 4],
+    ["b", [20], ["y"], null, 2],
+    ["c", [70], ["c1"], [7.5], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 1.5, 6.5]],
+    ["b", [20], [null, "y"], [null, "NaN"]],
+    ["c", [null, 70], [null, "c1"], [null, 7.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50, 60, 70], ["", "c1", "w", "x", "y"], [-0.0, 1.5, 6.5, 7.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50, 60, 70], [null, -0.0, 1.5, 6.5, 7.5, "NaN"], 240]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "y", null],
+    ["c", 70, "c1", 7.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", 20, "NaN"],
+    ["c", -1, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 2, 4],
+    ["b", 2, 0, 2],
+    ["c", 1, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 3, 70]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [130, "w"],
+    [40, "y"],
+    [70, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 4],
+    [2, 2],
+    [1, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 6.5], 3],
+    ["b", [10, 20], ["x", "y"], [1.5], 3],
+    ["c", [70], ["c1"], [7.5], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 50, 60], ["", "w", "x"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]],
+    ["c", [null, 70], [null, "c1"], [null, 7.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 50, 60, 70], ["", "c1", "w", "x", "y"], [-0.0, 1.5, 6.5, 7.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 50, 60, 70], [null, -0.0, 1.5, 6.5, 7.5, "NaN"], 240]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5],
+    ["c", 70, "c1", 7.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", -1, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 1, 3],
+    ["b", 2, 1, 3],
+    ["c", 1, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 3, 70]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [120, "w"],
+    [50, "y"],
+    [70, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 3],
+    [2, 3],
+    [1, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [1.5], 3],
+    ["c", [70], ["c1"], [7.5], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]],
+    ["c", [null, 70], [null, "c1"], [null, 7.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 70], ["", "c1", "w", "x", "y"], [-0.0, 1.5, 6.5, 7.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 60, 70], [null, -0.0, 1.5, 6.5, 7.5, "NaN"], 190]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5],
+    ["c", 70, "c1", 7.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", -1, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3],
+    ["c", 1, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 70]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"],
+    [70, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3],
+    [1, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [1.5], 3],
+    ["c", [70], ["c1"], [7.5], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]],
+    ["c", [70], ["c1"], [7.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 70], ["", "c1", "w", "x", "y"], [-0.0, 1.5, 6.5, 7.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 70], [null, -0.0, 1.5, 6.5, 7.5, "NaN"], 260]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5],
+    ["c", 70, "c1", 7.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 70, 7.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3],
+    ["c", 2, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 3, 70]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    ["c", 2]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"],
+    [140, "c1"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3],
+    [2, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [1.5], 3]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60], ["", "w", "x", "y"], [-0.0, 1.5, 6.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60], [null, -0.0, 1.5, 6.5, "NaN"], 120]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 3, 60]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [1.5], 3],
+    ["c", [90], ["c3"], [9.5], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]],
+    ["c", [90], ["c3"], [9.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 90], ["", "c3", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 90], [null, -0.0, 1.5, 6.5, 9.5, "NaN"], 210]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5],
+    ["c", 90, "c3", 9.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 90, 9.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3],
+    ["c", 1, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 90]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"],
+    [90, "c3"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3],
+    [1, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [1.5], 3],
+    ["c", [91], ["c3"], [9.5], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [null, 1.5, "NaN"]],
+    ["c", [91], ["c3"], [9.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91], ["", "c3", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91], [null, -0.0, 1.5, 6.5, 9.5, "NaN"], 211]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 1.5],
+    ["c", 91, "c3", 9.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3],
+    ["c", 1, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"],
+    [91, "c3"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3],
+    [1, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5], 2],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 3],
+    ["c", [91], ["c3"], [9.5], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60], ["", "w"], [-0.0, 6.5]],
+    ["b", [10, 20], [null, "x", "y"], [0.0, 1.5, "NaN"]],
+    ["c", [91], ["c3"], [9.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91], ["", "c3", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91], [-0.0, 1.5, 6.5, 9.5, "NaN"], 211]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 0, 2],
+    ["b", 2, 1, 3],
+    ["c", 1, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 3, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1],
+    ["b", 0],
+    ["c", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [70, "w"],
+    [50, "y"],
+    [91, "c3"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 2],
+    [2, 3],
+    [1, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110], ["", "w", "x"], [-0.0, 6.5], 3],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110], ["", "w", "x"], [-0.0, 6.5]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91, 110], ["", "c3", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91, 110], [-0.0, 1.5, 6.5, 9.5, "NaN"], 321]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 1, 3],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 3, 110]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [180, "x"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 3],
+    [1, 2],
+    [1, 1],
+    [1, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110], ["", "w", "x"], [-0.0, 6.5], 3],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1],
+    ["e", [120], ["e"], [12.5], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110], ["", "w", "x"], [-0.0, 6.5]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]],
+    ["e", [120], ["e"], [12.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91, 110, 120], ["", "c3", "e", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5, 12.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 60, 91, 110, 120], [null, -0.0, 1.5, 6.5, 9.5, 12.5, "NaN"], 441]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null],
+    ["e", 120, "e", 12.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null],
+    ["e", 120, 12.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 1, 3],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1],
+    ["e", 1, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, 4, 120]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0],
+    ["e", 1]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [180, "x"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null],
+    [120, "e"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 3],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1],
+    [1, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110, 130], ["", "r", "w", "x"], [-0.0, 6.5, 13.5], 4],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 60, 110, 130], ["", "r", "w", "x"], [-0.0, 6.5, 13.5]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 60, 91, 110, 130], ["", "c3", "r", "w", "x", "y"], [-0.0, 1.5, 6.5, 9.5, 13.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 60, 91, 110, 130], [null, -0.0, 1.5, 6.5, 9.5, 13.5, "NaN"], 451]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3, 1, 4],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [6, 3, 130]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [310, "r"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 4],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 61, 110], ["", "x"], [-0.0, 13.5], 4],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 61, 110], ["", "x"], [-0.0, 13.5]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 61, 91, 110], ["", "c3", "x", "y"], [-0.0, 1.5, 9.5, 13.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 61, 91, 110], [null, -0.0, 1.5, 9.5, 13.5, "NaN"], 332]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "many", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2, 3, 4],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, 2, 110]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 3],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [191, "x"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [2, 4],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [10, 61], ["x"], [-0.0, 13.5], 4],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, 10, 61], [null, "x"], [null, -0.0, 13.5]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 61, 91], ["c3", "x", "y"], [-0.0, 1.5, 9.5, 13.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 61, 91], [null, -0.0, 1.5, 9.5, 13.5, "NaN"], 212]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 20, "x", 0.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 2, 4],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [4, 2, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 2],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [71, "x"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, 4],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null, null, 4],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null], [null], [null]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 91], ["c3", "x", "y"], [-0.0, 1.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 91], [null, -0.0, 1.5, 9.5, "NaN"], 141]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null, null],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 4],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 4],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null, null, 5],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null], [null], [null]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[10, 20, 91], ["c3", "x", "y"], [-0.0, 1.5, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 10, 20, 91], [null, -0.0, 1.5, 9.5, "NaN"], 141]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null, null],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", null, null],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 5],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 5],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [5], ["five"], [5.0], 5],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5], 2],
+    ["c", [91], ["c3"], [9.5], 1],
+    ["d", [20], null, null, 1],
+    [null, null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [null, 5], [null, "five"], [null, 5.0]],
+    ["b", [10, 20], ["x", "y"], [0.0, 1.5]],
+    ["c", [91], ["c3"], [9.5]],
+    ["d", [20], [null], ["NaN"]],
+    [null, [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[5, 10, 20, 91], ["c3", "five", "x", "y"], [-0.0, 1.5, 5.0, 9.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 5, 10, 20, 91], [null, -0.0, 1.5, 5.0, 9.5, "NaN"], 146]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, "five", 5.0],
+    ["b", 20, "many", 0.0],
+    ["c", 91, "c3", 9.5],
+    ["d", 20, null, null],
+    [null, null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", -1, "NaN"],
+    ["b", -1, "NaN"],
+    ["c", 91, 9.5],
+    ["d", 20, "NaN"],
+    [null, null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 5],
+    ["b", 1, 1, 2],
+    ["c", 1, 0, 1],
+    ["d", 1, 0, 1],
+    [null, 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, 2, 91]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0],
+    ["c", 1],
+    ["d", 0],
+    [null, 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, "five"],
+    [30, "y"],
+    [91, "c3"],
+    [20, null],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 5],
+    [1, 2],
+    [1, 1],
+    [1, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [5], ["five"], [5.0], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [5], ["five"], [5.0]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[5], ["five"], [5.0]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[5], [5.0], 5]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, "five", 5.0]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, 5.0]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, "five"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, 5]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, "five"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [5], ["five"], [5.0], 1],
+    ["z", null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [5], ["five"], [5.0]],
+    ["z", [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[5], ["five"], [5.0]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null, 5], [null, 5.0], 5]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, "five", 5.0],
+    ["z", null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 5, 5.0],
+    ["z", null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, "five"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 1],
+    ["z", 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, 5]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["z", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [5, "five"],
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 1],
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null, null, 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null, null]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null], [null], null]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, null]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null, null, 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", [null], [null], [null]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[], [], []]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[null], [null], null]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null, null]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", null, null]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", 0, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, null]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["z", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [null, null]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 2]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", [3], ["back"], [3.5], 1]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", [3], ["back"], [3.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[3], ["back"], [3.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[3], [3.5], 3]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", 3, "back", 3.5]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", 3, 3.5]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, "back"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", 0, 0, 1]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, 3]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["b", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [3, "back"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 1]
+   ]}
+  },
+  {
+   "distinct_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1], ["again"], [1.5], 1],
+    ["b", [2, 3], ["back", "more"], [2.5, 3.5], 2]
+   ]},
+   "distinct_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", [1], ["again"], [1.5]],
+    ["b", [2, 3], ["back", "more"], [2.5, 3.5]]
+   ]},
+   "distinct_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DS", "type": "vector<string>"}, {"name": "DD", "type": "vector<float64>"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3], ["again", "back", "more"], [1.5, 2.5, 3.5]]
+   ]},
+   "distinct_nulls_none": {"columns": [{"name": "DI", "type": "vector<int32>"}, {"name": "DD", "type": "vector<float64>"}, {"name": "SI", "type": "int64"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [[1, 2, 3], [1.5, 2.5, 3.5], 6]
+   ]},
+   "unique_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, "again", 1.5],
+    ["b", 20, "many", 0.0]
+   ]},
+   "unique_nulls_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "UI", "type": "int32"}, {"name": "UD", "type": "float64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 1, 1.5],
+    ["b", -1, "NaN"]
+   ]},
+   "unique_none": {"columns": [{"name": "UI", "type": "int32"}, {"name": "US", "type": "string"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [10, "x"]
+   ]},
+   "where_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Big", "type": "int64"}, {"name": "Xs", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0, 0, 1],
+    ["b", 0, 0, 2]
+   ]},
+   "where_none": {"columns": [{"name": "Big", "type": "int64"}, {"name": "F", "type": "int64"}, {"name": "MI", "type": "int32"}], "attributes": {"IsFlat": true, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 0, 3]
+   ]},
+   "where_formula_by_k": {"columns": [{"name": "K", "type": "string"}, {"name": "Odd", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    ["a", 0],
+    ["b", 0]
+   ]},
+   "key_sum": {"columns": [{"name": "K", "type": "int64"}, {"name": "LS", "type": "string"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [1, "again"],
+    [5, "more"]
+   ]},
+   "key_where": {"columns": [{"name": "K", "type": "int64"}, {"name": "N", "type": "int64"}], "attributes": {"IsFlat": false, "AddOnly": false, "AppendOnly": false, "BlinkTable": false}, "rows": [
+    [0, 1],
+    [0, 2]
+   ]}
+  }
+ ],
+ "updates": [
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD", "N"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "F", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "distinct_none": [], "distinct_nulls_none": [], "unique_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "where_none": [], "where_formula_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "key_sum": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "key_where": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI"]}], "distinct_none": [], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["SI"]}], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [], "where_none": [], "where_formula_by_k": [], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}], "key_where": []},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["UI", "US", "UD"]}], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["UI", "UD"]}], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Big"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["K"]}], "key_where": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["K"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["DI", "DS", "DD", "N"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [], "distinct_nulls_none": [], "unique_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["US", "UD"]}], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["UI"]}], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [], "where_formula_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["K"]}], "key_where": [{"added": [], "removed": [], "modified": [0, 1], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "N"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "SI"]}], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "SI"]}], "unique_by_k": [], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["UI", "UD"]}], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Big"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["K"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "key_sum": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}], "key_where": [{"added": [], "removed": [2], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "key_sum": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}], "key_where": [{"added": [2], "removed": [], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["DI"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["DI"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "SI"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["UI"]}], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["UI"]}], "unique_none": [], "where_by_k": [], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["MI"]}], "where_formula_by_k": [], "key_sum": [{"added": [], "removed": [], "modified": [2], "modified_columns": ["K", "LS"]}], "key_where": []},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["DD"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["DD"]}], "distinct_none": [], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DD"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["UD"]}], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [], "where_none": [], "where_formula_by_k": [], "key_sum": [{"added": [], "removed": [], "modified": [1], "modified_columns": ["LS"]}], "key_where": []},
+  {"distinct_by_k": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["DI", "DS", "N"]}], "distinct_nulls_by_k": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "SI"]}], "unique_by_k": [{"added": [3], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [3], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [3], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [3], "removed": [], "modified": [0, 1], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "F", "MI"]}], "where_formula_by_k": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "key_sum": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}], "key_where": [{"added": [4, 5], "removed": [], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD", "N"]}], "distinct_nulls_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "F", "MI"]}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [], "removed": [5], "modified": [], "modified_columns": []}, {"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "F", "MI"]}], "where_formula_by_k": [], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "SI"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["US"]}], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "US", "UD"]}], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "UD"]}], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big"]}], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N"]}], "distinct_nulls_by_k": [], "distinct_none": [], "distinct_nulls_none": [], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["LS"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "US", "UD"]}], "unique_nulls_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "UD"]}], "unique_none": [], "where_by_k": [], "where_none": [], "where_formula_by_k": [], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "LS"]}], "key_where": []},
+  {"distinct_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [0], "modified_columns": ["DI", "DS", "DD", "N"]}], "distinct_nulls_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [0], "modified_columns": ["UI", "UD"]}], "unique_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "US"]}], "where_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "F", "MI"]}], "where_formula_by_k": [{"added": [], "removed": [1, 2, 3, 4], "modified": [], "modified_columns": []}], "key_sum": [{"added": [], "removed": [1, 2, 3, 4], "modified": [], "modified_columns": []}], "key_where": [{"added": [], "removed": [1, 2, 3, 4], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "distinct_none": [], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD"]}], "unique_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [], "where_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "where_none": [], "where_formula_by_k": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "key_sum": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}], "key_where": [{"added": [1], "removed": [], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "unique_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "US"]}], "where_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "where_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["MI"]}], "where_formula_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "key_sum": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "key_where": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["N"]}], "distinct_nulls_by_k": [], "distinct_none": [], "distinct_nulls_none": [], "unique_by_k": [], "unique_nulls_by_k": [], "unique_none": [], "where_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [], "where_formula_by_k": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["Odd"]}], "key_sum": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["LS"]}], "key_where": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["K", "N"]}]},
+  {"distinct_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "distinct_nulls_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "unique_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "unique_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "where_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "where_none": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "where_formula_by_k": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "key_sum": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}], "key_where": [{"added": [], "removed": [0], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "distinct_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "distinct_nulls_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "unique_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "unique_nulls_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "unique_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "where_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "where_none": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "where_formula_by_k": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "key_sum": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}], "key_where": [{"added": [0], "removed": [], "modified": [], "modified_columns": []}]},
+  {"distinct_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["DI", "DS", "DD", "N"]}], "distinct_nulls_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["DI", "DS", "DD"]}], "distinct_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DS", "DD"]}], "distinct_nulls_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["DI", "DD", "SI"]}], "unique_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["UI", "US", "UD"]}], "unique_nulls_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["UI", "UD"]}], "unique_none": [{"added": [], "removed": [], "modified": [0], "modified_columns": ["UI", "US"]}], "where_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["Big", "Xs", "N"]}], "where_none": [], "where_formula_by_k": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["Odd"]}], "key_sum": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["K", "LS"]}], "key_where": [{"added": [0], "removed": [], "modified": [1], "modified_columns": ["K", "N"]}]}
+ ]}
+}

@@ -67,9 +67,11 @@ fn every_aggregation(weighted_averages: bool) -> Vec<Aggregation> {
             AggSpec::CountDistinct { count_nulls: true },
             AggSpec::Unique {
                 include_nulls: false,
+                non_unique: Sentinel::Null,
             },
             AggSpec::Unique {
                 include_nulls: true,
+                non_unique: Sentinel::Null,
             },
             AggSpec::SortedFirst {
                 columns: vec!["D".to_string()],

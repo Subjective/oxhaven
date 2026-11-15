@@ -7,7 +7,7 @@ mod incremental;
 mod random;
 mod static_tables;
 
-use super::{aggregate, AggSpec, Aggregation, Pair};
+use super::{aggregate, AggSpec, Aggregation, Pair, Sentinel};
 use crate::table::in_memory_table;
 use arrow::array::{Array, ArrayRef, AsArray, RecordBatch};
 use arrow::datatypes::{

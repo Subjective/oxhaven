@@ -145,6 +145,13 @@ pub trait AggOperator: Send {
         Ok(vec![false; slots.len()])
     }
 
+    /// A failure of the calls since this was last asked, for an operator that reads the
+    /// parent itself while it is given rows. The framework asks after every chunk and
+    /// fails the result with it.
+    fn take_failure(&mut self) -> Option<TableFailure> {
+        None
+    }
+
     /// The results of `slots`, as an array of `result_type`.
     fn results(&self, slots: &[usize]) -> ArrayRef;
 }

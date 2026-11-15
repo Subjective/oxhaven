@@ -3,7 +3,7 @@
 //! cells like any others, and an operation that would have to compare, order or compute
 //! with list cells refuses to, by `unported!`, until that is ported.
 
-use crate::ops::agg::{aggregate, AggSpec, Aggregation, Pair};
+use crate::ops::agg::{aggregate, AggSpec, Aggregation, Pair, Sentinel};
 use crate::ops::distinct::select_distinct;
 use crate::ops::filter::unstructured_filter;
 use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
@@ -203,13 +203,20 @@ fn aggregation_by_a_list_key_is_not_ported() {
 }
 
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: \
-                makeFirstOrLastOperator for a column of type Vector(Int)"
-)]
-fn first_of_a_list_column_is_not_ported() {
-    let first = Aggregation::columns(AggSpec::First, [Pair::of("V")]);
-    let _ = aggregate(&listed(), &[first], false, &["G"]);
+fn first_and_last_of_a_list_column_are_whole_cells() {
+    let aggregations = [
+        Aggregation::columns(AggSpec::First, [Pair::new("F", "V")]),
+        Aggregation::columns(AggSpec::Last, [Pair::new("L", "V")]),
+    ];
+    let result = aggregate(&listed(), &aggregations, false, &["G"]).unwrap();
+    let vector = ColumnType::vector(ColumnType::Int);
+    assert_eq!(result.definition().columns()[1].column_type, vector);
+    let columns = TableSnapshot::current(&*result).unwrap().columns;
+    // Group a has the rows `[1, 2]` and `[]`, group b the null.
+    let first = list_of(&vector, [Some(2), None], ints([1, 2]));
+    let last = list_of(&vector, [Some(0), None], ints([1, 2]));
+    assert_eq!(columns[1].to_data(), first.to_data());
+    assert_eq!(columns[2].to_data(), last.to_data());
 }
 
 #[test]
@@ -254,8 +261,15 @@ fn aggregations_that_compare_or_store_list_cells_are_not_ported() {
         (
             AggSpec::Unique {
                 include_nulls: false,
+                non_unique: Sentinel::Null,
             },
             "makeUniqueOperator",
+        ),
+        (
+            AggSpec::Distinct {
+                include_nulls: false,
+            },
+            "makeDistinctOperator",
         ),
         (
             AggSpec::SortedFirst {

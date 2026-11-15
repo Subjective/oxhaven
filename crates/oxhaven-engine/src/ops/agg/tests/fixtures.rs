@@ -12,7 +12,7 @@
 //! PARITY.md A4 does not ask for that. It is compared because the fixtures can: the tables
 //! are aggregations of input tables, which change in the same way on both sides.
 
-use super::super::{group_by, AggregateError};
+use super::super::{aggregate_with, group_by, AggregateError};
 use super::corpus::{apply_action, assert_matches, inputs, json, list, rows_batch, run_step, text};
 use super::*;
 use crate::graph::SteppedUpdateGraph;
@@ -43,11 +43,48 @@ fn flag(entry: &Value, name: &str) -> bool {
         .unwrap_or_else(|| panic!("{name} is not a Boolean"))
 }
 
+/// The non-unique sentinel of a `unique` entry: absent or null for none, and otherwise
+/// `{"type": value}` with the type a client sends it as; see `fixtures/record.py`.
+fn sentinel(entry: &Value) -> Sentinel {
+    let Some(given) = entry.get("sentinel").filter(|given| !given.is_null()) else {
+        return Sentinel::Null;
+    };
+    let (kind, value) = given
+        .as_object()
+        .and_then(|object| object.iter().next())
+        .expect("a sentinel of one type");
+    let integer = || value.as_i64().expect("an integer sentinel");
+    let float = || match value.as_str() {
+        Some("NaN") => f64::NAN,
+        Some("Infinity") => f64::INFINITY,
+        Some("-Infinity") => f64::NEG_INFINITY,
+        _ => value.as_f64().expect("a floating point sentinel"),
+    };
+    match kind.as_str() {
+        "byte" => Sentinel::Byte(integer() as i8),
+        "short" => Sentinel::Short(integer() as i16),
+        "int" => Sentinel::Int(integer() as i32),
+        "long" => Sentinel::Long(integer()),
+        "char" => Sentinel::Char(integer() as u16),
+        "float" => Sentinel::Float(float() as f32),
+        "double" => Sentinel::Double(float()),
+        "string" => Sentinel::String(value.as_str().expect("a string sentinel").to_string()),
+        "bool" => Sentinel::Boolean(value.as_bool().expect("a Boolean sentinel")),
+        other => panic!("no sentinel type {other}"),
+    }
+}
+
 /// The aggregation of one entry of an `agg` operation; see `fixtures/record.py`.
 fn aggregation(entry: &Value) -> Aggregation {
     let kind = text(&entry["agg"], "agg");
     if kind == "count" {
         return count(text(&entry["column"], "column"));
+    }
+    if kind == "count_where" {
+        let filters = list(&entry["filters"], "filters")
+            .iter()
+            .map(|filter| text(filter, "filter"));
+        return Aggregation::count_where(text(&entry["column"], "column"), filters);
     }
     let spec = match kind {
         "sum" => AggSpec::Sum,
@@ -70,6 +107,10 @@ fn aggregation(entry: &Value) -> Aggregation {
             count_nulls: flag(entry, "count_nulls"),
         },
         "unique" => AggSpec::Unique {
+            include_nulls: flag(entry, "include_nulls"),
+            non_unique: sentinel(entry),
+        },
+        "distinct" => AggSpec::Distinct {
             include_nulls: flag(entry, "include_nulls"),
         },
         "weighted_avg" => AggSpec::WeightedAvg {
@@ -228,11 +269,12 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
                     .map(aggregation)
                     .collect();
                 computed = computed_columns(&aggregations);
-                aggregate(
+                aggregate_with(
                     source("source"),
                     &aggregations,
                     false,
                     &names(operation, "by"),
+                    &oxhaven_expr::Compiler,
                 )
             }
             "group_by" => group_by(source("source"), &names(operation, "by")),

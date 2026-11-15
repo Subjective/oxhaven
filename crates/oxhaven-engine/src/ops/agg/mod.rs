@@ -13,7 +13,8 @@
 //! | [`Run`], [`Values`], [`Scalar`] | Column values as an operator sees them, whatever the column type |
 //! | `sum`, `min_max`, `first_last` | The operators: count, sum, abs sum, avg; min, max; first, last |
 //! | `var` | Variance and standard deviation |
-//! | `distinct` | Count distinct, unique, median and percentile, over a sorted multiset per group |
+//! | `distinct` | Count distinct, distinct, unique, median and percentile, over a sorted multiset per group |
+//! | `count_where` | Count where: the rows of each group that pass filters |
 //! | `weighted` | Weighted average and weighted sum, which read a weight column too |
 //! | `sorted` | Sorted first and sorted last, which read sort columns and an output column |
 //! | `group` | Group, and with it [`group_by`]: the values of each group as a vector |
@@ -38,12 +39,15 @@
 //! `Table#groupBy` is [`group_by`]: the `group` aggregation of every column that is not
 //! grouped by.
 //!
-//! Not here: the other aggregations whose results are arrays, tables or formulas over
-//! arrays (`AggSpecDistinct`, `AggSpecFormula`, `Formula`, `Partition`); `CountWhere`,
-//! `FirstRowKey`, `LastRowKey`, the approximate percentile, t-digest and freeze; a non-null
-//! non-unique sentinel; and `initialGroups`. The gRPC handler refuses each of them by name.
+//! Not here: the aggregations whose results are tables or formulas over vectors
+//! (`AggSpecFormula`, `Formula`, `Partition`): the formula language of this port has no
+//! vector values, and there are no partitioned tables. Nor `FirstRowKey`, `LastRowKey`, the
+//! approximate percentile, t-digest and freeze; `initialGroups`; and, of a column of
+//! vectors or arrays, every aggregation but `first`, `last`, `group` and the output of a
+//! sorted first or last. The gRPC handler refuses each of them by name.
 
 mod aggregator;
+mod count_where;
 mod distinct;
 mod first_last;
 mod group;
@@ -59,8 +63,9 @@ mod weighted;
 #[cfg(test)]
 mod tests;
 
+pub use count_where::CountWhere;
 pub use distinct::{SetMode, SortedValues};
-pub use first_last::{FirstLast, FirstLastMode};
+pub use first_last::{FirstLast, FirstLastCell, FirstLastMode};
 pub use group::Group;
 pub use min_max::MinMax;
 pub use operator::{AggOperator, Effect, GroupReader};
@@ -70,8 +75,10 @@ pub use values::{build, Run, Scalar, Shape, Values};
 pub use var::Var;
 pub use weighted::{WeightedFloat, WeightedLongSum};
 
+use crate::ops::filter::RowFilters;
 use crate::table::{QueryTable, TableSpec};
-use aggregator::{Aggregator, Planned};
+use aggregator::{Aggregator, Layout, Planned};
+use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
@@ -113,8 +120,14 @@ pub enum AggSpec {
     },
     /// The number of distinct values. See [`SortedValues`].
     CountDistinct { count_nulls: bool },
-    /// The only distinct value, or null. See [`SortedValues`].
-    Unique { include_nulls: bool },
+    /// The only distinct value; null for a group without values, and `non_unique` for one
+    /// with several. See [`SortedValues`] and [`Sentinel`].
+    Unique {
+        include_nulls: bool,
+        non_unique: Sentinel,
+    },
+    /// The distinct values, sorted, as a vector. See [`SortedValues`].
+    Distinct { include_nulls: bool },
     /// The average weighted by another column. See [`WeightedFloat`].
     WeightedAvg { weight: String },
     /// The sum weighted by another column. See [`WeightedFloat`], [`WeightedLongSum`].
@@ -127,6 +140,209 @@ pub enum AggSpec {
     SortedLast { columns: Vec<String> },
     /// The values of the group's rows, in row order, as a vector. See [`Group`].
     Group,
+}
+
+/// The value `unique` shows for a group with more than one distinct value, as a client
+/// gives it: a value of one of these types, which need not be the column's.
+///
+/// Behavior: io.deephaven.api.object.UnionObject, as
+/// io.deephaven.server.table.ops.AggSpecAdapter#adapt(AggSpecNonUniqueSentinel) makes one
+#[derive(Clone, PartialEq, Debug)]
+pub enum Sentinel {
+    Null,
+    Boolean(bool),
+    Byte(i8),
+    Char(u16),
+    Short(i16),
+    Int(i32),
+    Long(i64),
+    Float(f32),
+    Double(f64),
+    String(String),
+}
+
+impl Sentinel {
+    /// The Java class of the value, as an error names it.
+    fn java_class(&self) -> &'static str {
+        match self {
+            Sentinel::Null => "null",
+            Sentinel::Boolean(_) => "java.lang.Boolean",
+            Sentinel::Byte(_) => "java.lang.Byte",
+            Sentinel::Char(_) => "java.lang.Character",
+            Sentinel::Short(_) => "java.lang.Short",
+            Sentinel::Int(_) => "java.lang.Integer",
+            Sentinel::Long(_) => "java.lang.Long",
+            Sentinel::Float(_) => "java.lang.Float",
+            Sentinel::Double(_) => "java.lang.Double",
+            Sentinel::String(_) => "java.lang.String",
+        }
+    }
+
+    fn text(&self) -> String {
+        match self {
+            Sentinel::Null => "null".to_string(),
+            Sentinel::Boolean(v) => v.to_string(),
+            Sentinel::Byte(v) => v.to_string(),
+            Sentinel::Char(v) => String::from_utf16_lossy(&[*v]),
+            Sentinel::Short(v) => v.to_string(),
+            Sentinel::Int(v) => v.to_string(),
+            Sentinel::Long(v) => v.to_string(),
+            Sentinel::Float(v) => format!("{v:?}"),
+            Sentinel::Double(v) => format!("{v:?}"),
+            Sentinel::String(v) => v.clone(),
+        }
+    }
+
+    /// The value as an exact integer, if it is a number without a fraction. `Err` for a
+    /// NaN or an infinity, which Java cannot make a `BigDecimal` of.
+    fn integer(&self) -> Result<Option<i128>, ()> {
+        let float = |v: f64| {
+            if !v.is_finite() {
+                Err(())
+            } else if v.fract() == 0.0 {
+                // A finite double without a fraction is an integer of at most 1024 bits;
+                // beyond 127 of them it is out of every range asked about.
+                Ok(Some(if v.abs() < 1e38 { v as i128 } else if v > 0.0 { i128::MAX } else { i128::MIN }))
+            } else {
+                Ok(None)
+            }
+        };
+        match self {
+            Sentinel::Byte(v) => Ok(Some(i128::from(*v))),
+            Sentinel::Short(v) => Ok(Some(i128::from(*v))),
+            Sentinel::Int(v) => Ok(Some(i128::from(*v))),
+            Sentinel::Long(v) => Ok(Some(i128::from(*v))),
+            Sentinel::Float(v) => float(f64::from(*v)),
+            Sentinel::Double(v) => float(*v),
+            _ => Ok(None),
+        }
+    }
+
+    /// The value as a `double`, if it is a number: an integer converted, a `float` widened.
+    fn double(&self) -> Option<f64> {
+        match self {
+            Sentinel::Byte(v) => Some(f64::from(*v)),
+            Sentinel::Short(v) => Some(f64::from(*v)),
+            Sentinel::Int(v) => Some(f64::from(*v)),
+            Sentinel::Long(v) => Some(*v as f64),
+            Sentinel::Float(v) => Some(f64::from(*v)),
+            Sentinel::Double(v) => Some(*v),
+            _ => None,
+        }
+    }
+}
+
+/// The Java class Java's errors name for a column type that can have a sentinel.
+fn boxed_class(column_type: &ColumnType) -> &'static str {
+    match column_type {
+        ColumnType::Boolean => "java.lang.Boolean",
+        ColumnType::Byte => "java.lang.Byte",
+        ColumnType::Char => "java.lang.Character",
+        ColumnType::Short => "java.lang.Short",
+        ColumnType::Int => "java.lang.Integer",
+        ColumnType::Long => "java.lang.Long",
+        ColumnType::Float => "java.lang.Float",
+        ColumnType::Double => "java.lang.Double",
+        ColumnType::String => "java.lang.String",
+        ColumnType::Instant => "java.time.Instant",
+        _ => "java.lang.Object",
+    }
+}
+
+/// The sentinel as a value of a column of `column_type`, for the output column `output`.
+///
+/// A sentinel of the column's own type is taken as it is, and one that is the type's null
+/// value (`Byte.MIN_VALUE` and the like, `Character.MAX_VALUE`, `-Float.MAX_VALUE`) is a
+/// null. A number for a column of another numeric type is converted if it is in the range
+/// of the column's type without its null value, and for an integer column has no
+/// fraction; a NaN or an infinity is refused there, since Java cannot make a `BigDecimal`
+/// of it. Anything else is refused: a number for a `char`, `Boolean`, `String` or
+/// `Instant` column, and every sentinel a client can send for an `Instant` column.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor#makeUniqueOperator,
+/// #checkType and #isNumericallyCompatible, io.deephaven.engine.table.impl.by.UnionObjectUtils
+fn sentinel_value(
+    column_type: &ColumnType,
+    sentinel: &Sentinel,
+    output: &str,
+) -> Result<Scalar, AggregateError> {
+    let out_of_range = || {
+        Err(AggregateError::InvalidSentinel(format!(
+            "For result column {output} the Non Unique Sentinel {} is out of range for {}",
+            sentinel.text(),
+            boxed_class(column_type)
+        )))
+    };
+    let integer_in = |min: i64, max: i64| match sentinel.integer() {
+        Err(()) => Err(AggregateError::InvalidSentinel(format!(
+            "For result column {output} the Non Unique Sentinel {} is infinite or NaN",
+            sentinel.text()
+        ))),
+        Ok(Some(value)) if (i128::from(min)..=i128::from(max)).contains(&value) => {
+            Ok(Scalar::Long(value as i64))
+        }
+        Ok(_) => out_of_range(),
+    };
+    // The null value of each integer type is its least value.
+    let or_null = |value: i64, null: i64| {
+        if value == null {
+            Scalar::Null
+        } else {
+            Scalar::Long(value)
+        }
+    };
+    match (column_type, sentinel) {
+        (_, Sentinel::Null) => Ok(Scalar::Null),
+        (ColumnType::Boolean, Sentinel::Boolean(v)) => Ok(Scalar::Bool(*v)),
+        (ColumnType::String, Sentinel::String(v)) => Ok(Scalar::Str(v.as_str().into())),
+        (ColumnType::Char, Sentinel::Char(v)) => Ok(or_null(i64::from(*v), i64::from(u16::MAX))),
+        (ColumnType::Byte, Sentinel::Byte(v)) => Ok(or_null(i64::from(*v), i64::from(i8::MIN))),
+        (ColumnType::Short, Sentinel::Short(v)) => {
+            Ok(or_null(i64::from(*v), i64::from(i16::MIN)))
+        }
+        (ColumnType::Int, Sentinel::Int(v)) => Ok(or_null(i64::from(*v), i64::from(i32::MIN))),
+        (ColumnType::Long, Sentinel::Long(v)) => Ok(or_null(*v, i64::MIN)),
+        (ColumnType::Float, Sentinel::Float(v)) if *v == -f32::MAX => Ok(Scalar::Null),
+        (ColumnType::Float, Sentinel::Float(v)) => Ok(Scalar::Double(f64::from(*v))),
+        (ColumnType::Double, Sentinel::Double(v)) if *v == -f64::MAX => Ok(Scalar::Null),
+        (ColumnType::Double, Sentinel::Double(v)) => Ok(Scalar::Double(*v)),
+        (ColumnType::Byte, _) if sentinel.double().is_some() => {
+            integer_in(i64::from(i8::MIN) + 1, i64::from(i8::MAX))
+        }
+        (ColumnType::Short, _) if sentinel.double().is_some() => {
+            integer_in(i64::from(i16::MIN) + 1, i64::from(i16::MAX))
+        }
+        (ColumnType::Int, _) if sentinel.double().is_some() => {
+            integer_in(i64::from(i32::MIN) + 1, i64::from(i32::MAX))
+        }
+        (ColumnType::Long, _) if sentinel.double().is_some() => {
+            integer_in(i64::MIN + 1, i64::MAX)
+        }
+        (ColumnType::Float | ColumnType::Double, _) if sentinel.double().is_some() => {
+            let value = sentinel.double().expect("a number");
+            if !value.is_finite() {
+                return Err(AggregateError::InvalidSentinel(format!(
+                    "For result column {output} the Non Unique Sentinel {} is infinite or NaN",
+                    sentinel.text()
+                )));
+            }
+            // An integer always fits. Its conversion may round, as Java's does.
+            if *column_type == ColumnType::Double {
+                return Ok(Scalar::Double(value));
+            }
+            // `MIN_FINITE_FLOAT` is the value above `-Float.MAX_VALUE`, which is the null.
+            let least = f64::from(f32::from_bits((-f32::MAX).to_bits() - 1));
+            if value < least || value > f64::from(f32::MAX) {
+                return out_of_range();
+            }
+            Ok(Scalar::Double(f64::from(value as f32)))
+        }
+        _ => Err(AggregateError::InvalidSentinel(format!(
+            "For result column {output} the Non Unique Sentinel must be of type {} but is {}",
+            boxed_class(column_type),
+            sentinel.java_class()
+        ))),
+    }
 }
 
 /// An input column and the output column aggregated from it.
@@ -164,6 +380,15 @@ pub enum Aggregation {
     Columns { spec: AggSpec, pairs: Vec<Pair> },
     /// The number of rows of each group, as a `long` column named `column`.
     Count { column: String },
+    /// The number of rows of each group that pass every filter, as a `long` column named
+    /// `column`. The filters are filter strings as `where` takes them. See [`CountWhere`].
+    ///
+    /// Behavior: io.deephaven.api.agg.CountWhere, as
+    /// io.deephaven.api.agg.Aggregation#AggCountWhere(String, String...) makes one
+    CountWhere {
+        column: String,
+        filters: Vec<String>,
+    },
 }
 
 impl Aggregation {
@@ -177,6 +402,16 @@ impl Aggregation {
     pub fn count(column: impl Into<String>) -> Aggregation {
         Aggregation::Count {
             column: column.into(),
+        }
+    }
+
+    pub fn count_where(
+        column: impl Into<String>,
+        filters: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Aggregation {
+        Aggregation::CountWhere {
+            column: column.into(),
+            filters: filters.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -204,6 +439,11 @@ pub enum AggregateError {
     InvalidPercentile(String),
     /// A sorted first or last without sort columns.
     NoSortColumns,
+    /// A non-unique sentinel that is not a value of the column's type.
+    InvalidSentinel(String),
+    /// A filter of a count where that is not a filter of the table, or that reads other
+    /// rows (`Column_`) or the row's position or key (`i`, `ii`, `k`).
+    InvalidFilter(String),
     /// The aggregation is not defined for a blink table. Java reports this one as an
     /// `UnsupportedOperationException`.
     BlinkUnsupported(AggSpec),
@@ -239,6 +479,9 @@ impl fmt::Display for AggregateError {
                 write!(f, "percentile {percentile} is not between 0 and 1")
             }
             AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
+            AggregateError::InvalidSentinel(message) | AggregateError::InvalidFilter(message) => {
+                f.write_str(message)
+            }
             AggregateError::BlinkUnsupported(spec) => write!(
                 f,
                 "Blink tables do not support {spec:?}; use BlinkTableTools.blinkToAppendOnly \
@@ -308,7 +551,8 @@ fn is_floating(column_type: &ColumnType) -> bool {
 /// `visit(AggSpecFirst)`, `visit(AggSpecLast)` / `addFirstOrLastOperators`,
 /// `visit(AggSpecVar)`, `visit(AggSpecStd)` / `makeVarOrStdOperator`,
 /// `visit(AggSpecMedian)`, `visit(AggSpecPercentile)`, `visit(AggSpecCountDistinct)` /
-/// `makeCountDistinctOperator`, `visit(AggSpecUnique)` / `makeUniqueOperator`,
+/// `makeCountDistinctOperator`, `visit(AggSpecDistinct)` / `makeDistinctOperator`,
+/// `visit(AggSpecUnique)` / `makeUniqueOperator`,
 /// `visit(AggSpecWAvg)`, `visit(AggSpecWSum)` / `addWeightedAvgOrSumOperator`,
 /// `visit(AggSpecSortedFirst)`, `visit(AggSpecSortedLast)` / `addSortedFirstOrLastOperator`,
 /// and `visit(AggSpecGroup)`, which takes a column of any type and refuses a blink table
@@ -318,6 +562,8 @@ fn make_operator(
     parent: &Arc<dyn Table>,
     input: usize,
     kind: ParentKind,
+    keyed: bool,
+    output: &str,
 ) -> Result<Option<Planned>, AggregateError> {
     let definition = parent.definition();
     let column = |name: &str| {
@@ -342,7 +588,7 @@ fn make_operator(
     };
     match spec {
         AggSpec::Min | AggSpec::Max => no_lists("makeMinOrMaxOperator", input_type),
-        AggSpec::First | AggSpec::Last => no_lists("makeFirstOrLastOperator", input_type),
+        AggSpec::Distinct { .. } => no_lists("makeDistinctOperator", input_type),
         AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
             no_lists("visit(AggSpecPercentile)", input_type);
         }
@@ -397,6 +643,20 @@ fn make_operator(
                 ParentKind::Blink => FirstLastMode::Arrival,
                 ParentKind::General => FirstLastMode::Tracked,
             };
+            if input_type.list_element().is_some() {
+                // The cells are read by row key, so the framework need not decode the
+                // column: the operator is told when it is modified.
+                let op = FirstLastCell::new(
+                    parent.column(input),
+                    input_type.clone(),
+                    *spec == AggSpec::First,
+                    mode,
+                );
+                return Ok(Some(Planned {
+                    reads: vec![input],
+                    ..Planned::new(Box::new(op), None)
+                }));
+            }
             Box::new(FirstLast::new(
                 input_type.clone(),
                 *spec == AggSpec::First,
@@ -432,10 +692,18 @@ fn make_operator(
             input_type.clone(),
             *count_nulls,
         )),
-        AggSpec::Unique { include_nulls } => Box::new(SortedValues::unique(
+        AggSpec::Unique {
+            include_nulls,
+            non_unique,
+        } => Box::new(SortedValues::unique(
             input_type.clone(),
             *include_nulls,
-            Scalar::Null,
+            sentinel_value(input_type, non_unique, output)?,
+        )),
+        AggSpec::Distinct { include_nulls } => Box::new(SortedValues::distinct(
+            input_type.clone(),
+            *include_nulls,
+            !keyed,
         )),
         AggSpec::WeightedAvg { weight } | AggSpec::WeightedSum { weight } => {
             let weight = column(weight)?;
@@ -507,7 +775,9 @@ fn make_operator(
 /// Groups the rows of `parent` by the `group_by` columns and aggregates each group.
 ///
 /// The result has the group-by columns, then one column per aggregation output in the
-/// order given. It has one row per group that has rows, in the order the groups were first
+/// order given. An output with the name of a group-by column takes that column's place:
+/// the result then has the aggregated values where the key was, and not the key, though
+/// the rows are still grouped by it. It has one row per group that has rows, in the order the groups were first
 /// seen; a group that empties and fills again returns to its place. With no group-by
 /// columns the whole table is one group, and the result has one row, or none if the table
 /// is empty. With `preserve_empty` a group keeps its row when it loses its last row, and
@@ -515,8 +785,10 @@ fn make_operator(
 ///
 /// The result is static if `parent` is, and otherwise changes with it.
 ///
-/// Not ported: `initialGroups`. Panics with `unported!` if an output column has the name
-/// of a group-by column, which Java accepts with a result this port has not pinned down.
+/// A [`Aggregation::CountWhere`] needs a formula compiler for its filters and is refused
+/// here; [`aggregate_with`] takes one.
+///
+/// Not ported: `initialGroups`.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#aggBy and #aggNoMemo, over
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
@@ -525,6 +797,86 @@ pub fn aggregate(
     aggregations: &[Aggregation],
     preserve_empty: bool,
     group_by: &[&str],
+) -> Result<Arc<dyn Table>, AggregateError> {
+    aggregate_inner(parent, aggregations, preserve_empty, group_by, None)
+}
+
+/// [`aggregate`], with the compiler of the formulas among the filters of a
+/// [`Aggregation::CountWhere`].
+pub fn aggregate_with(
+    parent: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    preserve_empty: bool,
+    group_by: &[&str],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, AggregateError> {
+    aggregate_inner(parent, aggregations, preserve_empty, group_by, Some(compiler))
+}
+
+/// The operator of a count where.
+///
+/// Java refuses a formula that uses `i`, `ii` or `k`, and fails to make its filter of one
+/// that reads a column as an array. Without filters Java's count is not defined: with key
+/// columns it counts the flags a pooled chunk was left with (observed: 3, 1, 1, 2 for
+/// groups of 3, 2, 1 and 2 rows), and without it counts nothing.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#addCountWhereOperator,
+/// io.deephaven.engine.table.impl.by.CountWhereOperator#CountWhereOperator
+fn count_where(
+    parent: &Arc<dyn Table>,
+    filters: &[String],
+    keyed: bool,
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<Planned, AggregateError> {
+    let Some(compiler) = compiler else {
+        return Err(AggregateError::InvalidFilter(
+            "a count where needs a formula compiler: use aggregate_with".to_string(),
+        ));
+    };
+    if filters.is_empty() {
+        unported!(
+            "io.deephaven.engine.table.impl.by.CountWhereOperator#applyFilters",
+            "a count where without filters, which in Java counts the contents of an unset chunk"
+        );
+    }
+    let definition = parent.definition();
+    let filters =
+        RowFilters::parse(filters, definition, compiler).map_err(AggregateError::InvalidFilter)?;
+    if filters.uses_row_variables() {
+        return Err(AggregateError::InvalidFilter(
+            "Count-where does not support filters that reference virtual row variables (i, ii, k)"
+                .to_string(),
+        ));
+    }
+    if filters.reads_arrays() {
+        return Err(AggregateError::InvalidFilter(
+            "Error creating condition filter in CountWhereOperator".to_string(),
+        ));
+    }
+    let reads = filters.columns().to_vec();
+    if let Some(list) = reads
+        .iter()
+        .map(|&column| &definition.columns()[column].column_type)
+        .find(|column_type| column_type.list_element().is_some())
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.select.WhereFilter#filter",
+            "a count where filter of a column of type {list:?}"
+        );
+    }
+    let op = CountWhere::new(parent.clone(), filters, keyed);
+    Ok(Planned {
+        reads,
+        ..Planned::new(Box::new(op), None)
+    })
+}
+
+fn aggregate_inner(
+    parent: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    preserve_empty: bool,
+    group_by: &[&str],
+    compiler: Option<&dyn FormulaCompiler>,
 ) -> Result<Arc<dyn Table>, AggregateError> {
     if aggregations.is_empty() {
         return Err(AggregateError::NoAggregations);
@@ -550,6 +902,11 @@ pub fn aggregate(
         .collect();
 
     let kind = ParentKind::of(&**parent);
+    let keyed = !key_columns.is_empty();
+    let mut layout = Layout {
+        keys: (0..key_columns.len()).map(Some).collect(),
+        ops: Vec::new(),
+    };
     let mut operators: Vec<Planned> = Vec::new();
     let mut outputs: Vec<&str> = Vec::new();
     let mut planned: Vec<(&str, Planned)> = Vec::new();
@@ -558,16 +915,20 @@ pub fn aggregate(
             Aggregation::Count { column } => {
                 planned.push((column, Planned::new(Box::<Count>::default(), None)));
             }
+            Aggregation::CountWhere { column, filters } => {
+                planned.push((column, count_where(parent, filters, keyed, compiler)?));
+            }
             Aggregation::Columns { spec, pairs } => {
                 for pair in pairs {
                     let index = column(&pair.input)?;
-                    let operator = make_operator(spec, parent, index, kind)?.ok_or_else(|| {
-                        AggregateError::UnsupportedType {
-                            spec: spec.clone(),
-                            column: pair.input.clone(),
-                            column_type: definition.columns()[index].column_type.clone(),
-                        }
-                    })?;
+                    let operator =
+                        make_operator(spec, parent, index, kind, keyed, &pair.output)?.ok_or_else(
+                            || AggregateError::UnsupportedType {
+                                spec: spec.clone(),
+                                column: pair.input.clone(),
+                                column_type: definition.columns()[index].column_type.clone(),
+                            },
+                        )?;
                     planned.push((&pair.output, operator));
                 }
             }
@@ -578,26 +939,33 @@ pub fn aggregate(
             return Err(AggregateError::DuplicateOutput(name.to_string()));
         }
         outputs.push(name);
-        if group_by.contains(&name) {
-            unported!(
-                "io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns",
-                "aggregation output {name} has the name of a group-by column"
-            );
+        let output = ColumnDefinition::new(name, operator.op.result_type());
+        // Behavior: AggregationContext#getResultColumns; see `Layout`.
+        let key = key_columns
+            .iter()
+            .position(|&index| definition.columns()[index].name == name);
+        match key.and_then(|key| layout.keys[key].take()) {
+            Some(place) => {
+                result_columns[place] = output;
+                layout.ops.push(place);
+            }
+            None => {
+                layout.ops.push(result_columns.len());
+                result_columns.push(output);
+            }
         }
-        result_columns.push(ColumnDefinition::new(name, operator.op.result_type()));
         operators.push(operator);
     }
     let result_definition = TableDefinition::new(result_columns)
         .map_err(|duplicate| AggregateError::DuplicateOutput(duplicate.0))?;
 
-    let keyed = !key_columns.is_empty();
     let flat = match kind {
         ParentKind::Static | ParentKind::AddOnly | ParentKind::Blink => true,
         ParentKind::General => !keyed,
     };
     let table = QueryTable::derive(parent, || {
         let mut aggregator =
-            Aggregator::new(parent.clone(), key_columns, operators, preserve_empty)?;
+            Aggregator::new(parent.clone(), key_columns, operators, preserve_empty, layout)?;
         let rows = aggregator.initial()?;
         let mut spec = TableSpec::new(result_definition, rows, aggregator.columns());
         if flat {

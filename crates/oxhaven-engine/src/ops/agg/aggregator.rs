@@ -99,6 +99,20 @@ impl Planned {
     }
 }
 
+/// Where the columns of the result are. Java puts the key columns first and then the
+/// operators' columns, into a map by name that keeps the place of a name it already has:
+/// an operator's column with the name of a key column takes that key column's place, and
+/// the key column is not in the result.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns
+/// (`keyColumns.putAll(resultColumns)` on a `LinkedHashMap`)
+pub(super) struct Layout {
+    /// The result column of each key column, or `None` for one an operator replaced.
+    pub keys: Vec<Option<usize>>,
+    /// The result column of each operator.
+    pub ops: Vec<usize>,
+}
+
 /// One operator with its input columns and result column.
 struct OpColumn {
     plan: Planned,
@@ -205,6 +219,8 @@ pub(super) struct Aggregator {
     row_counts: Vec<u64>,
     /// The parent rows of each slot, kept only if an operator needs them.
     group_rows: Option<Vec<RowSet>>,
+    /// Where the result has each key column and each operator's column.
+    layout: Layout,
     preserve_empty: bool,
     blink: bool,
     /// The slots whose row count was touched this cycle, with the count they started with.
@@ -221,6 +237,7 @@ impl Aggregator {
         key_columns: Vec<usize>,
         operators: Vec<Planned>,
         preserve_empty: bool,
+        layout: Layout,
     ) -> Result<Aggregator, TableFailure> {
         let graph = parent.update_graph().filter(|_| parent.is_refreshing());
         let source = |column_type: ColumnType| match &graph {
@@ -267,6 +284,7 @@ impl Aggregator {
             slots: 0,
             row_counts: Vec::new(),
             group_rows,
+            layout,
             preserve_empty,
             blink,
             touched: Vec::new(),
@@ -279,12 +297,31 @@ impl Aggregator {
         Ok(aggregator)
     }
 
-    /// The result's columns: the key columns, then one per operator.
+    /// The result's columns, where the [`Layout`] puts them.
     pub fn columns(&self) -> Vec<Arc<dyn ColumnSource>> {
         let keys = self.keys.iter().flat_map(|keys| keys.results.iter());
-        keys.chain(self.ops.iter().map(|column| &column.result))
-            .map(|source| source.clone() as Arc<dyn ColumnSource>)
-            .collect()
+        let places = self.layout.keys.iter().copied();
+        let mut placed: Vec<(usize, Arc<dyn ColumnSource>)> = keys
+            .zip(places)
+            .filter_map(|(source, place)| Some((place?, source.clone() as Arc<dyn ColumnSource>)))
+            .collect();
+        for (column, &place) in self.ops.iter().zip(&self.layout.ops) {
+            placed.push((place, column.result.clone()));
+        }
+        placed.sort_by_key(|(place, _)| *place);
+        placed.into_iter().map(|(_, source)| source).collect()
+    }
+
+    /// The failure of an operator that reads the parent itself, if one failed.
+    fn check_operators(&mut self) -> Result<(), TableFailure> {
+        match self
+            .ops
+            .iter_mut()
+            .find_map(|column| column.plan.op.take_failure())
+        {
+            Some(failure) => Err(failure),
+            None => Ok(()),
+        }
     }
 
     /// Aggregates the parent's current rows. Returns the result's row set.
@@ -420,6 +457,7 @@ impl Aggregator {
                 column.marks.note(*slot, effect);
             }
         }
+        self.check_operators()?;
         for (slot, range) in &grouped.runs {
             let slot = *slot;
             self.touch(slot);
@@ -581,6 +619,7 @@ impl Aggregator {
                     column.marks.note(*slot, effect);
                 }
             }
+            self.check_operators()?;
         }
         Ok(())
     }
@@ -715,7 +754,6 @@ impl Aggregator {
         added.sort_unstable();
         let present: Vec<bool> = (0..self.slots).map(|slot| self.present(slot)).collect();
         let modified_by_op = self.write(&added, |slot| present[slot])?;
-        let key_columns = self.keys.as_ref().map_or(0, |keys| keys.columns.len());
         let mut modified = Vec::new();
         let mut modified_columns = Vec::new();
         for slots in modified_by_op {
@@ -729,7 +767,7 @@ impl Aggregator {
         if !modified.is_empty() {
             for (index, column) in self.ops.iter().enumerate() {
                 if column.marks.any(MODIFIED) {
-                    modified_columns.push(key_columns + index);
+                    modified_columns.push(self.layout.ops[index]);
                 }
             }
         }
