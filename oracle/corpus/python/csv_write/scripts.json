@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "ok"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "write csv failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [Bo, By, Ch, Sh, In, Lo, Fl, Do, St, Ts, Code]",
+      "operation": "write csv failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "write csv failed. : RuntimeError: java.io.FileNotFoundException: /tmp/oxhaven_csv_write/no/such/directory.csv (No such file or directory)",
+      "operation": "write csv failed."
+    }
+  ]
+}

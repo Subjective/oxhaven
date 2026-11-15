@@ -6,6 +6,8 @@ a handle to an engine table, and every table operation is the operation of the s
 the server's table service. `docs/CONSOLE.md` lists what exists.
 """
 
+from .csv import read as read_csv
+from .csv import write as write_csv
 from .dherror import DHError
 from .replay import TableReplayer
 from .table import SortDirection
@@ -32,6 +34,8 @@ __all__ = [
     "merge",
     "merge_sorted",
     "new_table",
+    "read_csv",
     "ring_table",
     "time_table",
+    "write_csv",
 ]

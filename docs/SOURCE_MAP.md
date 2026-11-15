@@ -69,7 +69,7 @@ per primitive type and replaced by one generic implementation.
 | Java | Oxhaven | Tasks |
 | --- | --- | --- |
 | `extensions/parquet` | `oxhaven-parquet` | 7.1, 7.2 |
-| `extensions/csv` | CSV provider | 7.3 |
+| `extensions/csv`, the `deephaven-csv` library | `oxhaven-csv` | 7.3 |
 | `extensions/kafka` | Kafka provider | 7.4, 7.5 |
 | `extensions/iceberg`, `jdbc`, `flight-sql`, `protobuf`, `json`, `s3` | out of scope for now | |
 | `engine/sql`, `sql/`, `Plot`, Groovy, Java plugins | out of scope | |

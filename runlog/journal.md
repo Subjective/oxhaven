@@ -697,3 +697,10 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - 20:41 UTC: merged pull request 85 (6.11, Python functions in query strings) on six green
   checks, on a head containing pull request 79. The CSV and input table agents were told
   to merge main again.
+- 20:55 UTC: merged pull request 86 (7.3, CSV) on six green checks after the author merged
+  main twice (pull requests 79 and 85). Started 7.2 (Parquet write) and 6.17 (IDE flows
+  around the console).
+- The owner asked when he can try it locally. Checked on main at 491a25c: a debug build
+  with `--features python`, the web root from the `deephaven-server` wheel, a sample
+  script through the Python client, and `ide-test.js --routes panels,console` all passed.
+  The README still says "Nothing here is usable yet"; run steps belong there (6.17).
