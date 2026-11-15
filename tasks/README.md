@@ -13,7 +13,7 @@ Each file has these fields:
 - **Gate:** the exact command whose success closes the task
 - **Notes:** `unported!` calls added, failing seeds, reasons for a block
 
-Task files for M6 and M7 are written when their tracks start. `docs/SOURCE_MAP.md` shows where
+The M7 task files (`7.*`) mark their areas and each needs a design before it is worked. `docs/SOURCE_MAP.md` shows where
 every part of the reference lands and which task owns it.
 
 ## Gates that use the oracle

@@ -43,39 +43,9 @@ use crate::table::run_local;
 use crate::table::support::OpContext;
 use crate::ServerState;
 
-/// The modules compiled into the binary: name, whether it is a package, source.
-const MODULES: &[(&str, bool, &str)] = &[
-    (
-        "deephaven",
-        true,
-        include_str!("../../../python/deephaven/__init__.py"),
-    ),
-    (
-        "deephaven._engine",
-        false,
-        include_str!("../../../python/deephaven/_engine.py"),
-    ),
-    (
-        "deephaven.column",
-        false,
-        include_str!("../../../python/deephaven/column.py"),
-    ),
-    (
-        "deephaven.dherror",
-        false,
-        include_str!("../../../python/deephaven/dherror.py"),
-    ),
-    (
-        "deephaven.table",
-        false,
-        include_str!("../../../python/deephaven/table.py"),
-    ),
-    (
-        "deephaven.table_factory",
-        false,
-        include_str!("../../../python/deephaven/table_factory.py"),
-    ),
-];
+/// The modules of the `deephaven` package, compiled into the binary: name, whether it is a
+/// package, source. `build.rs` lists every file under `python/deephaven`.
+const MODULES: &[(&str, bool, &str)] = include!(concat!(env!("OUT_DIR"), "/python_modules.rs"));
 
 const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
 
