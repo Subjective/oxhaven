@@ -5,7 +5,7 @@ use super::*;
 use crate::graph::SteppedUpdateGraph;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_testkit::{ConsistencyChecker, RandomUpdates, ScriptedTable};
+use oxhaven_testkit::{at_least_for, test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable};
 
 /// The parent's columns: three to group by, and one of each type to aggregate. The last
 /// two hold vectors and arrays, which only `group` aggregates.
@@ -201,27 +201,32 @@ impl Run {
 
 #[test]
 fn random_updates_by_one_key() {
-    let updates: u64 = (0..30).map(|seed| Run::new(seed, &["K"]).run()).sum();
-    assert!(updates > 500, "only {updates} updates were checked");
+    let updates: u64 = test_seeds(0..30)
+        .map(|seed| Run::new(seed, &["K"]).run())
+        .sum();
+    assert!(
+        updates > at_least_for(500, 0..30),
+        "only {updates} updates were checked"
+    );
 }
 
 #[test]
 fn random_updates_by_two_keys() {
-    for seed in 100..120 {
+    for seed in test_seeds(100..120) {
         Run::new(seed, &["K", "G"]).run();
     }
 }
 
 #[test]
 fn random_updates_by_a_floating_point_key() {
-    for seed in 200..220 {
+    for seed in test_seeds(200..220) {
         Run::new(seed, &["X"]).run();
     }
 }
 
 #[test]
 fn random_updates_without_keys() {
-    for seed in 300..320 {
+    for seed in test_seeds(300..320) {
         Run::new(seed, &[]).run();
         Run {
             preserve_empty: true,
@@ -258,7 +263,7 @@ fn random_updates_of_each_kind_alone_and_in_pairs() {
 #[test]
 fn random_updates_of_weighted_averages_without_modifications() {
     let mut updates = 0;
-    for seed in 600..630 {
+    for seed in test_seeds(600..630) {
         for by in [&["K"][..], &["X"], &[]] {
             updates += Run {
                 kinds: [true, true, false, true],
@@ -268,7 +273,10 @@ fn random_updates_of_weighted_averages_without_modifications() {
             .run();
         }
     }
-    assert!(updates > 500, "only {updates} updates were checked");
+    assert!(
+        updates > at_least_for(500, 600..630),
+        "only {updates} updates were checked"
+    );
 }
 
 #[test]

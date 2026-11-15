@@ -21,8 +21,8 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_expr::Compiler;
 use oxhaven_testkit::{
-    definition, ints, list_of, strings, ConsistencyChecker, RandomUpdates, ScriptedTable,
-    TableSnapshot,
+    definition, ints, list_of, strings, test_seeds, ConsistencyChecker, RandomUpdates,
+    ScriptedTable, TableSnapshot,
 };
 use std::sync::Arc;
 
@@ -97,7 +97,7 @@ fn carrying() -> Vec<(&'static str, Operation)> {
 #[test]
 fn operations_that_do_not_read_a_list_column_carry_its_cells() {
     let mut compared = 0;
-    for seed in 0..12 {
+    for seed in test_seeds(0..12) {
         let graph = graph();
         let mut random = RandomUpdates::new(seed);
         let mut source = |size: u64| {
@@ -146,7 +146,7 @@ fn operations_that_do_not_read_a_list_column_carry_its_cells() {
             }
         }
     }
-    assert_eq!(compared, 12 * 15 * carrying().len());
+    assert_eq!(compared, test_seeds(0..12).count() * 15 * carrying().len());
 }
 
 /// A static table of three rows: `K` 1, 2, 3, `G` a, b, a, and a vector column `V` of
