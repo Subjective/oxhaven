@@ -1229,6 +1229,7 @@ name = "oxhaven-rowset"
 version = "0.0.0"
 dependencies = [
  "oxhaven-contracts",
+ "oxhaven-testkit",
 ]
 
 [[package]]

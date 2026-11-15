@@ -11,15 +11,29 @@
 //!
 //! An operator the engine has not ported (`ops::update_by` lists them) passes the request
 //! checks and is then refused by the engine's `unported!`, which the service answers
-//! `UNIMPLEMENTED`. Java checks the formula of a rolling formula and the filters of the
-//! count-where operators against the table before it runs them
-//! (`UpdateByGrpcImpl#validateFormulas`); those operators are among the ones not ported, so
-//! no such check is made here.
+//! `UNIMPLEMENTED`.
+//!
+//! Java checks the filters of the count-where operators of every operation against the
+//! table with its `ColumnExpressionValidator` before it runs any of them
+//! (`UpdateByGrpcImpl#validateFormulas`). Here the engine makes the filters with the
+//! formula compiler, which knows only the function library, so a filter Java's validator
+//! refuses does not compile (see `select.rs`); both servers answer `INVALID_ARGUMENT` with
+//! an error id, whichever operation the fault is in. The count-where requests whose result
+//! in Java is not a function of the table are answered `UNIMPLEMENTED`: without filters
+//! here, the others by the engine (`ops::update_by::count_where`).
+//!
+//! Java validates a rolling formula the same way, against the table grouped by the bucket
+//! columns. For the form without a parameter token that is the formula the engine
+//! compiles, so nothing is done here. For the form with one, Java 42.9 validates another
+//! text than its engine compiles: the formula with the token replaced by the input
+//! column wherever it occurs, also inside a name ([`validate_token_formulas`]).
 
 use super::prelude::*;
 use super::time_table::parse_duration_nanos;
+use oxhaven_contracts::schema::ColumnType;
+use oxhaven_engine::ops::select::ArrayFormula;
 use oxhaven_engine::ops::update_by::{
-    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use oxhaven_proto::grpc as proto;
@@ -385,6 +399,91 @@ fn check_selectable(formula: &str) -> Result<(), Refusal> {
     column_name(java_trim(name)).map(|_| ())
 }
 
+/// Refuses the rolling formulas with a parameter token that Java's validation refuses
+/// before its engine sees them. For each column pair Java compiles
+/// `formula.replaceAll(token, input)` against a table of the bucket columns and the input
+/// column, grouped by the bucket columns: the input is a vector unless it is a bucket
+/// column, and the token is replaced wherever it occurs (`max(x)` with the token `x` and
+/// the input `I` is validated as `maI(I)`, and refused).
+///
+/// A token that is not made of letters, digits and `_` is a regular expression to
+/// `replaceAll`, and an input name with `$` a group reference: both are refused as not
+/// ported.
+///
+/// Behavior: `UpdateByGrpcImpl#validateFormulaWithParamToken`
+fn validate_token_formulas(
+    context: &OpContext,
+    operations: &[UpdateByOperation],
+    parent: &dyn Table,
+    by: &[String],
+) -> Result<(), ExportError> {
+    let columns = parent.definition().columns();
+    let is_key = |name: &str| by.iter().any(|key| key == name);
+    for operation in operations {
+        let UpdateBySpec::RollingFormula {
+            formula,
+            param_token: Some(token),
+            ..
+        } = &operation.spec
+        else {
+            continue;
+        };
+        if !token.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            return Err(not_ported(
+                "java.lang.String#replaceAll",
+                format!("the parameter token {token}, which Java reads as a regular expression"),
+            )
+            .into());
+        }
+        let inputs: Vec<&str> = if operation.columns.is_empty() {
+            columns
+                .iter()
+                .map(|column| column.name.as_str())
+                .filter(|name| !is_key(name))
+                .collect()
+        } else {
+            operation
+                .columns
+                .iter()
+                .map(|pair| java_trim(pair.split_once('=').map_or(pair.as_str(), |(_, input)| input)))
+                .collect()
+        };
+        for input in inputs {
+            if input.contains(['$', '\\']) {
+                return Err(not_ported(
+                    "java.lang.String#replaceAll",
+                    format!("the input column {input}, which Java reads as a replacement pattern"),
+                )
+                .into());
+            }
+            // Behavior: `TableTools.newTable(definition).groupBy(groupByColumns)`, which
+            // refuses to group a table that has only its key columns.
+            let seen: Vec<(&str, ColumnType)> = columns
+                .iter()
+                .filter(|column| is_key(&column.name) || column.name == input)
+                .map(|column| {
+                    let column_type = if is_key(&column.name) {
+                        column.column_type.clone()
+                    } else {
+                        ColumnType::vector(column.column_type.clone())
+                    };
+                    (column.name.as_str(), column_type)
+                })
+                .collect();
+            if seen.iter().all(|(name, _)| is_key(name)) {
+                return Err(ExportError::Internal(format!(
+                    "aggAllBy has no columns to aggregate: spec=AggSpecGroup{{}}, groupByColumns=[{}]",
+                    by.join(", ")
+                )));
+            }
+            let replaced = formula.replace(token.as_str(), input);
+            ArrayFormula::compile(context.compiler.as_ref(), &replaced, &seen)
+                .map_err(|error| ExportError::Internal(error.to_string()))?;
+        }
+    }
+    Ok(())
+}
+
 /// The engine's operation for a spec. A spec that is not set is the message without a
 /// type.
 ///
@@ -545,7 +644,7 @@ impl TableOp for Handler {
     ///
     /// Behavior: `UpdateByGrpcImpl#create`
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &UpdateByRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -567,10 +666,31 @@ impl TableOp for Handler {
             )
             .into());
         }
-        Ok(update_by(
+        // The engine panics with `unported!` for a count-where without filters, whose
+        // count Java leaves undefined; a request for one is refused here instead.
+        let unfiltered = operations.iter().any(|operation| match &operation.spec {
+            UpdateBySpec::CumCountWhere { filters, .. }
+            | UpdateBySpec::RollingCountWhere { filters, .. } => filters.is_empty(),
+            _ => false,
+        });
+        if unfiltered {
+            return Err(not_ported(
+                "io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.Context#applyFilters",
+                "a count-where without filters",
+            )
+            .into());
+        }
+        validate_token_formulas(
+            context,
+            &operations,
+            &*sources[0],
+            &request.group_by_columns,
+        )?;
+        Ok(update_by_with(
             &sources[0],
             &operations,
             &request.group_by_columns,
+            context.compiler.as_ref(),
         )?)
     }
 }
