@@ -163,9 +163,13 @@ VIRTUAL_ENV=/tmp/console-env oxhaven-server      # or: . /tmp/console-env/bin/ac
 ```
 
 The server logs `Python console: Python 3.13.18, packages from /tmp/console-env`, and
-`import numpy` works in the console. `GetConfigurationConstants` reports the interpreter's
-version as `python.version`, as Java does when its console is Python; a server without a
-Python console leaves the key out.
+`import numpy` works in the console.
+
+`GetConfigurationConstants` reports the interpreter's version as `python.version`, as Java
+does (`oracle/ide/traces`: `python.version` is `3.13.18` there). A server without a Python
+console leaves the key out. One difference: Java reports it also when its console is
+disabled (the `noconsole` traces), because a Java server with a disabled console still has
+its Python session, and this server started with `--console none` has no interpreter.
 
 ### The same packages in CI and on a developer's machine
 
