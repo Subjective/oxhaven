@@ -381,3 +381,10 @@ and the full count in a nightly job, without dropping any test.
 
 Running: stall investigation, head_by handler with the cross join static fix, list columns on
 the wire, remaining aggregations, remaining update_by operators.
+
+## 2026-11-15 00:35 UTC
+
+PR 55 opened (HeadBy and TailBy handlers, cross join zero-key fix). Its agent hit the
+gate hang once and captured a stack: the hang was in the harness client, with
+pydeephaven's `Table.__del__` making an RPC from the gRPC channel thread. Passed to the
+stall investigation as a lead to verify; if it holds, the fix belongs in the harness.
