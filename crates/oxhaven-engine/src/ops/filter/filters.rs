@@ -687,7 +687,7 @@ fn between(
                 .map(|value| keep(order(value, &lower), order(value, &upper)))
                 .collect()
         }
-        Cells::Bool(_) | Cells::Str(_) => {
+        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) => {
             return Err(failure("a range of two ends needs a column of numbers"))
         }
     })
