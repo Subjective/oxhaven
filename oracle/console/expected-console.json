@@ -1,0 +1,25 @@
+{
+  "comment": "For `oracle/ide/ide-test.js --routes console --expected oracle/console/expected-console.json`: the two lines of the console design task, typed into the IDE console as one command, and a ticking table. `displayed` is the text the IDE grid paints, observed on the Java reference. The shape is that of oracle/ide/expected.json.",
+  "static": {
+    "name": "t",
+    "columns": ["X"],
+    "types": ["int"],
+    "rows": [[0], [1], [2], [3], [4]],
+    "displayed": [["0"], ["1"], ["2"], ["3"], ["4"]]
+  },
+  "ticking": {
+    "name": "tt",
+    "columns": ["Timestamp", "N", "Sq"],
+    "counter": "N",
+    "square": "Sq",
+    "rows": 3
+  },
+  "console": {
+    "python": {
+      "static": "from deephaven import empty_table\nt = empty_table(5).update([\"X = i\"])",
+      "ticking": "from deephaven import time_table\ntt = time_table('PT0.5S').update(['N = ii', 'Sq = ii * ii']).tail(3)"
+    },
+    "staticName": "t",
+    "tickingName": "tt"
+  }
+}

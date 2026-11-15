@@ -35,8 +35,8 @@ per primitive type and replaced by one generic implementation.
 | `UngroupOperation`, `engine/vector` | `oxhaven-engine::ops::ungroup` | 4.7 |
 | `DynamicWhereFilter`, select-distinct | `oxhaven-engine::ops::distinct` | 4.8 |
 | `impl/snapshot` | `oxhaven-engine::ops::snapshot` | 4.9 |
-| `impl/hierarchical` (rollup, tree) | `oxhaven-engine::ops::hierarchical` | 6.10, 6.11 |
-| `impl/partitioned` | `oxhaven-engine::ops::partitioned` | 6.12 |
+| `impl/hierarchical` (rollup, tree) | `oxhaven-engine::ops::hierarchical` | 7.8, 7.9 |
+| `impl/partitioned` | `oxhaven-engine::ops::partitioned` | 7.6 |
 | `impl/lang/QueryLanguageParser`, `select/DhFormulaColumn`, `ConditionFilter` | `oxhaven-expr` | 3.1, 5.2, 5.3, 5.5 |
 | `engine/function`, `engine/time` | `oxhaven-expr::functions` | 5.4 |
 | `engine/function` over vectors and arrays (`Numeric`, `Basic`, `Sort`), `engine/vector` methods in formulas | `oxhaven-expr::functions::vectors`, `oxhaven-engine::ops::select::ArrayFormula` | 5.6 |
@@ -55,13 +55,13 @@ per primitive type and replaced by one generic implementation.
 | `server/barrage`, `extensions/barrage` | `oxhaven-server::barrage` | 2.4 |
 | `server/table/inputtables` | `oxhaven-server::inputtable` | 2.5 |
 | `server/config`, `server/browserstreaming` | `oxhaven-server::config`, `::transport` | 2.6 |
-| `server/console` | `oxhaven-server::console` | 6.2 |
-| `server/object`, `plugin/` | `oxhaven-server::object` | 6.8 |
-| `server/notebook` (storage service) | `oxhaven-server::storage` | 6.9 |
-| `server/hierarchicaltable` | `oxhaven-server::hierarchical` | 6.10, 6.11 |
-| `server/partitionedtable` | `oxhaven-server::partitioned` | 6.12 |
-| `server/appmode` | `oxhaven-server::application` | 6.13 |
-| `py/server/deephaven` (Python API over jpy) | `deephaven` package over PyO3 | 6.1, 6.3 to 6.7 |
+| `server/console` | `oxhaven-server::console` | 6.1 (`6.1-console-design`), 6.2, 6.13 to 6.15 |
+| `server/object`, `plugin/` | `oxhaven-server::object` | 7.10, 7.11 |
+| `server/notebook` (storage service) | `oxhaven-server::storage` | 6.1 (`6.1-ide-services`) |
+| `server/hierarchicaltable` | `oxhaven-server::hierarchical` | 7.8, 7.9 |
+| `server/partitionedtable` | `oxhaven-server::partitioned` | 7.6 |
+| `server/appmode` | `oxhaven-server::application` | 6.18 |
+| `py/server/deephaven` (Python API over jpy) | `deephaven` package over PyO3 | 6.1 (`6.1-console-design`), 6.3 to 6.12, 6.16 |
 | Dagger modules, `Configuration`, `Base`, `Util`, `IO`, `log-factory` | standard crates; not ported | |
 
 ## Extensions
