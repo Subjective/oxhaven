@@ -16,7 +16,7 @@ and through `deephaven.parquet.read` in a console.
 | `uint64_big.parquet` | pyarrow | Unsigned 64-bit values up to 2^64 - 1 |
 | `no_*.parquet` | pyarrow | One file per type that is refused: seven that Java reads and Oxhaven has no column type for, and two (`map`, `nested_list`) that Java refuses too |
 | `names.parquet`, `reserved.parquet` | pyarrow | Column names Java changes: `a b`, `2x`, `int` |
-| `codec_*.parquet` | pyarrow | One file per compression codec |
+| `codec_*.parquet` | pyarrow | One file per compression codec; `codec_brotli.parquet` is refused |
 | `evolve/`, `mismatch/` | pyarrow | Directories whose files do not have the same columns, or the same type for a column |
 | `hidden/` | pyarrow | Hidden files and directories, and a file that is not Parquet |
 | `kv/`, `meta/` | pyarrow | Partition directories; a `_metadata` file |
