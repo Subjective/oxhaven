@@ -80,9 +80,78 @@ fn accepted(
         if matched.is_empty() {
             break;
         }
-        matched = filter.filter(table, &matched)?;
+        matched = filter.filter(table, &matched, false)?;
     }
     Ok(matched)
+}
+
+/// Filter strings checked against a table, for an operation that asks row by row which
+/// rows pass, before and after a change: the `count_where` aggregation.
+pub(crate) struct RowFilters {
+    filters: Vec<Resolved>,
+    columns: Vec<usize>,
+    reads_arrays: bool,
+}
+
+impl RowFilters {
+    /// The filters of `texts`, each made as [`unstructured_filter`] makes one.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.WhereFilterFactory#getExpression and
+    /// the `init` of each `WhereFilter`
+    pub(crate) fn parse(
+        texts: &[String],
+        definition: &oxhaven_contracts::schema::TableDefinition,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<RowFilters, String> {
+        let mut filters = Vec::with_capacity(texts.len());
+        let mut columns = BTreeSet::new();
+        let mut reads_arrays = false;
+        for text in texts {
+            let spec = factory::parse_filter(text)?;
+            let filter = filters::resolve(&spec, definition, compiler)?;
+            reads_arrays |= filter.inputs(definition, &mut columns);
+            filters.push(filter);
+        }
+        Ok(RowFilters {
+            filters,
+            columns: columns.into_iter().collect(),
+            reads_arrays,
+        })
+    }
+
+    /// The columns the filters read at the current row, as indexes, increasing.
+    pub(crate) fn columns(&self) -> &[usize] {
+        &self.columns
+    }
+
+    /// Whether a filter reads a column at other rows (`Column_`).
+    pub(crate) fn reads_arrays(&self) -> bool {
+        self.reads_arrays
+    }
+
+    /// Whether a filter uses `i`, `ii` or `k`.
+    pub(crate) fn uses_row_variables(&self) -> bool {
+        self.filters.iter().any(Resolved::uses_row_variables)
+    }
+
+    /// The rows of `selection` that every filter accepts, by the current values of
+    /// `table`, or with `use_prev` by its previous values. The filters run in order, each
+    /// on the rows the ones before it accepted.
+    pub(crate) fn accepted(
+        &self,
+        table: &dyn Table,
+        selection: &RowSet,
+        use_prev: bool,
+    ) -> Result<RowSet, TableFailure> {
+        let mut matched = selection.clone();
+        for filter in &self.filters {
+            if matched.is_empty() {
+                break;
+            }
+            matched = filter.filter(table, &matched, use_prev)?;
+        }
+        Ok(matched)
+    }
 }
 
 pub(crate) fn shift_failure(error: impl fmt::Display) -> TableFailure {

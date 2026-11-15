@@ -869,6 +869,88 @@ async fn aggregate_groups_rows_and_aggregates_columns() {
     assert_eq!(values(table.as_ref(), "N"), ints(&[3, 2]));
 }
 
+fn agg_count_where(column: &str, filters: &[&str]) -> proto::Aggregation {
+    proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::CountWhere(
+            proto::aggregation::AggregationCountWhere {
+                column_name: column.to_string(),
+                filters: texts(filters),
+            },
+        )),
+    }
+}
+
+#[tokio::test]
+async fn aggregate_has_distinct_count_where_sentinels_and_outputs_named_like_keys() {
+    use proto::agg_spec::agg_spec_non_unique_sentinel::Type as Sentinel;
+    use proto::agg_spec::{AggSpecDistinct, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    // S = a has I = 0, 2, 4 and N = 3, 1, -1; S = b has I = 1, 3, 5 and N = 2, 0, -2.
+    let distinct = |include_nulls| Type::Distinct(AggSpecDistinct { include_nulls });
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(distinct(false), &["D = N"]),
+            agg_count_where("W", &["I > 1", "N < 1"]),
+            agg_columns(unique(Some(Sentinel::IntValue(-9))), &["U = I"]),
+            agg_columns(unique(Some(Sentinel::LongValue(7))), &["UL = S"]),
+        ],
+        &["S"],
+    );
+    // A long is not a value of a string column.
+    assert_internal(&call(&mut c, request.clone()).await.unwrap_err());
+    let Op::Aggregate(mut request) = request else {
+        unreachable!()
+    };
+    request.aggregations.pop();
+    request.result_id = ticket(5);
+    call(&mut c, Op::Aggregate(request)).await.unwrap();
+    let table = c.table(5);
+    assert_eq!(
+        column_types(table.as_ref()),
+        ["S: String", "D: Vector(Int)", "W: Long", "U: Int"]
+    );
+    assert_eq!(
+        values(table.as_ref(), "D"),
+        texts(&["[-1, 1, 3]", "[-2, 0, 2]"])
+    );
+    assert_eq!(values(table.as_ref(), "W"), ints(&[1, 2]));
+    assert_eq!(values(table.as_ref(), "U"), ints(&[-9, -9]));
+
+    // An output with the name of a group-by column takes its place.
+    let request = aggregated(
+        3,
+        vec![
+            agg_count("Rows"),
+            agg_columns(Type::Sum(Default::default()), &["S = N"]),
+        ],
+        &["S"],
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(column_types(table.as_ref()), ["S: Long", "Rows: Long"]);
+    assert_eq!(values(table.as_ref(), "S"), ints(&[3, 0]));
+
+    // Distinct of every column but the group-by columns, and by itself.
+    let all = Op::AggregateAll(AggregateAllRequest {
+        result_id: ticket(4),
+        source_id: by_ticket(1),
+        spec: Some(agg_spec(distinct(true))),
+        group_by_columns: texts(&["S"]),
+    });
+    call(&mut c, all).await.unwrap();
+    let table = c.table(4);
+    assert_eq!(
+        column_types(table.as_ref()),
+        ["S: String", "I: Vector(Int)", "N: Vector(Int)"]
+    );
+    assert_eq!(
+        values(table.as_ref(), "I"),
+        texts(&["[0, 2, 4]", "[1, 3, 5]"])
+    );
+}
+
 fn unique(
     sentinel: Option<proto::agg_spec::agg_spec_non_unique_sentinel::Type>,
 ) -> proto::agg_spec::Type {
@@ -1183,18 +1265,17 @@ async fn aggregate_refuses_the_options_java_refuses() {
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
     }
-    // in range
+    // in range, and not a value of an int column: the engine's refusal
     for (result, sentinel) in [
-        (10, Sentinel::ByteValue(-128)),
-        (11, Sentinel::CharValue(65535)),
+        (11, Sentinel::StringValue("many".to_string())),
+        (12, Sentinel::DoubleValue(1.5)),
     ] {
         let request = aggregated(
             result,
             vec![agg_columns(unique(Some(sentinel)), &["U = I"])],
             &["S"],
         );
-        let refused = call(&mut c, request).await.unwrap_err();
-        assert_eq!(refused.code(), Code::Unimplemented, "{refused:?}");
+        assert_internal(&call(&mut c, request).await.unwrap_err());
     }
 
     // what the engine refuses
@@ -1284,28 +1365,27 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
         assert_internal(&call(&mut c, request).await.unwrap_err());
     }
 
-    // an output with the name of a group-by column panics in the engine: refused before
-    for (result, aggregation) in [(20, agg_columns(sum(), &["S = N"])), (21, agg_count("S"))] {
-        let refused = call(&mut c, aggregated(result, vec![aggregation], &["S"]))
-            .await
-            .unwrap_err();
-        assert_eq!(refused.code(), Code::Unimplemented);
-        assert_eq!(
-            refused.message(),
-            "not ported: io.deephaven.engine.table.impl.by.AggregationContext#getResultColumns: aggregation output S has the name of a group-by column"
-        );
+    // a count where: a name that cannot name a column, filters Java refuses, and no
+    // filters, whose count Java leaves undefined
+    for (result, column, filters) in [
+        (14, "bad name", vec!["I > 1"]),
+        (15, "W", vec!["i > 1"]),
+        (16, "W", vec!["I_[0] > 1"]),
+        (17, "W", vec!["Missing > 1"]),
+    ] {
+        let request = aggregated(result, vec![agg_count_where(column, &filters)], &["S"]);
+        assert_internal(&call(&mut c, request).await.unwrap_err());
     }
-    let all_by_itself = Op::AggregateAll(AggregateAllRequest {
-        result_id: ticket(22),
-        source_id: by_ticket(1),
-        spec: Some(agg_spec(Type::Distinct(Default::default()))),
-        group_by_columns: texts(&["S"]),
-    });
-    let refused = call(&mut c, all_by_itself).await.unwrap_err();
+    let refused = call(
+        &mut c,
+        aggregated(18, vec![agg_count_where("W", &[])], &["S"]),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "not ported: io.deephaven.server.table.ops.AggSpecAdapter#adapt: the aggregation distinct"
+        "not ported: io.deephaven.engine.table.impl.by.CountWhereOperator#applyFilters: a count where without filters"
     );
     let row_key = proto::Aggregation {
         r#type: Some(proto::aggregation::Type::FirstRowKey(Default::default())),
