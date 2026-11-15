@@ -5,6 +5,7 @@
 //   node oracle/ide/ide-test.js --url <server> [--psk <key>] [--routes panels,iframe,jsapi]
 //                               [--expected <file>] [--out <dir>] [--timeout <ms>]
 //                               [--deny Service/Method,...] [--empty Service/Method,...]
+//                               [--restart <command>]
 //
 // <server> is http://host:port or https://host:port (with --psk, or without for anonymous
 // authentication), or the oracle's form dh+psk://<key>@host:port and dh://host:port (plain http).
@@ -14,6 +15,9 @@
 //   iframe   /iframe/table/?name=<table>&psk=<key>
 //   jsapi    /jsapi/dh-core.js in an empty page: log in, fetch the tables, read a viewport
 //   console  /ide/?psk=<key>, type the commands of expected.json into the console
+//   notebook, log, grid, errors, reconnect
+//            what a user does around the console (lib/flows.js); reconnect restarts the
+//            server with the shell command of --restart
 // The default is panels,iframe,jsapi: what a server without a console can do.
 //
 // --deny and --empty are for finding out what the IDE needs, not for the gate: the named
@@ -36,7 +40,8 @@ function usage(message) {
   if (message) console.error(`error: ${message}`);
   console.error(
     'usage: node oracle/ide/ide-test.js --url <http(s)://host:port | dh+psk://key@host:port | dh://host:port>\n' +
-      '         [--psk <key>] [--routes panels,iframe,jsapi,console] [--expected <file>] [--out <dir>] [--timeout <ms>]\n' +
+      '         [--psk <key>] [--routes ' + ALL_ROUTES.join(',') + ']\n' +
+      '         [--expected <file>] [--out <dir>] [--timeout <ms>] [--restart <command>]\n' +
       '         [--deny Service/Method,...] [--empty Service/Method,...]',
   );
   process.exit(2);

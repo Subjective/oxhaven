@@ -1,0 +1,88 @@
+   959ms WEBSOCKET ws://127.0.0.1:10958/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=346 closed=None error=None
+
+   965ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
+         request headers: {'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: AuthenticationConstantsRequest{}
+         response 0: AuthenticationConstantsResponse{config_values { key: "AuthHandlers" value { string_value: "io.deephaven.authentication.psk.PskAuthenticationHandler" } }}
+  1033ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'io.deephaven.authentication.psk.PskAuthenticationHandler <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1048ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: TerminationNotificationRequest{}
+  1048ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: ExportedTableUpdatesRequest{}
+  1048ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1159ms ws-multiplex [stream 5] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetConsoleTypes -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: GetConsoleTypesRequest{}
+         response 0: GetConsoleTypesResponse{console_types: "python"}
+  1175ms ws-multiplex [stream 6] io.deephaven.proto.backplane.script.grpc.ConsoleService/StartConsole -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: StartConsoleRequest{result_id { ticket: "e\001\000\000\000" } session_type: "python"}
+         response 0: StartConsoleResponse{result_id { ticket: "e\001\000\000\000" }}
+  1175ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/layouts" filter_glob: "*.json"}
+         response 0: ListItemsResponse{canonical_path: "/layouts"}
+  1219ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListFieldsRequest{}
+         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/ide_static" } type: "Table" } field_name: "ide_static" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_ticking" } type: "Table" } field_name: "ide_ticking" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_console_static" } type: "Table" } field_name: "ide_console_static" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_console_ti ... (1267 chars)
+  1314ms ws-multiplex [stream 9] io.deephaven.proto.backplane.script.grpc.ConsoleService/SubscribeToLogs -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: LogSubscriptionRequest{}
+         response 0: LogSubscriptionData{micros: 1794777733868000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | Starting up io.deephaven.python.server.EmbeddedServer..."}
+         response 1: LogSubscriptionData{micros: 1794777733889000 log_level: "INFO" message: "main                 | i.d.c.ParsedProperties    | Loading dh-defaults.prop"}
+         response 2: LogSubscriptionData{micros: 1794777733928000 log_level: "INFO" message: "main                 | i.d.c.Configuration       | Configuration: configuration file is dh-defaults.prop"}
+         response 3: LogSubscriptionData{micros: 1794777733936000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | io.deephaven.python.server.EmbeddedServer: starting up"}
+         response ... 205 more ...
+         response 209: LogSubscriptionData{micros: 1794777770033000 log_level: "STDERR" message: "21:22:50.033 INFO  e.u.i.PeriodicUpdateGraph | DEFAULT: Minimal Update Graph Processor cycle times: 25.562ms / 6 cycles = 4.260ms/cycle average), safePointTime=0ms\n"}
+  1314ms ws-multiplex [stream 10] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetHeapInfo -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: GetHeapInfoRequest{}
+         response 0: GetHeapInfoResponse{max_memory: 1073741824 total_memory: 190840832 free_memory: 57723816}
+  1989ms ws-multiplex [stream 11] io.deephaven.proto.backplane.script.grpc.ConsoleService/AutoCompleteStream -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: AutoCompleteRequest{open_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/w-BWHTY0_UtHX_pQCw1s6" language_id: "python" version: 1 } } console_id { ticket: "e\001\000\000\000" }}
+         request 1: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/w-BWHTY0_UtHX_pQCw1s6" version: 2 } content_changes { range { start { } end { } } text: "p" } } console_id { ticket: "e\001\000\000\000" }}
+         request 2: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/w-BWHTY0_UtHX_pQCw1s6" version: 3 } content_changes { range { start { character: 1 } end { character: 1 } } text: "r" } } console_id { ticket: "e\001\000\000\000" }}
+         request 3: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/w-BWHTY0_UtHX_pQCw1s6" version: 4 } content_changes { range { start { character: 2 } end { character: 2 } } text: "i" } } console_id { ticket: "e\001\000\000\000" }}
+         request ... 26 more ...
+         request 30: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/w-BWHTY0_UtHX_pQCw1s6" version: 31 } content_changes { range { start { } end { character: 27 } } range_length: 27 } } console_id { ticket: "e\001\000\000\000" }}
+
+==== print (at 2131ms) ====
+
+  2347ms ws-multiplex [stream 12] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "print(\'ide-log-mwiccdcbvl\')"}
+         response 0: ExecuteCommandResponse{changes { } start_timestamp: 1794777768757874719 end_timestamp: 1794777768758692978}
+
+==== log panel (at 2766ms) ====
+
+
+==== command history (at 3090ms) ====
+
+  3587ms ws-multiplex [stream 13] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "print(\'ide-log-mwiccdcbvl\')"}
+         response 0: ExecuteCommandResponse{changes { } start_timestamp: 1794777770030015818 end_timestamp: 1794777770030732010}
