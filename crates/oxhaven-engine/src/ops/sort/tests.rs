@@ -4,10 +4,12 @@ use super::testing::{
 };
 use super::{head, reverse, slice, sort, tail, SortColumn, SortError};
 use crate::ops::merge::flatten;
+use crate::table::is_copy;
 use arrow::array::{
     ArrayRef, BooleanArray, Float32Array, Float64Array, Int32Array, Int8Array, StringArray,
     TimestampNanosecondArray, UInt16Array,
 };
+use oxhaven_contracts::rowset::{RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_testkit::{ints, strings, ConsistencyChecker, TableChange};
@@ -778,6 +780,36 @@ fn slices_fail_with_their_parent() {
     let t = ticking_slice(|table| slice(table, 1, 3).unwrap());
     t.fail("boom");
     assert!(t.result.is_failed());
+}
+
+/// The Java server shows the difference in what follows a `reverse`: the `flatten` of one
+/// is a new table and not a copy, and an `update` of a join with one is not flat
+/// (`oracle/bin/harness fuzz`, seeds 1381 and 1622 over the default operations).
+#[test]
+fn the_reverse_of_a_static_table_has_the_row_keys_java_gives_it() {
+    let reversed = reverse(&five()).unwrap();
+    // The row keys 0..=4 as they lie below the pivot 65536.
+    let rows = RowSet::from_ranges([RowRange::new(65532, 65536)]);
+    assert_eq!(*reversed.row_set(), rows);
+    assert_eq!(tags(&*reversed).concat(), "edcba");
+
+    let flat = flatten(&reversed).unwrap();
+    assert!(flat.is_flat() && !is_copy(&*flat));
+    assert_eq!(*flat.row_set(), RowSet::flat(5));
+    assert_eq!(tags(&*flat).concat(), "edcba");
+
+    // Rows at keys with gaps keep the gaps, and a reverse of a reverse counts from a
+    // larger pivot: 2 * 65536 - 1.
+    let some = slice(&five(), 1, 4).unwrap();
+    let reversed = reverse(&some).unwrap();
+    assert_eq!(keys(&reversed.row_set()), [65533, 65534, 65535]);
+    assert_eq!(tags(&*reversed).concat(), "dcb");
+    let twice = reverse(&reversed).unwrap();
+    assert_eq!(keys(&twice.row_set()), [65536, 65537, 65538]);
+    assert_eq!(tags(&*twice).concat(), "bcd");
+
+    let none = reverse(&head(&five(), 0).unwrap()).unwrap();
+    assert!(none.row_set().is_empty());
 }
 
 #[test]
