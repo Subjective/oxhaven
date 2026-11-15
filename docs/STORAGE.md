@@ -107,6 +107,7 @@ this task.
 | `layout.rs` | From a path and a layout to the list of files |
 | `schema.rs` | From a Parquet schema and the `deephaven` footer entry to a table definition |
 | `location.rs` | `ParquetLocation`: a file as a `TableLocation` |
+| `write.rs` | `write`, `WriteOptions`, `delete`: tables as files ("Writing Parquet") |
 
 **Which files.** As `ParquetTools#readTable`: a path that ends in `.parquet` is one file; a
 path that ends in `_metadata` or `_common_metadata` is a metadata file; anything else is a
@@ -224,8 +225,8 @@ and the sorted-column marks in the `deephaven` footer entry (`impl/dataindex`), 
 filters down to row-group statistics, and a bound on the memory the decoded arrays use
 (Java holds pages through soft references).
 
-`write`, `write_partitioned`, `batch_write` and `delete` are task 7.2; until then
-`deephaven.parquet` does not have those names.
+`write`, `write_partitioned`, `batch_write` and `delete` are task 7.2: "Writing Parquet",
+below.
 
 ## Gate
 
@@ -295,3 +296,152 @@ Besides what is refused:
 3. **Types.** A good part of real files have dates and decimals, which wait for column
    types. The refusal is clear, but it is a refusal.
 4. **Codecs**, as above.
+
+## Writing Parquet
+
+Task 7.2 (`tasks/7.2-parquet-write.md`). This section is its design; the code is
+`crates/oxhaven-parquet/src/write.rs`, the binding `console/python/parquet.rs`
+(`write_parquet`, `delete_parquet`) and `deephaven/parquet.py` (`write`, `batch_write`,
+`write_partitioned`, `delete`, `RowGroupInfo`).
+
+### Decision
+
+1. **The file is Java's file.** A table written here has the Parquet schema, the
+   `deephaven` footer entry, the row groups, the codec and the dictionaries that Java's
+   `ParquetTableWriter` gives the same table, so that Java reads from it the table it
+   reads from its own file, and so does this crate. What was compared is the footer (as
+   pyarrow reads it) and the table each server reads back, never the bytes: page
+   boundaries, the encodings listed for a chunk, statistics and `created_by` are the
+   writing library's.
+2. **The writer is `parquet`'s `ArrowWriter`**, given the Parquet schema explicitly
+   (`ArrowWriterOptions::with_parquet_schema`) and told to leave the Arrow schema out of
+   the footer. No dependency is added.
+3. **One entry point.** `write(tables, paths, options)` is
+   `ParquetTools#writeTables(Table[], String[], ParquetInstructions)`; `write` of one
+   table is the same call with one table, as in Java.
+4. **A table is read whole, then written.** The caller holds the update graph's shared
+   lock for a table that changes (`guarded` in the binding, graph lock first and the
+   interpreter released: `docs/PYTHON_UDF.md`), so the file is the table as it is at one
+   moment, as Java's snapshot is.
+5. **A write is taken back when it fails**, in Java's steps
+   (`LocalCompletableOutputStream`): each file is written as `.NEW_<name>` beside its
+   destination; when every file is written, each destination is moved to `.OLD_<name>`
+   and the new file put in its place; then the old files are removed. On a failure the
+   files in place are moved away again and the old ones back, the unfinished files are
+   removed, and so are the directories the write made.
+
+### What a file holds
+
+| Column type | Parquet |
+| --- | --- |
+| `Boolean` | `BOOLEAN` |
+| `Byte`, `Short`, `Int` | `INT32`, `INT(8/16/32, signed)` |
+| `Char` | `INT32`, `INT(16, unsigned)` |
+| `Long` | `INT64`, no logical type |
+| `Float`, `Double` | `FLOAT`, `DOUBLE` |
+| `String` | `BINARY`, `STRING` |
+| `Instant` | `INT64`, `TIMESTAMP(nanos, adjusted to UTC)` |
+| `Vector` or `Array` of one of the above | `optional group <name> (LIST) { repeated group list { optional <element> element } }` |
+
+Every field is optional, the root is named `root`, and a null is a missing value, never
+the Java null of the type.
+
+The footer has one key-value entry, `deephaven`, as `TableInfo` writes it:
+`{"version":"42.9"}`, then `columnTypes` with `{"columnName":<name in the
+file>,"specialType":"Vector"}` for each vector column, then `sortingColumns` with the
+first column the table is sorted by (its `SortedColumns` attribute), under its name in
+the table. The version is the reference's (`oracle/REFERENCE.md`).
+
+Row groups follow `RowGroupInfo`: one; `max_groups(n)`; `max_rows(n)`; `by_groups(columns,
+max_rows)`, which fails when the rows of a group are not next to each other. A table
+without rows has no row group.
+
+Pages are Snappy unless `compression_codec_name` says otherwise. A name is one the
+reference's Hadoop codec factory knows, in any case, with or without `Codec`:
+`uncompressed`, `snappy`, `gzip`, `jdkgzip`, `zstd`, `lz4`, `lz4raw`, `lz4_raw`. Only a
+string column has a dictionary, and only while its distinct strings stay within
+`max_dictionary_keys` and `max_dictionary_size` (2^20 each by default); `use_dictionary`
+in a column instruction lifts the limits.
+
+`table_definition` chooses the columns of the file, orders them, and adds columns of
+nulls for names the table does not have. A column instruction names the column in the
+file.
+
+### Out, each refused with `NotPorted`
+
+| What | Java method named |
+| --- | --- |
+| `write_partitioned` with a definition that has partitioning columns | `ParquetTools#writeKeyValuePartitionedTable` |
+| `generate_metadata_files=True` | `ParquetMetadataFileWriterImpl#writeMetadataFiles` |
+| `index_columns` that names columns | `ParquetInstructions.Builder#addAllIndexColumns` |
+| `special_instructions` | `ParquetInstructions.Builder#setSpecialInstructions` |
+| A destination with a URI scheme, `file://` among them | `SeekableChannelsProviderLoader#load` |
+| `LZO`, and a codec named by its class | `DeephavenCompressorAdapterFactory#getByName` |
+| `codec_name` in a column instruction | `ParquetInstructions.Builder#addColumnCodec` |
+| An empty name for the file in a column instruction | `ParquetInstructions.Builder#addColumnNameMapping` |
+| A column whose cells hold vectors or arrays, which Java writes with `SerializableCodec` | `TypeInfos#getCodecAndArgs` |
+| A column type without a Parquet type here | `TypeInfos#getTypeInfo` |
+| A column that has another type in `table_definition` than in the table | `TransferObject#create` |
+| `by_groups` on a vector or array column | `RowGroupTableIteratorVisitor.SplitByGroupsIterator#next` |
+
+`write_partitioned` of a table without partitioning columns raises what Java raises
+("Table must have partitioning columns to write partitioned data"); no table of the
+engine has partitioning columns yet. The types of "Which types" that have no column type
+cannot be in a table, so they cannot be written.
+
+### Differences from Java
+
+Besides what is refused, and none of them seen by a reader of the table:
+
+- The chunk of a column lists `RLE` among its encodings where Java's does not, and a
+  `float` or `double` chunk has its minimum and maximum under the IEEE 754 total order,
+  which Java and pyarrow ignore as statistics. The null counts in the statistics of
+  list columns are `parquet`'s, and larger than Java's. `created_by` is `parquet-rs`.
+- A column has a dictionary in every row group or in none: when one row group goes over
+  the limits, no row group of that column has one. Java decides for each row group.
+- A table is held in memory whole while it is written; Java writes it page by page.
+- A relative path is relative to the server's working directory, as in Java, whose
+  working directory is another.
+- Java makes a data index for the grouping columns a table already has an index for,
+  and a write with `index_columns` leaves the index on the table. No table here has a
+  data index, so no index file is written.
+- A column of the table with another type in the definition is refused. Java casts: it
+  fails for most pairs and writes the values under the definition's type for some (an
+  `int` as a `short`).
+- An instruction without a name for the file is a `ValueError` inside the `DHError`; in
+  Java it is a `NullPointerException` inside it. Error texts are Java's where they are
+  short and name no class.
+
+One accident of Java is kept: a destination given twice in `batch_write` fails, and the
+destination is left as the last table, because both tables are written to the one
+unfinished file and the second cannot put it in place.
+
+### Gate
+
+```bash
+cargo test -p oxhaven-parquet write
+cargo test -p oxhaven-server --features python --lib parquet
+oracle/bin/harness replay-scripts --url $URL --scripts parquet_write_
+```
+
+| Scenario | State | Gates |
+| --- | --- | --- |
+| `parquet_write_types` | clean | Every column type with nulls, vectors, arrays, no rows: read back, and the footer as pyarrow reads it (schema, `deephaven` entry, row groups, codec, dictionary) |
+| `parquet_write_options` | clean | Codec names, row groups, names in the file, dictionary limits, a definition, `batch_write`, a sorted table, a replaced file, `delete`, a table that changes |
+| `parquet_write_errors` | clean | Thirty-eight writes that fail in Java, and what they leave on disk |
+| `parquet_write_unported` | differs | The refusals of the table above that Java does |
+
+A scenario reads the footers with `pyarrow`, which the oracle's environment and the
+reference's both have. Each server reads back its own files; that Java reads the files
+written here to the same tables as its own was checked by hand, on 27 files
+(types, vectors, arrays, codecs, row groups, dictionaries, renames, a definition), and
+is not part of the gate, which runs one server at a time.
+
+### Risks
+
+1. **Memory**: a table larger than memory cannot be written. Writing row group by row
+   group needs the row group sizes before the rows, which `by_groups` does not have.
+2. **Partitioned writes and metadata files** wait for partitioning columns, with the
+   partitioned reads.
+3. **Two servers and one file.** Nothing locks a destination; two writes to one path
+   race on `.NEW_<name>`, as in Java.

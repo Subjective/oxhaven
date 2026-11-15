@@ -9,7 +9,7 @@ that are expected.
 
 Each case prints the call, the request and the status, then one line per response message in
 protobuf text format. What differs from run to run is replaced: timestamps by `<ts>`, memory
-figures by `<n>`, error ids by `<id>`; the lines of a Java stack trace in an error message
+figures by `<n>`, error ids by `<id>`, line numbers in the files of a package by `<n>`; the lines of a Java stack trace in an error message
 are left out. A server stream is cancelled at the end (`OPEN`). The two streams that run
 beside the commands are printed after them: of the log, the records of level `STDOUT` and
 the `STDERR` records that start with `[probe]` (Java's `STDERR` also carries its own log);
@@ -56,6 +56,8 @@ VOLATILE = [
     (re.compile(r"Details Logged w/ID '[0-9a-f-]+'"), "Details Logged w/ID '<id>'"),
     (re.compile(r"0x[0-9a-f]{6,}"), "0x<addr>"),
     (re.compile(r'File \\"[^"\\]*/site-packages/'), 'File \\"<site-packages>/'),
+    # a line of a package's source moves with every change to the package
+    (re.compile(r'(File \\"<(?:site-packages|oxhaven)>/[^"\\]*\\", line )\d+'), r"\1<n>"),
 ]
 
 
@@ -172,6 +174,169 @@ def execute(server: Server, name: str, console, code: str):
     # longer than the interval in which a server gathers field changes into one message
     time.sleep(SETTLE)
     return response
+
+
+def open_document(console, uri: str, text: str, version: int = 1):
+    return console_pb2.AutoCompleteRequest(
+        console_id=console,
+        open_document=console_pb2.OpenDocumentRequest(
+            text_document=console_pb2.TextDocumentItem(
+                uri=uri, language_id="python", version=version, text=text
+            )
+        ),
+    )
+
+
+def change_document(console, uri: str, version: int, line: int, character: int, length: int, text: str):
+    """An edit that puts `text` in place of `length` code units at a position."""
+    position = console_pb2.Position(line=line, character=character)
+    change = console_pb2.ChangeDocumentRequest.TextDocumentContentChangeEvent(
+        range=console_pb2.DocumentRange(start=position, end=position), range_length=length, text=text
+    )
+    return console_pb2.AutoCompleteRequest(
+        console_id=console,
+        change_document=console_pb2.ChangeDocumentRequest(
+            text_document=console_pb2.VersionedTextDocumentIdentifier(uri=uri, version=version),
+            content_changes=[change],
+        ),
+    )
+
+
+def close_document(console, uri: str):
+    return console_pb2.AutoCompleteRequest(
+        console_id=console,
+        close_document=console_pb2.CloseDocumentRequest(
+            text_document=console_pb2.VersionedTextDocumentIdentifier(uri=uri)
+        ),
+    )
+
+
+def completion_items(console, request_id: int, uri: str, version: int, line: int, character: int):
+    return console_pb2.AutoCompleteRequest(
+        console_id=console,
+        request_id=request_id,
+        get_completion_items=console_pb2.GetCompletionItemsRequest(
+            context=console_pb2.CompletionContext(trigger_kind=1),
+            text_document=console_pb2.VersionedTextDocumentIdentifier(uri=uri, version=version),
+            position=console_pb2.Position(line=line, character=character),
+        ),
+    )
+
+
+def position_request(console, request_id: int, kind: str, uri: str, version: int, line: int, character: int):
+    """A `get_signature_help` or `get_hover` request."""
+    request = console_pb2.AutoCompleteRequest(console_id=console, request_id=request_id)
+    inner = getattr(request, kind)
+    inner.text_document.uri = uri
+    inner.text_document.version = version
+    inner.position.line = line
+    inner.position.character = character
+    return request
+
+
+def print_answers(status: str, answers, limit: int, labels_only: bool):
+    """The answers of a completion stream. Java answers requests in no fixed order, so they
+    are printed by request id; of `labels_only` answers, the labels and details of the items."""
+    print(f"status: {status}")
+    for response in sorted(answers, key=lambda answer: answer.request_id):
+        if labels_only and response.HasField("completion_items"):
+            print(f"message: request_id: {response.request_id} success: {str(response.success).lower()}")
+            for item in response.completion_items.items:
+                edit = item.text_edit.range
+                print(
+                    f"item: {item.label!r} detail: {item.detail!r} sort_text: {item.sort_text!r} "
+                    f"start: {item.start} length: {item.length} replaces: "
+                    f"{edit.start.line}:{edit.start.character}-{edit.end.line}:{edit.end.character}"
+                )
+            continue
+        text = one_line(response)
+        print(f"message: {text if len(text) < limit else text[:limit] + ' ...'}")
+    print()
+
+
+def autocomplete(server: Server, name: str, requests, limit: int = 600, labels_only: bool = False):
+    """One completion stream: sends the requests, listens, and cancels the stream (`OPEN`)
+    unless the server ended it."""
+    print(f"== {name}")
+    print("call: ConsoleService/AutoCompleteStream")
+    for request in requests:
+        print(f"request: {one_line(request)}")
+    sent = threading.Event()
+
+    def send():
+        for request in requests:
+            yield request
+            time.sleep(0.1)
+        sent.wait(server.listen + 2)
+
+    responses = server.stubs["ConsoleService"].AutoCompleteStream(
+        send(), metadata=server.metadata, timeout=CALL_TIMEOUT
+    )
+    status = "OPEN"
+    answers = []
+
+    def stop():
+        time.sleep(server.listen + 1 + 0.1 * len(requests))
+        responses.cancel()
+
+    threading.Thread(target=stop, daemon=True).start()
+    try:
+        for response in responses:
+            answers.append(response)
+        status = "OK"
+    except grpc.RpcError as error:
+        if error.code() != grpc.StatusCode.CANCELLED:
+            status = f"{error.code().name}: {scrub(error.details() or '')!r}"
+    sent.set()
+    print_answers(status, answers, limit, labels_only)
+
+
+def browser_autocomplete(server: Server, name: str, export_id: int, requests):
+    """The pair a browser uses in place of the stream: the first request opens a server
+    stream, the others are one call each, the last with the half close; all carry the
+    stream's export id and their place in the sequence as headers."""
+    print(f"== {name}")
+    stub = server.stubs["ConsoleService"]
+
+    def headers(sequence: int, half_close: bool):
+        stream = [
+            ("x-deephaven-stream-ticket", str(export_id)),
+            ("x-deephaven-stream-sequence", str(sequence)),
+        ]
+        return server.metadata + stream + ([("x-deephaven-stream-halfclose", "1")] if half_close else [])
+
+    print("call: ConsoleService/OpenAutoCompleteStream")
+    print(f"request: {one_line(requests[0])}")
+    responses = stub.OpenAutoCompleteStream(requests[0], metadata=headers(0, False), timeout=CALL_TIMEOUT)
+    answers = []
+    status = ["OPEN"]
+
+    def read():
+        try:
+            for response in responses:
+                answers.append(response)
+            status[0] = "OK"
+        except grpc.RpcError as error:
+            status[0] = f"{error.code().name}: {scrub(error.details() or '')!r}"
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    time.sleep(0.3)
+    for sequence, request in enumerate(requests[1:], start=1):
+        last = sequence == len(requests) - 1
+        print(f"call: ConsoleService/NextAutoCompleteStream{' (half close)' if last else ''}")
+        print(f"request: {one_line(request)}")
+        try:
+            answer = stub.NextAutoCompleteStream(request, metadata=headers(sequence, last), timeout=CALL_TIMEOUT)
+            print("status: OK")
+            print(f"message: {one_line(answer)}")
+        except grpc.RpcError as error:
+            print(f"status: {error.code().name}: {scrub(error.details() or '')!r}")
+        # the answer to a request comes on the open call; the half close must not overtake it
+        time.sleep(server.listen)
+    reader.join(server.listen + 5)
+    print("the open call:")
+    print_answers(status[0], answers, 600, False)
 
 
 def main() -> int:
@@ -434,60 +599,82 @@ def main() -> int:
         console_pb2.CancelAutoCompleteRequest(console_id=console, request_id=1),
     )
 
-    print("== autocomplete stream")
-    print("call: ConsoleService/AutoCompleteStream")
-    uri = "inmemory://probe/1"
-    requests = [
-        console_pb2.AutoCompleteRequest(
-            console_id=console,
-            request_id=1,
-            open_document=console_pb2.OpenDocumentRequest(
-                text_document=console_pb2.TextDocumentItem(
-                    uri=uri, language_id="python", version=1, text="emp"
-                )
-            ),
-        ),
-        console_pb2.AutoCompleteRequest(
-            console_id=console,
-            request_id=2,
-            get_completion_items=console_pb2.GetCompletionItemsRequest(
-                context=console_pb2.CompletionContext(trigger_kind=1),
-                text_document=console_pb2.VersionedTextDocumentIdentifier(uri=uri, version=1),
-                position=console_pb2.Position(line=0, character=3),
-            ),
-        ),
-    ]
-    for request in requests:
-        print(f"request: {one_line(request)}")
-    sent = threading.Event()
-
-    def send():
-        yield from requests
-        sent.wait(args.listen + 2)
-
-    responses = server.stubs["ConsoleService"].AutoCompleteStream(
-        send(), metadata=server.metadata, timeout=CALL_TIMEOUT
+    execute(
+        server,
+        "define a function to complete",
+        console,
+        "def scaled(table, factor: int = 2) -> int:\n"
+        '    """Multiplies the size of a table.\n\n'
+        "    Args:\n"
+        "        table (Table): the table\n"
+        "        factor (int): what to multiply by\n\n"
+        "    Returns:\n"
+        "        the product\n"
+        '    """\n'
+        "    return table.size * factor",
     )
-    status = "OPEN"
-    answers = []
-
-    def stop():
-        time.sleep(args.listen + 1)
-        responses.cancel()
-
-    threading.Thread(target=stop, daemon=True).start()
-    try:
-        for response in responses:
-            answers.append(response)
-    except grpc.RpcError as error:
-        if error.code() != grpc.StatusCode.CANCELLED:
-            status = f"{error.code().name}: {scrub(error.details() or '')!r}"
-    sent.set()
-    print(f"status: {status}")
-    for response in answers:
-        text = one_line(response)
-        print(f"message: {text if len(text) < 600 else text[:600] + ' ...'}")
-    print()
+    uri = "inmemory://probe/1"
+    autocomplete(
+        server,
+        "autocomplete stream",
+        [open_document(console, uri, "emp"), completion_items(console, 2, uri, 1, 0, 3)],
+    )
+    autocomplete(
+        server,
+        "autocomplete: a signature and a hover of a function of the script",
+        [
+            open_document(console, uri, "scaled(t, "),
+            position_request(console, 3, "get_signature_help", uri, 1, 0, 10),
+            position_request(console, 4, "get_hover", uri, 1, 0, 3),
+        ],
+        limit=2000,
+    )
+    autocomplete(
+        server,
+        "autocomplete: an attribute of a table variable, typed in two edits",
+        [
+            open_document(console, uri, "x = 1\n"),
+            change_document(console, uri, 2, 1, 0, 0, "t."),
+            change_document(console, uri, 3, 1, 2, 0, "he"),
+            completion_items(console, 5, uri, 3, 1, 4),
+        ],
+        labels_only=True,
+    )
+    autocomplete(
+        server,
+        "autocomplete: requests that find nothing, and diagnostics",
+        [
+            open_document(console, uri, "no_such_name_at_all"),
+            completion_items(console, 6, uri, 1, 0, 19),
+            position_request(console, 7, "get_signature_help", uri, 1, 0, 19),
+            position_request(console, 8, "get_hover", uri, 1, 0, 5),
+            console_pb2.AutoCompleteRequest(
+                console_id=console,
+                request_id=9,
+                get_diagnostic=console_pb2.GetDiagnosticRequest(
+                    text_document=console_pb2.VersionedTextDocumentIdentifier(uri=uri, version=1)
+                ),
+            ),
+            # a version the document does not have
+            completion_items(console, 10, uri, 7, 0, 19),
+            close_document(console, uri),
+        ],
+    )
+    autocomplete(
+        server,
+        "autocomplete: a document that was never opened",
+        [change_document(console, "inmemory://probe/none", 2, 0, 0, 0, "x")],
+    )
+    browser_autocomplete(
+        server,
+        "autocomplete as a browser sends it",
+        export_id=60,
+        requests=[
+            open_document(console, uri, "empty_t"),
+            completion_items(console, 11, uri, 1, 0, 7),
+            console_pb2.AutoCompleteRequest(),
+        ],
+    )
 
     logs_cancel()
     server_log_cancel()

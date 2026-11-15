@@ -1,0 +1,824 @@
+{
+  "format": 2,
+  "scenario": "parquet_write_errors",
+  "scenario_sha256": "529a57b7969d94381435d850624bc95aca6433a0bab3538186ada156ee8998d8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 10,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 10,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 10,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 11,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 11,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 11,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 12,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 12,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 12,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 13,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 13,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 13,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 14,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 14,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 14,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 15,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 15,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 15,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 16,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 16,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 16,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 17,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 17,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 17,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 18,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 18,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 18,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 19,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 19,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 19,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 20,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 20,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 20,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 21,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 21,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 21,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 22,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 22,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 22,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 23,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 23,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 23,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 24,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 24,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 24,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 25,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 25,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 25,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 26,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 26,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 26,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 27,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 27,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 27,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 28,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 28,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 28,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 29,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 29,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 29,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 30,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 30,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 30,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 31,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 31,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 31,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 32,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 32,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 32,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 33,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 33,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 33,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 34,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 34,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 34,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 35,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 35,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 35,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 36,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 36,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 36,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 37,
+      "table": "kept",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 37,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 37,
+      "table": "left",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 38,
+      "table": "kept",
+      "file": "step038.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 38,
+      "table": "twice",
+      "file": "step038.twice.arrow",
+      "rows": 3
+    },
+    {
+      "step": 38,
+      "table": "left",
+      "file": "step038.left.arrow",
+      "rows": 4
+    }
+  ]
+}

@@ -11,6 +11,8 @@ use oxhaven_contracts::table::Table;
 use oxhaven_engine::table::QueryTable;
 use std::sync::Arc;
 
+mod write;
+
 fn data(name: &str) -> String {
     format!("{}/tests/data/{name}", env!("CARGO_MANIFEST_DIR"))
 }

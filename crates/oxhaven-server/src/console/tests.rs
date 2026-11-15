@@ -35,12 +35,15 @@ use tonic::transport::Channel;
 use tonic::{Code, Status};
 use tracing_subscriber::layer::SubscriberExt;
 
+use super::completer::Completer;
 use super::logs::{LogBuffer, LogUpdates, STDERR, STDOUT};
 use super::{Changes, Console, ScriptSession, Stop};
 use crate::app::FormulaValue;
 use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 use crate::ServerState;
+
+pub(in crate::console) mod completion;
 
 /// A script session whose language is one command per line: `make <name> <rows>` sets a
 /// variable to a new table, `note <name> <text>` sets one to a text, `drop <name>` removes
@@ -51,6 +54,8 @@ struct WordSession {
     /// The variables as they were when they were last looked at.
     seen: Mutex<BTreeMap<String, ExportValue>>,
     logs: Arc<LogBuffer>,
+    /// What answers completion requests, if a test gave the session something that does.
+    completer: Mutex<Option<Arc<dyn Completer>>>,
 }
 
 impl WordSession {
@@ -148,6 +153,10 @@ impl ScriptSession for WordSession {
             })
             .collect())
     }
+
+    fn completer(&self) -> Result<Option<Arc<dyn Completer>>, String> {
+        Ok(self.completer.lock().unwrap().clone())
+    }
 }
 
 /// Gives `state` the word console and returns its session.
@@ -156,6 +165,7 @@ fn word_console(state: &mut ServerState) -> Arc<WordSession> {
         variables: Mutex::default(),
         seen: Mutex::default(),
         logs: state.logs.clone(),
+        completer: Mutex::default(),
     });
     let console = Console::new(session.clone(), state.applications.clone());
     state.scope.hold(console.clone());
