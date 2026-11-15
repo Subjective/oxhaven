@@ -9,8 +9,8 @@ use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_testkit::{
-    definition, longs, strings, ConsistencyChecker, RandomUpdates, Recorder, ScriptedTable,
-    TableChange,
+    at_least_for, definition, longs, strings, test_seeds, ConsistencyChecker, RandomUpdates,
+    Recorder, ScriptedTable, TableChange,
 };
 use std::sync::{Mutex, Weak};
 
@@ -70,7 +70,7 @@ fn checked(
 /// cycle that the result is consistent and equal to the operation run from scratch.
 fn fuzz(what: &str, operation: Operation) {
     let mut updates = 0;
-    for seed in 0..24 {
+    for seed in test_seeds(0..24) {
         let (stepper, graph) = graph();
         let source = scripted(&graph);
         let parent: Arc<dyn Table> = source.table();
@@ -89,7 +89,10 @@ fn fuzz(what: &str, operation: Operation) {
         assert!(!result.is_failed(), "{what}");
         updates += checker.updates_seen();
     }
-    assert!(updates > 24 * 15, "{what}: only {updates} updates");
+    assert!(
+        updates > at_least_for(24 * 15, 0..24),
+        "{what}: only {updates} updates"
+    );
 }
 
 // ---------------------------------------------------------------------------------------
