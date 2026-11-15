@@ -7,10 +7,11 @@ from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 import _oxhaven
 
-from . import _engine, dtypes
+from . import _engine, dtypes, liveness_scope
 from .agg import Aggregation
 from .column import ColumnDefinition, ColumnType, col_def
 from .dherror import DHError
+from .update_graph import UpdateGraph
 
 
 class SortDirection(Enum):
@@ -213,13 +214,47 @@ class Table:
     def __init__(self, j_table):
         if not isinstance(j_table, _oxhaven.TableHandle):
             raise DHError(message=f"not a table handle: {type(j_table).__name__}")
-        self.j_table = j_table
+        self._j_table = j_table
         self._definition = TableDefinition(j_table)
+        liveness_scope._created(self)
+
+    @property
+    def j_table(self):
+        """The engine's handle; none once a liveness scope has released the table."""
+        if self._j_table is None:
+            raise DHError(message=liveness_scope._RELEASED)
+        return self._j_table
 
     @property
     def j_object(self):
         """The engine's handle. In the reference package this is the Java table."""
         return self.j_table
+
+    def _liveness_release(self) -> bool:
+        """Gives up this object's hold of the engine table, unless something else holds the
+        table too, which keeps it live; returns whether the table is released
+        (`deephaven.liveness_scope`)."""
+        if self._j_table is not None:
+            if self._j_table.holders() > 1:
+                return False
+            self._definition = TableDefinition(self._definition)
+            self._j_table = None
+        return True
+
+    @property
+    def update_graph(self) -> UpdateGraph:
+        """The update graph of the table: the server's."""
+        return UpdateGraph()
+
+    def await_update(self, timeout: Optional[int] = None) -> bool:
+        """Waits until this refreshing table changes, or for `timeout` milliseconds;
+        returns whether it changed."""
+        if not self.is_refreshing:
+            raise DHError(message="await_update can only be called on refreshing tables.")
+        try:
+            return _engine.native.await_update(self.j_table, timeout)
+        except Exception as e:
+            raise DHError(e, "await_update was interrupted.") from e
 
     def __repr__(self):
         # the shape of the reference's text; the object reference is this handle's
