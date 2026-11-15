@@ -233,26 +233,28 @@ fn start_interpreter(layout: &Layout) -> Result<(), String> {
         Layout::Installation { home } => (None, Some(c_path(home)?)),
     };
     // SAFETY: `PyConfig_InitPythonConfig` initializes every field of the structure it is
-    // given, so it may be read afterwards. The fields that are set are set through
-    // `PyConfig_SetBytesString`, which copies the NUL-terminated strings that `executable`
-    // and `home` own until the end of this function. The structure is cleared once,
-    // after its last use. `Py_InitializeFromConfig` is called once per process: the caller
-    // holds the lock of `STARTED` and has seen that no interpreter is initialized. It
-    // returns with the interpreter lock held by this thread, which is what
-    // `PyEval_SaveThread` requires. A status's message is a static string or null.
+    // given, so its fields may be written and read afterwards; every access goes through
+    // the one raw pointer to it, which is valid until the end of the block. The strings
+    // are set through `PyConfig_SetBytesString`, which copies the NUL-terminated strings
+    // that `executable` and `home` own until the end of this function. The structure is
+    // cleared once, after its last use. `Py_InitializeFromConfig` is called once per
+    // process: the caller is the initializer of `STARTED` and has seen that no
+    // interpreter is initialized. On success it returns with the interpreter lock held by
+    // this thread, which is what `PyEval_SaveThread` requires. A status's message is a
+    // static string or null.
     unsafe {
-        let mut config = MaybeUninit::<ffi::PyConfig>::uninit();
-        ffi::PyConfig_InitPythonConfig(config.as_mut_ptr());
-        let config = config.assume_init_mut();
+        let mut storage = MaybeUninit::<ffi::PyConfig>::uninit();
+        let config = storage.as_mut_ptr();
+        ffi::PyConfig_InitPythonConfig(config);
         // as PyO3's own initialization: ctrl-c stays with the server, not with Python
-        config.install_signal_handlers = 0;
+        (*config).install_signal_handlers = 0;
         let mut status = ffi::PyStatus_Ok();
         if let Some(executable) = &executable {
-            let field = std::ptr::addr_of_mut!(config.executable);
+            let field = std::ptr::addr_of_mut!((*config).executable);
             status = ffi::PyConfig_SetBytesString(config, field, executable.as_ptr());
         }
         if let Some(home) = &home {
-            let field = std::ptr::addr_of_mut!(config.home);
+            let field = std::ptr::addr_of_mut!((*config).home);
             status = ffi::PyConfig_SetBytesString(config, field, home.as_ptr());
         }
         if ffi::PyStatus_Exception(status) == 0 {
