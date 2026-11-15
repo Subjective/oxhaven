@@ -530,3 +530,7 @@ PR 69 opened (second parity fixes). Fuzz against Java is now clean in every fami
 ## 2026-11-15 07:32 UTC
 
 PR 67 merged on green after the author fixed the merge break (one match arm). Main is at 80 of 83 replay scenarios clean; the remaining three are the update_by count-where and rolling formula scenarios, in flight.
+
+## 2026-11-15 07:38 UTC
+
+PR 69 (second parity fixes) merged on green, on a head that included PR 67.
