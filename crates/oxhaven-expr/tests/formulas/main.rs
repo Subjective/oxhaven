@@ -302,6 +302,12 @@ fn render(array: &ArrayRef) -> Vec<String> {
         DataType::Float64 => each(array.as_primitive::<Float64Type>().iter()),
         DataType::Utf8 => each(array.as_string::<i32>().iter()),
         DataType::Timestamp(_, _) => each(array.as_primitive::<TimestampNanosecondType>().iter()),
+        DataType::List(_) => each(
+            array
+                .as_list::<i32>()
+                .iter()
+                .map(|cell| cell.map(|cell| render(&cell).join(", "))),
+        ),
         other => panic!("no rendering for {other}"),
     }
 }

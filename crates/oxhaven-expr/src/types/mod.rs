@@ -11,7 +11,7 @@
 
 mod methods;
 
-use crate::functions::{self, Kernel, Resolved};
+use crate::functions::{self, vectors, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
 use oxhaven_contracts::expr::{BinaryOp, Expr, FormulaError, Literal, RowVariable, UnaryOp};
@@ -328,6 +328,11 @@ fn typed(column_type: ColumnType, node: Node) -> Typed {
     Typed { column_type, node }
 }
 
+/// Whether the value is a vector or an array.
+fn is_list(value: &Typed) -> bool {
+    value.column_type.list_element().is_some()
+}
+
 fn is_null_literal(expr: &Expr) -> bool {
     matches!(expr, Expr::Literal(Literal::Null))
 }
@@ -443,7 +448,7 @@ impl Checker<'_> {
                 | ColumnType::Double
                 | ColumnType::String
                 | ColumnType::Instant
-        );
+        ) || vectors::is_supported_list(&column_type);
         if !known {
             return Err(unsupported(format!(
                 "column {name} of type {column_type:?}"
@@ -558,6 +563,14 @@ impl Checker<'_> {
 
         let left = self.check(left)?;
         let right = self.check(right)?;
+        // Java turns an operator with a vector or array operand into `eqArray`,
+        // `lessArray` and their relatives, which compare element by element.
+        if is_list(&left) || is_list(&right) {
+            return Err(unsupported(format!(
+                "operator {} on a vector or array",
+                symbol(op)
+            )));
+        }
         match family {
             Family::Arithmetic(arithmetic) => self.arithmetic(op, arithmetic, left, right),
             Family::Bitwise(bitwise) => bitwise_operator(op, bitwise, left, right),
@@ -692,6 +705,11 @@ impl Checker<'_> {
             (false, false) => (self.check(if_true)?, self.check(if_false)?),
         };
         let Some(result) = ternary_type(&if_true.column_type, &if_false.column_type) else {
+            if is_list(&if_true) || is_list(&if_false) {
+                return Err(unsupported(
+                    "?: with a vector or array branch and a branch of another type",
+                ));
+            }
             return Err(type_error(format!(
                 "Incompatible types in condition operation not supported : {} {}",
                 java_name(&if_true.column_type),
@@ -735,7 +753,9 @@ impl Checker<'_> {
         if primitive(to) && primitive(&from) {
             return Ok(typed(to.clone(), Node::Cast(Box::new(operand))));
         }
-        if primitive(to) && matches!(from, ColumnType::String | ColumnType::Instant) {
+        if primitive(to)
+            && (matches!(from, ColumnType::String | ColumnType::Instant) || is_list(&operand))
+        {
             // `intCast(Object)`: null for null, and otherwise a ClassCastException.
             return Err(unsupported(format!(
                 "cast of {} to {}",
@@ -759,8 +779,10 @@ impl Checker<'_> {
         method: &str,
         arguments: &[Expr],
     ) -> Result<Typed, FormulaError> {
+        let length = method == crate::parse::LENGTH_FIELD;
         if let Expr::Column(name) = receiver {
-            let column = self.definition.index_of(name).is_some()
+            let column = length
+                || self.definition.index_of(name).is_some()
                 || name
                     .strip_suffix('_')
                     .is_some_and(|base| self.definition.index_of(base).is_some());
@@ -769,6 +791,19 @@ impl Checker<'_> {
             }
         }
         let receiver = self.check(receiver)?;
+        if is_list(&receiver) {
+            return self.vector_method(receiver, method, arguments);
+        }
+        if length {
+            return Err(unsupported("field access .length"));
+        }
+        if method == crate::parse::INDEX_METHOD {
+            // Java calls `get` on anything that is not an array.
+            return Err(unsupported(format!(
+                "an index on a value of type {}",
+                java_name(&receiver.column_type)
+            )));
+        }
         if Numeric::of(&receiver.column_type).is_some() {
             return Err(type_error(format!(
                 "cannot call .{method}() on a value of the primitive type {}",
@@ -840,6 +875,33 @@ impl Checker<'_> {
                 arguments: checked,
             },
         ))
+    }
+
+    /// A method of a vector or array, or an index into one; [`vectors::resolve_method`]
+    /// says which exist.
+    fn vector_method(
+        &mut self,
+        receiver: Typed,
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        let mut checked = vec![receiver];
+        for argument in arguments {
+            if is_null_literal(argument) {
+                return Err(unsupported(format!(
+                    "null literal as an argument of .{method}()"
+                )));
+            }
+            checked.push(self.check(argument)?);
+        }
+        let types: Vec<ColumnType> = checked[1..]
+            .iter()
+            .map(|argument| argument.column_type.clone())
+            .collect();
+        match vectors::resolve_method(&checked[0].column_type, method, &types)? {
+            Resolved::Call(call) => Ok(library_call(call, checked)),
+            _ => unreachable!("a method of a vector is a call"),
+        }
     }
 
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:
