@@ -9,6 +9,7 @@ use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
 mod asof;
+mod column_statistics;
 mod head_by;
 mod multi_join;
 mod range_join;
@@ -751,6 +752,51 @@ async fn filter_keeps_the_rows_every_condition_accepts() {
     let all = call(&mut c, filter(5, vec![])).await.unwrap();
     assert_eq!(all.size, 6);
     assert!(Arc::ptr_eq(&c.table(5), &c.table(1)));
+}
+
+#[tokio::test]
+async fn filter_searches_every_column_that_can_hold_the_text() {
+    use proto::condition::Data;
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let search = |text: &str, columns: &[&str]| {
+        condition(Data::Search(proto::SearchCondition {
+            search_string: text.to_string(),
+            optional_references: columns
+                .iter()
+                .map(|column| proto::Reference {
+                    column_name: column.to_string(),
+                })
+                .collect(),
+        }))
+    };
+    let filter = |result: i32, filter: proto::Condition| {
+        Op::Filter(FilterTableRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(1),
+            filters: vec![filter],
+        })
+    };
+
+    // text that is not a number is looked for in the string column only
+    call(&mut c, filter(2, search("A", &[]))).await.unwrap();
+    assert_eq!(values(c.table(2).as_ref(), "I"), ints(&[0, 2, 4]));
+    // a number is looked for in every column: I is 2 in one row, N in another
+    call(&mut c, filter(3, search("2", &[]))).await.unwrap();
+    assert_eq!(values(c.table(3).as_ref(), "I"), ints(&[1, 2]));
+    // only the named columns are searched; a name that is not a column is ignored
+    call(&mut c, filter(4, search("2", &["N", "Missing"])))
+        .await
+        .unwrap();
+    assert_eq!(values(c.table(4).as_ref(), "I"), ints(&[1]));
+    // no column can hold the text: no rows, not an error
+    let none = call(&mut c, filter(5, search("2", &["S"]))).await.unwrap();
+    assert_eq!(none.size, 0);
+
+    let negated = condition(Data::Not(Box::new(proto::NotCondition {
+        filter: Some(Box::new(search("a", &[]))),
+    })));
+    assert_internal(&call(&mut c, filter(6, negated)).await.unwrap_err());
 }
 
 #[tokio::test]

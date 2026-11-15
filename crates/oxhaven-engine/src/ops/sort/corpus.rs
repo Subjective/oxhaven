@@ -208,6 +208,13 @@ fn results_match_the_recorded_java_results() {
         "sort_multi_column/by_bool_down",
         "sort_multi_column/s_down_l_up",
         "sort_multi_column/s_then_i",
+        "ticking_blink_sort_head_tail/bottom_one",
+        "ticking_blink_sort_head_tail/first_two",
+        "ticking_blink_sort_head_tail/last_two",
+        "ticking_blink_sort_head_tail/none",
+        "ticking_blink_sort_head_tail/rev",
+        "ticking_blink_sort_head_tail/sorted_k",
+        "ticking_blink_sort_head_tail/top_two",
         "ticking_empty_start/s",
         "ticking_head_tail/bottom",
         "ticking_head_tail/head_many",
@@ -268,8 +275,8 @@ fn results_match_the_recorded_java_results() {
     ];
     assert_eq!(tally.compared, expected);
     // 101 tables of static scenarios at one step, and the ticking ones at every step:
-    // 4 at 3 steps, 1 at 5 steps, 1 at 6 steps, 22 at 8 steps, 26 at 9 steps.
-    assert_eq!(tally.comparisons, 101 + 4 * 3 + 5 + 6 + 22 * 8 + 26 * 9);
+    // 4 at 3 steps, 8 at 5 steps, 1 at 6 steps, 22 at 8 steps, 26 at 9 steps.
+    assert_eq!(tally.comparisons, 101 + 4 * 3 + 8 * 5 + 6 + 22 * 8 + 26 * 9);
     // Results of this test's operations that need an operation of another task, or an
     // input this test cannot make.
     let not_run = [
@@ -282,13 +289,6 @@ fn results_match_the_recorded_java_results() {
         "pipeline/ranked: agg_by",
         "pipeline/top: agg_by",
         "slice_positions/of_filtered: where",
-        "ticking_blink_sort_head_tail/sorted_k: blink input",
-        "ticking_blink_sort_head_tail/first_two: blink input",
-        "ticking_blink_sort_head_tail/last_two: blink input",
-        "ticking_blink_sort_head_tail/none: blink input",
-        "ticking_blink_sort_head_tail/top_two: blink input",
-        "ticking_blink_sort_head_tail/bottom_one: blink input",
-        "ticking_blink_sort_head_tail/rev: blink input",
         "ticking_head_tail/big_head: where",
         "ticking_head_tail/big_tail: where",
         "ticking_lazy_update_update_view/lazy_sorted: lazy_update",
