@@ -98,14 +98,16 @@ ConsoleService (console/mod.rs)          any build
 
 ## Build and CI
 
-- PyO3 0.27 finds `python3` on `PATH` at build time, or the Python `PYO3_PYTHON` names, and
-  links its shared libpython; the server then needs that libpython at run time
-  (`LD_LIBRARY_PATH`, if it is not in a directory the loader searches). No Python is needed
-  for the default build.
+- PyO3 0.27 chooses the Python to link when the server is built: the one `PYO3_PYTHON`
+  names, else the `python` of the virtual environment `VIRTUAL_ENV` names, else `python` or
+  `python3` on `PATH`. It links that Python's shared libpython, and the server then needs
+  that libpython at run time (`LD_LIBRARY_PATH`, if it is not in a directory the loader
+  searches). No Python is needed for the default build.
 - This machine: Python 3.13.18 in `/usr/local`, `libpython3.13.so` present, links and runs.
-- **Supported Python versions: 3.11 to 3.13.** 3.11 is the oldest that pandas 3 and
-  pyarrow 26 install on, the versions the reference's recordings were made with; 3.13 is
-  the newest the reference package declares and the one the oracle is pinned to.
+- **Supported Python versions: 3.11 to 3.14.** 3.11 is the oldest that pandas 3 and
+  pyarrow 26 install on, the versions the reference's recordings were made with; 3.14 is
+  the newest that PyO3 0.27 builds against. The reference package declares 3.9 to 3.13.
+  The oracle's environment, and so the script scenarios, are Python 3.13 only.
 - GitHub Actions (`.github/workflows/ci.yml`):
   - `python-console` runs clippy and the whole test suite of `oxhaven-server` with the
     feature, once on the oldest and once on the newest supported Python
@@ -178,35 +180,35 @@ made. The `oracle-replay` job sets `VIRTUAL_ENV` to it; locally, do the same:
 VIRTUAL_ENV=$PWD/oracle/.venv oracle/bin/ci-replay.sh
 ```
 
-`oracle/.venv` has to be made by the `python3` that the server is built with, which is
-Python 3.13 in both places: the pins install on no other supported version, and the server
-refuses an environment of another one. Without `VIRTUAL_ENV` the gate's server uses the
+`oracle/.venv` has to be made by the Python that the server is built with, which is
+Python 3.13 in both places, the version the oracle is pinned to; the server refuses an
+environment of another version. Without `VIRTUAL_ENV` the gate's server uses the
 linked Python's own packages, and its outcome is that machine's.
 
 ### Distribution: a binary per Python minor version
 
 The server stays a binary that embeds the interpreter, linked against one libpython minor
-version per build, and finds its packages as above. The alternative, the server as an
-extension module in a wheel (`pip install`, then `python -m oxhaven`, as `deephaven-server`
-starts Java), was weighed and not built:
+version per build, and finds its packages as above. A release ships one binary per supported
+Python minor version, each needing that version's libpython on the machine.
 
-- It does not remove the coupling to a Python version. PyO3's stable-ABI build (`abi3`)
-  would, but the console needs what the stable ABI does not have, among it the
-  initialization configuration used here and, with task 6.11, buffer access for numpy; a
-  wheel without `abi3` is one build per minor version, as the binary is.
-- It needs a second build of the crate that the tests cannot share: an extension module
-  must not link libpython, and the test binaries embed it. Every check would run twice or
-  the wheel would go untested.
-- The process then belongs to Python: the main thread, signal handling and the interpreter
-  lock are Python's, and the server's runtime has to live inside them. With the binary the
-  server owns the process and Python is a library in it, which is also what the lock order
-  above assumes.
-- What it would buy, `pip` owning the environment, a virtual environment already gives:
-  `pip install` what the scripts need into it and start the server there.
+The alternative was the server as an extension module in a wheel: `pip install`, then
+`python -m oxhaven`, as `deephaven-server` starts Java. Python then starts the server, not
+the other way round, and `pip` owns the environment. It was weighed and not built:
 
-A wheel remains possible later as packaging around the same crate; nothing here rules it
-out. What a release has to ship is one binary per supported Python minor version, each
-needing that version's libpython on the machine.
+- What it adds for a user is small once a virtual environment is honoured: `pip install`
+  what the scripts need into an environment and start the server in it.
+- It removes the coupling to a Python minor version only as a stable-ABI (`abi3`) wheel,
+  which confines the console to the stable ABI from then on. Any other wheel is one build
+  per minor version, as the binary is.
+- It is a second way to build the crate that the tests do not cover: an extension module
+  must not link libpython, and the test binaries, which embed the interpreter, must. The
+  checks would run on one form and users would get the other.
+- The process would be Python's: its main thread, its signal handling, its interpreter
+  lock held around the call that runs the server. With the binary the server owns the
+  process and Python is a library in it.
+
+Nothing here rules a wheel out later as packaging around the same crate. The embedded
+importer for the `deephaven` package serves both forms.
 
 ## Risks
 
