@@ -604,28 +604,63 @@ fn make_operator(
     let floating = is_floating(input_type);
     // The sums, averages, variances and weighted aggregations have no operator for a
     // vector or an array, as for a `String`. Every other aggregation takes one in Java, by
-    // its comparison and storage of objects, and the operators here read cells of the
-    // scalar types only.
-    let no_lists = |java_method: &str, column_type: &ColumnType| {
-        if column_type.list_element().is_some() {
+    // its comparison and storage of objects. A vector is a `Comparable`, ordered element
+    // by element (`Scalar::compare`), so the operators here take one whose elements are
+    // not themselves vectors or arrays. An array is not a `Comparable`: Java fails when it
+    // first compares two of them.
+    let vectors_only = |java_method: &str, column_type: &ColumnType| {
+        let vector_of_scalars = matches!(
+            column_type,
+            ColumnType::Vector(element) if element.list_element().is_none()
+        );
+        if column_type.list_element().is_some() && !vector_of_scalars {
             unported!(
                 "io.deephaven.engine.table.impl.by.AggregationProcessor",
                 "{java_method} for a column of type {column_type:?}"
             );
         }
     };
-    match spec {
-        AggSpec::Min | AggSpec::Max => no_lists("makeMinOrMaxOperator", input_type),
-        AggSpec::Distinct { .. } => no_lists("makeDistinctOperator", input_type),
-        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
-            no_lists("visit(AggSpecPercentile)", input_type);
+    // Observed: the operators that store their result as objects make its column without
+    // a component type, so a client receives the minimum of a vector of Booleans or of
+    // Instants as a list of strings. The first, the last and the sorted first and last
+    // read the input column itself, and keep its type.
+    let typed_result = |java_method: &str| {
+        if let ColumnType::Vector(element) = input_type {
+            if matches!(**element, ColumnType::Boolean | ColumnType::Instant) {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                    "{java_method} for a column of type {input_type:?}, whose result Java \
+                     gives without its component type"
+                );
+            }
         }
-        AggSpec::CountDistinct { .. } => no_lists("makeCountDistinctOperator", input_type),
-        AggSpec::Unique { .. } => no_lists("makeUniqueOperator", input_type),
+    };
+    match spec {
+        AggSpec::Min | AggSpec::Max => typed_result("makeMinOrMaxOperator"),
+        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
+            typed_result("visit(AggSpecPercentile)");
+        }
+        AggSpec::Unique { .. } => typed_result("makeUniqueOperator"),
+        _ => {}
+    }
+    match spec {
+        AggSpec::Min | AggSpec::Max => vectors_only("makeMinOrMaxOperator", input_type),
+        // The result would be a vector of vectors.
+        AggSpec::Distinct { .. } if input_type.list_element().is_some() => {
+            unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                "makeDistinctOperator for a column of type {input_type:?}"
+            );
+        }
+        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
+            vectors_only("visit(AggSpecPercentile)", input_type);
+        }
+        AggSpec::CountDistinct { .. } => vectors_only("makeCountDistinctOperator", input_type),
+        AggSpec::Unique { .. } => vectors_only("makeUniqueOperator", input_type),
         AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => {
-            no_lists("addSortedFirstOrLastOperator", input_type);
+            vectors_only("addSortedFirstOrLastOperator", input_type);
             for name in columns {
-                no_lists(
+                vectors_only(
                     "addSortedFirstOrLastOperator",
                     &definition.columns()[column(name)?].column_type,
                 );
