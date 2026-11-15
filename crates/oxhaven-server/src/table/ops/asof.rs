@@ -43,7 +43,7 @@ fn column_name(text: &str) -> Result<&str, String> {
 /// `=`, so `A===B` is refused for the name `=B`.
 ///
 /// Behavior: `io.deephaven.api.JoinMatch#parse`
-fn join_match(text: &str) -> Result<JoinMatch, String> {
+pub(super) fn join_match(text: &str) -> Result<JoinMatch, String> {
     let Some((left, right)) = text.split_once('=') else {
         return column_name(text).map(JoinMatch::same);
     };
@@ -60,7 +60,7 @@ fn join_match(text: &str) -> Result<JoinMatch, String> {
 /// the name `=B`.
 ///
 /// Behavior: `io.deephaven.api.JoinAddition#parse`
-fn join_addition(text: &str) -> Result<JoinAddition, String> {
+pub(super) fn join_addition(text: &str) -> Result<JoinAddition, String> {
     let Some((name, source)) = text.split_once('=') else {
         return column_name(text).map(JoinAddition::same);
     };

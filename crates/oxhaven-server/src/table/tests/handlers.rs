@@ -10,6 +10,7 @@ use oxhaven_proto::grpc::SortDescriptor;
 
 mod asof;
 mod head_by;
+mod multi_join;
 mod range_join;
 mod ungroup;
 mod update_by;
@@ -57,6 +58,7 @@ async fn call(c: &mut Connected, op: Op) -> Result<ExportedTableCreationResponse
         Op::Raj(r) => c.client.raj_tables(c.auth(r)).await,
         Op::AsOfJoin(r) => c.client.as_of_join_tables(c.auth(r)).await,
         Op::RangeJoin(r) => c.client.range_join_tables(c.auth(r)).await,
+        Op::MultiJoin(r) => c.client.multi_join_tables(c.auth(r)).await,
         Op::Snapshot(r) => c.client.snapshot(c.auth(r)).await,
         Op::SnapshotWhen(r) => c.client.snapshot_when(c.auth(r)).await,
         Op::UpdateBy(r) => c.client.update_by(c.auth(r)).await,

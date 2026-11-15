@@ -299,13 +299,18 @@ fn time_table_of(graph: &Arc<dyn UpdateGraph>, operation: &Value) -> Built {
 
 /// Builds the table of one of the test's operations from the operation and the tables it
 /// is defined from, in the order of its keys `source` (or `sources`, or `left`), `trigger`
-/// and `right`.
+/// and `right`, or of its `inputs`.
 pub(crate) type Define<'a> = &'a dyn Fn(&Value, &[Arc<dyn Table>]) -> Built;
 
 /// The names of the tables `operation` is defined from, in the order [`Define`] takes them.
 fn sources(operation: &Value) -> Vec<&str> {
     if !operation["sources"].is_null() {
         return list(&operation["sources"]).iter().map(text).collect();
+    }
+    // A `multi_join` names a table in each of its inputs.
+    if !operation["inputs"].is_null() {
+        let inputs = list(&operation["inputs"]).iter();
+        return inputs.map(|input| text(&input["table"])).collect();
     }
     ["source", "left", "trigger", "right"]
         .iter()
