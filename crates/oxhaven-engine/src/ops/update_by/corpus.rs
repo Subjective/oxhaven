@@ -1,8 +1,9 @@
 //! `update_by` against the results recorded from the Java reference server in
 //! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`),
-//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`)
-//!
-//! and `fixtures/java_update_by_group.json` (`fixtures/record_java_update_by_group.py`).
+//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`),
+//! `fixtures/java_update_by_group.json` (`fixtures/record_java_update_by_group.py`) and
+//! `fixtures/java_update_by_count_where.json`
+//! (`fixtures/record_java_update_by_count_where.py`).
 //!
 //! Values are compared exactly, floating point cells bit for bit (any NaN equals any
 //! NaN). The tolerance of PARITY.md's allowed difference A1 is not used: the operators
@@ -11,7 +12,7 @@
 
 use super::values::Values;
 use super::{
-    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::graph::SteppedUpdateGraph;
@@ -42,6 +43,8 @@ const GROUP_LONG: usize = 28;
 const GROUP_TIMED: usize = 1;
 const GROUP_STAMPED: usize = 201;
 const GROUP_BURST: usize = 156;
+/// The count-where operators.
+const RECORDED_COUNT_WHERE: &str = include_str!("fixtures/java_update_by_count_where.json");
 
 fn column_type(name: &str) -> ColumnType {
     match name {
@@ -201,6 +204,15 @@ fn operation(op: &Value) -> UpdateByOperation {
         "ems" => UpdateBySpec::Ems(em(op)),
         "emmin" => UpdateBySpec::EmMin(em(op)),
         "emmax" => UpdateBySpec::EmMax(em(op)),
+        "cum_count_where" => UpdateBySpec::CumCountWhere {
+            result_column: op["result"].as_str().unwrap().into(),
+            filters: strings(&op["filters"]).into_iter().map(String::from).collect(),
+        },
+        "rolling_count_where" => UpdateBySpec::RollingCountWhere {
+            window: window(op),
+            result_column: op["result"].as_str().unwrap().into(),
+            filters: strings(&op["filters"]).into_iter().map(String::from).collect(),
+        },
         other => panic!("no operation {other}"),
     };
     let columns: Vec<&str> = op["columns"]
@@ -224,7 +236,7 @@ fn strings(value: &Value) -> Vec<&str> {
 fn run(source: &Arc<dyn Table>, ops: &Value, by: &Value) -> Result<Arc<dyn Table>, UpdateByError> {
     let operations: Vec<UpdateByOperation> =
         ops.as_array().unwrap().iter().map(operation).collect();
-    update_by(source, &operations, &strings(by))
+    update_by_with(source, &operations, &strings(by), &oxhaven_expr::Compiler)
 }
 
 /// PARITY.md, Must match item 5: bit for bit, except that every NaN is the same NaN.
@@ -527,6 +539,45 @@ fn results_over_bursts_of_rows_match_java() {
             &["R"]
         }
     });
+}
+
+#[test]
+fn static_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "static", 231);
+}
+
+#[test]
+fn long_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "long", 64);
+}
+
+/// Count-where over windows in time, in rows and cumulative, over a table with rows that
+/// have no timestamp.
+#[test]
+fn timed_results_of_the_count_where_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "timed", 250);
+}
+
+#[test]
+fn timed_results_of_the_count_where_with_every_timestamp_match_java() {
+    static_section(RECORDED_COUNT_WHERE, "stamped", 250);
+}
+
+/// The scenario `timed_bucketed` ends when Java's table fails: its filters read the
+/// timestamp column, an `Instant`, and an update computes rows whose windows no row
+/// enters (see `CountWhere::rolling`).
+#[test]
+fn ticking_results_of_the_count_where_match_java() {
+    ticking_scenarios(RECORDED_COUNT_WHERE, 5);
+    let recorded: Value = serde_json::from_str(RECORDED_COUNT_WHERE).unwrap();
+    let failed: Vec<&str> = recorded["ticking"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|scenario| scenario["steps"].as_array().unwrap().last().unwrap()["failed"] == true)
+        .map(|scenario| scenario["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(failed, ["timed_bucketed"]);
 }
 
 #[test]

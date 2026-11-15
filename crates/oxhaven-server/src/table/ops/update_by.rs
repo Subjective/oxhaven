@@ -11,15 +11,22 @@
 //!
 //! An operator the engine has not ported (`ops::update_by` lists them) passes the request
 //! checks and is then refused by the engine's `unported!`, which the service answers
-//! `UNIMPLEMENTED`. Java checks the formula of a rolling formula and the filters of the
-//! count-where operators against the table before it runs them
-//! (`UpdateByGrpcImpl#validateFormulas`); those operators are among the ones not ported, so
-//! no such check is made here.
+//! `UNIMPLEMENTED`.
+//!
+//! Java checks the filters of the count-where operators of every operation against the
+//! table with its `ColumnExpressionValidator` before it runs any of them
+//! (`UpdateByGrpcImpl#validateFormulas`). Here the engine makes the filters with the
+//! formula compiler, which knows only the function library, so a filter Java's validator
+//! refuses does not compile (see `select.rs`); both servers answer `INVALID_ARGUMENT` with
+//! an error id, whichever operation the fault is in. The count-where requests whose result
+//! in Java is not a function of the table are answered `UNIMPLEMENTED`: without filters
+//! here, the others by the engine (`ops::update_by::count_where`). The formula of a
+//! rolling formula is not checked: that operator is not ported.
 
 use super::prelude::*;
 use super::time_table::parse_duration_nanos;
 use oxhaven_engine::ops::update_by::{
-    update_by, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
+    update_by_with, BadDataBehavior, DeltaControl, EmSpec, RollingWindow, UpdateByError,
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use oxhaven_proto::grpc as proto;
@@ -535,7 +542,7 @@ impl TableOp for Handler {
     ///
     /// Behavior: `UpdateByGrpcImpl#create`
     fn create(
-        _context: &OpContext,
+        context: &OpContext,
         request: &UpdateByRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
@@ -557,10 +564,25 @@ impl TableOp for Handler {
             )
             .into());
         }
-        Ok(update_by(
+        // The engine panics with `unported!` for a count-where without filters, whose
+        // count Java leaves undefined; a request for one is refused here instead.
+        let unfiltered = operations.iter().any(|operation| match &operation.spec {
+            UpdateBySpec::CumCountWhere { filters, .. }
+            | UpdateBySpec::RollingCountWhere { filters, .. } => filters.is_empty(),
+            _ => false,
+        });
+        if unfiltered {
+            return Err(not_ported(
+                "io.deephaven.engine.table.impl.updateby.countwhere.CountWhereOperator.Context#applyFilters",
+                "a count-where without filters",
+            )
+            .into());
+        }
+        Ok(update_by_with(
             &sources[0],
             &operations,
             &request.group_by_columns,
+            context.compiler.as_ref(),
         )?)
     }
 }

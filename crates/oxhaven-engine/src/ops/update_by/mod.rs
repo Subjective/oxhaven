@@ -14,10 +14,11 @@
 //! | rolling sum, average, minimum, maximum, count, product, over rows or time | yes |
 //! | rolling standard deviation and weighted average, over rows or time | yes |
 //! | rolling group, over rows or time | yes |
-//! | rolling formula, count-where | no (`unported!`) |
+//! | rolling count-where, over rows or time | yes, with a formula compiler |
+//! | rolling formula | no (`unported!`) |
 //! | exponential moving average, sum, minimum, maximum, decaying by ticks or time | yes |
 //! | exponential moving standard deviation, decaying by ticks or time | yes |
-//! | cumulative count-where | no (`unported!`) |
+//! | cumulative count-where | yes, with a formula compiler |
 //!
 //! One `update_by` takes at most one timestamp column, for all operations in time. Within
 //! a bucket its values must not decrease, nulls aside.
@@ -34,6 +35,7 @@
 //! columns. A row whose bucket columns changed leaves its bucket and joins another, as a
 //! removed and an added row.
 
+mod count_where;
 mod cumulative;
 mod em;
 mod group;
@@ -51,9 +53,11 @@ use crate::table::{tracked_source, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use arrow::array::UInt32Array;
 use arrow::compute::take;
+use count_where::CountWhere;
 use cumulative::Cumulative;
 use em::{Em, EmKind, StdState};
 use oxhaven_column::WritableSource;
+use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -236,6 +240,9 @@ fn invalid(message: impl Into<String>) -> UpdateByError {
 /// The parent's columns and the results of `operations`, computed per bucket of rows with
 /// equal values in the `by` columns.
 ///
+/// The count-where operators need a formula compiler for their filters and are refused
+/// here; [`update_by_with`] takes one.
+///
 /// # Panics
 /// With `unported!` for the operations the module documentation lists as not ported.
 ///
@@ -245,8 +252,28 @@ pub fn update_by<S: AsRef<str>>(
     operations: &[UpdateByOperation],
     by: &[S],
 ) -> Result<Arc<dyn Table>, UpdateByError> {
+    update_by_inner(parent, operations, by, None)
+}
+
+/// [`update_by`], with the compiler of the formulas among the filters of the count-where
+/// operators.
+pub fn update_by_with<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    operations: &[UpdateByOperation],
+    by: &[S],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, UpdateByError> {
+    update_by_inner(parent, operations, by, Some(compiler))
+}
+
+fn update_by_inner<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    operations: &[UpdateByOperation],
+    by: &[S],
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<Arc<dyn Table>, UpdateByError> {
     let by: Vec<&str> = by.iter().map(AsRef::as_ref).collect();
-    let plan = Arc::new(Plan::new(parent, operations, &by)?);
+    let plan = Arc::new(Plan::new(parent, operations, &by, compiler)?);
     let table = QueryTable::derive(parent, || {
         let rows = parent.row_set();
         let state = plan.initialize(&rows)?;
@@ -275,15 +302,24 @@ enum Kernel {
     Rolling(Rolling),
     /// The rolling group: a vector of the input values over the window.
     Group,
+    /// The count of the rows, up to the current one or in its window, that pass the
+    /// column's filters.
+    CountWhere,
     Em(Em),
 }
 
 /// One result column.
 struct Column {
     kernel: Kernel,
-    /// Index of the input column in the parent.
+    /// Index of the input column in the parent. A count-where has none: it reads the
+    /// columns of its filters.
     input: usize,
     input_type: ColumnType,
+    /// The parent columns whose modification changes the result, the timestamp column
+    /// aside.
+    reads: Vec<usize>,
+    /// The filters of a count-where.
+    filters: Option<CountWhere>,
     output: Arc<WritableSource>,
     /// Index of the result column in the result.
     result: usize,
@@ -455,13 +491,12 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
             ticks_of(window)?;
             unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingFormulaOperator")
         }
+        // Behavior: UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator
         UpdateBySpec::RollingCountWhere { window, .. } => {
-            ticks_of(window)?;
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator")
+            let (window, column) = rolling_window(window)?;
+            Ok((Kernel::CountWhere, window, column))
         }
-        UpdateBySpec::CumCountWhere { .. } => {
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator")
-        }
+        UpdateBySpec::CumCountWhere { .. } => Ok((Kernel::CountWhere, Window::Cumulative, None)),
         UpdateBySpec::Ema(spec) => Ok(em_of(EmKind::Average, spec)),
         UpdateBySpec::Ems(spec) => Ok(em_of(EmKind::Sum, spec)),
         UpdateBySpec::EmMin(spec) => Ok(em_of(EmKind::Min, spec)),
@@ -498,6 +533,9 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
         Kernel::Cumulative(Cumulative::Delta(_))
         | Kernel::Rolling(Rolling::Std | Rolling::WAvg)
         | Kernel::Em(_) => numeric || character,
+        // Behavior: `CumCountWhereSpec#applicableTo` and `RollingCountWhereSpec#applicableTo`;
+        // the operator takes no input columns.
+        Kernel::CountWhere => true,
     }
 }
 
@@ -509,6 +547,7 @@ impl Plan {
         parent: &Arc<dyn Table>,
         operations: &[UpdateByOperation],
         by: &[&str],
+        compiler: Option<&dyn FormulaCompiler>,
     ) -> Result<Plan, UpdateByError> {
         let declared = parent.definition().columns();
         if operations.is_empty() {
@@ -536,6 +575,46 @@ impl Plan {
                     }
                     Some(_) => {}
                 }
+            }
+            // Behavior: UpdateByOperatorFactory.OperationVisitor#visit(CumCountWhereSpec) and
+            // #visit(RollingCountWhereSpec), which make one operator, whatever the column
+            // pairs of the operation, and UpdateByOperatorFactory.OutputColumnVisitor
+            if let UpdateBySpec::CumCountWhere {
+                result_column,
+                filters,
+            }
+            | UpdateBySpec::RollingCountWhere {
+                result_column,
+                filters,
+                ..
+            } = &operation.spec
+            {
+                let filters = count_where::filters(&**parent, filters, compiler)?;
+                let (output, position) = register(
+                    &mut result,
+                    &mut replaced,
+                    &mut names,
+                    &mut duplicates,
+                    &mut windows,
+                    columns.len(),
+                    result_column,
+                    ColumnType::Long,
+                    window,
+                    &graph,
+                );
+                columns.push(Column {
+                    kernel,
+                    input: 0,
+                    input_type: ColumnType::Long,
+                    reads: filters.columns().to_vec(),
+                    filters: Some(filters),
+                    output,
+                    result: position,
+                    timed: timestamp_column.is_some(),
+                    weight: None,
+                    std_state: None,
+                });
+                continue;
             }
             let pairs = if operation.columns.is_empty() {
                 declared
@@ -599,6 +678,7 @@ impl Plan {
                     Kernel::Rolling(kernel) => kernel.output_type(&input_type),
                     Kernel::Group => Some(group::output_type(&input_type)),
                     Kernel::Em(_) => Em::output_type(&input_type),
+                    Kernel::CountWhere => Some(ColumnType::Long),
                 }
                 .ok_or_else(|| {
                     invalid(format!(
@@ -606,35 +686,28 @@ impl Plan {
                         operation.spec
                     ))
                 })?;
-                if !names.insert(output_name.clone()) {
-                    duplicates.push(output_name.clone());
-                }
-                let definition = ColumnDefinition::new(output_name.clone(), output_type.clone());
-                let position = match result.iter().position(|c| c.name == output_name) {
-                    Some(position) => {
-                        result[position] = definition;
-                        replaced.insert(position);
-                        position
-                    }
-                    None => {
-                        result.push(definition);
-                        result.len() - 1
-                    }
-                };
-                let output = match &graph {
-                    Some(graph) => tracked_source(graph, output_type),
-                    None => Arc::new(WritableSource::new(output_type)),
-                };
-                match windows.iter_mut().find(|(w, _)| *w == window) {
-                    Some((_, members)) => members.push(columns.len()),
-                    None => windows.push((window, vec![columns.len()])),
-                }
+                let (output, position) = register(
+                    &mut result,
+                    &mut replaced,
+                    &mut names,
+                    &mut duplicates,
+                    &mut windows,
+                    columns.len(),
+                    &output_name,
+                    output_type,
+                    window,
+                    &graph,
+                );
                 let std_state = matches!(kernel, Kernel::Em(em) if em.kind == EmKind::Std)
                     .then(|| [(); 2].map(|()| WritableSource::new(ColumnType::Double)));
                 columns.push(Column {
                     kernel,
                     input,
                     input_type,
+                    reads: std::iter::once(input)
+                        .chain(weight.as_ref().map(|(index, _)| *index))
+                        .collect(),
+                    filters: None,
                     output,
                     result: position,
                     timed: timestamp_column.is_some(),
@@ -707,6 +780,14 @@ impl Plan {
             timestamp,
             transformer,
         })
+    }
+
+    /// The filters of a count-where column.
+    fn filters<'a>(&self, column: &'a Column) -> Result<&'a CountWhere, TableFailure> {
+        column
+            .filters
+            .as_ref()
+            .ok_or_else(|| failure("update_by: a count-where without its filters"))
     }
 
     fn result_columns(&self) -> Vec<Arc<dyn ColumnSource>> {
@@ -914,6 +995,24 @@ impl Plan {
                 };
                 for &member in members {
                     let column = &self.columns[member];
+                    if let Kernel::CountWhere = column.kernel {
+                        let seed = match &before {
+                            None => 0,
+                            Some(before) => {
+                                match Values::read(&column.output.chunk(before)?, &ColumnType::Long)? {
+                                    Values::Int(v) => v[0].ok_or_else(|| {
+                                        internal("a cumulative count-where that is null")
+                                    })?,
+                                    _ => return Err(internal("a count of another type")),
+                                }
+                            }
+                        };
+                        let counts =
+                            self.filters(column)?
+                                .cumulative(&*self.parent, affected, seed)?;
+                        column.output.fill(affected, &counts)?;
+                        continue;
+                    }
                     let input = self.parent.column(column.input);
                     let values = input.chunk(affected)?;
                     let results = match column.kernel {
@@ -988,7 +1087,7 @@ impl Plan {
                             };
                             em.accumulate(&column.input_type, &values, &stamps, seed)?
                         }
-                        Kernel::Rolling(_) | Kernel::Group => {
+                        Kernel::Rolling(_) | Kernel::Group | Kernel::CountWhere => {
                             return Err(internal("a rolling operator in the cumulative window"))
                         }
                     };
@@ -1011,6 +1110,18 @@ impl Plan {
                             let slices = positions.iter().map(|at| ticks.slice(rows, at));
                             let results =
                                 group::vectors(&*self.parent.column(column.input), slices)?;
+                            column.output.fill(affected, &results)?;
+                            continue;
+                        }
+                        Kernel::CountWhere => {
+                            let entering: Vec<usize> =
+                                slides.iter().map(|slide| slide.push).collect();
+                            self.filters(column)?.check_chunks(&entering)?;
+                            let results = self.filters(column)?.rolling(
+                                &*self.parent,
+                                &influencers,
+                                &slides,
+                            )?;
                             column.output.fill(affected, &results)?;
                             continue;
                         }
@@ -1075,6 +1186,17 @@ impl Plan {
                         Kernel::Group => {
                             let values = self.parent.column(column.input).chunk(&influencers)?;
                             group::windows(&column.input_type, &values, &slides)?
+                        }
+                        // A row without a timestamp gets a null count.
+                        Kernel::CountWhere => {
+                            let mut pushes = slides.iter().map(|slide| slide.push);
+                            let entering: Vec<usize> = stamps
+                                .iter()
+                                .map(|stamp| stamp.and_then(|_| pushes.next()).unwrap_or(0))
+                                .collect();
+                            self.filters(column)?.check_chunks(&entering)?;
+                            self.filters(column)?
+                                .rolling(&*self.parent, &influencers, &slides)?
                         }
                         _ => return Err(internal("a cumulative operator in a rolling window")),
                     };
@@ -1286,11 +1408,7 @@ impl Plan {
             let input_modified = |member: &usize| {
                 let column = &self.columns[*member];
                 columns_modified
-                    && (upstream.modified_columns.contains(column.input)
-                        || column
-                            .weight
-                            .as_ref()
-                            .is_some_and(|(weight, _)| upstream.modified_columns.contains(*weight))
+                    && (upstream.modified_columns.contains_any(&column.reads)
                         || (column.timed && timestamps_modified))
             };
             for (window, members) in &self.windows {
@@ -1359,6 +1477,49 @@ impl Plan {
             modified_columns,
         })
     }
+}
+
+/// Adds a result column named `name` of type `output_type` to the result definition, in
+/// the place of a column of that name if there is one, and to the columns of its window;
+/// `index` is the index the column will have among the result columns. Returns its source
+/// and its place in the result.
+#[allow(clippy::too_many_arguments)]
+fn register(
+    result: &mut Vec<ColumnDefinition>,
+    replaced: &mut BTreeSet<usize>,
+    names: &mut BTreeSet<String>,
+    duplicates: &mut Vec<String>,
+    windows: &mut Vec<(Window, Vec<usize>)>,
+    index: usize,
+    name: &str,
+    output_type: ColumnType,
+    window: Window,
+    graph: &Option<Arc<dyn oxhaven_contracts::graph::UpdateGraph>>,
+) -> (Arc<WritableSource>, usize) {
+    if !names.insert(name.to_owned()) {
+        duplicates.push(name.to_owned());
+    }
+    let definition = ColumnDefinition::new(name, output_type.clone());
+    let position = match result.iter().position(|c| c.name == name) {
+        Some(position) => {
+            result[position] = definition;
+            replaced.insert(position);
+            position
+        }
+        None => {
+            result.push(definition);
+            result.len() - 1
+        }
+    };
+    let output = match graph {
+        Some(graph) => tracked_source(graph, output_type),
+        None => Arc::new(WritableSource::new(output_type)),
+    };
+    match windows.iter_mut().find(|(w, _)| *w == window) {
+        Some((_, members)) => members.push(index),
+        None => windows.push((window, vec![index])),
+    }
+    (output, position)
 }
 
 /// The rows of a bucket the cumulative operators recompute: all from the first row that
