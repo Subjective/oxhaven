@@ -13,7 +13,7 @@ use super::*;
 use crate::graph::SteppedUpdateGraph;
 use arrow::array::{BooleanArray, StringArray, TimestampNanosecondArray};
 use oxhaven_contracts::graph::UpdateGraph;
-use oxhaven_testkit::{list_of, TableChange};
+use oxhaven_testkit::{list_of, ConsistencyChecker, TableChange};
 
 fn group(pairs: &[&str]) -> Aggregation {
     agg(AggSpec::Group, pairs)
@@ -569,4 +569,69 @@ fn a_group_of_a_ticking_group_reads_vectors_as_elements() {
     let change = TableChange::new().add([5, 6], kid_values(&[("b", 9, 0.0), ("c", 8, 0.0)]));
     fixture.step(change);
     assert_eq!(rows(&*outer), ["[a, b, c]|[[1, 3], [2, 9], [8]]"]);
+}
+
+/// The aggregations that compare take a vector column, and follow it when rows join it,
+/// leave it and change: the parent here removes and modifies rows, so the minimum and the
+/// maximum are kept as the others are, in a sorted multiset of the group's vectors.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.ssmminmax.SsmChunkedMinMaxOperator and the
+/// operators over io.deephaven.engine.table.impl.ssms.ObjectSegmentedSortedMultiset, with
+/// io.deephaven.vector.IntVector#compareTo
+#[test]
+fn aggregations_of_a_ticking_vector_column_follow_its_changes() {
+    let fixture = Fixture::new(&three_rows(), &[0, 1, 2], vec![group(&["V = I"])], &["K"]);
+    let aggregations = vec![
+        agg(AggSpec::Min, &["Min = V"]),
+        agg(AggSpec::Max, &["Max = V"]),
+        agg(
+            AggSpec::Median {
+                average_evenly_divided: true,
+            },
+            &["Median = V"],
+        ),
+        agg(
+            AggSpec::Unique {
+                include_nulls: false,
+                non_unique: Sentinel::Null,
+            },
+            &["Unique = V"],
+        ),
+        agg(AggSpec::CountDistinct { count_nulls: false }, &["N = V"]),
+    ];
+    let over = agg_by(&fixture.result, &aggregations, &[]);
+    assert_eq!(schema(&*over)[0].1, ColumnType::vector(ColumnType::Int));
+    let checker = {
+        let parent = fixture.result.clone();
+        ConsistencyChecker::attach_with_recompute(over.clone(), move || {
+            agg_by(&static_copy(&*parent), &aggregations, &[])
+        })
+    };
+    // a is [1, 3] and b is [2]
+    assert_eq!(rows(&*over), ["[1, 3]|[2]|[2]|null|2"]);
+
+    // a becomes [1, 3, 0] and c arrives as [1], the start of it
+    fixture.step(TableChange::new().add([5, 6], kid_values(&[("c", 1, 0.0), ("a", 0, 0.0)])));
+    checker.assert_consistent();
+    assert_eq!(rows(&*over), ["[1]|[2]|[1, 3, 0]|null|3"]);
+
+    // b and c leave
+    fixture.step(TableChange::new().remove([1, 5]));
+    checker.assert_consistent();
+    assert_eq!(rows(&*over), ["[1, 3, 0]|[1, 3, 0]|[1, 3, 0]|[1, 3, 0]|1"]);
+
+    // a row of a moves to a new group: a is [1, 0] and d is [3]
+    fixture.step(TableChange::new().modify([2], [(0, strs(&["d"]))]));
+    checker.assert_consistent();
+    assert_eq!(rows(&*over), ["[1, 0]|[3]|[3]|null|2"]);
+
+    // the two groups become equal vectors
+    fixture.step(
+        TableChange::new()
+            .remove([6])
+            .modify([2], [(1, ints(&[Some(1)]))]),
+    );
+    checker.assert_consistent();
+    assert_eq!(rows(&*over), ["[1]|[1]|[1]|[1]|1"]);
+    assert!(checker.updates_seen() >= 4);
 }

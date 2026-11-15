@@ -291,8 +291,10 @@ impl Rolling {
                 Boolean | Byte | Char | Short | Int | Long | Float | Double => Some(Double),
                 _ => None,
             },
+            // A Boolean is a `Comparable`, so Java makes its operator of objects for it,
+            // which fails once it is given rows: see `evaluate`.
             Rolling::Min | Rolling::Max => match input {
-                Byte | Char | Short | Int | Long | Instant | Float | Double | String => {
+                Byte | Char | Short | Int | Long | Instant | Float | Double | String | Boolean => {
                     Some(input.clone())
                 }
                 _ => None,
@@ -320,6 +322,14 @@ impl Rolling {
         let output = self
             .output_type(input)
             .ok_or_else(|| failure("no rolling operator for this column type"))?;
+        if matches!(self, Rolling::Min | Rolling::Max) && *input == ColumnType::Boolean {
+            // Behavior: io.deephaven.engine.table.impl.updateby.rollingminmax
+            // .ComparableRollingMinMaxOperator.Context#setValueChunks, which casts the chunk
+            // of bytes that a Boolean column is read as to a chunk of objects. It is called
+            // for every chunk of rows, so a table without rows has the operation, and loses
+            // it with its first row.
+            return Err(failure(super::BOOLEAN_AS_OBJECTS));
+        }
         let values = if self == Rolling::Count && *input == ColumnType::String {
             // Only nullness matters to a count.
             Values::Int(

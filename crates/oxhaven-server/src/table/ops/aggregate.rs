@@ -16,7 +16,7 @@
 
 use super::prelude::*;
 use oxhaven_engine::ops::agg::{
-    aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel as NonUnique,
+    aggregate_all_with, aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel as NonUnique,
 };
 use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::agg_spec::Type as SpecType;
@@ -512,13 +512,14 @@ fn agg_all_by(
             "aggAllBy has no columns to aggregate".to_string(),
         ));
     }
-    run(
-        context,
+    let group_by: Vec<&str> = group_by.iter().map(String::as_str).collect();
+    Ok(aggregate_all_with(
         parent,
-        &[Aggregation::columns(kind, pairs)],
-        false,
-        group_by,
-    )
+        kind,
+        pairs,
+        &group_by,
+        context.compiler.as_ref(),
+    )?)
 }
 
 /// The engine's spec for a combo aggregate type other than `COUNT`, which has none. A type

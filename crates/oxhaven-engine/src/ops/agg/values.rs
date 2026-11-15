@@ -1,12 +1,13 @@
 //! Column values as the aggregation operators see them.
 //!
 //! Operators are written once for all column types. A chunk of an input column is decoded
-//! into one of four shapes ([`Values`]), and single values are carried as [`Scalar`]s.
+//! into one of five shapes ([`Values`]), and single values are carried as [`Scalar`]s.
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
+    Int64Array, Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
 };
+use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::{DataType, Float64Type, Int64Type};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
@@ -29,11 +30,14 @@ pub enum Shape {
     Double,
     Bool,
     Str,
+    /// A vector or an array, of elements of any shape.
+    List,
 }
 
 impl Shape {
     pub fn of(column_type: &ColumnType) -> Shape {
         match column_type {
+            _ if column_type.list_element().is_some() => Shape::List,
             ColumnType::Float | ColumnType::Double => Shape::Double,
             ColumnType::Boolean => Shape::Bool,
             ColumnType::String => Shape::Str,
@@ -49,6 +53,8 @@ pub enum Values {
     Doubles(Float64Array),
     Bools(BooleanArray),
     Strings(StringArray),
+    /// The cells of a vector or array column: a [`Scalar::List`] or a null each.
+    Lists(Vec<Scalar>),
 }
 
 impl Values {
@@ -78,6 +84,26 @@ impl Values {
                     .ok_or_else(|| failure("a String column must hold a string array"))?
                     .clone(),
             ),
+            Shape::List => {
+                let (Some(element), Some(list)) =
+                    (column_type.list_element(), array.as_list_opt::<i32>())
+                else {
+                    return Err(failure("a vector or array column must hold a list array"));
+                };
+                let elements = Values::decode(element, list.values())?;
+                let offsets = list.value_offsets();
+                Values::Lists(
+                    (0..list.len())
+                        .map(|row| {
+                            if list.is_null(row) {
+                                return Scalar::Null;
+                            }
+                            let cells = offsets[row] as usize..offsets[row + 1] as usize;
+                            Scalar::List(cells.map(|at| elements.scalar(at)).collect())
+                        })
+                        .collect(),
+                )
+            }
         })
     }
 
@@ -87,6 +113,7 @@ impl Values {
             Values::Doubles(a) => a.len(),
             Values::Bools(a) => a.len(),
             Values::Strings(a) => a.len(),
+            Values::Lists(cells) => cells.len(),
         }
     }
 
@@ -120,6 +147,7 @@ impl Values {
             Values::Doubles(a) if a.is_valid(position) => Scalar::Double(a.value(position)),
             Values::Bools(a) if a.is_valid(position) => Scalar::Bool(a.value(position)),
             Values::Strings(a) if a.is_valid(position) => Scalar::Str(a.value(position).into()),
+            Values::Lists(cells) => cells[position].clone(),
             _ => Scalar::Null,
         }
     }
@@ -271,6 +299,22 @@ pub enum Scalar {
     Double(f64),
     Bool(bool),
     Str(Arc<str>),
+    /// The elements of a vector or an array, each a value of the element type or a null.
+    List(Arc<[Scalar]>),
+}
+
+/// Java's ordering of two values of one type of which either may be null: a null is less
+/// than every other value.
+///
+/// Behavior: io.deephaven.util.compare.ObjectComparisons#compare, and the comparisons of
+/// the primitive types under io.deephaven.util.compare, whose null is their least value
+fn compare_nullable(a: &Scalar, b: &Scalar) -> Ordering {
+    match (a.is_null(), b.is_null()) {
+        (true, true) => Ordering::Equal,
+        (true, false) => Ordering::Less,
+        (false, true) => Ordering::Greater,
+        (false, false) => a.compare(b),
+    }
 }
 
 impl Scalar {
@@ -293,6 +337,9 @@ impl Scalar {
             }
             (Scalar::Bool(a), Scalar::Bool(b)) => a == b,
             (Scalar::Str(a), Scalar::Str(b)) => a == b,
+            (Scalar::List(a), Scalar::List(b)) => {
+                a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| a.same(b))
+            }
             _ => false,
         }
     }
@@ -300,12 +347,16 @@ impl Scalar {
     /// Java's ordering of two non-null values of one column: numbers by value with `-0.0`
     /// equal to `0.0` and NaN equal to itself and above everything, `false` before `true`,
     /// and strings by UTF-16 code unit as `String#compareTo` does. A `char` is its code unit
-    /// and an `Instant` its nanoseconds, which order as Java orders them. Values of
-    /// different shapes, or nulls, compare equal; callers never pass them.
+    /// and an `Instant` its nanoseconds, which order as Java orders them. Vectors are
+    /// ordered element by element, a null element first, and a vector that is the start of
+    /// another before it. Values of different shapes, or nulls, compare equal; callers
+    /// never pass them.
     ///
     /// Behavior: io.deephaven.util.compare.DoubleComparisons#compare,
     /// io.deephaven.util.compare.CharComparisons#compare,
-    /// io.deephaven.util.compare.ObjectComparisons#compare
+    /// io.deephaven.util.compare.ObjectComparisons#compare, and the `compareTo` of the
+    /// vectors under io.deephaven.vector (`ShortVector#compareTo`, `ObjectVector#compareTo`
+    /// and the others)
     pub fn compare(&self, other: &Scalar) -> Ordering {
         match (self, other) {
             (Scalar::Long(a), Scalar::Long(b)) => a.cmp(b),
@@ -317,6 +368,12 @@ impl Scalar {
             },
             (Scalar::Bool(a), Scalar::Bool(b)) => a.cmp(b),
             (Scalar::Str(a), Scalar::Str(b)) => a.encode_utf16().cmp(b.encode_utf16()),
+            (Scalar::List(a), Scalar::List(b)) => a
+                .iter()
+                .zip(b.iter())
+                .map(|(a, b)| compare_nullable(a, b))
+                .find(|order| order.is_ne())
+                .unwrap_or_else(|| a.len().cmp(&b.len())),
             _ => Ordering::Equal,
         }
     }
@@ -339,6 +396,29 @@ impl Scalar {
 /// An array of `column_type` holding `values`. A value of another shape than the column's
 /// becomes null. Integers are narrowed as Java's casts narrow them.
 pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scalar>) -> ArrayRef {
+    if let (Some(element), DataType::List(field)) =
+        (column_type.list_element(), column_type.arrow_type())
+    {
+        let mut lengths = Vec::new();
+        let mut valid = Vec::new();
+        let mut elements: Vec<&Scalar> = Vec::new();
+        for value in values {
+            let cells: &[Scalar] = match value {
+                Scalar::List(cells) => cells,
+                _ => &[],
+            };
+            lengths.push(cells.len());
+            valid.push(matches!(value, Scalar::List(_)));
+            elements.extend(cells);
+        }
+        let elements: Box<dyn Iterator<Item = &Scalar>> = Box::new(elements.into_iter());
+        return Arc::new(ListArray::new(
+            field,
+            OffsetBuffer::from_lengths(lengths),
+            build(element, elements),
+            Some(NullBuffer::from(valid)),
+        ));
+    }
     match column_type {
         ColumnType::Byte => Arc::new(
             values
