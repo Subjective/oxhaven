@@ -292,7 +292,7 @@ async fn a_table_definition_is_a_mapping_of_column_definitions() {
     );
     assert!(
         refused.contains(
-            "NotImplementedError: not ported: \
+            "deephaven._java_time.NotPorted: not ported: \
              io.deephaven.engine.table.ColumnDefinition#isPartitioning: the engine has no \
              partitioning columns (P)"
         ),
