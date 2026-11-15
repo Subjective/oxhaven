@@ -222,6 +222,11 @@ pub trait ScriptSession: Send + Sync {
 
     /// See [`ScopeHolder::formula_values`].
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String>;
+
+    /// See [`ScopeHolder::refuses_formulas`].
+    fn refuses_formulas(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A script session with the place the changes of its variables are published to.
@@ -342,5 +347,9 @@ impl ScopeHolder for Console {
 
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
         self.session.formula_values(names)
+    }
+
+    fn refuses_formulas(&self) -> Option<String> {
+        self.session.refuses_formulas()
     }
 }

@@ -418,6 +418,21 @@ pub fn partition_by(
         false,
         keys,
     )?;
+    of_aggregation(parent, partitioned, keys, CONSTITUENT, !drop_keys)
+}
+
+/// The partitioned table of `aggregated`, an aggregation of `parent` by `keys` that has a
+/// partition aggregation in the column `constituent_column`, made with or without the key
+/// columns in its constituents (`include_keys`).
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#partitionedAggBy, after its `aggBy`
+pub fn of_aggregation(
+    parent: &Arc<dyn Table>,
+    aggregated: Arc<dyn Table>,
+    keys: &[&str],
+    constituent_column: &str,
+    include_keys: bool,
+) -> Result<PartitionedTable, PartitionedError> {
     // Key columns named twice count once, as in Java's `LinkedHashSet` of them.
     let mut key_columns: Vec<String> = Vec::new();
     for key in keys {
@@ -425,12 +440,12 @@ pub fn partition_by(
             key_columns.push(key.to_string());
         }
     }
-    let constituent_definition = constituent_definition(parent.definition(), keys, !drop_keys);
+    let constituent_definition = constituent_definition(parent.definition(), keys, include_keys);
     PartitionedTable::new(
-        partitioned,
+        aggregated,
         key_columns,
         true,
-        CONSTITUENT.to_string(),
+        constituent_column.to_string(),
         constituent_definition,
         parent.is_refreshing(),
     )

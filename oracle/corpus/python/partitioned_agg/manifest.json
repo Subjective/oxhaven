@@ -1,0 +1,140 @@
+{
+  "format": 2,
+  "scenario": "partitioned_agg",
+  "scenario_sha256": "8776bfcfa0fd196c2934d20d40427ed5cd8f01510f689bf112ff751ab2aee4da",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "raw",
+      "file": "step000.raw.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "totals",
+      "file": "step000.totals.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "totals_keys",
+      "file": "step000.totals_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "totals_merged",
+      "file": "step000.totals_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "totals_first",
+      "file": "step000.totals_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "named",
+      "file": "step000.named.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "named_merged",
+      "file": "step000.named_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "overall",
+      "file": "step000.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "overall_merged",
+      "file": "step000.overall_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "ticking",
+      "file": "step000.ticking.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "ticking_merged",
+      "file": "step000.ticking_merged.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "raw",
+      "file": "step001.raw.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "totals",
+      "file": "step001.totals.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "totals_keys",
+      "file": "step001.totals_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "totals_merged",
+      "file": "step001.totals_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "totals_first",
+      "file": "step001.totals_first.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "named",
+      "file": "step001.named.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "named_merged",
+      "file": "step001.named_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "overall",
+      "file": "step001.overall.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "overall_merged",
+      "file": "step001.overall_merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "ticking",
+      "file": "step001.ticking.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "ticking_merged",
+      "file": "step001.ticking_merged.arrow",
+      "rows": 5
+    }
+  ]
+}

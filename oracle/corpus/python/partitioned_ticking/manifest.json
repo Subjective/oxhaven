@@ -1,0 +1,304 @@
+{
+  "format": 2,
+  "scenario": "partitioned_ticking",
+  "scenario_sha256": "22253c0f83e7b77fd9c6bdce0863a23a6df6eaad53a16386e49bf164e3637424",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rows",
+      "file": "step000.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "underlying",
+      "file": "step000.underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "keys",
+      "file": "step000.keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "merged",
+      "file": "step000.merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "ones",
+      "file": "step000.ones.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "twos",
+      "file": "step000.twos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "fives",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "rows",
+      "file": "step001.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "underlying",
+      "file": "step001.underlying.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "keys",
+      "file": "step001.keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "merged",
+      "file": "step001.merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "ones",
+      "file": "step001.ones.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "twos",
+      "file": "step001.twos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "fives",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "rows",
+      "file": "step002.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "underlying",
+      "file": "step002.underlying.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "keys",
+      "file": "step002.keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "merged",
+      "file": "step002.merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "ones",
+      "file": "step002.ones.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "twos",
+      "file": "step002.twos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "fives",
+      "file": "step002.fives.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "rows",
+      "file": "step003.rows.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "underlying",
+      "file": "step003.underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "keys",
+      "file": "step003.keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "merged",
+      "file": "step003.merged.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "ones",
+      "file": "step003.ones.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "twos",
+      "file": "step003.twos.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "fives",
+      "file": "step003.fives.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "rows",
+      "file": "step004.rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "underlying",
+      "file": "step004.underlying.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "keys",
+      "file": "step004.keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "merged",
+      "file": "step004.merged.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "ones",
+      "file": "step004.ones.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "twos",
+      "file": "step004.twos.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "fives",
+      "file": "step004.fives.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "rows",
+      "file": "step005.rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "underlying",
+      "file": "step005.underlying.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "keys",
+      "file": "step005.keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "merged",
+      "file": "step005.merged.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "ones",
+      "file": "step005.ones.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "twos",
+      "file": "step005.twos.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "fives",
+      "file": "step005.fives.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "rows",
+      "file": "step006.rows.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "underlying",
+      "file": "step006.underlying.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "keys",
+      "file": "step006.keys.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "merged",
+      "file": "step006.merged.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "ones",
+      "file": "step006.ones.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "twos",
+      "file": "step006.twos.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "fives",
+      "file": "step006.fives.arrow",
+      "rows": 0
+    }
+  ]
+}
