@@ -29,9 +29,9 @@ pub const TABLE_TYPE_NAME: &str = "Table";
 ///
 /// A table is a `Table`. Java leaves out a table with the attribute `NonDisplayTable`; the
 /// tables of this engine have no such attribute, so every table is listed. Java's other
-/// displayable kinds are `HierarchicalTable`, `PartitionedTable` and the objects a plugin
-/// has a type for; this server has none of them yet, and the tasks that add them name
-/// them here.
+/// displayable kinds are `PartitionedTable`, which is listed, and `HierarchicalTable` and
+/// the objects a plugin has a type for; this server has neither of those yet, and the
+/// tasks that add them name them here.
 ///
 /// Behavior: `io.deephaven.engine.util.AbstractScriptSession#getTypeNameIfDisplayable`
 pub fn type_name_if_displayable(value: &ExportValue) -> Option<&'static str> {

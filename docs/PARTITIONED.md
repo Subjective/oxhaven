@@ -2,7 +2,7 @@
 
 How Oxhaven holds a table of tables, keeps its constituents up to date, and hands it to
 clients. Written by task 7.6 (`tasks/7.6-partitioned-tables.md`), which also built the first
-slice. The follow-on tasks are 7.6.1 to 7.6.5.
+slice. The follow-on tasks, 7.6.1 to 7.6.6, are sized in that file.
 
 What Java does was read in `PartitionByChunkedOperator`, `PartitionedTableImpl`,
 `PartitionedTableServiceGrpcImpl` and `PartitionedTableTypePlugin`, and observed on Java 42.9
@@ -65,9 +65,10 @@ sees them.
   its own (`select`, `snapshot`, a static `update`) copies handles, not ownership. When the
   table the cells came from is gone, such a handle resolves to nothing, and reading the
   constituent fails by name. Java keeps such a table reachable but no longer updates it.
-- **What is refused.** A column of tables as a group or join key, in a sort, or in a
-  formula: Java compares and hashes the references, and nothing here does. The existing
-  operators refuse a column type they do not know, which is this one.
+- **Keys.** Two cells are equal when they are the same table, which is when their handles
+  are equal, so a column of tables is a group key and a join key with the code for
+  `Int64`. A sort by it is refused, as Java refuses it; what else is refused is in
+  "Refused for now".
 - **Why not less.** Without a column type the underlying table could not be a `Table` of
   this engine at all: `pt.table`, `filter` and `sort` of a partitioned table, and the key
   subscription of the web client all are operations on it, and its schema names the column.
@@ -131,11 +132,13 @@ and go.
 - `GetTable`: Java's two modes. With one key row and one match, the constituent itself;
   with `PERMIT_MULTIPLE_KEYS`, the merge of the constituents of the keys that match, which
   follows the key table. Both are `where_in` on the underlying table, as in Java.
-- `ObjectService`: `FetchObject`, and `MessageStream` / `OpenMessageStream` /
-  `NextMessageStream` for a fetch-only type: the first message of a stream is answered with
-  the object, and the stream then stays open until the client closes it. The only type is
+- `ObjectService`: `FetchObject`, and `MessageStream` for a fetch-only type: the first
+  message of a stream is answered with the object, and the stream then stays open until
+  the client closes it. `OpenMessageStream` and `NextMessageStream`, the same stream for a
+  client that cannot keep one call open in both directions, are refused. The only type is
   `PartitionedTable`. Task 7.10 owns the service and adds plugin types; what is here is in
   `crates/oxhaven-server/src/object/`, with one built-in type.
+- `Aggregate` with a partition aggregation makes the column of tables in an ordinary table.
 - The statuses and messages of the cases probed are Java's
   (`crates/oxhaven-server/src/partitioned/tests.rs`).
 
@@ -152,12 +155,28 @@ when the result is made and, for a partitioned table whose constituents can chan
 inside the update cycle for each constituent that appears. The first slice does the first
 half: on a partitioned table that is not refreshing, the function is called for each
 constituent and the result is a partitioned table of the answers, with the constituent
-column typed `Table` as in Java. On a refreshing one it is refused. Calling Python inside
-a cycle is what `docs/PYTHON_UDF.md` already does for formulas, with its lock order; what
-is missing is making tables inside a cycle from a table that was made in the same cycle,
-and Java itself fails a transform function that compiles a formula there unless the
-function enters an execution context (observed: "No ExecutionContext registered"), which
-this package does not have yet (task 6.12).
+column typed `Table` as in Java. The result keeps the rows of the underlying table and its
+other columns; only the constituent column is new
+(`PartitionedTable::transformed`). The constituents' definition is what the function
+answers for an empty constituent, as Java finds it. On a refreshing partitioned table
+`transform` is refused. Calling Python inside a cycle is what `docs/PYTHON_UDF.md` already
+does for formulas, with its lock order; what is missing is making tables inside a cycle
+from a table that was made in the same cycle.
+
+**No query scope inside the function.** Java runs the function in the partitioned table's
+execution context, which has no query scope, so everything that compiles a formula or a
+filter fails there with "No ExecutionContext registered, or current ExecutionContext has
+no QueryScope": `update`, `view`, `where` with a string, `where_one_of`, `head_by`,
+`tail_by`, `agg.count_where`, `agg.formula`. Renames and column copies, `head`, `tail`,
+`sort`, joins and the other aggregations work. All 56 operations probed fail or work here
+as they do in Java: while the function runs, a flag on the thread makes the formula
+compiler (`ScopedCompiler`) and the Python methods that Java checks earlier refuse with
+Java's text. A function that has to compile a formula enters an execution context in Java
+(`deephaven.execution_context`), which this package does not have yet (task 6.12).
+
+**`partitioned_agg_by`** is `agg_by` with a partition aggregation added, then the
+partitioned table of that result (`PartitionedTable::of_aggregation`), with
+`preserve_empty`. `initial_groups` is refused where `agg_by` refuses it.
 
 **The proxy** (`PartitionedTableProxy`) is a transform per table operation, with a key
 check for joins. It follows `transform` and is not in the first slice.
@@ -168,14 +187,30 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `transform`, `partitioned_transform` on a refreshing partitioned table; `dependencies` | `PartitionedTableImpl#transform`, `#partitionedTransform` | 7.6.1 |
+| `transform` on a refreshing partitioned table | `PartitionedTableImpl#transform` | 7.6.1 |
+| A transform function that answers `None` for a constituent | `TableTransformationColumn` | 7.6.1 |
 | `partitioned_transform` | `PartitionedTableImpl#partitionedTransform` | 7.6.1 |
 | `proxy` | `PartitionedTableImpl#proxy` | 7.6.2 |
 | `PartitionedTable.from_partitioned_table`, `from_constituent_tables` | `PartitionedTableFactory#of`, `#ofTables` | 7.6.3 |
-| `partitioned_agg_by` with `preserve_empty` or `initial_groups` | `QueryTable#partitionedAggBy` | 7.6.3 |
-| Reading a constituent whose partitioned table is gone (a copied cell) | `ObjectArraySource#get` of a `Table` | none |
-| A column of tables as a key, in a sort or in a formula | `TypedHasherFactory#make` and others | none |
-| `Barrage` to the Python ticking client and others of a table column | sent as strings, as Java | none needed |
+| `update_graph` | `Table#getUpdateGraph` | 6.12 |
+| `partitioned_agg_by` and `agg_by` with `initial_groups` | `QueryTable#aggBy` | 7.6.3 |
+| Reading a constituent whose partitioned table is gone (a copied cell) | `ObjectArraySource#get` | 7.6.3 |
+| `get_constituent` with a key value that is not of the key column's type | `PartitionedTableImpl#constituentFor` | 7.6.4 |
+| `where("C != null")` and other match filters on a column of tables | `MatchFilter.ColumnTypeConvertorFactory#getConvertor` | 7.6.4 |
+| `where_in` on a column of tables | `DynamicWhereFilter#beginOperation` | 7.6.4 |
+| A column of tables in a formula | the formula compiler: "unsupported in formulas" | 7.6.4 |
+| `OpenMessageStream`, `NextMessageStream` | `ObjectServiceGrpcImpl#openMessageStream`, `#nextMessageStream` | 7.6.5 |
+
+Java refuses as well, and the text here is Java's: a second partition aggregation in one
+`agg_by`, `partition_by` of a blink table, a sort or a filter of a partitioned table by its
+constituent column, and `head_by` or `tail_by` of a table with a column of tables that is
+not grouped by (`ViewColumnLayer#checkResultType`: Java casts each such column in an
+`updateView`, which does not make columns of tables). Java refuses a sort of a table by a
+column of tables with `NotSortableColumnException`; here it is refused as not ported,
+naming `SortOperation#SortOperation`.
+
+A column of tables works as a group key (`count_by`, `agg_by`, `head_by` by it) and as the
+column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 
 ## Differences from Java
 
@@ -183,6 +218,24 @@ Each names the Java method in its error.
 - A constituent that a client holds keeps the partitioned table alive here; in Java it is
   the other way round as well. Not observable.
 - The text of a constituent cell is `QueryTable` on both.
+- The bytes of the schema inside the `PartitionedTableDescriptor` are laid out differently
+  by the two flatbuffer writers; the schema they decode to is the same.
+- The rows of the table above marked 7.6.3 and 7.6.4 work in Java and are refused here.
+
+## Outside the task's paths
+
+- `crates/oxhaven-contracts/src/schema.rs`: the column type.
+- `crates/oxhaven-engine/src/ops/agg/`: the hooks the partition operator needs (a result
+  row's group, the result table once it is made). `ops/merge/`: the ranges of the union,
+  shared with the merge of a partitioned table. `ops/head_by/`: the refusal above.
+  `table/query_table.rs`: `QueryTable::dependent`.
+- `crates/oxhaven-server/src/object/` (task 7.10's directory): the object service with the
+  one built-in type. `schema.rs`, `wire_columns.rs`: the Java type names and the strings a
+  client is sent. `table/ops/aggregate.rs`: the partition aggregation.
+  `console/session.rs`, `app/scope.rs`, `console/python/`: the type name of a variable, the
+  missing query scope, the native functions.
+- `oracle/scenarios/python/partitioned_*.py`, their recordings and their baseline lines;
+  `agg_by` in the baseline is narrowed to the one table that still differs.
 
 ## Gate
 
