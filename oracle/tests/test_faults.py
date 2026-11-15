@@ -228,6 +228,20 @@ def test_empty_table_faults():
         assert check(one_table(empty), 2, "r", name, ordered=True) == (name in applicable), name
 
 
+@pytest.mark.parametrize("ordered", [True, False])
+def test_faults_on_a_char_column(ordered):
+    """A `char` column is Arrow `uint16`: its largest code unit is beyond a short."""
+    schema = pa.schema([_field("C", pa.uint16(), "char")])
+    chars = pa.Table.from_arrays([pa.array([65535, None, 97], pa.uint16())], schema=schema)
+    applied = {name for name in sorted(faults.FAULTS)
+               if check(one_table(chars), 2, "r", name, ordered, computed=frozenset())}
+    assert {"changed_value", "null_to_value", "value_to_null", "swapped_rows",
+            "changed_column_type"} <= applied
+    damaged, change = faults.inject(one_table(chars), 2, "r", "changed_value")
+    assert (change.before, change.after) == (65535, 65534)
+    assert damaged.get(2, "r").schema.field("C").type == pa.uint16()
+
+
 def test_swapping_equal_rows_is_not_a_fault():
     same = pa.table({"K": pa.array([1, 1], pa.int32())})
     with pytest.raises(faults.NotApplicable):
