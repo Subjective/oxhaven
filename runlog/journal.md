@@ -430,7 +430,7 @@ the worktrees survived; servers did not. PRs 58 (multi_join) and 59 (aggregation
 merged before the stop: main is at 73 of 83 scenarios. Disk is at 8.5 GB free.
 Token use so far, summed from tasks.csv: about 14.2M subagent tokens over 68 runs.
 
-## 2026-11-15 04:35 UTC
+## 2026-11-15 04:17 UTC
 
 PR 60 (list columns on the wire, ApplyPreviewColumns) merged. PR 61 opened (parity fixes).
 Finding that closes an earlier owner question: Java's CANCELLED for a join match ending in
