@@ -15,6 +15,9 @@
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
 
+#[cfg(test)]
+mod tests;
+
 use std::ffi::CString;
 use std::sync::{Arc, OnceLock, PoisonError, RwLock};
 
@@ -168,7 +171,11 @@ fn error_text(error: ExportError) -> String {
 /// Runs one table service operation, given in protobuf JSON form, on `sources`, which the
 /// operation's table references name by position.
 #[pyfunction]
-fn table_op(py: Python<'_>, json: &str, sources: Vec<PyRef<'_, TableHandle>>) -> PyResult<TableHandle> {
+fn table_op(
+    py: Python<'_>,
+    json: &str,
+    sources: Vec<PyRef<'_, TableHandle>>,
+) -> PyResult<TableHandle> {
     let op = parse_operation(json).map_err(PyValueError::new_err)?;
     let tables: Vec<Arc<dyn Table>> = sources.iter().map(|handle| handle.table.clone()).collect();
     let runtime = runtime()?;
@@ -183,7 +190,7 @@ fn input_column(type_name: &str, values: &Bound<'_, PyAny>) -> PyResult<(ColumnT
     where
         T: for<'a> FromPyObject<'a, 'py>,
     {
-        values.extract().map_err(Into::into)
+        values.extract()
     }
     Ok(match type_name {
         "bool" => (

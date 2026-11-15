@@ -90,7 +90,8 @@ impl LogBuffer {
         };
         // a client that cannot be sent to is gone
         state.subscribers.retain(|subscriber| {
-            !wanted(&subscriber.request, &record) || subscriber.sender.send(Ok(record.clone())).is_ok()
+            !wanted(&subscriber.request, &record)
+                || subscriber.sender.send(Ok(record.clone())).is_ok()
         });
         if state.history.len() == HISTORY_SIZE {
             state.history.pop_front();

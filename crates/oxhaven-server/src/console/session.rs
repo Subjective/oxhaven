@@ -99,7 +99,9 @@ impl Console {
     pub fn is_type(&self, session_type: &str) -> bool {
         // Java's equalsIgnoreCase compares UTF-16 units; for the ASCII names of the script
         // types that is this
-        self.session.script_type().eq_ignore_ascii_case(session_type)
+        self.session
+            .script_type()
+            .eq_ignore_ascii_case(session_type)
     }
 
     /// Runs `code`, then publishes what it changed.

@@ -126,9 +126,11 @@ fn start_console(args: &Args, state: &mut ServerState) -> Result<(), String> {
         #[cfg(not(feature = "python"))]
         "python" => {
             let _ = state;
-            Err("this server was built without the Python console; build it with \
+            Err(
+                "this server was built without the Python console; build it with \
                  `--features python` (docs/CONSOLE.md)"
-                .to_string())
+                    .to_string(),
+            )
         }
         other => Err(format!("unknown console type {other}\n\n{USAGE}")),
     }
