@@ -62,3 +62,5 @@ node oracle/ide/ide-test.js --url dh+psk://oxhaven@127.0.0.1:10100 --routes cons
 The first types the commands of `oracle/ide/expected.json` (`new_table` with three columns,
 then a ticking `time_table`); the second types `from deephaven import empty_table` and
 `t = empty_table(5).update(["X = i"])` as one command. Both pass on Java and on Oxhaven.
+Run the second on a server that was just started: on Oxhaven it failed when run after the
+probe on the same server, and passed after a restart. The cause was not looked into.
