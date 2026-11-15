@@ -377,6 +377,29 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 .collect::<Result<Vec<_>, _>>()?;
             crate::functions::eval::evaluate(*kernel, &arguments)
         }
+        Node::External {
+            function,
+            arguments,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| match argument {
+                    Some(argument) => evaluate(argument, batch),
+                    None => Ok(new_null_array(&DataType::Null, batch.rows)),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            let values = function.0.call(&arguments, batch.rows)?;
+            let expected = expr.column_type.arrow_type();
+            if values.len() != batch.rows || *values.data_type() != expected {
+                return Err(failure(format!(
+                    "an external function returned {} values of {:?} for {} rows of {expected:?}",
+                    values.len(),
+                    values.data_type(),
+                    batch.rows
+                )));
+            }
+            Ok(values)
+        }
         Node::StringMethod {
             method,
             receiver,
