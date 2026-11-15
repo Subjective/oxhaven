@@ -605,3 +605,12 @@ behind a flag that defaults to Java's behaviour, or remove it. Orchestrator erro
 file stated Java's behaviour without checking it. Also noted: the console transcript carries
 traceback line numbers of table.py, which go stale with every Python API change; the probe
 should scrub them (follow-up).
+
+## 2026-11-15 19:50 UTC: Table shape operators up as PR 80; Python dtypes merged (PR 78)
+
+PR 78 merged green; its cancelled first run left no failed check, so the PR 77 fix works.
+PR 80 (task 4.16) promotes the four script lines that task 6.4 had recorded as differing.
+For owner review, differences it reports in failure paths: NullPointerException text in a
+sorted merge, a schema that Java fails to build for a restriction naming a non-column, the
+text for a non-int index in move_columns, and which column SortRowRedirection names.
+Tasks 6.9 and 6.10 (conversion, input tables) started as one run.
