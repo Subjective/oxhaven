@@ -41,11 +41,43 @@ pub struct SchemaContext {
     pub attributes: TableAttributes,
     /// `Table::is_flat`.
     pub is_flat: bool,
-    /// The key column names if the table is an input table; `Some(vec![])` for an
-    /// append-only input table, `None` for any other table.
-    pub input_table_keys: Option<Vec<String>>,
+    /// The key and value columns of the input table the table has the `InputTable`
+    /// attribute of; `None` for a table without the attribute.
+    pub input_table: Option<InputTableColumns>,
     /// The columns that hold a preview of the values of another table's column, by name.
     pub previews: HashMap<String, PreviewColumn>,
+}
+
+/// The column names an input table reports as its keys and its values. A table derived
+/// from an input table may have columns that are in neither list.
+///
+/// Behavior: `InputTableUpdater#getKeyNames`, `InputTableUpdater#getValueNames`
+#[derive(Clone, PartialEq, Eq, Default, Debug)]
+pub struct InputTableColumns {
+    /// Empty for an append-only input table.
+    pub keys: Vec<String>,
+    pub values: Vec<String>,
+}
+
+/// What an input table says a column is.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum InputRole {
+    Key,
+    Value,
+}
+
+impl InputTableColumns {
+    /// The role of the column with this name, or `None` for a column the input table does
+    /// not have, which Java leaves unmarked.
+    fn role(&self, name: &str) -> Option<InputRole> {
+        if self.keys.iter().any(|key| key == name) {
+            Some(InputRole::Key)
+        } else if self.values.iter().any(|value| value == name) {
+            Some(InputRole::Value)
+        } else {
+            None
+        }
+    }
 }
 
 impl SchemaContext {
@@ -53,7 +85,10 @@ impl SchemaContext {
         Self {
             attributes: table.attributes(),
             is_flat: table.is_flat(),
-            input_table_keys: table.input_table().map(|input| input.key_columns()),
+            input_table: table.input_table().map(|input| InputTableColumns {
+                keys: input.key_columns(),
+                values: input.value_columns(),
+            }),
             previews: previews_of(table),
         }
     }
@@ -282,7 +317,7 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     flag("BlinkTable", context.attributes.blink);
     flag("AddOnly", context.attributes.add_only);
     flag("AppendOnly", context.attributes.append_only);
-    if context.input_table_keys.is_some() {
+    if context.input_table.is_some() {
         // The value is the updater object, which Java cannot send and marks as such.
         put(&mut metadata, "unsent.attribute.InputTable", "");
     }
@@ -295,15 +330,16 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
     metadata
 }
 
-/// The value of `deephaven:tableMetadata` for an input table with these key columns: a
-/// `DeephavenTableMetadata` message, base64 encoded, that says of every column whether it
-/// is a key or a value.
+/// The value of `deephaven:tableMetadata` for a table with the `InputTable` attribute: a
+/// `DeephavenTableMetadata` message, base64 encoded, that says of every column the input
+/// table has whether it is a key or a value. A column the input table does not have has
+/// no entry.
 ///
 /// The message is written by hand because its map must list the columns in the table's
 /// order, as Java's does, and a generated map does not keep an order.
 ///
 /// Behavior: `BarrageUtil#maybeAddInputTableMetadata`
-fn input_table_metadata(definition: &TableDefinition, keys: &[String]) -> String {
+fn input_table_metadata(definition: &TableDefinition, input: &InputTableColumns) -> String {
     use base64::Engine;
     use oxhaven_proto::grpc::input_table_column_info::Kind;
     use prost::encoding::encode_varint;
@@ -318,10 +354,10 @@ fn input_table_metadata(definition: &TableDefinition, keys: &[String]) -> String
     // InputTableMetadata: `map<string, InputTableColumnInfo> column_info = 1`
     let mut column_info = Vec::new();
     for column in definition.columns() {
-        let kind = if keys.contains(&column.name) {
-            Kind::Key
-        } else {
-            Kind::Value
+        let kind = match input.role(&column.name) {
+            Some(InputRole::Key) => Kind::Key,
+            Some(InputRole::Value) => Kind::Value,
+            None => continue,
         };
         // InputTableColumnInfo: `Kind kind = 1`, a varint
         let info = [1 << 3, kind as u8];
@@ -401,20 +437,21 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                     put(&mut metadata, key, TRUE);
                 }
             }
-            if let Some(keys) = &context.input_table_keys {
-                let key = if keys.iter().any(|k| k == name) {
-                    "inputtable.isKey"
-                } else {
-                    "inputtable.isValue"
-                };
-                put(&mut metadata, key, TRUE);
+            let role = context
+                .input_table
+                .as_ref()
+                .and_then(|input| input.role(name));
+            match role {
+                Some(InputRole::Key) => put(&mut metadata, "inputtable.isKey", TRUE),
+                Some(InputRole::Value) => put(&mut metadata, "inputtable.isValue", TRUE),
+                None => {}
             }
             Field::new(name, wire_type(&column.column_type), true).with_metadata(metadata)
         })
         .collect();
     let mut metadata = schema_metadata(context);
-    if let Some(keys) = &context.input_table_keys {
-        let value = input_table_metadata(definition, keys);
+    if let Some(input) = &context.input_table {
+        let value = input_table_metadata(definition, input);
         put(&mut metadata, "tableMetadata", &value);
     }
     Schema::new_with_metadata(fields, metadata)
@@ -597,7 +634,10 @@ mod tests {
     #[test]
     fn input_table_columns_are_marked_key_or_value() {
         let context = SchemaContext {
-            input_table_keys: Some(vec!["K".to_owned()]),
+            input_table: Some(InputTableColumns {
+                keys: vec!["K".to_owned()],
+                values: vec!["V".to_owned()],
+            }),
             ..Default::default()
         };
         let schema = arrow_schema(
@@ -626,6 +666,49 @@ mod tests {
                 ("deephaven:unsent.attribute.InputTable", ""),
                 // DeephavenTableMetadata { input_table_metadata { K: key, V: value } }
                 ("deephaven:tableMetadata", "ChIKBwoBSxICCAEKBwoBVhICCAI="),
+            ])
+        );
+    }
+
+    /// A table derived from an input table, such as `update_view("Extra = V + 1")`, still
+    /// has the input table and a column the input table does not.
+    #[test]
+    fn a_column_the_input_table_does_not_have_is_neither_key_nor_value() {
+        let context = SchemaContext {
+            input_table: Some(InputTableColumns {
+                keys: vec!["K".to_owned()],
+                values: vec!["V".to_owned()],
+            }),
+            ..Default::default()
+        };
+        let schema = arrow_schema(
+            &definition(&[
+                ("Extra", ColumnType::Int),
+                ("V", ColumnType::Int),
+                ("K", ColumnType::String),
+            ]),
+            &context,
+        );
+        let roles: Vec<Vec<&str>> = schema
+            .fields()
+            .iter()
+            .map(|field| {
+                let mut keys: Vec<&str> = field
+                    .metadata()
+                    .keys()
+                    .filter_map(|key| key.strip_prefix("deephaven:inputtable."))
+                    .collect();
+                keys.sort_unstable();
+                keys
+            })
+            .collect();
+        assert_eq!(roles, [vec![], vec!["isValue"], vec!["isKey"]]);
+        assert_eq!(
+            schema.metadata(),
+            &metadata(&[
+                ("deephaven:unsent.attribute.InputTable", ""),
+                // DeephavenTableMetadata { input_table_metadata { V: value, K: key } }
+                ("deephaven:tableMetadata", "ChIKBwoBVhICCAIKBwoBSxICCAE="),
             ])
         );
     }

@@ -991,6 +991,7 @@ fn append_only_input_table_appends_and_the_change_is_visible_when_add_returns() 
     assert!(attributes.add_only && attributes.append_only && !attributes.blink);
     assert!(table.is_flat() && table.is_refreshing() && table.row_set().is_empty());
     assert!(input.key_columns().is_empty());
+    assert_eq!(input.value_columns(), ["Sym", "Qty"]);
 
     let start = graph.clock().step;
     input.add(sym_qty_batch(["a", "b"], [1, 2])).unwrap();
@@ -1341,6 +1342,7 @@ fn keyed_input_table_treats_null_as_a_key_and_supports_several_key_columns() {
     let checker = ConsistencyChecker::attach(table.clone());
     let input = table.input_table().unwrap();
     assert_eq!(input.key_columns(), ["Venue", "Sym"]);
+    assert_eq!(input.value_columns(), ["Qty"]);
     let rows = |syms: Vec<Option<&str>>, venues: Vec<i64>, qtys: Vec<i64>| {
         batch(&[
             ("Sym", Arc::new(StringArray::from(syms)) as ArrayRef),
@@ -1724,6 +1726,12 @@ fn the_input_table_attribute_passes_through_the_operations_java_copies_it_for() 
     for (operation, derived) in &kept {
         assert!(writes_to_table(derived), "{operation}");
         assert_eq!(derived.input_table().unwrap().key_columns(), ["Sym"]);
+        // The input table's own columns, whatever columns the derived table has.
+        assert_eq!(
+            derived.input_table().unwrap().value_columns(),
+            ["Qty"],
+            "{operation}"
+        );
     }
 
     let dropped = [
@@ -1745,6 +1753,22 @@ fn the_input_table_attribute_passes_through_the_operations_java_copies_it_for() 
             aggregate(&table, &[Aggregation::count("N")], false, &["Sym"]).unwrap(),
         ),
         ("head of where", head(&filtered, 2).unwrap()),
+        // Java sorts by a column it adds and then drops.
+        (
+            "sort by an absolute value",
+            sort(&table, &[SortColumn::ascending("Qty").absolute()]).unwrap(),
+        ),
+        (
+            "sort by a column and an absolute value",
+            sort(
+                &table,
+                &[
+                    SortColumn::ascending("Sym"),
+                    SortColumn::descending("Qty").absolute(),
+                ],
+            )
+            .unwrap(),
+        ),
         // Two input tables have two updaters.
         (
             "merge of two input tables",

@@ -1,0 +1,416 @@
+{
+ "name": "vectors_ticking",
+ "description": "The vectors of a group_by of a keyed input table, ungrouped: groups that grow, shrink, appear, disappear and come back.",
+ "inputs": [
+  {"name": "in", "columns": [{"name": "Id", "type": "int32"}, {"name": "Sym", "type": "string"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "ticking": {"key_columns": ["Id"]}, "rows": [
+   [1, "a", 10, 1.5, "x", true, 1700000000000000000],
+   [2, "b", 20, null, "y", false, null],
+   [3, "a", null, "NaN", null, null, 1700000000000000001],
+   [4, "c", 40, 4.5, "z", true, 1700000000000000002],
+   [5, "a", 50, 5.5, "w", false, 1700000000000000003]
+  ]}
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "in", "by": ["Sym"]},
+  {"name": "back", "op": "ungroup", "source": "g", "columns": [], "null_fill": false},
+  {"name": "back_i", "op": "ungroup", "source": "g", "columns": ["I"], "null_fill": false},
+  {"name": "back_two", "op": "ungroup", "source": "g", "columns": ["T", "D"], "null_fill": false},
+  {"name": "back_filled", "op": "ungroup", "source": "g", "columns": [], "null_fill": true}
+ ],
+ "sources": ["g"],
+ "results": ["back", "back_i", "back_two", "back_filled"],
+ "steps": [
+  {"actions": [{"action": "add", "table": "in", "rows": [[6, "b", 60, 6.5, "v", true, 1700000000000000004]]}]},
+  {"actions": [{"action": "add", "table": "in", "rows": [[7, "d", 70, 7.5, "u", null, null]]}]},
+  {"actions": [{"action": "delete", "table": "in", "rows": [[4]]}]},
+  {"actions": [{"action": "add", "table": "in", "rows": [[3, "a", 33, 3.5, "t", true, 5]]}]},
+  {"actions": [{"action": "add", "table": "in", "rows": [[1, "c", 11, 1.0, "s", false, 6]]}]},
+  {"actions": [{"action": "delete", "table": "in", "rows": [[2], [6]]}]},
+  {"actions": [{"action": "add", "table": "in", "rows": [[8, "a", 80, 8.5, "r", true, 7], [9, "a", 90, "-Infinity", "q", false, 8], [10, "e", null, null, null, null, null]]}]},
+  {"actions": [{"action": "delete", "table": "in", "rows": [[3], [5], [8], [9]]}]},
+  {"actions": [{"action": "add", "table": "in", "rows": [[11, "b", 1, 1.0, "b", true, 9], [7, "d", 71, 7.0, "u2", false, 10]]}]}
+ ],
+ "java": {"steps": [
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2], [20], [null], ["y"], [false], [null]],
+    ["c", [4], [40], [4.5], ["z"], [true], [1700000000000000002]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], 10, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], null, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], 50, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2], 20, [null], ["y"], [false], [null]],
+    ["c", [4], 40, [4.5], ["z"], [true], [1700000000000000002]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], 1.5, "x", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], "NaN", null, [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], 5.5, "w", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2], [20], null, "y", [false], [null]],
+    ["c", [4], [40], 4.5, "z", [true], [1700000000000000002]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [4], [40], [4.5], ["z"], [true], [1700000000000000002]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], 10, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], null, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], 50, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], 20, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], 60, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [4], 40, [4.5], ["z"], [true], [1700000000000000002]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], 1.5, "x", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], "NaN", null, [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], 5.5, "w", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], null, "y", [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], [20, 60], 6.5, "v", [false, true], [null, 1700000000000000004]],
+    ["c", [4], [40], 4.5, "z", [true], [1700000000000000002]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [4], [40], [4.5], ["z"], [true], [1700000000000000002]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], 10, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], null, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], 50, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], 20, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], 60, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [4], 40, [4.5], ["z"], [true], [1700000000000000002]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], 1.5, "x", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], "NaN", null, [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], 5.5, "w", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], null, "y", [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], [20, 60], 6.5, "v", [false, true], [null, 1700000000000000004]],
+    ["c", [4], [40], 4.5, "z", [true], [1700000000000000002]],
+    ["d", [7], [70], 7.5, "u", [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 4, 40, 4.5, "z", true, 1700000000000000002],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], 10, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], null, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], 50, [1.5, "NaN", 5.5], ["x", null, "w"], [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], 20, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], 60, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, null, 50], 1.5, "x", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], "NaN", null, [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, null, 50], 5.5, "w", [true, null, false], [1700000000000000000, 1700000000000000001, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], null, "y", [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], [20, 60], 6.5, "v", [false, true], [null, 1700000000000000004]],
+    ["d", [7], [70], 7.5, "u", [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, null, "NaN", null, null, 1700000000000000001],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, 33, 50], [1.5, 3.5, 5.5], ["x", "t", "w"], [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], 10, [1.5, 3.5, 5.5], ["x", "t", "w"], [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["a", [1, 3, 5], 33, [1.5, 3.5, 5.5], ["x", "t", "w"], [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["a", [1, 3, 5], 50, [1.5, 3.5, 5.5], ["x", "t", "w"], [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["b", [2, 6], 20, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], 60, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [1, 3, 5], [10, 33, 50], 1.5, "x", [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, 33, 50], 3.5, "t", [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["a", [1, 3, 5], [10, 33, 50], 5.5, "w", [true, true, false], [1700000000000000000, 5, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], null, "y", [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], [20, 60], 6.5, "v", [false, true], [null, 1700000000000000004]],
+    ["d", [7], [70], 7.5, "u", [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 1, 10, 1.5, "x", true, 1700000000000000000],
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], [33, 50], [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [1], [11], [1.0], ["s"], [false], [6]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], 33, [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["a", [3, 5], 50, [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["b", [2, 6], 20, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], 60, [null, 6.5], ["y", "v"], [false, true], [null, 1700000000000000004]],
+    ["c", [1], 11, [1.0], ["s"], [false], [6]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], [33, 50], 3.5, "t", [true, false], [5, 1700000000000000003]],
+    ["a", [3, 5], [33, 50], 5.5, "w", [true, false], [5, 1700000000000000003]],
+    ["b", [2, 6], [20, 60], null, "y", [false, true], [null, 1700000000000000004]],
+    ["b", [2, 6], [20, 60], 6.5, "v", [false, true], [null, 1700000000000000004]],
+    ["c", [1], [11], 1.0, "s", [false], [6]],
+    ["d", [7], [70], 7.5, "u", [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["b", 2, 20, null, "y", false, null],
+    ["b", 6, 60, 6.5, "v", true, 1700000000000000004],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], [33, 50], [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["c", [1], [11], [1.0], ["s"], [false], [6]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], 33, [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["a", [3, 5], 50, [3.5, 5.5], ["t", "w"], [true, false], [5, 1700000000000000003]],
+    ["c", [1], 11, [1.0], ["s"], [false], [6]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5], [33, 50], 3.5, "t", [true, false], [5, 1700000000000000003]],
+    ["a", [3, 5], [33, 50], 5.5, "w", [true, false], [5, 1700000000000000003]],
+    ["c", [1], [11], 1.0, "s", [false], [6]],
+    ["d", [7], [70], 7.5, "u", [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5, 8, 9], [33, 50, 80, 90], [3.5, 5.5, 8.5, "-Infinity"], ["t", "w", "r", "q"], [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["c", [1], [11], [1.0], ["s"], [false], [6]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]],
+    ["e", [10], [null], [null], [null], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["a", 8, 80, 8.5, "r", true, 7],
+    ["a", 9, 90, "-Infinity", "q", false, 8],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null],
+    ["e", 10, null, null, null, null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5, 8, 9], 33, [3.5, 5.5, 8.5, "-Infinity"], ["t", "w", "r", "q"], [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], 50, [3.5, 5.5, 8.5, "-Infinity"], ["t", "w", "r", "q"], [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], 80, [3.5, 5.5, 8.5, "-Infinity"], ["t", "w", "r", "q"], [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], 90, [3.5, 5.5, 8.5, "-Infinity"], ["t", "w", "r", "q"], [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["c", [1], 11, [1.0], ["s"], [false], [6]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]],
+    ["e", [10], null, [null], [null], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["a", [3, 5, 8, 9], [33, 50, 80, 90], 3.5, "t", [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], [33, 50, 80, 90], 5.5, "w", [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], [33, 50, 80, 90], 8.5, "r", [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["a", [3, 5, 8, 9], [33, 50, 80, 90], "-Infinity", "q", [true, false, true, false], [5, 1700000000000000003, 7, 8]],
+    ["c", [1], [11], 1.0, "s", [false], [6]],
+    ["d", [7], [70], 7.5, "u", [null], [null]],
+    ["e", [10], [null], null, null, [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["a", 3, 33, 3.5, "t", true, 5],
+    ["a", 5, 50, 5.5, "w", false, 1700000000000000003],
+    ["a", 8, 80, 8.5, "r", true, 7],
+    ["a", 9, 90, "-Infinity", "q", false, 8],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null],
+    ["e", 10, null, null, null, null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["c", [1], [11], [1.0], ["s"], [false], [6]],
+    ["d", [7], [70], [7.5], ["u"], [null], [null]],
+    ["e", [10], [null], [null], [null], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null],
+    ["e", 10, null, null, null, null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["c", [1], 11, [1.0], ["s"], [false], [6]],
+    ["d", [7], 70, [7.5], ["u"], [null], [null]],
+    ["e", [10], null, [null], [null], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["c", [1], [11], 1.0, "s", [false], [6]],
+    ["d", [7], [70], 7.5, "u", [null], [null]],
+    ["e", [10], [null], null, null, [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 70, 7.5, "u", null, null],
+    ["e", 10, null, null, null, null, null]
+   ]}
+  },
+  {
+   "g": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["b", [11], [1], [1.0], ["b"], [true], [9]],
+    ["c", [1], [11], [1.0], ["s"], [false], [6]],
+    ["d", [7], [71], [7.0], ["u2"], [false], [10]],
+    ["e", [10], [null], [null], [null], [null], [null]]
+   ]},
+   "back": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["b", 11, 1, 1.0, "b", true, 9],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 71, 7.0, "u2", false, 10],
+    ["e", 10, null, null, null, null, null]
+   ]},
+   "back_i": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "vector<float64>"}, {"name": "T", "type": "vector<string>"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["b", [11], 1, [1.0], ["b"], [true], [9]],
+    ["c", [1], 11, [1.0], ["s"], [false], [6]],
+    ["d", [7], 71, [7.0], ["u2"], [false], [10]],
+    ["e", [10], null, [null], [null], [null], [null]]
+   ]},
+   "back_two": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "vector<int32>"}, {"name": "I", "type": "vector<int32>"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "vector<bool>"}, {"name": "W", "type": "vector<timestamp>"}], "rows": [
+    ["b", [11], [1], 1.0, "b", [true], [9]],
+    ["c", [1], [11], 1.0, "s", [false], [6]],
+    ["d", [7], [71], 7.0, "u2", [false], [10]],
+    ["e", [10], [null], null, null, [null], [null]]
+   ]},
+   "back_filled": {"columns": [{"name": "Sym", "type": "string"}, {"name": "Id", "type": "int32"}, {"name": "I", "type": "int32"}, {"name": "D", "type": "float64"}, {"name": "T", "type": "string"}, {"name": "Z", "type": "bool"}, {"name": "W", "type": "timestamp"}], "rows": [
+    ["b", 11, 1, 1.0, "b", true, 9],
+    ["c", 1, 11, 1.0, "s", false, 6],
+    ["d", 7, 71, 7.0, "u2", false, 10],
+    ["e", 10, null, null, null, null, null]
+   ]}
+  }
+ ],
+ "updates": [
+  {"g": [{"added": [], "removed": [], "modified": [1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back": [{"added": [4], "removed": [], "modified": [3], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_i": [{"added": [4], "removed": [], "modified": [3], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_two": [{"added": [4], "removed": [], "modified": [3], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_filled": [{"added": [4], "removed": [], "modified": [3], "columns": ["Id", "I", "D", "T", "Z", "W"]}]},
+  {"g": [{"added": [3], "removed": [], "modified": [], "columns": []}], "back": [{"added": [6], "removed": [], "modified": [], "columns": []}], "back_i": [{"added": [6], "removed": [], "modified": [], "columns": []}], "back_two": [{"added": [6], "removed": [], "modified": [], "columns": []}], "back_filled": [{"added": [6], "removed": [], "modified": [], "columns": []}]},
+  {"g": [{"added": [], "removed": [2], "modified": [], "columns": []}], "back": [{"added": [], "removed": [5], "modified": [], "columns": []}], "back_i": [{"added": [], "removed": [5], "modified": [], "columns": []}], "back_two": [{"added": [], "removed": [5], "modified": [], "columns": []}], "back_filled": [{"added": [], "removed": [5], "modified": [], "columns": []}]},
+  {"g": [{"added": [], "removed": [], "modified": [0], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back": [{"added": [], "removed": [], "modified": [0, 1, 2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_i": [{"added": [], "removed": [], "modified": [0, 1, 2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_two": [{"added": [], "removed": [], "modified": [0, 1, 2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_filled": [{"added": [], "removed": [], "modified": [0, 1, 2], "columns": ["Id", "I", "D", "T", "Z", "W"]}]},
+  {"g": [{"added": [2], "removed": [], "modified": [0], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back": [{"added": [4], "removed": [2], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_i": [{"added": [4], "removed": [2], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_two": [{"added": [4], "removed": [2], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_filled": [{"added": [4], "removed": [2], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}]},
+  {"g": [{"added": [], "removed": [1], "modified": [], "columns": []}], "back": [{"added": [], "removed": [2, 3], "modified": [], "columns": []}], "back_i": [{"added": [], "removed": [2, 3], "modified": [], "columns": []}], "back_two": [{"added": [], "removed": [2, 3], "modified": [], "columns": []}], "back_filled": [{"added": [], "removed": [2, 3], "modified": [], "columns": []}]},
+  {"g": [{"added": [3], "removed": [], "modified": [0], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back": [{"added": [2, 3, 6], "removed": [], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_i": [{"added": [2, 3, 6], "removed": [], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_two": [{"added": [2, 3, 6], "removed": [], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_filled": [{"added": [2, 3, 6], "removed": [], "modified": [0, 1], "columns": ["Id", "I", "D", "T", "Z", "W"]}]},
+  {"g": [{"added": [], "removed": [0], "modified": [], "columns": []}], "back": [{"added": [], "removed": [0, 1, 2, 3], "modified": [], "columns": []}], "back_i": [{"added": [], "removed": [0, 1, 2, 3], "modified": [], "columns": []}], "back_two": [{"added": [], "removed": [0, 1, 2, 3], "modified": [], "columns": []}], "back_filled": [{"added": [], "removed": [0, 1, 2, 3], "modified": [], "columns": []}]},
+  {"g": [{"added": [0], "removed": [], "modified": [2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back": [{"added": [0], "removed": [], "modified": [2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_i": [{"added": [0], "removed": [], "modified": [2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_two": [{"added": [0], "removed": [], "modified": [2], "columns": ["Id", "I", "D", "T", "Z", "W"]}], "back_filled": [{"added": [0], "removed": [], "modified": [2], "columns": ["Id", "I", "D", "T", "Z", "W"]}]}
+ ]}
+}

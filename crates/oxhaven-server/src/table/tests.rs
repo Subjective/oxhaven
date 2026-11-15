@@ -228,6 +228,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "NATURAL_JOIN",
             "EXACT_JOIN",
             "LEFT_JOIN",
+            "RANGE_JOIN",
             "SNAPSHOT",
             "SNAPSHOT_WHEN",
             "EMPTY_TABLE",
@@ -246,6 +247,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "TAIL",
             "SLICE",
             "MERGE",
+            "UNGROUP",
             "FLATTEN",
             "UNSTRUCTURED_FILTER",
             "FILTER",
@@ -278,30 +280,31 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
 #[tokio::test]
 async fn an_operation_without_a_handler_is_unimplemented_in_both_forms() {
     let mut c = Connected::start().await;
-    let request = UngroupRequest {
+    let request = RunChartDownsampleRequest {
         result_id: ticket(1),
         source_id: by_ticket(2),
         ..Default::default()
     };
-    let refused = c.client.ungroup(c.auth(request.clone())).await.unwrap_err();
+    let refused = c.client.run_chart_downsample(c.auth(request.clone()));
+    let refused = refused.await.unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "TableService operation UNGROUP is not implemented"
+        "TableService operation RUN_CHART_DOWNSAMPLE is not implemented"
     );
 
     // In a batch the whole call is refused and nothing before it is created.
     let refused = c
         .batch(vec![
             Op::EmptyTable(empty(ticket(3), 1)),
-            Op::Ungroup(request),
+            Op::RunChartDownsample(request),
         ])
         .await
         .unwrap_err();
     assert_eq!(refused.code(), Code::Unimplemented);
     assert_eq!(
         refused.message(),
-        "TableService operation UNGROUP is not implemented"
+        "TableService operation RUN_CHART_DOWNSAMPLE is not implemented"
     );
     let session = c.server.session(&c.bearer);
     let unused = session.get_export(3).unwrap();

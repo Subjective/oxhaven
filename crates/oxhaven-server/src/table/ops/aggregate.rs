@@ -22,7 +22,7 @@ impl From<AggregateError> for ExportError {
 const ONE_OF_NOTE: &str = "Note: this may also indicate that the server is older than the client and doesn't know about this new oneof option.";
 
 /// Behavior: `io.deephaven.server.grpc.GrpcErrorHelper#checkRepeatedFieldNonEmpty`
-fn empty_field(message: &str, field: &str, number: u32) -> Status {
+pub(super) fn empty_field(message: &str, field: &str, number: u32) -> Status {
     Status::invalid_argument(format!(
         "io.deephaven.proto.backplane.grpc.{message} must have at least one {field} ({number})"
     ))
@@ -164,6 +164,29 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
     }
 }
 
+/// The checks of one aggregation of a request, which need no table.
+///
+/// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#validate`
+pub(super) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
+    match &aggregation.r#type {
+        None => Err(missing_one_of("Aggregation")),
+        Some(AggregationType::Columns(columns)) => {
+            let Some(spec) = &columns.spec else {
+                return Err(missing_field("Aggregation.AggregationColumns", "spec", 1));
+            };
+            if columns.match_pairs.is_empty() {
+                return Err(empty_field(
+                    "Aggregation.AggregationColumns",
+                    "match_pairs",
+                    2,
+                ));
+            }
+            validate_spec(spec)
+        }
+        Some(_) => Ok(()),
+    }
+}
+
 /// The columns besides the group-by columns that `aggAllBy` leaves out for `spec`: the
 /// weight of a weighted spec, and for the specs that compute a new value the formatting
 /// columns.
@@ -280,23 +303,7 @@ impl TableOp for Aggregate {
             return Err(empty_field("AggregateRequest", "aggregations", 5));
         }
         for aggregation in &request.aggregations {
-            match &aggregation.r#type {
-                None => return Err(missing_one_of("Aggregation")),
-                Some(AggregationType::Columns(columns)) => {
-                    let Some(spec) = &columns.spec else {
-                        return Err(missing_field("Aggregation.AggregationColumns", "spec", 1));
-                    };
-                    if columns.match_pairs.is_empty() {
-                        return Err(empty_field(
-                            "Aggregation.AggregationColumns",
-                            "match_pairs",
-                            2,
-                        ));
-                    }
-                    validate_spec(spec)?;
-                }
-                Some(_) => {}
-            }
+            validate_aggregation(aggregation)?;
         }
         Ok(())
     }

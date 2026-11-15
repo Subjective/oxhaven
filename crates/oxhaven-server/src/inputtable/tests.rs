@@ -153,6 +153,74 @@ fn input_tables_are_described_and_sent_as_java_does() {
     }
 }
 
+/// The `deephaven:inputtable.*` keys of each field, and whether the schema says the table
+/// has an input table.
+fn input_roles(table: &Arc<dyn Table>) -> (Vec<(String, Vec<String>)>, bool) {
+    let schema = crate::schema::table_schema(table.as_ref());
+    let fields = schema
+        .fields()
+        .iter()
+        .map(|field| {
+            let mut roles: Vec<String> = field
+                .metadata()
+                .keys()
+                .filter_map(|key| key.strip_prefix("deephaven:inputtable."))
+                .map(str::to_owned)
+                .collect();
+            roles.sort_unstable();
+            (field.name().clone(), roles)
+        })
+        .collect();
+    let marked = schema
+        .metadata()
+        .contains_key("deephaven:unsent.attribute.InputTable");
+    assert_eq!(
+        marked,
+        schema.metadata().contains_key("deephaven:tableMetadata")
+    );
+    (fields, marked)
+}
+
+/// Observed on Java 42.9 for `input_table(K int key, S String, V double)` and the tables
+/// below: the roles are those of the input table's own columns, by name.
+#[test]
+fn derived_tables_mark_only_the_columns_of_their_input_table() {
+    use oxhaven_engine::ops::select::{update, update_view};
+    use oxhaven_engine::ops::sort::{sort, SortColumn};
+    use oxhaven_expr::Compiler;
+
+    let table = create_input_table(graph(), &request(keyed(&["K"])), None).unwrap();
+    let roles = |names: &[(&str, &[&str])]| -> Vec<(String, Vec<String>)> {
+        names
+            .iter()
+            .map(|(name, roles)| {
+                let roles = roles.iter().map(|&role| role.to_owned()).collect();
+                ((*name).to_owned(), roles)
+            })
+            .collect()
+    };
+    let own: [(&str, &[&str]); 3] = [("K", &["isKey"]), ("S", &["isValue"]), ("V", &["isValue"])];
+    assert_eq!(input_roles(&table), (roles(&own), true));
+
+    // an added column is neither; a replaced one keeps the role of its name
+    let added = update_view(&table, &["X = V + 1", "S = 1"], &Compiler).unwrap();
+    let mut with_added = own.to_vec();
+    with_added.push(("X", &[]));
+    assert_eq!(input_roles(&added), (roles(&with_added), true));
+    let sorted = sort(&added, &[SortColumn::descending("X")]).unwrap();
+    assert_eq!(input_roles(&sorted), (roles(&with_added), true));
+
+    // these results no longer have the input table
+    let plain: Vec<(&str, &[&str])> = with_added
+        .iter()
+        .map(|(name, _)| (*name, &[][..]))
+        .collect();
+    let stored = update(&table, &["X = V + 1"], &Compiler).unwrap();
+    assert_eq!(input_roles(&stored), (roles(&plain), false));
+    let by_size = sort(&table, &[SortColumn::ascending("V").absolute()]).unwrap();
+    assert_eq!(input_roles(&by_size), (roles(&plain[..3]), false));
+}
+
 #[test]
 fn keyed_table_replaces_deletes_and_reuses_the_place_of_a_key() {
     let table = create_input_table(graph(), &request(keyed(&["K"])), None).unwrap();
