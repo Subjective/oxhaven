@@ -335,7 +335,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
     let mut tables: BTreeMap<String, Made> = BTreeMap::new();
     for input in list(&scenario["inputs"]) {
         if input["ticking"]["blink"] == true {
-            // The engine has no blink input table.
+            // This replay does not drive a blink input table.
             let made = Made::NotRun("blink input".to_string());
             tables.insert(text(&input["name"]).to_string(), made);
             continue;

@@ -508,3 +508,7 @@ PR 65 (console design, embedded Python behind the `python` feature, M6 and M7 ta
 ## 2026-11-15 06:25 UTC
 
 PR 66 opened (column statistics, quick filters, blink input tables). Gate reaches 78 of 83 on that branch. It also corrects a rule merged in PR 61: Java memoizes a view on a copy only for bare column names, not `view(X = K)`. For owner review: three quick-filter sub-cases and vector column statistics are refused as not ported; blink Barrage subscriptions still refused.
+
+## 2026-11-15 06:35 UTC
+
+PR 66 merged on green. Main is at 78 of 83 replay scenarios clean. Remaining: formula aggregation (2) and update_by count-where and rolling formula (3), both in flight.
