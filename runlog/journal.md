@@ -737,3 +737,9 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Merged pull request 89 (7.2, Parquet write) on six green checks.
 - 6.13 (autocomplete) reported after 67 minutes; pull request 91 opened. It also fixes the stale console transcript (line numbers scrubbed) and raises the oracle-replay job timeout from 15 to 25 minutes.
 - Merged pull request 91 (6.13, autocomplete) on six green checks.
+- 22:50 UTC: 6.12 (Python listeners) reported after about 60 minutes. Not opened as a pull
+  request yet: sent back for two fixes (`modified_prev` read at the wrong keys compared
+  with Java; a panic where Java raises a lock upgrade error). Two questions for the
+  owner from this run: formula operations run on threads and in listeners without an
+  ExecutionContext, where Java refuses them; a command holds the shared lock and is shown
+  to scripts as holding the exclusive one.
