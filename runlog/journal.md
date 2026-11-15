@@ -441,3 +441,15 @@ Contract gap for owner review (from PR 60): no column type for preview columns a
 table attributes for column descriptions or the uploaded schema; the server keeps them in
 side registries that table operations do not carry.
 Possible bug to check: head_by over a table whose only column is the key fails internally.
+
+## 2026-11-15 04:25 UTC
+
+Owner asked why main shows failed runs. Cause: `concurrency.cancel-in-progress` on the
+main ref; each run-log push cancels the run of the merge commit before it. No PR was
+merged on a red head. One real failure on main: run 235 (23:39 UTC, the harness hang,
+fixed by PR 56). Fix assigned to the CI test-time task: cancel only pull request runs and
+skip push runs for runlog-only commits. Until then run-log commits are batched.
+Also found: squash merges carry a `Co-authored-by: Claude` trailer (GitHub adds it from
+the branch commits' author) and commits use the environment's "Claude" git identity,
+against the owner's no-attribution rule. From PR 61 on the squash message is written
+explicitly. Author identity is with the owner to decide.
