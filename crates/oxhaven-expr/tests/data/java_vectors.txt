@@ -1,0 +1,852 @@
+# Formulas over the vector and array columns of record_java_vectors.py: `A` and a letter
+# is an array column (`AI` an `int[]`), `V` and the letter the vector of the same cells
+# (`VI` an `IntVector`). Y byte, H short, C char, I int, L long, F float, D double,
+# S String, B Boolean, T Instant. Row 1 holds empty arrays and vectors, row 2 null cells.
+
+
+# The reductions of io.deephaven.function.Numeric and Basic, per element type, of a vector and of an array.
+update sum(VY)
+update sum(VH)
+update sum(VC)
+update sum(VI)
+update sum(VL)
+update sum(VF)
+update sum(VD)
+update sum(AY)
+update sum(AH)
+update sum(AC)
+update sum(AI)
+update sum(AL)
+update sum(AF)
+update sum(AD)
+update avg(VY)
+update avg(VH)
+update avg(VC)
+update avg(VI)
+update avg(VL)
+update avg(VF)
+update avg(VD)
+update avg(AY)
+update avg(AH)
+update avg(AC)
+update avg(AI)
+update avg(AL)
+update avg(AF)
+update avg(AD)
+update min(VY)
+update min(VH)
+update min(VC)
+update min(VI)
+update min(VL)
+update min(VF)
+update min(VD)
+update min(AY)
+update min(AH)
+update min(AC)
+update min(AI)
+update min(AL)
+update min(AF)
+update min(AD)
+update max(VY)
+update max(VH)
+update max(VC)
+update max(VI)
+update max(VL)
+update max(VF)
+update max(VD)
+update max(AY)
+update max(AH)
+update max(AC)
+update max(AI)
+update max(AL)
+update max(AF)
+update max(AD)
+update count(VY)
+update count(VH)
+update count(VC)
+update count(VI)
+update count(VL)
+update count(VF)
+update count(VD)
+update count(AY)
+update count(AH)
+update count(AC)
+update count(AI)
+update count(AL)
+update count(AF)
+update count(AD)
+update countDistinct(VY)
+update countDistinct(VH)
+update countDistinct(VC)
+update countDistinct(VI)
+update countDistinct(VL)
+update countDistinct(VF)
+update countDistinct(VD)
+update countDistinct(AY)
+update countDistinct(AH)
+update countDistinct(AC)
+update countDistinct(AI)
+update countDistinct(AL)
+update countDistinct(AF)
+update countDistinct(AD)
+update first(VY)
+update first(VH)
+update first(VC)
+update first(VI)
+update first(VL)
+update first(VF)
+update first(VD)
+update first(AY)
+update first(AH)
+update first(AC)
+update first(AI)
+update first(AL)
+update first(AF)
+update first(AD)
+update last(VY)
+update last(VH)
+update last(VC)
+update last(VI)
+update last(VL)
+update last(VF)
+update last(VD)
+update last(AY)
+update last(AH)
+update last(AC)
+update last(AI)
+update last(AL)
+update last(AF)
+update last(AD)
+update median(VY)
+update median(VH)
+update median(VC)
+update median(VI)
+update median(VL)
+update median(VF)
+update median(VD)
+update median(AY)
+update median(AH)
+update median(AC)
+update median(AI)
+update median(AL)
+update median(AF)
+update median(AD)
+update std(VY)
+update std(VH)
+update std(VC)
+update std(VI)
+update std(VL)
+update std(VF)
+update std(VD)
+update std(AY)
+update std(AH)
+update std(AC)
+update std(AI)
+update std(AL)
+update std(AF)
+update std(AD)
+update var(VY)
+update var(VH)
+update var(VC)
+update var(VI)
+update var(VL)
+update var(VF)
+update var(VD)
+update var(AY)
+update var(AH)
+update var(AC)
+update var(AI)
+update var(AL)
+update var(AF)
+update var(AD)
+update absSum(VY)
+update absSum(VH)
+update absSum(VC)
+update absSum(VI)
+update absSum(VL)
+update absSum(VF)
+update absSum(VD)
+update absSum(AY)
+update absSum(AH)
+update absSum(AC)
+update absSum(AI)
+update absSum(AL)
+update absSum(AF)
+update absSum(AD)
+update product(VY)
+update product(VH)
+update product(VC)
+update product(VI)
+update product(VL)
+update product(VF)
+update product(VD)
+update product(AY)
+update product(AH)
+update product(AC)
+update product(AI)
+update product(AL)
+update product(AF)
+update product(AD)
+update len(VY)
+update len(VH)
+update len(VC)
+update len(VI)
+update len(VL)
+update len(VF)
+update len(VD)
+update len(AY)
+update len(AH)
+update len(AC)
+update len(AI)
+update len(AL)
+update len(AF)
+update len(AD)
+
+# Functions that return an array.
+update sort(VY)
+update sort(VH)
+update sort(VC)
+update sort(VI)
+update sort(VL)
+update sort(VF)
+update sort(VD)
+update sort(AY)
+update sort(AH)
+update sort(AC)
+update sort(AI)
+update sort(AL)
+update sort(AF)
+update sort(AD)
+update sortDescending(VY)
+update sortDescending(VH)
+update sortDescending(VC)
+update sortDescending(VI)
+update sortDescending(VL)
+update sortDescending(VF)
+update sortDescending(VD)
+update sortDescending(AY)
+update sortDescending(AH)
+update sortDescending(AC)
+update sortDescending(AI)
+update sortDescending(AL)
+update sortDescending(AF)
+update sortDescending(AD)
+update distinct(VY)
+update distinct(VH)
+update distinct(VC)
+update distinct(VI)
+update distinct(VL)
+update distinct(VF)
+update distinct(VD)
+update distinct(AY)
+update distinct(AH)
+update distinct(AC)
+update distinct(AI)
+update distinct(AL)
+update distinct(AF)
+update distinct(AD)
+update reverse(VY)
+update reverse(VH)
+update reverse(VC)
+update reverse(VI)
+update reverse(VL)
+update reverse(VF)
+update reverse(VD)
+update reverse(AY)
+update reverse(AH)
+update reverse(AC)
+update reverse(AI)
+update reverse(AL)
+update reverse(AF)
+update reverse(AD)
+update cumsum(VY)
+update cumsum(VH)
+update cumsum(VC)
+update cumsum(VI)
+update cumsum(VL)
+update cumsum(VF)
+update cumsum(VD)
+update cumsum(AY)
+update cumsum(AH)
+update cumsum(AC)
+update cumsum(AI)
+update cumsum(AL)
+update cumsum(AF)
+update cumsum(AD)
+
+# Conversions between a vector and an array.
+update array(VY)
+update array(VH)
+update array(VC)
+update array(VI)
+update array(VL)
+update array(VF)
+update array(VD)
+update vec(AI)
+update R == 2 ? null : vec(AI)
+update array(AI)
+update vec(VI)
+update vec(AD)
+update R == 2 ? null : vec(AD)
+update array(AD)
+update vec(VD)
+
+# Methods of a vector, and an index into a vector, which is `get`.
+update VY.size()
+update VH.size()
+update VC.size()
+update VI.size()
+update VL.size()
+update VF.size()
+update VD.size()
+update VS.size()
+update VB.size()
+update VT.size()
+update R == 2 ? -1 : VI.size()
+update R == 2 ? true : VI.isEmpty()
+update VI.isEmpty()
+update R == 2 ? -1 : VD.size()
+update R == 2 ? true : VD.isEmpty()
+update VD.isEmpty()
+update R == 2 ? -1 : VS.size()
+update R == 2 ? true : VS.isEmpty()
+update VS.isEmpty()
+update R == 2 ? null : VY.get(0)
+update R == 2 ? null : VY[N]
+update R == 2 ? null : VH.get(0)
+update R == 2 ? null : VH[N]
+update R == 2 ? null : VC.get(0)
+update R == 2 ? null : VC[N]
+update R == 2 ? null : VI.get(0)
+update R == 2 ? null : VI[N]
+update R == 2 ? null : VL.get(0)
+update R == 2 ? null : VL[N]
+update R == 2 ? null : VF.get(0)
+update R == 2 ? null : VF[N]
+update R == 2 ? null : VD.get(0)
+update R == 2 ? null : VD[N]
+update R == 2 ? null : VS.get(0)
+update R == 2 ? null : VS[N]
+update R == 2 ? null : VB.get(0)
+update R == 2 ? null : VB[N]
+update R == 2 ? null : VT.get(0)
+update R == 2 ? null : VT[N]
+update VI.get(0)
+update VI[0]
+update R == 2 ? null : VI.get(1)
+update R == 2 ? null : VI[1]
+update R == 2 ? null : VI.get(-1)
+update R == 2 ? null : VI[-1]
+update R == 2 ? null : VI.get(100)
+update R == 2 ? null : VI[100]
+update R == 2 ? null : VI.get(N)
+update R == 2 ? null : VI[N]
+update R == 2 ? null : VI.get(NL)
+update R == 2 ? null : VI[NL]
+update R == 2 ? null : VI.get(NH)
+update R == 2 ? null : VI[NH]
+update R == 2 ? null : VI.get(1L)
+update R == 2 ? null : VI[1L]
+update R == 2 ? null : VI.get(N + 1)
+update R == 2 ? null : VI[N + 1]
+update R == 2 ? null : VI.get(NF)
+update R == 2 ? null : VI[NF]
+update R == 2 ? null : VI.get(1.0)
+update R == 2 ? null : VI[1.0]
+update R == 2 ? null : VI.get((int) NF)
+update R == 2 ? null : VI[(int) NF]
+update VD.get(0)
+update VD[0]
+update R == 2 ? null : VD.get(1)
+update R == 2 ? null : VD[1]
+update R == 2 ? null : VD.get(-1)
+update R == 2 ? null : VD[-1]
+update R == 2 ? null : VD.get(100)
+update R == 2 ? null : VD[100]
+update R == 2 ? null : VD.get(N)
+update R == 2 ? null : VD[N]
+update R == 2 ? null : VD.get(NL)
+update R == 2 ? null : VD[NL]
+update R == 2 ? null : VD.get(NH)
+update R == 2 ? null : VD[NH]
+update R == 2 ? null : VD.get(1L)
+update R == 2 ? null : VD[1L]
+update R == 2 ? null : VD.get(N + 1)
+update R == 2 ? null : VD[N + 1]
+update R == 2 ? null : VD.get(NF)
+update R == 2 ? null : VD[NF]
+update R == 2 ? null : VD.get(1.0)
+update R == 2 ? null : VD[1.0]
+update R == 2 ? null : VD.get((int) NF)
+update R == 2 ? null : VD[(int) NF]
+
+# subVector: the positions outside the vector are null elements.
+update R == 2 ? null : VY.subVector(1, 3)
+update R == 2 ? null : VH.subVector(1, 3)
+update R == 2 ? null : VC.subVector(1, 3)
+update R == 2 ? null : VI.subVector(1, 3)
+update R == 2 ? null : VL.subVector(1, 3)
+update R == 2 ? null : VF.subVector(1, 3)
+update R == 2 ? null : VD.subVector(1, 3)
+update R == 2 ? null : VS.subVector(1, 3)
+update R == 2 ? null : VB.subVector(1, 3)
+update R == 2 ? null : VT.subVector(1, 3)
+update VI.subVector(0, 1)
+update R == 2 ? null : VI.subVector(0, 0)
+update R == 2 ? null : VI.subVector(0, 2)
+update R == 2 ? null : VI.subVector(-1, 2)
+update R == 2 ? null : VI.subVector(2, 8)
+update R == 2 ? null : VI.subVector(-3, -1)
+update R == 2 ? null : VI.subVector(10, 12)
+update R == 2 ? null : VI.subVector(0, N)
+update R == 2 ? null : VI.subVector(1L, NL)
+update R == 2 ? null : VI.subVector(2, 1)
+update R == 2 ? null : VI.subVector(N, 2)
+update VD.subVector(0, 1)
+update R == 2 ? null : VD.subVector(0, 0)
+update R == 2 ? null : VD.subVector(0, 2)
+update R == 2 ? null : VD.subVector(-1, 2)
+update R == 2 ? null : VD.subVector(2, 8)
+update R == 2 ? null : VD.subVector(-3, -1)
+update R == 2 ? null : VD.subVector(10, 12)
+update R == 2 ? null : VD.subVector(0, N)
+update R == 2 ? null : VD.subVector(1L, NL)
+update R == 2 ? null : VD.subVector(2, 1)
+update R == 2 ? null : VD.subVector(N, 2)
+
+# An index into an array, which fails outside it, and the length of an array.
+update AY[0]
+update R == 1 || R == 2 ? null : AY[0]
+update R == 2 ? -1 : AY.length
+update AH[0]
+update R == 1 || R == 2 ? null : AH[0]
+update R == 2 ? -1 : AH.length
+update AC[0]
+update R == 1 || R == 2 ? null : AC[0]
+update R == 2 ? -1 : AC.length
+update AI[0]
+update R == 1 || R == 2 ? null : AI[0]
+update R == 2 ? -1 : AI.length
+update AL[0]
+update R == 1 || R == 2 ? null : AL[0]
+update R == 2 ? -1 : AL.length
+update AF[0]
+update R == 1 || R == 2 ? null : AF[0]
+update R == 2 ? -1 : AF.length
+update AD[0]
+update R == 1 || R == 2 ? null : AD[0]
+update R == 2 ? -1 : AD.length
+update AS[0]
+update R == 1 || R == 2 ? null : AS[0]
+update R == 2 ? -1 : AS.length
+update AB[0]
+update R == 1 || R == 2 ? null : AB[0]
+update R == 2 ? -1 : AB.length
+update AT[0]
+update R == 1 || R == 2 ? null : AT[0]
+update R == 2 ? -1 : AT.length
+update AI.length
+update len(AI) > 4 ? AI[1] : null
+update len(AI) > 4 ? AI[N] : null
+update len(AI) > 4 ? AI[NL] : null
+update len(AI) > 4 ? AI[NH] : null
+update len(AI) > 4 ? AI[-1] : null
+update len(AI) > 4 ? AI[1L] : null
+update R == 0 ? AI[N] : null
+update AI.get(0)
+update AI.size()
+update VI.length
+update AD.length
+update len(AD) > 4 ? AD[1] : null
+update len(AD) > 4 ? AD[N] : null
+update len(AD) > 4 ? AD[NL] : null
+update len(AD) > 4 ? AD[NH] : null
+update len(AD) > 4 ? AD[-1] : null
+update len(AD) > 4 ? AD[1L] : null
+update R == 0 ? AD[N] : null
+update AD.get(0)
+update AD.size()
+update VD.length
+
+# Vectors and arrays of String, Boolean and Instant.
+update len(VS)
+update len(VB)
+update len(VT)
+update len(AS)
+update len(AB)
+update len(AT)
+update countObj(VS)
+update countObj(VB)
+update countObj(VT)
+update countObj(AS)
+update countObj(AB)
+update countObj(AT)
+update firstObj(VS)
+update firstObj(VB)
+update firstObj(VT)
+update firstObj(AS)
+update firstObj(AB)
+update firstObj(AT)
+update lastObj(VS)
+update lastObj(VB)
+update lastObj(VT)
+update lastObj(AS)
+update lastObj(AB)
+update lastObj(AT)
+update count(VS)
+update count(VB)
+update count(VT)
+update count(AS)
+update count(AB)
+update count(AT)
+update first(VS)
+update first(VB)
+update first(VT)
+update first(AS)
+update first(AB)
+update first(AT)
+update last(VS)
+update last(VB)
+update last(VT)
+update last(AS)
+update last(AB)
+update last(AT)
+update sum(VS)
+update sum(VB)
+update sum(VT)
+update sum(AS)
+update sum(AB)
+update sum(AT)
+update min(VS)
+update min(VB)
+update min(VT)
+update min(AS)
+update min(AB)
+update min(AT)
+update max(VS)
+update max(VB)
+update max(VT)
+update max(AS)
+update max(AB)
+update max(AT)
+update minObj(VS)
+update minObj(VB)
+update minObj(VT)
+update minObj(AS)
+update minObj(AB)
+update minObj(AT)
+update maxObj(VS)
+update maxObj(VB)
+update maxObj(VT)
+update maxObj(AS)
+update maxObj(AB)
+update maxObj(AT)
+update countDistinctObj(VS)
+update countDistinctObj(VB)
+update countDistinctObj(VT)
+update countDistinctObj(AS)
+update countDistinctObj(AB)
+update countDistinctObj(AT)
+update distinctObj(VS)
+update distinctObj(VB)
+update distinctObj(VT)
+update distinctObj(AS)
+update distinctObj(AB)
+update distinctObj(AT)
+update reverseObj(VS)
+update reverseObj(VB)
+update reverseObj(VT)
+update reverseObj(AS)
+update reverseObj(AB)
+update reverseObj(AT)
+update sortObj(VS)
+update sortObj(VB)
+update sortObj(VT)
+update sortObj(AS)
+update sortObj(AB)
+update sortObj(AT)
+update reverse(VS)
+update reverse(VB)
+update reverse(VT)
+update reverse(AS)
+update reverse(AB)
+update reverse(AT)
+update sort(VS)
+update sort(VB)
+update sort(VT)
+update sort(AS)
+update sort(AB)
+update sort(AT)
+update distinct(VS)
+update distinct(VB)
+update distinct(VT)
+update distinct(AS)
+update distinct(AB)
+update distinct(AT)
+update countDistinct(VS)
+update countDistinct(VB)
+update countDistinct(VT)
+update countDistinct(AS)
+update countDistinct(AB)
+update countDistinct(AT)
+update arrayObj(VS)
+update arrayObj(VB)
+update arrayObj(VT)
+update arrayObj(AS)
+update arrayObj(AB)
+update arrayObj(AT)
+
+# Functions of vectors that are not built, and argument lists Java has no overload for.
+update absAvg(VI)
+update absAvg(AD)
+update absAvg(VC)
+update ste(VI)
+update ste(AD)
+update ste(VC)
+update tstat(VI)
+update tstat(AD)
+update tstat(VC)
+update countPos(VI)
+update countPos(AD)
+update countPos(VC)
+update countNeg(VI)
+update countNeg(AD)
+update countNeg(VC)
+update countZero(VI)
+update countZero(AD)
+update countZero(VC)
+update indexOfMax(VI)
+update indexOfMax(AD)
+update indexOfMax(VC)
+update indexOfMin(VI)
+update indexOfMin(AD)
+update indexOfMin(VC)
+update cumprod(VI)
+update cumprod(AD)
+update cumprod(VC)
+update cummin(VI)
+update cummin(AD)
+update cummin(VC)
+update cummax(VI)
+update cummax(AD)
+update cummax(VC)
+update forwardFill(VI)
+update forwardFill(AD)
+update forwardFill(VC)
+update rank(VI)
+update rank(AD)
+update rank(VC)
+update rankDescending(VI)
+update rankDescending(AD)
+update rankDescending(VC)
+update unbox(VI)
+update unbox(AD)
+update unbox(VC)
+update enlist(VI)
+update enlist(AD)
+update enlist(VC)
+update percentile(0.5, VD)
+update percentile(0.5, AI)
+update nth(1, VI)
+update nth(1, AD)
+update firstIndexOf(1, VI)
+update countDistinct(VI, true)
+update distinct(AD, true)
+update wsum(VI, VD)
+update wavg(AD, AI)
+update cov(VD, VD)
+update cor(AI, AI)
+update wvar(VD, VI)
+update diff(1, VI)
+update concat(VI, VI)
+update concat(AI, AI)
+update in(1, VI)
+update in(1, AI)
+update replaceIfNull(VI, 0)
+update replaceIfNull(AD, 0.0)
+update repeat(I, 2)
+update sum(VI, VI)
+update sum(VI, 1)
+update len(VI, VI)
+update sum()
+update len()
+update min(VI, 1)
+update max(AI, AI)
+update abs(VI)
+update sqrt(AD)
+update isNaN(VD)
+update pow(VI, 2)
+update sum(I)
+update avg(I)
+update len(I)
+update sum(I, I)
+update count(I)
+update first(I)
+update isNull(VI)
+update isNull(AD)
+update isNull(VS)
+update VI == null
+update AD != null
+update null == VS
+
+# Operators and other constructs with a vector or array operand.
+update VI + 1
+update VI + VI
+update AI * 2
+update -VI
+update -AD
+update !VB
+update VI == VI
+update AI == AI
+update VI != AI
+update VI < VI
+update AD >= AD
+update VS + `x`
+update `x` + AI
+update S0 + VI
+update (int) VI
+update (double) AD
+update (String) VS
+update R > 3 ? VI : VI
+update R > 3 ? AD : AD
+update R > 3 ? VI : null
+update R > 3 ? null : AS
+update R > 3 ? VI : AI
+update R > 3 ? VI : VD
+update VI
+update AD
+update VS
+update AT
+update VB
+update VI.get(0).size()
+update I[0]
+update I.get(0)
+update R[N]
+update VS.get(0).length()
+update R == 2 ? null : VS[0].length()
+update VI.toArray()
+update VI.getDirect()
+update VI.copyToArray()
+update VI.intSize()
+update VI.subVectorByPositions(null)
+update VI.hashCode()
+update VI.toString()
+update VI.equals(VI)
+update VI.iterator()
+update VI.get()
+update VI.get(0, 1)
+update VI.subVector(1)
+update VI.size(1)
+update VI.get(`a`)
+update VI.get(true)
+update VI[`a`]
+update AI[`a`]
+update AI[true]
+update AI[1.5]
+update AI[N][0]
+update 3[0]
+update `abc`[0]
+update (VI)[0]
+update (R > 3 ? VI : VI)[0]
+update AI.length()
+update AI.length + 1
+update VI.size() + AI.length
+
+# Results of vector functions inside larger formulas.
+update sum(VI) + 1
+update sum(AI) * 2L
+update avg(VD) / 2
+update avg(VI) > 3 ? 1 : 2
+update max(VI) - min(VI)
+update max(VD) - min(VD)
+update first(VY) + last(VY)
+update first(VC) + 1
+update (int) sum(VY)
+update (float) avg(AF)
+update isNull(sum(VI)) ? -1 : sum(VI)
+update replaceIfNull(sum(VI), 0L)
+update sum(VI) == null
+update len(VI) == VI.size()
+update R == 2 ? 0 : VI.size() - count(VI)
+update sum(sort(VI))
+update first(sort(VD))
+update last(sort(AD))
+update len(distinct(VI))
+update sum(reverse(VI))
+update last(cumsum(VI))
+update last(cumsum(AD))
+update max(cumsum(VF))
+update sort(distinct(VI))
+update reverse(sort(AD))
+update cumsum(cumsum(VI))
+update distinct(sort(VF))
+update sort(reverse(VC))
+update R == 2 ? null : sum(VI.subVector(0, 2))
+update R == 2 ? null : avg(VD.subVector(-1, 3))
+update R == 2 ? null : VI.subVector(0, 3).subVector(1, 2)
+update R == 2 ? null : VI.subVector(1, 4).get(1)
+update R == 2 ? null : VI.subVector(1, 4).size()
+update R == 2 ? null : sort(VI.subVector(0, 2))
+update R == 2 ? null : first(VI.subVector(1, 2))
+update R == 1 || R == 2 ? null : sort(AI)[0]
+update len(sort(AI)) > 1 ? sort(AI)[1] : null
+update sort(AI).length
+update R == 2 ? -1 : sort(AI).length
+update R == 2 ? null : array(VI)[0]
+update R == 1 || R == 2 ? -1 : array(VI)[0]
+update R == 2 ? -1L : vec(AI).size()
+update R == 2 ? null : vec(sort(AI)).get(0)
+update R == 2 ? null : vec(cumsum(AD)).subVector(0, 2)
+update sum(R > 3 ? VI : null)
+update len(R > 3 ? AD : null)
+update median(VI) + median(VD)
+update std(VI) * std(VI)
+update sqrt(var(VD))
+update pow(sum(VI), 2)
+update abs(min(VI))
+update min(max(VI), 3)
+update max(sum(VI), sum(VL))
+update countDistinct(VI) + count(VI)
+update firstObj(VS) + lastObj(VS)
+update firstObj(VS).length()
+update R == 2 ? null : VS.get(0) + `!`
+update R == 1 || R == 2 ? null : AS[0].toUpperCase()
+update firstObj(VT) == lastObj(VT)
+update firstObj(VB) && R > 0
+update firstObj(AT) + 1
+update epochNanos(firstObj(VT))
+update R == 2 ? null : VT.get(0)
+update R == 2 ? null : VB.get(1)
+update R == 2 ? null : VT.subVector(0, 2)
+update R == 2 ? null : VB.subVector(-1, 1)
+
+# Filters.
+where sum(VI) > 3
+where avg(AD) > 2
+where len(VI) > 2
+where count(VD) == 0
+where isNull(VI)
+where !isNull(AD)
+where VI == null
+where AS != null
+where isNull(sum(VI))
+where R != 2 && VI.isEmpty()
+where R != 2 && VI.size() > 2
+where VI.isEmpty()
+where R != 2 && VI.get(0) > 2
+where R != 2 && VD[1] > 2
+where R != 2 && R != 1 && AI[0] > 2
+where max(VF) > 3
+where isNaN(max(VD))
+where isNaN(avg(VD))
+where median(VI) >= 3
+where firstObj(VS) == `a`
+where R != 2 && VS.get(0) == `a`
+where len(distinct(VI)) < len(VI)
+where countDistinct(AI) == 1
+where VI
+where sum(VI)
+where sort(VI)
+where firstObj(VB)
+where R != 2 && VB.get(0)
+where R != 2 && VB[0]

@@ -63,6 +63,12 @@ fn int_cell<T: TryFrom<i64>>(cell: &Value) -> Option<T> {
 
 /// A column of the recording's type `kind` from JSON cells.
 pub(super) fn column_of(kind: &str, cells: &[Value]) -> Column {
+    if let Some(element) = kind
+        .strip_prefix("list<")
+        .and_then(|rest| rest.strip_suffix('>'))
+    {
+        return list_column_of(element, cells);
+    }
     let cells = cells.iter();
     match kind {
         "bool" => (
@@ -118,6 +124,48 @@ pub(super) fn column_of(kind: &str, cells: &[Value]) -> Column {
     }
 }
 
+/// A column of arrays of the recording's type `element`: a JSON list per cell, or null.
+fn list_column_of(element: &str, cells: &[Value]) -> Column {
+    let lengths: Vec<Option<usize>> = cells
+        .iter()
+        .map(|cell| cell.as_array().map(Vec::len))
+        .collect();
+    let elements: Vec<Value> = cells
+        .iter()
+        .filter_map(Value::as_array)
+        .flatten()
+        .cloned()
+        .collect();
+    let (element_type, elements) = column_of(element, &elements);
+    let column_type = ColumnType::array(element_type);
+    let DataType::List(field) = column_type.arrow_type() else {
+        unreachable!("an array is a list")
+    };
+    let valid: Vec<bool> = lengths.iter().map(Option::is_some).collect();
+    let offsets =
+        arrow::buffer::OffsetBuffer::from_lengths(lengths.iter().map(|length| length.unwrap_or(0)));
+    let nulls = valid
+        .contains(&false)
+        .then(|| arrow::buffer::NullBuffer::from(valid));
+    (
+        column_type,
+        Arc::new(arrow::array::ListArray::new(
+            field, offsets, elements, nulls,
+        )),
+    )
+}
+
+/// The column type of a recorded list column, which `column_of` reads as an array: Java's
+/// type name says whether it is a vector.
+fn list_type(java_type: &str, column_type: ColumnType) -> ColumnType {
+    match column_type {
+        ColumnType::Array(element) if java_type.starts_with("io.deephaven.vector.") => {
+            ColumnType::Vector(element)
+        }
+        other => other,
+    }
+}
+
 /// The recording's type name for a Java column type, or `None` for a type Oxhaven has no
 /// column type for.
 pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
@@ -147,7 +195,9 @@ fn input(document: &Value) -> TestTable {
         .map(|column| {
             let name = column["name"].as_str().expect("a name");
             let kind = column["type"].as_str().expect("a type");
-            (name, column_of(kind, cells(&column["values"])))
+            let (column_type, values) = column_of(kind, cells(&column["values"]));
+            let java_type = column["java"].as_str().unwrap_or_default();
+            (name, (list_type(java_type, column_type), values))
         })
         .collect();
     TestTable::with_previous(
@@ -189,7 +239,25 @@ pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
             "a filter formula must be boolean".to_string(),
         ));
     }
-    match compiled.evaluate(table, &table.rows, false) {
+    // An evaluation that reaches behavior that is not ported ends in `unported!`.
+    let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compiled.evaluate(table, &table.rows, false)
+    }));
+    let evaluated = match evaluated {
+        Ok(evaluated) => evaluated,
+        Err(payload) => {
+            let message = match payload.downcast::<String>() {
+                Ok(message) => *message,
+                Err(payload) => payload.downcast::<&str>().map_or_else(
+                    |_| "a panic without a message".to_string(),
+                    |m| m.to_string(),
+                ),
+            };
+            assert!(message.starts_with("unported: "), "{formula}: {message}");
+            return Ours::Rejected(FormulaError::Unsupported(message));
+        }
+    };
+    match evaluated {
         Ok(values) => {
             assert_eq!(
                 values.data_type(),
@@ -286,8 +354,16 @@ fn compare(table: &TestTable, case: &Value) -> Outcome {
 
     let result = &case["result"];
     let java_type = result["java"].as_str().expect("a Java type");
-    let expected = match kind_of(java_type) {
-        Some(kind) if !result["values"].is_null() => column_of(kind, cells(&result["values"])),
+    // A list column is recorded with the type of its elements, which Java's type name
+    // lacks for a vector or array of objects.
+    let list = result["kind"]
+        .as_str()
+        .filter(|kind| kind.starts_with("list<"));
+    let expected = match list.or_else(|| kind_of(java_type)) {
+        Some(kind) if !result["values"].is_null() => {
+            let (column_type, values) = column_of(kind, cells(&result["values"]));
+            (list_type(java_type, column_type), values)
+        }
         _ => {
             return Outcome::Differs(format!(
                 "Java returns a {java_type} column; Oxhaven returns {column_type:?}"
@@ -320,6 +396,14 @@ fn every_recorded_function_call_does_what_java_did_or_is_refused_by_name() {
 #[test]
 fn every_formula_recorded_later_does_what_java_did_or_is_refused_by_name() {
     check_recording("java_additions", 20);
+}
+
+/// `tests/data/java_vectors.txt`, recorded by `tests/data/record_java_vectors.py`: the
+/// functions and methods of vectors and arrays, over every element type, with empty and
+/// null cells, null elements, NaN, infinities and values that overflow.
+#[test]
+fn every_recorded_vector_formula_does_what_java_did_or_is_refused_by_name() {
+    check_recording("java_vectors", 500);
 }
 
 /// Compares the recording `name` with the compiler; at least `least` formulas must agree.

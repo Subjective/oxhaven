@@ -7,7 +7,7 @@ mod text;
 use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int32Array,
-    Int64Array, StringArray, TimestampNanosecondArray, UInt16Array,
+    Int64Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
@@ -180,6 +180,19 @@ fn without_null_values(array: ArrayRef) -> ArrayRef {
         DataType::Float64 => clean::<Float64Type>(&array, -f64::MAX),
         DataType::Timestamp(TimeUnit::Nanosecond, _) => {
             clean::<TimestampNanosecondType>(&array, i64::MIN)
+        }
+        // The elements of a vector or array, which the functions of vectors read in place.
+        DataType::List(field) => {
+            let list = array.as_list::<i32>();
+            let elements = without_null_values(list.values().clone());
+            (!Arc::ptr_eq(&elements, list.values())).then(|| {
+                Arc::new(ListArray::new(
+                    field.clone(),
+                    list.offsets().clone(),
+                    elements,
+                    list.nulls().cloned(),
+                )) as ArrayRef
+            })
         }
         _ => None,
     };

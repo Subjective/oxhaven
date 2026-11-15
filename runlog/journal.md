@@ -462,3 +462,29 @@ local git identity is set accordingly, which worktrees inherit; squash merges ge
 trailer in an explicit message. He asked whether existing history can be rewritten; no
 rewrite or force push is to happen without his explicit go-ahead.
 PRs 62 (rolling group) and 63 (CI seed budget, main runs no longer cancelled) opened.
+
+## 2026-11-15 04:36 UTC
+
+Owner asked whether main's history can be rewritten after all implementation is done,
+keeping order. Yes: recorded as a final task. Scope: change only the author of the older
+commits to the owner and add the Claude co-author trailer where missing; keep commit
+order, dates, messages and content. It needs a force push of main, so it waits for the
+owner's explicit confirmation at that time and for no branches to be open.
+Launched: console and Python session design spike (6.1), second parity fixes (4.15).
+History rewrite task, added steps: push a backup branch of the old main first; after the
+rewrite verify that the final tree hash, and the tree of every commit in order, equal the
+originals before force pushing; keep the backup branch until the owner says to drop it.
+Merged pull requests cannot be changed by this: their pages keep the original commits.
+
+## 2026-11-15 04:36 UTC (later)
+
+Owner decided to leave existing history as it is. The history rewrite task is dropped.
+Going forward stays: owner as author, Claude co-author trailer.
+
+## 2026-11-15 04:38 UTC
+
+Owner settled the identity question: keep things as they were. Branch and run-log commits
+are made under the Claude identity, and squash merges use GitHub's default message, which
+shows the owner and Claude as co-authors. The repo-local identity override is removed.
+Commits between 04:33 and 04:37 (run-log entries and the squash of PR 61) were made under
+the owner's identity and stay as they are. No history rewrite.

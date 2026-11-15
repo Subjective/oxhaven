@@ -1,0 +1,27 @@
+name: nightly
+on:
+  schedule:
+    # Every day at 03:17 UTC, on main.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  full-seeds:
+    # The randomized tests with every seed. Pull requests run a share of them: see
+    # "Seed budget" in PORTING.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      OXHAVEN_TEST_SEEDS: full
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
