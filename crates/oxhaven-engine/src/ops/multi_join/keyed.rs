@@ -275,6 +275,16 @@ impl Keyed {
 }
 
 impl MergedOperator for Keyed {
+    /// A row of the result is removed when no table has a row of its key any more, added
+    /// when it is new or was without any row, and otherwise modified if a table changed
+    /// which row it shows there for another reason than a shift, or modified that row. A
+    /// table whose row was replaced, lost or gained in a modified row has all its columns
+    /// reported; otherwise the columns it modified are.
+    ///
+    /// One case is reported more fully than Java does: Java takes a table's row to be the
+    /// one it was when it has the row key it had, and so reports only the modified columns
+    /// when a key change and a shift put another row of the key at that row key.
+    ///
     /// Behavior: io.deephaven.engine.table.impl.MultiJoinTableImpl.MultiJoinMergedListener#process
     fn on_update(
         &self,
@@ -331,6 +341,16 @@ impl MergedOperator for Keyed {
                             row_modified |= redirected_here[table];
                         } else {
                             row_modified |= flags & MODIFY != 0;
+                            // The same row key is not always the same row: where a key
+                            // column changed, the row of this key may have left while
+                            // another took the key and, shifted, the row key. Java
+                            // reports only the columns its table modified then.
+                            let moved_to = upstream[table]
+                                .as_ref()
+                                .map_or(before, |update| update.shifted.apply_to_key(before));
+                            if flags & MODIFY != 0 && now != NULL_ROW_KEY && moved_to != now {
+                                redirected_here[table] = true;
+                            }
                         }
                     }
                     // The table has no row here and never changed that.

@@ -837,6 +837,32 @@ fn a_row_replaced_by_another_of_its_key_in_one_cycle_is_modified() {
     assert_eq!(join.rows()[1], "2,a2,333,r");
 }
 
+/// The row of key 2 gets another key and is shifted away; the row of key 4 is shifted to
+/// its row key and gets key 2. Key 2 has a row at the row key it had, and it is another
+/// row. Java reports no column of that row as modified; see `Keyed::on_update`.
+#[test]
+fn another_row_at_the_row_key_and_key_of_a_row_that_left_is_a_modify_of_every_column() {
+    let join = both_live();
+    let change = TableChange::new()
+        .shift(5, 6, -1)
+        .modify([4, 5], [(0, ints([9, 2]))]);
+    let update = join.change(1, change).unwrap();
+    assert_eq!(only(&update), (vec![4], vec![3], vec![1]));
+    assert_eq!(
+        update.modified_columns,
+        ModifiedColumnSet::of([B_COLUMN, X_COLUMN])
+    );
+    assert_eq!(
+        join.rows(),
+        [
+            "1,a1,null,null",
+            "2,a2,400,y",
+            "3,a3,null,null",
+            "9,null,200,x"
+        ]
+    );
+}
+
 #[test]
 fn a_second_row_of_a_key_fails_the_result() {
     let join = both_live();
