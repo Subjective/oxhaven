@@ -2,6 +2,8 @@
 
 pub mod agg;
 pub mod asof;
+#[cfg(test)]
+mod copied_tests;
 pub mod crossjoin;
 pub mod distinct;
 pub mod filter;

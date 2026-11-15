@@ -154,7 +154,8 @@ struct Slot {
     result: Option<ExportValue>,
     /// The session's listener version when listeners were last told of this export.
     listener_version: u64,
-    /// Whether work has been submitted. An export is defined once.
+    /// Whether a definition has taken this export, by [`ExportBuilder::claim`] or by
+    /// submitting work. An export is defined once.
     defined: bool,
     serial: bool,
     work: Option<Work>,
@@ -529,6 +530,27 @@ impl Export {
         slot.error_id = Some(error_id);
     }
 
+    /// Marks this export as defined, or fails if it already is.
+    ///
+    /// Behavior: the `IllegalStateException`s of
+    /// `io.deephaven.server.session.SessionState.ExportObject#setQueryPerformanceRecorder`,
+    /// `#setDependencies` and `#setWork`, as
+    /// `SessionService.ObfuscatingErrorTransformer#transform` answers them
+    fn define(&self, slot: &mut Slot) -> Result<(), Status> {
+        if slot.defined {
+            let error_id = Uuid::new_v4();
+            tracing::error!(
+                "Internal Error '{error_id}': export {} can only be defined once",
+                self.inner.log_identity
+            );
+            return Err(Status::invalid_argument(format!(
+                "Details Logged w/ID '{error_id}'"
+            )));
+        }
+        slot.defined = true;
+        Ok(())
+    }
+
     /// The status an error handler receives for the failure this export is in.
     ///
     /// Behavior: `io.deephaven.server.session.SessionState#toErrorHandler` applied to the
@@ -756,6 +778,8 @@ impl fmt::Debug for Export {
 /// Behavior: `io.deephaven.server.session.SessionState.ExportBuilder`
 pub struct ExportBuilder {
     export: Export,
+    /// Whether this builder has taken the export with [`ExportBuilder::claim`].
+    claimed: bool,
     dependencies: Vec<Export>,
     serial: bool,
     on_error: Option<OnError>,
@@ -766,6 +790,7 @@ impl ExportBuilder {
     pub(super) fn new(export: Export) -> Self {
         Self {
             export,
+            claimed: false,
             dependencies: Vec::new(),
             serial: false,
             on_error: None,
@@ -776,6 +801,26 @@ impl ExportBuilder {
     /// The export being defined. It can be required by other work before it is submitted.
     pub fn export(&self) -> &Export {
         &self.export
+    }
+
+    /// Takes the export for this definition before its work is submitted, so that no other
+    /// definition can take it, whether or not this one is ever submitted. A request that
+    /// defines several exports claims each before it submits any, as Java does: one that is
+    /// refused part way leaves the exports it claimed defined and never resolved.
+    ///
+    /// Fails, as [`ExportBuilder::submit`] does, if the export is already defined.
+    ///
+    /// Behavior: `io.deephaven.server.session.SessionState.ExportBuilder#queryPerformanceRecorder`
+    /// and `#require`, which an export accepts once
+    /// (`SessionState.ExportObject#setQueryPerformanceRecorder`, `#setDependencies`), as
+    /// `io.deephaven.server.table.ops.TableServiceGrpcImpl#createBatchExportBuilder` calls
+    /// the first for every operation of a batch before any is submitted.
+    pub fn claim(&mut self) -> Result<(), Status> {
+        if !self.claimed {
+            self.export.define(&mut self.export.lock())?;
+            self.claimed = true;
+        }
+        Ok(())
     }
 
     /// Adds exports whose values the work needs. The work receives the values in the order
@@ -807,9 +852,10 @@ impl ExportBuilder {
     /// Submits the work. It runs on the session's executor once every dependency has been
     /// exported, with the dependencies' values.
     ///
-    /// Fails with `INVALID_ARGUMENT` if the export already has work: an export id can be
-    /// defined once. In Java that is an `IllegalStateException` out of the request handler,
-    /// which the error transformer turns into this status.
+    /// Fails with `INVALID_ARGUMENT` if another definition has taken the export: an export
+    /// id can be defined once. In Java that is an `IllegalStateException` out of the request
+    /// handler, which the error transformer logs under a new id and turns into this status
+    /// with the text `Details Logged w/ID '<id>'`.
     ///
     /// Two interleavings of a dependency and its release differ from Java, each within what
     /// Java itself produces under a different timing. A dependency released between the
@@ -826,6 +872,7 @@ impl ExportBuilder {
     {
         let ExportBuilder {
             export,
+            claimed,
             dependencies,
             serial,
             on_error,
@@ -854,13 +901,9 @@ impl ExportBuilder {
         let mut effects = Vec::new();
         {
             let mut slot = export.lock();
-            if slot.defined {
-                return Err(Status::invalid_argument(format!(
-                    "export {} can only be defined once",
-                    export.inner.log_identity
-                )));
+            if !claimed {
+                export.define(&mut slot)?;
             }
-            slot.defined = true;
             if let Some(dead) = &dead {
                 export.dependency_failure(&mut slot, dead, &mut effects);
             }

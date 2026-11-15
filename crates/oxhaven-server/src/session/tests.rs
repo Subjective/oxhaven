@@ -524,17 +524,60 @@ mod exports {
         assert_eq!(second.value().map(|v| number(&v)), Some(5));
     }
 
+    /// The status of a definition of an export that is already defined, checked to be what
+    /// the Java server answers: `INVALID_ARGUMENT` and the id the reason was logged under.
+    fn assert_defined_twice(refused: Result<Export, Status>) {
+        let status = refused.unwrap_err();
+        assert_eq!(status.code(), Code::InvalidArgument);
+        let id = status
+            .message()
+            .strip_prefix("Details Logged w/ID '")
+            .and_then(|rest| rest.strip_suffix('\''))
+            .unwrap_or_else(|| panic!("not an error id: {}", status.message()));
+        assert!(uuid::Uuid::parse_str(id).is_ok(), "{id}");
+    }
+
     #[test]
     fn an_export_is_defined_once() {
         let fixture = Fixture::new();
         let session = fixture.session();
         let export = session.new_export(1).unwrap().submit(constant(1)).unwrap();
-        let again = session.new_export(1).unwrap().submit(constant(2));
-        assert_eq!(again.unwrap_err().code(), Code::InvalidArgument);
+        assert_defined_twice(session.new_export(1).unwrap().submit(constant(2)));
         fixture.executor.run_all();
         assert_eq!(export.value().map(|v| number(&v)), Some(1));
-        let after = session.new_export(1).unwrap().submit(constant(3));
-        assert_eq!(after.unwrap_err().code(), Code::InvalidArgument);
+        assert_defined_twice(session.new_export(1).unwrap().submit(constant(3)));
+    }
+
+    #[test]
+    fn a_claimed_export_is_defined_even_if_its_work_is_never_submitted() {
+        let fixture = Fixture::new();
+        let session = fixture.session();
+        let mut claimed = session.new_export(1).unwrap();
+        claimed.claim().unwrap();
+        // claiming again is the same claim
+        claimed.claim().unwrap();
+
+        // no other definition can take it, by claim or by work
+        let mut second = session.new_export(1).unwrap();
+        let status = second.claim().unwrap_err();
+        assert_eq!(status.code(), Code::InvalidArgument);
+        assert!(status.message().starts_with("Details Logged w/ID '"));
+        assert_defined_twice(second.submit(constant(2)));
+
+        // dropped without work, it stays defined and never resolves
+        let export = claimed.export().clone();
+        drop(claimed);
+        fixture.executor.run_all();
+        assert_eq!(export.state(), Unknown);
+        assert_defined_twice(session.new_export(1).unwrap().submit(constant(3)));
+        assert_eq!(session.get_export(1).unwrap().state(), Unknown);
+
+        // the builder that claimed an export is the one that can submit its work
+        let mut builder = session.new_export(2).unwrap();
+        builder.claim().unwrap();
+        let export = builder.submit(constant(4)).unwrap();
+        fixture.executor.run_all();
+        assert_eq!(export.value().map(|v| number(&v)), Some(4));
     }
 
     #[test]
@@ -1768,6 +1811,11 @@ mod wire {
             .await
             .unwrap_err();
         assert_eq!(err.code(), Code::InvalidArgument);
+        assert!(
+            err.message().starts_with("Details Logged w/ID '"),
+            "{}",
+            err.message()
+        );
 
         client
             .release(with_auth(ReleaseRequest { id: ticket(1) }, &bearer))
