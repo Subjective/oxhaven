@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "convert_rows",
+  "scenario_sha256": "c1b42e2566d9bce15ca003d51178ebc992cb60ef772cfcadd0a11121f1224983",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "from_rows",
+      "file": "step000.from_rows.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "from_chunks",
+      "file": "step000.from_chunks.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lengths",
+      "file": "step000.lengths.arrow",
+      "rows": 3
+    }
+  ]
+}

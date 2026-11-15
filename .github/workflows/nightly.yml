@@ -5,6 +5,11 @@ on:
     - cron: "17 3 * * *"
   workflow_dispatch:
 
+# The repository is public, so anyone can open a pull request from a fork. No job needs to
+# write, and no job uses a secret: the token is read-only.
+permissions:
+  contents: read
+
 concurrency:
   group: nightly-${{ github.ref }}
   cancel-in-progress: true

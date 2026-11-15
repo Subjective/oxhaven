@@ -632,3 +632,65 @@ before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
 The owner chose "Stop it, record the difference" for PR 79. The author was resumed to add the
 allowed difference to PARITY.md (that entry only) and rerun the gate; the pull request merges
 when green.
+
+## 2026-11-15 19:46 UTC: Only Snappy enabled (PR 82); two findings behind the approval
+
+The owner's approval named BSD-3-Clause for Snappy, Zstandard and Brotli. The agent found
+that zstd-sys is BSD-3-Clause AND BSD-2-Clause, outside what was approved, and that Java's
+packaged server has no Brotli codec, so reading Brotli would succeed where Java fails. It
+enabled Snappy only and reported both. Zstandard is back with the owner as a decision card;
+Brotli stays refused, which is what parity asks for. The orchestrator's licence question to
+the owner had been wrong on both points: it assumed all three crates were BSD-3-Clause only
+and that Java reads all three. PRs 80 and 81 merged at 19:38; task 4.17 started.
+
+## 2026-11-15 19:44 UTC: Owner allowed BSD-2-Clause for zstd-sys only
+
+The codec agent was resumed to enable Zstandard on the same branch (PR 82). Brotli stays
+refused.
+
+## 2026-11-15 20:08 UTC: Conversion up as PR 83; input tables need a lock facility first
+
+The 6.9 agent finished conversion and declined to start 6.10, as briefed for a used-up
+context, and found why 6.10 was under-scoped: a console command holds the update graph's
+shared lock, and a blocking input table change from such a thread would trip the cycle's
+assertion. Java releases the lock while waiting. Decision (orchestrator): the facility
+"release this thread's shared holds while waiting" goes into task 6.10 as its first step,
+with the engine graph lock paths added to what it owns; no contract change is expected. The
+agent's Java observations are appended to the task file. For owner review from PR 83:
+to_arrow returns one record batch where Java returns several.
+Task 6.10 starts after PR 79 merges, because that pull request moves console commands onto
+the interpreter's own thread, which is where the lock is held.
+
+## 2026-11-15 20:12 UTC: Disk fell to 1.6 GB free with six agents building
+
+The console agent saw 1.6 GB free while six agents had build directories and replay runs
+alive (each about 3 to 4 GB of target plus a venv). Nothing failed. Rule from here: at most
+four agents that build at once, and none started below 12 GB free.
+
+## 2026-11-15 20:28 UTC: Repository made public by the owner
+
+The owner made Subjective/oxhaven public so that standard runners are free (he had asked
+what more Actions minutes would cost; estimate given: about 4,000 to 5,000 minutes used,
+2,500 to 4,000 to finish). Checked: no secret patterns in the tree or in history; commit
+addresses are GitHub and vendor noreply addresses; workflows use `pull_request`, no secrets,
+hosted runners only. PR 84 makes the workflow token read-only. Raised with the owner: the
+repository has no LICENSE file, and it holds a `deephaven` Python package written to match
+a reference that is under the Deephaven Community License (docs/CONSOLE.md records that
+nothing was copied).
+
+## 2026-11-15 20:40 UTC: Python functions in query strings up as PR 85
+
+For owner review from PR 85: a filter whose Python function returns None fails where Java
+drops the row; an unported library name does not fall through to a Python function of the
+same name; call order of impure functions across the formulas of one update is fixed here
+and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
+
+## 2026-11-15 20:50 UTC
+
+- Merged pull request 79 (6.14, console log and stopping a cancelled command) on six green
+  checks, after the author resolved the `Cargo.toml` conflict with pull request 82.
+- 7.3 (CSV) reported: 66 minutes, 290k tokens. Pull request 86 opened. For the owner: the
+  reader refuses date-times in zones with rules (the engine has no time zone rules), and
+  the other differences listed in the pull request and `docs/CSV.md`.
+- 6.10 started by resuming the console agent of 6.14 in its worktree, since it knows the
+  command threading that the lock release facility has to work with.

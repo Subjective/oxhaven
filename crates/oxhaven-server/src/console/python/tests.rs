@@ -6,6 +6,7 @@
 //! one interpreter, so the tests take turns.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use arrow::array::{Array, Float64Array, Int32Array, StringArray};
 use oxhaven_contracts::schema::ColumnType;
@@ -26,7 +27,7 @@ use oxhaven_testkit::TableSnapshot;
 use tokio::sync::{Mutex, MutexGuard};
 use tokio_stream::StreamExt;
 
-use super::super::{Changes, Console, Variable};
+use super::super::{Changes, Console, Stop, Variable};
 use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 
@@ -109,6 +110,27 @@ fn ints(table: &dyn Table, column: usize) -> Vec<Option<i32>> {
         .downcast_ref::<Int32Array>()
         .expect("an int column");
     values.iter().collect()
+}
+
+/// Observed on Java 42.9 with the same code: the two lines written to the descriptor are
+/// in the server's own output and not in the log stream.
+#[tokio::test]
+async fn what_is_written_to_the_descriptors_is_not_in_the_log() {
+    let python = Python::start().await;
+    python.run(
+        "import os, sys\n\
+         print('to sys.stdout')\n\
+         os.write(2, b'(a test wrote this line to descriptor 2)\\n')\n\
+         os.system('echo \"(a test wrote this line from a subprocess)\" 1>&2')\n\
+         sys.stderr.write('to sys.stderr\\n')",
+    );
+    assert_eq!(
+        python.printed(0),
+        [
+            ("STDOUT".to_string(), "to sys.stdout\n".to_string()),
+            ("STDERR".to_string(), "to sys.stderr\n".to_string()),
+        ]
+    );
 }
 
 #[tokio::test]
@@ -704,4 +726,213 @@ async fn a_client_formula_names_the_variables_of_the_session() {
         ]
     );
     python.run("assert from_client.size == 3 and from_client.column_names == ['X', 'Z', 'S']");
+}
+
+impl Python {
+    /// Runs `code` and asks for it to stop `after` it was started. Returns what the
+    /// command answered and how long it ran.
+    async fn run_and_stop(&self, code: &str, after: Duration) -> (Changes, Duration) {
+        let stop = Stop::new();
+        let started = Instant::now();
+        let running = tokio::task::spawn_blocking({
+            let (console, code, stop) = (self.console.clone(), code.to_string(), stop.clone());
+            move || console.evaluate_stoppable(&code, &stop)
+        });
+        tokio::time::sleep(after).await;
+        stop.request();
+        let changes = tokio::time::timeout(Duration::from_secs(20), running)
+            .await
+            .unwrap_or_else(|_| panic!("the command was not stopped within 20 seconds: {code}"))
+            .unwrap();
+        (changes, started.elapsed())
+    }
+}
+
+/// The gate of task 6.15. On Java 42.9 the command runs on after its call is cancelled,
+/// for ever if it is this one, and no table ticks again.
+#[tokio::test]
+async fn a_command_that_never_ends_is_stopped_when_its_client_cancels_the_call() {
+    let python = Python::start().await;
+    let bearer = python.server.login().await;
+    let mut console = ConsoleServiceClient::new(python.server.channel.clone());
+    console
+        .start_console(with_auth(
+            StartConsoleRequest {
+                result_id: Some(export_id_to_ticket(1)),
+                session_type: "python".to_string(),
+            },
+            &bearer,
+        ))
+        .await
+        .unwrap();
+    let command = |code: &str| {
+        let request = ExecuteCommandRequest {
+            console_id: Some(export_id_to_ticket(1)),
+            code: code.to_string(),
+            ..Default::default()
+        };
+        let mut console = console.clone();
+        let request = with_auth(request, &bearer);
+        async move { console.execute_command(request).await }
+    };
+    let answer = command("from deephaven import time_table\nticking = time_table('PT0.01S')");
+    assert_eq!(answer.await.unwrap().into_inner().error_message, "");
+    let graph = &python.server.state.graph;
+    let ticking = python.table("ticking");
+
+    // the client gives up on a command that would run for ever
+    let endless = command("started = 1\nwhile True:\n    pass\nnever = 1");
+    let cycles = graph.completed_cycles();
+    assert!(tokio::time::timeout(Duration::from_millis(500), endless)
+        .await
+        .is_err());
+    // while it ran it held the graph's lock: the cycle asked for now could not run
+    graph.request_cycle();
+
+    // the next command of the same client runs, and sees what the stopped one had done
+    let next = tokio::time::timeout(
+        Duration::from_secs(20),
+        command("after = started + 1\nprint(after)"),
+    );
+    let next = next.await.expect("the session runs commands again");
+    assert_eq!(next.unwrap().into_inner().error_message, "");
+    assert!(python.server.state.scope.get("after").is_some());
+    assert!(python.server.state.scope.get("never").is_none());
+
+    // and tables tick again
+    let rows = ticking.row_set().size();
+    for _ in 0..500 {
+        if graph.completed_cycles() > cycles && ticking.row_set().size() > rows {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+        graph.request_cycle();
+    }
+    assert!(graph.completed_cycles() > cycles, "no cycle ran");
+    assert!(ticking.row_set().size() > rows, "the table did not tick");
+}
+
+#[tokio::test]
+async fn a_stopped_command_ends_with_keyboard_interrupt_where_it_was() {
+    let python = Python::start().await;
+    let stopped = async |code: &'static str| {
+        let (changes, ran) = python.run_and_stop(code, Duration::from_millis(300)).await;
+        assert!(ran < Duration::from_secs(10), "{code} ran for {ran:?}");
+        changes
+            .error
+            .unwrap_or_else(|| panic!("{code} was not interrupted"))
+    };
+
+    // Python code, between two instructions
+    let looping = stopped("n = 0\nwhile True:\n    n += 1").await;
+    assert!(
+        looping.starts_with("Error in Python interpreter:\nTraceback (most recent call last):\n")
+            && looping.ends_with("KeyboardInterrupt\n"),
+        "{looping}"
+    );
+    assert!(python.server.state.scope.get("n").is_some());
+
+    // calls that block in the interpreter, which a signal wakes
+    let sleeping = stopped("import time\ntime.sleep(600)\nslept = 1").await;
+    assert!(
+        sleeping.contains("line 2, in <module>") && sleeping.ends_with("KeyboardInterrupt\n"),
+        "{sleeping}"
+    );
+    let waiting = stopped("import threading\nthreading.Event().wait()").await;
+    assert!(waiting.ends_with("KeyboardInterrupt\n"), "{waiting}");
+    let child = stopped("import subprocess\nsubprocess.run(['sleep', '600'])").await;
+    assert!(child.ends_with("KeyboardInterrupt\n"), "{child}");
+    assert!(python.server.state.scope.get("slept").is_none());
+
+    // No interrupt is left over for the commands that follow, and the standard streams
+    // and the table operations work as before.
+    let since = python.printed(0).len();
+    for round in 0..40 {
+        let changes = python.run(&format!(
+            "from deephaven import empty_table\n\
+             later = empty_table({round} + 1).update(['X = i'])\n\
+             print(later.size)"
+        ));
+        assert_eq!(
+            summary(&changes),
+            if round == 0 {
+                "later /  / "
+            } else {
+                " / later / "
+            }
+        );
+    }
+    assert_eq!(python.printed(0).len(), since + 40);
+    assert_eq!(python.table("later").row_set().size(), 40);
+}
+
+#[tokio::test]
+async fn a_command_stopped_before_it_starts_does_not_run() {
+    let python = Python::start().await;
+    let stop = Stop::new();
+    stop.request();
+    let changes = python
+        .console
+        .evaluate_stoppable("ran = 1\nprint('ran')", &stop);
+    assert_eq!(
+        changes.error.as_deref(),
+        Some("Error in Python interpreter:\nKeyboardInterrupt\n")
+    );
+    assert!(python.server.state.scope.get("ran").is_none());
+    assert_eq!(python.printed(0), []);
+    // a request after the command has ended interrupts nothing
+    let stop = Stop::new();
+    assert_eq!(
+        python.console.evaluate_stoppable("ran = 2", &stop).error,
+        None
+    );
+    stop.request();
+    python.run("ran = 3");
+}
+
+#[tokio::test]
+async fn code_that_catches_the_interrupt_goes_on_until_it_is_stopped_again() {
+    let python = Python::start().await;
+    let code = "import time\n\
+                try:\n    time.sleep(600)\nexcept KeyboardInterrupt:\n    caught = 1\n\
+                time.sleep(600)\n\
+                finished = 1";
+    let stop = Stop::new();
+    let running = tokio::task::spawn_blocking({
+        let (console, stop) = (python.console.clone(), stop.clone());
+        move || console.evaluate_stoppable(code, &stop)
+    });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    stop.request();
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    assert!(!running.is_finished());
+    stop.request();
+    let changes = tokio::time::timeout(Duration::from_secs(20), running);
+    let error = changes.await.expect("stopped").unwrap().error.unwrap();
+    assert!(error.contains("line 6, in <module>"), "{error}");
+    assert!(python.server.state.scope.get("caught").is_some());
+    assert!(python.server.state.scope.get("finished").is_none());
+}
+
+/// The interpreter's lock is released while the engine works, and the operation the
+/// command called is finished, not abandoned: the interrupt is raised when it returns.
+#[tokio::test]
+async fn other_threads_of_a_script_are_not_interrupted() {
+    let python = Python::start().await;
+    python.run(
+        "import threading, time\n\
+         ticks = []\n\
+         def count():\n    \
+             for n in range(40):\n        ticks.append(n)\n        time.sleep(0.02)\n\
+         counter = threading.Thread(target=count)\n\
+         counter.start()",
+    );
+    let (changes, _) = python
+        .run_and_stop("while True:\n    pass", Duration::from_millis(200))
+        .await;
+    assert!(changes.error.unwrap().ends_with("KeyboardInterrupt\n"));
+    python.run(
+        "counter.join()\nfrom deephaven import empty_table\ncounted = empty_table(len(ticks))",
+    );
+    assert_eq!(python.table("counted").row_set().size(), 40);
 }

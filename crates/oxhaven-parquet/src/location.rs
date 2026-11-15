@@ -46,11 +46,13 @@ fn failure(message: impl Into<String>) -> TableFailure {
 }
 
 /// The codecs whose crates this build has (`docs/STORAGE.md`, "Dependencies").
-fn check_codec(path: &Path, codec: Compression) -> Result<(), ReadError> {
+pub(crate) fn check_codec(path: &Path, codec: Compression) -> Result<(), ReadError> {
     match codec {
         Compression::UNCOMPRESSED
+        | Compression::SNAPPY
         | Compression::GZIP(_)
         | Compression::LZ4
+        | Compression::ZSTD(_)
         | Compression::LZ4_RAW => Ok(()),
         other => Err(not_ported(
             "io.deephaven.parquet.compress.DeephavenCompressorAdapterFactory#getByName",

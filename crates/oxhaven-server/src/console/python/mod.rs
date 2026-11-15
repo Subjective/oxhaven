@@ -14,11 +14,17 @@
 //! graph's shared lock, so no update cycle runs while a command does (Java holds the
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
+//!
+//! Commands run on one thread, the interpreter's main thread, where a command whose
+//! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
+//! interpreter does so from the thread it is called on.
 
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod data;
 pub mod env;
+pub mod interrupt;
 mod ops;
 mod parquet;
 #[cfg(test)]
@@ -27,7 +33,7 @@ mod tests;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::CString;
-use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock};
 
 use arrow::array::{
     new_empty_array, Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array,
@@ -46,12 +52,12 @@ use oxhaven_engine::table::{QueryTable, TableSpec};
 use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use oxhaven_proto::grpc::batch_table_request::Operation;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor};
-use pyo3::exceptions::{PyRuntimeError, PyValueError};
+use pyo3::exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
 
 use super::logs::LogBuffer;
-use super::session::{Changes, Console, ScriptSession, CHECK_SCOPE_CHANGES_INTERVAL};
+use super::session::{Changes, Console, ScriptSession, Stop, CHECK_SCOPE_CHANGES_INTERVAL};
 use crate::app::FormulaValue;
 use crate::schema::{column_type_for_java_names, java_component_type_name, java_type_name};
 use crate::session::{ExportError, ExportValue};
@@ -362,6 +368,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         ops::register(&native)?;
+        data::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
@@ -463,7 +470,7 @@ pub struct PythonSession {
     ///
     /// Behavior: `AbstractScriptSession#lastSnapshot`, and the monitor of the session that
     /// `evaluateScript`, `observeScopeChanges` and `setVariable` synchronize on
-    snapshot: Mutex<Py<PyDict>>,
+    snapshot: Arc<Mutex<Py<PyDict>>>,
 }
 
 impl PythonSession {
@@ -481,7 +488,7 @@ impl PythonSession {
             Ok(Self {
                 runtime,
                 helpers: helpers.unbind(),
-                snapshot: Mutex::new(PyDict::new(py).unbind()),
+                snapshot: Arc::new(Mutex::new(PyDict::new(py).unbind())),
                 globals: globals.unbind(),
             })
         })
@@ -507,12 +514,55 @@ impl PythonSession {
         Ok(changes)
     }
 
-    fn run(&self, py: Python<'_>, code: &str, snapshot: &mut Py<PyDict>) -> PyResult<Changes> {
-        let error: Option<String> = self
-            .helpers
-            .bind(py)
-            .call_method1("run", (code, self.globals.bind(py)))?
-            .extract()?;
+    /// The same session, for another thread to hold.
+    fn share(&self) -> Self {
+        Python::attach(|py| Self {
+            runtime: self.runtime.clone(),
+            helpers: self.helpers.clone_ref(py),
+            globals: self.globals.clone_ref(py),
+            snapshot: self.snapshot.clone(),
+        })
+    }
+
+    fn snapshot(&self) -> MutexGuard<'_, Py<PyDict>> {
+        self.snapshot.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Runs `code` under the graph's lock on the calling thread, which is the
+    /// interpreter's main thread when a request to `stop` is to interrupt the code.
+    fn evaluate_here(&self, code: &str, stop: &Stop) -> Changes {
+        let mut snapshot = self.snapshot();
+        locked(self.runtime.context.graph.as_ref(), || {
+            Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(|error| {
+                Changes {
+                    error: Some(format!("the Python session failed: {error}")),
+                    ..Default::default()
+                }
+            })
+        })
+    }
+
+    fn run(
+        &self,
+        py: Python<'_>,
+        code: &str,
+        stop: &Stop,
+        snapshot: &mut Py<PyDict>,
+    ) -> PyResult<Changes> {
+        let helpers = self.helpers.bind(py);
+        let ran = interrupt::stoppable(py, stop, || {
+            helpers.call_method1("run", (code, self.globals.bind(py)))
+        });
+        let error: Option<String> = match ran {
+            Some(Ok(error)) => error.extract()?,
+            // the interrupt arrived after the code, while its error was put into words
+            Some(Err(error)) if error.is_instance_of::<PyKeyboardInterrupt>(py) => {
+                Some("KeyboardInterrupt\n".to_string())
+            }
+            Some(Err(error)) => return Err(error),
+            // stopped before it started
+            None => Some("KeyboardInterrupt\n".to_string()),
+        };
         let mut changes = self.observed(py, snapshot)?;
         // Java: "java.lang.RuntimeException: Error in Python interpreter:", the same
         // traceback, and the stack of the JVM
@@ -565,21 +615,20 @@ impl ScriptSession for PythonSession {
         "Python"
     }
 
+    /// The code runs on the interpreter's main thread, and this thread waits for it. A
+    /// request to `stop` raises `KeyboardInterrupt` in it; [`interrupt`] says what that
+    /// ends and what it does not. Java never stops a command.
+    ///
     /// Behavior: `PythonDeephavenSession#evaluate`, `AbstractScriptSession#evaluateScript`
-    fn evaluate(&self, code: &str) -> Changes {
+    fn evaluate(&self, code: &str, stop: &Arc<Stop>) -> Changes {
         tracing::info!("Evaluating command: {code}");
-        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
-        locked(self.runtime.context.graph.as_ref(), || {
-            Python::attach(|py| self.run(py, code, &mut snapshot)).unwrap_or_else(|error| Changes {
-                error: Some(format!("the Python session failed: {error}")),
-                ..Default::default()
-            })
-        })
+        let (session, code, stop) = (self.share(), code.to_string(), stop.clone());
+        interrupt::on_main_thread(move || session.evaluate_here(&code, &stop))
     }
 
     /// Behavior: `AbstractScriptSession#observeScopeChanges`
     fn observe(&self) -> Changes {
-        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut snapshot = self.snapshot();
         Python::attach(|py| self.observed(py, &mut snapshot)).unwrap_or_else(|error| {
             tracing::error!("the variables of the Python session could not be read: {error}");
             Changes::default()
@@ -588,7 +637,7 @@ impl ScriptSession for PythonSession {
 
     /// Behavior: `PythonDeephavenSession#setVariable`
     fn put(&self, name: &str, value: ExportValue) -> Result<Changes, String> {
-        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut snapshot = self.snapshot();
         Python::attach(|py| {
             let wrapped = self.wrap(py, value)?;
             self.globals.bind(py).set_item(name, wrapped)?;
