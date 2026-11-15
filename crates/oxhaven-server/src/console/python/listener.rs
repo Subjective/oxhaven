@@ -238,12 +238,15 @@ fn graph_in_cycle() -> PyResult<bool> {
     Ok(graph()?.current_thread_processes_updates())
 }
 
+/// A table and its change in one cycle.
+type Change = (Arc<dyn Table>, Arc<TableUpdate>);
+
 /// The change of one table in one cycle, as a Python listener reads it.
 #[pyclass(frozen, module = "_oxhaven")]
 struct UpdateData {
     /// The table and its change; `None` once the call it was made for has returned, so
     /// that an update a script keeps does not keep the table.
-    change: Mutex<Option<(Arc<dyn Table>, Arc<TableUpdate>)>>,
+    change: Mutex<Option<Change>>,
 }
 
 impl UpdateData {
@@ -307,7 +310,11 @@ impl UpdateData {
                 let before = before.map_err(|e| PyRuntimeError::new_err(e.to_string()))?;
                 (before, true)
             }
-            other => return Err(PyValueError::new_err(format!("not rows of an update: {other}"))),
+            other => {
+                return Err(PyValueError::new_err(format!(
+                    "not rows of an update: {other}"
+                )))
+            }
         };
         let keys = match count {
             Some(count) => keys.sub_set_by_position_range(first, first.saturating_add(count)),
@@ -389,8 +396,8 @@ impl Calls {
             .into_iter()
             .map(|update| update.map(|update| Py::new(py, update)).transpose())
             .collect::<PyResult<Vec<_>>>()?;
-        let outcome = PyList::new(py, &updates)
-            .and_then(|list| self.deliver.bind(py).call1((list, replay)));
+        let outcome =
+            PyList::new(py, &updates).and_then(|list| self.deliver.bind(py).call1((list, replay)));
         for update in updates.iter().flatten() {
             update.get().release();
         }

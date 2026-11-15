@@ -1299,7 +1299,10 @@ fn an_exclusive_holder_gives_its_hold_up_for_a_cycle_and_has_it_again_after_it()
 
     let (seen_tx, seen_rx) = channel();
     let g = graph.clone();
-    let reader = thread::spawn(move || seen_tx.send(locked(&*g, || ())).unwrap());
+    let reader = thread::spawn(move || {
+        locked(&*g, || ());
+        seen_tx.send(()).unwrap();
+    });
     graph.release_exclusive();
     thread::sleep(SETTLE);
     assert!(

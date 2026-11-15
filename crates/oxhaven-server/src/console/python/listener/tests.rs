@@ -422,7 +422,11 @@ holder.start()
     let before = graph.completed_cycles();
     graph.request_cycle();
     std::thread::sleep(Duration::from_millis(400));
-    assert_eq!(graph.completed_cycles(), before, "a cycle ran under the lock");
+    assert_eq!(
+        graph.completed_cycles(),
+        before,
+        "a cycle ran under the lock"
+    );
     graph.run_cycle();
     assert!(graph.completed_cycles() > before);
     python.run("holder.join(60)\nassert not holder.is_alive()");
