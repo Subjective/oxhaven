@@ -23,6 +23,7 @@ mod ops;
 mod parquet;
 #[cfg(test)]
 mod tests;
+mod udf;
 
 use std::borrow::Cow;
 use std::cell::RefCell;
@@ -69,6 +70,8 @@ const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
 struct Runtime {
     context: OpContext,
     logs: Arc<LogBuffer>,
+    /// The global variables of the session, once it has them.
+    globals: OnceLock<Py<PyDict>>,
 }
 
 /// The runtime of the session created last; see the [module documentation](self).
@@ -182,6 +185,14 @@ impl Drop for CallerScope {
     }
 }
 
+/// The variables a formula compiled now on this thread may name; see
+/// [`PythonSession::current_scope`]. `None` before the first session.
+fn current_scope(py: Python<'_>) -> Option<Bound<'_, PyDict>> {
+    let caller =
+        CALLER_SCOPE.with_borrow(|scope| scope.as_ref().map(|scope| scope.bind(py).clone()));
+    caller.or_else(|| Some(runtime().ok()?.globals.get()?.bind(py).clone()))
+}
+
 /// Runs one table service operation, given in protobuf JSON form, on `sources`, which the
 /// operation's table references name by position. A formula of the operation may name the
 /// variables of the code that called the package.
@@ -199,6 +210,7 @@ fn table_op(
         .call_method0("caller_scope")?
         .extract()?;
     let _scope = CallerScope::enter(scope);
+    let _calls = udf::Operation::enter(py);
     py.detach(|| run_local(&runtime.context, op, &tables))
         .map(|table| TableHandle { table })
         .map_err(|error| PyRuntimeError::new_err(error_text(error)))
@@ -473,11 +485,17 @@ impl PythonSession {
     /// operations in `context`.
     pub fn new(context: OpContext, logs: Arc<LogBuffer>) -> Result<Self, String> {
         env::interpreter()?;
-        let runtime = Arc::new(Runtime { context, logs });
+        let runtime = Arc::new(Runtime {
+            context,
+            logs,
+            globals: OnceLock::new(),
+        });
         *RUNTIME.write().unwrap_or_else(PoisonError::into_inner) = Some(runtime.clone());
         Python::attach(|py| {
             let helpers = bootstrap(py)?;
             let globals = helpers.call_method0("new_globals")?.cast_into::<PyDict>()?;
+            // a runtime is made for one session, so this is the only value it is given
+            let _ = runtime.globals.set(globals.clone().unbind());
             Ok(Self {
                 runtime,
                 helpers: helpers.unbind(),
@@ -651,7 +669,13 @@ impl ScriptSession for PythonSession {
 /// the script session of the server and the holder of its query scope. Must be called
 /// inside a tokio runtime, which looks at the variables for changes from then on.
 pub fn start(state: &mut ServerState) -> Result<(), String> {
-    let session = PythonSession::new(state.op_context(), state.logs.clone())?;
+    // the operations of the Python package may call the functions of the session; a
+    // client's formulas, which are compiled with the server's own context, may not
+    let context = OpContext {
+        compiler: udf::compiler(state.scope.clone()),
+        ..state.op_context()
+    };
+    let session = PythonSession::new(context, state.logs.clone())?;
     let console = Console::new(Arc::new(session), state.applications.clone());
     state.scope.hold(console.clone());
     console.watch(CHECK_SCOPE_CHANGES_INTERVAL);
