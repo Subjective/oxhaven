@@ -42,7 +42,7 @@ use crate::ops::ungroup::operator::{ungroup_arrays, Ungrouped};
 use crate::table::{tracked_source, QueryTable, TableSpec};
 use groups::{Groups, Kept};
 use oxhaven_column::WritableSource;
-use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
@@ -100,6 +100,13 @@ pub enum HeadByError {
     /// io.deephaven.engine.table.impl.by.AggregationProcessor, an
     /// `UnsupportedOperationException`
     Blink,
+    /// A column that is not grouped by holds tables. Java puts every such column back in
+    /// its type with a cast in an `updateView`, which refuses to make a column of tables.
+    ///
+    /// Behavior:
+    /// io.deephaven.engine.table.impl.select.analyzers.ViewColumnLayer#checkResultType, an
+    /// `UnsupportedOperationException`
+    TableColumn(TableClass),
     /// The source has failed, or could not be read, or the row keys of the result do not
     /// fit in 63 bits.
     Failed(TableFailure),
@@ -132,6 +139,15 @@ impl fmt::Display for HeadByError {
                 f,
                 "Blink tables do not support AggGroup; use BlinkTableTools.blinkToAppendOnly \
                  to accumulate full history"
+            ),
+            HeadByError::TableColumn(class) => write!(
+                f,
+                "Cannot use view or updateView to produce results of type class {}; use \
+                 select or update instead",
+                match class {
+                    TableClass::QueryTable => "io.deephaven.engine.table.impl.QueryTable",
+                    _ => "io.deephaven.engine.table.Table",
+                }
             ),
             HeadByError::Failed(failure) => failure.fmt(f),
         }
@@ -338,6 +354,12 @@ fn head_or_tail_by(
         rows as u64,
         head,
     )?;
+    // Java fails here, in its last step, after everything the grouping refuses.
+    for &column in &value_columns {
+        if let ColumnType::Table(class) = &declared[column].column_type {
+            return Err(HeadByError::TableColumn(*class));
+        }
+    }
     let groups = Arc::new(groups);
     let grouped = QueryTable::derive(source, || {
         let spec = TableSpec::new(definition, groups.initial()?, sources);

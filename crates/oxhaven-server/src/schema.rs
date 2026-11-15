@@ -12,7 +12,7 @@
 use crate::wire_columns::wire_type;
 use arrow::datatypes::{Field, Schema};
 use arrow::ipc::writer::{DictionaryTracker, IpcDataGenerator, IpcWriteOptions};
-use oxhaven_contracts::schema::{ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -191,6 +191,8 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         ColumnType::Array(element) => {
             return Cow::Owned(format!("{}[]", java_type_name(element)));
         }
+        ColumnType::Table(TableClass::Table) => "io.deephaven.engine.table.Table",
+        ColumnType::Table(TableClass::QueryTable) => "io.deephaven.engine.table.impl.QueryTable",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
@@ -271,6 +273,8 @@ fn is_sortable(column_type: &ColumnType) -> bool {
                 | ColumnType::String
                 | ColumnType::Instant
         ),
+        // Observed: the constituent column of a partitioned table has no `isSortable`.
+        ColumnType::Table(_) => false,
         _ => true,
     }
 }

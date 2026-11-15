@@ -80,6 +80,10 @@ pub trait UnaryOperator: Send + Sync + 'static {
         result: &QueryTable,
         upstream: &TableUpdate,
     ) -> Result<TableUpdate, TableFailure>;
+
+    /// The result has failed, with a failure of the parent or of `on_update`. For an
+    /// operator that notifies tables of its own, which must fail with the result.
+    fn on_failure(&self, _failure: &TableFailure) {}
 }
 
 impl<F> UnaryOperator for F
@@ -144,6 +148,10 @@ enum Feed {
         listener: Arc<MergedListener>,
         operator: Box<dyn MergedOperator>,
     },
+    /// Another operator notifies the table; `on` says when it has finished for a step.
+    Dependent {
+        on: Arc<dyn Dependency>,
+    },
 }
 
 struct Live {
@@ -161,6 +169,8 @@ struct Live {
 /// - [`QueryTable::derive`]: the result of an operation on one table.
 /// - [`QueryTable::derive_merged`]: the result of an operation on several tables.
 /// - [`QueryTable::root`]: a table driven by an update source, such as an input table.
+/// - [`QueryTable::dependent`]: a table that another operator notifies, such as a
+///   constituent of a partitioned table.
 ///
 /// See the [module documentation](super) for how to write an operator.
 ///
@@ -339,8 +349,28 @@ impl QueryTable {
         table
     }
 
+    /// A refreshing table that an operator of another table changes: the operator calls
+    /// [`QueryTable::notify`] at most once per step, from inside the cycle, and
+    /// [`QueryTable::fail`] if it fails. The table is satisfied for a step once it has
+    /// notified, or once `on` is, which must not be before the operator has run.
+    ///
+    /// It may be made inside a cycle, by the operator that will notify it; it then does
+    /// not notify on that step, and its row set of that moment is also its previous one.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.QueryTable#getSubTable, as
+    /// io.deephaven.engine.table.impl.by.PartitionByChunkedOperator#makeSubTable uses it,
+    /// with io.deephaven.engine.table.impl.partitioned.ConstituentDependency for `on`
+    pub fn dependent(
+        graph: Arc<dyn UpdateGraph>,
+        spec: TableSpec,
+        on: Arc<dyn Dependency>,
+    ) -> Arc<QueryTable> {
+        Arc::new(Self::build(spec, Some(graph), Feed::Dependent { on }, None))
+    }
+
     /// Applies `update` to the row set and delivers it to the listeners. For the update
-    /// source of a root table; an operator returns its update instead.
+    /// source of a root table and the operator behind a dependent one; an operator
+    /// returns its own result's update instead.
     ///
     /// The columns must already hold the new values. An update that is not a valid change
     /// of this table, or that breaks one of its attributes, fails the table.
@@ -444,6 +474,9 @@ impl UpdateHandler for QueryTable {
     }
 
     fn on_failure(&self, failure: &TableFailure) {
+        if let Feed::Unary { operator, .. } = &self.feed {
+            operator.on_failure(failure);
+        }
         self.fail(failure.clone());
     }
 }
@@ -472,6 +505,7 @@ impl Dependency for QueryTable {
             Feed::Root { .. } => live.graph.sources_satisfied(step),
             Feed::Unary { listener, .. } => listener.satisfied(step),
             Feed::Merged { listener, .. } => listener.satisfied(step),
+            Feed::Dependent { on } => on.satisfied(step),
         })
     }
 }
