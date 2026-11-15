@@ -10,7 +10,6 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use oxhaven_contracts::table::Table;
 use oxhaven_engine::table::empty_table;
 use oxhaven_proto::grpc::application_service_client::ApplicationServiceClient;
 use oxhaven_proto::grpc::table_reference::Ref;
@@ -32,39 +31,29 @@ use tonic::transport::Channel;
 use tonic::{Code, Status};
 
 use super::logs::{LogBuffer, STDERR, STDOUT};
-use super::{Changes, Console, ScriptSession, Variable};
+use super::{Changes, Console, ScriptSession};
+use crate::app::FormulaValue;
 use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 use crate::ServerState;
 
 /// A script session whose language is one command per line: `make <name> <rows>` sets a
-/// variable to a new table, `drop <name>` removes one, `print <text>` writes a line to
-/// standard output, and anything else is an error that ends the code.
+/// variable to a new table, `note <name> <text>` sets one to a text, `drop <name>` removes
+/// one, `print <text>` writes a line to standard output, and anything else is an error
+/// that ends the code.
 struct WordSession {
-    variables: Mutex<BTreeMap<String, Arc<dyn Table>>>,
+    variables: Mutex<BTreeMap<String, ExportValue>>,
+    /// The variables as they were when they were last looked at.
+    seen: Mutex<BTreeMap<String, ExportValue>>,
     logs: Arc<LogBuffer>,
 }
 
-fn variable(name: &str, table: Option<&Arc<dyn Table>>) -> Variable {
-    Variable {
-        name: name.to_string(),
-        type_name: "Table".to_string(),
-        value: table.cloned().map(ExportValue::Table),
-    }
-}
-
 impl WordSession {
-    fn set(&self, name: &str, table: Arc<dyn Table>, changes: &mut Changes) {
-        let created = variable(name, Some(&table));
-        match self
-            .variables
+    fn set(&self, name: &str, value: ExportValue) {
+        self.variables
             .lock()
             .unwrap()
-            .insert(name.to_string(), table)
-        {
-            Some(_) => changes.updated.push(created),
-            None => changes.created.push(created),
-        }
+            .insert(name.to_string(), value);
     }
 }
 
@@ -74,45 +63,89 @@ impl ScriptSession for WordSession {
     }
 
     fn evaluate(&self, code: &str) -> Changes {
-        let mut changes = Changes::default();
+        let mut error = None;
         for line in code.lines() {
             let words: Vec<&str> = line.split_whitespace().collect();
             match words.as_slice() {
                 ["make", name, rows] => {
-                    self.set(name, empty_table(rows.parse().unwrap()), &mut changes)
+                    self.set(name, ExportValue::Table(empty_table(rows.parse().unwrap())))
                 }
+                ["note", name, text] => self.set(name, ExportValue::object(text.to_string())),
                 ["drop", name] => {
-                    if self.variables.lock().unwrap().remove(*name).is_some() {
-                        changes.removed.push(variable(name, None));
-                    }
+                    self.variables.lock().unwrap().remove(*name);
                 }
                 ["print", text @ ..] => self.logs.record(STDOUT, format!("{}\n", text.join(" "))),
                 _ => {
-                    changes.error = Some(format!("not a command: {line}"));
+                    error = Some(format!("not a command: {line}"));
                     break;
                 }
             }
         }
+        Changes {
+            error,
+            ..self.observe()
+        }
+    }
+
+    fn observe(&self) -> Changes {
+        let now = self.variables.lock().unwrap().clone();
+        let mut seen = self.seen.lock().unwrap();
+        let mut changes = Changes::default();
+        for (name, value) in &now {
+            changes.note(name, seen.get(name), Some(value));
+        }
+        for (name, value) in seen.iter() {
+            if !now.contains_key(name) {
+                changes.note(name, Some(value), None);
+            }
+        }
+        *seen = now;
         changes
     }
 
-    fn put_table(&self, name: &str, table: Arc<dyn Table>) -> Result<Changes, String> {
-        let mut changes = Changes::default();
-        self.set(name, table, &mut changes);
-        Ok(changes)
+    fn put(&self, name: &str, value: ExportValue) -> Result<Changes, String> {
+        self.set(name, value);
+        Ok(self.observe())
+    }
+
+    fn get(&self, name: &str) -> Option<ExportValue> {
+        self.variables.lock().unwrap().get(name).cloned()
+    }
+
+    fn names(&self) -> Vec<String> {
+        self.variables.lock().unwrap().keys().cloned().collect()
+    }
+
+    fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
+        let variables = self.variables.lock().unwrap();
+        Ok(names
+            .iter()
+            .map(|name| {
+                let value = variables.get(*name)?;
+                Some(match value.downcast_ref::<String>() {
+                    Some(text) => FormulaValue::String(text.clone()),
+                    None => FormulaValue::Other("a table".to_string()),
+                })
+            })
+            .collect())
     }
 }
 
-fn with_word_console(state: &mut ServerState) {
-    let session = WordSession {
+/// Gives `state` the word console and returns its session.
+fn word_console(state: &mut ServerState) -> Arc<WordSession> {
+    let session = Arc::new(WordSession {
         variables: Mutex::default(),
+        seen: Mutex::default(),
         logs: state.logs.clone(),
-    };
-    state.console = Some(Console::new(
-        Arc::new(session),
-        state.scope.clone(),
-        state.applications.clone(),
-    ));
+    });
+    let console = Console::new(session.clone(), state.applications.clone());
+    state.scope.hold(console.clone());
+    state.console = Some(console);
+    session
+}
+
+fn with_word_console(state: &mut ServerState) {
+    word_console(state);
 }
 
 /// A logged-in client of a server with the word console, and the console it started as

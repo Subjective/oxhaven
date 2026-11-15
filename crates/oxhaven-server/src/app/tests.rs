@@ -241,8 +241,8 @@ async fn a_scope_ticket_names_the_variable_of_that_name() {
     let tickets = &server.state.tickets;
     assert_eq!(scope_ticket("t"), b"s/t");
 
-    scope.put("t", table(6));
-    scope.put("u", table(1));
+    scope.put("t", table(6)).unwrap();
+    scope.put("u", table(1)).unwrap();
     assert_eq!(scope.names(), ["t", "u"]);
     let export = tickets.resolve(None, b"s/t", "id").unwrap();
     assert_eq!(
