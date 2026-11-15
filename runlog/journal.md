@@ -542,3 +542,7 @@ Task 6.4 (Python table core) came back with the gate red by design: about a quar
 ## 2026-11-15 08:24 UTC
 
 PRs 70 (Python environment) and 72 (query scope) merged on green. PR 71 (Python table core) conflicts with both in `console/python/mod.rs`; its author is merging main and rerunning the gate. Three console tasks ran in parallel over the same module file: acceptable cost (one conflict round), but the next Python API tasks get distinct files per task.
+
+## 2026-11-15 08:45 UTC
+
+PR 73 opened (block row set). Measured: the contract RowSet costs O(ranges) for size, get, find and single-key adds (adding one key to a 2M-range set takes 64 ms); the block row set is 100 to 30000 times faster on those and uses 1 MB instead of 32 MB, and is slower on range walks and unaligned shifts. It is not the engine row set yet: swapping it changes `RowSet::ranges` in the contracts (about 35 callers). Decision: do the swap as its own contract-change task (7.7b) once the engine branches in flight (update_by count-where, table shape operators) have merged, to avoid a workspace-wide conflict. Owner review item: the contract change and the performance trade-offs in docs/ROWSET.md.

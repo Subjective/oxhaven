@@ -7,6 +7,15 @@ the server's table service. `docs/CONSOLE.md` lists what exists.
 """
 
 from .dherror import DHError
-from .table_factory import empty_table, new_table, time_table
+from .table import SortDirection
+from .table_factory import empty_table, merge, merge_sorted, new_table, time_table
 
-__all__ = ["DHError", "empty_table", "new_table", "time_table"]
+__all__ = [
+    "DHError",
+    "SortDirection",
+    "empty_table",
+    "merge",
+    "merge_sorted",
+    "new_table",
+    "time_table",
+]

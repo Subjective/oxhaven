@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_select",
-  "scenario_sha256": "698355e622b31de4baeae2778ec7ff97a1c99625fe499ebd74e48e9c5387abb8",
+  "scenario_sha256": "d941f4982e41fecb94bb008764af08431e0be17a8de8f44a91767ad10de4d124",
   "reference": "42.9",
   "entries": [
     {
@@ -12,26 +12,8 @@
     },
     {
       "step": 0,
-      "table": "renamed",
-      "file": "step000.renamed.arrow",
-      "rows": 6
-    },
-    {
-      "step": 0,
-      "table": "moved",
-      "file": "step000.moved.arrow",
-      "rows": 6
-    },
-    {
-      "step": 0,
-      "table": "moved_up",
-      "file": "step000.moved_up.arrow",
-      "rows": 6
-    },
-    {
-      "step": 0,
-      "table": "moved_down",
-      "file": "step000.moved_down.arrow",
+      "table": "dropped_one",
+      "file": "step000.dropped_one.arrow",
       "rows": 6
     },
     {
@@ -42,9 +24,504 @@
     },
     {
       "step": 0,
+      "table": "distinct_pair",
+      "file": "step000.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "distinct_all",
+      "file": "step000.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "distinct_formula",
+      "file": "step000.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
       "table": "described",
       "file": "step000.described.arrow",
       "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "nothing_renamed",
+      "file": "step000.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "nothing_moved",
+      "file": "step000.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "moved",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "moved_up",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "moved_down",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "restricted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "dropped",
+      "file": "step001.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "dropped_one",
+      "file": "step001.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "distinct",
+      "file": "step001.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "distinct_pair",
+      "file": "step001.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "distinct_all",
+      "file": "step001.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "distinct_formula",
+      "file": "step001.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "described",
+      "file": "step001.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "nothing_renamed",
+      "file": "step001.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "nothing_moved",
+      "file": "step001.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "renamed",
+      "file": "step001.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "moved",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "moved_up",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "moved_down",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "restricted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "dropped",
+      "file": "step002.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "dropped_one",
+      "file": "step002.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "distinct",
+      "file": "step002.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "distinct_pair",
+      "file": "step002.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "distinct_all",
+      "file": "step002.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "distinct_formula",
+      "file": "step002.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "described",
+      "file": "step002.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "nothing_renamed",
+      "file": "step002.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "nothing_moved",
+      "file": "step002.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "renamed",
+      "file": "step002.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "moved",
+      "file": "step002.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "moved_up",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "moved_down",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "restricted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "dropped",
+      "file": "step003.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "dropped_one",
+      "file": "step003.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "distinct",
+      "file": "step003.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "distinct_pair",
+      "file": "step003.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "distinct_all",
+      "file": "step003.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "distinct_formula",
+      "file": "step003.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "described",
+      "file": "step003.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "nothing_renamed",
+      "file": "step003.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "nothing_moved",
+      "file": "step003.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "renamed",
+      "file": "step003.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "moved",
+      "file": "step003.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "moved_up",
+      "file": "step003.moved_up.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "moved_down",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "restricted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "dropped",
+      "file": "step004.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "dropped_one",
+      "file": "step004.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "distinct",
+      "file": "step004.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "distinct_pair",
+      "file": "step004.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "distinct_all",
+      "file": "step004.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "distinct_formula",
+      "file": "step004.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "described",
+      "file": "step004.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "nothing_renamed",
+      "file": "step004.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "nothing_moved",
+      "file": "step004.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "renamed",
+      "file": "step004.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "moved",
+      "file": "step004.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "moved_up",
+      "file": "step004.moved_up.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "moved_down",
+      "file": "step004.moved_down.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "restricted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "dropped",
+      "file": "step005.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "dropped_one",
+      "file": "step005.dropped_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "distinct",
+      "file": "step005.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "distinct_pair",
+      "file": "step005.distinct_pair.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "distinct_all",
+      "file": "step005.distinct_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "distinct_formula",
+      "file": "step005.distinct_formula.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "described",
+      "file": "step005.described.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "nothing_renamed",
+      "file": "step005.nothing_renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "nothing_moved",
+      "file": "step005.nothing_moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "renamed",
+      "file": "step005.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "moved",
+      "file": "step005.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "moved_up",
+      "file": "step005.moved_up.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "moved_down",
+      "file": "step005.moved_down.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "restricted",
+      "file": "step005.restricted.arrow",
+      "rows": 6
     }
   ]
 }
