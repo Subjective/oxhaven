@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "dtypes_numpy",
+  "scenario_sha256": "aac9c87c3adc2c554f0e7f3481d7a885e65ea38da8731b4b1e4cb5bb0cfbf21f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "from_arrays",
+      "file": "step000.from_arrays.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "np_types",
+      "file": "step000.np_types.arrow",
+      "rows": 13
+    },
+    {
+      "step": 0,
+      "table": "built",
+      "file": "step000.built.arrow",
+      "rows": 6
+    }
+  ]
+}

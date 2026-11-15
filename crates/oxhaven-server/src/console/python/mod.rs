@@ -20,6 +20,8 @@
 //! interpreter does so from the thread it is called on.
 
 mod checks;
+#[cfg(test)]
+mod column_tests;
 pub mod env;
 pub mod interrupt;
 mod ops;
@@ -27,11 +29,19 @@ mod parquet;
 #[cfg(test)]
 mod tests;
 
+use std::borrow::Cow;
 use std::cell::RefCell;
 use std::ffi::CString;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, RwLock};
 
-use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{
+    new_empty_array, Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array,
+    Int32Array, Int64Array, Int8Array, ListArray, StringArray, TimestampNanosecondArray,
+    UInt16Array,
+};
+use arrow::buffer::{NullBuffer, OffsetBuffer};
+use arrow::compute::concat;
+use arrow::datatypes::DataType;
 use oxhaven_column::FlatSource;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::RowSet;
@@ -48,7 +58,7 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
 use super::logs::LogBuffer;
 use super::session::{Changes, Console, ScriptSession, Stop, CHECK_SCOPE_CHANGES_INTERVAL};
 use crate::app::FormulaValue;
-use crate::schema::java_type_name;
+use crate::schema::{column_type_for_java_names, java_component_type_name, java_type_name};
 use crate::session::{ExportError, ExportValue};
 use crate::table::run_local;
 use crate::table::support::OpContext;
@@ -199,59 +209,102 @@ fn table_op(
         .map_err(|error| PyRuntimeError::new_err(error_text(error)))
 }
 
-/// The values of one input column as an Arrow array; `None` is null.
-fn input_column(type_name: &str, values: &Bound<'_, PyAny>) -> PyResult<(ColumnType, ArrayRef)> {
+/// The cells of an input column of `column_type` as an Arrow array, from the Python values
+/// that `deephaven.dtypes.array` made: `None` or the value Java reserves for null in the
+/// type is a null (PARITY.md, "Null representation in the Java engine"), an instant is its
+/// nanoseconds since the epoch, and a cell of an array column is a list.
+fn input_values(column_type: &ColumnType, values: &Bound<'_, PyAny>) -> PyResult<ArrayRef> {
     fn items<'py, T>(values: &Bound<'py, PyAny>) -> PyResult<Vec<Option<T>>>
     where
         T: for<'a> FromPyObject<'a, 'py>,
     {
         values.extract()
     }
-    Ok(match type_name {
-        "bool" => (
-            ColumnType::Boolean,
-            Arc::new(BooleanArray::from(items::<bool>(values)?)),
-        ),
-        "int" => (
-            ColumnType::Int,
-            Arc::new(Int32Array::from(items::<i32>(values)?)),
-        ),
-        "long" => (
-            ColumnType::Long,
-            Arc::new(Int64Array::from(items::<i64>(values)?)),
-        ),
-        "double" => (
-            ColumnType::Double,
-            Arc::new(Float64Array::from(items::<f64>(values)?)),
-        ),
-        "string" => (
-            ColumnType::String,
-            Arc::new(StringArray::from(items::<String>(values)?)),
-        ),
+    fn without<T: PartialEq>(values: Vec<Option<T>>, null: T) -> Vec<Option<T>> {
+        let keep = |value: Option<T>| value.filter(|value| *value != null);
+        values.into_iter().map(keep).collect()
+    }
+    Ok(match column_type {
+        ColumnType::Boolean => Arc::new(BooleanArray::from(items::<bool>(values)?)),
+        ColumnType::Byte => Arc::new(Int8Array::from(without(items(values)?, i8::MIN))),
+        ColumnType::Char => Arc::new(UInt16Array::from(without(items(values)?, u16::MAX))),
+        ColumnType::Short => Arc::new(Int16Array::from(without(items(values)?, i16::MIN))),
+        ColumnType::Int => Arc::new(Int32Array::from(without(items(values)?, i32::MIN))),
+        ColumnType::Long => Arc::new(Int64Array::from(without(items(values)?, i64::MIN))),
+        ColumnType::Float => {
+            // the values are doubles that hold floats: `deephaven.dtypes` has rounded them
+            let floats = items::<f64>(values)?.into_iter();
+            let floats = floats
+                .map(|value| value.map(|value| value as f32))
+                .collect();
+            Arc::new(Float32Array::from(without(floats, -f32::MAX)))
+        }
+        ColumnType::Double => Arc::new(Float64Array::from(without(items(values)?, -f64::MAX))),
+        ColumnType::String => Arc::new(StringArray::from(items::<String>(values)?)),
+        ColumnType::Instant => {
+            let nanos = without(items::<i64>(values)?, i64::MIN);
+            Arc::new(TimestampNanosecondArray::from(nanos).with_timezone("UTC"))
+        }
+        ColumnType::Array(element) => {
+            let DataType::List(field) = column_type.arrow_type() else {
+                unreachable!("an array column is an Arrow list");
+            };
+            let cells = items::<Bound<'_, PyAny>>(values)?;
+            let mut lengths = Vec::with_capacity(cells.len());
+            let mut valid = Vec::with_capacity(cells.len());
+            let mut parts = Vec::with_capacity(cells.len());
+            for cell in &cells {
+                valid.push(cell.is_some());
+                let part = match cell {
+                    Some(cell) => input_values(element, cell)?,
+                    None => new_empty_array(field.data_type()),
+                };
+                lengths.push(part.len());
+                parts.push(part);
+            }
+            let parts: Vec<&dyn Array> = parts.iter().map(AsRef::as_ref).collect();
+            let elements = if parts.is_empty() {
+                new_empty_array(field.data_type())
+            } else {
+                concat(&parts).map_err(|e| PyRuntimeError::new_err(e.to_string()))?
+            };
+            let list = ListArray::try_new(
+                field,
+                OffsetBuffer::from_lengths(lengths),
+                elements,
+                Some(NullBuffer::from(valid)),
+            );
+            Arc::new(list.map_err(|e| PyRuntimeError::new_err(e.to_string()))?)
+        }
         other => {
             return Err(PyValueError::new_err(format!(
-                "input columns of type {other} are not supported yet"
+                "not ported: io.deephaven.engine.util.TableTools#newTable(ColumnHolder...) \
+                 for a column of type {other:?}"
             )))
         }
     })
 }
 
-/// A static table from `(name, type, values)` triples.
+/// A static table from `(name, Java class name of the type, values)` triples; the class
+/// name is the canonical one (`int`, `java.lang.String`, `int[]`). Without rows when
+/// there are no columns.
 ///
-/// Behavior: `io.deephaven.engine.util.TableTools#newTable(ColumnHolder...)`
+/// Behavior: `io.deephaven.engine.table.impl.util.TableFactory#newTable(Column...)`, which
+/// refuses columns of different sizes with this text
 #[pyfunction]
 fn new_table(columns: Vec<(String, String, Bound<'_, PyAny>)>) -> PyResult<TableHandle> {
     let mut size = None;
     let mut definitions = Vec::with_capacity(columns.len());
     let mut sources: Vec<Arc<dyn ColumnSource>> = Vec::with_capacity(columns.len());
     for (name, type_name, values) in &columns {
-        let (column_type, array) = input_column(type_name, values)?;
+        let column_type = column_type_for_java_names(type_name, None).ok_or_else(|| {
+            PyValueError::new_err(format!("the engine has no column type for {type_name}"))
+        })?;
+        let array = input_values(&column_type, values)?;
         if *size.get_or_insert(array.len()) != array.len() {
-            return Err(PyValueError::new_err(format!(
-                "column {name} has {} rows, the columns before it have {}",
-                array.len(),
-                size.unwrap_or_default()
-            )));
+            return Err(PyRuntimeError::new_err(
+                "java.lang.IllegalArgumentException: All columns must be the same size",
+            ));
         }
         definitions.push(ColumnDefinition::new(name.clone(), column_type.clone()));
         let source = FlatSource::new(column_type, array)
@@ -263,6 +316,34 @@ fn new_table(columns: Vec<(String, String, Bound<'_, PyAny>)>) -> PyResult<Table
     let row_set = RowSet::flat(size.unwrap_or_default() as u64);
     let table = QueryTable::new_static(TableSpec::new(definition, row_set, sources));
     Ok(TableHandle { table })
+}
+
+/// The columns of a table as `(name, Java class name of the type, Java class name of the
+/// component type)`, the names as a client is told them in the schema.
+///
+/// Behavior: `io.deephaven.engine.table.ColumnDefinition#getDataType`, `#getComponentType`
+#[pyfunction]
+fn column_definitions(source: PyRef<'_, TableHandle>) -> Vec<(String, String, Option<String>)> {
+    let columns = source.table.definition().columns().iter();
+    columns
+        .map(|column| {
+            let type_name = java_type_name(&column.column_type).into_owned();
+            let component = java_component_type_name(&column.column_type).map(Cow::into_owned);
+            (column.name.clone(), type_name, component)
+        })
+        .collect()
+}
+
+/// Refuses a name that cannot be a column's.
+///
+/// Behavior: `io.deephaven.api.util.NameValidator#validateColumnName`
+#[pyfunction]
+fn validate_column_name(name: &str) -> PyResult<()> {
+    crate::table::support::validate_column_name(name).map_err(|text| {
+        PyRuntimeError::new_err(format!(
+            "io.deephaven.api.util.NameValidator$InvalidNameException: {text}"
+        ))
+    })
 }
 
 /// Adds a record to the server's log buffer: what Python wrote to a standard stream.
@@ -281,6 +362,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_class::<TableHandle>()?;
         native.add_function(wrap_pyfunction!(table_op, &native)?)?;
         native.add_function(wrap_pyfunction!(new_table, &native)?)?;
+        native.add_function(wrap_pyfunction!(column_definitions, &native)?)?;
+        native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         ops::register(&native)?;

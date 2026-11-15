@@ -385,7 +385,7 @@ async fn new_table_and_table_operations_go_through_the_table_service_handlers() 
         .error
         .unwrap();
     assert!(
-        wrong_type.contains("DHError: failed to create a new time table."),
+        wrong_type.contains("DHError: failed to create an InputColumn (Id)."),
         "{wrong_type}"
     );
     let unknown = python

@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "dtypes_partitioning_definition",
+  "scenario_sha256": "81341dc9b9ecf84f8d46a42f7a746d7190656dc7c0f675bb0bfc44dbc4812be3",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "meta",
+      "file": "step000.meta.arrow",
+      "rows": 2
+    }
+  ]
+}
