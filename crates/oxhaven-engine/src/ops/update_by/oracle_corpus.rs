@@ -11,8 +11,8 @@
 //! of PARITY.md A1 for `cum_sum` is not used: the sums are taken in Java's order.
 
 use super::{
-    update_by_with, DeltaControl, EmSpec, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
-    WindowScale,
+    update_by_with, DeltaControl, EmSpec, RollingWindow, UpdateByError, UpdateByOperation,
+    UpdateBySpec, WindowScale,
 };
 use crate::graph::SteppedUpdateGraph;
 use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
@@ -320,16 +320,13 @@ fn spec(op: &str, args: &Value, columns: &[&str]) -> Option<UpdateBySpec> {
             result_column: columns[0].to_string(),
             filters: filters(),
         },
-        family if unported(family) => return None,
+        "rolling_formula" => UpdateBySpec::RollingFormula {
+            window: window()?,
+            formula: text(&args["formula"]).to_string(),
+            param_token: args["formula_param"].as_str().map(String::from),
+        },
         other => panic!("no update_by operation {other}"),
     })
-}
-
-/// Whether the operation of `op`, a `pydeephaven.updateby` function, is left `unported!` in
-/// this module.
-fn unported(op: &str) -> bool {
-    let family = op.trim_end_matches("_tick").trim_end_matches("_time");
-    family == "rolling_formula"
 }
 
 /// Defines the table of `operation` from `tables`.
@@ -346,22 +343,15 @@ fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
         Built::NotRun => return Built::NotRun,
     };
     let mut operations = Vec::new();
-    let mut left_out = Vec::new();
+    let left_out: Vec<String> = Vec::new();
     for op in list(&operation["ops"]) {
         let columns: Vec<&str> = list(&op["columns"]).iter().map(text).collect();
         match spec(text(&op["op"]), &op["args"], &columns) {
             Some(
-                spec @ (UpdateBySpec::CumCountWhere { .. }
-                | UpdateBySpec::RollingCountWhere { .. }),
+                spec
+                @ (UpdateBySpec::CumCountWhere { .. } | UpdateBySpec::RollingCountWhere { .. }),
             ) => operations.push(UpdateByOperation::new::<&str>(spec, &[])),
             Some(spec) => operations.push(UpdateByOperation::new(spec, &columns)),
-            // Java computes the result columns of each operation on their own, so the other
-            // operations are compared without it.
-            None if unported(text(&op["op"])) => left_out.extend(
-                columns
-                    .iter()
-                    .map(|pair| pair.split('=').next().expect("a name").trim().to_string()),
-            ),
             None => return Built::NotRun,
         }
     }
@@ -606,8 +596,7 @@ fn results_match_the_recorded_java_results() {
     }
     tally.compared.sort();
 
-    // Every result table of the corpus that is an `update_by` of an input, without the
-    // result columns of the operator left `unported!` (a rolling formula). Everything else
+    // Every result table of the corpus that is an `update_by` of an input. Everything else
     // needs another operation or, for
     // `update_by_time_and_ema/bad_duration`, the gRPC handler's parse of a duration.
     let expected = [
@@ -635,11 +624,11 @@ fn results_match_the_recorded_java_results() {
         "update_by_cumulative/time_delta",
         "update_by_cumulative/unknown_column",
         "update_by_cumulative/unknown_key",
-        "update_by_rolling_tick/by_key without FormI",
+        "update_by_rolling_tick/by_key",
         "update_by_rolling_tick/empty_window",
         "update_by_rolling_tick/negative_window",
-        "update_by_rolling_tick/no_key without FormI",
-        "update_by_rolling_tick/of_empty without FormI",
+        "update_by_rolling_tick/no_key",
+        "update_by_rolling_tick/of_empty",
         "update_by_rolling_tick/of_special",
         "update_by_rolling_tick/one_row_window",
         "update_by_rolling_tick/string_sum",
@@ -649,9 +638,9 @@ fn results_match_the_recorded_java_results() {
         "update_by_time_and_ema/ema_special_ticks",
         "update_by_time_and_ema/int_timestamp",
         "update_by_time_and_ema/null_timestamp",
-        "update_by_time_and_ema/timed_by_key without FormI",
-        "update_by_time_and_ema/timed_empty without FormI",
-        "update_by_time_and_ema/timed_no_key without FormI",
+        "update_by_time_and_ema/timed_by_key",
+        "update_by_time_and_ema/timed_empty",
+        "update_by_time_and_ema/timed_no_key",
     ];
     assert_eq!(tally.compared, expected);
     // 33 tables of static scenarios at one step, 2 ticking ones at 6 steps and 6 at 8.

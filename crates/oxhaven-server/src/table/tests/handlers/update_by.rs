@@ -893,7 +893,10 @@ async fn the_count_where_operators_count_the_rows_that_pass_their_filters() {
     call(&mut c, request(3, 1, operations, &["S"]))
         .await
         .unwrap();
-    assert_eq!(values(c.table(3).as_ref(), "Cum"), ints(&[1, 0, 2, 0, 2, 0]));
+    assert_eq!(
+        values(c.table(3).as_ref(), "Cum"),
+        ints(&[1, 0, 2, 0, 2, 0])
+    );
 
     // What Java refuses when it makes the filters is an internal failure: a filter that
     // does not compile, in whichever operation; a row variable; a column array; a
@@ -954,36 +957,112 @@ async fn the_count_where_operators_count_the_rows_that_pass_their_filters() {
     }
 }
 
+fn rolling_formula(formula: &str, token: &str, rev: f64, fwd: f64) -> Spec {
+    Spec::RollingFormula(spec::UpdateByRollingFormula {
+        reverse_window_scale: ticks(rev),
+        forward_window_scale: ticks(fwd),
+        formula: formula.to_string(),
+        param_token: token.to_string(),
+    })
+}
+
+/// The values are compared with Java's in the engine's `ops/update_by/corpus.rs`, and
+/// requests against both servers by the engine's
+/// `ops/update_by/fixtures/compare_servers_formula.py`.
+#[tokio::test]
+async fn a_rolling_formula_is_evaluated_over_the_windows_of_its_columns() {
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    // With a token, one result per pair; without one, the result the formula names,
+    // whatever the pairs.
+    let operations = vec![
+        operation(rolling_formula("sum(x)", "x", 2.0, 0.0), &["F = N", "N"]),
+        operation(rolling_sum(ticks(2.0), ticks(0.0)), &["R = N"]),
+        operation(
+            rolling_formula("M = sum(N) + len(I)", "", 2.0, 0.0),
+            &["Unused = Nope"],
+        ),
+    ];
+    let response = call(&mut c, request(2, 1, operations.clone(), &[]))
+        .await
+        .unwrap();
+    assert!(response.success, "{response:?}");
+    let table = c.table(2);
+    assert_eq!(column_names(table.as_ref()), ["I", "N", "S", "F", "R", "M"]);
+    let sums = values(table.as_ref(), "R");
+    assert_eq!(values(table.as_ref(), "F"), sums);
+    assert_eq!(values(table.as_ref(), "N"), sums);
+    assert_eq!(values(table.as_ref(), "M"), ints(&[4, 7, 5, 3, 1, -1]));
+    // A bucket column is a scalar in the formula without a token.
+    let keyed = vec![operation(
+        rolling_formula("M = S + count(N)", "", 2.0, 0.0),
+        &[],
+    )];
+    let response = call(&mut c, request(3, 1, keyed, &["S"])).await.unwrap();
+    assert!(response.success, "{response:?}");
+
+    // What Java refuses is an internal failure. Its validation replaces the token
+    // wherever it occurs, so `max(x)` is validated as `maN(N)`; it groups the table by the
+    // bucket columns, so a bucket column is no vector; and the engine knows no column
+    // but the token.
+    let mut next = 10;
+    for (spec, pairs, by) in [
+        (
+            rolling_formula("max(x)", "x", 2.0, 0.0),
+            &["X = N"][..],
+            &[][..],
+        ),
+        (rolling_formula("sum(x)", "x", 2.0, 0.0), &["X = S"], &["S"]),
+        (
+            rolling_formula("sum(x) + I", "x", 2.0, 0.0),
+            &["X = N"],
+            &[],
+        ),
+        (rolling_formula("sum(y)", "x", 2.0, 0.0), &["X = N"], &[]),
+        (rolling_formula("sum(x)", "x", 2.0, 0.0), &["X = Nope"], &[]),
+        (rolling_formula("X = sum(Nope)", "", 2.0, 0.0), &[], &[]),
+        (rolling_formula("X = sum(N) + i", "", 2.0, 0.0), &[], &[]),
+        (rolling_formula("X = sum(S)", "", 2.0, 0.0), &[], &["S"]),
+        (rolling_formula("X = sum(N)", "", 0.0, 0.0), &[], &[]),
+    ] {
+        next += 1;
+        let refused = call(&mut c, request(next, 1, vec![operation(spec, pairs)], by))
+            .await
+            .unwrap_err();
+        assert_internal(&refused);
+    }
+}
+
 #[tokio::test]
 async fn an_operator_that_is_not_ported_is_unimplemented_by_name() {
     let mut c = Connected::start().await;
     numbers(&mut c, 1).await;
-    let factory = "io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory\
-                   .OperationVisitor";
+    let wrapper = "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper";
     let cases = [
         (
-            Spec::RollingFormula(spec::UpdateByRollingFormula {
-                reverse_window_scale: ticks(2.0),
-                forward_window_scale: ticks(0.0),
-                formula: "sum(x)".to_string(),
-                param_token: "x".to_string(),
-            }),
-            "makeRollingFormulaOperator",
+            rolling_formula("x.get(0)", "x", 2.0, 0.0),
+            format!(
+                "not ported: {wrapper}.IntRingBufferVectorWrapper#get: get in a rolling \
+                 formula: outside a window Java throws NoSuchElementException"
+            ),
         ),
         (
-            Spec::RollingFormula(spec::UpdateByRollingFormula {
-                reverse_window_scale: ticks(2.0),
-                forward_window_scale: ticks(0.0),
-                formula: "X = sum(N)".to_string(),
-                param_token: String::new(),
-            }),
-            "makeRollingFormulaOperator",
+            rolling_formula("X = N[1]", "", 2.0, 0.0),
+            format!(
+                "not ported: {wrapper}.IntRingBufferVectorWrapper#get: [] in a rolling \
+                 formula: outside a window Java throws NoSuchElementException"
+            ),
+        ),
+        (
+            rolling_formula("sum(x)", "x|y", 2.0, 0.0),
+            "not ported: java.lang.String#replaceAll: the parameter token x|y, which Java \
+             reads as a regular expression"
+                .to_string(),
         ),
     ];
     // a request that fails in the export uses up its ticket
     let mut next = 10;
-    for (spec, method) in cases {
-        let message = format!("not ported: {factory}#{method}");
+    for (spec, message) in cases {
         // alone, and after an operator that is ported
         for operations in [
             vec![operation(spec.clone(), &["X = N"])],

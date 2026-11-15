@@ -15,7 +15,7 @@
 //! | rolling standard deviation and weighted average, over rows or time | yes |
 //! | rolling group, over rows or time | yes |
 //! | rolling count-where, over rows or time | yes, with a formula compiler |
-//! | rolling formula | no (`unported!`) |
+//! | rolling formula, over rows or time | yes, with a formula compiler |
 //! | exponential moving average, sum, minimum, maximum, decaying by ticks or time | yes |
 //! | exponential moving standard deviation, decaying by ticks or time | yes |
 //! | cumulative count-where | yes, with a formula compiler |
@@ -38,6 +38,7 @@
 mod count_where;
 mod cumulative;
 mod em;
+mod formula;
 mod group;
 mod rolling;
 mod values;
@@ -56,12 +57,12 @@ use arrow::compute::take;
 use count_where::CountWhere;
 use cumulative::Cumulative;
 use em::{Em, EmKind, StdState};
+use formula::RollingFormula;
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
-use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use rolling::{Rolling, Stamped, Ticks, Time};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -240,11 +241,12 @@ fn invalid(message: impl Into<String>) -> UpdateByError {
 /// The parent's columns and the results of `operations`, computed per bucket of rows with
 /// equal values in the `by` columns.
 ///
-/// The count-where operators need a formula compiler for their filters and are refused
-/// here; [`update_by_with`] takes one.
+/// The count-where operators and the rolling formula need a formula compiler and are
+/// refused here; [`update_by_with`] takes one.
 ///
 /// # Panics
-/// With `unported!` for the operations the module documentation lists as not ported.
+/// With `unported!` for the count-where filters and the rolling formulas that
+/// `count_where::filters` and the `formula` module leave unported.
 ///
 /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateBy#updateBy
 pub fn update_by<S: AsRef<str>>(
@@ -305,6 +307,8 @@ enum Kernel {
     /// The count of the rows, up to the current one or in its window, that pass the
     /// column's filters.
     CountWhere,
+    /// The rolling formula: the column's formula over the vectors of the window.
+    Formula,
     Em(Em),
 }
 
@@ -320,6 +324,8 @@ struct Column {
     reads: Vec<usize>,
     /// The filters of a count-where.
     filters: Option<CountWhere>,
+    /// The formula of a rolling formula.
+    formula: Option<RollingFormula>,
     output: Arc<WritableSource>,
     /// Index of the result column in the result.
     result: usize,
@@ -457,16 +463,12 @@ fn em_of(kind: EmKind, spec: &EmSpec) -> (Kernel, Window, Option<String>) {
 }
 
 /// The kernel and window of an operation, and the timestamp column it needs.
-///
-/// # Panics
-/// With `unported!` for the operations that are not ported.
 fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), UpdateByError> {
     let cumulative = |kernel| Ok((Kernel::Cumulative(kernel), Window::Cumulative, None));
     let rolling = |kernel, window: &RollingWindow| {
         let (window, column) = rolling_window(window)?;
         Ok((Kernel::Rolling(kernel), window, column))
     };
-    let ticks_of = rolling_window;
     match spec {
         UpdateBySpec::CumSum => cumulative(Cumulative::Sum),
         UpdateBySpec::CumMin => cumulative(Cumulative::Min),
@@ -487,9 +489,10 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
             let (window, column) = rolling_window(window)?;
             Ok((Kernel::Group, window, column))
         }
+        // Behavior: UpdateByOperatorFactory.OperationVisitor#visit(RollingFormulaSpec)
         UpdateBySpec::RollingFormula { window, .. } => {
-            ticks_of(window)?;
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingFormulaOperator")
+            let (window, column) = rolling_window(window)?;
+            Ok((Kernel::Formula, window, column))
         }
         // Behavior: UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator
         UpdateBySpec::RollingCountWhere { window, .. } => {
@@ -536,6 +539,8 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
         // Behavior: `CumCountWhereSpec#applicableTo` and `RollingCountWhereSpec#applicableTo`;
         // the operator takes no input columns.
         Kernel::CountWhere => true,
+        // Behavior: `RollingFormulaSpec#applicableTo`
+        Kernel::Formula => true,
     }
 }
 
@@ -608,6 +613,45 @@ impl Plan {
                     input_type: ColumnType::Long,
                     reads: filters.columns().to_vec(),
                     filters: Some(filters),
+                    formula: None,
+                    output,
+                    result: position,
+                    timed: timestamp_column.is_some(),
+                    weight: None,
+                    std_state: None,
+                });
+                continue;
+            }
+            // Behavior: UpdateByOperatorFactory.OperationVisitor#visit(RollingFormulaSpec):
+            // without a token the operation is one operator, whatever its column pairs,
+            // and UpdateByOperatorFactory.OutputColumnVisitor names its result
+            if let UpdateBySpec::RollingFormula {
+                formula,
+                param_token: None,
+                ..
+            } = &operation.spec
+            {
+                let (name, formula) =
+                    formula::of_columns(compiler, parent.definition(), formula, by)?;
+                let (output, position) = register(
+                    &mut result,
+                    &mut replaced,
+                    &mut names,
+                    &mut duplicates,
+                    &mut windows,
+                    columns.len(),
+                    &name,
+                    formula.result_type().clone(),
+                    window,
+                    &graph,
+                );
+                columns.push(Column {
+                    kernel,
+                    input: 0,
+                    input_type: ColumnType::Long,
+                    reads: formula.reads(),
+                    filters: None,
+                    formula: Some(formula),
                     output,
                     result: position,
                     timed: timestamp_column.is_some(),
@@ -673,7 +717,24 @@ impl Plan {
                     }
                     _ => None,
                 };
+                let formula = match &operation.spec {
+                    UpdateBySpec::RollingFormula {
+                        formula,
+                        param_token: Some(token),
+                        ..
+                    } => Some(formula::of_token(
+                        compiler,
+                        parent.definition(),
+                        formula,
+                        token,
+                        input,
+                    )?),
+                    _ => None,
+                };
                 let output_type = match kernel {
+                    Kernel::Formula => formula
+                        .as_ref()
+                        .map(|formula| formula.result_type().clone()),
                     Kernel::Cumulative(kernel) => kernel.output_type(&input_type),
                     Kernel::Rolling(kernel) => kernel.output_type(&input_type),
                     Kernel::Group => Some(group::output_type(&input_type)),
@@ -708,6 +769,7 @@ impl Plan {
                         .chain(weight.as_ref().map(|(index, _)| *index))
                         .collect(),
                     filters: None,
+                    formula,
                     output,
                     result: position,
                     timed: timestamp_column.is_some(),
@@ -788,6 +850,14 @@ impl Plan {
             .filters
             .as_ref()
             .ok_or_else(|| failure("update_by: a count-where without its filters"))
+    }
+
+    /// The formula of a rolling formula column.
+    fn formula<'a>(&self, column: &'a Column) -> Result<&'a RollingFormula, TableFailure> {
+        column
+            .formula
+            .as_ref()
+            .ok_or_else(|| failure("update_by: a rolling formula without its formula"))
     }
 
     fn result_columns(&self) -> Vec<Arc<dyn ColumnSource>> {
@@ -999,7 +1069,10 @@ impl Plan {
                         let seed = match &before {
                             None => 0,
                             Some(before) => {
-                                match Values::read(&column.output.chunk(before)?, &ColumnType::Long)? {
+                                match Values::read(
+                                    &column.output.chunk(before)?,
+                                    &ColumnType::Long,
+                                )? {
                                     Values::Int(v) => v[0].ok_or_else(|| {
                                         internal("a cumulative count-where that is null")
                                     })?,
@@ -1087,7 +1160,10 @@ impl Plan {
                             };
                             em.accumulate(&column.input_type, &values, &stamps, seed)?
                         }
-                        Kernel::Rolling(_) | Kernel::Group | Kernel::CountWhere => {
+                        Kernel::Rolling(_)
+                        | Kernel::Group
+                        | Kernel::CountWhere
+                        | Kernel::Formula => {
                             return Err(internal("a rolling operator in the cumulative window"))
                         }
                     };
@@ -1119,6 +1195,16 @@ impl Plan {
                             self.filters(column)?.check_chunks(&entering)?;
                             let results = self.filters(column)?.rolling(
                                 &*self.parent,
+                                &influencers,
+                                &slides,
+                            )?;
+                            column.output.fill(affected, &results)?;
+                            continue;
+                        }
+                        Kernel::Formula => {
+                            let results = self.formula(column)?.evaluate(
+                                &*self.parent,
+                                affected,
                                 &influencers,
                                 &slides,
                             )?;
@@ -1198,6 +1284,13 @@ impl Plan {
                             self.filters(column)?
                                 .rolling(&*self.parent, &influencers, &slides)?
                         }
+                        // A row without a timestamp gets a null, and no formula.
+                        Kernel::Formula => self.formula(column)?.evaluate(
+                            &*self.parent,
+                            &windowed,
+                            &influencers,
+                            &slides,
+                        )?,
                         _ => return Err(internal("a cumulative operator in a rolling window")),
                     };
                     let results = take(results.as_ref(), &indices, None)

@@ -236,9 +236,15 @@ impl CountWhere {
                     tail - head
                 )));
             }
-            count -= passing[head..head + slide.pop].iter().filter(|p| **p).count() as i64;
+            count -= passing[head..head + slide.pop]
+                .iter()
+                .filter(|p| **p)
+                .count() as i64;
             head += slide.pop;
-            count += passing[tail..tail + slide.push].iter().filter(|p| **p).count() as i64;
+            count += passing[tail..tail + slide.push]
+                .iter()
+                .filter(|p| **p)
+                .count() as i64;
             tail += slide.push;
             counts.push(count);
         }
