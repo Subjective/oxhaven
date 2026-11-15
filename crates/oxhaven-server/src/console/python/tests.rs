@@ -111,6 +111,27 @@ fn ints(table: &dyn Table, column: usize) -> Vec<Option<i32>> {
     values.iter().collect()
 }
 
+/// Observed on Java 42.9 with the same code: the two lines written to the descriptor are
+/// in the server's own output and not in the log stream.
+#[tokio::test]
+async fn what_is_written_to_the_descriptors_is_not_in_the_log() {
+    let python = Python::start().await;
+    python.run(
+        "import os, sys\n\
+         print('to sys.stdout')\n\
+         os.write(2, b'(a test wrote this line to descriptor 2)\\n')\n\
+         os.system('echo \"(a test wrote this line from a subprocess)\" 1>&2')\n\
+         sys.stderr.write('to sys.stderr\\n')",
+    );
+    assert_eq!(
+        python.printed(0),
+        [
+            ("STDOUT".to_string(), "to sys.stdout\n".to_string()),
+            ("STDERR".to_string(), "to sys.stderr\n".to_string()),
+        ]
+    );
+}
+
 #[tokio::test]
 async fn a_table_assigned_at_top_level_is_a_scope_variable() {
     let python = Python::start().await;

@@ -23,6 +23,7 @@ http-body-util = "0.1"
 httpdate = "1"
 hyper = { version = "1.12", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1.21", features = ["http1", "http2", "server-auto", "server-graceful", "tokio"] }
+libc = "0.2"
 prost = "0.14.6"
 prost-reflect = { version = "0.16.5", features = ["serde"] }
 prost-types = "0.14.6"

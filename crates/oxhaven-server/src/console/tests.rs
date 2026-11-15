@@ -20,7 +20,7 @@ use oxhaven_proto::grpc::table_reference::Ref;
 use oxhaven_proto::grpc::table_service_client::TableServiceClient;
 use oxhaven_proto::grpc::{
     ExportRequest, ExportedTableCreationResponse, FetchTableRequest, FieldsChangeUpdate,
-    ListFieldsRequest, PublishRequest, TableReference, Ticket,
+    HandshakeRequest, ListFieldsRequest, PublishRequest, TableReference, Ticket,
 };
 use oxhaven_proto::script::auto_complete_request::Request as CompletionRequest;
 use oxhaven_proto::script::auto_complete_response::Response as CompletionResponse;
@@ -33,8 +33,9 @@ use oxhaven_proto::script::{
 use tokio_stream::StreamExt;
 use tonic::transport::Channel;
 use tonic::{Code, Status};
+use tracing_subscriber::layer::SubscriberExt;
 
-use super::logs::{LogBuffer, STDERR, STDOUT};
+use super::logs::{LogBuffer, LogUpdates, STDERR, STDOUT};
 use super::{Changes, Console, ScriptSession};
 use crate::app::FormulaValue;
 use crate::session::{export_id_to_ticket, ExportValue};
@@ -611,7 +612,218 @@ async fn heap_info_is_the_memory_of_the_process() {
         .unwrap()
         .into_inner();
     assert!(heap.total_memory > 0 && heap.total_memory <= heap.max_memory);
-    assert_eq!(heap.free_memory, 0);
+    assert!((0..=heap.total_memory).contains(&heap.free_memory));
+    // the figures are those of `memory`, which has the tests of each
+    let now = super::memory::process_memory().unwrap();
+    assert_eq!(heap.max_memory, now.max);
+}
+
+/// The records a stream has now: `(level, message)`, or the status that ended it.
+fn waiting(updates: &mut LogUpdates) -> Vec<Result<(String, String), Code>> {
+    let mut records = Vec::new();
+    while let Ok(next) = updates.try_recv() {
+        records.push(match next {
+            Ok(record) => Ok((record.log_level, record.message)),
+            Err(status) => Err(status.code()),
+        });
+    }
+    records
+}
+
+#[test]
+fn the_servers_log_is_recorded_under_its_level_as_thread_logger_message() {
+    let buffer = Arc::new(LogBuffer::new());
+    let subscriber = tracing_subscriber::registry().with(super::logs::layer(buffer.clone()));
+    let logging = std::thread::Builder::new().name("worker-1".to_string());
+    let logged = logging.spawn(move || {
+        tracing::subscriber::with_default(subscriber, || {
+            let count = 3;
+            tracing::info!("Listening on {}", "127.0.0.1:10000");
+            tracing::warn!(count, name = "t", "slow cycle");
+            tracing::error!(target: "oxhaven_server::console::python::interrupt", "failed");
+            tracing::debug!(target: "engine", "detail");
+            tracing::trace!(target: "engine", "more detail");
+        });
+    });
+    logged.unwrap().join().unwrap();
+
+    let mut all = buffer.subscribe(LogSubscriptionRequest::default());
+    let records: Vec<(String, String)> = waiting(&mut all).into_iter().flatten().collect();
+    // the thread in 20 characters, the module path in 25 with its leading segments cut
+    let expected = [
+        (
+            "INFO",
+            "worker-1             | o::console::tests         | Listening on 127.0.0.1:10000",
+        ),
+        (
+            "WARN",
+            "worker-1             | o::console::tests         | slow cycle count=3 name=t",
+        ),
+        (
+            "ERROR",
+            "worker-1             | o::c::python::interrupt   | failed",
+        ),
+        (
+            "DEBUG",
+            "worker-1             | engine                    | detail",
+        ),
+        (
+            "TRACE",
+            "worker-1             | engine                    | more detail",
+        ),
+    ];
+    let expected: Vec<(String, String)> = expected
+        .iter()
+        .map(|(level, text)| (level.to_string(), text.to_string()))
+        .collect();
+    assert_eq!(records, expected);
+
+    // a longer name keeps its end, as Java's "r-Scheduler-Serial-1"
+    let subscriber = tracing_subscriber::registry().with(super::logs::layer(buffer.clone()));
+    let logging =
+        std::thread::Builder::new().name("DeephavenApiServer-Scheduler-Serial-1".to_string());
+    let logged = logging.spawn(move || {
+        tracing::subscriber::with_default(subscriber, || {
+            tracing::info!(target: "server::integrations::PythonDeephavenSession", "long");
+        });
+    });
+    logged.unwrap().join().unwrap();
+    assert_eq!(
+        waiting(&mut all),
+        [Ok((
+            "INFO".to_string(),
+            "r-Scheduler-Serial-1 | i::PythonDeephavenSession | long".to_string()
+        ))]
+    );
+
+    // a client names the levels it wants, as for what scripts print
+    let mut errors = buffer.subscribe(LogSubscriptionRequest {
+        levels: vec!["ERROR".to_string()],
+        ..Default::default()
+    });
+    assert_eq!(waiting(&mut errors).len(), 1);
+}
+
+#[test]
+fn a_client_that_falls_behind_is_ended_and_the_others_are_not() {
+    // four records may wait for a client: twice the history
+    let buffer = LogBuffer::with_sizes(2, 3);
+    buffer.record(STDOUT, "kept 1\n");
+    buffer.record(STDOUT, "kept 2\n");
+    let mut slow = buffer.subscribe(LogSubscriptionRequest::default());
+    let mut reading = buffer.subscribe(LogSubscriptionRequest::default());
+    let mut errors_only = buffer.subscribe(LogSubscriptionRequest {
+        levels: vec![STDERR.to_string()],
+        ..Default::default()
+    });
+    assert_eq!(buffer.subscriber_count(), 3);
+
+    for number in 3..=4 {
+        buffer.record(STDOUT, format!("line {number}\n"));
+        assert_eq!(waiting(&mut reading).len(), if number == 3 { 3 } else { 1 });
+    }
+    // the fifth record finds four waiting for the client that does not read
+    buffer.record(STDOUT, "line 5\n");
+    assert_eq!(buffer.subscriber_count(), 2);
+    assert_eq!(waiting(&mut reading).len(), 1);
+
+    // Java sends the status and not what was waiting
+    let status = slow.try_recv().unwrap().unwrap_err();
+    assert_eq!(status.code(), Code::ResourceExhausted);
+    assert_eq!(
+        status.message(),
+        "Too slow: the client or network may be too slow to keep up with the logging rates, \
+         or there may be logging bursts that exceed the available buffer size. The buffer \
+         size can be configured through the server property \
+         'deephaven.console.subscribeToLogs.bufferSize'."
+    );
+    assert!(slow.try_recv().is_err());
+
+    // records a client did not ask for do not count against it
+    assert_eq!(waiting(&mut errors_only), []);
+    buffer.record(STDERR, "an error\n");
+    assert_eq!(waiting(&mut errors_only).len(), 1);
+}
+
+#[tokio::test]
+async fn a_client_that_does_not_read_its_log_stream_is_refused_when_it_does() {
+    let small = |state: &mut ServerState| {
+        state.logs = Arc::new(LogBuffer::with_sizes(4, 8));
+        with_word_console(state);
+    };
+    let server = TestServer::start_with(small).await;
+    let bearer = server.login().await;
+    let mut console = ConsoleServiceClient::new(server.channel.clone());
+    let mut stream = console
+        .subscribe_to_logs(with_auth(LogSubscriptionRequest::default(), &bearer))
+        .await
+        .unwrap()
+        .into_inner();
+
+    // More than the connection lets the server send to a client that reads nothing, so
+    // that the records wait in the server.
+    let line = "x".repeat(1024);
+    for _ in 0..4096 {
+        server.state.logs.record(STDOUT, line.as_str());
+        if server.state.logs.subscriber_count() == 0 {
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert_eq!(
+        server.state.logs.subscriber_count(),
+        0,
+        "the client was not ended"
+    );
+
+    let mut received = 0;
+    let status = loop {
+        match stream.next().await.expect("a status ends the stream") {
+            Ok(record) => {
+                assert_eq!(record.message, line);
+                received += 1;
+            }
+            Err(status) => break status,
+        }
+    };
+    assert!(received > 0 && received < 4096, "{received}");
+    assert_eq!(status.code(), Code::ResourceExhausted);
+    assert!(status.message().starts_with("Too slow: "), "{status}");
+    assert!(stream.next().await.is_none());
+}
+
+#[tokio::test]
+async fn the_log_stream_ends_with_its_session() {
+    let mut client = Client::start().await;
+    let mut stream = client
+        .console
+        .subscribe_to_logs(with_auth(LogSubscriptionRequest::default(), &client.bearer))
+        .await
+        .unwrap()
+        .into_inner();
+    client.execute("print one").await;
+    assert_eq!(stream.next().await.unwrap().unwrap().message, "one\n");
+    assert_eq!(client.server.state.logs.subscriber_count(), 1);
+
+    // a stream the client ends is forgotten, and its session keeps no callback for it
+    let other = client
+        .console
+        .subscribe_to_logs(with_auth(LogSubscriptionRequest::default(), &client.bearer))
+        .await
+        .unwrap();
+    drop(other);
+
+    SessionServiceClient::new(client.server.channel.clone())
+        .close_session(with_auth(HandshakeRequest::default(), &client.bearer))
+        .await
+        .unwrap();
+    let ended = tokio::time::timeout(Duration::from_secs(5), stream.next());
+    let status = ended.await.expect("the stream ends").unwrap().unwrap_err();
+    assert_eq!(status.code(), Code::Cancelled);
+    assert_eq!(status.message(), "Session closed");
+    assert!(stream.next().await.is_none());
+    client.server.state.logs.record(STDOUT, "after\n");
+    assert_eq!(client.server.state.logs.subscriber_count(), 0);
 }
 
 /// A client of a server with the word console, and the session of that console, so that a
