@@ -9,6 +9,7 @@ use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::SortDescriptor;
 
 mod asof;
+mod multi_join;
 mod range_join;
 mod ungroup;
 mod update_by;
