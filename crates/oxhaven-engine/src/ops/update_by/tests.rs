@@ -827,6 +827,7 @@ fn rolling_formula_requests_java_refuses_are_errors() {
 fn a_rolling_formula_fails_where_java_does() {
     let source = static_table(&[
         ("I", ColumnType::Int, ints(&[1, 2])),
+        ("L", ColumnType::Long, longs(&[Some(1), Some(2)])),
         ("S", ColumnType::String, texts(&["a", "b"])),
         ("B", ColumnType::Boolean, random_free_booleans()),
     ]);
@@ -837,6 +838,10 @@ fn a_rolling_formula_fails_where_java_does() {
         (
             formula("sum(x)", &["R = I"], empty()),
             "Assertion failed: asserted intWindowValues.size() >= 1, instead intWindowValues.size() == 0.",
+        ),
+        (
+            formula("sum(x)", &["R = L"], empty()),
+            "Assertion failed: asserted longWindowValues.size() >= 1, instead longWindowValues.size() == 0.",
         ),
         (
             formula("countObj(x)", &["R = S"], empty()),

@@ -258,7 +258,7 @@ pub fn update_by<S: AsRef<str>>(
 }
 
 /// [`update_by`], with the compiler of the formulas among the filters of the count-where
-/// operators.
+/// operators and of the rolling formulas.
 pub fn update_by_with<S: AsRef<str>>(
     parent: &Arc<dyn Table>,
     operations: &[UpdateByOperation],

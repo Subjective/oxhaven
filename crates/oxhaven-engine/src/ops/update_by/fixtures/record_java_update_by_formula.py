@@ -258,6 +258,13 @@ def static_cases():
     case([multi("R = len(I)", 0, 0)])
     case([multi("R = 1", 0, 0)])
     case([multi("R = K", 0, 0)], ("K",))
+    for column in list(NUMBERS) + ["C"]:
+        case([each("count(q)", [f"R = {column}"], 0, 0)])
+    # A window of no rows that lies ahead of the row, or behind it.
+    for rev, fwd in ((-1, 1), (-2, 2), (-5, 5), (3, -3), (6, -6)):
+        for by in ((), ("K",)):
+            case([each("sum(q)", ["R = I"], rev, fwd)], by)
+            case([multi("R = sum(I)", rev, fwd)], by)
     # A formula that fails for a window.
     case([multi("R = 1 / (len(I) - 2)", 2, 0)])
     case([multi("R = 1 / (sum(I) - sum(I))", 2, 0)])
