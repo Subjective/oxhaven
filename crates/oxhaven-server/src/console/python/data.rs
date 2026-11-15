@@ -374,3 +374,214 @@ pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_function(wrap_pyfunction!(table_from_arrow, native)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! The expectations are what the Java reference answered to the same code, through
+    //! the script scenarios `convert_*` and by hand; a comment says where Java differs.
+    //! Only the standard library is sure to be there (the `python-console` job installs
+    //! nothing), so what needs numpy, pandas or pyarrow runs only where they are.
+
+    use oxhaven_testkit::TableSnapshot;
+
+    use super::super::tests::Python;
+
+    const SOURCE: &str = r#"
+from deephaven import DHError, _engine, empty_table
+from deephaven.table import Table
+source = empty_table(3).update([
+    "B = (byte)(i == 1 ? null : i)", "H = (short)(i == 1 ? null : i)", "I = i == 1 ? null : i",
+    "L = i == 1 ? null : (long)i", "F = (float)(i == 1 ? null : i * 0.5)",
+    "D = i == 1 ? null : i * 0.5", "C = i == 1 ? null : (char)(65 + i)",
+    "S = i == 1 ? null : `s` + i", "Z = i == 1 ? null : i == 0",
+    "T = i == 1 ? null : '2024-01-01T00:00:00Z' + i * SECOND",
+])
+"#;
+
+    /// Asserts that each of the scope's tables `names` has the definition and the cells of
+    /// the scope's table `source`.
+    fn assert_same_as_source(python: &Python, names: &[&str]) {
+        let source = python.table("source");
+        let expected = TableSnapshot::current(source.as_ref()).unwrap();
+        for name in names {
+            let table = python.table(name);
+            assert_eq!(table.definition(), source.definition(), "{name}");
+            let snapshot = TableSnapshot::current(table.as_ref()).unwrap();
+            assert_eq!(snapshot.columns, expected.columns, "{name}");
+        }
+    }
+
+    /// Behavior: `io.deephaven.engine.table.vectors.ColumnVectors#of`, with
+    /// `PrimitiveArrayConversionUtility#translateArrayBooleanToByte` and
+    /// `#translateArrayInstantToLong`
+    #[tokio::test]
+    async fn columns_for_numpy_are_the_bytes_of_the_values_with_the_nulls_of_java() {
+        let python = Python::start().await;
+        python.run(SOURCE);
+        python.run(
+            r#"
+import struct
+names = ["I", "B", "H", "L", "F", "D", "C", "Z", "T", "S"]
+values = dict(zip(names, _engine.native.column_values(source.j_table, names)))
+for name, form, expected in (
+    ("B", "=3b", (0, -128, 2)), ("H", "=3h", (0, -32768, 2)), ("I", "=3i", (0, -2147483648, 2)),
+    ("L", "=3q", (0, -9223372036854775808, 2)),
+    ("F", "=3f", (0.0, -3.4028234663852886e+38, 1.0)),
+    ("D", "=3d", (0.0, -1.7976931348623157e+308, 1.0)),
+    ("C", "=3H", (65, 65535, 67)),
+    # a Boolean is a byte, null -128, and an instant its nanoseconds, null the null long
+    ("Z", "=3b", (1, -128, 0)),
+    ("T", "=3q", (1704067200000000000, -9223372036854775808, 1704067202000000000)),
+):
+    assert isinstance(values[name], bytearray), name
+    assert struct.unpack(form, values[name]) == expected, (name, struct.unpack(form, values[name]))
+assert values["S"] == ["s0", None, "s2"]
+assert _engine.native.column_values(source.j_table, []) == []
+assert [len(v) for v in _engine.native.column_values(source.head(0).j_table, ["I", "S"])] == [0, 0]
+try:
+    _engine.native.column_values(source.j_table, ["Nope"])
+except RuntimeError as e:
+    assert str(e) == "the table has no column Nope", str(e)
+else:
+    raise AssertionError("read")
+"#,
+        );
+    }
+
+    /// Behavior: `io.deephaven.extensions.barrage.util.TableToArrowConverter` and
+    /// `io.deephaven.extensions.barrage.util.ArrowToTableConverter`
+    #[tokio::test]
+    async fn a_snapshot_read_through_its_capsule_is_the_table_again() {
+        let python = Python::start().await;
+        python.run(SOURCE);
+        python.run(
+            r#"
+snapshot = _engine.native.arrow_snapshot(source.j_table)
+capsule = snapshot.__arrow_c_stream__()
+assert type(capsule).__name__ == "PyCapsule" and "arrow_array_stream" in repr(capsule)
+again = Table(_engine.native.table_from_arrow(snapshot))
+no_rows = Table(_engine.native.table_from_arrow(_engine.native.arrow_snapshot(source.head(0).j_table)))
+
+
+class Stream:
+    def __init__(self, capsule):
+        self.capsule = capsule
+
+    def __arrow_c_stream__(self):
+        return self.capsule
+
+
+# a stream is read once: what is left in its capsule is a released stream
+spent = Stream(capsule)
+once = Table(_engine.native.table_from_arrow(spent))
+try:
+    _engine.native.table_from_arrow(spent)
+except RuntimeError as e:
+    assert str(e).startswith("unreadable Arrow stream: "), str(e)
+else:
+    raise AssertionError("read twice")
+try:
+    _engine.native.table_from_arrow(Stream(5))
+except TypeError as e:
+    assert str(e) == "__arrow_c_stream__ must return a capsule of an Arrow C stream", str(e)
+else:
+    raise AssertionError("read a number")
+"#,
+        );
+        assert_same_as_source(&python, &["again", "once"]);
+        let no_rows = python.table("no_rows");
+        assert_eq!(no_rows.definition(), python.table("source").definition());
+        assert!(no_rows.row_set().is_empty());
+    }
+
+    /// Behavior: `io.deephaven.integrations.python.PythonTableDataReader#readChunkColumnMajor`
+    #[tokio::test]
+    async fn rows_hold_instants_and_arrays_and_refuse_vectors() {
+        let python = Python::start().await;
+        python.run(SOURCE);
+        python.run(
+            r#"
+from deephaven import constants, dtypes, new_table
+from deephaven.column import InputColumn
+rows = list(source.iter_dict(["I", "T"]))
+assert [str(row["T"]) for row in rows] == ["2024-01-01T00:00:00Z", "None", "2024-01-01T00:00:02Z"]
+assert rows[1]["T"] is None and type(rows[0]["T"]).__name__ == "Instant"
+assert [str(row.T) for row in source.iter_tuple(["T"], chunk_size=2)][2] == "2024-01-01T00:00:02Z"
+
+
+def cells(dtype, *values):
+    return [None if value is None else dtypes.array(dtype, value) for value in values]
+
+
+arrays = new_table([
+    InputColumn("Ints", dtypes.int32_array, input_data=cells(dtypes.int32, [1, constants.NULL_INT, 3], None, [])),
+    InputColumn("Strings", dtypes.string_array, input_data=cells(dtypes.string, ["a", None], None, ["b"])),
+    InputColumn("Times", dtypes.instant_array,
+                input_data=cells(dtypes.Instant, ["2024-01-01T00:00:00Z", None], None, [])),
+    InputColumn("Bools", dtypes.boolean_array, input_data=cells(dtypes.bool_, [True, None], [False], None)),
+])
+rows = list(arrays.iter_dict())
+assert [None if row["Ints"] is None else list(row["Ints"]) for row in rows] == [[1, constants.NULL_INT, 3], None, []]
+assert [None if row["Strings"] is None else list(row["Strings"]) for row in rows] == [["a", None], None, ["b"]]
+assert [None if row["Bools"] is None else list(row["Bools"]) for row in rows] == [[True, None], [False], None]
+first = rows[0]["Times"]
+assert len(first) == 2 and str(first[0]) == "2024-01-01T00:00:00Z" and first[1] is None
+assert rows[1]["Times"] is None and len(rows[2]["Times"]) == 0
+# Java hands out the io.deephaven.vector.Vector object of a grouped column, which has no
+# counterpart here
+grouped = source.update("K = i % 2").group_by("K")
+for read in (lambda: list(grouped.iter_dict()), lambda: list(grouped.iter_tuple(["I"]))):
+    try:
+        read()
+    except DHError as e:
+        assert "PythonTableDataReader#readChunkColumnMajor" in str(e), str(e)
+    else:
+        raise AssertionError("read")
+assert list(grouped.iter_dict(["K"])) == [{"K": 0}, {"K": 1}]
+"#,
+        );
+    }
+
+    /// Behavior: `io.deephaven.extensions.barrage.util.BarrageUtil#convertArrowSchema`
+    #[tokio::test]
+    async fn the_libraries_convert_where_they_are_installed() {
+        let python = Python::start().await;
+        python.run(SOURCE);
+        python.run(
+            r#"
+try:
+    import numpy as np
+    import pandas as pd
+    import pyarrow as pa
+except ImportError:
+    pa = None
+from_arrow = from_pandas = source
+if pa is not None:
+    from deephaven import arrow, numpy, pandas
+    both = numpy.to_numpy(source.update("J = i * 10"), ["J", "I"])
+    assert both.shape == (3, 2) and both.tolist() == [[0, 0], [10, -2147483648], [20, 2]]
+    assert str(numpy.to_numpy(source, ["T"]).dtype) == "datetime64[ns]"
+    frame = pandas.to_pandas(source)
+    assert [str(kind) for kind in frame.dtypes] == [
+        "Int8", "Int16", "Int32", "Int64", "Float32", "Float64", "UInt16", "string", "boolean",
+        "datetime64[ns, UTC]"]
+    assert frame["I"][1] is pd.NA and frame["T"][1] is pd.NaT
+    table = arrow.to_arrow(source)
+    assert table.column("I").to_pylist() == [0, None, 2] and table.num_rows == 3
+    assert table.schema.field("C").metadata[b"deephaven:type"] == b"char"
+    from_arrow = arrow.to_table(table)
+    from_pandas = pandas.to_table(frame)
+    # an Arrow type Java has no column type for is refused with the Java method
+    for refused in (pa.uint64(), pa.date32(), pa.duration("ns")):
+        try:
+            arrow.to_table(pa.table({"X": pa.array([1], refused)}))
+        except DHError as e:
+            assert "failed to create a Deephaven table from a pyarrow table." in str(e), str(e)
+            assert "BarrageUtil#" in str(e), str(e)
+        else:
+            raise AssertionError(str(refused))
+"#,
+        );
+        assert_same_as_source(&python, &["from_arrow", "from_pandas"]);
+    }
+}

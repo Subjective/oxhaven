@@ -708,14 +708,9 @@ for bad, text in (
         assert str(e) == text, str(e)
     else:
         raise AssertionError(text)
-# Java gives a java.time.Instant object, which has no counterpart yet
+# an instant is a value that prints as Java's java.time.Instant does
 clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC").head(1)
-try:
-    list(clock.iter_dict())
-except DHError as e:
-    assert "PythonTableDataReader#readChunkColumnMajor" in str(e), str(e)
-else:
-    raise AssertionError("read")
+assert [str(row["Timestamp"]) for row in clock.iter_dict()] == ["2024-01-01T00:00:00Z"]
 try:
     import numpy as np
 except ImportError:
