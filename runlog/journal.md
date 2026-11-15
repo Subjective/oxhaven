@@ -660,3 +660,9 @@ agent's Java observations are appended to the task file. For owner review from P
 to_arrow returns one record batch where Java returns several.
 Task 6.10 starts after PR 79 merges, because that pull request moves console commands onto
 the interpreter's own thread, which is where the lock is held.
+
+## 2026-11-15 20:12 UTC: Disk fell to 1.6 GB free with six agents building
+
+The console agent saw 1.6 GB free while six agents had build directories and replay runs
+alive (each about 3 to 4 GB of target plus a venv). Nothing failed. Rule from here: at most
+four agents that build at once, and none started below 12 GB free.
