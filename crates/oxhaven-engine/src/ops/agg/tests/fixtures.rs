@@ -4,21 +4,34 @@
 //!
 //! These cover the aggregations the oracle's scenarios do not have yet. Every operation of
 //! every fixture is run and compared at every recorded step, by the rules of `PARITY.md` as
-//! `oracle/harness/rules.py` applies them (`corpus::assert_matches`); an operation Java refused
-//! must be refused too.
+//! `oracle/harness/rules.py` applies them (`corpus::assert_matches`), and the column types
+//! with it, a vector apart from an array; an operation Java refused must be refused too.
+//!
+//! For the tables a fixture names under `updates`, every update is compared as well: the
+//! added, removed and modified rows by position and the modified columns, update by update.
+//! PARITY.md A4 does not ask for that. It is compared because the fixtures can: the tables
+//! are aggregations of input tables, which change in the same way on both sides.
 
-use super::super::AggregateError;
-use super::corpus::{assert_matches, inputs, json, list, rows_batch, run_step, text};
+use super::super::{group_by, AggregateError};
+use super::corpus::{apply_action, assert_matches, inputs, json, list, rows_batch, run_step, text};
 use super::*;
 use crate::graph::SteppedUpdateGraph;
+use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
 use arrow::datatypes::Schema;
+use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
+use oxhaven_testkit::Recorder;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// The number of (table, step) results the fixtures must compare, and of operations Java
 /// refused. An operation that silently stops being run shows as a different count.
-const COMPARED: usize = 426;
-const REFUSED: usize = 15;
+const COMPARED: usize = 586;
+const REFUSED: usize = 19;
+/// The number of (table, step) lists of updates the fixtures must compare.
+const UPDATES: usize = 119;
 
 fn fixtures() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/ops/agg/fixtures")
@@ -71,6 +84,7 @@ fn aggregation(entry: &Value) -> Aggregation {
         "sorted_last" => AggSpec::SortedLast {
             columns: vec![text(&entry["order_by"], "order_by").to_string()],
         },
+        "group" => AggSpec::Group,
         other => panic!("no aggregation {other}"),
     };
     let pairs: Vec<&str> = list(&entry["cols"], "cols")
@@ -104,26 +118,89 @@ fn computed_columns(aggregations: &[Aggregation]) -> Vec<String> {
         .collect()
 }
 
-/// The table Java returned at one step, as a batch with the `IsFlat` attribute in its
-/// schema metadata, as `corpus::assert_matches` expects.
-fn expected(recorded: &Value) -> RecordBatch {
+/// The table Java returned at one step: its definition, and a batch with the `IsFlat`
+/// attribute in its schema metadata, as `corpus::assert_matches` expects.
+fn expected(recorded: &Value) -> (TableDefinition, RecordBatch) {
     let columns: Vec<&Value> = list(&recorded["columns"], "columns").iter().collect();
-    let (_, batch) = rows_batch(&columns, list(&recorded["rows"], "rows"));
+    let (definition, batch) = rows_batch(&columns, list(&recorded["rows"], "rows"));
     let flat = recorded["attributes"]["IsFlat"] == true;
     let metadata: HashMap<String, String> =
         [("deephaven:attribute.IsFlat".to_string(), flat.to_string())]
             .into_iter()
             .collect();
     let schema = Schema::new(batch.schema().fields().clone()).with_metadata(metadata);
-    batch
+    let batch = batch
         .with_schema(Arc::new(schema))
-        .expect("the same fields")
+        .expect("the same fields");
+    (definition, batch)
+}
+
+/// The updates a table of a fixture delivered, as the fixture records Java's.
+struct Watched<'a> {
+    name: &'a str,
+    table: Arc<dyn Table>,
+    recorder: Arc<Recorder>,
+    /// The number of events of the recorder already compared.
+    seen: usize,
+    /// The table's rows after those events.
+    rows: RowSet,
+}
+
+impl Watched<'_> {
+    /// The updates delivered since the last call, in the form of `fixtures/record.py`:
+    /// rows as positions, removed rows by their position before the update and the others
+    /// after it, and the modified columns by name.
+    fn drain(&mut self, context: &str) -> Value {
+        let positions = |rows: &RowSet, within: &RowSet| -> Vec<i64> {
+            let found = within.invert(rows).expect("rows of the table");
+            found.iter().collect()
+        };
+        let definition = self.table.definition();
+        let events = self.recorder.events().split_off(self.seen);
+        self.seen += events.len();
+        let mut updates = Vec::new();
+        for event in events {
+            let update: TableUpdate =
+                event.unwrap_or_else(|failure| panic!("{context}: {}", failure.message));
+            assert!(update.shifted.is_empty(), "{context}: a shift");
+            let removed = positions(&update.removed, &self.rows);
+            self.rows.remove(&update.removed);
+            self.rows.insert(&update.added);
+            let names = definition.columns().iter();
+            let modified_columns: Vec<&str> = match &update.modified_columns {
+                _ if update.modified.is_empty() => Vec::new(),
+                ModifiedColumnSet::All => names.map(|column| column.name.as_str()).collect(),
+                columns => names
+                    .enumerate()
+                    .filter(|(index, _)| columns.contains(*index))
+                    .map(|(_, column)| column.name.as_str())
+                    .collect(),
+            };
+            updates.push(serde_json::json!({
+                "added": positions(&update.added, &self.rows),
+                "removed": removed,
+                "modified": positions(&update.modified, &self.rows),
+                "modified_columns": modified_columns,
+            }));
+        }
+        assert_eq!(self.rows, *self.table.row_set(), "{context}: the rows");
+        Value::Array(updates)
+    }
 }
 
 #[derive(Default)]
 struct Tally {
     compared: usize,
     refused: usize,
+    updates: usize,
+}
+
+/// The names of an operation's list `key`.
+fn names<'a>(operation: &'a Value, key: &str) -> Vec<&'a str> {
+    list(&operation[key], key)
+        .iter()
+        .map(|column| text(column, key))
+        .collect()
 }
 
 fn run_fixture(path: &PathBuf, tally: &mut Tally) {
@@ -133,25 +210,53 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
     let graph = SteppedUpdateGraph::new();
     let inputs = inputs(&fixture, &graph);
 
+    // Every table by name: the inputs, and the results as they are made.
+    let mut made: BTreeMap<&str, Arc<dyn Table>> = inputs
+        .iter()
+        .map(|(name, input)| (name.as_str(), input.table.clone()))
+        .collect();
     let mut tables: Vec<(&str, Arc<dyn Table>, Vec<String>)> = Vec::new();
     for operation in list(&fixture["operations"], "operations") {
         let table_name = text(&operation["name"], "name");
         let context = format!("{name}.{table_name}");
-        assert_eq!(operation["op"], "agg", "{context}: only `agg` is run here");
-        let input = &inputs[text(&operation["source"], "source")];
-        let aggregations: Vec<Aggregation> = list(&operation["aggs"], "aggs")
-            .iter()
-            .map(aggregation)
-            .collect();
-        let by: Vec<&str> = list(&operation["by"], "by")
-            .iter()
-            .map(|column| text(column, "by"))
-            .collect();
-        let result = aggregate(&input.table, &aggregations, false, &by);
+        let source = |key: &str| &made[text(&operation[key], key)];
+        let mut computed = Vec::new();
+        let result = match text(&operation["op"], "op") {
+            "agg" => {
+                let aggregations: Vec<Aggregation> = list(&operation["aggs"], "aggs")
+                    .iter()
+                    .map(aggregation)
+                    .collect();
+                computed = computed_columns(&aggregations);
+                aggregate(
+                    source("source"),
+                    &aggregations,
+                    false,
+                    &names(operation, "by"),
+                )
+            }
+            "group_by" => group_by(source("source"), &names(operation, "by")),
+            "natural_join" => {
+                let on: Vec<JoinMatch> = names(operation, "on")
+                    .into_iter()
+                    .map(JoinMatch::same)
+                    .collect();
+                let add: Vec<JoinAddition> = names(operation, "joins")
+                    .into_iter()
+                    .map(JoinAddition::same)
+                    .collect();
+                let (left, right) = (source("left"), source("right"));
+                let joined =
+                    natural_join(left, right, &on, &add, NaturalJoinType::ErrorOnDuplicate);
+                Ok(joined.unwrap_or_else(|error| panic!("{context}: {error:?}")))
+            }
+            other => panic!("{context}: no operation {other}"),
+        };
         let failure = &recorded_steps[0][table_name]["failure"];
         match result {
             Ok(table) if failure.is_null() => {
-                tables.push((table_name, table, computed_columns(&aggregations)));
+                made.insert(table_name, table.clone());
+                tables.push((table_name, table, computed));
             }
             Err(error) if !failure.is_null() => {
                 assert_eq!(failure, "INVALID_ARGUMENT", "{context}");
@@ -165,6 +270,23 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             Err(error) => panic!("{context}: {error}, where Java gave a table"),
         }
     }
+    let watches = !fixture["updates"].is_null();
+    let mut watched: Vec<Watched> = fixture["updates"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|table| {
+            let name = text(table, "updates");
+            let table = made[name].clone();
+            Watched {
+                name,
+                recorder: Recorder::attach(table.clone()),
+                seen: 0,
+                rows: (*table.row_set()).clone(),
+                table,
+            }
+        })
+        .collect();
 
     let steps = fixture["steps"].as_array().cloned().unwrap_or_default();
     assert_eq!(
@@ -173,7 +295,13 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
         "{name}: recorded steps"
     );
     for (step, recorded) in recorded_steps.iter().enumerate() {
-        if step > 0 {
+        if step > 0 && watches {
+            // As `fixtures/record.py` does it: each action in a cycle of its own.
+            for action in list(&steps[step - 1]["actions"], "actions") {
+                apply_action(action, &inputs);
+                graph.run_cycle();
+            }
+        } else if step > 0 {
             run_step(&steps[step - 1], &inputs, &graph);
         }
         for (table_name, table, computed) in &tables {
@@ -181,8 +309,21 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             let entry = &recorded[*table_name];
             assert!(entry["failure"].is_null(), "{context}: Java failed");
             assert!(!table.is_failed(), "{context}: failed");
-            assert_matches(&context, &**table, &expected(entry), computed);
+            let (definition, batch) = expected(entry);
+            assert_eq!(
+                table.definition().columns(),
+                definition.columns(),
+                "{context}: the columns and their types"
+            );
+            assert_matches(&context, &**table, &batch, computed);
             tally.compared += 1;
+        }
+        for watched in watched.iter_mut().filter(|_| step > 0) {
+            let context = format!("{name}.{} during step {step}", watched.name);
+            let delivered = watched.drain(&context);
+            let recorded = &fixture["java"]["updates"][step - 1][watched.name];
+            assert_eq!(&delivered, recorded, "{context}: the updates");
+            tally.updates += 1;
         }
     }
 }
@@ -203,5 +344,8 @@ fn aggregations_match_the_recorded_java_fixtures() {
     for path in &paths {
         run_fixture(path, &mut tally);
     }
-    assert_eq!((tally.compared, tally.refused), (COMPARED, REFUSED));
+    assert_eq!(
+        (tally.compared, tally.refused, tally.updates),
+        (COMPARED, REFUSED, UPDATES)
+    );
 }

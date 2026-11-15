@@ -2,8 +2,8 @@
 //!
 //! The engine has sum, abs_sum, avg, min, max, first, last, var, std, median, percentile,
 //! count_distinct, unique (with a null non-unique sentinel), weighted_avg, weighted_sum,
-//! sorted_first, sorted_last and count. A request for any other aggregation, or for initial
-//! groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
+//! sorted_first, sorted_last, group and count. A request for any other aggregation, or for
+//! initial groups, is refused with `UNIMPLEMENTED` and the name of what is missing.
 
 use super::prelude::*;
 use oxhaven_engine::ops::agg::{aggregate, AggSpec, AggregateError, Aggregation, Pair};
@@ -22,7 +22,7 @@ impl From<AggregateError> for ExportError {
 const ONE_OF_NOTE: &str = "Note: this may also indicate that the server is older than the client and doesn't know about this new oneof option.";
 
 /// Behavior: `io.deephaven.server.grpc.GrpcErrorHelper#checkRepeatedFieldNonEmpty`
-fn empty_field(message: &str, field: &str, number: u32) -> Status {
+pub(super) fn empty_field(message: &str, field: &str, number: u32) -> Status {
     Status::invalid_argument(format!(
         "io.deephaven.proto.backplane.grpc.{message} must have at least one {field} ({number})"
     ))
@@ -158,9 +158,32 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
         Some(SpecType::Distinct(_)) => missing("distinct"),
         Some(SpecType::Formula(_)) => missing("formula"),
         Some(SpecType::Freeze(_)) => missing("freeze"),
-        Some(SpecType::Group(_)) => missing("group"),
+        Some(SpecType::Group(_)) => Ok(AggSpec::Group),
         Some(SpecType::TDigest(_)) => missing("t_digest"),
         None => Err(missing_one_of("AggSpec").into()),
+    }
+}
+
+/// The checks of one aggregation of a request, which need no table.
+///
+/// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#validate`
+pub(super) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
+    match &aggregation.r#type {
+        None => Err(missing_one_of("Aggregation")),
+        Some(AggregationType::Columns(columns)) => {
+            let Some(spec) = &columns.spec else {
+                return Err(missing_field("Aggregation.AggregationColumns", "spec", 1));
+            };
+            if columns.match_pairs.is_empty() {
+                return Err(empty_field(
+                    "Aggregation.AggregationColumns",
+                    "match_pairs",
+                    2,
+                ));
+            }
+            validate_spec(spec)
+        }
+        Some(_) => Ok(()),
     }
 }
 
@@ -186,7 +209,7 @@ fn excluded_by_agg_all(spec: &AggSpec, column: &str) -> bool {
         | AggSpec::Unique { .. }
         | AggSpec::SortedFirst { .. }
         | AggSpec::SortedLast { .. } => false,
-        // Sum, abs_sum, avg, var, std, median, percentile and count_distinct.
+        // Sum, abs_sum, avg, var, std, median, percentile, count_distinct and group.
         _ => formatting,
     }
 }
@@ -280,23 +303,7 @@ impl TableOp for Aggregate {
             return Err(empty_field("AggregateRequest", "aggregations", 5));
         }
         for aggregation in &request.aggregations {
-            match &aggregation.r#type {
-                None => return Err(missing_one_of("Aggregation")),
-                Some(AggregationType::Columns(columns)) => {
-                    let Some(spec) = &columns.spec else {
-                        return Err(missing_field("Aggregation.AggregationColumns", "spec", 1));
-                    };
-                    if columns.match_pairs.is_empty() {
-                        return Err(empty_field(
-                            "Aggregation.AggregationColumns",
-                            "match_pairs",
-                            2,
-                        ));
-                    }
-                    validate_spec(spec)?;
-                }
-                Some(_) => {}
-            }
+            validate_aggregation(aggregation)?;
         }
         Ok(())
     }
@@ -435,8 +442,8 @@ fn agg_all_by(
     run(parent, &[Aggregation::columns(kind, pairs)], false, group_by)
 }
 
-/// The engine's spec for a combo aggregate type other than `COUNT`, which has none. `GROUP`
-/// and a type this server does not know are refused.
+/// The engine's spec for a combo aggregate type other than `COUNT`, which has none. A type
+/// this server does not know is refused.
 ///
 /// Behavior: `ComboAggregateGrpcImpl#singleAggregateHelper` and `#makeAggregation`
 fn combo_spec(aggregate: &proto::combo_aggregate_request::Aggregate) -> Result<AggSpec, ExportError> {
@@ -462,13 +469,7 @@ fn combo_spec(aggregate: &proto::combo_aggregate_request::Aggregate) -> Result<A
         Ok(AggType::WeightedAvg) => AggSpec::WeightedAvg {
             weight: spec_column(&aggregate.column_name)?,
         },
-        Ok(AggType::Group) => {
-            return Err(not_ported(
-                "io.deephaven.server.table.ops.ComboAggregateGrpcImpl#makeAggregation",
-                "the aggregation group",
-            )
-            .into())
-        }
+        Ok(AggType::Group) => AggSpec::Group,
         Ok(AggType::Count) => unreachable!("COUNT has no spec"),
         // `default: throw new UnsupportedOperationException("Unsupported aggregate: ...")`
         Err(_) => {
