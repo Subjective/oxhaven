@@ -17,8 +17,10 @@
 //!   own log.
 //! - `GetHeapInfo` reports the memory of the process ([`memory`]).
 //! - `BindTableToVariable` makes an exported table a variable.
-//! - `AutoCompleteStream` answers every request "nothing found", which is what Java does
-//!   when the Python package `jedi` is missing.
+//! - `AutoCompleteStream` answers requests about the code a user types: completions,
+//!   signatures, hover texts ([`completer`]). A browser on an `https://` page sends the
+//!   same stream as `OpenAutoCompleteStream` and one `NextAutoCompleteStream` call per
+//!   message ([`browser`]).
 //!
 //! Without one, the server is the Java server started with
 //! `-Ddeephaven.console.disable=true`, as far as the web IDE can tell: `GetConsoleTypes`
@@ -26,6 +28,8 @@
 //! `UNIMPLEMENTED` and its name. Java answers the other calls each in their own way
 //! (`src/ide/fixtures/java.txt`, the `console_*` cases).
 
+pub mod browser;
+pub mod completer;
 pub mod logs;
 pub mod memory;
 #[cfg(feature = "python")]
@@ -39,26 +43,24 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use oxhaven_proto::grpc::{FieldInfo, FieldsChangeUpdate, Ticket, TypedTicket};
-use oxhaven_proto::script::auto_complete_request::Request as CompletionRequest;
-use oxhaven_proto::script::auto_complete_response::Response as CompletionResponse;
 use oxhaven_proto::script::console_service_server::ConsoleService;
 use oxhaven_proto::script::{
-    AutoCompleteRequest, AutoCompleteResponse, BindTableToVariableRequest,
-    BindTableToVariableResponse, BrowserNextResponse, CancelAutoCompleteRequest,
-    CancelAutoCompleteResponse, CancelCommandRequest, CancelCommandResponse, ExecuteCommandRequest,
-    ExecuteCommandResponse, GetCompletionItemsResponse, GetConsoleTypesRequest,
-    GetConsoleTypesResponse, GetHeapInfoRequest, GetHeapInfoResponse, LogSubscriptionRequest,
-    StartConsoleRequest, StartConsoleResponse,
+    AutoCompleteRequest, BindTableToVariableRequest, BindTableToVariableResponse,
+    BrowserNextResponse, CancelAutoCompleteRequest, CancelAutoCompleteResponse,
+    CancelCommandRequest, CancelCommandResponse, ExecuteCommandRequest, ExecuteCommandResponse,
+    GetConsoleTypesRequest, GetConsoleTypesResponse, GetHeapInfoRequest, GetHeapInfoResponse,
+    LogSubscriptionRequest, StartConsoleRequest, StartConsoleResponse,
 };
-use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status, Streaming};
 
 use crate::app::scope_ticket;
 use crate::session::{
-    current_session, ExportError, ExportValue, OnCloseId, Reply, Session, TicketRouter,
+    current_session, is_terminal, ExportError, ExportValue, OnCloseId, Reply, Session, TicketRouter,
 };
+use browser::{stream_data, BrowserStream};
+use completer::{Answers, Completer};
 use logs::{LogBuffer, LogUpdates};
 pub use session::{
     type_name_if_displayable, Changes, Console, ScriptSession, Stop, Variable,
@@ -72,11 +74,6 @@ fn no_session(method: &str) -> Status {
     ))
 }
 
-/// The status of a console call that is not built yet on a server with a script session.
-fn not_built(method: &str) -> Status {
-    Status::unimplemented(format!("ConsoleService/{method} is not implemented"))
-}
-
 /// The status of a call the Java service does not override.
 ///
 /// Behavior: `io.grpc.stub.ServerCalls#asyncUnimplementedUnaryCall`
@@ -84,6 +81,23 @@ fn java_unimplemented(method: &str) -> Status {
     Status::unimplemented(format!(
         "Method io.deephaven.proto.backplane.script.grpc.ConsoleService/{method} is unimplemented"
     ))
+}
+
+fn no_stream_headers() -> Status {
+    Status::invalid_argument("no x-deephaven-stream headers, cannot handle next request")
+}
+
+/// The completer of the console's script session for a stream that is opened now, if it
+/// has one. A session that cannot say is refused, naming what Java would have done.
+///
+/// Behavior: `ConsoleServiceGrpcImpl#autoCompleteStream`
+async fn ready_completer(console: &Arc<Console>) -> Result<Option<Arc<dyn Completer>>, Status> {
+    let console = console.clone();
+    // the session may run code of its language to get the completer ready
+    match tokio::task::spawn_blocking(move || console.completer()).await {
+        Ok(completer) => completer.map_err(Status::unimplemented),
+        Err(error) => Err(completer::logged(&error.to_string())),
+    }
 }
 
 /// Nanoseconds since the epoch, for the timestamps of `ExecuteCommandResponse`.
@@ -204,8 +218,9 @@ impl ConsoleService for ConsoleGrpc {
     /// Behavior: `ConsoleServiceGrpcImpl#getConsoleTypes`
     async fn get_console_types(
         &self,
-        _request: Request<GetConsoleTypesRequest>,
+        request: Request<GetConsoleTypesRequest>,
     ) -> Result<Response<GetConsoleTypesResponse>, Status> {
+        stream_data(request.metadata())?;
         Ok(Response::new(GetConsoleTypesResponse {
             console_types: self
                 .console
@@ -224,6 +239,7 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<StartConsoleRequest>,
     ) -> Result<Response<StartConsoleResponse>, Status> {
         let console = self.console("StartConsole")?.clone();
+        stream_data(request.metadata())?;
         let session = current_session(&request)?;
         let request = request.into_inner();
         if !console.is_type(&request.session_type) {
@@ -254,6 +270,7 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<GetHeapInfoRequest>,
     ) -> Result<Response<GetHeapInfoResponse>, Status> {
         self.console("GetHeapInfo")?;
+        stream_data(request.metadata())?;
         current_session(&request)?;
         let memory = memory::process_memory().ok_or_else(|| {
             Status::unimplemented(
@@ -279,6 +296,7 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<LogSubscriptionRequest>,
     ) -> Result<Response<Self::SubscribeToLogsStream>, Status> {
         self.console("SubscribeToLogs")?;
+        stream_data(request.metadata())?;
         let session = current_session(&request)?;
         let updates = self.logs.subscribe_for(request.into_inner(), &session)?;
         Ok(Response::new(updates))
@@ -302,6 +320,7 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<ExecuteCommandRequest>,
     ) -> Result<Response<ExecuteCommandResponse>, Status> {
         self.console("ExecuteCommand")?;
+        stream_data(request.metadata())?;
         let session = current_session(&request)?;
         let request = request.into_inner();
         let console_id = ticket_bytes(request.console_id);
@@ -356,9 +375,10 @@ impl ConsoleService for ConsoleGrpc {
     /// Behavior: `ConsoleServiceGrpcImpl#cancelCommand`, which Java does not have either
     async fn cancel_command(
         &self,
-        _request: Request<CancelCommandRequest>,
+        request: Request<CancelCommandRequest>,
     ) -> Result<Response<CancelCommandResponse>, Status> {
         self.console("CancelCommand")?;
+        stream_data(request.metadata())?;
         Err(java_unimplemented("CancelCommand"))
     }
 
@@ -372,6 +392,7 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<BindTableToVariableRequest>,
     ) -> Result<Response<BindTableToVariableResponse>, Status> {
         let console = self.console("BindTableToVariable")?.clone();
+        stream_data(request.metadata())?;
         let session = current_session(&request)?;
         let request = request.into_inner();
         let table_id = ticket_bytes(request.table_id);
@@ -412,76 +433,134 @@ impl ConsoleService for ConsoleGrpc {
         reply.wait().await
     }
 
-    type AutoCompleteStreamStream = UnboundedReceiverStream<Result<AutoCompleteResponse, Status>>;
+    type AutoCompleteStreamStream = Answers;
 
-    /// Answers every request with "success, nothing found", and ends when the client does.
+    /// Answers the requests of the stream with the completer of the script session, or
+    /// with "success, nothing found" when the session has none ([`completer`]).
     ///
-    /// Behavior: `ConsoleServiceGrpcImpl.NoopAutoCompleteObserver`, which the Java server
-    /// uses for Python when `jedi` is not installed
+    /// Behavior: `ConsoleServiceGrpcImpl#autoCompleteStream`
     async fn auto_complete_stream(
         &self,
         request: Request<Streaming<AutoCompleteRequest>>,
     ) -> Result<Response<Self::AutoCompleteStreamStream>, Status> {
-        self.console("AutoCompleteStream")?;
-        current_session(&request)?;
-        let mut requests = request.into_inner();
-        let (sender, receiver) = mpsc::unbounded_channel();
-        tokio::spawn(async move {
-            while let Some(Ok(request)) = requests.next().await {
-                let response = match request.request {
-                    // for clients from before the other requests existed
-                    Some(CompletionRequest::GetCompletionItems(_)) => {
-                        // the two fields are deprecated in the protocol and Java sets them
-                        #[allow(deprecated)]
-                        Some(CompletionResponse::CompletionItems(
-                            GetCompletionItemsResponse {
-                                success: true,
-                                request_id: request.request_id,
-                                ..Default::default()
-                            },
-                        ))
-                    }
-                    _ => None,
-                };
-                let answer = AutoCompleteResponse {
-                    request_id: request.request_id,
-                    success: true,
-                    response,
-                };
-                if sender.send(Ok(answer)).is_err() {
-                    break;
-                }
-            }
-        });
-        Ok(Response::new(UnboundedReceiverStream::new(receiver)))
+        let console = self.console("AutoCompleteStream")?;
+        stream_data(request.metadata())?;
+        let session = current_session(&request)?;
+        let completer = ready_completer(console).await?;
+        let answers = completer::serve(request.into_inner(), completer, &session, None)?;
+        Ok(Response::new(answers))
     }
 
     /// Behavior: `ConsoleServiceGrpcImpl#cancelAutoComplete`, which Java does not have
     /// either
     async fn cancel_auto_complete(
         &self,
-        _request: Request<CancelAutoCompleteRequest>,
+        request: Request<CancelAutoCompleteRequest>,
     ) -> Result<Response<CancelAutoCompleteResponse>, Status> {
         self.console("CancelAutoComplete")?;
+        stream_data(request.metadata())?;
         Err(java_unimplemented("CancelAutoComplete"))
     }
 
-    type OpenAutoCompleteStreamStream =
-        UnboundedReceiverStream<Result<AutoCompleteResponse, Status>>;
+    type OpenAutoCompleteStreamStream = Answers;
 
+    /// `AutoCompleteStream` for a browser, which cannot stream to the server over
+    /// gRPC-web: this call carries the first message and its response is the response
+    /// stream; the later messages come one per `NextAutoCompleteStream` call
+    /// ([`browser`]).
+    ///
+    /// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeOpen`, as
+    /// `ConsoleServiceGrpcBinding#bindService` sets it up
     async fn open_auto_complete_stream(
         &self,
-        _request: Request<AutoCompleteRequest>,
+        request: Request<AutoCompleteRequest>,
     ) -> Result<Response<Self::OpenAutoCompleteStreamStream>, Status> {
-        self.console("OpenAutoCompleteStream")?;
-        Err(not_built("OpenAutoCompleteStream"))
+        let console = self.console("OpenAutoCompleteStream")?;
+        let data = stream_data(request.metadata())?;
+        let session = current_session(&request)?;
+        let Some(data) = data else {
+            return Err(Status::invalid_argument(
+                "no x-deephaven-stream headers, cannot handle open request",
+            ));
+        };
+        if data.sequence != 0 {
+            // the messages are delivered in order from 0, so the stream would wait for
+            // ever for a message that cannot come
+            return Err(Status::invalid_argument(format!(
+                "open request must have sequence 0, received {}",
+                data.sequence
+            )));
+        }
+        let completer = ready_completer(console).await?;
+        let (stream, messages) = BrowserStream::open(&session, &data)?;
+        let messages = UnboundedReceiverStream::new(messages).map(Ok);
+        let answers = completer::serve(messages, completer, &session, Some(stream.clone()))?;
+        // the first message is in order by itself, so nothing refuses it
+        stream.on_message(request.into_inner(), &data)?;
+        Ok(Response::new(answers))
     }
 
+    /// A later message of a stream that `OpenAutoCompleteStream` opened, named by the
+    /// stream headers of the call. Answered when the message has been taken, which for one
+    /// that arrives before the messages it follows is before it is handled.
+    ///
+    /// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeNext`
     async fn next_auto_complete_stream(
         &self,
-        _request: Request<AutoCompleteRequest>,
+        request: Request<AutoCompleteRequest>,
     ) -> Result<Response<BrowserNextResponse>, Status> {
         self.console("NextAutoCompleteStream")?;
-        Err(not_built("NextAutoCompleteStream"))
+        let data = stream_data(request.metadata())?;
+        let (data, export_id) = match data {
+            Some(data) => match data.export_id {
+                Some(export_id) => (data, export_id),
+                None => return Err(no_stream_headers()),
+            },
+            None => return Err(no_stream_headers()),
+        };
+        if data.sequence <= 0 {
+            // sequence 0 is the message of the open call
+            return Err(Status::invalid_argument(format!(
+                "next request must have a positive sequence, received {}",
+                data.sequence
+            )));
+        }
+        let session = current_session(&request)?;
+        let stream = session.get_export(export_id)?;
+        if is_terminal(stream.state()) {
+            // The stream has ended, most often because the client gave up its open call
+            // and this call was on its way. A half close has nothing to deliver; a message
+            // has, and the client is told that it was not.
+            if data.half_close {
+                return Ok(Response::new(BrowserNextResponse {}));
+            }
+            return Err(Status::cancelled(format!(
+                "stream ended before this message arrived; sequence {} was not delivered",
+                data.sequence
+            )));
+        }
+        let message = request.into_inner();
+        let reply = Reply::new();
+        let (on_error, on_success) = (reply.completer(), reply.completer());
+        session
+            .non_export()?
+            .require([stream])
+            .on_error(move |status| on_error(Err(status)))
+            .submit(move |inputs| {
+                // Java casts and fails with a ClassCastException
+                let stream = inputs[0]
+                    .downcast_ref::<Arc<BrowserStream<AutoCompleteRequest>>>()
+                    .ok_or_else(|| {
+                        ExportError::Internal(
+                            "the stream ticket does not name a browser stream".to_string(),
+                        )
+                    })?;
+                stream
+                    .on_message(message, &data)
+                    .map_err(ExportError::Status)?;
+                on_success(Ok(BrowserNextResponse {}));
+                Ok(ExportValue::unit())
+            })?;
+        reply.wait().await
     }
 }
