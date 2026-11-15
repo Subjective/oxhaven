@@ -27,6 +27,10 @@ Usage: oxhaven-server [options]
   --cycle-ms <ms>           target update graph cycle duration (default 1000)
   --demo-tables             offer the application ide_app with the tables ide_static and
                             ide_ticking, which the web IDE acceptance test expects
+  --app-dir <directory>     start the applications of the .app files in the directory: each
+                            names Python scripts that run before the server accepts
+                            clients and set the application's fields (deephaven.appmode);
+                            a script that fails keeps the server from starting
   --console <type>          python or none: the language of the console (default python if
                             the server was built with the python feature, otherwise none)
   --python-home <directory> the virtual environment or Python installation whose packages
@@ -49,6 +53,7 @@ struct Args {
     token_expire_ms: i64,
     cycle: Duration,
     demo_tables: bool,
+    app_dir: Option<PathBuf>,
     console: Option<String>,
     python_home: Option<PathBuf>,
     python_path: Vec<PathBuf>,
@@ -65,6 +70,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         token_expire_ms: DEFAULT_TOKEN_EXPIRE_MS,
         cycle: DEFAULT_TARGET_CYCLE_DURATION,
         demo_tables: false,
+        app_dir: None,
         console: None,
         python_home: None,
         python_path: Vec::new(),
@@ -93,6 +99,7 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
                     .map_err(|e| format!("--cycle-ms: {e}"))?
             }
             "--demo-tables" => parsed.demo_tables = true,
+            "--app-dir" => parsed.app_dir = Some(PathBuf::from(value()?)),
             "--console" => parsed.console = Some(value()?),
             "--python-home" => parsed.python_home = Some(PathBuf::from(value()?)),
             "--python-path" => {
@@ -202,6 +209,15 @@ async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
         );
     }
     start_console(&args, &mut state)?;
+    if let Some(directory) = args.app_dir.clone() {
+        // as in Java, before any client is accepted; a script may block
+        let (applications, console) = (state.applications.clone(), state.console.clone());
+        tokio::task::spawn_blocking(move || {
+            app::script::load(&directory, &applications, console.as_ref())
+        })
+        .await
+        .map_err(|e| format!("the applications could not be started: {e}"))??;
+    }
     state.web_root = web_root;
     let listener = TcpListener::bind((args.host.as_str(), args.port))
         .await

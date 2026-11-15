@@ -14,7 +14,7 @@ use std::time::Duration;
 use oxhaven_contracts::table::Table;
 
 use super::completer::Completer;
-use crate::app::{Applications, FormulaValue, ScopeHolder};
+use crate::app::{script, Application, Applications, FormulaValue, ScopeHolder};
 use crate::session::ExportValue;
 
 /// How often the variables are looked at for changes made outside a command.
@@ -197,6 +197,17 @@ pub trait ScriptSession: Send + Sync {
     /// Behavior: `ScriptSession#evaluateScript(String)`
     fn evaluate(&self, code: &str, stop: &Arc<Stop>) -> Changes;
 
+    /// As [`ScriptSession::evaluate`], for a script that starts `application`: on the
+    /// thread the code runs on, and only there, [`script::current`] is the application
+    /// while the code runs. A session that runs code on another thread than the caller's
+    /// has to say so there.
+    ///
+    /// Behavior: `io.deephaven.appmode.ApplicationContext#runUnderContext` around
+    /// `ScriptSession#evaluateScript(Path)`
+    fn evaluate_script(&self, code: &str, application: &Application, stop: &Arc<Stop>) -> Changes {
+        script::under_context(application, || self.evaluate(code, stop))
+    }
+
     /// Looks at the variables and reports what changed since they were last looked at, by
     /// this call, by [`ScriptSession::evaluate`] or by [`ScriptSession::put`].
     ///
@@ -262,6 +273,13 @@ impl Console {
         self.session.script_type().to_lowercase()
     }
 
+    /// The language of the session, as Java spells it: `Python`.
+    ///
+    /// Behavior: `ScriptSession#scriptType`
+    pub fn script_type(&self) -> &str {
+        self.session.script_type()
+    }
+
     /// Whether `session_type` of a `StartConsole` request names this console.
     ///
     /// Behavior: `ConsoleServiceGrpcImpl#startConsole`
@@ -287,6 +305,20 @@ impl Console {
     pub fn evaluate_stoppable(&self, code: &str, stop: &Arc<Stop>) -> Changes {
         self.observe();
         let changes = self.session.evaluate(code, stop);
+        self.publish(&changes);
+        changes
+    }
+
+    /// Runs `code` as a script that starts `application`, as [`Console::evaluate`] runs a
+    /// command: the variables it leaves are the session's, and those that hold tables are
+    /// published.
+    ///
+    /// Behavior: `ApplicationFactory#evaluateScripts`
+    pub fn evaluate_script(&self, code: &str, application: &Application) -> Changes {
+        self.observe();
+        let changes = self
+            .session
+            .evaluate_script(code, application, &Stop::new());
         self.publish(&changes);
         changes
     }
