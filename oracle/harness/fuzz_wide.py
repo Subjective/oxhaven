@@ -46,9 +46,9 @@ Not generated, each for a stated reason:
 - `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
   `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
 
-- `rolling_formula_*`, `cum_count_where` and `rolling_count_where_*`: Oxhaven answers them
-  `UNIMPLEMENTED` by design (the engine lists them as not ported), so every scenario with
-  one would differ in the same known way.
+- `rolling_formula_*`, `cum_count_where` and `rolling_count_where_*`: Oxhaven answered them
+  `UNIMPLEMENTED` while this generator was written and has them since; they take formulas
+  and filters, which need their own drawing rules, and are still to be added.
 - `time_table`: its rows depend on the clock. `empty_table`: it has no columns to operate on.
   `column_statistics`: no handler in Oxhaven.
 - An aggregation of an array column into arrays (`group` of a `group`): the comparison rules
