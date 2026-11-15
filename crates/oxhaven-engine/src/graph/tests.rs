@@ -1217,3 +1217,112 @@ fn two_graphs_do_not_share_a_lock() {
     locked(&*one, || two.run_cycle());
     assert_eq!(two.clock().step, one.clock().step + 1);
 }
+
+#[test]
+fn an_explicit_shared_hold_keeps_cycles_out_until_it_is_released() {
+    let graph = SteppedUpdateGraph::new();
+    let start = graph.clock().step;
+    assert!(!graph.holds_shared());
+    graph.acquire_shared();
+    graph.acquire_shared();
+    assert!(graph.holds_shared() && !graph.holds_exclusive());
+
+    let (cycled_tx, cycled_rx) = channel();
+    let g = graph.clone();
+    let cycle = thread::spawn(move || {
+        g.run_cycle();
+        cycled_tx.send(()).unwrap();
+    });
+    graph.release_shared();
+    thread::sleep(SETTLE);
+    assert!(
+        cycled_rx.try_recv().is_err(),
+        "a cycle ran under a shared hold"
+    );
+    assert!(graph.holds_shared());
+
+    graph.release_shared();
+    assert!(!graph.holds_shared());
+    cycle.join().unwrap();
+    cycled_rx.recv().unwrap();
+    assert_eq!(graph.clock().step, start + 1);
+}
+
+#[test]
+fn an_explicit_exclusive_hold_keeps_cycles_and_readers_out_and_lets_its_thread_read() {
+    let graph = SteppedUpdateGraph::new();
+    graph.acquire_exclusive();
+    graph.acquire_exclusive();
+    assert!(graph.holds_exclusive() && !graph.holds_shared());
+    // the holder reads as under the shared lock, any number of times
+    assert_eq!(locked(&*graph, || graph.clock().phase), ClockPhase::Idle);
+    graph.acquire_shared();
+    graph.release_shared();
+
+    let (seen_tx, seen_rx) = channel();
+    let g = graph.clone();
+    let reader = thread::spawn(move || seen_tx.send(locked(&*g, || g.clock().step)).unwrap());
+    let (cycled_tx, cycled_rx) = channel();
+    let g = graph.clone();
+    let cycle = thread::spawn(move || {
+        g.run_cycle();
+        cycled_tx.send(()).unwrap();
+    });
+    graph.release_exclusive();
+    thread::sleep(SETTLE);
+    assert!(
+        seen_rx.try_recv().is_err(),
+        "a reader ran under an exclusive hold"
+    );
+    assert!(
+        cycled_rx.try_recv().is_err(),
+        "a cycle ran under an exclusive hold"
+    );
+
+    graph.release_exclusive();
+    assert!(!graph.holds_exclusive());
+    reader.join().unwrap();
+    cycle.join().unwrap();
+    seen_rx.recv().unwrap();
+    cycled_rx.recv().unwrap();
+}
+
+#[test]
+fn an_exclusive_holder_gives_its_hold_up_for_a_cycle_and_has_it_again_after_it() {
+    let graph = SteppedUpdateGraph::new();
+    let start = graph.clock().step;
+    graph.acquire_exclusive();
+    graph.acquire_exclusive();
+    graph.run_cycle();
+    assert_eq!(graph.clock().step, start + 1);
+    assert!(graph.holds_exclusive());
+
+    let (seen_tx, seen_rx) = channel();
+    let g = graph.clone();
+    let reader = thread::spawn(move || seen_tx.send(locked(&*g, || ())).unwrap());
+    graph.release_exclusive();
+    thread::sleep(SETTLE);
+    assert!(
+        seen_rx.try_recv().is_err(),
+        "the hold was not taken again in full"
+    );
+    graph.release_exclusive();
+    reader.join().unwrap();
+    seen_rx.recv().unwrap();
+}
+
+#[test]
+#[should_panic(
+    expected = "cannot take the exclusive update graph lock while holding the shared lock"
+)]
+fn an_explicit_shared_hold_cannot_be_made_exclusive() {
+    let graph = SteppedUpdateGraph::new();
+    graph.acquire_shared();
+    graph.acquire_exclusive();
+}
+
+#[test]
+#[should_panic(expected = "released by a thread that does not hold it")]
+fn releasing_a_lock_that_is_not_held_panics() {
+    SteppedUpdateGraph::new().release_exclusive();
+}
