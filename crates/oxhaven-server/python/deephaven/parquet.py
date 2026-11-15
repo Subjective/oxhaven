@@ -9,8 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-import _oxhaven
-
+from . import _engine
 from .dherror import DHError
 from .table import Table
 
@@ -107,7 +106,7 @@ def read(
                 "io.deephaven.parquet.table.ParquetInstructions.Builder#setSpecialInstructions",
                 "special instructions for a read",
             )
-        return Table(_oxhaven.read_parquet(
+        return Table(_engine.native.read_parquet(
             path,
             file_layout.name if file_layout is not None else None,
             bool(is_refreshing),
