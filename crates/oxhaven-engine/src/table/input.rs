@@ -456,6 +456,16 @@ impl InputTable for Input {
             .collect()
     }
 
+    /// Behavior: io.deephaven.engine.util.input.InputTableUpdater#getValueNames
+    fn value_columns(&self) -> Vec<String> {
+        let keys = self.writer.key_columns.as_deref().unwrap_or_default();
+        let columns = self.writer.definition.columns();
+        (0..columns.len())
+            .filter(|index| !keys.contains(index))
+            .map(|index| columns[index].name.clone())
+            .collect()
+    }
+
     /// # Panics
     /// If the calling thread holds the graph's shared lock: the cycle that applies the
     /// change could never run.

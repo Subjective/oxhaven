@@ -12,7 +12,7 @@ use crate::table::{reads_through, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
-use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, InputTable, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::TableUpdate;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, PoisonError};
@@ -83,7 +83,8 @@ fn remap(
 }
 
 /// Of the add-only, append-only and blink attributes, only blink passes through a sort. The
-/// input table of the parent does too, and is given with `TableSpec::with_input_table_of`.
+/// input table of the parent does too, unless the sort is by an absolute value: see
+/// [`carried_input_table`].
 ///
 /// Behavior: the `Sort` entries of the attribute table in
 /// io.deephaven.engine.table.impl.BaseTable
@@ -91,6 +92,24 @@ fn sort_attributes(parent: &dyn Table) -> TableAttributes {
     let mut attributes = TableAttributes::default();
     attributes.blink = parent.attributes().blink;
     attributes
+}
+
+/// The input table the result of sorting `parent` by `columns` is written through.
+///
+/// A plain sort keeps its parent's. Java has no sort by an absolute value: its server adds
+/// a column of absolute values with `updateView`, sorts by it, and removes it with
+/// `dropColumns`, and `dropColumns` does not keep the `InputTable` attribute.
+///
+/// Behavior: io.deephaven.server.table.ops.SortTableGrpcImpl#create and the
+/// `INPUT_TABLE_ATTRIBUTE` entry of
+/// io.deephaven.engine.table.impl.BaseTable#attributeToCopySet, which lists `Sort` and
+/// `UpdateView` and not `DropColumns`
+fn carried_input_table(parent: &dyn Table, columns: &[SortColumn]) -> Option<Arc<dyn InputTable>> {
+    if columns.iter().any(|column| column.absolute) {
+        None
+    } else {
+        parent.input_table()
+    }
 }
 
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#sort and
@@ -103,27 +122,31 @@ pub(super) fn sort(
         return Ok(parent.clone());
     }
     let encoder = KeyEncoder::new(&**parent, columns)?;
+    let input = carried_input_table(&**parent, columns);
     if !parent.is_refreshing() {
-        return Ok(static_sort(parent, &encoder)?);
+        return Ok(static_sort(parent, &encoder, input)?);
     }
     if parent.attributes().blink {
-        return Ok(blink_sort(parent, encoder)?);
+        return Ok(blink_sort(parent, encoder, input)?);
     }
-    Ok(incremental_sort(parent, encoder)?)
+    Ok(incremental_sort(parent, encoder, input)?)
 }
 
 /// Behavior: io.deephaven.engine.table.impl.SortOperation#historicalSort
 fn static_sort(
     parent: &Arc<dyn Table>,
     encoder: &KeyEncoder,
+    input: Option<Arc<dyn InputTable>>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     if parent.is_failed() {
         return Err(failure("the parent table has failed"));
     }
     let rows = parent.row_set();
     let entries = sorted_entries(encoder, &**parent, &rows)?;
-    // A table that is already in order is returned as it is, with its own row keys.
-    if entries.iter().map(|entry| entry.parent_key).eq(rows.iter()) {
+    // A table that is already in order is returned as it is, with its own row keys, unless
+    // the result is to lose the parent's input table.
+    let keeps_input = input.is_some() == parent.input_table().is_some();
+    if keeps_input && entries.iter().map(|entry| entry.parent_key).eq(rows.iter()) {
         return Ok(parent.clone());
     }
     let redirection = Arc::new(WritableRowRedirection::new());
@@ -134,9 +157,8 @@ fn static_sort(
         redirected_columns(parent, &redirection),
     )
     .with_attributes(sort_attributes(&**parent))
-    .with_input_table_of(&**parent)
     .flat();
-    Ok(QueryTable::new_static(spec))
+    Ok(QueryTable::new_static(TableSpec { input, ..spec }))
 }
 
 /// The sort of a blink table: every cycle the result is the sorted rows of that cycle.
@@ -145,6 +167,7 @@ fn static_sort(
 fn blink_sort(
     parent: &Arc<dyn Table>,
     encoder: KeyEncoder,
+    input: Option<Arc<dyn InputTable>>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
         let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
@@ -160,8 +183,8 @@ fn blink_sort(
             redirected_columns(parent, &redirection),
         )
         .with_attributes(sort_attributes(&**parent))
-        .with_input_table_of(&**parent)
         .flat();
+        let spec = TableSpec { input, ..spec };
 
         let parent = parent.clone();
         let shown = Mutex::new(
@@ -414,6 +437,7 @@ impl SortOperator {
 fn incremental_sort(
     parent: &Arc<dyn Table>,
     encoder: KeyEncoder,
+    input: Option<Arc<dyn InputTable>>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
         let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
@@ -431,8 +455,8 @@ fn incremental_sort(
             RowSet::flat(entries.len() as u64),
             redirected_columns(parent, &redirection),
         )
-        .with_attributes(sort_attributes(&**parent))
-        .with_input_table_of(&**parent);
+        .with_attributes(sort_attributes(&**parent));
+        let spec = TableSpec { input, ..spec };
         let operator = SortOperator {
             parent: parent.clone(),
             sort_columns: encoder.column_indices(),
