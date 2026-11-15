@@ -118,6 +118,41 @@ fn run_operation(
     }
 }
 
+/// Runs one operation for a caller inside the server, such as a script session, on tables
+/// it holds: the operation's handler runs with the checks and under the lock it has for a
+/// client's request, without a session, an export or a result ticket. A table reference of
+/// the operation names a table by its position in `tables`, as a batch offset.
+///
+/// No Java counterpart: Java's script sessions call the engine directly.
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+pub(crate) fn run_local(
+    context: &OpContext,
+    op: Op,
+    tables: &[Arc<dyn Table>],
+) -> Result<Arc<dyn Table>, ExportError> {
+    let operation = bind(op)?;
+    operation.validate()?;
+    let sources = operation
+        .sources()
+        .iter()
+        .map(|reference| {
+            let table = match &reference.r#ref {
+                Some(Ref::BatchOffset(offset)) => {
+                    usize::try_from(*offset).ok().and_then(|i| tables.get(i))
+                }
+                _ => None,
+            };
+            table.cloned().map(ExportValue::Table).ok_or_else(|| {
+                Status::failed_precondition(
+                    "a table reference of a local operation must be the offset of one of its \
+                     tables",
+                )
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    run_operation(operation.as_ref(), context, &sources)
+}
+
 /// The table service.
 pub struct TableGrpc {
     router: Arc<TicketRouter>,

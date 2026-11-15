@@ -1,6 +1,8 @@
 //! Input tables: tables whose rows are written through the `InputTable` contract.
 
-use super::{arrange_columns, failure, tracked_source, QueryTable, RootSource, TableSpec};
+use super::{
+    arrange_columns, failure, mark, tracked_source, Marks, QueryTable, RootSource, TableSpec,
+};
 use arrow::array::ArrayRef;
 use arrow::record_batch::RecordBatch;
 use arrow::row::{RowConverter, SortField};
@@ -104,6 +106,65 @@ pub fn keyed_input_table(
         TableAttributes::default(),
         initial,
     )
+}
+
+/// An input table that shows each added row for one update cycle: the rows added since the
+/// last cycle are the table's rows during the next one, and are removed by the cycle after
+/// it. The table is flat, starts without rows and has the blink attribute. It has no key
+/// columns, and `delete` is an error. It is a copy, as [`super::copied`] says of one: Java
+/// makes it by adding the `InputTable` attribute to its publisher's table.
+///
+/// `add` returns once the rows are handed over, before a cycle has shown them. Java's `add`
+/// reads the columns it needs by name and ignores the others; here the batch must have
+/// exactly the table's columns, which is what Java's service checks before it adds.
+///
+/// Behavior: io.deephaven.stream.TablePublisher#of and #inputTable,
+/// io.deephaven.stream.StreamToBlinkTableAdapter
+pub fn blink_input_table(
+    graph: Arc<dyn UpdateGraph>,
+    definition: TableDefinition,
+) -> Arc<QueryTable> {
+    let columns: Vec<Arc<WritableSource>> = definition
+        .columns()
+        .iter()
+        .map(|column| tracked_source(&graph, column.column_type.clone()))
+        .collect();
+    let mut attributes = TableAttributes::default();
+    attributes.blink = true;
+    let mut spec = TableSpec::new(
+        definition.clone(),
+        RowSet::empty(),
+        columns
+            .iter()
+            .map(|c| c.clone() as Arc<dyn ColumnSource>)
+            .collect(),
+    )
+    .with_attributes(attributes);
+    spec.flat = true;
+    let writer = Writer {
+        definition,
+        key_columns: None,
+        columns,
+    };
+    let table = QueryTable::root(graph, spec, |table| {
+        let input = Arc::new(BlinkInput {
+            table,
+            writer,
+            buffer: Mutex::new(Vec::new()),
+        });
+        RootSource {
+            source: input.clone(),
+            input: Some(input),
+        }
+    });
+    // Behavior: TablePublisher#inputTable, whose `withAttributes` copies the adapter's
+    // blink table
+    let marks = Marks {
+        copy_of_blink: Some(true),
+        ..Marks::default()
+    };
+    mark(&table, marks);
+    table
 }
 
 fn make(
@@ -518,5 +579,109 @@ impl UpdateSource for Input {
             return self.give_up(failure("the input table has failed"));
         }
         lock(&self.queue).processed = last;
+    }
+}
+
+/// The update source and the write side of a blink input table.
+///
+/// Behavior: io.deephaven.stream.TableStreamPublisherImpl and
+/// io.deephaven.stream.StreamToBlinkTableAdapter
+struct BlinkInput {
+    table: Weak<QueryTable>,
+    writer: Writer,
+    /// The batches added since the last cycle, in the order they were added.
+    buffer: Mutex<Vec<Vec<ArrayRef>>>,
+}
+
+impl BlinkInput {
+    /// The table, while it can still show rows.
+    fn alive(&self) -> Option<Arc<QueryTable>> {
+        self.table.upgrade().filter(|table| !table.is_failed())
+    }
+
+    /// Makes `batches` the rows of `table` and returns the update that says so.
+    ///
+    /// Behavior: StreamToBlinkTableAdapter#doRefresh
+    fn replace_rows(
+        &self,
+        table: &QueryTable,
+        batches: &[Vec<ArrayRef>],
+    ) -> Result<Option<TableUpdate>, TableFailure> {
+        let old_size = table.row_set().size();
+        let new_size: u64 = batches
+            .iter()
+            .map(|batch| batch.first().map_or(0, |column| column.len()) as u64)
+            .sum();
+        if old_size == 0 && new_size == 0 {
+            return Ok(None);
+        }
+        let added = RowSet::flat(new_size);
+        for (index, column) in self.writer.columns.iter().enumerate() {
+            if new_size > 0 {
+                let parts: Vec<&dyn arrow::array::Array> =
+                    batches.iter().map(|batch| batch[index].as_ref()).collect();
+                let values = arrow::compute::concat(&parts).map_err(|e| failure(e.to_string()))?;
+                column.fill(&added, &values)?;
+            }
+            if old_size > new_size {
+                column.remove(&RowSet::from_range(
+                    new_size as RowKey,
+                    old_size as RowKey - 1,
+                ));
+            }
+        }
+        Ok(Some(TableUpdate {
+            added,
+            removed: RowSet::flat(old_size),
+            ..TableUpdate::empty()
+        }))
+    }
+}
+
+impl InputTable for BlinkInput {
+    /// Behavior: TableStreamPublisherImpl.InputTableAdapter#getKeyNames
+    fn key_columns(&self) -> Vec<String> {
+        Vec::new()
+    }
+
+    /// Behavior: io.deephaven.engine.util.input.InputTableUpdater#getValueNames
+    fn value_columns(&self) -> Vec<String> {
+        let columns = self.writer.definition.columns();
+        columns.iter().map(|column| column.name.clone()).collect()
+    }
+
+    /// Hands the rows over for the next cycle. Rows added to a table that no longer exists
+    /// or has failed are dropped without an error.
+    ///
+    /// Behavior: TableStreamPublisherImpl#add, StreamToBlinkTableAdapter#accept
+    fn add(&self, rows: RecordBatch) -> Result<(), TableFailure> {
+        let values = self.writer.arrange_rows(&rows)?;
+        // Checked under the lock `refresh` empties the buffer under, so that nothing is
+        // buffered after the last refresh that could have shown it.
+        let mut buffer = lock(&self.buffer);
+        if self.alive().is_some() && rows.num_rows() > 0 {
+            buffer.push(values);
+        }
+        Ok(())
+    }
+
+    /// Behavior: io.deephaven.engine.util.input.InputTableUpdater#delete
+    fn delete(&self, _keys: RecordBatch) -> Result<(), TableFailure> {
+        Err(failure("Table does not support deletes"))
+    }
+}
+
+impl UpdateSource for BlinkInput {
+    /// Behavior: StreamToBlinkTableAdapter#run
+    fn refresh(&self) {
+        let batches = std::mem::take(&mut *lock(&self.buffer));
+        let Some(table) = self.alive() else {
+            return;
+        };
+        match self.replace_rows(&table, &batches) {
+            Ok(Some(update)) => table.notify(update),
+            Ok(None) => {}
+            Err(e) => table.fail(e),
+        }
     }
 }

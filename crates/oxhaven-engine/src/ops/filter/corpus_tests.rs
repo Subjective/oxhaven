@@ -463,7 +463,7 @@ fn replay(scenario: &Json, tally: &mut Tally) {
     for input in scenario["inputs"].as_array().expect("inputs") {
         let input_name = input["name"].as_str().expect("a name").to_string();
         if input["ticking"]["blink"] == true {
-            // The engine has no blink input table.
+            // This replay does not drive a blink input table.
             tables.insert(input_name, Made::NotRun("blink input".to_string()));
             continue;
         }
@@ -752,6 +752,8 @@ fn scenarios_match_the_recorded_java_results() {
         "filter_structured.not_less x1",
         "filter_structured.of_empty x1",
         "filter_structured.or_ x1",
+        "filter_structured.search x1",
+        "filter_structured.search_columns x1",
         "filter_structured.string_against_number x1",
         "filter_structured.string_equal x1",
         "filter_structured.string_equal_ignore_case x1",
@@ -815,8 +817,6 @@ fn scenarios_match_the_recorded_java_results() {
         "filter_structured.is_nan_double: is_nan, which the gRPC handler refuses",
         "filter_structured.is_nan_float: is_nan, which the gRPC handler refuses",
         "filter_structured.is_nan_int: is_nan, which the gRPC handler refuses",
-        "filter_structured.search: unported io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter",
-        "filter_structured.search_columns: unported io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter",
         "lazy_update_update_view.uv_then_where: update_view",
         "ticking_blink_sort_head_tail.big: blink input",
         "ticking_lazy_update_update_view.uv_big: update_view",

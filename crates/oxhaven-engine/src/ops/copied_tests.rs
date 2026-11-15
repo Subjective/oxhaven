@@ -226,16 +226,25 @@ fn flatten_of_a_copy_keeps_append_only_and_drop_columns_keeps_both() {
     assert_eq!(add_and_append_only(&reversed), (false, false));
 }
 
+/// Recorded from Java 42.9 through `where(K in 1, 2)` of each result, which is add-only
+/// unless the result is a copy: the results of `view(K, S)`, `update_view(S)`, `update(S)`,
+/// `select(K)` and `select()` of a sort that changed nothing are copies, and the results of
+/// `view(K, T = S)`, `view(K = K)`, `update_view(T = S)` and `update(T = S)` are not.
 #[test]
-fn the_formula_operations_answer_a_copy_with_a_copy_when_every_column_is_a_column() {
+fn the_formula_operations_answer_a_copy_with_a_copy_when_every_column_is_a_name() {
     let copy = sort(&in_order(), &by("K")).unwrap();
-    assert!(is_copy(&*view(&copy, &["K", "T = S"], &Compiler).unwrap()));
-    assert!(is_copy(
-        &*update_view(&copy, &["T = S"], &Compiler).unwrap()
-    ));
+    assert!(is_copy(&*view(&copy, &["K", "S"], &Compiler).unwrap()));
+    assert!(is_copy(&*update_view(&copy, &["S"], &Compiler).unwrap()));
     assert!(is_copy(&*select(&copy, &["K"], &Compiler).unwrap()));
     assert!(is_copy(&*select::<&str>(&copy, &[], &Compiler).unwrap()));
-    assert!(is_copy(&*update(&copy, &["T = S"], &Compiler).unwrap()));
+    assert!(is_copy(&*update(&copy, &["S"], &Compiler).unwrap()));
+    // a column under another name, or under its own after an `=`, is not memoized
+    assert!(!is_copy(&*view(&copy, &["K", "T = S"], &Compiler).unwrap()));
+    assert!(!is_copy(&*view(&copy, &["K = K"], &Compiler).unwrap()));
+    assert!(!is_copy(
+        &*update_view(&copy, &["T = S"], &Compiler).unwrap()
+    ));
+    assert!(!is_copy(&*update(&copy, &["T = S"], &Compiler).unwrap()));
     // a formula is not memoized
     assert!(!is_copy(
         &*view(&copy, &["K", "T = K + 1"], &Compiler).unwrap()

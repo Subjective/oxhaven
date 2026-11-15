@@ -16,7 +16,7 @@ use arrow::record_batch::{RecordBatch, RecordBatchOptions};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{InputTable, Table};
-use oxhaven_engine::table::{append_only_input_table, keyed_input_table};
+use oxhaven_engine::table::{append_only_input_table, blink_input_table, keyed_input_table};
 use oxhaven_proto::grpc::create_input_table_request::input_table_kind::Kind;
 use oxhaven_proto::grpc::create_input_table_request::Definition;
 use oxhaven_proto::grpc::input_table_service_server::InputTableService;
@@ -55,8 +55,8 @@ pub fn validate_create_input_table(request: &CreateInputTableRequest) -> Result<
 /// when the request has no schema. Only its columns are used, not its rows. The result has
 /// no rows and reports `Table::input_table`.
 ///
-/// Answers `UNIMPLEMENTED` for what the engine's input tables lack: the blink kind, a keyed
-/// table without key columns, and a `float` or `double` key column.
+/// Answers `UNIMPLEMENTED` for what the engine's input tables lack: a keyed table without
+/// key columns, and a `float` or `double` key column.
 ///
 /// Behavior: `io.deephaven.server.table.ops.CreateInputTableGrpcImpl#create`
 pub fn create_input_table(
@@ -98,12 +98,8 @@ pub fn create_input_table(
             let keys: Vec<&str> = keyed.key_columns.iter().map(String::as_str).collect();
             keyed_input_table(graph, definition, &keys, None)
         }
-        Some(Kind::Blink(_)) => {
-            return Err(not_ported(
-                "io.deephaven.stream.TablePublisher#of",
-                "blink input tables",
-            ))
-        }
+        // Behavior: io.deephaven.stream.TablePublisher#of and #inputTable
+        Some(Kind::Blink(_)) => Ok(blink_input_table(graph, definition)),
         None => return Err(Status::invalid_argument("Unrecognized InputTableKind")),
     };
     // Java: an exception out of the factory, reported by its error id
@@ -146,7 +142,8 @@ fn rows_of(table: &Arc<dyn Table>) -> Result<RecordBatch, ExportError> {
 }
 
 /// Adds the rows of `rows` to the input table `target` and returns once they are visible.
-/// In a keyed input table a row replaces the row with the same key.
+/// In a keyed input table a row replaces the row with the same key. A blink input table
+/// returns once it has the rows, and shows them during the next update cycle only.
 ///
 /// `INVALID_ARGUMENT` if `target` is not an input table or the two tables do not have the
 /// same columns, by name and type, in any order; `DATA_LOSS` if the change fails while it
@@ -180,8 +177,9 @@ pub fn add_table(target: &ExportValue, rows: &ExportValue) -> Result<(), ExportE
 /// Deletes from the input table `target` the rows whose keys are the rows of `keys`, and
 /// returns once they are gone. A key that is not in the table is ignored.
 ///
-/// `INVALID_ARGUMENT` if `target` is not an input table, is append-only, or `keys` does not
-/// have exactly the key columns; `DATA_LOSS` if the change fails while it is applied.
+/// `INVALID_ARGUMENT` if `target` is not an input table, is append-only or blink, or `keys`
+/// does not have exactly the key columns; `DATA_LOSS` if the change fails while it is
+/// applied.
 ///
 /// Behavior: `InputTableServiceGrpcImpl#deleteTableFromInputTable`,
 /// `io.deephaven.engine.util.input.InputTableUpdater#validateDelete`,
@@ -191,7 +189,9 @@ pub fn delete_table(target: &ExportValue, keys: &ExportValue) -> Result<(), Expo
     let input = input_table_of(target)?;
     let keys = table_of(keys, "tableToRemove")?;
     let key_names = input.key_columns();
-    if key_names.is_empty() {
+    // A blink input table keeps the default `validateDelete`, which has no key column to
+    // refuse and so goes on to the checks below.
+    if key_names.is_empty() && !target.attributes().blink {
         return Err(
             Status::invalid_argument("Provided input table does not support delete.").into(),
         );
@@ -224,6 +224,13 @@ pub fn delete_table(target: &ExportValue, keys: &ExportValue) -> Result<(), Expo
             "Invalid Key Table Definition: {}",
             problems.join("\n")
         )));
+    }
+    if key_names.is_empty() {
+        // Java: the UnsupportedOperationException of InputTableUpdater#deleteAsync, which
+        // nothing catches, reported by its error id
+        return Err(ExportError::Internal(
+            "Table does not support deletes".to_string(),
+        ));
     }
     let batch = rows_of(keys)?;
     if batch.num_rows() == 0 {
