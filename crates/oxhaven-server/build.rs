@@ -1,8 +1,8 @@
-//! Lists the Python modules under `python/deephaven` so that the server binary can hold
-//! their source (`src/console/python/mod.rs`, `MODULES`). A module added to the package is
+//! Lists the Python modules under `python/deephaven` and `python/deephaven_internal` so
+//! that the server binary can hold their source (`src/console/python/mod.rs`, `MODULES`). A module added to the package is
 //! picked up by its file being there; nothing else has to change.
 //!
-//! No Java counterpart: the Java server imports the `deephaven` package from the Python
+//! No Java counterpart: the Java server imports the two packages from the Python
 //! environment.
 
 use std::env;
@@ -33,7 +33,9 @@ fn main() -> io::Result<()> {
     let root = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("set by cargo")).join("python");
     println!("cargo:rerun-if-changed={}", root.display());
     let mut files = Vec::new();
-    python_files(&root, &root.join("deephaven"), &mut files)?;
+    for package in ["deephaven", "deephaven_internal"] {
+        python_files(&root, &root.join(package), &mut files)?;
+    }
 
     // `(module name, is a package, source)`, a package before its modules
     let mut list = String::from("&[\n");

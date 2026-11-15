@@ -13,6 +13,7 @@ use std::time::Duration;
 
 use oxhaven_contracts::table::Table;
 
+use super::completer::Completer;
 use crate::app::{Applications, FormulaValue, ScopeHolder};
 use crate::session::ExportValue;
 
@@ -227,6 +228,17 @@ pub trait ScriptSession: Send + Sync {
     fn refuses_formulas(&self) -> Option<String> {
         None
     }
+
+    /// What answers the completion requests of a stream that a client opens now, made
+    /// ready for it; `Ok(None)` if the session has nothing that does, and the requests of
+    /// the stream are then answered "nothing found". Called once per stream; it may block.
+    /// An `Err` refuses the stream, with the text for the client.
+    ///
+    /// Behavior: the choice `ConsoleServiceGrpcImpl#autoCompleteStream` makes for the
+    /// language of the session
+    fn completer(&self) -> Result<Option<Arc<dyn Completer>>, String> {
+        Ok(None)
+    }
 }
 
 /// A script session with the place the changes of its variables are published to.
@@ -308,6 +320,11 @@ impl Console {
                 }
             }
         });
+    }
+
+    /// See [`ScriptSession::completer`].
+    pub fn completer(&self) -> Result<Option<Arc<dyn Completer>>, String> {
+        self.session.completer()
     }
 
     /// Behavior: `ConsoleServiceGrpcImpl#bindTableToVariable`

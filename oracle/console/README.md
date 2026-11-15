@@ -19,16 +19,25 @@ created, replaced and removed, values that are not tables, output, four kinds of
 and `PublishFromTicket` with scope tickets, a variable set by a thread, scope variables in
 the formulas of Python and of a client, with the column types they give), a command whose
 call is cancelled while it runs and the command after it, `CancelCommand`,
-`CancelAutoComplete`, `AutoCompleteStream`, and beside them two `SubscribeToLogs` streams
+`CancelAutoComplete`, `AutoCompleteStream` (completion items, a signature and a hover of a
+function of the script, an attribute of a table variable typed in edits, requests that
+find nothing, a document that is not open), the same stream as a browser sends it
+(`OpenAutoCompleteStream`, `NextAutoCompleteStream`), and beside them two `SubscribeToLogs` streams
 (what scripts print, and the server's own log of one marked command) and one `ListFields`
 stream; at the end, the log stream of a second session that is closed. It
 leaves variables in the query scope, so every run needs a server that was just started.
+
+Both servers need `jedi` and `docstring_parser` in their Python environment for the
+completion cases: the Java reference has them from `oracle/requirements.txt`, and Oxhaven
+takes them from the environment it is started in (`VIRTUAL_ENV=$PWD/oracle/.venv`).
+Line numbers in the files of a package are printed as `<n>`, so a transcript does not
+change when a line is added to the package.
 
 Oxhaven has a console only when built with the `python` feature:
 
 ```bash
 cargo build -p oxhaven-server --features python
-target/debug/oxhaven-server --host 127.0.0.1 --port 10100 --psk oxhaven &
+VIRTUAL_ENV=$PWD/oracle/.venv target/debug/oxhaven-server --host 127.0.0.1 --port 10100 --psk oxhaven &
 oracle/console/check.sh 127.0.0.1:10100            # exit 0: the answers are oxhaven.txt's
 ```
 
