@@ -292,6 +292,70 @@ fn an_empty_table_fills_and_empties() {
     }
 }
 
+/// Java has an operator for the minimum or maximum of a Boolean column that is named, and
+/// the operator fails on its first chunk of rows. So a table without rows has the result,
+/// a table with rows is refused, and a refreshing table fails when its first row arrives.
+///
+/// Behavior: `makeCumMinMaxOperator` and `makeRollingMinMaxOperator` of
+/// io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor, and
+/// `setValueChunks` of their operators' contexts, as the reference answers
+/// `tasks/4.17-fuzz-findings/F9-bool-min-empty.json`
+#[test]
+fn a_minimum_of_booleans_fails_with_its_first_row() {
+    let bools = |values: &[bool]| -> ArrayRef {
+        Arc::new(arrow::array::BooleanArray::from(values.to_vec()))
+    };
+    let columns = |values: &[bool]| {
+        let stamps: Vec<Option<i64>> = (0..values.len()).map(|at| Some(at as i64)).collect();
+        [
+            ("B", ColumnType::Boolean, bools(values)),
+            ("T", ColumnType::Long, longs(&stamps)),
+        ]
+    };
+    for spec in [
+        UpdateBySpec::CumMin,
+        UpdateBySpec::CumMax,
+        UpdateBySpec::RollingMin(RollingWindow::ticks(2, 0)),
+        UpdateBySpec::RollingMax(RollingWindow::ticks(2, 0)),
+        UpdateBySpec::RollingMin(time(5, 0)),
+        UpdateBySpec::RollingMax(time(5, 0)),
+    ] {
+        let operations = vec![op(spec, &["R = B"])];
+        for by in [&[] as &[&str], &["T"]] {
+            let result = update_by(&static_table(&columns(&[])), &operations, by).unwrap();
+            let added = &result.definition().columns()[2];
+            assert_eq!(
+                (added.name.as_str(), &added.column_type),
+                ("R", &ColumnType::Boolean)
+            );
+            assert_eq!(result.row_set().size(), 0);
+        }
+        match update_by(&static_table(&columns(&[true, false])), &operations, &[]) {
+            Err(UpdateByError::Failed(failure)) => {
+                assert!(failure.message.contains("cannot be cast"), "{failure}");
+            }
+            other => panic!("{:?}", other.map(|_| ())),
+        }
+
+        let t = Ticking::new([], &columns(&[]), move |source| {
+            update_by(source, &operations, &[]).unwrap()
+        });
+        assert!(t.step(TableChange::new()).is_none());
+        let row = columns(&[true]).map(|(_, _, values)| values).to_vec();
+        t.script.push(TableChange::new().add([7], row));
+        t.graph.run_cycle();
+        assert!(t.result.is_failed());
+    }
+    // Without named columns the operation leaves a Boolean column out.
+    let unnamed = vec![op(UpdateBySpec::CumMin, &[])];
+    let result = update_by(&static_table(&columns(&[true])), &unnamed, &[]).unwrap();
+    assert_eq!(
+        result.definition().columns()[1].column_type,
+        ColumnType::Long
+    );
+    assert_eq!(result.definition().columns().len(), 2);
+}
+
 #[test]
 fn a_failed_parent_fails_the_result() {
     let t = cum_sum(&["K"]);
