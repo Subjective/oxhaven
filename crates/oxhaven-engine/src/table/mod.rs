@@ -6,6 +6,7 @@
 //! | [`in_memory_table`], [`uploaded_table`], [`empty_table`] | Static tables |
 //! | [`append_only_input_table`], [`keyed_input_table`], [`blink_input_table`] | Tables written through `Table::input_table` |
 //! | [`time_table`] | A row per period of an injected [`TimeSource`] |
+//! | [`attribute_map`] | The attributes of a table, by the names Java gives them |
 //!
 //! # How to write an operator
 //!
@@ -90,7 +91,10 @@ mod tests;
 
 #[cfg(test)]
 pub(crate) use copied::is_copy;
-pub(crate) use copied::{copy_of, mark, marks, memoized, CopyType, Marks};
+pub use copied::{attribute_map, sortable_columns, AttributeValue};
+pub(crate) use copied::{
+    copy_of, java_hash_order, mark, marks, memoized, CopyType, Marks, IDENTITY_REDIRECTION,
+};
 pub use in_memory::{empty_table, in_memory_table, uploaded_table};
 pub use input::{append_only_input_table, blink_input_table, keyed_input_table};
 pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator};

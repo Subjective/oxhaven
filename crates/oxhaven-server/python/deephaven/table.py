@@ -193,6 +193,14 @@ def _numpy_array(type_name: str, values: list):
     return np.array(values, dtype=np.object_)
 
 
+def _share(value):
+    """A share of a table's rows as the arguments of a local operation carry it: JSON has
+    no NaN and no infinity, which go as the text Python prints for them."""
+    if isinstance(value, float) and (value != value or abs(value) == float("inf")):
+        return repr(value)
+    return value
+
+
 class Table:
     """A Deephaven table: a handle to a table of the engine.
 
@@ -273,8 +281,8 @@ class Table:
         return all(col in self._definition for col in _engine.to_sequence(cols))
 
     def attributes(self) -> Dict[str, Any]:
-        """The attributes of the table. Not available yet: the engine keeps no attribute
-        map (`io.deephaven.engine.table.AttributeMap#getAttributes`)."""
+        """The attributes of the table by name. An attribute whose value is an object of
+        the Java engine has a placeholder for its value."""
         try:
             return _engine.native.attributes(self.j_table)
         except Exception as e:
@@ -539,13 +547,16 @@ class Table:
 
     def _where_in(self, filter_table: "Table", cols, inverted: bool, failure: str) -> "Table":
         try:
+            handles = [self.j_table, filter_table.j_table]
+            if not _engine.to_sequence(cols):
+                # the table service refuses a `where_in` without match columns
+                return Table(_engine.local_op("where_in", {"inverted": inverted}, handles))
             request = {
                 "left_id": _engine.source(0),
                 "right_id": _engine.source(1),
                 "inverted": inverted,
                 "columns_to_match": _engine.to_sequence(cols),
             }
-            handles = [self.j_table, filter_table.j_table]
             return Table(_engine.table_op("where_in", request, handles))
         except Exception as e:
             raise DHError(e, failure) from e
@@ -574,7 +585,9 @@ class Table:
 
     def head_pct(self, pct: float) -> "Table":
         """A new table with the first `pct` of the rows, `pct` from 0 to 1."""
-        return self._local_op("head_pct", {"pct": pct}, "table head_pct operation failed.")
+        return self._local_op(
+            "head_pct", {"pct": _share(pct)}, "table head_pct operation failed."
+        )
 
     def tail(self, num_rows: int) -> "Table":
         """A new table with the last `num_rows` rows."""
@@ -583,7 +596,9 @@ class Table:
 
     def tail_pct(self, pct: float) -> "Table":
         """A new table with the last `pct` of the rows, `pct` from 0 to 1."""
-        return self._local_op("tail_pct", {"pct": pct}, "table tail_pct operation failed.")
+        return self._local_op(
+            "tail_pct", {"pct": _share(pct)}, "table tail_pct operation failed."
+        )
 
     def slice(self, start: int, stop: int) -> "Table":
         """A new table with the rows from position `start` up to `stop`; a negative
@@ -599,7 +614,7 @@ class Table:
         """A new table with the rows from `start_pct` to `end_pct` of the table."""
         return self._local_op(
             "slice_pct",
-            {"start_pct": start_pct, "end_pct": end_pct},
+            {"start_pct": _share(start_pct), "end_pct": _share(end_pct)},
             "table slice_pct operation failed.",
         )
 

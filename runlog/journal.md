@@ -614,3 +614,55 @@ For owner review, differences it reports in failure paths: NullPointerException 
 sorted merge, a schema that Java fails to build for a restriction naming a non-column, the
 text for a non-int index in move_columns, and which column SortRowRedirection names.
 Tasks 6.9 and 6.10 (conversion, input tables) started as one run.
+
+## 2026-11-15 19:40 UTC: Widened fuzzer up as PR 81; findings become task 4.17
+
+The fuzzer now draws every ported operation. With its restrictions in place, 12 of 13
+families are clean over 1000 seeds and one seed differs (aj losing a left row). Before the
+restrictions the first wide generator had 69, 103 and 12 differing seeds in aggregations,
+groups and update_by, so the earlier "83 of 83 scenarios clean" overstated parity: the
+recorded scenarios did not reach array-column aggregations, attribute copies or in-cycle
+failures. Seven open engine defects are written up as tasks/4.17-fuzz-findings.md with the
+minimal scenarios beside it. For owner review: A5 (Java's head_by cast changes a column's
+type; reproduce or not), the serving of tables that failed in a cycle (A7, open since
+before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
+
+## 2026-11-15 19:34 UTC: Owner decided: stop a cancelled console command
+
+The owner chose "Stop it, record the difference" for PR 79. The author was resumed to add the
+allowed difference to PARITY.md (that entry only) and rerun the gate; the pull request merges
+when green.
+
+## 2026-11-15 19:46 UTC: Only Snappy enabled (PR 82); two findings behind the approval
+
+The owner's approval named BSD-3-Clause for Snappy, Zstandard and Brotli. The agent found
+that zstd-sys is BSD-3-Clause AND BSD-2-Clause, outside what was approved, and that Java's
+packaged server has no Brotli codec, so reading Brotli would succeed where Java fails. It
+enabled Snappy only and reported both. Zstandard is back with the owner as a decision card;
+Brotli stays refused, which is what parity asks for. The orchestrator's licence question to
+the owner had been wrong on both points: it assumed all three crates were BSD-3-Clause only
+and that Java reads all three. PRs 80 and 81 merged at 19:38; task 4.17 started.
+
+## 2026-11-15 19:44 UTC: Owner allowed BSD-2-Clause for zstd-sys only
+
+The codec agent was resumed to enable Zstandard on the same branch (PR 82). Brotli stays
+refused.
+
+## 2026-11-15 20:08 UTC: Conversion up as PR 83; input tables need a lock facility first
+
+The 6.9 agent finished conversion and declined to start 6.10, as briefed for a used-up
+context, and found why 6.10 was under-scoped: a console command holds the update graph's
+shared lock, and a blocking input table change from such a thread would trip the cycle's
+assertion. Java releases the lock while waiting. Decision (orchestrator): the facility
+"release this thread's shared holds while waiting" goes into task 6.10 as its first step,
+with the engine graph lock paths added to what it owns; no contract change is expected. The
+agent's Java observations are appended to the task file. For owner review from PR 83:
+to_arrow returns one record batch where Java returns several.
+Task 6.10 starts after PR 79 merges, because that pull request moves console commands onto
+the interpreter's own thread, which is where the lock is held.
+
+## 2026-11-15 20:12 UTC: Disk fell to 1.6 GB free with six agents building
+
+The console agent saw 1.6 GB free while six agents had build directories and replay runs
+alive (each about 3 to 4 GB of target plus a venv). Nothing failed. Rule from here: at most
+four agents that build at once, and none started below 12 GB free.

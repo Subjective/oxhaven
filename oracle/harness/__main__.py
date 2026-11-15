@@ -8,6 +8,8 @@ No Java counterpart: harness entry point.
     gate          replay every scenario and run every client smoke check against one server,
                   and compare the outcome with replay-baseline.json; needs no Java
     fuzz          generate scenarios from seeds, compare two servers, shrink the first difference
+    selfcheck     run ticking scenarios on one server and compare what it kept up to date
+                  through the steps with what it answers for the same operations from scratch
     client-smoke  exercise one area of the client protocol against one server
     show          run scenarios and print their results
     record-scripts  run the script scenarios on the Java reference and store what they leave
@@ -34,6 +36,7 @@ from pathlib import Path
 from typing import Any
 
 from . import fuzz as fz
+from . import known as kn
 from . import results as res
 from . import rules
 from . import scenario as sc
@@ -46,6 +49,7 @@ SCRIPT_SCENARIOS = SCENARIOS / "python"
 SCRIPT_CORPUS = CORPUS / "python"
 BASELINE = ORACLE / "replay-baseline.json"
 FUZZ_OUT = ORACLE / ".fuzz"
+KNOWN = ORACLE / "fuzz-known-findings.json"
 REFERENCE = "42.9"  # oracle/REFERENCE.md
 
 
@@ -149,6 +153,21 @@ def cmd_replay(args: argparse.Namespace) -> int:
             tally.error(scenario, error)
             continue
         tally.report(scenario, rules.compare_scenario(scenario, expected, actual))
+    return tally.finish()
+
+
+def cmd_selfcheck(args: argparse.Namespace) -> int:
+    target = open_target(args.url)
+    tally = _Tally(f"selfcheck {target}: kept up to date vs from scratch")
+    for scenario in _load(args):
+        if not scenario.steps:
+            continue  # nothing is kept up to date without steps
+        try:
+            kept, fresh = target.run_fresh(scenario)
+        except RunError as error:
+            tally.error(scenario, error)
+            continue
+        tally.report(scenario, rules.compare_with_fresh(scenario, kept, fresh))
     return tally.finish()
 
 
@@ -279,6 +298,13 @@ _ARROW_NAMES = {"bool": "bool", "float32": "float", "float64": "double",
                 "timestamp": "timestamp[ns, tz=UTC]"}
 
 
+def _arrow_name(kind: str) -> str:
+    """How pyarrow prints the type of a predicted column; `list:<type>` is an array."""
+    if kind.startswith("list:"):
+        return f"list<: {_arrow_name(kind[len('list:'):])}>"
+    return _ARROW_NAMES.get(kind, kind)
+
+
 def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> list[str]:
     """Result tables whose columns the generator predicted wrongly (a generator defect)."""
     out = []
@@ -286,7 +312,7 @@ def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> li
         data = results.get(step, table)
         if step != 0 or isinstance(data, res.Failure):
             continue
-        want = [(name, _ARROW_NAMES.get(kind, kind)) for name, kind in predicted[table]]
+        want = [(name, _arrow_name(kind)) for name, kind in predicted[table]]
         have = [(f.name, str(f.type)) for f in data.schema]
         if want != have:
             out.append(f"{results.scenario}.{table}: predicted {want}, got {have}")
@@ -294,28 +320,76 @@ def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> li
 
 
 def _signature(mismatch: rules.Mismatch, operations: dict[str, dict]) -> tuple[str, str, str]:
-    """What a difference is about: its kind, the metadata keys that differ, the operation.
+    """What a difference is about: its kind, the metadata keys that differ, the operation
+    and, where the operation has several, the aggregation or `update_by` operator that made
+    the column.
 
     Differences with one signature are taken to have one cause. Names of generated tables
     and columns are left out, since they vary from seed to seed.
     """
-    key = ""
-    if isinstance(mismatch.expected, dict) and isinstance(mismatch.actual, dict):
-        differing = sorted(
-            str(k) for k in set(mismatch.expected) | set(mismatch.actual)
-            if mismatch.expected.get(k) != mismatch.actual.get(k))
-        key = ",".join(differing)
-    operation = operations.get(mismatch.table, {}).get("op", sc.INPUT_TABLE)
-    return mismatch.kind, key, operation
+    op = operations.get(mismatch.table)
+    operation = op["op"] if op else sc.INPUT_TABLE
+    made_by = kn.producer(op, mismatch.column)
+    if made_by not in (None, "key", "source"):
+        operation = f"{operation}/{made_by}"
+    return mismatch.kind, kn.metadata_key(mismatch), operation
+
+
+class _Triage:
+    """Sets the mismatches of known findings apart (`harness/known.py`)."""
+
+    def __init__(self, args: argparse.Namespace, target_a: Any):
+        self.known = kn.Known([] if args.no_known else kn.load(Path(args.known)))
+        self.target_a = target_a
+        self.seeds: dict[str, list[int]] = {}  # finding id -> seeds it was seen in
+        self.count: Counter = Counter()
+
+    def split(self, scenario: sc.Scenario, found: list[rules.Mismatch],
+              seed: int | None = None) -> tuple[list[rules.Mismatch], list[kn.Finding]]:
+        """The mismatches that fit no known finding, and the findings the others fit."""
+        if not found or not self.known:
+            return found, []
+
+        def reference_inconsistent() -> set[tuple[int, str]] | None:
+            if not hasattr(self.target_a, "run_fresh"):
+                return None
+            try:
+                kept, fresh = self.target_a.run_fresh(scenario)
+            except RunError:
+                return None
+            return {(m.step, m.table) for m in rules.compare_with_fresh(scenario, kept, fresh)}
+
+        fits = self.known.classify(found, scenario.operations, reference_inconsistent)
+        if seed is not None:
+            for finding in fits:
+                if finding is not None:
+                    self.count[finding.id] += 1
+                    if seed not in self.seeds.setdefault(finding.id, []):
+                        self.seeds[finding.id].append(seed)
+        new = [mismatch for mismatch, finding in zip(found, fits) if finding is None]
+        return new, [finding for finding in fits if finding is not None]
+
+    def report(self) -> None:
+        by_id = {finding.id: finding for finding in self.known.findings}
+        for name, seeds in sorted(self.seeds.items(), key=lambda item: -len(item[1])):
+            print(f"KNOWN {name} ({by_id[name].cls}): {len(seeds)} seeds, "
+                  f"{self.count[name]} mismatches; seeds {', '.join(map(str, seeds[:20]))}"
+                  f"{' ...' if len(seeds) > 20 else ''}")
+
+    def summary(self, known_only: int) -> str:
+        if not known_only:
+            return ""
+        return f"; {known_only} more with known findings only (not counted as differences)"
 
 
 def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, target_b: Any) -> int:
     """Runs every seed, and groups the differences instead of shrinking the first one."""
     out_dir = Path(args.out)
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
-    clean = not_run = differing = 0
+    triage = _Triage(args, target_a)
+    clean = not_run = differing = known_only = 0
     for seed in range(args.seed, args.seed + args.seeds):
-        doc, _ = fz.generate(seed, ops)
+        doc, _ = fz.generate(seed, ops, args.variants)
         scenario = sc.parse(doc)
         try:
             found = rules.compare_scenario(
@@ -326,6 +400,11 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
             continue
         if not found:
             clean += 1
+            continue
+        found, _ = triage.split(scenario, found, seed)
+        if not found:
+            known_only += 1
+            _write_scenario(out_dir, doc, f"fuzz_{seed}")
             continue
         differing += 1
         path = _write_scenario(out_dir, doc, f"fuzz_{seed}")
@@ -344,28 +423,42 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
               f"{', '.join(map(str, seeds[:20]))}{' ...' if len(seeds) > 20 else ''}")
         print(f"      example, seed {seeds[0]}: {str(group['example'])[:600]}")
         print(f"      scenario: {group['path']}")
-    if differing:
+    triage.report()
+    if differing or known_only:
         print(f"differing scenarios are in {out_dir}; rerun one with: python -m harness diff "
               f"--a {target_a} --b {target_b} --scenarios <file>")
     print(f"fuzz: {args.seeds} seeds, {clean} clean, {differing} with differences in "
-          f"{len(groups)} groups, {not_run} not run")
+          f"{len(groups)} groups, {not_run} not run{triage.summary(known_only)}")
     return 1 if differing else 2 if not_run else 0
 
 
 def cmd_fuzz(args: argparse.Namespace) -> int:
-    ops = _ops(args.ops) - {sc.INPUT_TABLE}
+    if (args.ops is None) == (args.family is None):
+        raise sc.ScenarioError("fuzz needs --ops or --family, and not both")
+    if args.family is not None:
+        ops = fz.FAMILIES[args.family]
+        args.variants = args.variants or "all"
+    else:
+        ops = _ops(args.ops) - {sc.INPUT_TABLE}
+        args.variants = args.variants or fz.default_variants(ops)
     target_a = open_target(args.a)
     target_b = open_target(args.b or args.a)
     out_dir = Path(args.out)
     used: Counter = Counter()
-    clean = not_run = results_total = failures_total = 0
+    clean = not_run = results_total = failures_total = known_only = 0
     misses: list[str] = []
     print(f"fuzz {target_a} vs {target_b}: seeds {args.seed}..{args.seed + args.seeds - 1} "
           f"over {', '.join(sorted(ops))}")
+    if args.variants == "recorded":
+        print("variants: recorded (what the fuzzer built when the seeds in the run log were "
+              "found; --variants all draws every variant of each operation)")
+    else:
+        print("variants: all")
     if args.keep_going:
         return _fuzz_all(args, ops, target_a, target_b)
+    triage = _Triage(args, target_a)
     for seed in range(args.seed, args.seed + args.seeds):
-        doc, predicted = fz.generate(seed, ops)
+        doc, predicted = fz.generate(seed, ops, args.variants)
         scenario = sc.parse(doc)
         try:
             expected = target_a.run(scenario)
@@ -383,16 +476,23 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
         if not found:
             clean += 1
             continue
+        found, fits = triage.split(scenario, found, seed)
+        if not found:
+            known_only += 1
+            print(f"known seed {seed}: {', '.join(sorted({f.id for f in fits}))}")
+            continue
 
-        print(f"DIFF  seed {seed}: {len(found)} mismatches; the first:")
+        print(f"DIFF  seed {seed}: {len(found)} mismatches that fit no known finding; the "
+              f"first:" if fits else f"DIFF  seed {seed}: {len(found)} mismatches; the first:")
         print(f"      {found[0]}")
         original = _write_scenario(out_dir, doc, f"fuzz_{seed}")
 
         def still_differs(candidate: dict) -> bool:
+            # A known finding does not count, or the shrinker would end at one of those.
             try:
                 parsed = sc.parse(candidate)
-                return bool(rules.compare_scenario(
-                    parsed, target_a.run(parsed), target_b.run(parsed), args.exact))
+                return bool(triage.split(parsed, rules.compare_scenario(
+                    parsed, target_a.run(parsed), target_b.run(parsed), args.exact))[0])
             except RunError:
                 return False
 
@@ -410,7 +510,8 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
         print(f"minimal scenario:  {minimal}")
         print(f"rerun: python -m harness diff --a {target_a} --b {target_b} "
               f"--scenarios {minimal}")
-        print(f"fuzz: seed {seed} differs after {clean} clean seeds")
+        print(f"fuzz: seed {seed} differs after {clean} clean seeds"
+              f"{triage.summary(known_only)}")
         return 1
 
     print(f"operations used: {', '.join(f'{k} {v}' for k, v in sorted(used.items()))}")
@@ -419,7 +520,9 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
     if misses:
         print(f"generator predicted the columns of {len(misses)} tables wrongly, e.g. "
               f"{misses[0]}")
-    print(f"fuzz: {args.seeds} seeds, {clean} clean, 0 with differences, {not_run} not run")
+    triage.report()
+    print(f"fuzz: {args.seeds} seeds, {clean} clean, 0 with differences, {not_run} not run"
+          f"{triage.summary(known_only)}")
     return 2 if not_run else 0
 
 
@@ -485,7 +588,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("fuzz", help="compare two servers on generated scenarios")
     p.add_argument("--a", required=True, help="URL of the expected side (the reference)")
     p.add_argument("--b", help="URL of the actual side; default is --a again")
-    p.add_argument("--ops", required=True, help="comma-separated operations to draw from")
+    p.add_argument("--ops", help="comma-separated operations to draw from")
+    p.add_argument("--family", choices=sorted(fz.FAMILIES),
+                   help="instead of --ops: a named set of operations (fuzz.FAMILIES), with "
+                        "the variants \"all\" unless --variants says otherwise")
+    p.add_argument("--variants", choices=fz.VARIANTS,
+                   help="recorded: the generator of the seeds in the run log, the default "
+                        "for --ops it can build. all: every operation and variant "
+                        "(harness/fuzz_wide.py), the default when --ops names a newer "
+                        "operation. A seed means a different scenario under each")
     p.add_argument("--seeds", type=int, default=100, help="how many seeds to run")
     p.add_argument("--seed", type=int, default=0, help="the first seed")
     p.add_argument("--exact", action="store_true",
@@ -496,7 +607,18 @@ def main(argv: list[str] | None = None) -> int:
                    help="run every seed: write each differing scenario to --out, group the "
                         "differences by kind, differing metadata keys and operation, and "
                         "print one example per group; nothing is shrunk")
+    p.add_argument("--known", default=str(KNOWN),
+                   help="the known findings to set apart (harness/known.py); default "
+                        "fuzz-known-findings.json")
+    p.add_argument("--no-known", action="store_true",
+                   help="report every difference, known or not")
     p.set_defaults(run=cmd_fuzz)
+
+    p = sub.add_parser("selfcheck", help="compare what one server kept up to date through "
+                                         "the steps with its results from scratch")
+    p.add_argument("--url", required=True)
+    common(p)
+    p.set_defaults(run=cmd_selfcheck)
 
     def scripts(p: argparse.ArgumentParser) -> None:
         p.add_argument("--url", required=True)

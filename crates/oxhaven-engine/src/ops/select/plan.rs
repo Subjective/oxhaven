@@ -147,7 +147,7 @@ fn put(columns: &mut Vec<Named>, column: Named) {
 /// identifier is checked by the formula parser; left are the names of the formula language's
 /// own variables and what `javax.lang.model.SourceVersion#isKeyword` refuses: the keywords
 /// and the boolean and null literals of the Java Language Specification, section 3.9.
-fn validate_name(name: &str) -> Result<(), SelectError> {
+pub(super) fn validate_name(name: &str) -> Result<(), SelectError> {
     const RESERVED: &[&str] = &[
         "in",
         "not",
