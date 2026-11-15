@@ -754,3 +754,16 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   previous values of other rows, or nulls, when the cycle shifts rows. Recorded as a Java
   defect for the owner (J6), not reproduced. My second request quoted the wrong Java
   error text; the agent used the text Java actually raises.
+
+## 2026-11-16 00:05 UTC
+
+- Pull request 93 went red on the Python 3.11 job. Cause, found and reproduced by the
+  author: `threading.main_thread()` is the first thread to import `threading` before
+  Python 3.13, so "is this a command" was wrong on 3.11 and 3.12. Replaced by a
+  thread-local set by the command runner. The CI matrix caught a real product bug that
+  the agent's local 3.13 run could not; agents should run the server tests on the oldest
+  supported Python too when they touch the Python package (`PYO3_PYTHON=/usr/bin/python3.11`).
+- Pull request 90: PARITY.md A8 added after the owner's ruling; waiting on checks.
+- Merged pull request 90 (6.17, IDE flows, with PARITY.md A8) on six green checks.
+- Merged pull request 93 (6.12, Python listeners) on six green checks after the Python 3.11 fix.
+- 00:20 UTC: disk fell to 6.5 GB with four agents building (target directories reach 5 GB each). New agents are told to build with line-tables-only debug info; added to the brief.

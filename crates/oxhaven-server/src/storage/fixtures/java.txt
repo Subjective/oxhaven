@@ -1,0 +1,1008 @@
+== list_root_at_start
+call: StorageService/ListItems
+request: 0a012f
+# path: "/"
+status: OK
+message: 0a0c0a082f6c61796f75747310010a0e0a0a2f6e6f7465626f6f6b73100112012f
+# items { path: "/layouts" type: DIRECTORY } items { path: "/notebooks" type: DIRECTORY } canonical_path: "/"
+
+== mkdir
+call: StorageService/CreateDirectory
+request: 0a0e2f6e6f7465626f6f6b732f646972
+# path: "/notebooks/dir"
+status: OK
+message: 
+# 
+
+== mkdir_again
+call: StorageService/CreateDirectory
+request: 0a0e2f6e6f7465626f6f6b732f646972
+# path: "/notebooks/dir"
+status: FAILED_PRECONDITION: Something already exists with that name
+
+== mkdir_no_parent
+call: StorageService/CreateDirectory
+request: 0a132f6e6f7465626f6f6b732f6e6f70652f646972
+# path: "/notebooks/nope/dir"
+status: FAILED_PRECONDITION: Can't create directory, parent directory doesn't exist
+
+== mkdir_no_leading_slash
+call: StorageService/CreateDirectory
+request: 0a0f6e6f7465626f6f6b732f706c61696e
+# path: "notebooks/plain"
+status: OK
+message: 
+# 
+
+== mkdir_trailing_slash
+call: StorageService/CreateDirectory
+request: 0a112f6e6f7465626f6f6b732f736c6173682f
+# path: "/notebooks/slash/"
+status: OK
+message: 
+# 
+
+== mkdir_root
+call: StorageService/CreateDirectory
+request: 0a012f
+# path: "/"
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== mkdir_root_empty_path
+call: StorageService/CreateDirectory
+request: 
+# 
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== mkdir_root_through_parent
+call: StorageService/CreateDirectory
+request: 0a0d2f6e6f7465626f6f6b732f2e2e
+# path: "/notebooks/.."
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== save_new
+call: StorageService/SaveFile
+request: 120f2f6e6f7465626f6f6b732f612e70791a0b7072696e7428276127290a
+# path: "/notebooks/a.py" contents: "print(\'a\')\n"
+status: OK
+message: 0a206539336465353963396437366133383133353531333338643638616437356461
+# etag: "e93de59c9d76a3813551338d68ad75da"
+
+== save_existing_no_overwrite
+call: StorageService/SaveFile
+request: 120f2f6e6f7465626f6f6b732f612e70791a056f74686572
+# path: "/notebooks/a.py" contents: "other"
+status: FAILED_PRECONDITION: File already exists
+
+== save_existing_overwrite
+call: StorageService/SaveFile
+request: 0801120f2f6e6f7465626f6f6b732f612e70791a0c7072696e742827613227290a
+# allow_overwrite: true path: "/notebooks/a.py" contents: "print(\'a2\')\n"
+status: OK
+message: 0a206262386265373961646337663631623839633364623037383732356263363864
+# etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== save_new_with_overwrite
+call: StorageService/SaveFile
+request: 0801120f2f6e6f7465626f6f6b732f622e70791a0662203d20310a
+# allow_overwrite: true path: "/notebooks/b.py" contents: "b = 1\n"
+status: OK
+message: 0a203963313236373663343463663536333261353762343635336138306561376465
+# etag: "9c12676c44cf5632a57b4653a80ea7de"
+
+== save_empty
+call: StorageService/SaveFile
+request: 12132f6e6f7465626f6f6b732f656d7074792e7079
+# path: "/notebooks/empty.py"
+status: OK
+message: 0a203030303030303030303030303030303030303030303030303030303030303030
+# etag: "00000000000000000000000000000000"
+
+== save_no_directory
+call: StorageService/SaveFile
+request: 12142f6e6f7465626f6f6b732f6e6f70652f612e70791a0178
+# path: "/notebooks/nope/a.py" contents: "x"
+status: FAILED_PRECONDITION: Directory does not exist
+
+== save_onto_directory
+call: StorageService/SaveFile
+request: 120e2f6e6f7465626f6f6b732f6469721a0178
+# path: "/notebooks/dir" contents: "x"
+status: FAILED_PRECONDITION: File already exists
+
+== save_onto_directory_overwrite
+call: StorageService/SaveFile
+request: 0801120e2f6e6f7465626f6f6b732f6469721a0178
+# allow_overwrite: true path: "/notebooks/dir" contents: "x"
+status: INVALID_ARGUMENT: Details Logged w/ID '81933493-5ae8-4330-b66f-556a711849b8'
+
+== save_below_a_file
+call: StorageService/SaveFile
+request: 12112f6e6f7465626f6f6b732f612e70792f781a0178
+# path: "/notebooks/a.py/x" contents: "x"
+status: INVALID_ARGUMENT: Details Logged w/ID '81a085bb-5bdb-44de-baba-2b6f1b1ed1f1'
+
+== save_root
+call: StorageService/SaveFile
+request: 12012f1a0178
+# path: "/" contents: "x"
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== save_root_overwrite
+call: StorageService/SaveFile
+request: 08011a0178
+# allow_overwrite: true contents: "x"
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== save_unicode_name
+call: StorageService/SaveFile
+request: 12172f6e6f7465626f6f6b732f636166c3a920e298832e70791a0a73203d2027e29883270a
+# path: "/notebooks/café ☃.py" contents: "s = \'\342\230\203\'\n"
+status: OK
+message: 0a206637623338346135623930623938313837363234343738393633663235386335
+# etag: "f7b384a5b90b98187624478963f258c5"
+
+== save_binary
+call: StorageService/SaveFile
+request: 12142f6e6f7465626f6f6b732f62797465732e62696e1a8002000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff
+# path: "/notebooks/bytes.bin" contents: "\000\001\002\003\004\005\006\007\010\t\n\013\014\r\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037 !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\177\200\201\202\203\204\205\206\207\210\211\212\213\214\215\216\217\220\221\222\223\224\225\226\227\230\231\232\233\234\235\236\237\240\241\242\243\244\245\246\247\250\251\252\253\254\255\256\257\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277\300\301\302\303\304\305\306\307\310\311\312\313\314\315\316\317\320\321\322\323\324\325\326\327\330\331\332\333\334\335\336\337\340\341\342\343\344\345\346\347\350\351\352\353\354\355\356\357\360\361\362\363\364\365\366\367\370\371\372\373\374\375\376\377"
+status: OK
+message: 0a206239313236666463313363333939316331656363333461623766303764363730
+# etag: "b9126fdc13c3991c1ecc34ab7f07d670"
+
+== fetch
+call: StorageService/FetchFile
+request: 0a0f2f6e6f7465626f6f6b732f612e7079
+# path: "/notebooks/a.py"
+status: OK
+message: 0a0c7072696e742827613227290a12206262386265373961646337663631623839633364623037383732356263363864
+# contents: "print(\'a2\')\n" etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== fetch_same_etag
+call: StorageService/FetchFile
+request: 0a0f2f6e6f7465626f6f6b732f612e707912206262386265373961646337663631623839633364623037383732356263363864
+# path: "/notebooks/a.py" etag: "bb8be79adc7f61b89c3db078725bc68d"
+status: OK
+message: 12206262386265373961646337663631623839633364623037383732356263363864
+# etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== fetch_other_etag
+call: StorageService/FetchFile
+request: 0a0f2f6e6f7465626f6f6b732f612e707912206539336465353963396437366133383133353531333338643638616437356461
+# path: "/notebooks/a.py" etag: "e93de59c9d76a3813551338d68ad75da"
+status: OK
+message: 0a0c7072696e742827613227290a12206262386265373961646337663631623839633364623037383732356263363864
+# contents: "print(\'a2\')\n" etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== fetch_empty_etag
+call: StorageService/FetchFile
+request: 0a0f2f6e6f7465626f6f6b732f612e70791200
+# path: "/notebooks/a.py" etag: ""
+status: OK
+message: 0a0c7072696e742827613227290a12206262386265373961646337663631623839633364623037383732356263363864
+# contents: "print(\'a2\')\n" etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== fetch_empty_file
+call: StorageService/FetchFile
+request: 0a132f6e6f7465626f6f6b732f656d7074792e7079
+# path: "/notebooks/empty.py"
+status: OK
+message: 12203030303030303030303030303030303030303030303030303030303030303030
+# etag: "00000000000000000000000000000000"
+
+== fetch_binary
+call: StorageService/FetchFile
+request: 0a142f6e6f7465626f6f6b732f62797465732e62696e
+# path: "/notebooks/bytes.bin"
+status: OK
+message: 0a8002000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff12206239313236666463313363333939316331656363333461623766303764363730
+# contents: "\000\001\002\003\004\005\006\007\010\t\n\013\014\r\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037 !\"#$%&\'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~\177\200\201\202\203\204\205\206\207\210\211\212\213\214\215\216\217\220\221\222\223\224\225\226\227\230\231\232\233\234\235\236\237\240\241\242\243\244\245\246\247\250\251\252\253\254\255\256\257\260\261\262\263\264\265\266\267\270\271\272\273\274\275\276\277\300\301\302\303\304\305\306\307\310\311\312\313\314\315\316\317\320\321\322\323\324\325\326\327\330\331\332\333\334\335\336\337\340\341\342\343\344\345\346\347\350\351\352\353\354\355\356\357\360\361\362\363\364\365\366\367\370\371\372\373\374\375\376\377" etag: "b9126fdc13c3991c1ecc34ab7f07d670"
+
+== fetch_missing
+call: StorageService/FetchFile
+request: 0a122f6e6f7465626f6f6b732f6e6f70652e7079
+# path: "/notebooks/nope.py"
+status: FAILED_PRECONDITION: File does not exist
+
+== fetch_directory
+call: StorageService/FetchFile
+request: 0a0e2f6e6f7465626f6f6b732f646972
+# path: "/notebooks/dir"
+status: INVALID_ARGUMENT: Details Logged w/ID '0eb9e6a8-4924-4a6c-93b0-ba8fbd368b59'
+
+== fetch_root
+call: StorageService/FetchFile
+request: 0a012f
+# path: "/"
+status: INVALID_ARGUMENT: Details Logged w/ID '13e673ba-0817-44c8-a795-74ccc84542aa'
+
+== fetch_below_a_file
+call: StorageService/FetchFile
+request: 0a112f6e6f7465626f6f6b732f612e70792f78
+# path: "/notebooks/a.py/x"
+status: INVALID_ARGUMENT: Details Logged w/ID 'c328554f-ac55-437a-8a53-3bd6f6435fa8'
+
+== fetch_no_leading_slash
+call: StorageService/FetchFile
+request: 0a0e6e6f7465626f6f6b732f612e7079
+# path: "notebooks/a.py"
+status: OK
+message: 0a0c7072696e742827613227290a12206262386265373961646337663631623839633364623037383732356263363864
+# contents: "print(\'a2\')\n" etag: "bb8be79adc7f61b89c3db078725bc68d"
+
+== list_notebooks
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: OK
+message: 0a3d0a142f6e6f7465626f6f6b732f62797465732e62696e1002188004222062393132366664633133633339393163316563633334616237663037643637300a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a120a0e2f6e6f7465626f6f6b732f64697210010a140a102f6e6f7465626f6f6b732f736c61736810010a390a132f6e6f7465626f6f6b732f656d7074792e70791002222030303030303030303030303030303030303030303030303030303030303030300a370a0f2f6e6f7465626f6f6b732f612e707910021818222062623862653739616463376636316238396333646230373837323562633638640a370a0f2f6e6f7465626f6f6b732f622e70791002180c222039633132363736633434636635363332613537623436353361383065613764650a140a102f6e6f7465626f6f6b732f706c61696e1001120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/bytes.bin" type: FILE size: 256 etag: "b9126fdc13c3991c1ecc34ab7f07d670" } items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/dir" type: DIRECTORY } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/empty.py" type: FILE etag: "00000000000000000000000000000000" } items { path: "/notebooks/a.py" type: FILE size: 12 etag: "bb8be79adc7f61b89c3db078725bc68d" } items { path: "/notebooks/b.py" type: FILE size: 6 etag: "9c12676c44cf5632a57b4653a80ea7de" } items { path: "/notebooks/plain" type: DIRECTORY } canonical_path: "/notebooks"
+
+== list_notebooks_glob
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b7322042a2e7079
+# path: "/notebooks" filter_glob: "*.py"
+status: OK
+message: 0a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a390a132f6e6f7465626f6f6b732f656d7074792e70791002222030303030303030303030303030303030303030303030303030303030303030300a370a0f2f6e6f7465626f6f6b732f612e707910021818222062623862653739616463376636316238396333646230373837323562633638640a370a0f2f6e6f7465626f6f6b732f622e70791002180c22203963313236373663343463663536333261353762343635336138306561376465120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/empty.py" type: FILE etag: "00000000000000000000000000000000" } items { path: "/notebooks/a.py" type: FILE size: 12 etag: "bb8be79adc7f61b89c3db078725bc68d" } items { path: "/notebooks/b.py" type: FILE size: 6 etag: "9c12676c44cf5632a57b4653a80ea7de" } canonical_path: "/notebooks"
+
+== list_a_file
+call: StorageService/ListItems
+request: 0a0f2f6e6f7465626f6f6b732f612e7079
+# path: "/notebooks/a.py"
+status: INVALID_ARGUMENT: Details Logged w/ID 'c0af6b71-ee2d-4618-879c-3d512645b5bc'
+
+== list_root_after
+call: StorageService/ListItems
+request: 
+# 
+status: OK
+message: 0a0c0a082f6c61796f75747310010a0e0a0a2f6e6f7465626f6f6b73100112012f
+# items { path: "/layouts" type: DIRECTORY } items { path: "/notebooks" type: DIRECTORY } canonical_path: "/"
+
+== move_rename
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f622e7079120f2f6e6f7465626f6f6b732f632e7079
+# old_path: "/notebooks/b.py" new_path: "/notebooks/c.py"
+status: OK
+message: 
+# 
+
+== move_missing
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f622e7079120f2f6e6f7465626f6f6b732f642e7079
+# old_path: "/notebooks/b.py" new_path: "/notebooks/d.py"
+status: FAILED_PRECONDITION: File does not exist, cannot rename
+
+== move_onto_existing
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f632e7079120f2f6e6f7465626f6f6b732f612e7079
+# old_path: "/notebooks/c.py" new_path: "/notebooks/a.py"
+status: FAILED_PRECONDITION: File already exists, cannot rename to replace
+
+== move_onto_existing_overwrite
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f632e7079120f2f6e6f7465626f6f6b732f612e70791801
+# old_path: "/notebooks/c.py" new_path: "/notebooks/a.py" allow_overwrite: true
+status: OK
+message: 
+# 
+
+== fetch_after_move
+call: StorageService/FetchFile
+request: 0a0f2f6e6f7465626f6f6b732f612e7079
+# path: "/notebooks/a.py"
+status: OK
+message: 0a0662203d20310a12203963313236373663343463663536333261353762343635336138306561376465
+# contents: "b = 1\n" etag: "9c12676c44cf5632a57b4653a80ea7de"
+
+== move_into_directory_path
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f612e707912132f6e6f7465626f6f6b732f6469722f612e7079
+# old_path: "/notebooks/a.py" new_path: "/notebooks/dir/a.py"
+status: OK
+message: 
+# 
+
+== move_no_target_directory
+call: StorageService/MoveItem
+request: 0a132f6e6f7465626f6f6b732f6469722f612e707912142f6e6f7465626f6f6b732f6e6f70652f612e7079
+# old_path: "/notebooks/dir/a.py" new_path: "/notebooks/nope/a.py"
+status: FAILED_PRECONDITION: File does not exist, cannot rename
+
+== move_to_itself
+call: StorageService/MoveItem
+request: 0a132f6e6f7465626f6f6b732f6469722f612e707912132f6e6f7465626f6f6b732f6469722f612e7079
+# old_path: "/notebooks/dir/a.py" new_path: "/notebooks/dir/a.py"
+status: OK
+message: 
+# 
+
+== move_to_itself_overwrite
+call: StorageService/MoveItem
+request: 0a132f6e6f7465626f6f6b732f6469722f612e707912132f6e6f7465626f6f6b732f6469722f612e70791801
+# old_path: "/notebooks/dir/a.py" new_path: "/notebooks/dir/a.py" allow_overwrite: true
+status: OK
+message: 
+# 
+
+== move_file_onto_directory
+call: StorageService/MoveItem
+request: 0a132f6e6f7465626f6f6b732f656d7074792e707912102f6e6f7465626f6f6b732f706c61696e
+# old_path: "/notebooks/empty.py" new_path: "/notebooks/plain"
+status: FAILED_PRECONDITION: File already exists, cannot rename to replace
+
+== move_file_onto_empty_directory_overwrite
+call: StorageService/MoveItem
+request: 0a132f6e6f7465626f6f6b732f656d7074792e707912102f6e6f7465626f6f6b732f706c61696e1801
+# old_path: "/notebooks/empty.py" new_path: "/notebooks/plain" allow_overwrite: true
+status: OK
+message: 
+# 
+
+== move_file_onto_full_directory_overwrite
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e120e2f6e6f7465626f6f6b732f6469721801
+# old_path: "/notebooks/plain" new_path: "/notebooks/dir" allow_overwrite: true
+status: FAILED_PRECONDITION: Cannot replace non-empty directory
+
+== move_directory
+call: StorageService/MoveItem
+request: 0a0e2f6e6f7465626f6f6b732f64697212102f6e6f7465626f6f6b732f6d6f766564
+# old_path: "/notebooks/dir" new_path: "/notebooks/moved"
+status: OK
+message: 
+# 
+
+== move_directory_into_itself
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f6d6f76656412162f6e6f7465626f6f6b732f6d6f7665642f696e6e6572
+# old_path: "/notebooks/moved" new_path: "/notebooks/moved/inner"
+status: INVALID_ARGUMENT: Details Logged w/ID '7c80513c-320c-49d9-944f-f1c1f0ba575e'
+
+== move_directory_onto_file
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f6d6f76656412142f6e6f7465626f6f6b732f62797465732e62696e
+# old_path: "/notebooks/moved" new_path: "/notebooks/bytes.bin"
+status: FAILED_PRECONDITION: File already exists, cannot rename to replace
+
+== move_to_root
+call: StorageService/MoveItem
+request: 0a142f6e6f7465626f6f6b732f62797465732e62696e12012f
+# old_path: "/notebooks/bytes.bin" new_path: "/"
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== move_to_root_overwrite
+call: StorageService/MoveItem
+request: 0a142f6e6f7465626f6f6b732f62797465732e62696e1801
+# old_path: "/notebooks/bytes.bin" allow_overwrite: true
+status: FAILED_PRECONDITION: Can't overwrite the root directory
+
+== move_root
+call: StorageService/MoveItem
+request: 0a012f120f2f6e6f7465626f6f6b732f726f6f74
+# old_path: "/" new_path: "/notebooks/root"
+status: INVALID_ARGUMENT: Details Logged w/ID 'e23ebfff-5ed5-402c-8abe-b06295f3c484'
+
+== list_after_moves
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: OK
+message: 0a3d0a142f6e6f7465626f6f6b732f62797465732e62696e1002188004222062393132366664633133633339393163316563633334616237663037643637300a140a102f6e6f7465626f6f6b732f6d6f76656410010a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a140a102f6e6f7465626f6f6b732f736c61736810010a360a102f6e6f7465626f6f6b732f706c61696e100222203030303030303030303030303030303030303030303030303030303030303030120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/bytes.bin" type: FILE size: 256 etag: "b9126fdc13c3991c1ecc34ab7f07d670" } items { path: "/notebooks/moved" type: DIRECTORY } items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/plain" type: FILE etag: "00000000000000000000000000000000" } canonical_path: "/notebooks"
+
+== list_moved
+call: StorageService/ListItems
+request: 0a102f6e6f7465626f6f6b732f6d6f766564
+# path: "/notebooks/moved"
+status: OK
+message: 0a3d0a152f6e6f7465626f6f6b732f6d6f7665642f612e70791002180c2220396331323637366334346366353633326135376234363533613830656137646512102f6e6f7465626f6f6b732f6d6f766564
+# items { path: "/notebooks/moved/a.py" type: FILE size: 6 etag: "9c12676c44cf5632a57b4653a80ea7de" } canonical_path: "/notebooks/moved"
+
+== delete_file
+call: StorageService/DeleteItem
+request: 0a142f6e6f7465626f6f6b732f62797465732e62696e
+# path: "/notebooks/bytes.bin"
+status: OK
+message: 
+# 
+
+== delete_again
+call: StorageService/DeleteItem
+request: 0a142f6e6f7465626f6f6b732f62797465732e62696e
+# path: "/notebooks/bytes.bin"
+status: FAILED_PRECONDITION: Cannot delete, file does not exists
+
+== delete_full_directory
+call: StorageService/DeleteItem
+request: 0a102f6e6f7465626f6f6b732f6d6f766564
+# path: "/notebooks/moved"
+status: FAILED_PRECONDITION: Cannot delete non-empty directory
+
+== delete_in_directory
+call: StorageService/DeleteItem
+request: 0a152f6e6f7465626f6f6b732f6d6f7665642f612e7079
+# path: "/notebooks/moved/a.py"
+status: OK
+message: 
+# 
+
+== delete_empty_directory
+call: StorageService/DeleteItem
+request: 0a102f6e6f7465626f6f6b732f6d6f766564
+# path: "/notebooks/moved"
+status: OK
+message: 
+# 
+
+== delete_root
+call: StorageService/DeleteItem
+request: 0a012f
+# path: "/"
+status: FAILED_PRECONDITION: Can't delete the root directory
+
+== delete_root_empty_path
+call: StorageService/DeleteItem
+request: 
+# 
+status: FAILED_PRECONDITION: Can't delete the root directory
+
+== delete_root_through_parent
+call: StorageService/DeleteItem
+request: 0a0b2f6c61796f7574732f2e2e
+# path: "/layouts/.."
+status: FAILED_PRECONDITION: Can't delete the root directory
+
+== delete_below_a_file
+call: StorageService/DeleteItem
+request: 0a122f6e6f7465626f6f6b732f706c61696e2f78
+# path: "/notebooks/plain/x"
+status: INVALID_ARGUMENT: Details Logged w/ID '118f4835-7558-44da-a0be-3a7922b2ed5e'
+
+== list_after_deletes
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: OK
+message: 0a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a140a102f6e6f7465626f6f6b732f736c61736810010a360a102f6e6f7465626f6f6b732f706c61696e100222203030303030303030303030303030303030303030303030303030303030303030120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/plain" type: FILE etag: "00000000000000000000000000000000" } canonical_path: "/notebooks"
+
+== escape_fetch_parent
+fs: write outside/secret.txt 7365637265740a
+fs: mkdir outside/dir
+call: StorageService/FetchFile
+request: 0a162f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_save_parent
+call: StorageService/SaveFile
+request: 080112162f2e2e2f6f7574736964652f7365637265742e7478741a0178
+# allow_overwrite: true path: "/../outside/secret.txt" contents: "x"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_delete_parent
+call: StorageService/DeleteItem
+request: 0a162f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_mkdir_parent
+call: StorageService/CreateDirectory
+request: 0a182f2e2e2f6f7574736964652f7365637265742e7478742e64
+# path: "/../outside/secret.txt.d"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt.d
+
+== escape_list_parent
+call: StorageService/ListItems
+request: 0a162f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_move_from_parent
+call: StorageService/MoveItem
+request: 0a162f2e2e2f6f7574736964652f7365637265742e74787412112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "/../outside/secret.txt" new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_move_to_parent
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e12162f2e2e2f6f7574736964652f7365637265742e7478741801
+# old_path: "/notebooks/plain" new_path: "/../outside/secret.txt" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_fetch_parent_no_slash
+call: StorageService/FetchFile
+request: 0a152e2e2f6f7574736964652f7365637265742e747874
+# path: "../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_save_parent_no_slash
+call: StorageService/SaveFile
+request: 080112152e2e2f6f7574736964652f7365637265742e7478741a0178
+# allow_overwrite: true path: "../outside/secret.txt" contents: "x"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_delete_parent_no_slash
+call: StorageService/DeleteItem
+request: 0a152e2e2f6f7574736964652f7365637265742e747874
+# path: "../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_mkdir_parent_no_slash
+call: StorageService/CreateDirectory
+request: 0a172e2e2f6f7574736964652f7365637265742e7478742e64
+# path: "../outside/secret.txt.d"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt.d
+
+== escape_list_parent_no_slash
+call: StorageService/ListItems
+request: 0a152e2e2f6f7574736964652f7365637265742e747874
+# path: "../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_move_from_parent_no_slash
+call: StorageService/MoveItem
+request: 0a152e2e2f6f7574736964652f7365637265742e74787412112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "../outside/secret.txt" new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_move_to_parent_no_slash
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e12152e2e2f6f7574736964652f7365637265742e7478741801
+# old_path: "/notebooks/plain" new_path: "../outside/secret.txt" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../outside/secret.txt
+
+== escape_fetch_parent_deeper
+call: StorageService/FetchFile
+request: 0a232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/notebooks/../../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_save_parent_deeper
+call: StorageService/SaveFile
+request: 080112232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e7478741a0178
+# allow_overwrite: true path: "/notebooks/../../outside/secret.txt" contents: "x"
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_delete_parent_deeper
+call: StorageService/DeleteItem
+request: 0a232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/notebooks/../../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_mkdir_parent_deeper
+call: StorageService/CreateDirectory
+request: 0a252f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e7478742e64
+# path: "/notebooks/../../outside/secret.txt.d"
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt.d
+
+== escape_list_parent_deeper
+call: StorageService/ListItems
+request: 0a232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/notebooks/../../outside/secret.txt"
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_move_from_parent_deeper
+call: StorageService/MoveItem
+request: 0a232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e74787412112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "/notebooks/../../outside/secret.txt" new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_move_to_parent_deeper
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e12232f6e6f7465626f6f6b732f2e2e2f2e2e2f6f7574736964652f7365637265742e7478741801
+# old_path: "/notebooks/plain" new_path: "/notebooks/../../outside/secret.txt" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: notebooks/../../outside/secret.txt
+
+== escape_fetch_parent_far
+call: StorageService/FetchFile
+request: 0a2b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d65
+# path: "/../../../../../../../../../../etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_save_parent_far
+call: StorageService/SaveFile
+request: 0801122b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d651a0178
+# allow_overwrite: true path: "/../../../../../../../../../../etc/hostname" contents: "x"
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_delete_parent_far
+call: StorageService/DeleteItem
+request: 0a2b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d65
+# path: "/../../../../../../../../../../etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_mkdir_parent_far
+call: StorageService/CreateDirectory
+request: 0a2d2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d652e64
+# path: "/../../../../../../../../../../etc/hostname.d"
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname.d
+
+== escape_list_parent_far
+call: StorageService/ListItems
+request: 0a2b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d65
+# path: "/../../../../../../../../../../etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_move_from_parent_far
+call: StorageService/MoveItem
+request: 0a2b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d6512112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "/../../../../../../../../../../etc/hostname" new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_move_to_parent_far
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e122b2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f2e2e2f6574632f686f73746e616d651801
+# old_path: "/notebooks/plain" new_path: "/../../../../../../../../../../etc/hostname" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ../../../../../../../../../../etc/hostname
+
+== escape_fetch_absolute
+call: StorageService/FetchFile
+request: 0a0e2f2f6574632f686f73746e616d65
+# path: "//etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_save_absolute
+call: StorageService/SaveFile
+request: 0801120e2f2f6574632f686f73746e616d651a0178
+# allow_overwrite: true path: "//etc/hostname" contents: "x"
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_delete_absolute
+call: StorageService/DeleteItem
+request: 0a0e2f2f6574632f686f73746e616d65
+# path: "//etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_mkdir_absolute
+call: StorageService/CreateDirectory
+request: 0a102f2f6574632f686f73746e616d652e64
+# path: "//etc/hostname.d"
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname.d
+
+== escape_list_absolute
+call: StorageService/ListItems
+request: 0a0e2f2f6574632f686f73746e616d65
+# path: "//etc/hostname"
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_move_from_absolute
+call: StorageService/MoveItem
+request: 0a0e2f2f6574632f686f73746e616d6512112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "//etc/hostname" new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_move_to_absolute
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e120e2f2f6574632f686f73746e616d651801
+# old_path: "/notebooks/plain" new_path: "//etc/hostname" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: /etc/hostname
+
+== escape_fetch_dot_dot_only
+call: StorageService/FetchFile
+request: 0a032f2e2e
+# path: "/.."
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== escape_save_dot_dot_only
+call: StorageService/SaveFile
+request: 080112032f2e2e1a0178
+# allow_overwrite: true path: "/.." contents: "x"
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== escape_delete_dot_dot_only
+call: StorageService/DeleteItem
+request: 0a032f2e2e
+# path: "/.."
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== escape_mkdir_dot_dot_only
+call: StorageService/CreateDirectory
+request: 0a052f2e2e2e64
+# path: "/...d"
+status: OK
+message: 
+# 
+
+== escape_list_dot_dot_only
+call: StorageService/ListItems
+request: 0a032f2e2e
+# path: "/.."
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== escape_move_from_dot_dot_only
+call: StorageService/MoveItem
+request: 0a032f2e2e12112f6e6f7465626f6f6b732f73746f6c656e1801
+# old_path: "/.." new_path: "/notebooks/stolen" allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== escape_move_to_dot_dot_only
+call: StorageService/MoveItem
+request: 0a102f6e6f7465626f6f6b732f706c61696e12032f2e2e1801
+# old_path: "/notebooks/plain" new_path: "/.." allow_overwrite: true
+status: INVALID_ARGUMENT: Invalid path: ..
+
+== outside_and_back_fetch
+call: StorageService/FetchFile
+request: 0a1b2f2e2e2f73746f726167652f6e6f7465626f6f6b732f706c61696e
+# path: "/../storage/notebooks/plain"
+status: OK
+message: 12203030303030303030303030303030303030303030303030303030303030303030
+# etag: "00000000000000000000000000000000"
+
+== outside_and_back_list
+call: StorageService/ListItems
+request: 0a152f2e2e2f73746f726167652f6e6f7465626f6f6b73
+# path: "/../storage/notebooks"
+status: OK
+message: 0a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a140a102f6e6f7465626f6f6b732f736c61736810010a360a102f6e6f7465626f6f6b732f706c61696e100222203030303030303030303030303030303030303030303030303030303030303030120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/plain" type: FILE etag: "00000000000000000000000000000000" } canonical_path: "/notebooks"
+
+== outside_prefix_of_name
+call: StorageService/ListItems
+request: 0a0c2f2e2e2f73746f7261676532
+# path: "/../storage2"
+status: INVALID_ARGUMENT: Invalid path: ../storage2
+
+== nul_character
+call: StorageService/FetchFile
+request: 0a0e2f6e6f7465626f6f6b732f610062
+# path: "/notebooks/a\000b"
+status: INVALID_ARGUMENT: Details Logged w/ID 'e82cb2db-b01e-45e3-a344-a1885b796aa4'
+
+== nul_character_save
+call: StorageService/SaveFile
+request: 120e2f6e6f7465626f6f6b732f6100621a0178
+# path: "/notebooks/a\000b" contents: "x"
+status: INVALID_ARGUMENT: Details Logged w/ID '20319c03-6cb9-45d1-85a3-86362cc4ffc4'
+
+== backslash_is_a_name
+call: StorageService/FetchFile
+request: 0a102f6e6f7465626f6f6b735c706c61696e
+# path: "/notebooks\\plain"
+status: FAILED_PRECONDITION: File does not exist
+
+== long_name
+call: StorageService/SaveFile
+request: 12b7022f6e6f7465626f6f6b732f6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e1a0178
+# path: "/notebooks/nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn" contents: "x"
+status: INVALID_ARGUMENT: Details Logged w/ID '515d6b02-b7e7-43fd-a229-3f764ba32704'
+
+== link_fetch_file_out
+fs: symlink storage/notebooks/link_file_out ../../outside/secret.txt
+fs: symlink storage/notebooks/link_dir_out ../../outside/dir
+fs: symlink storage/notebooks/link_in plain
+fs: symlink storage/notebooks/link_dir_in ../layouts
+call: StorageService/FetchFile
+request: 0a182f6e6f7465626f6f6b732f6c696e6b5f66696c655f6f7574
+# path: "/notebooks/link_file_out"
+status: OK
+message: 0a077365637265740a12206136333430346363646562376132623031663866316134666332336439323638
+# contents: "secret\n" etag: "a63404ccdeb7a2b01f8f1a4fc23d9268"
+
+== link_fetch_in
+call: StorageService/FetchFile
+request: 0a122f6e6f7465626f6f6b732f6c696e6b5f696e
+# path: "/notebooks/link_in"
+status: OK
+message: 12203030303030303030303030303030303030303030303030303030303030303030
+# etag: "00000000000000000000000000000000"
+
+== link_list_dir_out
+call: StorageService/ListItems
+request: 0a172f6e6f7465626f6f6b732f6c696e6b5f6469725f6f7574
+# path: "/notebooks/link_dir_out"
+status: OK
+message: 12172f6e6f7465626f6f6b732f6c696e6b5f6469725f6f7574
+# canonical_path: "/notebooks/link_dir_out"
+
+== link_list_dir_in
+call: StorageService/ListItems
+request: 0a162f6e6f7465626f6f6b732f6c696e6b5f6469725f696e
+# path: "/notebooks/link_dir_in"
+status: OK
+message: 12162f6e6f7465626f6f6b732f6c696e6b5f6469725f696e
+# canonical_path: "/notebooks/link_dir_in"
+
+== link_list_with_links
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: OK
+message: 0a380a122f6e6f7465626f6f6b732f6c696e6b5f696e1002222030303030303030303030303030303030303030303030303030303030303030300a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a140a102f6e6f7465626f6f6b732f736c61736810010a400a182f6e6f7465626f6f6b732f6c696e6b5f66696c655f6f75741002180e222061363334303463636465623761326230316638663161346663323364393236380a1b0a172f6e6f7465626f6f6b732f6c696e6b5f6469725f6f757410010a1a0a162f6e6f7465626f6f6b732f6c696e6b5f6469725f696e10010a360a102f6e6f7465626f6f6b732f706c61696e100222203030303030303030303030303030303030303030303030303030303030303030120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/link_in" type: FILE etag: "00000000000000000000000000000000" } items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/link_file_out" type: FILE size: 7 etag: "a63404ccdeb7a2b01f8f1a4fc23d9268" } items { path: "/notebooks/link_dir_out" type: DIRECTORY } items { path: "/notebooks/link_dir_in" type: DIRECTORY } items { path: "/notebooks/plain" type: FILE etag: "00000000000000000000000000000000" } canonical_path: "/notebooks"
+
+== link_save_through_dir_out
+call: StorageService/SaveFile
+request: 12232f6e6f7465626f6f6b732f6c696e6b5f6469725f6f75742f706c616e7465642e7478741a07706c616e746564
+# path: "/notebooks/link_dir_out/planted.txt" contents: "planted"
+status: OK
+message: 0a203061323764373462326164666563623436616464623530666531313666663334
+# etag: "0a27d74b2adfecb46addb50fe116ff34"
+
+== link_save_onto_file_out
+call: StorageService/SaveFile
+request: 080112182f6e6f7465626f6f6b732f6c696e6b5f66696c655f6f75741a0c6f7665727772697474656e0a
+# allow_overwrite: true path: "/notebooks/link_file_out" contents: "overwritten\n"
+status: OK
+message: 0a206462313634326264313739333165333436333435326634396632623464373436
+# etag: "db1642bd17931e3463452f49f2b4d746"
+
+== link_save_onto_file_out_no_overwrite
+call: StorageService/SaveFile
+request: 12182f6e6f7465626f6f6b732f6c696e6b5f66696c655f6f75741a0178
+# path: "/notebooks/link_file_out" contents: "x"
+status: FAILED_PRECONDITION: File already exists
+
+== link_save_through_dir_in
+call: StorageService/SaveFile
+request: 121e2f6e6f7465626f6f6b732f6c696e6b5f6469725f696e2f696e2e6a736f6e1a027b7d
+# path: "/notebooks/link_dir_in/in.json" contents: "{}"
+status: OK
+message: 0a206432633235313738303532303665343662653137363639393738326138383230
+# etag: "d2c2517805206e46be176699782a8820"
+
+== link_mkdir_through_dir_out
+call: StorageService/CreateDirectory
+request: 0a1c2f6e6f7465626f6f6b732f6c696e6b5f6469725f6f75742f6d616465
+# path: "/notebooks/link_dir_out/made"
+status: OK
+message: 
+# 
+
+== link_move_into_dir_out
+call: StorageService/MoveItem
+request: 0a0f2f6e6f7465626f6f6b732f612e7079121c2f6e6f7465626f6f6b732f6c696e6b5f6469725f6f75742f612e7079
+# old_path: "/notebooks/a.py" new_path: "/notebooks/link_dir_out/a.py"
+status: FAILED_PRECONDITION: File does not exist, cannot rename
+
+== link_move_out_of_dir_out
+call: StorageService/MoveItem
+request: 0a232f6e6f7465626f6f6b732f6c696e6b5f6469725f6f75742f706c616e7465642e74787412142f6e6f7465626f6f6b732f74616b656e2e747874
+# old_path: "/notebooks/link_dir_out/planted.txt" new_path: "/notebooks/taken.txt"
+status: OK
+message: 
+# 
+
+== link_delete_through_dir_out
+call: StorageService/DeleteItem
+request: 0a1c2f6e6f7465626f6f6b732f6c696e6b5f6469725f6f75742f6d616465
+# path: "/notebooks/link_dir_out/made"
+status: OK
+message: 
+# 
+
+== link_delete_file_link
+call: StorageService/DeleteItem
+request: 0a182f6e6f7465626f6f6b732f6c696e6b5f66696c655f6f7574
+# path: "/notebooks/link_file_out"
+status: OK
+message: 
+# 
+
+== link_move_dir_link
+call: StorageService/MoveItem
+request: 0a172f6e6f7465626f6f6b732f6c696e6b5f6469725f6f757412172f6e6f7465626f6f6b732f6c696e6b5f72656e616d6564
+# old_path: "/notebooks/link_dir_out" new_path: "/notebooks/link_renamed"
+status: OK
+message: 
+# 
+
+== link_delete_dir_link
+call: StorageService/DeleteItem
+request: 0a172f6e6f7465626f6f6b732f6c696e6b5f72656e616d6564
+# path: "/notebooks/link_renamed"
+status: OK
+message: 
+# 
+
+== link_fetch_dangling
+fs: symlink storage/notebooks/dangling nowhere
+call: StorageService/FetchFile
+request: 0a132f6e6f7465626f6f6b732f64616e676c696e67
+# path: "/notebooks/dangling"
+status: FAILED_PRECONDITION: File does not exist
+
+== link_list_with_dangling
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: FAILED_PRECONDITION: Directory does not exist
+
+== link_save_onto_dangling
+call: StorageService/SaveFile
+request: 12132f6e6f7465626f6f6b732f64616e676c696e671a0178
+# path: "/notebooks/dangling" contents: "x"
+status: FAILED_PRECONDITION: File already exists
+
+== link_save_onto_dangling_overwrite
+call: StorageService/SaveFile
+request: 080112132f6e6f7465626f6f6b732f64616e676c696e671a0178
+# allow_overwrite: true path: "/notebooks/dangling" contents: "x"
+status: OK
+message: 0a206537666531616261303165383136366438633738616536623936366465646437
+# etag: "e7fe1aba01e8166d8c78ae6b966dedd7"
+
+== link_delete_dangling
+call: StorageService/DeleteItem
+request: 0a132f6e6f7465626f6f6b732f64616e676c696e67
+# path: "/notebooks/dangling"
+status: OK
+message: 
+# 
+
+== link_delete_dangling_target
+call: StorageService/DeleteItem
+request: 0a122f6e6f7465626f6f6b732f6e6f7768657265
+# path: "/notebooks/nowhere"
+status: OK
+message: 
+# 
+
+== list_at_end
+call: StorageService/ListItems
+request: 0a0a2f6e6f7465626f6f6b73
+# path: "/notebooks"
+status: OK
+message: 0a380a122f6e6f7465626f6f6b732f6c696e6b5f696e1002222030303030303030303030303030303030303030303030303030303030303030300a3f0a172f6e6f7465626f6f6b732f636166c3a920e298832e707910021814222066376233383461356239306239383138373632343437383936336632353863350a140a102f6e6f7465626f6f6b732f736c61736810010a3c0a142f6e6f7465626f6f6b732f74616b656e2e7478741002180e222030613237643734623261646665636234366164646235306665313136666633340a1a0a162f6e6f7465626f6f6b732f6c696e6b5f6469725f696e10010a360a102f6e6f7465626f6f6b732f706c61696e100222203030303030303030303030303030303030303030303030303030303030303030120a2f6e6f7465626f6f6b73
+# items { path: "/notebooks/link_in" type: FILE etag: "00000000000000000000000000000000" } items { path: "/notebooks/café ☃.py" type: FILE size: 10 etag: "f7b384a5b90b98187624478963f258c5" } items { path: "/notebooks/slash" type: DIRECTORY } items { path: "/notebooks/taken.txt" type: FILE size: 7 etag: "0a27d74b2adfecb46addb50fe116ff34" } items { path: "/notebooks/link_dir_in" type: DIRECTORY } items { path: "/notebooks/plain" type: FILE etag: "00000000000000000000000000000000" } canonical_path: "/notebooks"
+
+== list_layouts_at_end
+call: StorageService/ListItems
+request: 0a082f6c61796f757473
+# path: "/layouts"
+status: OK
+message: 0a380a102f6c61796f7574732f696e2e6a736f6e100218042220643263323531373830353230366534366265313736363939373832613838323012082f6c61796f757473
+# items { path: "/layouts/in.json" type: FILE size: 2 etag: "d2c2517805206e46be176699782a8820" } canonical_path: "/layouts"
+
+== unauthenticated_list
+call: StorageService/ListItems
+auth: none
+request: 0a012f
+# path: "/"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_fetch
+call: StorageService/FetchFile
+auth: none
+request: 0a102f6e6f7465626f6f6b732f706c61696e
+# path: "/notebooks/plain"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_save
+call: StorageService/SaveFile
+auth: none
+request: 120c2f6e6f7465626f6f6b732f751a0178
+# path: "/notebooks/u" contents: "x"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_move
+call: StorageService/MoveItem
+auth: none
+request: 0a102f6e6f7465626f6f6b732f706c61696e120c2f6e6f7465626f6f6b732f75
+# old_path: "/notebooks/plain" new_path: "/notebooks/u"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_mkdir
+call: StorageService/CreateDirectory
+auth: none
+request: 0a0c2f6e6f7465626f6f6b732f75
+# path: "/notebooks/u"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_delete
+call: StorageService/DeleteItem
+auth: none
+request: 0a102f6e6f7465626f6f6b732f706c61696e
+# path: "/notebooks/plain"
+status: UNAUTHENTICATED: 
+
+== unauthenticated_escape
+call: StorageService/FetchFile
+auth: none
+request: 0a162f2e2e2f6f7574736964652f7365637265742e747874
+# path: "/../outside/secret.txt"
+status: UNAUTHENTICATED: 
+

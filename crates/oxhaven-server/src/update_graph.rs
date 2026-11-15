@@ -93,6 +93,15 @@ impl PeriodicUpdateGraph {
     pub fn completed_cycles(&self) -> u64 {
         lock(&self.driver.schedule).completed
     }
+
+    /// The graph whose cycles the driver thread runs, for what the `UpdateGraph` trait
+    /// does not have: holds of its lock that are not closures
+    /// (`SteppedUpdateGraph::acquire_shared`, `acquire_exclusive`) and waits for a cycle
+    /// that are not requests for one (`SteppedUpdateGraph::waiting_for_cycle`). Its
+    /// `run_cycle` must not be called: cycles are the driver thread's.
+    pub fn stepped(&self) -> &SteppedUpdateGraph {
+        &self.graph
+    }
 }
 
 impl Drop for PeriodicUpdateGraph {
