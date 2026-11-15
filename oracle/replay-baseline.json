@@ -129,7 +129,7 @@
   "time_table schema and refreshing flag": {"state": "clean"}
  },
  "replay-scripts": {
-  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "seeded"], "why": "the engine lacks the initial groups of QueryTable#aggBy"},
+  "agg_by": {"state": "clean"},
   "agg_dedicated": {"state": "clean"},
   "convert_arrow": {"state": "clean"},
   "convert_arrow_errors": {"state": "clean"},
@@ -159,7 +159,7 @@
   "input_ring_and_generated": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "generated", "ring"], "why": "the engine has no ring table and no function generated table (RingTableTools#of, FunctionGeneratedTableFactory#create)"},
   "input_writer": {"state": "clean"},
   "join_cross_and_asof": {"state": "clean"},
-  "join_multi": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "transposed"], "why": "the engine lacks KeyedTranspose#keyedTranspose"},
+  "join_multi": {"state": "clean"},
   "join_natural": {"state": "clean"},
   "join_range": {"state": "clean"},
   "listen_counts": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.table_listener is not written yet (task 6.12)"},
