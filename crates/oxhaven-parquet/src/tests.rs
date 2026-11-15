@@ -107,14 +107,25 @@ fn assert_java_types(table: &QueryTable) {
         ("S", String),
         ("T", Instant),
     ];
-    let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
     assert_eq!(columns(table), expected);
     assert_eq!(*table.row_set(), RowSet::flat(7));
     let cells = |name| cells(table, name);
-    assert_eq!(cells("B"), ["null", "false", "true", "null", "true", "false", "null"]);
+    assert_eq!(
+        cells("B"),
+        ["null", "false", "true", "null", "true", "false", "null"]
+    );
     assert_eq!(cells("Y"), ["-3", "null", "-1", "0", "1", "2", "3"]);
-    assert_eq!(cells("H"), ["-3000", "-2000", "null", "0", "1000", "2000", "3000"]);
-    let ints = ["-300000", "-200000", "-100000", "null", "100000", "200000", "300000"];
+    assert_eq!(
+        cells("H"),
+        ["-3000", "-2000", "null", "0", "1000", "2000", "3000"]
+    );
+    let ints = [
+        "-300000", "-200000", "-100000", "null", "100000", "200000", "300000",
+    ];
     assert_eq!(cells("I"), ints);
     let longs = [
         "-30000000000",
@@ -127,8 +138,14 @@ fn assert_java_types(table: &QueryTable) {
     ];
     assert_eq!(cells("L"), longs);
     assert_eq!(cells("C"), ["97", "98", "99", "100", "101", "null", "103"]);
-    assert_eq!(cells("F"), ["-1.0", "-0.5", "0.0", "0.5", "1.0", "1.5", "null"]);
-    assert_eq!(cells("D"), ["null", "NaN", "-0.5", "-0.25", "0.0", "0.25", "0.5"]);
+    assert_eq!(
+        cells("F"),
+        ["-1.0", "-0.5", "0.0", "0.5", "1.0", "1.5", "null"]
+    );
+    assert_eq!(
+        cells("D"),
+        ["null", "NaN", "-0.5", "-0.25", "0.0", "0.25", "0.5"]
+    );
     assert_eq!(cells("S"), ["s0", "s1", "null", "", "s4", "s5", "s6"]);
     // 2024-01-01T00:00:00Z and a second and a nanosecond more per row
     let start = 1_704_067_200_000_000_000_i64;
@@ -190,7 +207,10 @@ fn vectors_and_arrays_are_told_apart_by_the_deephaven_footer_entry() {
         ("A", ColumnType::array(Int)),
         ("E", ColumnType::array(String)),
     ];
-    let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
     assert_eq!(columns(&table), expected);
     assert_eq!(cells(&table, "K"), ["0", "1"]);
     assert_eq!(cells(&table, "V"), ["[0, 2, 4]", "[1, 3]"]);
@@ -219,21 +239,46 @@ fn a_file_of_another_writer_reads_as_java_reads_it() {
         ("Flag", Boolean),
         ("Ints", ColumnType::array(Int)),
     ];
-    let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
     assert_eq!(columns(&table), expected);
     let cells = |name| cells(&table, name);
     // 255 is a char like any other; 65535 is Java's null char
     assert_eq!(cells("U8"), ["0", "255", "null", "7", "8", "9", "10"]);
     assert_eq!(cells("U16"), ["0", "null", "null", "7", "65534", "9", "10"]);
-    assert_eq!(cells("U32"), ["0", "4294967295", "null", "7", "8", "9", "10"]);
+    assert_eq!(
+        cells("U32"),
+        ["0", "4294967295", "null", "7", "8", "9", "10"]
+    );
     // the least value of each signed type is Java's null of it
-    assert_eq!(cells("I32"), ["null", "1", "null", "2147483647", "8", "9", "10"]);
+    assert_eq!(
+        cells("I32"),
+        ["null", "1", "null", "2147483647", "8", "9", "10"]
+    );
     let longs = ["null", "1", "null", "9223372036854775807", "8", "9", "10"];
     assert_eq!(cells("I64"), longs);
     assert_eq!(cells("I8"), ["null", "127", "null", "7", "8", "9", "10"]);
-    let milliseconds = ["0", "1700000000123000000", "null", "-1000000", "8000000", "9000000", "10000000"];
+    let milliseconds = [
+        "0",
+        "1700000000123000000",
+        "null",
+        "-1000000",
+        "8000000",
+        "9000000",
+        "10000000",
+    ];
     assert_eq!(cells("Ms"), milliseconds);
-    let microseconds = ["0", "1700000000123456000", "null", "-1000", "8000", "9000", "10000"];
+    let microseconds = [
+        "0",
+        "1700000000123456000",
+        "null",
+        "-1000",
+        "8000",
+        "9000",
+        "10000",
+    ];
     assert_eq!(cells("Us"), microseconds);
     let nanoseconds = ["0", "1700000000123456789", "null", "-1", "8", "9", "10"];
     assert_eq!(cells("Ns"), nanoseconds);
@@ -249,8 +294,15 @@ fn a_file_of_another_writer_reads_as_java_reads_it() {
 fn rows_are_read_across_row_groups() {
     // three row groups, of 3, 3 and 1 rows
     let table = read_default("foreign.parquet").unwrap();
-    let rows = RowSet::from_ranges([RowRange::new(1, 1), RowRange::new(2, 4), RowRange::new(6, 6)]);
-    assert_eq!(cells_of(&table, "U8", &rows), ["255", "null", "7", "8", "10"]);
+    let rows = RowSet::from_ranges([
+        RowRange::new(1, 1),
+        RowRange::new(2, 4),
+        RowRange::new(6, 6),
+    ]);
+    assert_eq!(
+        cells_of(&table, "U8", &rows),
+        ["255", "null", "7", "8", "10"]
+    );
     assert_eq!(cells_of(&table, "Str", &rows), ["", "null", "δ", "e", "g"]);
     let last_group = RowSet::from_range(6, 6);
     assert_eq!(cells_of(&table, "Ints", &last_group), ["[6]"]);
@@ -303,7 +355,10 @@ fn the_last_file_decides_the_columns_and_a_missing_column_is_null() {
     use ColumnType::*;
     let table = read_default("evolve").unwrap();
     let expected = [("Y", String), ("X", Int), ("Z", Double)];
-    let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
     assert_eq!(columns(&table), expected);
     assert_eq!(cells(&table, "Y"), ["null", "null", "p", "q"]);
     assert_eq!(cells(&table, "X"), ["1", "2", "3", "4"]);
@@ -316,7 +371,10 @@ fn a_file_whose_column_has_another_type_than_the_table_is_refused() {
     // "Cannot convert parquet DOUBLE column to int"
     let (java, what) = not_ported(read_default("mismatch"));
     assert!(java.ends_with("ParquetColumnLocation#makeToPage"));
-    assert!(what.contains("column X is Double in this file and Int in the table"), "{what}");
+    assert!(
+        what.contains("column X is Double in this file and Int in the table"),
+        "{what}"
+    );
 }
 
 #[test]
@@ -343,8 +401,14 @@ fn types_without_a_column_type_are_refused_by_their_java_type() {
     ];
     for (name, java_type) in files {
         let (java, what) = not_ported(read_default(name));
-        assert!(java.ends_with("ParquetSchemaReader#readParquetSchema"), "{name}");
-        assert!(what.starts_with("column V") && what.ends_with(java_type), "{what}");
+        assert!(
+            java.ends_with("ParquetSchemaReader#readParquetSchema"),
+            "{name}"
+        );
+        assert!(
+            what.starts_with("column V") && what.ends_with(java_type),
+            "{what}"
+        );
     }
     let legacy = ReadOptions {
         legacy: true,
@@ -389,7 +453,11 @@ fn an_unsigned_long_is_read_as_the_instruction_says() {
     let text = "the unsigned value 9223372036854775808 does not fit a long";
     assert!(error.message.ends_with(text), "{}", error.message);
 
-    let small = read(&data("no_uint64.parquet"), &target(UnsignedLongTarget::Long)).unwrap();
+    let small = read(
+        &data("no_uint64.parquet"),
+        &target(UnsignedLongTarget::Long),
+    )
+    .unwrap();
     assert_eq!(cells(&small, "V"), ["1", "null"]);
 }
 
@@ -476,9 +544,15 @@ fn what_is_missing_or_empty_is_an_error() {
     // a file that is not named as a Parquet file is a directory without files to Java
     let text = empty.join("notes.txt");
     std::fs::write(&text, "not parquet").unwrap();
-    assert_eq!(invalid(read(text.to_str().unwrap(), &ReadOptions::default())), no_files);
+    assert_eq!(
+        invalid(read(text.to_str().unwrap(), &ReadOptions::default())),
+        no_files
+    );
     // and the files of a key-value layout are not seen by the flat one
-    assert_eq!(invalid(read(&data("kv"), &with_layout(Layout::FlatPartitioned))), no_files);
+    assert_eq!(
+        invalid(read(&data("kv"), &with_layout(Layout::FlatPartitioned))),
+        no_files
+    );
 
     let garbage = empty.join("garbage.parquet");
     std::fs::write(&garbage, "not a parquet file at all").unwrap();
@@ -507,7 +581,10 @@ fn a_refreshing_table_is_refused() {
 fn layouts_that_are_not_ported_are_refused() {
     let (java, what) = not_ported(read_default("kv"));
     assert!(java.ends_with("ParquetKeyValuePartitionedLayout#findKeys"));
-    assert!(what.contains("K=1/a.parquet") || what.contains("K=2/a.parquet"), "{what}");
+    assert!(
+        what.contains("K=1/a.parquet") || what.contains("K=2/a.parquet"),
+        "{what}"
+    );
 
     for path in [data("meta"), data("meta/_metadata")] {
         let (java, _) = not_ported(read(&path, &ReadOptions::default()));
@@ -519,10 +596,8 @@ fn layouts_that_are_not_ported_are_refused() {
 
 /// A new empty directory for one test.
 fn scratch(name: &str) -> std::path::PathBuf {
-    let directory = std::env::temp_dir().join(format!(
-        "oxhaven-parquet-{name}-{}",
-        std::process::id()
-    ));
+    let directory =
+        std::env::temp_dir().join(format!("oxhaven-parquet-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&directory);
     std::fs::create_dir_all(&directory).unwrap();
     directory

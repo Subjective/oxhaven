@@ -65,9 +65,8 @@ impl ParquetLocation {
         path: &Path,
         options: &ReadOptions,
     ) -> Result<(ArrowReaderMetadata, Vec<FileColumn>), ReadError> {
-        let problem = |error: &dyn std::fmt::Display| {
-            ReadError::Io(format!("{}: {error}", path.display()))
-        };
+        let problem =
+            |error: &dyn std::fmt::Display| ReadError::Io(format!("{}: {error}", path.display()));
         let file = File::open(path).map_err(|error| problem(&error))?;
         // the types come from the Parquet schema, as in Java, not from an Arrow schema
         // the writer may have left in the footer
@@ -171,7 +170,10 @@ impl ParquetLocation {
         for wanted in definition.columns() {
             let position = found.iter().position(|column| column.name == wanted.name);
             let column = position.map(|position| found.swap_remove(position));
-            if let Some(column) = column.as_ref().filter(|c| c.column_type != wanted.column_type) {
+            if let Some(column) = column
+                .as_ref()
+                .filter(|c| c.column_type != wanted.column_type)
+            {
                 return Err(not_ported(
                     "io.deephaven.parquet.table.location.ParquetColumnLocation#makeToPage",
                     format_args!(
@@ -196,12 +198,13 @@ impl ParquetLocation {
         let file = File::open(&self.path).map_err(|error| problem(&error))?;
         let rows = (self.group_rows[group + 1] - self.group_rows[group]) as usize;
         let projection = ProjectionMask::roots(self.metadata.parquet_schema(), [column.root]);
-        let reader = ParquetRecordBatchReaderBuilder::new_with_metadata(file, self.metadata.clone())
-            .with_projection(projection)
-            .with_row_groups(vec![group])
-            .with_batch_size(rows.max(1))
-            .build()
-            .map_err(|error| problem(&error))?;
+        let reader =
+            ParquetRecordBatchReaderBuilder::new_with_metadata(file, self.metadata.clone())
+                .with_projection(projection)
+                .with_row_groups(vec![group])
+                .with_batch_size(rows.max(1))
+                .build()
+                .map_err(|error| problem(&error))?;
         let mut batches = Vec::new();
         for batch in reader {
             let batch = batch.map_err(|error| problem(&error))?;
@@ -227,7 +230,12 @@ impl ParquetLocation {
     }
 
     /// The values of row group `group` of the table column `column`, decoded once.
-    fn group(&self, group: usize, column: usize, source: &FileColumn) -> Result<ArrayRef, TableFailure> {
+    fn group(
+        &self,
+        group: usize,
+        column: usize,
+        source: &FileColumn,
+    ) -> Result<ArrayRef, TableFailure> {
         let cell = &self.decoded[group * self.columns.len() + column];
         // held while decoding, so that two readers of one cell decode it once
         let mut cell = cell.lock().unwrap_or_else(PoisonError::into_inner);
@@ -266,7 +274,12 @@ fn to_column_type(
         };
         let elements = to_column_type(list.values().clone(), element, unsigned_long)?;
         let field = Arc::new(Field::new("", element.arrow_type(), true));
-        let list = ListArray::try_new(field, list.offsets().clone(), elements, list.nulls().cloned());
+        let list = ListArray::try_new(
+            field,
+            list.offsets().clone(),
+            elements,
+            list.nulls().cloned(),
+        );
         return Ok(Arc::new(list.map_err(|error| error.to_string())?));
     }
     let target = column_type.arrow_type();

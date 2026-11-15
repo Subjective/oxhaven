@@ -298,7 +298,10 @@ pub(crate) fn columns(
                 // Java reads the one leaf of the struct as the column
                 return Err(not_ported(
                     READ_SCHEMA,
-                    format_args!("column {name}, a struct with the one field {}", path[1..].join("/")),
+                    format_args!(
+                        "column {name}, a struct with the one field {}",
+                        path[1..].join("/")
+                    ),
                 ));
             }
             (_, false) => values,
@@ -365,7 +368,10 @@ mod tests {
             ("Choice", String),
             ("Plain", Double),
         ];
-        let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+        let expected: Vec<_> = expected
+            .into_iter()
+            .map(|(n, t)| (n.to_string(), t))
+            .collect();
         assert_eq!(types(old).unwrap(), expected);
         // the descriptors really have no logical type, so the converted type was used
         assert!(schema(old).column(0).logical_type_ref().is_none());
@@ -375,7 +381,10 @@ mod tests {
             ("int32 V (TIME_MILLIS)", "java.time.LocalTime"),
             ("int64 V (UINT_64)", "java.math.BigInteger"),
             ("int32 V (DECIMAL(9,2))", "java.math.BigDecimal"),
-            ("fixed_len_byte_array(1) V (DECIMAL(1,0))", "java.math.BigInteger"),
+            (
+                "fixed_len_byte_array(1) V (DECIMAL(1,0))",
+                "java.math.BigInteger",
+            ),
         ] {
             let refused = types(&format!("message m {{ optional {declared}; }}"));
             let Err(ReadError::NotPorted { what, .. }) = refused else {
@@ -390,7 +399,10 @@ mod tests {
         for (declared, reason) in [
             ("binary V (JSON)", "JsonLogicalType not supported"),
             ("binary V (BSON)", "BsonLogicalType not supported"),
-            ("fixed_len_byte_array(16) V (UUID)", "UUIDLogicalType not supported"),
+            (
+                "fixed_len_byte_array(16) V (UUID)",
+                "UUIDLogicalType not supported",
+            ),
             (
                 "fixed_len_byte_array(2) V (FLOAT16)",
                 "no mappable logical type annotation found",
@@ -415,7 +427,10 @@ mod tests {
             ("Two", ColumnType::array(String)),
             ("One", ColumnType::array(Double)),
         ];
-        let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+        let expected: Vec<_> = expected
+            .into_iter()
+            .map(|(n, t)| (n.to_string(), t))
+            .collect();
         assert_eq!(types(lists).unwrap(), expected);
     }
 
@@ -429,7 +444,8 @@ mod tests {
             let entry = deephaven(json);
             columns(&schema(message), Some(&entry), &ReadOptions::default())
         };
-        let vector = r#"{"version":"42.9","columnTypes":[{"columnName":"V","specialType":"Vector"}]}"#;
+        let vector =
+            r#"{"version":"42.9","columnTypes":[{"columnName":"V","specialType":"Vector"}]}"#;
         let columns = read(vector).unwrap();
         assert_eq!(columns[0].column_type, ColumnType::vector(ColumnType::Int));
         assert_eq!(columns[1].column_type, ColumnType::String);
@@ -451,7 +467,9 @@ mod tests {
         assert!(java.ends_with("ToObjectPage#create"));
         assert!(what.contains("java.math.BigDecimal"), "{what}");
 
-        let malformed = Err(ReadError::Invalid("Failed to parse deephaven metadata".to_string()));
+        let malformed = Err(ReadError::Invalid(
+            "Failed to parse deephaven metadata".to_string(),
+        ));
         assert_eq!(read("{not json"), malformed);
     }
 
@@ -473,6 +491,9 @@ mod tests {
         let columns = columns(&schema(message), Some(&entry), &options).unwrap();
         assert_eq!(columns[0].name, "V");
         assert_eq!(columns[0].column_type, ColumnType::vector(ColumnType::Long));
-        assert_eq!(columns[0].unsigned_long, Some(UnsignedLongTarget::SignedLong));
+        assert_eq!(
+            columns[0].unsigned_long,
+            Some(UnsignedLongTarget::SignedLong)
+        );
     }
 }

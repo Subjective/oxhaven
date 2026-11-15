@@ -203,7 +203,9 @@ fn a_row_key_outside_every_location_is_a_failure() {
     let source = table.column(0);
     let beyond_location = source.chunk(&RowSet::from_range(2, 3)).unwrap_err();
     assert!(beyond_location.message.contains("outside a"));
-    let beyond_regions = source.chunk(&RowSet::from_range(REGION, REGION)).unwrap_err();
+    let beyond_regions = source
+        .chunk(&RowSet::from_range(REGION, REGION))
+        .unwrap_err();
     assert!(beyond_regions.message.contains("in no location"));
 }
 

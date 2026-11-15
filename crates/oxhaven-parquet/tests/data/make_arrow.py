@@ -68,6 +68,9 @@ for name, values in {
 write({"a b": pa.array([1], pa.int32()), "2x": pa.array([2], pa.int32()), "ok": pa.array([3], pa.int32())},
       "names.parquet")
 
+# ... and one that is a reserved word, which Deephaven reads as column_int.
+write({"int": pa.array([1], pa.int32()), "ok": pa.array([2], pa.int32())}, "reserved.parquet")
+
 # The codecs.
 small = {"X": pa.array(list(range(20)), pa.int32()), "S": pa.array([f"s{i % 3}" for i in range(20)])}
 for codec in ("SNAPPY", "ZSTD", "BROTLI", "GZIP", "LZ4"):
