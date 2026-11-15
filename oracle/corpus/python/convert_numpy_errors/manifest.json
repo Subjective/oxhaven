@@ -1,0 +1,68 @@
+{
+  "format": 2,
+  "scenario": "convert_numpy_errors",
+  "scenario_sha256": "d08508b9725d67336904bae1ca4ff08ef5b96559be1fd9507a1ecf24b7f18d6a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "kept",
+      "file": "step001.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "kept",
+      "file": "step002.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "kept",
+      "file": "step003.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "kept",
+      "file": "step004.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "kept",
+      "file": "step005.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "kept",
+      "file": "step006.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "kept",
+      "file": "step007.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "kept",
+      "file": "step008.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "kept",
+      "file": "step009.kept.arrow",
+      "rows": 2
+    }
+  ]
+}

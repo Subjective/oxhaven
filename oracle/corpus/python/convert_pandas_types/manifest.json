@@ -1,0 +1,92 @@
+{
+  "format": 2,
+  "scenario": "convert_pandas_types",
+  "scenario_sha256": "57d6a44a1b6c65993bddc55e7e29bbffc1ff3cc1a2316e82c0feecbae065cd61",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "nullable",
+      "file": "step000.nullable.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "arrow_backed",
+      "file": "step000.arrow_backed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "numpy_backed",
+      "file": "step000.numpy_backed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "numpy_raw",
+      "file": "step000.numpy_raw.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "some",
+      "file": "step000.some.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "typed",
+      "file": "step000.typed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "inferred",
+      "file": "step000.inferred.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "kept_objects",
+      "file": "step000.kept_objects.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "times",
+      "file": "step000.times.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "categories",
+      "file": "step000.categories.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "arrow_typed",
+      "file": "step000.arrow_typed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "chosen",
+      "file": "step000.chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ticked",
+      "file": "step000.ticked.arrow",
+      "rows": 0
+    }
+  ]
+}

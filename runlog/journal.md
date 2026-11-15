@@ -666,3 +666,14 @@ the interpreter's own thread, which is where the lock is held.
 The console agent saw 1.6 GB free while six agents had build directories and replay runs
 alive (each about 3 to 4 GB of target plus a venv). Nothing failed. Rule from here: at most
 four agents that build at once, and none started below 12 GB free.
+
+## 2026-11-15 20:28 UTC: Repository made public by the owner
+
+The owner made Subjective/oxhaven public so that standard runners are free (he had asked
+what more Actions minutes would cost; estimate given: about 4,000 to 5,000 minutes used,
+2,500 to 4,000 to finish). Checked: no secret patterns in the tree or in history; commit
+addresses are GitHub and vendor noreply addresses; workflows use `pull_request`, no secrets,
+hosted runners only. PR 84 makes the workflow token read-only. Raised with the owner: the
+repository has no LICENSE file, and it holds a `deephaven` Python package written to match
+a reference that is under the Deephaven Community License (docs/CONSOLE.md records that
+nothing was copied).

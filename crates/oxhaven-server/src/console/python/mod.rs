@@ -18,6 +18,7 @@
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod data;
 pub mod env;
 mod ops;
 mod parquet;
@@ -374,6 +375,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         ops::register(&native)?;
+        data::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
