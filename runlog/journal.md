@@ -488,3 +488,15 @@ are made under the Claude identity, and squash merges use GitHub's default messa
 shows the owner and Claude as co-authors. The repo-local identity override is removed.
 Commits between 04:33 and 04:37 (run-log entries and the squash of PR 61) were made under
 the owner's identity and stay as they are. No history rewrite.
+
+## 2026-11-15 06:05 UTC
+
+PRs 61 to 64 merged; main is at 74 of 83 scenarios. The `rust` job now takes about 6.5
+minutes (was 13 to 16).
+Architecture decision for the console (PR 65, for owner review): CPython embedded in the
+server through PyO3 behind cargo feature `python`; Oxhaven's own `deephaven` package with
+the reference's names and signatures (nothing copied; the reference package is under the
+Deephaven Community License); table methods go through the existing table-service
+handlers; scope is the interpreter's globals. A slice works end to end in the IDE and
+with pydeephaven `run_script`. Task files 6.2 to 6.18 and 7.1 to 7.11 written. Largest
+risk: Python functions in query strings (GIL versus update cycles).
