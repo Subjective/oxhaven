@@ -471,3 +471,7 @@ commits to the owner and add the Claude co-author trailer where missing; keep co
 order, dates, messages and content. It needs a force push of main, so it waits for the
 owner's explicit confirmation at that time and for no branches to be open.
 Launched: console and Python session design spike (6.1), second parity fixes (4.15).
+History rewrite task, added steps: push a backup branch of the old main first; after the
+rewrite verify that the final tree hash, and the tree of every commit in order, equal the
+originals before force pushing; keep the backup branch until the owner says to drop it.
+Merged pull requests cannot be changed by this: their pages keep the original commits.
