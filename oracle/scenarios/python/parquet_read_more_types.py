@@ -1,5 +1,6 @@
 # Parquet types that Deephaven reads as BigDecimal, LocalDate, LocalTime, LocalDateTime,
 # BigInteger and byte[], and a struct with one field, which it reads as that field.
+# The harness compares none of those but LocalDateTime, so the others are compared as text.
 # oracle: results decimal, date, time, local_timestamp, uint64, binary, struct
 import base64
 import os
@@ -77,16 +78,19 @@ for name, data in FILES.items():
 
 from deephaven.parquet import read
 
-decimal = read(root + "/no_decimal.parquet")
+decimal = read(root + "/no_decimal.parquet").view(["Text = isNull(V) ? null : V.toString()"])
 # oracle: step
-date = read(root + "/no_date.parquet")
+date = read(root + "/no_date.parquet").view(["Text = isNull(V) ? null : V.toString()"])
 # oracle: step
-time = read(root + "/no_time.parquet")
+time = read(root + "/no_time.parquet").view(["Text = isNull(V) ? null : V.toString()"])
 # oracle: step
 local_timestamp = read(root + "/no_local_timestamp.parquet")
 # oracle: step
-uint64 = read(root + "/no_uint64.parquet")
+uint64 = read(root + "/no_uint64.parquet").view(["Text = isNull(V) ? null : V.toString()"])
 # oracle: step
-binary = read(root + "/no_binary.parquet")
+binary = read(root + "/no_binary.parquet").view([
+    "Text = isNull(V) ? null : new String(V)",
+    "Size = isNull(V) ? NULL_INT : V.length",
+])
 # oracle: step
 struct = read(root + "/no_struct.parquet")

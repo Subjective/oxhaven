@@ -85,7 +85,9 @@ for name, data in FILES.items():
 
 from deephaven.parquet import read
 
-java_snappy = read(root + "/types_snappy.parquet")
+# the harness does not compare a char column, so C is compared as its code
+java_snappy = read(root + "/types_snappy.parquet").view(
+    ["B", "Y", "H", "I", "L", "Code = (int)C", "F", "D", "S", "T"])
 # oracle: step
 snappy = read(root + "/codec_snappy.parquet")
 # oracle: step

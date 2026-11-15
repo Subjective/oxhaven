@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "parquet_read_codecs",
-  "scenario_sha256": "bfcd4c3123d78c64ea5568400de4f1b3c52c6cac3e5284ac59516b5da6c234c5",
+  "scenario_sha256": "20d33980861e59a352a8832f3b52c004e695ce500d19b6b2744c30b3e4d92ebf",
   "reference": "42.9",
   "entries": [
     {
