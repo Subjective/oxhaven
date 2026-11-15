@@ -27,6 +27,17 @@ The rules, in the order they are applied to one result of one step:
    columns these are from the scenario's operations.
 6. A column of a type the rules do not know is reported as `unsupported_type`, never passed.
 
+A script scenario (`scripts.py`) adds one rule, applied to the script of each step before the
+results of that step are compared:
+
+7. Script outcome (Must match, item 7; A5). If the reference's script failed, the other side's
+   must fail too, with the same Python exception type, and for a `DHError` the same message
+   before the cause (`table update operation failed.`). The cause, the traceback and the text
+   of any other exception are not compared. A script that fails because the server's
+   `deephaven` package lacks a name the script uses is `missing` (`missing_name`), unless the
+   reference failed with that same exception type; the comparison of the scenario ends at
+   that step.
+
 Not decided by PARITY.md, and therefore treated as exact here: a formula with `+ - * / %` over
 a computed column. PARITY.md says such a formula is one correctly rounded operation, which
 holds only for identical operands. Scenarios should not compute on computed columns.
@@ -42,7 +53,7 @@ from typing import Any, Iterable, Mapping
 import pyarrow as pa
 import pyarrow.types as pat
 
-from .results import Failure, ResultSet
+from .results import Failure, ResultSet, ScriptError
 
 
 @dataclass(frozen=True)
@@ -131,6 +142,13 @@ ROW_COUNT = "row_count"
 VALUE = "value"
 UNSUPPORTED_TYPE = "unsupported_type"
 TRUNCATED = "truncated"  # more cell mismatches than `max_value_mismatches_per_table`
+# The kinds of a script outcome (rule 7). Their `table` is `SCRIPT`.
+SCRIPT_FAILURE_EXPECTED = "script_failure_expected"  # the reference's script failed
+SCRIPT_FAILURE_UNEXPECTED = "script_failure_unexpected"  # only the actual side's failed
+SCRIPT_ERROR_TYPE = "script_error_type"  # both failed, with different exception types
+SCRIPT_ERROR_MESSAGE = "script_error_message"  # both raised DHError, for different operations
+MISSING = "missing"  # the script uses a name of the deephaven package that the server lacks
+SCRIPT = "(script)"
 
 EXACT = "exact"
 FLOAT = "float"
@@ -550,6 +568,66 @@ def compare(
             out.append(Mismatch(scenario, table, step, EXTRA_TABLE, expected="absent",
                                 actual="present"))
     return out
+
+
+# What Python says when a name is not there. The module or class must be one of the
+# `deephaven` package, or the object one of a class that is not a builtin: a missing attribute
+# of `None` or of a list is a defect in the script or in the package, not an absent name.
+_MISSING_NAME = (
+    re.compile(r"^No module named 'deephaven[\w.]*'"),
+    re.compile(r"^cannot import name '\w+' from 'deephaven[\w.]*'"),
+    re.compile(r"^module 'deephaven[\w.]*' has no attribute '\w+'"),
+    re.compile(r"^(?:type object )?'(?P<owner>\w+)'(?: object)? has no attribute '\w+'"),
+    re.compile(r"^(?:\w+\.)*\w+\(\) got an unexpected keyword argument '\w+'"),
+)
+_MISSING_NAME_TYPES = ("ModuleNotFoundError", "ImportError", "AttributeError", "TypeError")
+_BUILTIN_OWNERS = frozenset({
+    "NoneType", "bool", "builtin_function_or_method", "bytes", "dict", "float", "function",
+    "generator", "int", "list", "method", "module", "range", "set", "str", "tuple", "type",
+})
+
+
+def missing_name(error: ScriptError | None) -> bool:
+    """Whether a script failed because the server's `deephaven` package lacks a name.
+
+    Decided from the exception's type and the start of its own message, which Python words
+    the same way in every version the harness meets: the import of a module or of a name that
+    is not there, an attribute that a module or an object does not have, or a keyword
+    argument that a function does not take.
+    """
+    if error is None or error.type not in _MISSING_NAME_TYPES:
+        return False
+    for pattern in _MISSING_NAME:
+        found = pattern.match(error.text)
+        if found:
+            return found.groupdict().get("owner") not in _BUILTIN_OWNERS
+    return False
+
+
+def compare_script_outcome(scenario: str, step: int, expected: ScriptError | None,
+                           actual: ScriptError | None) -> list[Mismatch]:
+    """Rule 7 for the script of one step; `None` is a script that ran to its end."""
+
+    def mismatch(kind: str, want: Any, got: Any, note: str | None = None) -> list[Mismatch]:
+        return [Mismatch(scenario, SCRIPT, step, kind, expected=want, actual=got, note=note)]
+
+    def shown(error: ScriptError | None) -> str:
+        return "succeeds" if error is None else f"fails with {error.type}"
+
+    if actual is not None and missing_name(actual) and (
+            expected is None or expected.type != actual.type):
+        return mismatch(MISSING, shown(expected), f"{actual.type}: {actual.text}")
+    if expected is None and actual is None:
+        return []
+    if expected is None:
+        return mismatch(SCRIPT_FAILURE_UNEXPECTED, "succeeds", shown(actual), actual.text)
+    if actual is None:
+        return mismatch(SCRIPT_FAILURE_EXPECTED, shown(expected), "succeeds")
+    if expected.type != actual.type:
+        return mismatch(SCRIPT_ERROR_TYPE, expected.type, actual.type, actual.text)
+    if expected.operation != actual.operation:
+        return mismatch(SCRIPT_ERROR_MESSAGE, expected.operation, actual.operation)
+    return []
 
 
 def compare_scenario(scenario: Any, expected: ResultSet, actual: ResultSet,

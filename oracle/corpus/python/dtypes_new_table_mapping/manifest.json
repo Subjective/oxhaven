@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "dtypes_new_table_mapping",
+  "scenario_sha256": "8e0aa374ff57e7f586ff029e7ecd9934ef124d70c2e8e0c4d003fbbacb73f605",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "inferred",
+      "file": "step000.inferred.arrow",
+      "rows": 3
+    }
+  ]
+}

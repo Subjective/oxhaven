@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot find variable or class NoSuchColumn",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : Invalid expression I >",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table select operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [NoSuchColumn], available column names are [I]",
+      "operation": "table select operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "TypeError",
+      "text": "unsupported operand type(s) for /: 'Table' and 'int'"
+    }
+  ]
+}
