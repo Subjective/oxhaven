@@ -137,7 +137,14 @@ pub trait UpdateListener: Dependency {
 /// calls return once the change is visible in the table.
 pub trait InputTable: Send + Sync {
     /// Names of the key columns; empty for an append-only input table.
+    /// Port of `InputTableUpdater#getKeyNames`.
     fn key_columns(&self) -> Vec<String>;
+
+    /// Names of the value columns: the columns of the input table's own definition that
+    /// are not key columns, in the definition's order. A table that carries this input
+    /// table through an operation may have other columns, which are neither.
+    /// Port of `InputTableUpdater#getValueNames`.
+    fn value_columns(&self) -> Vec<String>;
 
     /// Adds rows, replacing rows with equal keys in a keyed table. `rows` must match the
     /// table's definition. Port of `InputTableUpdater#add`.

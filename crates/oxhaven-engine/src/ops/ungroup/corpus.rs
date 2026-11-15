@@ -3,28 +3,22 @@
 //!
 //! The replay of `ops/oracle.rs` builds what it can from the operations that exist, which
 //! for `ungroup` is little: every array column of the scenarios comes from `group_by`, the
-//! `group` aggregation or a join of their results, and the engine has no array columns.
+//! `group` aggregation or a join of their results, which are not ported.
 //!
 //! So a second test goes around that for the values: it takes the tables Java recorded
-//! for those sources, with their list columns as stand-ins for array columns, ungroups
-//! them and compares the result with the table Java recorded for the `ungroup`. That
-//! covers the static path at every step; the updates of a ticking `ungroup` are not
-//! compared with Java anywhere.
+//! for those sources as static tables, with their vector columns, ungroups them and
+//! compares the result with the table Java recorded for the `ungroup`. That covers the
+//! static path at every step; the updates of a ticking `ungroup` are compared with Java
+//! by `fixtures.rs`.
 
-use super::keys::MINIMUM_BASE;
-use super::operator::{ungroup_arrays, Ungrouped};
-use super::sources::ArrayColumn;
 use super::{ungroup, UngroupError};
 use crate::ops::oracle::{list, replay_all, text, Built};
 use crate::ops::sort::testing::static_table;
-use arrow::array::{
-    Array, ArrayRef, Float32Array, Float64Array, Int32Array, ListArray, RecordBatch, UInt64Array,
-};
-use arrow::datatypes::{DataType, TimeUnit};
+use arrow::array::{Array, ArrayRef, Float32Array, Float64Array, ListArray, RecordBatch};
+use arrow::datatypes::{DataType, Field, TimeUnit};
 use arrow::ipc::reader::FileReader;
-use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::Table;
 use oxhaven_testkit::TableSnapshot;
 use serde_json::Value;
 use std::fs::File;
@@ -33,7 +27,7 @@ use std::sync::Arc;
 
 /// The gRPC status code the Java server answers with for each refusal, as recorded in
 /// `oracle/corpus/group_by_ungroup`: `unknown`, `not_an_array` and `uneven_strict`.
-fn code(error: &UngroupError) -> &'static str {
+pub(super) fn code(error: &UngroupError) -> &'static str {
     match error {
         UngroupError::NoSuchColumn { .. }
         | UngroupError::NotAnArray(_)
@@ -120,90 +114,52 @@ fn recorded(scenario: &str, step: usize, table: &str) -> Result<RecordBatch, Str
     Ok(arrow::compute::concat_batches(&schema, &batches).expect("one schema"))
 }
 
-fn column_type(data_type: &DataType) -> ColumnType {
-    match data_type {
-        DataType::Boolean => ColumnType::Boolean,
-        DataType::Int32 => ColumnType::Int,
-        DataType::Int64 => ColumnType::Long,
-        DataType::Float32 => ColumnType::Float,
-        DataType::Float64 => ColumnType::Double,
-        DataType::Utf8 => ColumnType::String,
-        DataType::Timestamp(TimeUnit::Nanosecond, _) => ColumnType::Instant,
-        other => panic!("no column type for {other}"),
-    }
-}
-
-/// A list column Java recorded, as the array column of a table whose row keys are the
-/// positions of the recording.
-struct Recorded {
-    lists: ListArray,
-    element: ColumnType,
-}
-
-impl Recorded {
-    fn size(&self, row: RowKey) -> u64 {
-        let row = row as usize;
-        if self.lists.is_null(row) {
-            0
-        } else {
-            self.lists.value_length(row) as u64
-        }
-    }
-}
-
-impl ArrayColumn for Recorded {
-    fn element_type(&self) -> &ColumnType {
-        &self.element
-    }
-
-    fn sizes(&self, rows: &RowSet, _previous: bool) -> Result<Vec<u64>, TableFailure> {
-        Ok(rows.iter().map(|row| self.size(row)).collect())
-    }
-
-    fn elements(&self, cells: &[(RowKey, u64)], _previous: bool) -> Result<ArrayRef, TableFailure> {
-        let offsets = self.lists.value_offsets();
-        let places = cells.iter().map(|(row, offset)| {
-            (*offset < self.size(*row)).then(|| offsets[*row as usize] as u64 + offset)
-        });
-        let places: UInt64Array = places.collect();
-        Ok(arrow::compute::take(self.lists.values(), &places, None).expect("the elements"))
-    }
-}
-
-/// A static table of `source`, a table Java recorded, and its list columns as array
-/// columns. In the table a list column is an `Int` column of nulls.
-fn stand_in(source: &RecordBatch) -> (Arc<dyn Table>, Vec<(String, Ungrouped)>) {
-    let schema = source.schema();
-    let mut columns = Vec::new();
-    let mut arrays = Vec::new();
-    for (index, field) in schema.fields().iter().enumerate() {
-        let values = source.column(index);
-        match field.data_type() {
+/// The column type of a field of a recording. A list is a vector or an array by the
+/// `deephaven:type` of the field, `io.deephaven.vector.IntVector` or `int[]`.
+fn column_type(field: &Field) -> ColumnType {
+    fn of(data_type: &DataType, java_type: Option<&str>) -> ColumnType {
+        match data_type {
+            DataType::Boolean => ColumnType::Boolean,
+            DataType::Int32 => ColumnType::Int,
+            DataType::Int64 => ColumnType::Long,
+            DataType::Float32 => ColumnType::Float,
+            DataType::Float64 => ColumnType::Double,
+            DataType::Utf8 => ColumnType::String,
+            DataType::Timestamp(TimeUnit::Nanosecond, _) => ColumnType::Instant,
             DataType::List(element) => {
-                let nulls: Int32Array = (0..values.len()).map(|_| None).collect();
-                columns.push((field.name().as_str(), ColumnType::Int, Arc::new(nulls) as _));
-                let lists = values.as_any().downcast_ref::<ListArray>().expect("lists");
-                let recorded = Recorded {
-                    lists: lists.clone(),
-                    element: column_type(element.data_type()),
-                };
-                let ungrouped = Ungrouped {
-                    index,
-                    arrays: Arc::new(recorded),
-                };
-                arrays.push((field.name().clone(), ungrouped));
+                let element = of(element.data_type(), None);
+                match java_type {
+                    Some(java) if java.starts_with("io.deephaven.vector.") => {
+                        ColumnType::vector(element)
+                    }
+                    Some(java) if java.ends_with("[]") => ColumnType::array(element),
+                    other => panic!("a list that is {other:?}"),
+                }
             }
-            other => columns.push((field.name().as_str(), column_type(other), values.clone())),
+            other => panic!("no column type for {other}"),
         }
     }
-    (static_table(&columns), arrays)
+    let java_type = field.metadata().get("deephaven:type");
+    of(field.data_type(), java_type.map(String::as_str))
+}
+
+/// A static table of `source`, a table Java recorded, at the row keys `0..size`.
+fn table_of(source: &RecordBatch) -> Arc<dyn Table> {
+    let schema = source.schema();
+    let fields = schema.fields().iter().zip(source.columns());
+    let columns: Vec<(&str, ColumnType, ArrayRef)> = fields
+        .map(|(field, values)| (field.name().as_str(), column_type(field), values.clone()))
+        .collect();
+    static_table(&columns)
 }
 
 /// Whether two arrays of one type hold the same cells. Floats are compared bit for bit,
-/// except that every NaN equals every NaN.
+/// except that every NaN equals every NaN. The cells of a vector or array column are the
+/// same when both are null, or neither is and they have the same elements in order; a
+/// null cell is not an empty one.
 ///
 /// Behavior: the comparison rules of `oracle/README.md`
-fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
+pub(super) fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
     fn bits<A: Array + 'static>(
         expected: &ArrayRef,
         actual: &ArrayRef,
@@ -218,6 +174,9 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
             e == a && (e || bits(expected, row) == bits(actual, row))
         })
     }
+    if expected.len() != actual.len() {
+        return false;
+    }
     match expected.data_type() {
         DataType::Float32 => bits::<Float32Array>(expected, actual, |array, row| {
             let value = array.value(row);
@@ -227,32 +186,35 @@ fn same_cells(expected: &ArrayRef, actual: &ArrayRef) -> bool {
             let value = array.value(row);
             (!value.is_nan()).then(|| value.to_bits())
         }),
+        DataType::List(_) => {
+            let expected = expected
+                .as_any()
+                .downcast_ref::<ListArray>()
+                .expect("lists");
+            let Some(actual) = actual.as_any().downcast_ref::<ListArray>() else {
+                return false;
+            };
+            (0..expected.len()).all(|row| {
+                let (e, a) = (expected.is_null(row), actual.is_null(row));
+                e == a && (e || same_cells(&expected.value(row), &actual.value(row)))
+            })
+        }
         _ => expected == actual,
     }
 }
 
 /// How `table` differs from the table `expected` that Java returned, if it does: the
-/// columns' names and types, the number of rows, and the cells by position. A list column
-/// that was not ungrouped is compared by its name alone: the stand-in table has no lists.
+/// columns' names and types, a vector not being an array, the number of rows, and the
+/// cells by position.
 fn difference(expected: &RecordBatch, table: &dyn Table) -> Option<String> {
     let schema = expected.schema();
-    let is_list = |index: usize| {
-        let field = schema.fields().get(index);
-        field.is_some_and(|field| matches!(field.data_type(), DataType::List(_)))
-    };
-    let columns = table.definition().columns().iter().enumerate();
-    let ours: Vec<(&str, Option<DataType>)> = columns
-        .map(|(index, c)| {
-            let data_type = (!is_list(index)).then(|| c.column_type.arrow_type());
-            (c.name.as_str(), data_type)
-        })
+    let columns = table.definition().columns().iter();
+    let ours: Vec<(&str, ColumnType)> = columns
+        .map(|c| (c.name.as_str(), c.column_type.clone()))
         .collect();
-    let fields = schema.fields().iter().enumerate();
-    let theirs: Vec<(&str, Option<DataType>)> = fields
-        .map(|(index, f)| {
-            let data_type = (!is_list(index)).then(|| f.data_type().clone());
-            (f.name().as_str(), data_type)
-        })
+    let fields = schema.fields().iter();
+    let theirs: Vec<(&str, ColumnType)> = fields
+        .map(|f| (f.name().as_str(), column_type(f)))
         .collect();
     if ours != theirs {
         return Some(format!("columns {ours:?}, Java has {theirs:?}"));
@@ -262,8 +224,7 @@ fn difference(expected: &RecordBatch, table: &dyn Table) -> Option<String> {
         let (ours, theirs) = (snapshot.rows.size(), expected.num_rows());
         return Some(format!("{ours} rows, Java has {theirs}"));
     }
-    let mut compared = (0..ours.len()).filter(|index| !is_list(*index));
-    compared.find_map(|index| {
+    (0..ours.len()).find_map(|index| {
         let (ours, theirs) = (&snapshot.columns[index], expected.column(index));
         (!same_cells(theirs, ours)).then(|| {
             let name = schema.field(index).name();
@@ -278,8 +239,9 @@ fn difference(expected: &RecordBatch, table: &dyn Table) -> Option<String> {
 #[test]
 fn the_ungrouped_tables_of_the_recorded_arrays_match_java() {
     let mut compared = Vec::new();
-    let mut not_run = Vec::new();
     let mut tables = 0;
+    let mut elements = 0;
+    let mut refused = 0;
     let scenarios = [
         ("static", "group_by_ungroup"),
         ("ticking", "ticking_group_ungroup_head_by"),
@@ -300,43 +262,27 @@ fn the_ungrouped_tables_of_the_recorded_arrays_match_java() {
             }
             let null_fill = operation["null_fill"] == true;
             let asked = columns_of(operation);
-            let mut ran = false;
             for step in 0..=steps {
                 let place = format!("{name}/{result} at step {step}");
                 let source = recorded(name, step, source).expect("a source");
-                let (table, arrays) = stand_in(&source);
-                let is_array = |name: &String| arrays.iter().any(|(array, _)| array == name);
-                if !asked.iter().all(is_array) {
-                    // The public operation refuses these, and cannot see stand-ins.
-                    not_run.push(format!("{place}: {asked:?} are not all arrays"));
-                    continue;
-                }
-                // The columns asked for in their order, or every array column.
-                let mut arrays: Vec<(String, Ungrouped)> = arrays;
-                let mut columns = Vec::new();
-                if asked.is_empty() {
-                    columns.extend(arrays.into_iter().map(|(_, array)| array));
-                } else {
-                    for name in &asked {
-                        let at = arrays.iter().position(|(array, _)| array == name);
-                        columns.push(arrays.remove(at.expect("an array")).1);
-                    }
-                }
-                let ours = ungroup_arrays(&table, null_fill, columns, MINIMUM_BASE);
+                let ours = ungroup(&table_of(&source), null_fill, &asked);
                 let difference = match (recorded(name, step, result), ours) {
-                    (Ok(expected), Ok(ours)) => difference(&expected, &*ours),
-                    (Err(expected), Err(error)) => (expected != code(&error))
-                        .then(|| format!("refused with {error}, Java with {expected}")),
+                    (Ok(expected), Ok(ours)) => {
+                        elements += expected.num_rows();
+                        difference(&expected, &*ours)
+                    }
+                    (Err(expected), Err(error)) => {
+                        refused += 1;
+                        (expected != code(&error))
+                            .then(|| format!("refused with {error}, Java with {expected}"))
+                    }
                     (Ok(_), Err(error)) => Some(format!("refused: {error}")),
                     (Err(expected), Ok(_)) => Some(format!("Java fails with {expected}")),
                 };
                 assert_eq!(difference, None, "{place}");
                 tables += 1;
-                ran = true;
             }
-            if ran {
-                compared.push(format!("{name}/{result}"));
-            }
+            compared.push(format!("{name}/{result}"));
         }
     }
     let expected = [
@@ -349,13 +295,15 @@ fn the_ungrouped_tables_of_the_recorded_arrays_match_java() {
         "group_by_ungroup/uneven_filled",
         "group_by_ungroup/uneven_strict",
         "group_by_ungroup/uneven_one",
+        "group_by_ungroup/unknown",
         "group_by_ungroup/agg_back",
         "ticking_group_ungroup_head_by/back",
         "ticking_group_ungroup_head_by/back_ids",
     ];
     assert_eq!(compared, expected, "compared");
-    let unknown = ["group_by_ungroup/unknown at step 0: [\"Nope\"] are not all arrays"];
-    assert_eq!(not_run, unknown, "not run");
-    // 10 static results at one step and 2 ticking ones at 9 steps.
-    assert_eq!(tables, 10 + 2 * 9);
+    // 11 static results at one step and 2 ticking ones at 9 steps; `uneven_strict` and
+    // `unknown` are the refusals.
+    assert_eq!(tables, 11 + 2 * 9);
+    assert_eq!(refused, 2);
+    assert!(elements > 100, "{elements} rows compared");
 }
