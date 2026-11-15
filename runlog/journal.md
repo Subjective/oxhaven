@@ -550,3 +550,7 @@ PR 73 opened (block row set). Measured: the contract RowSet costs O(ranges) for 
 ## 2026-11-15 08:54 UTC
 
 PR 74 merged on green: every replay scenario is clean (83 of 83), every client smoke clean (31 of 31), and every `UpdateBySpec` operator is ported. What the gate does not show: the `unported!` refusals listed in the pull requests, the Python script scenarios (3 of 21 clean, in progress) and the two open owner questions from the fuzzer (failed tables keep serving in Java; one as-of join incremental difference).
+
+## 2026-11-15 08:58 UTC
+
+PR 73 (block row set) merged on green. Its checked head had PR 71 but not PR 74; merged anyway because the change is a self-contained module nothing uses and PR 74 touches no row set or contract code. The main push run is the check on the combined tree.
