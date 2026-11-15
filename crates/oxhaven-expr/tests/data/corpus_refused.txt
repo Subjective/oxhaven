@@ -1,10 +1,6 @@
 docs-python/conceptual.arrays-vs-vectors.L26.9.0	java-accepts	object creation (new)
 docs-python/conceptual.arrays-vs-vectors.L26.9.1	java-accepts	setup: object creation (new)
 docs-python/conceptual.arrays-vs-vectors.L26.9.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.arrays-vs-vectors.L62.9.0	java-accepts	column array access X_[...]
-docs-python/conceptual.arrays-vs-vectors.L62.9.1	java-accepts	setup: column array access X_[...]
-docs-python/conceptual.arrays-vs-vectors.L92.9.0	java-accepts	column array access X_[...]
-docs-python/conceptual.arrays-vs-vectors.L92.9.1	java-accepts	setup: column array access X_[...]
 docs-python/conceptual.column-types.L206.5.0	java-accepts	function now()
 docs-python/conceptual.column-types.L206.5.1	java-accepts	setup: function now()
 docs-python/conceptual.column-types.L206.5.2	java-accepts	setup: function now()
@@ -139,12 +135,6 @@ docs-python/getting-started.crash-course.query-strings.L300.15.0	java-accepts	me
 docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	object creation (new)
-docs-python/getting-started.crash-course.query-strings.L418.18.1	java-accepts	column array X_
-docs-python/getting-started.crash-course.query-strings.L418.18.2	java-accepts	setup: column array X_
-docs-python/getting-started.crash-course.query-strings.L418.18.3	java-accepts	setup: column array X_
-docs-python/getting-started.crash-course.query-strings.L418.18.4	java-accepts	setup: column array X_
-docs-python/getting-started.crash-course.query-strings.L418.18.5	java-accepts	setup: column array X_
-docs-python/getting-started.crash-course.query-strings.L418.18.6	java-accepts	setup: column array X_
 docs-python/getting-started.crash-course.table-ops.L23.4.0	java-accepts	time literal '2015-01-01T00:00:00 ET'
 docs-python/getting-started.crash-course.table-ops.L37.12.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
 docs-python/getting-started.crash-course.table-ops.L37.12.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
@@ -284,7 +274,6 @@ docs-python/how-to-guides.null-inf-nan.L196.17.0	java-accepts	setup: function ra
 docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: function randomDouble()
 docs-python/how-to-guides.null-inf-nan.L225.9.2	java-accepts	setup: function randomDouble()
 docs-python/how-to-guides.null-inf-nan.L225.9.3	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.operators.L25.9.5	java-accepts	column array access A_[...]
 docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	field access .lang
 docs-python/how-to-guides.plotting.api-plotting.L72.15.2	java-accepts	function randomDouble()
 docs-python/how-to-guides.plotting.api-plotting.L261.9.1	java-accepts	function randomInt()
@@ -305,8 +294,6 @@ docs-python/how-to-guides.query-string-overview.L102.9.3	java-accepts	setup: fun
 docs-python/how-to-guides.query-string-overview.L102.9.4	java-accepts	setup: function randomDouble()
 docs-python/how-to-guides.query-string-overview.L102.9.5	java-accepts	setup: function randomDouble()
 docs-python/how-to-guides.query-string-overview.L102.9.6	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L207.9.0	java-accepts	column array access X_[...]
-docs-python/how-to-guides.query-string-overview.L207.9.1	java-accepts	setup: column array access X_[...]
 docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
 docs-python/how-to-guides.read-javadocs.L136.9.0	java-accepts	function randomDouble()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	setup: function randomDouble()
@@ -334,8 +321,6 @@ docs-python/how-to-guides.use-numpy.L30.9.1	java-accepts	setup: function randomD
 docs-python/how-to-guides.use-numpy.L136.9.0	java-accepts	field access .PI
 docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	function absAvg()
 docs-python/how-to-guides.work-with-arrays.L166.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.work-with-arrays.L204.9.1	java-accepts	setup: column array access X_[...]
-docs-python/how-to-guides.work-with-arrays.L204.9.2	java-accepts	setup: column array access X_[...]
 docs-python/how-to-guides.work-with-arrays.L280.9.0	java-accepts	object creation (new)
 docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
 docs-python/how-to-guides.work-with-strings.L113.9.2	java-accepts	setup: function parseFloat()
@@ -387,17 +372,7 @@ docs-python/reference.data-import-export.iterate.iter-chunk-dict.L55.9.2	java-ac
 docs-python/reference.engine.data-index.L68.9.0	java-accepts	function randomInt()
 docs-python/reference.engine.data-index.L68.9.1	java-accepts	setup: function randomInt()
 docs-python/reference.query-language.types.NaNs.L29.9.0	java-fails	field access .lang
-docs-python/reference.query-language.types.arrays.L21.9.0	java-accepts	column array access Values_[...]
-docs-python/reference.query-language.types.arrays.L36.9.0	java-accepts	column array Values_
-docs-python/reference.query-language.types.arrays.L76.9.0	java-accepts	column array X_
-docs-python/reference.query-language.types.arrays.L76.9.1	java-accepts	setup: column array X_
-docs-python/reference.query-language.types.arrays.L76.9.2	java-accepts	setup: column array X_
-docs-python/reference.query-language.types.arrays.L76.9.3	java-accepts	setup: column array X_
 docs-python/reference.query-language.types.periods.L28.9.0	java-accepts	time literal 'P1d'
-docs-python/reference.query-language.variables.special-variables.L68.9.0	java-accepts	column array access X_[...]
-docs-python/reference.query-language.variables.special-variables.L68.9.1	java-accepts	setup: column array access X_[...]
-docs-python/reference.query-language.variables.special-variables.L68.9.2	java-accepts	setup: column array access X_[...]
-docs-python/reference.query-language.variables.special-variables.L68.9.3	java-accepts	setup: column array access X_[...]
 docs-python/reference.table-operations.create.Replayer.L81.11.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
 docs-python/reference.table-operations.create.TableDefinitionLike.L38.9.3	java-accepts	function randomBool()
 docs-python/reference.table-operations.join.full-outer-join.L70.8.2	java-fails	static method call Math.sin()
@@ -457,57 +432,6 @@ docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L5
 docs-python/reference.table-operations.update-by-operations.updateBy.L107.9.2	java-accepts	function randomInt()
 docs-python/reference.table-operations.update-by-operations.updateBy.L139.9.3	java-accepts	setup: function randomBool()
 docs-python/reference.time.calendar.calendar.L55.9.0	java-accepts	time literal '2024-01-05T00:08:00 ET'
-grid-array/previous.byte	java-accepts	column array access B1_[...]
-grid-array/next.byte	java-accepts	column array access B2_[...]
-grid-array/previous.short	java-accepts	column array access S1_[...]
-grid-array/next.short	java-accepts	column array access S2_[...]
-grid-array/previous.int	java-accepts	column array access I1_[...]
-grid-array/next.int	java-accepts	column array access I2_[...]
-grid-array/previous.long	java-accepts	column array access L1_[...]
-grid-array/next.long	java-accepts	column array access L2_[...]
-grid-array/previous.float	java-accepts	column array access F1_[...]
-grid-array/next.float	java-accepts	column array access F2_[...]
-grid-array/previous.double	java-accepts	column array access D1_[...]
-grid-array/next.double	java-accepts	column array access D2_[...]
-grid-array/previous.char	java-accepts	column array access C1_[...]
-grid-array/next.char	java-accepts	column array access C2_[...]
-grid-array/previous.boolean	java-accepts	column array access Z1_[...]
-grid-array/next.boolean	java-accepts	column array access Z2_[...]
-grid-array/previous.string	java-accepts	column array access T1_[...]
-grid-array/next.string	java-accepts	column array access T2_[...]
-grid-array/extra.11	java-accepts	column array access I1_[...]
-grid-array/extra.12	java-accepts	column array access I1_[...]
-grid-array/extra.13	java-accepts	column array access I2_[...]
-grid-array/extra.14	java-accepts	column array access I2_[...]
-grid-array/extra.15	java-accepts	column array access I2_[...]
-grid-array/extra.16	java-accepts	column array access I2_[...]
-grid-array/extra.17	java-accepts	column array access I2_[...]
-grid-array/extra.18	java-accepts	column array access I2_[...]
-grid-array/extra.19	java-accepts	column array access I2_[...]
-grid-array/extra.20	java-accepts	column array access I2_[...]
-grid-array/extra.21	java-accepts	column array access I2_[...]
-grid-array/extra.22	java-accepts	column array access D2_[...]
-grid-array/extra.23	java-accepts	column array access I2_[...]
-grid-array/extra.24	java-accepts	column array access I2_[...]
-grid-array/extra.25	java-accepts	column array access I2_[...]
-grid-array/extra.26	java-accepts	column array access I2_[...]
-grid-array/extra.27	java-accepts	column array I2_
-grid-array/extra.28	java-accepts	column array I2_
-grid-array/extra.29	java-accepts	column array I2_
-grid-array/extra.30	java-accepts	column array I2_
-grid-array/extra.31	java-accepts	column array I2_
-grid-array/extra.32	java-accepts	column array D2_
-grid-array/extra.33	java-accepts	column array I2_
-grid-array/extra.34	java-accepts	column array D2_
-grid-array/extra.35	java-accepts	column array I2_
-grid-array/extra.36	java-accepts	column array I2_
-grid-array/extra.37	java-accepts	column array I2_
-grid-array/extra.38	java-accepts	column array I2_
-grid-array/extra.39	java-accepts	column array I2_
-grid-array/extra.40	java-accepts	column array access T2_[...]
-grid-array/extra.41	java-accepts	column array access T2_[...]
-grid-array/extra.42	java-fails	column array access Z2_[...]
-grid-array/extra.43	java-accepts	column array access C2_[...]
 grid-binary/lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
 grid-binary/lt.byte.string	java-fails	ordering comparison of byte with String
 grid-binary/lt.short.boolean	java-fails	ordering comparison of short with Boolean
@@ -853,7 +777,6 @@ grid-where/columns.ge.string.double	java-fails	ordering comparison of String wit
 grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
 grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
 grid-where/extra.018	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
-grid-where/extra.104	java-accepts	column array access I1_[...]
 java-engine/DeferredViewTableTest.L104.0.0	java-accepts	static method call DateTimeUtils.now()
 java-engine/QueryTableAggregationTest.L163.0.0	java-accepts	static method call Integer.toString()
 java-engine/QueryTableAggregationTest.L163.0.1	java-accepts	setup: static method call Integer.toString()
@@ -890,11 +813,7 @@ java-engine/QueryTableSelectUpdateTest.L1196.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.1	java-fails	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1675.0.2	java-accepts	static method call String.valueOf()
-java-engine/QueryTableWhereTest.L1149.0.0	java-accepts	column array access Y_[...]
-java-engine/QueryTableWhereTest.L1153.0.0	java-accepts	column array access Y_[...]
-java-engine/QueryTableWhereTest.L1158.0.0	java-accepts	column array access Y_[...]
-java-engine/QueryTableWhereTest.L1162.0.0	java-accepts	column array access Y_[...]
-java-engine/QueryTableWhereTest.L1170.0.0	java-fails	column array Y_
+java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on a vector or array
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
 java-engine/QueryTableWhereTest.L3130.0.0	java-accepts	static method call Long.toString()
@@ -924,22 +843,6 @@ java-formula-column/L140.0	java-accepts	object creation (new)
 java-formula-column/L141.0	java-accepts	object creation (new)
 java-formula-column/L142.0	java-accepts	object creation (new)
 java-formula-column/L143.0	java-accepts	object creation (new)
-java-formula-column/L170.0	java-accepts	column array access ByteCol_[...]
-java-formula-column/L171.0	java-accepts	column array access ShortCol_[...]
-java-formula-column/L172.0	java-accepts	column array access CharCol_[...]
-java-formula-column/L173.0	java-accepts	column array access IntCol_[...]
-java-formula-column/L174.0	java-accepts	column array access LongCol_[...]
-java-formula-column/L175.0	java-accepts	column array access FloatCol_[...]
-java-formula-column/L176.0	java-accepts	column array access DoubleCol_[...]
-java-formula-column/L177.0	java-accepts	column array access BooleanCol_[...]
-java-formula-column/L179.0	java-accepts	column array access ByteCol_[...]
-java-formula-column/L180.0	java-accepts	column array access ShortCol_[...]
-java-formula-column/L181.0	java-accepts	column array access CharCol_[...]
-java-formula-column/L182.0	java-accepts	column array access IntCol_[...]
-java-formula-column/L183.0	java-accepts	column array access LongCol_[...]
-java-formula-column/L184.0	java-accepts	column array access FloatCol_[...]
-java-formula-column/L185.0	java-accepts	column array access DoubleCol_[...]
-java-formula-column/L186.0	java-accepts	column array access BooleanCol_[...]
 java-formula-column/L329.0	java-fails	cast to Object
 java-formula-column/L330.0	java-fails	static method call Long.parseLong()
 java-formula-column/L215.e	java-fails	static method call Math.sqrt()

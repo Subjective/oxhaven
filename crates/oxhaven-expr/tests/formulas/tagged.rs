@@ -12,7 +12,7 @@
 //! [`is_filter_syntax`] decides), and a case whose setup fails in Java, which records nothing
 //! to compare with.
 
-use super::recorded::{cells, column_of, kind_of, ours, Ours};
+use super::recorded::{cells, column_of, kind_of, list_type, ours, Ours};
 use super::*;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -299,7 +299,7 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
         ));
     };
     if java["nondeterministic"] == true {
-        let expected = column_of(kind, &[]).0;
+        let expected = list_type(java_type, column_of(kind, &[]).0);
         return if expected == column_type {
             Outcome::Agrees
         } else {
@@ -309,6 +309,7 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
         };
     }
     let expected = column_of(kind, cells(&java["values"]));
+    let expected = (list_type(java_type, expected.0), expected.1);
     if column_type != expected.0 {
         return Outcome::Differs(format!(
             "Java returns {java_type}; Oxhaven returns {column_type:?}"

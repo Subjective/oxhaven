@@ -23,7 +23,10 @@ pub(super) fn stored<S: AsRef<str>>(
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    let plan = plan::analyze(parent, columns, compiler, flavor)?;
+    let mut plan = plan::analyze(parent, columns, compiler, flavor)?;
+    if let Some(shifted) = plan.shifted.take() {
+        return super::arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
+    }
     let table = match parent.update_graph() {
         Some(graph) if parent.is_refreshing() => QueryTable::derive(parent, || {
             let (columns, stored) = refreshing_columns(parent, &plan, |column_type| {

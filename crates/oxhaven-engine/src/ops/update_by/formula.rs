@@ -83,7 +83,11 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
             if_true,
             if_false,
         } => all(&[condition, if_true, if_false]),
-        Expr::ColumnArrayAccess { position, .. } => all(&[position]),
+        // The window under a name that ends in `_`.
+        Expr::ColumnArrayAccess { .. } => unported!(
+            "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
+            "an index in a rolling formula: outside a window Java throws NoSuchElementException"
+        ),
         Expr::Call {
             function,
             arguments,

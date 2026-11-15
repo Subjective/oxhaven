@@ -21,12 +21,14 @@
 //! A formula that fails while a stored column is computed fails the operation, or, in a
 //! later cycle, the result table. A formula computed on read fails that read only.
 //!
-//! Not ported: formulas that read a column at another row (`Col_[i - 1]`), which Java turns
-//! into a join of the table with itself in `ShiftedColumnsFactory`; the redirected storage of
-//! `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
+//! A formula can read a column at another row: `Col_[i - 1]`, `Col_[3]`, `sum(Col_)`. The
+//! module `arrays` has the form Java rewrites into a shifted column and what is refused.
+//!
+//! Not ported: the redirected storage of `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
 //! `DeferredViewTable`, which serves source tables that are not in memory.
 
 mod array_formula;
+pub(crate) mod arrays;
 mod materialize;
 mod plan;
 mod rename;
@@ -238,7 +240,17 @@ pub fn drop_columns<S: AsRef<str>>(
     parent: &Arc<dyn Table>,
     columns: &[S],
 ) -> Result<Arc<dyn Table>, SelectError> {
-    if columns.is_empty() {
+    drop_columns_as(parent, columns, None)
+}
+
+/// [`drop_columns`], with `replaced` in place of the attributes it copies from the parent
+/// when given; such a result is not memoized.
+fn drop_columns_as<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    columns: &[S],
+    replaced: Option<TableAttributes>,
+) -> Result<Arc<dyn Table>, SelectError> {
+    if columns.is_empty() && replaced.is_none() {
         return Ok(parent.clone());
     }
     let declared = parent.definition().columns();
@@ -273,6 +285,8 @@ pub fn drop_columns<S: AsRef<str>>(
     attributes.add_only = inherited.add_only;
     attributes.append_only = inherited.append_only;
     attributes.blink = inherited.blink;
+    let memoize = replaced.is_none();
+    let attributes = replaced.unwrap_or(attributes);
 
     let of_parent = marks(&**parent);
     let mut result_marks = CopyType::DropColumns.sort_marks(&of_parent);
@@ -295,6 +309,9 @@ pub fn drop_columns<S: AsRef<str>>(
         ))
     })?;
     mark(&table, result_marks);
+    if !memoize {
+        return Ok(table);
+    }
     Ok(memoized(parent, CopyType::DropColumns, false, table)?)
 }
 
@@ -325,7 +342,10 @@ fn computed_on_read<S: AsRef<str>>(
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    let plan = plan::analyze(parent, columns, compiler, flavor)?;
+    let mut plan = plan::analyze(parent, columns, compiler, flavor)?;
+    if let Some(shifted) = plan.shifted.take() {
+        return arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
+    }
     let mut sources = Sources::new(parent);
     for step in &plan.steps {
         let source = match &step.kind {

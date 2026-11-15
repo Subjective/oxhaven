@@ -187,6 +187,8 @@ pub(crate) struct Typed {
 pub(crate) enum Node {
     /// The column at this index of [`Checked::columns`].
     Column(usize),
+    /// `Col_`: the column at this index of [`Checked::arrays`], whole, as a vector.
+    ColumnArray(usize),
     /// `i` or `ii`, the row's position in the table, or `k`, its key.
     RowVariable(RowVariable),
     /// Never `Literal::Null`.
@@ -261,6 +263,8 @@ pub(crate) struct Checked {
     pub(crate) root: Typed,
     /// The columns the formula reads, in order of first use.
     pub(crate) columns: Vec<String>,
+    /// The columns the formula reads as arrays (`Col_`), in order of first use.
+    pub(crate) arrays: Vec<String>,
     /// Whether the formula uses `i` or `ii`.
     pub(crate) positions: bool,
     /// Whether the formula uses `k`.
@@ -277,6 +281,7 @@ pub(crate) fn check(
         definition,
         functions,
         columns: Vec::new(),
+        arrays: Vec::new(),
         positions: false,
         keys: false,
     };
@@ -284,6 +289,7 @@ pub(crate) fn check(
     Ok(Checked {
         root,
         columns: checker.columns,
+        arrays: checker.arrays,
         positions: checker.positions,
         keys: checker.keys,
     })
@@ -382,6 +388,7 @@ struct Checker<'a> {
     /// The functions a call may be when the library cannot take it.
     functions: Option<&'a dyn ExternalFunctions>,
     columns: Vec<String>,
+    arrays: Vec<String>,
     positions: bool,
     keys: bool,
 }
@@ -422,10 +429,15 @@ impl Checker<'_> {
                 method,
                 arguments,
             } => self.method_call(receiver, method, arguments),
-            Expr::ColumnVector(name) => Err(unsupported(format!("column array {name}_"))),
-            Expr::ColumnArrayAccess { column, .. } => {
-                Err(unsupported(format!("column array access {column}_[...]")))
-            }
+            Expr::ColumnVector(name) => self.column_array(name),
+            // Behavior: `QueryLanguageParser#visit(ArrayAccessExpr)`: an index into
+            // anything that is not a Java array is a call of `get`, here on the vector
+            // that `Col_` names, or on a column that is itself named `Col_`.
+            Expr::ColumnArrayAccess { column, position } => self.method_call(
+                &Expr::Column(format!("{column}_")),
+                crate::parse::INDEX_METHOD,
+                std::slice::from_ref(position),
+            ),
         }
     }
 
@@ -439,7 +451,7 @@ impl Checker<'_> {
                 .strip_suffix('_')
                 .is_some_and(|base| self.definition.index_of(base).is_some());
             return if array_of {
-                Err(unsupported(format!("column array {name}")))
+                self.column_array(&name[..name.len() - 1])
             } else if let Some((column_type, literal)) = functions::constant(name) {
                 Ok(constant(column_type, literal))
             } else if functions::is_other_constant(name) {
@@ -475,6 +487,45 @@ impl Checker<'_> {
             }
         };
         Ok(typed(column_type, Node::Column(slot)))
+    }
+
+    /// `Col_`: the whole of the column `name` as a vector.
+    ///
+    /// Behavior: the `Col_` variables that `DhFormulaColumn#applyUsedVariables` and
+    /// `AbstractConditionFilter#init` give a formula, of the vector type
+    /// `io.deephaven.engine.table.vectors.ColumnVectors#of` makes for the column's type: a
+    /// primitive vector for a primitive column, an `ObjectVector` for any other.
+    fn column_array(&mut self, name: &str) -> Result<Typed, FormulaError> {
+        let Some(index) = self.definition.index_of(name) else {
+            return Err(type_error(format!("cannot find column {name}")));
+        };
+        let element = self.definition.columns()[index].column_type.clone();
+        let known = matches!(
+            element,
+            ColumnType::Boolean
+                | ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
+                | ColumnType::String
+                | ColumnType::Instant
+        );
+        if !known {
+            return Err(unsupported(format!(
+                "column array {name}_ of a column of type {element:?}"
+            )));
+        }
+        let slot = match self.arrays.iter().position(|used| used == name) {
+            Some(slot) => slot,
+            None => {
+                self.arrays.push(name.to_string());
+                self.arrays.len() - 1
+            }
+        };
+        Ok(typed(ColumnType::vector(element), Node::ColumnArray(slot)))
     }
 
     /// `scope.field`, where `scope` is a simple name.
@@ -911,7 +962,8 @@ impl Checker<'_> {
             .iter()
             .map(|argument| argument.column_type.clone())
             .collect();
-        match vectors::resolve_method(&checked[0].column_type, method, &types)? {
+        let column_array = matches!(checked[0].node, Node::ColumnArray(_));
+        match vectors::resolve_method(&checked[0].column_type, method, &types, column_array)? {
             Resolved::Call(call) => Ok(library_call(call, checked)),
             _ => unreachable!("a method of a vector is a call"),
         }

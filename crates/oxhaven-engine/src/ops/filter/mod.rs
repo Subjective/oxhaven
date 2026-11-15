@@ -27,12 +27,16 @@ pub use condition::{
     Value,
 };
 
+use crate::ops::select::arrays::Shift;
+use crate::ops::select::arrays::{add_shifted_columns, constant_array_accesses, Replacing};
+use crate::ops::select::{drop_columns, SelectError};
 use crate::table::{
     is_add_only, is_append_only, mark, marks, memoized, CopyType, QueryTable, TableSpec,
 };
 use filters::{FilterSpec, Resolved};
-use oxhaven_contracts::expr::FormulaCompiler;
+use oxhaven_contracts::expr::{Expr, FormulaCompiler};
 use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::schema::TableDefinition;
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use std::collections::BTreeSet;
@@ -378,17 +382,83 @@ fn where_resolved(
     Ok(memoized(parent, CopyType::Filter, false, result)?)
 }
 
+/// The formulas of `spec` that read a column at a fixed distance from the current row
+/// (`Col_[i - 1]`), each with the expression that reads a shifted column instead, and the
+/// shifted columns those read.
+///
+/// Behavior: io.deephaven.engine.table.impl.select.ExtractShiftedColumnDefinitions and
+/// io.deephaven.engine.table.impl.select.TransformToFinalFormula
+fn shifted_reads(
+    spec: &FilterSpec,
+    compiler: &dyn FormulaCompiler,
+    rewritten: &mut Vec<(String, Expr)>,
+    shifts: &mut Vec<Shift>,
+) {
+    let text = match spec {
+        FilterSpec::And(parts) | FilterSpec::Or(parts) => {
+            for part in parts {
+                shifted_reads(part, compiler, rewritten, shifts);
+            }
+            return;
+        }
+        FilterSpec::Condition(text) => text,
+        FilterSpec::Match {
+            failover: Some(text),
+            ..
+        }
+        | FilterSpec::Range {
+            failover: Some(text),
+            ..
+        } => text,
+        _ => return,
+    };
+    let Ok(expr) = compiler.parse(text) else {
+        return;
+    };
+    if let Some(found) = constant_array_accesses(text, &expr) {
+        for shift in found.shifts {
+            if !shifts.contains(&shift) {
+                shifts.push(shift);
+            }
+        }
+        rewritten.push((text.clone(), found.expr));
+    }
+}
+
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#whereInternal, and
+/// io.deephaven.engine.table.impl.ShiftedColumnsFactory#where for filters that read a
+/// column at a fixed distance from the current row: the shifted columns of all the filters
+/// are added to the table, the filters are applied reading those, and the columns are
+/// dropped. The table in between has none of the parent's attributes.
 fn where_specs(
     parent: &Arc<dyn Table>,
     specs: &[FilterSpec],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, FilterError> {
-    let filters = specs
-        .iter()
-        .map(|spec| filters::resolve(spec, parent.definition(), compiler))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(FilterError::Invalid)?;
-    where_resolved(parent, filters)
+    let resolve = |definition: &TableDefinition, compiler: &dyn FormulaCompiler| {
+        specs
+            .iter()
+            .map(|spec| filters::resolve(spec, definition, compiler))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(FilterError::Invalid)
+    };
+    let filters = resolve(parent.definition(), compiler)?;
+    let (mut rewritten, mut shifts) = (Vec::new(), Vec::new());
+    for spec in specs {
+        shifted_reads(spec, compiler, &mut rewritten, &mut shifts);
+    }
+    if shifts.is_empty() {
+        return where_resolved(parent, filters);
+    }
+    let with_shifts = add_shifted_columns(parent, &shifts)?;
+    let replacing = Replacing::expressions(compiler, rewritten);
+    let filters = resolve(with_shifts.definition(), &replacing)?;
+    let kept = where_resolved(&with_shifts, filters)?;
+    let dropped: Vec<String> = shifts.iter().map(Shift::result_name).collect();
+    drop_columns(&kept, &dropped).map_err(|error| match error {
+        SelectError::Failed(failure) => FilterError::Failed(failure),
+        other => FilterError::Invalid(other.to_string()),
+    })
 }
 
 /// The rows of `parent` that satisfy every filter string, as Java's `Table#where` and the
