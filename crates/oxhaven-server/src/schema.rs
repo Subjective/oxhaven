@@ -286,6 +286,12 @@ fn schema_metadata(context: &SchemaContext) -> HashMap<String, String> {
         // The value is the updater object, which Java cannot send and marks as such.
         put(&mut metadata, "unsent.attribute.InputTable", "");
     }
+    if !context.previews.is_empty() {
+        // `ColumnPreviewManager#makePreviewTable` sets both; one is a map and the other a
+        // table, and Java sends neither.
+        put(&mut metadata, "unsent.attribute.ColumnDescriptions", "");
+        put(&mut metadata, "unsent.attribute.PreviewParentTable", "");
+    }
     metadata
 }
 

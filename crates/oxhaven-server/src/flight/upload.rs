@@ -29,6 +29,17 @@ pub enum UploadError {
     Internal(String),
 }
 
+impl UploadError {
+    /// What a client that is not uploading is told: the status, or for a failure that is
+    /// not the client's to read the id it was logged under.
+    pub fn into_status(self) -> Status {
+        match self {
+            UploadError::Status(status) => status,
+            UploadError::Internal(text) => crate::table::support::internal_status(text),
+        }
+    }
+}
+
 impl From<Status> for UploadError {
     fn from(status: Status) -> Self {
         UploadError::Status(status)
@@ -127,12 +138,13 @@ fn type_named(field: &Field, name: &str) -> Result<ColumnType, Status> {
 /// - An `ObjectVector` without a component type has the elements its element field would
 ///   be by default, so `list<utf8>` is an `ObjectVector` of `String`.
 /// - A component type that is not the element class of the type is refused, as is an
-///   `ObjectVector` of a primitive.
+///   `ObjectVector` of a primitive. Java throws an `IllegalArgumentException` for these,
+///   which a client sees as an error id.
 ///
 /// Behavior: `BarrageUtil#convertArrowSchema`,
 /// `io.deephaven.engine.table.ColumnDefinition#fromGenericType` (the component type
 /// check)
-fn column_type_of(field: &Field) -> Result<ColumnType, Status> {
+fn column_type_of(field: &Field) -> Result<ColumnType, UploadError> {
     let metadata = |key| field.metadata().get(key).map(String::as_str);
     let component = metadata(COMPONENT_TYPE_KEY);
     let column_type = match metadata(TYPE_KEY) {
@@ -146,7 +158,8 @@ fn column_type_of(field: &Field) -> Result<ColumnType, Status> {
                 (None, other) => {
                     return Err(Status::invalid_argument(format!(
                         "No known Barrage ChunkReader for arrow type {other} to {OBJECT_VECTOR}"
-                    )))
+                    ))
+                    .into())
                 }
             };
             ColumnType::vector(element)
@@ -159,7 +172,7 @@ fn column_type_of(field: &Field) -> Result<ColumnType, Status> {
     let type_name = java_type_name(&column_type);
     let element_name = java_type_name(element);
     let invalid = |component: &str| {
-        Status::invalid_argument(format!(
+        UploadError::Internal(format!(
             "Invalid component type {component} for data type {type_name}"
         ))
     };
@@ -250,14 +263,15 @@ fn is_plain_identifier(name: &str) -> bool {
 /// name that Java would rename to make it legal.
 ///
 /// Behavior: `io.deephaven.extensions.barrage.util.BarrageUtil#convertArrowSchema`
-pub fn convert_schema(schema: &Schema) -> Result<TableDefinition, Status> {
+pub fn convert_schema(schema: &Schema) -> Result<TableDefinition, UploadError> {
     let mut columns = Vec::with_capacity(schema.fields().len());
     for field in schema.fields() {
         if !is_plain_identifier(field.name()) {
             return Err(not_ported(
                 "io.deephaven.api.util.NameValidator#legalizeColumnName",
                 format_args!("column name '{}'", field.name()),
-            ));
+            )
+            .into());
         }
         let column_type = column_type_of(field)?;
         check_readable(field, &column_type, field.data_type())?;
@@ -265,7 +279,7 @@ pub fn convert_schema(schema: &Schema) -> Result<TableDefinition, Status> {
     }
     TableDefinition::new(columns).map_err(|duplicate| {
         // Java: an IllegalArgumentException out of TableDefinition.of, shown by its error id
-        Status::invalid_argument(duplicate.to_string())
+        Status::invalid_argument(duplicate.to_string()).into()
     })
 }
 
@@ -360,7 +374,7 @@ impl TableUpload {
     /// Fixes the layout from the schema seen so far, if that has not happened yet.
     ///
     /// Behavior: `ArrowToTableConverter#configureWithSchema`
-    fn settle_layout(&mut self) -> Result<(), Status> {
+    fn settle_layout(&mut self) -> Result<(), UploadError> {
         if self.layout.is_none() {
             if let Some(schema) = &self.schema {
                 self.layout = Some(Layout {

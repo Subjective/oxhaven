@@ -245,22 +245,43 @@ fn an_array_without_a_comparator_is_not_marked_sortable() {
     );
 }
 
+/// As Java sent them 2026-11-15: `head` of an uploaded `list<int8>` column came back as
+/// `binary`, and `group_by` of `group_by` of a `String` column as `list<list<utf8>>`, both
+/// with the class names of the column type.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.extensions.barrage.util.BarrageUtil#arrowTypeFor: \
-                column X of type Vector(Array(Byte)): a byte[] is sent as Binary"
-)]
-fn the_schema_of_a_byte_array_is_not_ported() {
-    let _ = field_of(ColumnType::vector(ColumnType::array(ColumnType::Byte)));
-}
+fn a_byte_array_is_binary_and_an_inner_object_vector_holds_text() {
+    let bytes = field_of(ColumnType::array(ColumnType::Byte));
+    assert_eq!(bytes.data_type(), &DataType::Binary);
+    assert_eq!(bytes.metadata()[TYPE_KEY], "byte[]");
+    assert_eq!(bytes.metadata()[COMPONENT_TYPE_KEY], "byte");
 
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.extensions.barrage.util.BarrageUtil#arrowFieldFor: \
-                column X of type Array(Vector(String))"
-)]
-fn the_schema_of_an_inner_object_vector_is_not_ported() {
-    let _ = field_of(ColumnType::array(ColumnType::vector(ColumnType::String)));
+    let element = |data_type| Arc::new(Field::new("", data_type, true));
+    let byte_arrays = field_of(ColumnType::vector(ColumnType::array(ColumnType::Byte)));
+    assert_eq!(
+        byte_arrays.data_type(),
+        &DataType::List(element(DataType::Binary))
+    );
+    assert_eq!(byte_arrays.metadata()[COMPONENT_TYPE_KEY], "byte[]");
+
+    let texts = DataType::List(element(DataType::List(element(DataType::Utf8))));
+    for inner in [ColumnType::String, ColumnType::Boolean, ColumnType::Instant] {
+        let vectors = field_of(ColumnType::vector(ColumnType::vector(inner.clone())));
+        assert_eq!(vectors.data_type(), &texts, "{inner:?}");
+        assert_eq!(
+            vectors.metadata()[TYPE_KEY],
+            "io.deephaven.vector.ObjectVector"
+        );
+        assert_eq!(
+            vectors.metadata()[COMPONENT_TYPE_KEY],
+            "io.deephaven.vector.ObjectVector"
+        );
+        let arrays = field_of(ColumnType::array(ColumnType::vector(inner)));
+        assert_eq!(arrays.data_type(), &texts);
+        assert_eq!(
+            arrays.metadata()[TYPE_KEY],
+            "io.deephaven.vector.ObjectVector[]"
+        );
+    }
 }
 
 #[test]

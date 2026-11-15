@@ -26,7 +26,7 @@ use oxhaven_proto::grpc::{
 };
 use tonic::{Request, Response, Status};
 
-use crate::flight::{convert_schema, not_ported, schema_from_ipc_bytes, snapshot};
+use crate::flight::{convert_schema, not_ported, schema_from_ipc_bytes, snapshot, UploadError};
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
 
 /// Checks a `CreateInputTableRequest` before its source table is looked up.
@@ -66,7 +66,9 @@ pub fn create_input_table(
 ) -> Result<Arc<dyn Table>, Status> {
     validate_create_input_table(request)?;
     let definition: TableDefinition = match (&request.definition, source) {
-        (Some(Definition::Schema(bytes)), _) => convert_schema(&schema_from_ipc_bytes(bytes)?)?,
+        (Some(Definition::Schema(bytes)), _) => {
+            convert_schema(&schema_from_ipc_bytes(bytes)?).map_err(UploadError::into_status)?
+        }
         (_, Some(source)) => source.definition().clone(),
         _ => {
             return Err(Status::invalid_argument(
