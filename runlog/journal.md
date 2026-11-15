@@ -558,3 +558,7 @@ PR 73 (block row set) merged on green. Its checked head had PR 71 but not PR 74;
 ## 2026-11-15 09:40 UTC
 
 PR 75 (Python aggregations, joins, update_by) and PR 76 (Parquet read, first slice) opened. Owner decision recorded for the summary: Snappy, Zstandard and Brotli decoding need BSD-3-Clause crates (`snap`, `zstd`, `brotli`), outside the Apache-2.0/MIT rule; Snappy is the default codec Java writes, so Deephaven-written Parquet files are refused until Josh decides. Missing engine pieces found by the Python tasks, for a follow-up task: partition aggregation, aggBy initial groups, count_where with no filter, keyed transpose, range_join with no aggregation, multi_join with no key.
+
+## 2026-11-15 09:42 UTC
+
+PR 75 merged. Its head showed one red check, `python-console`, from the run that the label event cancelled seconds after the pull request opened; the full run that replaced it on the same commit passed every job including `python-console`. The aggregate job added in PR 70 reports failure when its matrix jobs are cancelled, so every labelled pull request shows a stale red mark. To fix in the next CI change: the aggregate job should not run (or should report cancelled) when the run is cancelled.
