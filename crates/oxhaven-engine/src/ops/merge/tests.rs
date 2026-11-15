@@ -548,7 +548,10 @@ fn a_sorted_merge_takes_the_least_next_row_and_the_earlier_table_on_a_tie() {
         sorted_rows(&[a.clone(), b.clone()], "V"),
         ["0:0", "1:0", "1:10", "2:20", "2:100", "3:200"]
     );
-    assert_eq!(sorted_rows(&[a.clone()], "K"), ["0:0", "1:10", "2:20"]);
+    assert_eq!(
+        sorted_rows(std::slice::from_ref(&a), "K"),
+        ["0:0", "1:10", "2:20"]
+    );
 }
 
 #[test]
