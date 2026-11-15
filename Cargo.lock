@@ -1320,6 +1320,7 @@ dependencies = [
  "httpdate",
  "hyper",
  "hyper-util",
+ "libc",
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-engine",
