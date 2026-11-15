@@ -785,7 +785,7 @@ fn a_row_without_a_timestamp_is_in_no_window() {
 }
 
 #[test]
-fn a_rolling_group_in_time_holds_the_rows_between_the_ends_of_the_window() {
+fn a_rolling_group_in_time_holds_the_rows_of_the_window() {
     let group = || vec![op(UpdateBySpec::RollingGroup(time(2, 0)), &["R = I"])];
     let t = timed(group(), &[]);
     let rows123 = || cell(&[1, 2, 3]);
@@ -793,34 +793,18 @@ fn a_rolling_group_in_time_holds_the_rows_between_the_ends_of_the_window() {
         int_vectors(&*t.result, TR),
         vec![cell(&[1]), rows123(), rows123(), cell(&[4]), cell(&[5])]
     );
-    // A row without a timestamp has a null, not an empty vector. It is in no window, but
-    // it stands between two rows of the windows of rows 10 and 20, whose vectors hold it.
-    // Java reports neither of them (see `Stamped::holding_gap`).
+    // A row at 102 is in its own window and in none after it; rows 10 and 20 are in its.
     let update = t
-        .step(TableChange::new().add([15], timed_row("a", 9, None)))
+        .step(TableChange::new().add([25], timed_row("a", 9, Some(102))))
         .unwrap();
     assert_eq!(
         shape(&update),
-        (vec![15], vec![], vec![10, 20], ModifiedColumnSet::of([TR]))
+        (vec![25], vec![], vec![], ModifiedColumnSet::empty())
     );
-    let with_9 = || cell(&[1, 2, 9, 3]);
-    assert_eq!(
-        int_vectors(&*t.result, TR),
-        vec![cell(&[1]), with_9(), None, with_9(), cell(&[4]), cell(&[5])]
-    );
-    let update = t
-        .step(TableChange::new().modify([15], [(1, ints(&[8]))]))
-        .unwrap();
-    assert_eq!(keys(&update.modified), vec![10, 15, 20]);
-    assert_eq!(int_vectors(&*t.result, TR)[1], cell(&[1, 2, 8, 3]));
-    let update = t.step(TableChange::new().remove([15])).unwrap();
-    assert_eq!(keys(&update.modified), vec![10, 20]);
-    assert_eq!(int_vectors(&*t.result, TR)[1], rows123());
-    // At the end of a window it is not between two of its rows.
-    let update = t
-        .step(TableChange::new().add([25], timed_row("a", 9, None)))
-        .unwrap();
-    assert_eq!(keys(&update.modified), Vec::<RowKey>::new());
+    assert_eq!(int_vectors(&*t.result, TR)[3], cell(&[1, 2, 3, 9]));
+    let update = t.step(TableChange::new().remove([10])).unwrap();
+    assert_eq!(keys(&update.modified), vec![20, 25]);
+    assert_eq!(int_vectors(&*t.result, TR)[2], cell(&[1, 3, 9]));
     // A window that holds no row is an empty vector.
     let t = timed(
         vec![op(UpdateBySpec::RollingGroup(time(-1, 3)), &["R = I"])],
@@ -830,6 +814,38 @@ fn a_rolling_group_in_time_holds_the_rows_between_the_ends_of_the_window() {
         int_vectors(&*t.result, TR),
         vec![cell(&[2, 3]), cell(&[]), cell(&[]), cell(&[]), cell(&[])]
     );
+}
+
+/// Behavior: the `invert` of the affected rows in
+/// io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingBase#processWindowBucketOperatorSet
+#[test]
+fn a_rolling_group_in_time_fails_on_a_row_without_a_timestamp_before_one_with() {
+    let group = || vec![op(UpdateBySpec::RollingGroup(time(2, 0)), &["R = I"])];
+    let stamps = |stamps: &[Option<i64>]| {
+        static_table(&[
+            ("I", ColumnType::Int, ints(&[1, 2, 3])),
+            ("T", ColumnType::Long, longs(stamps)),
+        ])
+    };
+    let run = |source: &Arc<dyn Table>, operations: &[UpdateByOperation]| {
+        update_by(source, operations, &[] as &[&str])
+            .map(|_| ())
+            .map_err(|error| error.to_string())
+    };
+    let refused = Err("keys argument has elements not in the rowSet".to_owned());
+    for failing in [[None, Some(1), Some(2)], [Some(1), None, Some(2)]] {
+        assert_eq!(run(&stamps(&failing), &group()), refused);
+        // The other operators have nothing against it.
+        let sum = [op(UpdateBySpec::RollingSum(time(2, 0)), &["R = I"])];
+        assert_eq!(run(&stamps(&failing), &sum), Ok(()));
+    }
+    // Rows without a timestamp after every row that has one, or nothing else, are
+    // answered, with a null and not an empty vector.
+    for answered in [[Some(1), Some(2), None], [None, None, None]] {
+        let source = stamps(&answered);
+        let result = update_by(&source, &group(), &[] as &[&str]).ok().unwrap();
+        assert_eq!(int_vectors(&*result, 2)[2], None);
+    }
 }
 
 #[test]
@@ -953,8 +969,13 @@ fn bad_requests_in_time_are_errors() {
 /// Rewrites the timestamps that `change` gives added rows and modified rows of `table` in
 /// column `column` so that the table's timestamps never decrease in key order: each takes
 /// a value between those of the rows around it that keep theirs, picked by the value the
-/// change had for it. Nulls stay.
-fn rising(mut change: TableChange, table: &dyn Table, column: usize) -> TableChange {
+/// change had for it. Nulls stay, unless `stamp_all`.
+fn rising(
+    mut change: TableChange,
+    table: &dyn Table,
+    column: usize,
+    stamp_all: bool,
+) -> TableChange {
     let snapshot = TableSnapshot::current(table).unwrap();
     let stamps = snapshot.columns[column]
         .as_any()
@@ -991,7 +1012,8 @@ fn rising(mut change: TableChange, table: &dyn Table, column: usize) -> TableCha
     let modified_keys: Vec<i64> = update.modified.iter().collect();
     let generated = |values: &ArrayRef, index: usize| {
         let values = values.as_any().downcast_ref::<Int64Array>().unwrap();
-        values.is_valid(index).then(|| values.value(index))
+        let value = values.is_valid(index).then(|| values.value(index));
+        value.or(stamp_all.then_some(0))
     };
     let mut new_added = vec![None; added.len()];
     let mut new_modified = vec![None; modified_keys.len()];
@@ -1138,20 +1160,43 @@ fn everything_in_time() -> Vec<UpdateByOperation> {
             &["Wa3 = L"],
         ),
         op(
-            UpdateBySpec::RollingGroup(time(5, 0)),
-            &["G1 = I", "G2 = S", "G3 = T"],
-        ),
-        op(UpdateBySpec::RollingGroup(time(-2, 6)), &["G4 = D"]),
-        op(UpdateBySpec::RollingGroup(time(4, 4)), &["G5 = X", "G6 = B"]),
-        op(UpdateBySpec::RollingGroup(time(0, 0)), &["G7 = L"]),
-        op(
             UpdateBySpec::RollingGroup(RollingWindow::ticks(2, 1)),
             &["G8 = F"],
         ),
     ]
 }
 
+/// Rolling groups in time, which fail on a row without a timestamp, sharing their windows
+/// with other operators and not.
+fn groups_in_time() -> Vec<UpdateByOperation> {
+    vec![
+        op(
+            UpdateBySpec::RollingGroup(time(5, 0)),
+            &["G1 = I", "G2 = S", "G3 = T"],
+        ),
+        op(UpdateBySpec::RollingSum(time(5, 0)), &["Rs1 = I"]),
+        op(UpdateBySpec::RollingGroup(time(-2, 6)), &["G4 = D"]),
+        op(UpdateBySpec::RollingGroup(time(4, 4)), &["G5 = X", "G6 = B"]),
+        op(UpdateBySpec::RollingGroup(time(0, 0)), &["G7 = L"]),
+        op(UpdateBySpec::RollingCount(time(0, 0)), &["Rc1 = L"]),
+    ]
+}
+
 fn random_updates_in_time(by: &'static [&'static str]) {
+    random_updates_with(by, everything_in_time, Some(2));
+}
+
+fn random_updates_of_groups_in_time(by: &'static [&'static str]) {
+    random_updates_with(by, groups_in_time, None);
+}
+
+/// Random updates of a table with a timestamp column `T`, which has no timestamp in the
+/// row at `unstamped` and in some of the rows that come, or in none.
+fn random_updates_with(
+    by: &'static [&'static str],
+    operations: fn() -> Vec<UpdateByOperation>,
+    unstamped: Option<usize>,
+) {
     let types = [
         ("K", ColumnType::String),
         ("B", ColumnType::Boolean),
@@ -1173,13 +1218,18 @@ fn random_updates_in_time(by: &'static [&'static str]) {
             .iter()
             .map(|(name, column_type)| (*name, column_type.clone(), random.values(column_type, 6)))
             .collect();
-        columns[t_index].2 = longs(&[Some(0), Some(3), None, Some(3), Some(7), Some(12)]);
+        let mut stamps = [Some(0), Some(3), Some(3), Some(3), Some(7), Some(12)];
+        if let Some(row) = unstamped {
+            stamps[row] = None;
+        }
+        columns[t_index].2 = longs(&stamps);
         let t = Ticking::new([0, 2, 4, 6, 8, 10], &columns, move |source| {
-            update_by(source, &everything_in_time(), by).unwrap()
+            update_by(source, &operations(), by).unwrap()
         });
         for _ in 0..30 {
             let table = t.script.table();
-            let change = rising(random.next_change(&*table, 5), &*table, t_index);
+            let change = random.next_change(&*table, 5);
+            let change = rising(change, &*table, t_index, unstamped.is_none());
             t.step(change);
         }
     }
@@ -1193,4 +1243,14 @@ fn random_updates_in_time_match_a_recompute_without_buckets() {
 #[test]
 fn random_updates_in_time_match_a_recompute_with_buckets() {
     random_updates_in_time(&["K"]);
+}
+
+#[test]
+fn random_updates_of_groups_in_time_match_a_recompute_without_buckets() {
+    random_updates_of_groups_in_time(&[]);
+}
+
+#[test]
+fn random_updates_of_groups_in_time_match_a_recompute_with_buckets() {
+    random_updates_of_groups_in_time(&["K"]);
 }

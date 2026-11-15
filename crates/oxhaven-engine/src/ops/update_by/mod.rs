@@ -31,8 +31,7 @@
 //! recomputes: for the cumulative operators every row from the first one a change can
 //! reach to the end of the bucket; for a rolling window the rows whose window holds an
 //! added, removed or modified row. Those rows are reported as modified in the result
-//! columns. A rolling group in time also recomputes the rows whose vector holds a row
-//! without a timestamp that changed, which Java does not (`Stamped::holding_gap`). A row whose bucket columns changed leaves its bucket and joins another, as a
+//! columns. A row whose bucket columns changed leaves its bucket and joins another, as a
 //! removed and an added row.
 
 mod cumulative;
@@ -1034,6 +1033,10 @@ impl Plan {
                 // (io.deephaven.engine.table.impl.updateby.internal.BaseLongUpdateByOperator.Context#accumulateRolling)
                 let stamped = self.stamped(rows)?;
                 let stamps = self.timestamps(affected, false)?;
+                let grouped = |member: &usize| matches!(self.columns[*member].kernel, Kernel::Group);
+                if members.iter().any(grouped) {
+                    stamped.positions_exist(affected, &stamps)?;
+                }
                 let windowed = stamped.rows().intersect(affected);
                 let influencers = stamped.reach(stamps.iter().copied(), time.rev, time.fwd);
                 let slides = time.slides(
@@ -1068,10 +1071,10 @@ impl Plan {
                         // A row without a timestamp gets a null here too, not an empty
                         // vector: RollingGroupOperator.Context#accumulateRolling writes a
                         // null start and a null end for it.
-                        Kernel::Group => group::vectors(
-                            &*self.parent.column(column.input),
-                            group::time_slices(rows, &influencers, &slides),
-                        )?,
+                        Kernel::Group => {
+                            let values = self.parent.column(column.input).chunk(&influencers)?;
+                            group::windows(&column.input_type, &values, &slides)?
+                        }
                         _ => return Err(internal("a cumulative operator in a rolling window")),
                     };
                     let results = take(results.as_ref(), &indices, None)
@@ -1222,46 +1225,6 @@ impl Plan {
         Ok(affected)
     }
 
-    /// The rows of a bucket whose vector over a window in time holds a row without a
-    /// timestamp that was added, removed or modified in an input column (`changed`). See
-    /// [`Stamped::holding_gap`] for why Java recomputes none of them.
-    #[allow(clippy::too_many_arguments)]
-    fn gap_affected(
-        &self,
-        time: Time,
-        previous: &RowSet,
-        rows: &RowSet,
-        upstream: &TableUpdate,
-        added: &RowSet,
-        removed: &RowSet,
-        changed: &RowSet,
-    ) -> Result<RowSet, TableFailure> {
-        let stamped = self.stamped(rows)?;
-        let mut affected = RowSet::empty();
-        let current = added.union(changed);
-        if !current.is_empty() {
-            for (key, stamp) in current.iter().zip(self.timestamps(&current, false)?) {
-                if stamp.is_none() {
-                    affected.insert(&stamped.holding_gap(stamped.count_before(key), time));
-                }
-            }
-        }
-        if !removed.is_empty() {
-            // Where a removed row stood: after the nearest row before it that is still there.
-            let survivors = previous.minus(removed);
-            for (key, stamp) in removed.iter().zip(self.timestamps(removed, true)?) {
-                let (Ok(at) | Err(at)) = survivors.find_or_insertion(key);
-                let before = at.checked_sub(1).and_then(|at| survivors.get(at));
-                if let (None, Some(before)) = (stamp, before) {
-                    let before = upstream.shifted.apply_to_key(before);
-                    let count = stamped.count_before(before + 1);
-                    affected.insert(&stamped.holding_gap(count, time));
-                }
-            }
-        }
-        Ok(affected)
-    }
-
     /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateBy.PhasedUpdateProcessor, from
     /// the shift of the result columns to #computeDownstreamUpdate
     fn on_update(
@@ -1371,19 +1334,6 @@ impl Plan {
                         &RowSet::from_keys(change.modified_before.iter().copied()),
                     )?,
                 };
-                let mut affected = affected;
-                let grouped = |member: &usize| matches!(self.columns[*member].kernel, Kernel::Group);
-                if let (Window::Time(time), true) = (window, dirty.iter().any(grouped)) {
-                    affected.insert(&self.gap_affected(
-                        *time,
-                        &previous,
-                        rows,
-                        upstream,
-                        &added,
-                        &removed,
-                        if inputs_changed { &changed } else { &nothing },
-                    )?);
-                }
                 if affected.is_empty() {
                     continue;
                 }

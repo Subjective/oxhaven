@@ -1,6 +1,8 @@
 //! `update_by` against the results recorded from the Java reference server in
-//! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`) and
-//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`).
+//! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`),
+//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`)
+//!
+//! and `fixtures/java_update_by_group.json` (`fixtures/record_java_update_by_group.py`).
 //!
 //! Values are compared exactly, floating point cells bit for bit (any NaN equals any
 //! NaN). The tolerance of PARITY.md's allowed difference A1 is not used: the operators
@@ -15,8 +17,8 @@ use super::{
 use crate::graph::SteppedUpdateGraph;
 use crate::table::keyed_input_table;
 use arrow::array::{
-    ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
+    Int64Array, Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::RecordBatch;
@@ -32,6 +34,14 @@ const RECORDED: &str = include_str!("fixtures/java_update_by.json");
 /// The rolling standard deviation and weighted average and the exponential moving standard
 /// deviation.
 const RECORDED_REST: &str = include_str!("fixtures/java_update_by_rest.json");
+/// The rolling group.
+const RECORDED_GROUP: &str = include_str!("fixtures/java_update_by_group.json");
+/// How many cases of each of its sections Java answers.
+const GROUP_STATIC: usize = 181;
+const GROUP_LONG: usize = 28;
+const GROUP_TIMED: usize = 1;
+const GROUP_STAMPED: usize = 201;
+const GROUP_BURST: usize = 156;
 
 fn column_type(name: &str) -> ColumnType {
     match name {
@@ -47,6 +57,34 @@ fn column_type(name: &str) -> ColumnType {
         "instant" | "java.time.Instant" => ColumnType::Instant,
         other => panic!("no column type for {other}"),
     }
+}
+
+/// The type of a recorded result column: `java` is the class Java reports for it, and
+/// `component` the element type of a vector.
+fn java_type(column: &Value) -> ColumnType {
+    let java = column["java"].as_str().unwrap();
+    let Some(vector) = java.strip_prefix("io.deephaven.vector.") else {
+        return column_type(java);
+    };
+    let component = column["component"].as_str().unwrap();
+    let element = column_type(component);
+    let primitive = vector
+        .strip_suffix("Vector")
+        .is_some_and(|name| name.eq_ignore_ascii_case(component));
+    assert!(
+        primitive || vector == "ObjectVector",
+        "{java} of {component} is no vector type"
+    );
+    ColumnType::vector(element)
+}
+
+/// The cells of a recorded vector column or of ours, each null or its elements.
+fn cells(array: &ArrayRef, element: &ColumnType) -> Vec<Option<Values>> {
+    let lists = array.as_any().downcast_ref::<ListArray>().unwrap();
+    lists
+        .iter()
+        .map(|cell| cell.map(|cell| Values::read(&cell, element).unwrap()))
+        .collect()
 }
 
 fn float(value: &Value) -> Option<f64> {
@@ -153,6 +191,7 @@ fn operation(op: &Value) -> UpdateByOperation {
         "rolling_count" => UpdateBySpec::RollingCount(window(op)),
         "rolling_prod" => UpdateBySpec::RollingProduct(window(op)),
         "rolling_std" => UpdateBySpec::RollingStd(window(op)),
+        "rolling_group" => UpdateBySpec::RollingGroup(window(op)),
         "rolling_wavg" => UpdateBySpec::RollingWAvg {
             window: window(op),
             weight_column: op["weight"].as_str().unwrap().into(),
@@ -233,15 +272,12 @@ fn differences_within(table: &dyn Table, columns: &Value, tolerant: &[&str]) -> 
             continue;
         };
         let ours = &table.definition().columns()[index].column_type;
-        let java = column_type(column["java"].as_str().unwrap());
+        let java = java_type(column);
         if *ours != java {
             out.push(format!("{name}: type {ours:?}, Java has {java:?}"));
             continue;
         }
-        let expected: Vec<&Value> = column["values"].as_array().unwrap().iter().collect();
-        let expected = Values::read(&array(&java, &expected), &java).unwrap();
-        let actual = Values::read(&snapshot.columns[index], &java).unwrap();
-        let same = match (&expected, &actual) {
+        let same = |expected: &Values, actual: &Values| match (expected, actual) {
             (Values::Int(a), Values::Int(b)) => a == b,
             (Values::Text(a), Values::Text(b)) => a == b,
             (Values::Float(a), Values::Float(b)) => {
@@ -249,9 +285,53 @@ fn differences_within(table: &dyn Table, columns: &Value, tolerant: &[&str]) -> 
             }
             _ => false,
         };
-        if !same {
+        let expected: Vec<&Value> = column["values"].as_array().unwrap().iter().collect();
+        if let ColumnType::Vector(element) = &java {
+            let expected: Vec<Option<Values>> = expected
+                .iter()
+                .map(|cell| {
+                    let cell: Vec<&Value> = cell.as_array()?.iter().collect();
+                    Some(Values::read(&array(element, &cell), element).unwrap())
+                })
+                .collect();
+            let actual = cells(&snapshot.columns[index], element);
+            if expected.len() != actual.len() {
+                out.push(format!(
+                    "{name}: {} rows, Java has {}",
+                    actual.len(),
+                    expected.len()
+                ));
+                continue;
+            }
+            let show = |cell: &Option<Values>| cell.as_ref().map_or("null".to_owned(), show);
+            for (row, (expected, actual)) in expected.iter().zip(&actual).enumerate() {
+                let equal = match (expected, actual) {
+                    (None, None) => true,
+                    (Some(expected), Some(actual)) => same(expected, actual),
+                    _ => false,
+                };
+                if !equal {
+                    out.push(format!(
+                        "{name} row {row}:\n    java {}\n    ours {}",
+                        show(expected),
+                        show(actual)
+                    ));
+                }
+            }
+            continue;
+        }
+        let expected = Values::read(&array(&java, &expected), &java).unwrap();
+        let actual = Values::read(&snapshot.columns[index], &java).unwrap();
+        if !same(&expected, &actual) {
+            let first = match (&expected, &actual) {
+                (Values::Float(a), Values::Float(b)) => (0..a.len().min(b.len()))
+                    .find(|&row| !floats_match(name, a[row], b[row]))
+                    .map(|row| format!(" (row {row}: java {:?}, ours {:?})", a[row], b[row])),
+                _ => None,
+            };
             out.push(format!(
-                "{name}:\n    java {}\n    ours {}",
+                "{name}{}:\n    java {}\n    ours {}",
+                first.unwrap_or_default(),
                 show(&expected),
                 show(&actual)
             ));
@@ -288,6 +368,17 @@ fn definition(columns: &Value) -> TableDefinition {
 /// Runs every case of one recorded table, `section`, which holds at least `at_least` cases
 /// that Java answers.
 fn static_section(recorded: &str, section: &str, at_least: usize) {
+    static_section_within(recorded, section, at_least, |_| &[]);
+}
+
+/// As [`static_section`], with the result columns that `tolerant` names for a case compared
+/// under PARITY.md's allowed difference A1.
+fn static_section_within(
+    recorded: &str,
+    section: &str,
+    at_least: usize,
+    tolerant: fn(&Value) -> &'static [&'static str],
+) {
     let recorded: Value = serde_json::from_str(recorded).unwrap();
     let columns = &recorded[section]["columns"];
     let definition = definition(columns);
@@ -330,7 +421,8 @@ fn static_section(recorded: &str, section: &str, at_least: usize) {
                         result["names"]
                     ));
                 }
-                for difference in differences(&*table, &result["columns"]) {
+                let columns = &result["columns"];
+                for difference in differences_within(&*table, columns, tolerant(case)) {
                     failures.push(format!("{label}: {difference}"));
                 }
             }
@@ -381,6 +473,63 @@ fn rounded_results_of_the_rest_match_java() {
 }
 
 #[test]
+fn static_results_of_the_group_match_java() {
+    static_section(RECORDED_GROUP, "static", GROUP_STATIC);
+}
+
+#[test]
+fn long_results_of_the_group_match_java() {
+    static_section(RECORDED_GROUP, "long", GROUP_LONG);
+}
+
+/// The table has rows without a timestamp before rows with one, and Java refuses every
+/// rolling group in time over it but one: with the buckets of `K` and the timestamp
+/// column `TB`, which has no nulls.
+#[test]
+fn timed_results_of_the_group_match_java() {
+    static_section(RECORDED_GROUP, "timed", GROUP_TIMED);
+}
+
+/// One case has an exponential moving average in time beside the groups, decaying over 5
+/// nanoseconds. One of its cells is one unit in the last place from Java's, which is the
+/// difference PARITY.md A1 allows for a result computed with `exp`; that column is
+/// compared under A1 and everything else bit for bit.
+#[test]
+fn timed_results_of_the_group_with_every_timestamp_match_java() {
+    static_section_within(RECORDED_GROUP, "stamped", GROUP_STAMPED, |case| {
+        let ops = case["ops"].as_array().unwrap();
+        if ops.iter().any(|op| op["op"] == "ema") {
+            &["EA"]
+        } else {
+            &[]
+        }
+    });
+}
+
+/// Windows in time that more than 64 and more than 128 rows enter at once, after the
+/// window has moved along single rows: the ring buffers of the rolling operators grow, and
+/// where their values then stand depends on the capacity they started with.
+///
+/// Without buckets every result is Java's bit for bit. With buckets the floating point
+/// results are compared under PARITY.md's allowed difference A1, because Java's are not
+/// determined by the table: an operator's buffer belongs to the thread that computes a
+/// bucket, is cleared between buckets and keeps the capacity it grew to
+/// (io.deephaven.engine.table.impl.updateby.UpdateBy.PhasedUpdateProcessor#processWindowOperatorSet,
+/// io.deephaven.base.ringbuffer.AggregatingDoubleRingBuffer#clear), so the order in which a
+/// bucket's values are multiplied depends on the buckets its thread computed before. One
+/// recorded product of a `float` column differs from the one here in its last bits.
+#[test]
+fn results_over_bursts_of_rows_match_java() {
+    static_section_within(RECORDED_GROUP, "burst", GROUP_BURST, |case| {
+        if case["by"].as_array().unwrap().is_empty() {
+            &[]
+        } else {
+            &["R"]
+        }
+    });
+}
+
+#[test]
 fn timed_results_of_the_rest_match_java() {
     static_section(RECORDED_REST, "timed", 412);
 }
@@ -423,6 +572,23 @@ fn ticking_results_match_java() {
 #[test]
 fn ticking_results_of_the_rest_match_java() {
     ticking_scenarios(RECORDED_REST, 4);
+}
+
+/// The scenarios `timed` and `timed_bucketed` have rows without a timestamp, and end
+/// when the rolling groups in time fail on one; in `stamped` and `stamped_bucketed` every
+/// row has a timestamp.
+#[test]
+fn ticking_results_of_the_group_match_java() {
+    ticking_scenarios(RECORDED_GROUP, 6);
+    let recorded: Value = serde_json::from_str(RECORDED_GROUP).unwrap();
+    let failed: Vec<&str> = recorded["ticking"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|scenario| scenario["steps"].as_array().unwrap().last().unwrap()["failed"] == true)
+        .map(|scenario| scenario["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(failed, ["timed", "timed_bucketed"]);
 }
 
 /// Replays the `count` ticking scenarios of `recorded` with the consistency checker and a
@@ -476,6 +642,14 @@ fn ticking_scenarios(recorded: &str, count: usize) {
             if !step["delete"].as_array().unwrap().is_empty() {
                 input.delete(batch(&key_columns, &step["delete"])).unwrap();
             }
+            if step["failed"] == true {
+                // Java's table failed in this step, and the recording ends.
+                if !result.is_failed() {
+                    failures.push(format!("{name} step {number}: Java fails, Oxhaven answers"));
+                }
+                break;
+            }
+            assert!(!result.is_failed(), "{name} step {number}: the result failed");
             checker.assert_consistent();
             // The source rows first: if they differ, the input table is at fault.
             let rows = differences(&*result, &step["rows"]);

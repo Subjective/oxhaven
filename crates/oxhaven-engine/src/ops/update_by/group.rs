@@ -7,9 +7,10 @@
 //! every row whose slice or whose values in it changed.
 
 use super::failure;
-use super::rolling::{Slide, Stamped, Ticks, Time};
-use arrow::array::{ArrayRef, ListArray};
+use super::rolling::{Slide, Ticks};
+use arrow::array::{ArrayRef, ListArray, UInt32Array};
 use arrow::buffer::OffsetBuffer;
+use arrow::compute::take;
 use arrow::datatypes::DataType;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -48,8 +49,16 @@ pub(super) fn vectors(
             "rolling group: more than 2^31 - 1 values in the windows computed at once",
         ));
     }
-    let elements = input.chunk_by_keys(&keys, false)?;
-    let DataType::List(field) = output_type(input.column_type()).arrow_type() else {
+    lists(input.column_type(), lengths, input.chunk_by_keys(&keys, false)?)
+}
+
+/// A vector column of cells of `lengths` elements, taken from `elements` in order.
+fn lists(
+    element: &ColumnType,
+    lengths: Vec<usize>,
+    elements: ArrayRef,
+) -> Result<ArrayRef, TableFailure> {
+    let DataType::List(field) = output_type(element).arrow_type() else {
         unreachable!("a vector is an Arrow list");
     };
     let lists = ListArray::try_new(field, OffsetBuffer::from_lengths(lengths), elements, None)
@@ -75,58 +84,37 @@ impl Ticks {
     }
 }
 
-/// For each slide of a window in time over the timestamped `influencers`, the rows of the
-/// bucket `rows` from the first row in the window to the last. Rows without a timestamp
-/// that lie between two rows of the window are among them: Java keeps the positions of the
-/// first and the last row of the window in the bucket, and the vector is every row from one
-/// to the other. A window that holds no row gives no rows.
+/// One vector per slide of a window in time: the values of the rows in the window, of
+/// `influencers`, the input values of the timestamped influencer rows in order. A window
+/// that holds no row gives an empty vector. Rows without a timestamp are in no vector,
+/// wherever they stand: the positions Java keeps for the first and the last row of a window
+/// are positions among the bucket's rows that have a timestamp, and the result column
+/// slices that row set.
 ///
-/// Behavior: RollingGroupOperator.Context#push, #pop and #writeToOutputChunk, whose
-/// `startPos` and `endPos` are positions in the bucket's row set, and
-/// SlicedIntAggregateColumnSource#get, which takes that range of positions
-pub(super) fn time_slices(rows: &RowSet, influencers: &RowSet, slides: &[Slide]) -> Vec<RowSet> {
-    let keys: Vec<RowKey> = influencers.iter().collect();
+/// Behavior: RollingGroupOperator.Context#push, #pop and #writeToOutputChunk and
+/// RollingGroupOperator#initializeRolling, with the `timestampValidRowSet` that
+/// io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingBase#processWindowBucketOperatorSet
+/// hands them as the bucket's row set, and SlicedIntAggregateColumnSource#get
+pub(super) fn windows(
+    element: &ColumnType,
+    influencers: &ArrayRef,
+    slides: &[Slide],
+) -> Result<ArrayRef, TableFailure> {
     let (mut head, mut tail) = (0, 0);
-    slides
-        .iter()
-        .map(|slide| {
-            head += slide.pop;
-            tail += slide.push;
-            if head < tail {
-                rows.sub_set_by_key_range(keys[head], keys[tail - 1])
-            } else {
-                RowSet::empty()
-            }
-        })
-        .collect()
-}
-
-impl Stamped {
-    /// The timestamped rows whose vector, over a window in time, holds a row without a
-    /// timestamp that stands after `before` timestamped rows of the bucket: those whose
-    /// window holds both the timestamped row before it and the one after it. None if it has
-    /// no timestamped row on either side.
-    ///
-    /// No Java counterpart, and a difference from Java: such a row is in no window, so
-    /// io.deephaven.engine.table.impl.updateby.UpdateByWindowRollingTime#computeAffectedRowsAndOperators
-    /// recomputes nothing when one is added, removed or modified. Java's vectors around it
-    /// are views and change all the same: they show its new value without reporting a
-    /// modified row, and when it is added or removed the unchanged start and end offsets
-    /// of the rows after it select other rows than their windows hold.
-    pub(super) fn holding_gap(&self, before: usize, time: Time) -> RowSet {
-        if before == 0 || before >= self.stamps().len() {
-            return RowSet::empty();
+    let mut lengths = Vec::with_capacity(slides.len());
+    let mut indices: Vec<u32> = Vec::new();
+    for slide in slides {
+        head += slide.pop;
+        tail += slide.push;
+        lengths.push(tail.saturating_sub(head));
+        indices.extend((head..tail).map(|index| index as u32));
+        if i32::try_from(indices.len()).is_err() {
+            return Err(failure(
+                "rolling group: more than 2^31 - 1 values in the windows computed at once",
+            ));
         }
-        let stamps = self.stamps();
-        let first = stamps[before].wrapping_sub(time.fwd);
-        let last = stamps[before - 1].wrapping_add(time.rev);
-        let start = stamps.partition_point(|s| *s < first);
-        let end = stamps.partition_point(|s| *s <= last);
-        RowSet::from_keys(self.keys()[start..end.max(start)].iter().copied())
     }
-
-    /// How many timestamped rows have a key below `key`.
-    pub(super) fn count_before(&self, key: RowKey) -> usize {
-        self.keys().partition_point(|k| *k < key)
-    }
+    let elements = take(influencers.as_ref(), &UInt32Array::from(indices), None)
+        .map_err(|error| failure(error.to_string()))?;
+    lists(element, lengths, elements)
 }
