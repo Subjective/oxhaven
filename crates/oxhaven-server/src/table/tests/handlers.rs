@@ -951,6 +951,112 @@ async fn aggregate_has_distinct_count_where_sentinels_and_outputs_named_like_key
     );
 }
 
+fn agg_formula(selectable: Option<&str>) -> proto::Aggregation {
+    proto::Aggregation {
+        r#type: Some(proto::aggregation::Type::Formula(
+            proto::aggregation::AggregationFormula {
+                selectable: Some(proto::Selectable {
+                    r#type: selectable.map(|raw| proto::selectable::Type::Raw(raw.to_string())),
+                }),
+            },
+        )),
+    }
+}
+
+#[tokio::test]
+async fn aggregate_has_formulas_in_both_forms() {
+    use proto::agg_spec::{AggSpecFormula, Type};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 1).await;
+    let each = |formula: &str, param_token: &str| {
+        Type::Formula(AggSpecFormula {
+            formula: formula.to_string(),
+            param_token: param_token.to_string(),
+        })
+    };
+    // S = a has I = 0, 2, 4 and N = 3, 1, -1; S = b has I = 1, 3, 5 and N = 2, 0, -2.
+    let request = aggregated(
+        2,
+        vec![
+            agg_columns(each("sum(each)", "each"), &["E = I", "N"]),
+            agg_formula(Some("M = sum(I) * count(N)")),
+            agg_formula(Some(" K=S + len(I) ")),
+            agg_formula(Some("I")),
+        ],
+        &["S"],
+    );
+    call(&mut c, request).await.unwrap();
+    let table = c.table(2);
+    assert_eq!(
+        column_types(table.as_ref()),
+        [
+            "S: String",
+            "E: Long",
+            "N: Long",
+            "M: Long",
+            "K: String",
+            "I: Vector(Int)"
+        ]
+    );
+    let column = |name: &str| values(table.as_ref(), name);
+    assert_eq!(column("E"), ints(&[6, 9]));
+    assert_eq!(column("N"), ints(&[3, 0]));
+    assert_eq!(column("M"), ints(&[18, 27]));
+    assert_eq!(column("K"), texts(&["a3", "b3"]));
+    assert_eq!(column("I"), texts(&["[0, 2, 4]", "[1, 3, 5]"]));
+
+    // The formula of every column but the group-by columns.
+    let all = |result: i32, formula: &str| {
+        Op::AggregateAll(AggregateAllRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(1),
+            spec: Some(agg_spec(each(formula, "x"))),
+            group_by_columns: texts(&["S"]),
+        })
+    };
+    call(&mut c, all(3, "max(x) - len(x)")).await.unwrap();
+    let table = c.table(3);
+    assert_eq!(
+        column_types(table.as_ref()),
+        ["S: String", "I: Long", "N: Long"]
+    );
+    assert_eq!(values(table.as_ref(), "I"), ints(&[1, 2]));
+    assert_eq!(values(table.as_ref(), "N"), ints(&[0, -1]));
+
+    // What Java refuses is an internal error, as its exceptions are.
+    let refused = [
+        agg_columns(each("nope(each)", "each"), &["I"]),
+        agg_columns(each("sum(each) + sum(N)", "each"), &["I"]),
+        agg_columns(each("sum(each)", ""), &["I"]),
+        agg_formula(Some("M = nope(I)")),
+        agg_formula(Some("M = sum(I) + i")),
+        agg_formula(Some("M = sum(I_)")),
+        agg_formula(Some("sum(I)")),
+        agg_formula(Some("M == sum(I)")),
+        agg_formula(Some("M =")),
+        agg_formula(Some("1M = sum(I)")),
+        agg_formula(None),
+    ];
+    for (index, aggregation) in refused.into_iter().enumerate() {
+        let request = aggregated(10 + index as i32, vec![aggregation.clone()], &["S"]);
+        let status = call(&mut c, request).await.unwrap_err();
+        assert_eq!(status.code(), Code::InvalidArgument, "{aggregation:?}");
+        assert!(
+            status.message().starts_with("Details Logged w/ID '"),
+            "{aggregation:?}: {status:?}"
+        );
+    }
+    assert_internal(&call(&mut c, all(30, "nope(x)")).await.unwrap_err());
+    // Java evaluates `i` in a formula with a token; this server does not.
+    let request = aggregated(
+        31,
+        vec![agg_columns(each("len(x) + i", "x"), &["I"])],
+        &["S"],
+    );
+    let status = call(&mut c, request).await.unwrap_err();
+    assert_eq!(status.code(), Code::Unimplemented, "{status:?}");
+}
+
 fn unique(
     sentinel: Option<proto::agg_spec::agg_spec_non_unique_sentinel::Type>,
 ) -> proto::agg_spec::Type {
