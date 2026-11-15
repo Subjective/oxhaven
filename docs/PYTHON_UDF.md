@@ -23,8 +23,9 @@ document says "Java", it means that observation, and the source it names says wh
    that a gRPC client sends is compiled without it, so a call to a Python function there is an
    unknown function and is answered `INVALID_ARGUMENT`, as Java answers it: Java's expression
    validator refuses the call (`IllegalStateException: Cannot validate user expression`).
-3. **The signature is read once, when the formula is compiled.** The package's own
-   `deephaven._udf` module reads the function's signature with `inspect.signature`, maps the
+3. **The signature is read once, when the formula is compiled.** The server's Python module
+   `_oxhaven_udf` (`crates/oxhaven-server/python/_oxhaven_udf.py`, loaded by
+   `console/python/udf.rs`) reads the function's signature with `inspect.signature`, maps the
    return annotation to a column type, checks the argument types against the parameter
    annotations, and returns one Python callable that runs a whole chunk. A formula holds that
    callable, and so the function object of that moment: assigning the name again later does
@@ -49,6 +50,9 @@ document says "Java", it means that observation, and the source it names says wh
   when it does not (`sqrt(T)` for a `String` column), and a column of the same name hides the
   function ("Cannot find method").
   Behavior: `QueryLanguageParser#getMethod`.
+- A name of Java's function library that this server has not ported (`cbrt`, `var`) stays
+  the refusal it was ("unsupported in formulas"), whatever the scope holds: Java would call
+  its own function when the arguments fit, and that is not known here.
 - Any callable whose signature `inspect.signature` can read: a function, a `functools.partial`,
   an object with `__call__`. A lambda and a class have no return annotation and are refused
   for that reason.
@@ -146,8 +150,11 @@ How each party keeps it:
   in Java as here.
 
 The test `console::python::udf::tests::a_cycle_calls_python_while_commands_run` runs commands
-on one thread while cycles of a ticking table whose formula calls Python run on another, and
-fails if either stops making progress.
+on one thread, cycles of a ticking table whose formula calls Python on another, and a Python
+thread that calls table operations and the function on a third, and fails if any of them
+stops making progress. With the `py.detach` of `_oxhaven.table_op` taken out it fails: the
+Python thread waits for the graph lock with the interpreter lock held, and the cycle waits
+for the interpreter lock.
 
 A new native function keeps the rule by doing what the existing ones do: `py.detach` around
 every call into the engine.
@@ -164,22 +171,39 @@ order it is called, in Java and here:
   `update_view` and `lazy_update` call it on every read; `where` calls it for added and
   modified rows.
 - Between the formulas of one operation the order of evaluation is this engine's (column by
-  column, in the order given). Java's is not that order: with a counter function,
+  column, in the order given). Java's order is not fixed: with a counter function,
   `update(["A = nxt()", "B = nxt()", "E = nxt() + 0"])` gave `B` the first four numbers, `E`
-  the next and `A` the last. A script that depends on it gets different numbers. Within one
-  formula the numbers are the same (`udf_calls`).
+  the next and `A` the last in one run, and `A`, `B`, `E` in that order in another. A script
+  that depends on it gets different numbers from Java itself. Within one formula the numbers
+  are the same on every run (`udf_calls`).
 
 ## Cost of the interpreter lock
 
-Measured on this machine (4 cores, Python 3.13, debug build), `udf::tests::lock_cost`
-(`cargo test -p oxhaven-server --features python --lib -- --ignored lock_cost --nocapture`):
-see the task file's notes for the figures of the run that was made. In short: taking and
-releasing the lock when no Python thread wants it costs well under a microsecond, which is
-nothing against the calls of a chunk; when a Python thread is busy, a cycle thread waits for
-the interpreter's switch interval (5 ms by default) at most once per chunk, so a cycle that
-evaluates one chunk is delayed by up to 5 ms, and a console command never competes, because a
-command and a cycle exclude each other through the graph lock. The chunk size of 4096 rows
-bounds how long a cycle keeps Python threads out.
+Measured by `console::python::udf::tests::lock_cost`
+(`cargo test -p oxhaven-server --features python --lib -- --ignored lock_cost --nocapture`),
+once, on a 4-core machine that other builds shared, with Python 3.13 and a debug build:
+
+| What | Time |
+| --- | --- |
+| The lock taken and released, no Python thread running | 0.19 µs |
+| The lock taken and released, a Python thread computing (`while busy: pass`) | 0.46 ms on average |
+| One row of `update('A = twice(ii)')`, 409600 rows | 0.56 µs |
+| One row of `update('A = 2 * ii')` | 0.19 µs |
+| A cycle that adds 41692 rows of `A = twice(ii)` (11 chunks), no Python thread | 77 ms |
+| A cycle that adds 41504 rows of `A = 2 * ii`, no Python thread | 65 ms |
+| A cycle that adds 54247 rows of `A = twice(ii)` (14 chunks), a Python thread computing | 157 ms |
+| A cycle that adds 46853 rows of `A = 2 * ii`, a Python thread computing | 80 ms |
+
+So: with no Python thread running, the lock is nothing against the calls of a chunk (0.19 µs
+against about 1.5 ms of calls), and a call costs about 0.4 µs more per row than arithmetic.
+With a Python thread that computes without pause, a cycle pays about 5 ms for each chunk,
+which is the interpreter's switch interval (`sys.getswitchinterval()`, 5 ms by default): the
+cycle thread asks for the lock and the running thread gives it up at the end of its
+interval. The cost is per chunk, not per row, which is the reason for a chunk of 4096 rows
+and against a smaller one; a cycle of one chunk is late by up to 5 ms. A console command
+never competes with a cycle, because a command and a cycle exclude each other through the
+graph lock; only threads the script started do. The figures are of a debug build and one
+run; they order the costs and do not bound them.
 
 ## Refused
 
@@ -189,7 +213,7 @@ says "the row fails", and names the Java method that would have done the work.
 | What | Java | Named in the refusal |
 | --- | --- | --- |
 | A function without a return annotation, or with one that names no column type (`None`, `Any`, `object`, a union, `list`, an unsigned numpy type); also inside a cast, `(int) f(X)` | a column of `org.jpy.PyObject`; the cast converts it | `PyCallableWrapperJpyImpl#parseSignature` |
-| A return or parameter annotation of a time type (`datetime`, `numpy.datetime64`, `pandas.Timestamp`, `dtypes.Instant`), and an `Instant` argument | converts to and from `Instant` | `deephaven._udf._ParsedReturnAnnotation#setup_return_converter`, `_ParsedParam#_setup_datetime_arg_converter` |
+| A return annotation of a time type (`datetime`, `numpy.datetime64`, `pandas.Timestamp`, `dtypes.Instant`), and an `Instant` argument | converts to and from `Instant` | `deephaven._udf._ParsedReturnAnnotation#setup_return_converter`, `_ParsedParam#_setup_datetime_arg_converter` |
 | A return or parameter annotation of an array type (`Sequence[...]`, `list[...]`, a numpy array, `bytes`), and an argument that is an array or vector | arrays both ways | `deephaven._udf#_udf_parser` |
 | A return annotation of `numpy.uint16`, `dtypes.char` | a `char` column; the conversion failed for every value tried | `deephaven._udf._ParsedReturnAnnotation#setup_return_converter` |
 | A character literal as an argument (`f('a')`) | fails when the row is computed (`ClassCastException`) | `PyCallableWrapperJpyImpl#call` |

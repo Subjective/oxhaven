@@ -141,10 +141,16 @@ async fn the_library_and_a_column_come_before_a_function_and_the_callers_scope_b
             "D: Long = 7, 8, 9",
         ]
     );
-    assert_eq!(described(&python, "local")[1..], ["A: Long = 1000, 1001, 1002"]);
+    assert_eq!(
+        described(&python, "local")[1..],
+        ["A: Long = 1000, 1001, 1002"]
+    );
 
     // Java: "Cannot find method twice(int)" in a longer text; the column hides the function
-    let hidden = error(&python, "bad = src.update('twice = X').update('A = twice(X)')");
+    let hidden = error(
+        &python,
+        "bad = src.update('twice = X').update('A = twice(X)')",
+    );
     assert!(hidden.contains("twice"), "{hidden}");
     let missing = error(&python, "bad = src.update('A = no_such(X)')");
     assert!(missing.contains("no_such"), "{missing}");
@@ -267,12 +273,36 @@ async fn what_java_does_and_this_server_does_not_is_refused_with_the_java_method
     const PARSE: &str = "PyCallableWrapperJpyImpl#parseSignature";
     const CALL: &str = "PyCallableWrapperJpyImpl#call";
     for (code, what, java) in [
-        ("src.update('A = bare(X)')", "bare has no return annotation", PARSE),
-        ("src.update('A = (int) bare(X)')", "bare has no return annotation", PARSE),
-        ("src.update('A = any_of(X)')", "any_of has no return annotation", PARSE),
-        ("src.update('A = either(X)')", "either has no return annotation", PARSE),
-        ("src.update('A = none(X)')", "none has no return annotation", PARSE),
-        ("src.where('bare(X)')", "bare has no return annotation", PARSE),
+        (
+            "src.update('A = bare(X)')",
+            "bare has no return annotation",
+            PARSE,
+        ),
+        (
+            "src.update('A = (int) bare(X)')",
+            "bare has no return annotation",
+            PARSE,
+        ),
+        (
+            "src.update('A = any_of(X)')",
+            "any_of has no return annotation",
+            PARSE,
+        ),
+        (
+            "src.update('A = either(X)')",
+            "either has no return annotation",
+            PARSE,
+        ),
+        (
+            "src.update('A = none(X)')",
+            "none has no return annotation",
+            PARSE,
+        ),
+        (
+            "src.where('bare(X)')",
+            "bare has no return annotation",
+            PARSE,
+        ),
         ("src.update('A = (lambda x: x)(X)')", "", ""),
         (
             "src.update('A = when(X)')",
@@ -284,10 +314,26 @@ async fn what_java_does_and_this_server_does_not_is_refused_with_the_java_method
             "an Instant as an argument of twice",
             "_ParsedParam#_setup_datetime_arg_converter",
         ),
-        ("src.update('A = several(X)')", "several returns an array", "deephaven._udf#_udf_parser"),
-        ("src.update('A = raw(X)')", "raw returns an array", "deephaven._udf#_udf_parser"),
-        ("grouped.update('A = twice(X)')", "as an argument of twice", "deephaven._udf#_udf_parser"),
-        ("src.update('A = twice(\\'a\\')')", "a character literal as an argument of twice", CALL),
+        (
+            "src.update('A = several(X)')",
+            "several returns an array",
+            "deephaven._udf#_udf_parser",
+        ),
+        (
+            "src.update('A = raw(X)')",
+            "raw returns an array",
+            "deephaven._udf#_udf_parser",
+        ),
+        (
+            "grouped.update('A = twice(X)')",
+            "as an argument of twice",
+            "deephaven._udf#_udf_parser",
+        ),
+        (
+            "src.update('A = twice(\\'a\\')')",
+            "a character literal as an argument of twice",
+            CALL,
+        ),
         (
             "src.update('A = total()')",
             "a call of total, which takes *args, without arguments",
@@ -299,16 +345,44 @@ async fn what_java_does_and_this_server_does_not_is_refused_with_the_java_method
              a int and a long",
             "_ParsedParam#setup_arg_converter",
         ),
-        ("src.update('A = wrong(X)')", "wrong returned a Python float for a long column", CALL),
-        ("src.update('A = flag(X)')", "flag returned a Python bool for a long column", CALL),
-        ("src.update('A = huge(X)')", "huge returned a Python int for a long column", CALL),
-        ("src.update('A = missing(X)')", "missing returned a Python NoneType for a double", CALL),
-        ("src.update('A = number(X)')", "number returned a Python int for a java.lang.String", CALL),
-        ("src.update('A = truth(X)')", "truth returned a Python int for a java.lang.Boolean", CALL),
+        (
+            "src.update('A = wrong(X)')",
+            "wrong returned a Python float for a long column",
+            CALL,
+        ),
+        (
+            "src.update('A = flag(X)')",
+            "flag returned a Python bool for a long column",
+            CALL,
+        ),
+        (
+            "src.update('A = huge(X)')",
+            "huge returned a Python int for a long column",
+            CALL,
+        ),
+        (
+            "src.update('A = missing(X)')",
+            "missing returned a Python NoneType for a double",
+            CALL,
+        ),
+        (
+            "src.update('A = number(X)')",
+            "number returned a Python int for a java.lang.String",
+            CALL,
+        ),
+        (
+            "src.update('A = truth(X)')",
+            "truth returned a Python int for a java.lang.Boolean",
+            CALL,
+        ),
     ] {
         if java.is_empty() {
             // a lambda in a formula is no formula at all, in Java as here
-            assert!(python.console.evaluate(&format!("bad = {code}")).error.is_some());
+            assert!(python
+                .console
+                .evaluate(&format!("bad = {code}"))
+                .error
+                .is_some());
             continue;
         }
         let error = error(&python, &format!("bad = {code}"));
@@ -534,7 +608,10 @@ async fn lock_cost() {
     };
     let attach = &mut || Interpreter::attach(|_| ());
 
-    println!("lock taken and released, no Python thread: {:?}", mean(200_000, attach));
+    println!(
+        "lock taken and released, no Python thread: {:?}",
+        mean(200_000, attach)
+    );
 
     let rows = 100 * super::CHUNK;
     let update = &mut || {
@@ -545,7 +622,10 @@ async fn lock_cost() {
     let plain = &mut || {
         python.run(&format!("t = empty_table({rows}).update('A = 2 * ii')"));
     };
-    println!("one row of update('A = 2 * ii'): {:?}", mean(3, plain) / rows as u32);
+    println!(
+        "one row of update('A = 2 * ii'): {:?}",
+        mean(3, plain) / rows as u32
+    );
 
     python.run(
         "import threading, time\n\
@@ -554,7 +634,10 @@ async fn lock_cost() {
          _spinner = threading.Thread(target=_spin)\n\
          _spinner.start()",
     );
-    println!("lock taken and released, a Python thread computing: {:?}", mean(200, attach));
+    println!(
+        "lock taken and released, a Python thread computing: {:?}",
+        mean(200, attach)
+    );
     let cycle = |formula: &str, title: &str| {
         python.run(&format!(
             "source = time_table(1000)\nmade = source.update('{formula}')"
