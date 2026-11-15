@@ -734,3 +734,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   stricter than Java, say in the brief that it needs a parity entry and a ruling.
 - Open: the `reconnect` route failed once in 12 runs (click timeout at the console
   input), cause not found.
+- Merged pull request 89 (7.2, Parquet write) on six green checks.
