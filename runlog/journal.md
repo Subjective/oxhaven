@@ -766,3 +766,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Pull request 90: PARITY.md A8 added after the owner's ruling; waiting on checks.
 - Merged pull request 90 (6.17, IDE flows, with PARITY.md A8) on six green checks.
 - Merged pull request 93 (6.12, Python listeners) on six green checks after the Python 3.11 fix.
+- 00:20 UTC: disk fell to 6.5 GB with four agents building (target directories reach 5 GB each). New agents are told to build with line-tables-only debug info; added to the brief.
