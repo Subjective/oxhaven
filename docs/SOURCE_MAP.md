@@ -26,7 +26,8 @@ per primitive type and replaced by one generic implementation.
 | `SelectOrUpdateListener`, `select/analyzers` | `oxhaven-engine::ops::select` | 3.4 |
 | `TableToolsMergeHelper`, `Union*`, `FlattenOperation` | `oxhaven-engine::ops::merge` | 3.5 |
 | `impl/by` | `oxhaven-engine::ops::agg` | 3.6, 4.1 |
-| `NaturalJoinHelper`, `impl/naturaljoin`, `impl/multijoin` | `oxhaven-engine::ops::join` | 4.2 |
+| `NaturalJoinHelper`, `impl/naturaljoin` | `oxhaven-engine::ops::join` | 4.2 |
+| `MultiJoinTableImpl`, `impl/multijoin` | `oxhaven-engine::ops::multi_join` | 4.12 |
 | `CrossJoinHelper`, `impl/join` | `oxhaven-engine::ops::crossjoin` | 4.3 |
 | `AsOfJoinHelper`, `impl/asofjoin` | `oxhaven-engine::ops::asof` | 4.4 |
 | `impl/rangejoin` | `oxhaven-engine::ops::rangejoin` | 4.5 |
