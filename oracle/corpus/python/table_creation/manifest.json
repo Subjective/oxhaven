@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_creation",
-  "scenario_sha256": "3f510283da6603311d46fca886beefe9d1f2bc6392853a047395787c7b2beae0",
+  "scenario_sha256": "ed971e271902f361322fc05abace3bc0629f4c72dbf17b37fa47c1393bd2ad3b",
   "reference": "42.9",
   "entries": [
     {
@@ -18,15 +18,61 @@
     },
     {
       "step": 0,
+      "table": "clock_nanos",
+      "file": "step000.clock_nanos.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "clock_delta",
+      "file": "step000.clock_delta.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "clock_micros",
+      "file": "step000.clock_micros.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
       "table": "merged",
       "file": "step000.merged.arrow",
       "rows": 6
     },
     {
       "step": 0,
+      "table": "merged_clocks",
+      "file": "step000.merged_clocks.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "frozen",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "stamped",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "stamped_as",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
       "table": "sorted_merge",
-      "file": "step000.sorted_merge.arrow",
-      "rows": 6
+      "failure": {
+        "code": "NOT_FOUND"
+      }
     },
     {
       "step": 1,
@@ -42,14 +88,123 @@
     },
     {
       "step": 1,
+      "table": "clock_nanos",
+      "file": "step001.clock_nanos.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "clock_delta",
+      "file": "step001.clock_delta.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "clock_micros",
+      "file": "step001.clock_micros.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
       "table": "merged",
       "file": "step001.merged.arrow",
       "rows": 6
     },
     {
       "step": 1,
+      "table": "merged_clocks",
+      "file": "step001.merged_clocks.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "frozen",
+      "file": "step001.frozen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "stamped",
+      "file": "step001.stamped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "stamped_as",
+      "file": "step001.stamped_as.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
       "table": "sorted_merge",
-      "file": "step001.sorted_merge.arrow",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "empty",
+      "file": "step002.empty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "clock",
+      "file": "step002.clock.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "clock_nanos",
+      "file": "step002.clock_nanos.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "clock_delta",
+      "file": "step002.clock_delta.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "clock_micros",
+      "file": "step002.clock_micros.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "merged",
+      "file": "step002.merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "merged_clocks",
+      "file": "step002.merged_clocks.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "frozen",
+      "file": "step002.frozen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "stamped",
+      "file": "step002.stamped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "stamped_as",
+      "file": "step002.stamped_as.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "sorted_merge",
+      "file": "step002.sorted_merge.arrow",
       "rows": 6
     }
   ]

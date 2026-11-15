@@ -8,6 +8,10 @@
     {
       "step": 1,
       "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
     }
   ]
 }

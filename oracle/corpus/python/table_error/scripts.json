@@ -27,6 +27,102 @@
       "outcome": "error",
       "type": "TypeError",
       "text": "unsupported operand type(s) for /: 'Table' and 'int'"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : IndexError: tuple index out of range",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table sort operation failed. : deephaven.dherror.DHError: The sort direction must be either 'ASCENDING' or 'DESCENDING'. : The sort direction must be either 'ASCENDING' or 'DESCENDING'.",
+      "operation": "table sort operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table sort_descending operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [NoSuchColumn], available column names are [I]",
+      "operation": "table sort_descending operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table drop_columns operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [NoSuchColumn], available column names are [I]",
+      "operation": "table drop_columns operation failed."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table head operation failed. : RuntimeError: no matching Java method overloads found",
+      "operation": "table head operation failed."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table slice operation failed. : RuntimeError: java.lang.IllegalArgumentException: Can not slice with a first position (2) after last position (1)",
+      "operation": "table slice operation failed."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table select_distinct operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: aggregation: not all group-by columns [NoSuchColumn] are present in input table with columns [I]. Missing columns: [NoSuchColumn]",
+      "operation": "table select_distinct operation failed."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where_in operation failed. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.engine.table.ColumnDefinition.isPartitioning()\" because the return value of \"io.deephaven.engine.table.TableDefinition.getColumn(String)\" is null",
+      "operation": "table where_in operation failed."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a snapshot_when table. : RuntimeError: java.lang.UnsupportedOperationException: snapshotWhen with history does not currently support incremental nor initial. See https://github.com/deephaven/deephaven-core/issues/3260.",
+      "operation": "failed to create a snapshot_when table."
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where_one_of operation failed. : RuntimeError: java.lang.UnsupportedOperationException: Should not be constructing literal boolean WhereFilter",
+      "operation": "table where_one_of operation failed."
+    },
+    {
+      "step": 14,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table head_pct operation failed. : RuntimeError: java.lang.IllegalArgumentException: percentage of rows must be between [0,1]: percent=2.0",
+      "operation": "table head_pct operation failed."
+    },
+    {
+      "step": 15,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table to_string failed : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [NoSuchColumn], available column names are [I]",
+      "operation": "table to_string failed"
+    },
+    {
+      "step": 16,
+      "outcome": "error",
+      "type": "ValueError",
+      "text": "Invalid column names: {'NoSuchColumn'}"
+    },
+    {
+      "step": 17,
+      "outcome": "error",
+      "type": "ValueError",
+      "text": "chunk_size must not be negative."
     }
   ]
 }

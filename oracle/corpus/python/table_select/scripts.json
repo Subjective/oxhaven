@@ -4,6 +4,26 @@
     {
       "step": 0,
       "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "ok"
+    },
+    {
+      "step": 5,
+      "outcome": "ok"
     }
   ]
 }
