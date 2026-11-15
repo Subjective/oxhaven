@@ -1,0 +1,111 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_codecs",
+  "scenario_sha256": "bfcd4c3123d78c64ea5568400de4f1b3c52c6cac3e5284ac59516b5da6c234c5",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "java_snappy",
+      "file": "step000.java_snappy.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "snappy",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "zstd",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "brotli",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "java_snappy",
+      "file": "step001.java_snappy.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "snappy",
+      "file": "step001.snappy.arrow",
+      "rows": 20
+    },
+    {
+      "step": 1,
+      "table": "zstd",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "brotli",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "java_snappy",
+      "file": "step002.java_snappy.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "snappy",
+      "file": "step002.snappy.arrow",
+      "rows": 20
+    },
+    {
+      "step": 2,
+      "table": "zstd",
+      "file": "step002.zstd.arrow",
+      "rows": 20
+    },
+    {
+      "step": 2,
+      "table": "brotli",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "java_snappy",
+      "file": "step003.java_snappy.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "snappy",
+      "file": "step003.snappy.arrow",
+      "rows": 20
+    },
+    {
+      "step": 3,
+      "table": "zstd",
+      "file": "step003.zstd.arrow",
+      "rows": 20
+    },
+    {
+      "step": 3,
+      "table": "brotli",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

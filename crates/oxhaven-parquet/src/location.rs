@@ -4,7 +4,7 @@ use crate::schema::{self, FileColumn};
 use crate::{not_ported, ReadError, ReadOptions, UnsignedLongTarget};
 use arrow::array::{new_null_array, Array, ArrayRef, AsArray, Int64Array, ListArray};
 use arrow::compute::{cast_with_options, concat, CastOptions};
-use arrow::datatypes::{DataType, Field, UInt64Type};
+use arrow::datatypes::{DataType, Field, TimeUnit, TimestampNanosecondType, UInt64Type};
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::TableFailure;
@@ -240,6 +240,12 @@ impl ParquetLocation {
     }
 }
 
+/// A cast that fails where a value does not fit, where the default makes it null.
+const CHECKED: CastOptions<'static> = CastOptions {
+    safe: false,
+    format_options: arrow::util::display::FormatOptions::new(),
+};
+
 /// `values`, as the Parquet reader decoded them, as an array of a column of type
 /// `column_type`: unsigned and narrower integers widened, timestamps in nanoseconds, the
 /// elements of a list under the element field every list column has here, and a value
@@ -278,13 +284,17 @@ fn to_column_type(
             Arc::new(signed) as ArrayRef
         }
         (stored, _) if *stored == target => values,
-        _ => {
-            let checked = CastOptions {
-                safe: false,
-                ..CastOptions::default()
-            };
-            cast_with_options(&values, &target, &checked).map_err(|error| error.to_string())?
+        (DataType::Timestamp(_, zone), _) => {
+            // The unit is changed and the zone is not: every timestamp read as an
+            // instant counts from the epoch in UTC, whatever its zone is called, and an
+            // INT96 has none.
+            let nanoseconds = DataType::Timestamp(TimeUnit::Nanosecond, zone.clone());
+            let values = cast_with_options(&values, &nanoseconds, &CHECKED);
+            let values = values.map_err(|error| error.to_string())?;
+            let values = values.as_primitive::<TimestampNanosecondType>().clone();
+            Arc::new(values.with_data_type(target))
         }
+        _ => cast_with_options(&values, &target, &CHECKED).map_err(|error| error.to_string())?,
     };
     sentinels_to_nulls(&values).map_err(|failure| failure.message)
 }

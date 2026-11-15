@@ -312,3 +312,167 @@ pub(crate) fn columns(
     }
     Ok(columns)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ColumnInstruction;
+    use parquet::schema::parser::parse_message_type;
+    use std::sync::Arc;
+
+    fn schema(message: &str) -> SchemaDescriptor {
+        SchemaDescriptor::new(Arc::new(parse_message_type(message).unwrap()))
+    }
+
+    fn types(message: &str) -> Result<Vec<(String, ColumnType)>, ReadError> {
+        let columns = columns(&schema(message), None, &ReadOptions::default())?;
+        let columns = columns.into_iter();
+        Ok(columns.map(|c| (c.name, c.column_type)).collect())
+    }
+
+    fn deephaven(json: &str) -> Vec<KeyValue> {
+        vec![
+            KeyValue::new("other".to_string(), "ignored".to_string()),
+            KeyValue::new("deephaven".to_string(), json.to_string()),
+        ]
+    }
+
+    #[test]
+    fn a_file_with_converted_types_only_reads_like_one_with_logical_types() {
+        use ColumnType::*;
+        // what writers before the logical types left in a schema
+        let old = "message m {
+            optional binary Text (UTF8);
+            optional int32 Small (INT_8);
+            optional int32 Mid (INT_16);
+            optional int32 Letter (UINT_16);
+            optional int32 Wide (UINT_32);
+            optional int64 Stamp (TIMESTAMP_MILLIS);
+            optional int64 Micros (TIMESTAMP_MICROS);
+            optional int64 Count (INT_64);
+            optional binary Choice (ENUM);
+            required double Plain;
+        }";
+        let expected = [
+            ("Text", String),
+            ("Small", Byte),
+            ("Mid", Short),
+            ("Letter", Char),
+            ("Wide", Long),
+            ("Stamp", Instant),
+            ("Micros", Instant),
+            ("Count", Long),
+            ("Choice", String),
+            ("Plain", Double),
+        ];
+        let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+        assert_eq!(types(old).unwrap(), expected);
+        // the descriptors really have no logical type, so the converted type was used
+        assert!(schema(old).column(0).logical_type_ref().is_none());
+
+        for (declared, java_type) in [
+            ("int32 V (DATE)", "java.time.LocalDate"),
+            ("int32 V (TIME_MILLIS)", "java.time.LocalTime"),
+            ("int64 V (UINT_64)", "java.math.BigInteger"),
+            ("int32 V (DECIMAL(9,2))", "java.math.BigDecimal"),
+            ("fixed_len_byte_array(1) V (DECIMAL(1,0))", "java.math.BigInteger"),
+        ] {
+            let refused = types(&format!("message m {{ optional {declared}; }}"));
+            let Err(ReadError::NotPorted { what, .. }) = refused else {
+                panic!("{declared} was not refused as not ported: {refused:?}");
+            };
+            assert_eq!(what, format!("column V of type {java_type}"));
+        }
+    }
+
+    #[test]
+    fn logical_types_java_has_no_type_for_are_refused_as_java_does() {
+        for (declared, reason) in [
+            ("binary V (JSON)", "JsonLogicalType not supported"),
+            ("binary V (BSON)", "BsonLogicalType not supported"),
+            ("fixed_len_byte_array(16) V (UUID)", "UUIDLogicalType not supported"),
+            (
+                "fixed_len_byte_array(2) V (FLOAT16)",
+                "no mappable logical type annotation found",
+            ),
+        ] {
+            let refused = types(&format!("message m {{ optional {declared}; }}"));
+            let expected = format!("Unable to read column [V]: {reason}");
+            assert_eq!(refused, Err(ReadError::Invalid(expected)), "{declared}");
+        }
+    }
+
+    #[test]
+    fn lists_in_every_shape_are_arrays_of_their_values() {
+        use ColumnType::*;
+        let lists = "message m {
+            optional group Three (LIST) { repeated group list { optional int32 element; } }
+            optional group Two (LIST) { repeated binary array (UTF8); }
+            repeated double One;
+        }";
+        let expected = [
+            ("Three", ColumnType::array(Int)),
+            ("Two", ColumnType::array(String)),
+            ("One", ColumnType::array(Double)),
+        ];
+        let expected: Vec<_> = expected.into_iter().map(|(n, t)| (n.to_string(), t)).collect();
+        assert_eq!(types(lists).unwrap(), expected);
+    }
+
+    #[test]
+    fn the_deephaven_entry_names_vectors_and_what_is_not_ported() {
+        let message = "message m {
+            optional group V (LIST) { repeated group list { optional int32 element; } }
+            optional binary S (UTF8);
+        }";
+        let read = |json: &str| {
+            let entry = deephaven(json);
+            columns(&schema(message), Some(&entry), &ReadOptions::default())
+        };
+        let vector = r#"{"version":"42.9","columnTypes":[{"columnName":"V","specialType":"Vector"}]}"#;
+        let columns = read(vector).unwrap();
+        assert_eq!(columns[0].column_type, ColumnType::vector(ColumnType::Int));
+        assert_eq!(columns[1].column_type, ColumnType::String);
+        // an entry without column types changes nothing
+        let plain = read(r#"{"version":"42.9"}"#).unwrap();
+        assert_eq!(plain[0].column_type, ColumnType::array(ColumnType::Int));
+
+        let string_set = r#"{"columnTypes":[{"columnName":"S","specialType":"StringSet"}]}"#;
+        let Err(ReadError::NotPorted { what, .. }) = read(string_set) else {
+            panic!("a string set was read");
+        };
+        assert_eq!(what, "column S of type io.deephaven.stringset.StringSet");
+
+        let codec = r#"{"columnTypes":[{"columnName":"S","codec":
+            {"codecName":"io.deephaven.util.codec.BigDecimalCodec","dataType":"java.math.BigDecimal"}}]}"#;
+        let Err(ReadError::NotPorted { java, what }) = read(codec) else {
+            panic!("a codec column was read");
+        };
+        assert!(java.ends_with("ToObjectPage#create"));
+        assert!(what.contains("java.math.BigDecimal"), "{what}");
+
+        let malformed = Err(ReadError::Invalid("Failed to parse deephaven metadata".to_string()));
+        assert_eq!(read("{not json"), malformed);
+    }
+
+    #[test]
+    fn the_metadata_of_a_renamed_column_is_found_under_its_new_name() {
+        let message = "message m {
+            optional group v (LIST) { repeated group list { optional int64 element (INTEGER(64,false)); } }
+        }";
+        let entry = deephaven(r#"{"columnTypes":[{"columnName":"V","specialType":"Vector"}]}"#);
+        let options = ReadOptions {
+            columns: vec![ColumnInstruction {
+                parquet_name: "v".to_string(),
+                name: Some("V".to_string()),
+                unsigned_long: Some(UnsignedLongTarget::SignedLong),
+                ..ColumnInstruction::default()
+            }],
+            ..ReadOptions::default()
+        };
+        let columns = columns(&schema(message), Some(&entry), &options).unwrap();
+        assert_eq!(columns[0].name, "V");
+        assert_eq!(columns[0].column_type, ColumnType::vector(ColumnType::Long));
+        assert_eq!(columns[0].unsigned_long, Some(UnsignedLongTarget::SignedLong));
+    }
+}

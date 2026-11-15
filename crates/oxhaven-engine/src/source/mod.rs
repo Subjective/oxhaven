@@ -74,8 +74,8 @@ fn first_row_key(region: usize) -> RowKey {
 /// `definition`. Nothing is read until a column is.
 ///
 /// A location without rows is not part of the table. The table is add-only, as Java says a
-/// table of locations that do not change is, unless it has no rows: Java marks that one as
-/// an empty source table instead, which is not a hint the engine has.
+/// table of locations that do not change is. Java also marks a table without rows as an
+/// empty source table, which is not a hint the engine has.
 ///
 /// Behavior: io.deephaven.engine.table.impl.SourceTable#doCoalesce,
 /// io.deephaven.engine.table.impl.sources.regioned.RegionedColumnSourceManager#refresh (which
@@ -118,7 +118,7 @@ pub fn stored_table(
         })
         .collect();
     let mut attributes = TableAttributes::default();
-    attributes.add_only = !rows.is_empty();
+    attributes.add_only = true;
     let spec = TableSpec::new(definition, rows, sources).with_attributes(attributes);
     Ok(QueryTable::new_static(spec))
 }

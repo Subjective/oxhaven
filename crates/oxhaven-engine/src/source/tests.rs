@@ -117,11 +117,11 @@ fn each_location_with_rows_is_a_region_of_row_keys() {
 }
 
 #[test]
-fn a_table_without_rows_is_not_add_only() {
+fn a_table_without_rows_has_its_columns() {
     let locations: Vec<Arc<dyn TableLocation>> = vec![Counted::new("empty", 0, 0)];
     let table = stored_table(definition(), locations).unwrap();
     assert!(table.row_set().is_empty());
-    assert!(!table.attributes().add_only);
+    assert!(table.attributes().add_only);
     let none = table.column(0).chunk(&RowSet::empty()).unwrap();
     assert_eq!(none.data_type(), &ColumnType::Long.arrow_type());
     assert!(none.is_empty());

@@ -27,9 +27,9 @@ How Oxhaven makes a table from data that lives outside the engine, and how
    `deephaven` entry of the footer, as in Java, never from the Arrow schema a writer may
    have embedded.
 6. **Python reaches a format through one native function per entry point**
-   (`_oxhaven.read_parquet`), given the path and the options as JSON. `deephaven.parquet`
-   has the names and signatures of the reference module and no logic beyond building that
-   JSON. Java has no gRPC call that reads a file, so there is no service handler to go
+   (`_oxhaven.read_parquet`), given the arguments as plain values. `deephaven.parquet`
+   has the names and signatures of the reference module and no logic beyond checking and
+   passing them. Java has no gRPC call that reads a file, so there is no service handler to go
    through, unlike the table operations (`docs/CONSOLE.md`, decision 3).
 
 ## The three ways a table gets its data
@@ -89,8 +89,8 @@ pub fn stored_table(
   operation that asked, as the contract says.
 - A location with no rows gets no region, as in Java
   (`RegionedColumnSourceManager#refresh`).
-- The table has the attribute `AddOnly`, as Java's has, unless it has no rows: Java gives
-  an empty one `EmptySourceTable` instead, which no client reads and Oxhaven does not send.
+- The table has the attribute `AddOnly`, as Java's has. Java gives one without rows
+  `EmptySourceTable` as well, which no client reads and Oxhaven does not send.
 - More than 2^20 regions or 2^43 rows in a location is an error.
 
 Partitioning columns (the second slice) are a constant per region: a location will also

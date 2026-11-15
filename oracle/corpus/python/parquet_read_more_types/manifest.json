@@ -1,0 +1,324 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_more_types",
+  "scenario_sha256": "54be24095b8cae90a99746416c9463aca51b8e0551be1091e0ebc00f690c6bf7",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "decimal",
+      "file": "step000.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "date",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "time",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "local_timestamp",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "uint64",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "binary",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "decimal",
+      "file": "step001.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "date",
+      "file": "step001.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "time",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "local_timestamp",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "uint64",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "binary",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "decimal",
+      "file": "step002.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "date",
+      "file": "step002.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "time",
+      "file": "step002.time.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "local_timestamp",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "uint64",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "binary",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "decimal",
+      "file": "step003.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "date",
+      "file": "step003.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "time",
+      "file": "step003.time.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "local_timestamp",
+      "file": "step003.local_timestamp.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "uint64",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "binary",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "decimal",
+      "file": "step004.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "date",
+      "file": "step004.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "time",
+      "file": "step004.time.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "local_timestamp",
+      "file": "step004.local_timestamp.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "uint64",
+      "file": "step004.uint64.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "binary",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "decimal",
+      "file": "step005.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "date",
+      "file": "step005.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "time",
+      "file": "step005.time.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "local_timestamp",
+      "file": "step005.local_timestamp.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "uint64",
+      "file": "step005.uint64.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "binary",
+      "file": "step005.binary.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "struct",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "decimal",
+      "file": "step006.decimal.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "date",
+      "file": "step006.date.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "time",
+      "file": "step006.time.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "local_timestamp",
+      "file": "step006.local_timestamp.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "uint64",
+      "file": "step006.uint64.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "binary",
+      "file": "step006.binary.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "struct",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
