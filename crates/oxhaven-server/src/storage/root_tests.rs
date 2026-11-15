@@ -4,7 +4,7 @@
 //! new storage directory (`fixtures/capture.py` records it). [`java_recording`] sends the
 //! same sequence to this server over a directory of the same shape and compares every
 //! answer. The cases of [`DIFFERENCES`] are those where this server does not follow Java:
-//! a symbolic link in the storage that points out of it.
+//! a symbolic link in the storage that points out of it (`PARITY.md`, A8).
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -185,7 +185,8 @@ async fn send(
 }
 
 /// The recorded cases this server answers otherwise, with its status. All of them go
-/// through a link that points out of the storage, which Java follows.
+/// through a link that points out of the storage, which Java follows. This is the allowed
+/// difference A8 of `PARITY.md`, and nothing else may be added here.
 const DIFFERENCES: &[(&str, &str)] = &[
     (
         "link_fetch_file_out",

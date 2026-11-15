@@ -6,7 +6,7 @@
 //! with the directory. That stops `..` and absolute paths. It does not stop a symbolic link
 //! inside the directory that points out of it: Java follows such a link and reads, writes,
 //! creates and deletes where it leads. The second check is this server's own and has no Java
-//! counterpart: where the file system would actually go, with links followed, has to be
+//! counterpart (`PARITY.md`, A8): where the file system would actually go, with links followed, has to be
 //! inside the directory too, and a call that would leave it is refused as an invalid path.
 //! A client cannot make a link through this service; someone with the directory can.
 

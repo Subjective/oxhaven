@@ -4,7 +4,8 @@
 //! Java keeps them under a storage directory that it creates with two empty directories in
 //! it. A server started with a storage directory ([`StorageRoot`], `--storage-root`) does
 //! the same over that directory. A client names every path, so [`root`] is where the checks
-//! are that keep a call inside the directory.
+//! are that keep a call inside the directory. One of them is stricter than Java: a symbolic
+//! link that leads out of the directory is not followed (`PARITY.md`, A8).
 //!
 //! A server without a storage directory stores nothing. It answers `ListItems` as Java does
 //! for a storage before anything was saved: the root holds the directories `/layouts` and
