@@ -518,3 +518,7 @@ PR 66 merged on green. Main is at 78 of 83 replay scenarios clean. Remaining: fo
 PR 67 (formula aggregation) opened; after updating it with main it failed to compile: PR 66 and it both changed `ops/filter/filters.rs` and the textual merge was clean but a match lost an arm. Author agent resumed to reconcile and rerun the gate. Lesson: two tasks edited the same file in parallel; a branch update is not proof of a compatible merge, CI on the merged head is.
 
 PR 68 (Python script oracle, task 6.3) opened. The agent tried to make `check-baseline-change.sh` ignore sections the base lacks and the permission system refused the edit; it left the script alone and reported it. The script exits 1 on added entries, so the outcome on CI decides whether that needs an owner decision.
+
+## 2026-11-15 07:21 UTC
+
+PR 68 merged on green. The replay gate now builds with the Python console and carries two new sections: console smokes (4 clean) and recorded scripts (2 of 21 clean, 17 missing API names, 2 differing). Branches in flight must merge main before their final gate run.
