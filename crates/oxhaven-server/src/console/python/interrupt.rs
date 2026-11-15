@@ -47,8 +47,9 @@
 //! - **An engine operation** the command called (`t.update(...)`, a sort, a join) is
 //!   native code too, and is *finished, not abandoned*: it runs to its end with the
 //!   interpreter lock released, its result is dropped, and the exception is raised when
-//!   it returns. No engine state is left half built. A system call the operation is in
-//!   when the signal arrives may return `EINTR`; the standard library retries those.
+//!   it returns. No engine state is left half built. A slow system call the operation is
+//!   in when the signal arrives (a socket or a pipe, not a file) returns `EINTR`, which
+//!   Rust's standard library reports as `Interrupted` and its read and write loops retry.
 //! - **Code that catches `KeyboardInterrupt`**, or `BaseException`, and goes on is not
 //!   stopped; a second request (the session ending after the call was cancelled) sends a
 //!   second signal.
