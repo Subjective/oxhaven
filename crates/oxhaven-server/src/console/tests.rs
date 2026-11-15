@@ -43,7 +43,7 @@ use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 use crate::ServerState;
 
-mod completion;
+pub(in crate::console) mod completion;
 
 /// A script session whose language is one command per line: `make <name> <rows>` sets a
 /// variable to a new table, `note <name> <text>` sets one to a text, `drop <name>` removes

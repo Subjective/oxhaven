@@ -13,6 +13,7 @@ use oxhaven_proto::grpc::{HandshakeRequest, Ticket};
 use oxhaven_proto::script::auto_complete_request::Request as CompletionRequest;
 use oxhaven_proto::script::auto_complete_response::Response as CompletionResponse;
 use oxhaven_proto::script::change_document_request::TextDocumentContentChangeEvent;
+use oxhaven_proto::script::console_service_client::ConsoleServiceClient;
 use oxhaven_proto::script::{
     AutoCompleteRequest, AutoCompleteResponse, BrowserNextResponse, ChangeDocumentRequest,
     CloseDocumentRequest, CompletionItem, DocumentRange, GetCompletionItemsRequest,
@@ -23,6 +24,7 @@ use oxhaven_proto::script::{
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
+use tonic::transport::Channel;
 use tonic::{Code, Request, Status, Streaming};
 
 use super::super::completer::{Completer, Completion, Signature};
@@ -30,7 +32,7 @@ use super::{client_and_session, Client};
 use crate::session::export_id_to_ticket;
 use crate::test_support::with_auth;
 
-const URI: &str = "inmemory://test/1";
+pub(in crate::console) const URI: &str = "inmemory://test/1";
 
 /// A completer that knows four names, one signature and what it is told of documents.
 #[derive(Default)]
@@ -151,11 +153,14 @@ impl Completer for Words {
     }
 }
 
-fn console_id() -> Option<Ticket> {
+pub(in crate::console) fn console_id() -> Option<Ticket> {
     Some(export_id_to_ticket(1))
 }
 
-fn message(request_id: i32, request: CompletionRequest) -> AutoCompleteRequest {
+pub(in crate::console) fn message(
+    request_id: i32,
+    request: CompletionRequest,
+) -> AutoCompleteRequest {
     AutoCompleteRequest {
         console_id: console_id(),
         request_id,
@@ -163,18 +168,21 @@ fn message(request_id: i32, request: CompletionRequest) -> AutoCompleteRequest {
     }
 }
 
-fn named(uri: &str, version: i32) -> Option<VersionedTextDocumentIdentifier> {
+pub(in crate::console) fn named(
+    uri: &str,
+    version: i32,
+) -> Option<VersionedTextDocumentIdentifier> {
     Some(VersionedTextDocumentIdentifier {
         uri: uri.to_string(),
         version,
     })
 }
 
-fn at(line: i32, character: i32) -> Option<Position> {
+pub(in crate::console) fn at(line: i32, character: i32) -> Option<Position> {
     Some(Position { line, character })
 }
 
-fn open(uri: &str, version: i32, text: &str) -> AutoCompleteRequest {
+pub(in crate::console) fn open(uri: &str, version: i32, text: &str) -> AutoCompleteRequest {
     #[allow(deprecated)]
     let open = OpenDocumentRequest {
         console_id: None,
@@ -189,7 +197,7 @@ fn open(uri: &str, version: i32, text: &str) -> AutoCompleteRequest {
 }
 
 /// An edit that puts `text` in place of `length` code units at a position.
-fn change(
+pub(in crate::console) fn change(
     uri: &str,
     version: i32,
     start: Option<Position>,
@@ -209,7 +217,7 @@ fn change(
     message(0, CompletionRequest::ChangeDocument(change))
 }
 
-fn close(uri: &str) -> AutoCompleteRequest {
+pub(in crate::console) fn close(uri: &str) -> AutoCompleteRequest {
     #[allow(deprecated)]
     let close = CloseDocumentRequest {
         console_id: None,
@@ -218,7 +226,12 @@ fn close(uri: &str) -> AutoCompleteRequest {
     message(0, CompletionRequest::CloseDocument(close))
 }
 
-fn items(request_id: i32, uri: &str, version: i32, character: i32) -> AutoCompleteRequest {
+pub(in crate::console) fn items(
+    request_id: i32,
+    uri: &str,
+    version: i32,
+    character: i32,
+) -> AutoCompleteRequest {
     #[allow(deprecated)]
     let items = GetCompletionItemsRequest {
         console_id: None,
@@ -231,7 +244,7 @@ fn items(request_id: i32, uri: &str, version: i32, character: i32) -> AutoComple
 }
 
 /// The labels of the items of an answer, which must be a successful one with items.
-fn labels(answer: &AutoCompleteResponse) -> Vec<&str> {
+pub(in crate::console) fn labels(answer: &AutoCompleteResponse) -> Vec<&str> {
     assert!(answer.success, "{answer:?}");
     match &answer.response {
         Some(CompletionResponse::CompletionItems(items)) => {
@@ -241,7 +254,7 @@ fn labels(answer: &AutoCompleteResponse) -> Vec<&str> {
     }
 }
 
-fn failed(request_id: i32) -> AutoCompleteResponse {
+pub(in crate::console) fn failed(request_id: i32) -> AutoCompleteResponse {
     AutoCompleteResponse {
         request_id,
         success: false,
@@ -267,18 +280,25 @@ async fn start() -> (Client, Arc<Words>) {
 }
 
 /// One completion stream of a client: the messages go in, the answers come out.
-struct Stream {
-    send: Option<mpsc::UnboundedSender<AutoCompleteRequest>>,
-    answers: Streaming<AutoCompleteResponse>,
+pub(in crate::console) struct Stream {
+    pub(in crate::console) send: Option<mpsc::UnboundedSender<AutoCompleteRequest>>,
+    pub(in crate::console) answers: Streaming<AutoCompleteResponse>,
 }
 
 impl Stream {
     async fn open(client: &mut Client) -> Self {
+        Self::of(&mut client.console, &client.bearer).await
+    }
+
+    /// A stream of the client that logged in as `bearer`.
+    pub(in crate::console) async fn of(
+        console: &mut ConsoleServiceClient<Channel>,
+        bearer: &str,
+    ) -> Self {
         let (send, messages) = mpsc::unbounded_channel();
         let messages = UnboundedReceiverStream::new(messages);
-        let answers = client
-            .console
-            .auto_complete_stream(with_auth(messages, &client.bearer))
+        let answers = console
+            .auto_complete_stream(with_auth(messages, bearer))
             .await
             .unwrap()
             .into_inner();
@@ -288,16 +308,18 @@ impl Stream {
         }
     }
 
-    fn send(&self, message: AutoCompleteRequest) {
+    pub(in crate::console) fn send(&self, message: AutoCompleteRequest) {
         self.send.as_ref().unwrap().send(message).unwrap();
     }
 
     /// The next answer, the status that ends the stream, or `None` at its end.
-    async fn next(&mut self) -> Option<Result<AutoCompleteResponse, Status>> {
+    pub(in crate::console) async fn next(
+        &mut self,
+    ) -> Option<Result<AutoCompleteResponse, Status>> {
         next_of(&mut self.answers).await
     }
 
-    async fn answer(&mut self) -> AutoCompleteResponse {
+    pub(in crate::console) async fn answer(&mut self) -> AutoCompleteResponse {
         self.next().await.expect("an answer").expect("an answer")
     }
 
@@ -314,9 +336,10 @@ impl Stream {
 async fn next_of(
     answers: &mut Streaming<AutoCompleteResponse>,
 ) -> Option<Result<AutoCompleteResponse, Status>> {
-    tokio::time::timeout(Duration::from_secs(5), answers.next())
+    // the first answer of `jedi` in a process takes seconds
+    tokio::time::timeout(Duration::from_secs(60), answers.next())
         .await
-        .expect("an answer or the end within five seconds")
+        .expect("an answer or the end within a minute")
 }
 
 #[tokio::test]

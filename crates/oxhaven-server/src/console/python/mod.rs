@@ -24,6 +24,8 @@ mod checks;
 #[cfg(test)]
 mod column_tests;
 mod completer;
+#[cfg(test)]
+mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
