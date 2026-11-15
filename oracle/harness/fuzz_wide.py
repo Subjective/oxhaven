@@ -17,8 +17,9 @@ What it adds to `fuzz._Generator`:
 - inputs: a timestamp column `T` that does not decrease from row to row (what the time windows
   of `update_by` need), start and end columns for `range_join`, a second right table for
   `multi_join`, and right tables whose key stays unique through the steps;
-- array columns (`list:<type>` in the predicted columns), which only `ungroup`, the joins and
-  the operations that pass columns through take as arguments.
+- array columns (`list:<type>` in the predicted columns; from `group_by`, the `group` and
+  `distinct` aggregations and `rolling_group`), which only `ungroup`, the joins and the
+  operations that pass columns through take as arguments.
 
 Requests the reference refuses are part of the comparison, so every operation is given
 arguments it refuses now and then: a column of a type it does not take, a window or decay out
@@ -44,8 +45,8 @@ Not generated, each for a stated reason:
 - `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
   `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
 
-- `rolling_group_*`, `rolling_formula_*`, `cum_count_where`, `rolling_count_where_*` and the
-  `formula` aggregation: Oxhaven answers them `UNIMPLEMENTED` by design (the engine lists
+- `rolling_formula_*`, `cum_count_where`, `rolling_count_where_*` and the `formula`
+  aggregation: Oxhaven answers them `UNIMPLEMENTED` by design (the engine lists
   them as not ported), so every scenario with one would differ in the same known way.
 - `time_table`: its rows depend on the clock. `empty_table`: it has no columns to operate on.
   `column_statistics`: no handler in Oxhaven.
@@ -131,6 +132,7 @@ ROLLING_OPERATORS: dict[str, tuple[tuple[str, ...], Callable[[str], str]]] = {
     "count": (tuple(t for t in ALL_TYPES if t != "timestamp"), _long),
     "std": (_SUMMABLE, _double),
     "wavg": (NUMERIC, _double),
+    "group": (ALL_TYPES, _list),
 }
 for _name in EM_OPERATORS:
     for _unit in ("tick", "time"):

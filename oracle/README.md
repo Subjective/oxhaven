@@ -693,7 +693,7 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   (it returns its source; every result is already fetched). `--ops` rejects these names and
   any other name outside the table above.
 - The fuzzer builds only the operations listed under Fuzz. The table sources (`time_table`,
-  `empty_table`), `column_statistics`, the `formula` aggregation, `rolling_group`,
+  `empty_table`), `column_statistics`, the `formula` aggregation,
   `rolling_formula` and the `count_where` operators of `update_by` are covered by recorded
   scenarios only, and so is anything the module comment of `harness/fuzz_wide.py` lists as
   not generated.

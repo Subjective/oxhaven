@@ -205,8 +205,8 @@ def test_every_operation_and_variant_is_drawn():
     assert set(operators) == set(fuzz_wide.UPDATE_BY)
     # What is left out is what the module comment says, and nothing else.
     assert sc.UPDATE_BY_OPS - set(fuzz_wide.UPDATE_BY) == {
-        "cum_count_where", "rolling_group_tick", "rolling_group_time", "rolling_formula_tick",
-        "rolling_formula_time", "rolling_count_where_tick", "rolling_count_where_time"}
+        "cum_count_where", "rolling_formula_tick", "rolling_formula_time",
+        "rolling_count_where_tick", "rolling_count_where_time"}
     arguments = {key for op in OPERATIONS if op["op"] == "update_by" for o in op["ops"]
                  for key in o.get("args", {})}
     assert arguments == {"decay_ticks", "decay_time", "ts_col", "rev_ticks", "fwd_ticks",
