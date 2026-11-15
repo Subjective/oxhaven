@@ -5,7 +5,7 @@
 //! they pass: the first rows ever seen, or the latest.
 
 use super::SortError;
-use crate::table::{tracked_source, QueryTable, TableSpec};
+use crate::table::{memoized, tracked_source, CopyType, QueryTable, TableSpec};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -56,7 +56,12 @@ pub(super) fn head(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>,
         )));
     }
     if is_blink(&**parent) {
-        return Ok(blink_to_append_only(parent, size as u64)?);
+        // Behavior: the `BlinkToAppendOnly` key of
+        // io.deephaven.engine.table.impl.MemoizedOperationKey, which a copy shares with
+        // the table it is a copy of and whose copy type is `CopyAttributeOperation.None`:
+        // `head` of a copy, such as a blink input table, is not add-only.
+        let result = blink_to_append_only(parent, size as u64)?;
+        return Ok(memoized(parent, CopyType::None, false, result)?);
     }
     Ok(slice_like(parent, 0, size)?)
 }

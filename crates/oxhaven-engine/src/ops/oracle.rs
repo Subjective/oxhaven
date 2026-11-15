@@ -14,8 +14,8 @@
 
 use crate::graph::SteppedUpdateGraph;
 use crate::table::{
-    append_only_input_table, in_memory_table, keyed_input_table, time_table, TimeSource,
-    TimeTableOptions,
+    append_only_input_table, blink_input_table, in_memory_table, keyed_input_table, time_table,
+    TimeSource, TimeTableOptions,
 };
 use arrow::array::{
     Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
@@ -194,7 +194,9 @@ fn load(graph: &Arc<dyn UpdateGraph>, input: &Value) -> Input {
         .iter()
         .map(|key| text(key).to_string())
         .collect();
-    let table = if keys.is_empty() {
+    let table = if ticking["blink"] == true {
+        Ok(blink_input_table(graph.clone(), definition))
+    } else if keys.is_empty() {
         append_only_input_table(graph.clone(), definition, None)
     } else {
         let names: Vec<&str> = keys.iter().map(String::as_str).collect();
@@ -541,17 +543,15 @@ fn run(path: &Path, ours: &[&str], define: Define, tally: &mut Tally) {
     let recording = Recording::of(name);
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
 
+    let blinks = list(&scenario["inputs"])
+        .iter()
+        .any(|input| input["ticking"]["blink"] == true);
     let mut inputs: BTreeMap<String, Input> = BTreeMap::new();
     let mut tables: BTreeMap<String, Built> = BTreeMap::new();
     // The operation that makes each table; an input has none.
     let mut made_by: BTreeMap<String, &str> = BTreeMap::new();
     for input in list(&scenario["inputs"]) {
         let name = text(&input["name"]).to_string();
-        if input["ticking"]["blink"] == true {
-            // The engine has no blink input table.
-            tables.insert(name, Built::NotRun("blink input".to_string()));
-            continue;
-        }
         let loaded = load(&graph, input);
         tables.insert(name.clone(), Built::Table(loaded.table.clone()));
         inputs.insert(name, loaded);
@@ -621,6 +621,15 @@ fn run(path: &Path, ours: &[&str], define: Define, tally: &mut Tally) {
                 "delete" => input.delete(rows),
                 other => panic!("no action {other}"),
             }
+        }
+        if blinks {
+            // Behavior: `_Barrier.wait` of `oracle/harness/runner.py`, which the recording
+            // was made behind: two more cycles pass before the tables are read. The first
+            // shows the rows a blink input was given, the second removes them. The other
+            // inputs run the cycle of each change themselves, so only a scenario with a
+            // blink input needs the cycles here.
+            graph.run_cycle();
+            graph.run_cycle();
         }
         check(index + 1);
     }
