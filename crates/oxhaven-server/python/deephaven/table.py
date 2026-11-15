@@ -143,7 +143,7 @@ class Table:
         types = {col.name: col.data_type for col in self.columns[:10]}
         text = (
             "deephaven.table.Table(io.deephaven.engine.table.Table("
-            f"objectRef=0x{id(self.j_table) & 0xFFFFFFFF:x}, "
+            f"objectRef=0x{id(self.j_table):x}, "
             f"num_rows = {self.size}, columns = {types}"
         )
         return text[:114] + "...}))" if len(text) > 118 else text + "))"
@@ -314,6 +314,14 @@ class Table:
         except Exception as e:
             raise DHError(e, failure) from e
 
+    def _positions(self, failure: str, *values) -> None:
+        """Raises unless every value is an `int`: the reference hands row counts and
+        positions to Java, which takes nothing else for a `long`."""
+        for value in values:
+            if not isinstance(value, int):
+                error = TypeError(f"a row count or position must be an int, not {type(value).__name__}")
+                raise DHError(error, failure) from error
+
     def _select_op(self, name: str, formulas, failure: str) -> "Table":
         return self._op(name, {"column_specs": _engine.to_sequence(formulas)}, failure)
 
@@ -362,11 +370,14 @@ class Table:
 
     def drop_columns(self, cols: Union[str, Sequence[str]]) -> "Table":
         """A new table without the columns."""
-        return self._op(
-            "drop_columns",
-            {"column_names": _engine.to_sequence(cols)},
-            "table drop_columns operation failed.",
-        )
+        failure = "table drop_columns operation failed."
+        cols = _engine.to_sequence(cols)
+        if not cols:
+            # the reference fails here: its call of `dropColumns` without a column matches
+            # two Java overloads
+            error = RuntimeError("drop_columns needs at least one column")
+            raise DHError(error, failure) from error
+        return self._op("drop_columns", {"column_names": cols}, failure)
 
     def move_columns(self, idx: int, cols: Union[str, Sequence[str]]) -> "Table":
         """A new table with the columns moved to start at position `idx`."""
@@ -483,6 +494,7 @@ class Table:
 
     def head(self, num_rows: int) -> "Table":
         """A new table with the first `num_rows` rows."""
+        self._positions("table head operation failed.", num_rows)
         return self._op("head", {"num_rows": int(num_rows)}, "table head operation failed.")
 
     def head_pct(self, pct: float) -> "Table":
@@ -491,6 +503,7 @@ class Table:
 
     def tail(self, num_rows: int) -> "Table":
         """A new table with the last `num_rows` rows."""
+        self._positions("table tail operation failed.", num_rows)
         return self._op("tail", {"num_rows": int(num_rows)}, "table tail operation failed.")
 
     def tail_pct(self, pct: float) -> "Table":
@@ -500,6 +513,7 @@ class Table:
     def slice(self, start: int, stop: int) -> "Table":
         """A new table with the rows from position `start` up to `stop`; a negative
         position counts from the end."""
+        self._positions("table slice operation failed.", start, stop)
         return self._op(
             "slice",
             {"first_position_inclusive": int(start), "last_position_exclusive": int(stop)},

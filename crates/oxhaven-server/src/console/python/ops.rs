@@ -42,9 +42,13 @@ type Created = Result<Arc<dyn Table>, ExportError>;
 
 /// One local operation: its name in Python, and the function that runs it on its
 /// arguments and source tables.
-type Operation = (&'static str, fn(&OpContext, &Value, &[Arc<dyn Table>]) -> Created);
+type Operation = (
+    &'static str,
+    fn(&OpContext, &Value, &[Arc<dyn Table>]) -> Created,
+);
 
-/// The local operations. Every one of them waits for its engine operator.
+/// The local operations. Every one of them waits for its engine operator, and answers only
+/// the calls that Java answers without one.
 const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
     ("merge_sorted", merge_sorted),
@@ -120,9 +124,20 @@ fn slice_pct(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
     )
 }
 
+/// The table itself when nothing is renamed or moved: `renameColumnsImpl`, which is also
+/// `moveColumns`, returns its table for no pairs.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#renameColumnsImpl`
+fn unchanged(columns: &[String], sources: &[Arc<dyn Table>]) -> Option<Arc<dyn Table>> {
+    columns.is_empty().then(|| sources.first().cloned())?
+}
+
 /// Behavior: `io.deephaven.engine.table.impl.QueryTable#renameColumns`
-fn rename_columns(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn rename_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let pairs = strings(args, "cols")?;
+    if let Some(table) = unchanged(&pairs, sources) {
+        return Ok(table);
+    }
     no_operator(
         &format!("{QUERY_TABLE}#renameColumns"),
         format!("renameColumns({})", pairs.join(", ")),
@@ -130,8 +145,11 @@ fn rename_columns(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created 
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.QueryTable#moveColumns`
-fn move_columns(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn move_columns(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let (index, columns) = (integer(args, "idx")?, strings(args, "cols")?);
+    if let Some(table) = unchanged(&columns, sources) {
+        return Ok(table);
+    }
     no_operator(
         &format!("{QUERY_TABLE}#moveColumns"),
         format!("moveColumns({index}, {})", columns.join(", ")),
@@ -139,8 +157,11 @@ fn move_columns(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
 }
 
 /// Behavior: `io.deephaven.engine.table.Table#moveColumnsUp`
-fn move_columns_up(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn move_columns_up(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let columns = strings(args, "cols")?;
+    if let Some(table) = unchanged(&columns, sources) {
+        return Ok(table);
+    }
     no_operator(
         "io.deephaven.engine.table.Table#moveColumnsUp",
         format!("moveColumnsUp({})", columns.join(", ")),
@@ -148,8 +169,11 @@ fn move_columns_up(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created
 }
 
 /// Behavior: `io.deephaven.engine.table.Table#moveColumnsDown`
-fn move_columns_down(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn move_columns_down(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let columns = strings(args, "cols")?;
+    if let Some(table) = unchanged(&columns, sources) {
+        return Ok(table);
+    }
     no_operator(
         "io.deephaven.engine.table.Table#moveColumnsDown",
         format!("moveColumnsDown({})", columns.join(", ")),
@@ -178,18 +202,15 @@ fn restrict_sort_to(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Create
     )
 }
 
-/// The merge of tables that are each sorted by a column, for tables of which one is
-/// refreshing; the merge of static tables is the table service's `merge` with a key
-/// column.
+/// The merge of tables that are each sorted by a column, asked for tables of which one is
+/// refreshing, which Java refuses. The merge of static tables is the table service's
+/// `merge` with a key column.
 ///
-/// Behavior: `io.deephaven.engine.util.TableTools#mergeSorted`
-fn merge_sorted(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
-    let order_by = args.get("order_by").and_then(Value::as_str);
-    let order_by = order_by.ok_or_else(|| bad_argument("order_by", "a string"))?;
-    no_operator(
-        "io.deephaven.engine.util.TableTools#mergeSorted",
-        format!("mergeSorted({order_by}) of refreshing tables"),
-    )
+/// Behavior: `io.deephaven.engine.table.impl.util.MergeSortedHelper#mergeSortedHelper`
+fn merge_sorted(_: &OpContext, _: &Value, _: &[Arc<dyn Table>]) -> Created {
+    Err(ExportError::Internal(
+        "mergeSorted does not yet support refreshing tables!".to_string(),
+    ))
 }
 
 /// The status of an `unported!` panic, which names what is missing.
@@ -532,4 +553,281 @@ pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_function(wrap_pyfunction!(read_columns, native)?)?;
     native.add_function(wrap_pyfunction!(to_string, native)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! The expectations are what the Java reference answered to the same code, through
+    //! the script scenarios `table_*` and by hand; a comment says where Java differs.
+
+    use super::super::tests::Python;
+    use super::*;
+    use arrow::array::TimestampNanosecondArray;
+    use oxhaven_contracts::graph::UpdateGraph;
+    use oxhaven_testkit::TableSnapshot;
+
+    /// Runs Python whose `assert` statements are the test.
+    async fn check(code: &str) {
+        Python::start().await.run(code);
+    }
+
+    #[test]
+    fn a_cell_is_padded_on_the_side_of_its_kind_and_cut_when_too_long() {
+        assert_eq!(cell_text(&ColumnType::Int, Some("7"), 4), "   7");
+        assert_eq!(cell_text(&ColumnType::String, Some("7"), 4), "7   ");
+        assert_eq!(cell_text(&ColumnType::Int, None, 8), "(null)  ");
+        assert_eq!(
+            cell_text(&ColumnType::String, Some("abcdefgh"), 6),
+            "abc..."
+        );
+        // a number is never cut, except the digits of a double in exponent notation
+        assert_eq!(cell_text(&ColumnType::Long, Some("1234567"), 4), "1234567");
+        assert_eq!(
+            cell_text(&ColumnType::Double, Some("1.2345678E-10"), 10),
+            "1.2345E-10"
+        );
+        assert_eq!(
+            cell_text(&ColumnType::Float, Some("1.2345678E-10"), 10),
+            "1.2345678E-10"
+        );
+    }
+
+    #[test]
+    fn a_column_is_as_wide_as_its_name_its_type_and_its_first_strings() {
+        let none: &[Option<String>] = &[];
+        assert_eq!(column_width("I", &ColumnType::Int, none), 10);
+        assert_eq!(column_width("L", &ColumnType::Long, none), 20);
+        assert_eq!(column_width("D", &ColumnType::Double, none), 20);
+        assert_eq!(column_width("ALongColumnName", &ColumnType::Int, none), 15);
+        let texts = [Some("x".repeat(12)), None, Some("y".repeat(120))];
+        assert_eq!(column_width("S", &ColumnType::String, &texts[..2]), 12);
+        assert_eq!(column_width("S", &ColumnType::String, &texts), 100);
+        // only a string column looks at its values
+        assert_eq!(column_width("C", &ColumnType::Char, &texts), 10);
+    }
+
+    #[tokio::test]
+    async fn an_operation_without_an_engine_operator_names_the_java_method() {
+        check(
+            r#"
+from deephaven import DHError, empty_table, merge_sorted
+t = empty_table(4).update(["A = i", "B = i % 2"])
+refused = {
+    "QueryTable#headPct": lambda: t.head_pct(0.5),
+    "QueryTable#tailPct": lambda: t.tail_pct(0.5),
+    "QueryTable#slicePct": lambda: t.slice_pct(0.25, 0.75),
+    "QueryTable#renameColumns": lambda: t.rename_columns("C = A"),
+    "QueryTable#moveColumns": lambda: t.move_columns(1, "A"),
+    "Table#moveColumnsUp": lambda: t.move_columns_up("B"),
+    "Table#moveColumnsDown": lambda: t.move_columns_down("A"),
+    "QueryTable#where": lambda: t.where_one_of(["A > 2", "B == 0"]),
+    "QueryTable#restrictSortTo": lambda: t.restrict_sort_to("A"),
+    "TableTools#mergeSorted": lambda: merge_sorted([t, t], "A"),
+    "AttributeMap#getAttributes": lambda: t.attributes(),
+}
+for java, call in refused.items():
+    try:
+        call()
+    except DHError as e:
+        assert "Unimplemented: not ported: io.deephaven." in str(e), str(e)
+        assert java in str(e), str(e)
+    else:
+        raise AssertionError(java + " was answered")
+try:
+    t.head_pct(0.5)
+except DHError as e:
+    assert str(e).startswith("table head_pct operation failed. : "), str(e)
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn what_java_answers_without_an_operator_is_answered() {
+        check(
+            r#"
+from deephaven import DHError, empty_table, merge_sorted, time_table
+t = empty_table(4).update(["A = i", "B = i % 2"])
+# renaming or moving no column is the table itself
+for same in (t.rename_columns([]), t.move_columns(1, []), t.move_columns_up([]), t.move_columns_down([])):
+    assert same.j_table.is_same(t.j_table)
+assert t.coalesce().j_table.is_same(t.j_table)
+# one alternative is that filter
+assert [row["A"] for row in t.where_one_of("A > 1").iter_dict()] == [2, 3]
+# Java refuses a sorted merge of refreshing tables
+clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC")
+try:
+    merge_sorted([clock, clock], "Timestamp")
+except DHError as e:
+    assert str(e) == "merge sorted operation failed. : mergeSorted does not yet support refreshing tables!", str(e)
+else:
+    raise AssertionError("merged")
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn a_table_says_what_java_says_about_itself() {
+        check(
+            r#"
+from deephaven import empty_table, time_table
+t = empty_table(3).update([
+    "B = (byte)(i == 1 ? null : i)", "I = i == 1 ? null : i", "L = i == 1 ? null : (long)i",
+    "F = (float)(i == 1 ? null : i * 0.5)", "D = i == 1 ? null : i * 1e10 / 3",
+    "C = i == 1 ? null : (char)(65 + i)", "S = i == 1 ? null : `a long string value ` + i",
+    "Z = i == 1 ? null : i == 0",
+])
+clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC")
+assert (t.size, t.is_refreshing, t.is_blink, t.is_flat) == (3, False, False, True)
+assert (clock.is_refreshing, clock.is_blink, clock.is_flat) == (True, False, True)
+assert time_table("PT1h", blink_table=True).is_blink
+kept = t.where("I > 0")
+assert (kept.is_flat, kept.flatten().is_flat) == (False, True)
+assert t.column_names == ["B", "I", "L", "F", "D", "C", "S", "Z"]
+assert [str(col.data_type) for col in t.columns] == [
+    "byte", "int", "long", "float", "double", "char", "java.lang.String", "java.lang.Boolean"]
+assert list(t.definition) == t.column_names and "S" in t.definition and len(t.definition) == 8
+assert t.definition == kept.definition and t.definition != clock.definition
+assert (t.has_columns("I"), t.has_columns(["I", "S"]), t.has_columns(["I", "X"])) == (True, True, False)
+assert t.meta_table.size == 8
+assert t.definition.table.column_names == ["Name", "DataType", "ColumnType", "IsPartitioning"]
+assert repr(t).startswith("deephaven.table.Table(io.deephaven.engine.table.Table(objectRef=0x")
+assert repr(t).endswith("...}))") and len(repr(t)) == 120 and str(t) == repr(t)
+assert repr(empty_table(2)).endswith(", num_rows = 2, columns = {}))")
+assert t.to_string().split("\n") == [
+    "         B|         I|                   L|         F|                   D|         C|                    S|         Z",
+    "----------+----------+--------------------+----------+--------------------+----------+---------------------+----------",
+    "         0|         0|                   0|       0.0|                 0.0|A         |a long string value 0|true      ",
+    "(null)    |(null)    |(null)              |(null)    |(null)              |(null)    |(null)               |(null)    ",
+    "         2|         2|                   2|       1.0| 6.666666666666667E9|C         |a long string value 2|false     ",
+    "",
+], t.to_string()
+assert t.to_string(2, ["S", "I"]).split("\n") == [
+    "                    S|         I",
+    "---------------------+----------",
+    "a long string value 0|         0",
+    "(null)               |(null)    ",
+    "",
+], t.to_string(2, ["S", "I"])
+assert t.to_string(0, "Z") == "         Z\n----------\n"
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn rows_are_python_values_with_the_null_constants_of_java() {
+        check(
+            r#"
+from deephaven import DHError, empty_table, time_table
+t = empty_table(3).update([
+    "B = (byte)(i == 1 ? null : i)", "H = (short)(i == 1 ? null : i)", "I = i == 1 ? null : i",
+    "L = i == 1 ? null : (long)i", "F = (float)(i == 1 ? null : i * 0.5)",
+    "D = i == 1 ? null : i * 0.5", "C = i == 1 ? null : (char)(65 + i)",
+    "S = i == 1 ? null : `s` + i", "Z = i == 1 ? null : i == 0",
+])
+assert list(t.iter_dict()) == [
+    {'B': 0, 'H': 0, 'I': 0, 'L': 0, 'F': 0.0, 'D': 0.0, 'C': 65, 'S': 's0', 'Z': True},
+    {'B': -128, 'H': -32768, 'I': -2147483648, 'L': -9223372036854775808,
+     'F': -3.4028234663852886e+38, 'D': -1.7976931348623157e+308, 'C': 65535, 'S': None, 'Z': None},
+    {'B': 2, 'H': 2, 'I': 2, 'L': 2, 'F': 1.0, 'D': 1.0, 'C': 67, 'S': 's2', 'Z': False},
+]
+# the columns come in the table's order whatever the order asked for, a chunk at a time
+assert list(t.iter_dict(["S", "I"], chunk_size=2)) == [
+    {'I': 0, 'S': 's0'}, {'I': -2147483648, 'S': None}, {'I': 2, 'S': 's2'}]
+rows = list(t.iter_tuple(["I", "S"], tuple_name="Row", chunk_size=1))
+assert repr(rows[0]) == "Row(I=0, S='s0')" and rows[2].S == 's2' and len(rows) == 3
+# and so a tuple's fields, named as asked, hold the columns in the table's order
+assert repr(next(t.iter_tuple(["S", "I"]))) == "Deephaven(S=0, I='s0')"
+assert list(t.head(0).iter_dict()) == [] and list(empty_table(3).iter_dict()) == []
+for bad, text in (
+    (lambda: list(t.iter_dict("Nope")), "Invalid column names: {'Nope'}"),
+    (lambda: list(t.iter_dict(["I", "I"])), "Invalid column names: set()"),
+    (lambda: list(t.iter_tuple(chunk_size=-1)), "chunk_size must not be negative."),
+):
+    try:
+        bad()
+    except ValueError as e:
+        assert str(e) == text, str(e)
+    else:
+        raise AssertionError(text)
+# Java gives a java.time.Instant object, which has no counterpart yet
+clock = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC").head(1)
+try:
+    list(clock.iter_dict())
+except DHError as e:
+    assert "PythonTableDataReader#readChunkColumnMajor" in str(e), str(e)
+else:
+    raise AssertionError("read")
+try:
+    import numpy as np
+except ImportError:
+    np = None
+if np is not None:
+    chunks = list(t.iter_chunk_dict(chunk_size=2))
+    assert [len(chunk["I"]) for chunk in chunks] == [2, 1]
+    first = chunks[0]
+    assert [str(first[name].dtype) for name in first] == [
+        "int8", "int16", "int32", "int64", "float32", "float64", "uint16", "<U4", "bool"]
+    # a null string is the text None and a null Boolean is True, as in the reference
+    assert first["S"].tolist() == ["s0", "None"] and first["Z"].tolist() == [True, True]
+    assert first["I"].tolist() == [0, -2147483648] and first["C"].tolist() == [65, 65535]
+    whole = next(t.iter_chunk_tuple(["Z", "I"], tuple_name="Chunk"))
+    assert type(whole).__name__ == "Chunk" and whole.Z.tolist() == [0, -2147483648, 2]
+    stamps = next(clock.iter_chunk_dict())["Timestamp"]
+    assert str(stamps.dtype) == "datetime64[ns]"
+    assert str(stamps[0]) == "2024-01-01T00:00:00.000000000"
+"#,
+        )
+        .await;
+    }
+
+    fn first_instant(table: &dyn Table) -> Option<i64> {
+        let snapshot = TableSnapshot::current(table).unwrap();
+        let stamps = snapshot.columns[0]
+            .as_any()
+            .downcast_ref::<TimestampNanosecondArray>()
+            .expect("an Instant column");
+        stamps.iter().next().flatten()
+    }
+
+    #[tokio::test]
+    async fn a_time_table_takes_its_period_and_start_as_python_gives_them() {
+        let python = Python::start().await;
+        python.run(
+            r#"
+from datetime import datetime, timedelta, timezone
+from deephaven import DHError, time_table
+start = datetime(2024, 1, 1, 0, 0, 0, 123457, tzinfo=timezone.utc)
+from_strings = time_table("PT1h", start_time="2024-01-01T00:00:00 UTC")
+from_ints = time_table(3_600_000_000_000, start_time=1_704_067_200_000_000_000)
+from_datetime = time_table(timedelta(hours=1), start_time=start)
+from_now = time_table("PT1h", start_time=0)
+for bad in (None, True, 1.5, "nonsense", 0, -5):
+    try:
+        time_table(bad)
+    except DHError as e:
+        assert str(e).startswith("failed to create a time table. : "), str(e)
+    else:
+        raise AssertionError(repr(bad))
+try:
+    time_table("PT1s", start_time=1.5)
+except DHError as e:
+    assert "Unsupported conversion: <class 'float'> -> Instant" in str(e), str(e)
+else:
+    raise AssertionError("started")
+"#,
+        );
+        python.server.state.graph.run_cycle();
+        const START: i64 = 1_704_067_200_000_000_000;
+        let first = |name: &str| first_instant(python.table(name).as_ref());
+        assert_eq!(first("from_strings"), Some(START));
+        assert_eq!(first("from_ints"), Some(START));
+        // the reference's floating point arithmetic on the seconds, not 123_457_000
+        assert_eq!(first("from_datetime"), Some(START + 123_456_954));
+        // a start of 0 is no start, as in the reference: the table starts now
+        let now = first("from_now");
+        assert!(now.is_none_or(|nanos| nanos > START), "{now:?}");
+    }
 }
