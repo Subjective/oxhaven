@@ -84,6 +84,6 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 7.1-parquet-read,1,agent,2026-11-15T08:16Z,,,,running,,,,"Table provider design and Parquet read; ports 10934/10935"
 6.14-console-logs-cancel,1,agent,2026-11-15T08:37Z,,,,running,,,,"Tasks 6.14 and 6.15 merged into one run: server log on SubscribeToLogs, slow clients, stopping a running command; ports 10936/10937"
 4.16-table-shape-operators,1,agent,2026-11-15T08:46Z,,,,running,,,,"Engine operators the Python table API lacks; ports 10938/10939"
-6.5-python-agg-updateby-joins,1,agent,2026-11-15T08:46Z,,,,running,,,,"Tasks 6.5, 6.6, 6.7 merged into one run (all add methods to table.py); ports 10940/10941"
+6.5-python-agg-updateby-joins,1,agent,2026-11-15T08:46Z,41,133630,143,pr-open,0,75,right-sized,"Tasks 6.5, 6.6, 6.7 in one run: agg.py, updateby.py, joins, multi_join; scripts 11 of 25 clean; 4 refusals (partition agg, initial groups, count_where without filter, keyed_transpose)"
 4.6e-update-by-count-formula,1,agent,2026-11-15T04:45Z,233,189029,371,merged,0,74,right-sized,"Count-where and rolling formula; every UpdateBySpec operator ported; replay 83 of 83 on the branch; long run, spanned a usage-limit stop and three merges of main"
 6.8-python-dtypes-columns,1,agent,2026-11-15T08:50Z,,,,running,,,,"dtypes, column constructors, time, new_table; ports 10942/10943"
