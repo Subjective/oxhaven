@@ -20,7 +20,8 @@ trait Rows: Clone + Sized {
     fn build(ranges: &[RowRange]) -> Self;
     fn keys(keys: &[RowKey]) -> Self;
     fn to_ranges(&self) -> Vec<RowRange>;
-    fn range_count(&self) -> usize;
+    /// Walks every range and adds up their sizes.
+    fn walk(&self) -> u64;
     fn heap_bytes(&self) -> usize;
     fn size(&self) -> u64;
     fn get(&self, pos: u64) -> Option<RowKey>;
@@ -95,8 +96,8 @@ impl Rows for RowSet {
     fn to_ranges(&self) -> Vec<RowRange> {
         self.ranges().to_vec()
     }
-    fn range_count(&self) -> usize {
-        self.ranges().len()
+    fn walk(&self) -> u64 {
+        self.ranges().iter().map(RowRange::size).sum()
     }
     fn heap_bytes(&self) -> usize {
         std::mem::size_of_val(self.ranges())
@@ -114,8 +115,8 @@ impl Rows for BlockRowSet {
     fn to_ranges(&self) -> Vec<RowRange> {
         self.ranges().collect()
     }
-    fn range_count(&self) -> usize {
-        self.ranges().count()
+    fn walk(&self) -> u64 {
+        self.ranges().map(|r| r.size()).sum()
     }
     fn heap_bytes(&self) -> usize {
         self.heap_bytes()
@@ -174,6 +175,15 @@ fn sample(rng: &mut Rng, first: RowKey, len: u64, one_in: u64, out: &mut Vec<Row
 const REGION_KEYS: RowKey = 1 << 43;
 
 const SHAPES: &[Shape] = &[
+    Shape {
+        name: "small",
+        what: "1000 rows in 100 runs of 10 (a small table: most tables are)",
+        make: |_| {
+            (0..100)
+                .map(|i| RowRange::new(i * 25, i * 25 + 9))
+                .collect()
+        },
+    },
     Shape {
         name: "stored",
         what: "64 regions of 1M rows each, every row present (a stored table as read)",
@@ -450,11 +460,7 @@ fn run<S: Rows>(input: &Inputs) -> Vec<(&'static str, Duration, Vec<RowRange>)> 
         time(|| set.shift(65536)),
         set.shift(65536).to_ranges(),
     );
-    add(
-        "walk the ranges",
-        time(|| set.range_count()),
-        number(set.range_count() as u64),
-    );
+    add("walk the ranges", time(|| set.walk()), number(set.walk()));
     add(
         "build from ranges",
         time(|| S::build(&input.ranges)),
@@ -485,11 +491,7 @@ fn main() {
         }
         let input = inputs(shape);
         println!("\n## {}: {}", shape.name, shape.what);
-        println!(
-            "{} rows in {} ranges\n",
-            input.size,
-            RowSet::build(&input.ranges).range_count()
-        );
+        println!("{} rows in {} ranges\n", input.size, input.ranges.len());
         println!("| operation | ranges | blocks | ratio |");
         println!("| --- | ---: | ---: | ---: |");
         let ranges = run::<RowSet>(&input);

@@ -1,5 +1,5 @@
-//! A row set for large tables: the key space is cut into blocks of 2^16 keys, and each block
-//! that holds keys stores them in the smallest of three forms.
+//! A row set for large tables: the key space is cut into blocks of 2^16 keys, whole blocks are
+//! counted, and every other block that holds keys stores them in the smallest form that fits.
 //!
 //! [`BlockRowSet`] has the operations of the contract type
 //! [`RowSet`](oxhaven_contracts::rowset::RowSet), with the same names and the same results; the
@@ -13,8 +13,7 @@
 //! A row set is a sorted vector of spans and, beside it, the number of keys up to the end of
 //! each span. A span is one of:
 //!
-//! - a count of whole blocks, however many: a table that holds every key from 0 to a billion
-//!   is one span;
+//! - a count of whole blocks, however many: the keys 0 to 2^40 - 1 are one span;
 //! - one run of keys within a block, stored inline;
 //! - a list of up to 2047 runs within a block (4 bytes each);
 //! - a bitmap of the block (8192 bytes), when it has more runs than that.
@@ -33,8 +32,9 @@
 //! - `insert`, `remove` of a set that touches `t` blocks: those blocks, plus a move of the
 //!   spans after them;
 //! - `union`, `intersect`, `minus`: the spans of both sets, and the blocks they share; 64 keys
-//!   per step where both blocks are bitmaps. `intersect` skips, by binary search, the spans of
-//!   one set that lie between two spans of the other;
+//!   per step where both blocks are bitmaps. `intersect` searches past the spans of one set
+//!   that lie between two spans of the other, so a small set against a large one costs the
+//!   small one;
 //! - `clone`: O(s), with no copy of any block.
 //!
 //! # Relation to the reference
@@ -71,6 +71,20 @@ fn low(key: RowKey) -> u16 {
 
 fn key_at(block: u64, low: u16) -> RowKey {
     ((block << BLOCK_BITS) | u64::from(low)) as RowKey
+}
+
+/// How many items at the start of `items` satisfy `holds`, which is true of a prefix and false
+/// of the rest. A binary search that costs little when the answer is small, as it is when two
+/// row sets are walked together.
+fn leading<T>(items: &[T], holds: impl Fn(&T) -> bool) -> usize {
+    let (mut known, mut step) = (0, 1);
+    while known + step <= items.len() && holds(&items[known + step - 1]) {
+        known += step;
+        step *= 2;
+    }
+    // The item at `known + step - 1` does not hold, or is past the end.
+    let end = (known + step - 1).min(items.len());
+    known + items[known..end].partition_point(holds)
 }
 
 /// One or more consecutive blocks and their keys.
@@ -200,7 +214,8 @@ impl BlockRowSet {
         Ranges {
             spans: self.spans.iter(),
             block: 0,
-            runs: Runs::Done,
+            list: [].iter(),
+            bits: None,
             open: None,
         }
     }
@@ -382,6 +397,9 @@ impl BlockRowSet {
 
     /// Every key moved by `delta`.
     ///
+    /// # Panics
+    /// If a key would move beyond the last key of the key space.
+    ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#shift,
     /// io.deephaven.engine.rowset.impl.rsp.RspBitmap#applyOffsetImpl
     pub fn shift(&self, delta: i64) -> Result<BlockRowSet, RowSetError> {
@@ -389,6 +407,12 @@ impl BlockRowSet {
             if first + delta < 0 {
                 return Err(RowSetError::NegativeKey);
             }
+        }
+        if let Some(last) = self.last_row_key() {
+            assert!(
+                last.checked_add(delta).is_some(),
+                "shift of {last} by {delta} is beyond the key space"
+            );
         }
         if delta % BLOCK_KEYS as i64 == 0 {
             // Whole blocks move: the result shares every block with `self`.
@@ -471,6 +495,17 @@ impl BlockRowSet {
         self.spans.push(Span { block, body });
         self.ends.push(total);
     }
+
+    /// Adds `from.spans[at..end]`, which is not empty, after all the spans of `self`.
+    fn extend(&mut self, from: &BlockRowSet, at: usize, end: usize) {
+        // Only the first can be whole blocks that follow whole blocks.
+        let first = &from.spans[at];
+        self.push(first.block, first.body.clone(), from.keys_of(at));
+        let (size, passed) = (self.size(), from.ends[at]);
+        self.spans.extend_from_slice(&from.spans[at + 1..end]);
+        self.ends
+            .extend(from.ends[at + 1..end].iter().map(|e| e - passed + size));
+    }
 }
 
 impl FromIterator<RowKey> for BlockRowSet {
@@ -531,10 +566,7 @@ impl Appender {
     }
 
     fn flush(&mut self) {
-        if self.runs.is_empty() {
-            return;
-        }
-        if let Some((body, keys)) = self.runs.take().seal() {
+        if let Some((body, keys)) = self.runs.seal() {
             self.out.push(self.block, body, keys);
         }
     }
@@ -574,7 +606,7 @@ impl<'a> Seeker<'a> {
         let block = block_of(key);
         if spans.get(self.span).is_some_and(|s| s.end() <= block) {
             let from = self.span + 1;
-            self.span = from + spans[from..].partition_point(|s| s.end() <= block);
+            self.span = from + leading(&spans[from..], |s| s.end() <= block);
             self.passed = 0;
             self.keys_passed = 0;
         }
@@ -624,20 +656,15 @@ impl<'a> Seeker<'a> {
     }
 }
 
-/// The runs of the span being walked.
-enum Runs<'a> {
-    Done,
-    List(std::slice::Iter<'a, Run>),
-    Bits(BitRuns<'a>),
-}
-
 /// Iterator over the ranges of a [`BlockRowSet`].
 pub struct Ranges<'a> {
     spans: std::slice::Iter<'a, Span>,
-    /// The block of `runs`.
+    /// The block of the runs being walked.
     block: u64,
-    runs: Runs<'a>,
-    /// A range that the next piece may still extend, across a block boundary.
+    /// What is left of the runs of the current span: of its run list, or else of its bitmap.
+    list: std::slice::Iter<'a, Run>,
+    bits: Option<BitRuns<'a>>,
+    /// A piece already taken from the spans that starts the next range.
     open: Option<(RowKey, RowKey)>,
 }
 
@@ -645,26 +672,25 @@ impl Ranges<'_> {
     /// The next run of keys within one span.
     fn piece(&mut self) -> Option<(RowKey, RowKey)> {
         loop {
-            let run = match &mut self.runs {
-                Runs::Done => None,
-                Runs::List(runs) => runs.next().copied(),
-                Runs::Bits(runs) => runs.next(),
+            let run = match self.list.next() {
+                Some(run) => Some(*run),
+                None => self.bits.as_mut().and_then(Iterator::next),
             };
             if let Some(run) = run {
                 return Some((key_at(self.block, run.first), key_at(self.block, run.last)));
             }
             let span = self.spans.next()?;
             self.block = span.block;
-            self.runs = match &span.body {
+            self.bits = None;
+            match &span.body {
                 Body::Full(_) => {
-                    self.runs = Runs::Done;
                     return Some((key_at(span.block, 0), key_at(span.end() - 1, u16::MAX)));
                 }
                 body => match body.view() {
-                    View::Runs(runs) => Runs::List(runs.iter()),
-                    View::Bits(words) => Runs::Bits(BitRuns::new(words)),
+                    View::Runs(runs) => self.list = runs.iter(),
+                    View::Bits(words) => self.bits = Some(BitRuns::new(words)),
                 },
-            };
+            }
         }
     }
 }
@@ -673,19 +699,20 @@ impl Iterator for Ranges<'_> {
     type Item = RowRange;
 
     fn next(&mut self) -> Option<RowRange> {
-        loop {
-            let piece = self.piece();
-            match (self.open, piece) {
-                (Some((first, last)), Some((next_first, next_last))) if last + 1 == next_first => {
-                    self.open = Some((first, next_last));
-                }
-                (Some((first, last)), next) => {
+        let (first, mut last) = match self.open.take() {
+            Some(piece) => piece,
+            None => self.piece()?,
+        };
+        // Only a piece that ends its block can go on in the next block.
+        while low(last) == u16::MAX {
+            match self.piece() {
+                Some((next_first, next_last)) if next_first == last + 1 => last = next_last,
+                next => {
                     self.open = next;
-                    return Some(RowRange::new(first, last));
+                    break;
                 }
-                (None, Some(next)) => self.open = Some(next),
-                (None, None) => return None,
             }
         }
+        Some(RowRange::new(first, last))
     }
 }

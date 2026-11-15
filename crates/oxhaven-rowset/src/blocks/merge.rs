@@ -1,7 +1,7 @@
 //! Union, intersection and difference of two row sets, span by span.
 
 use super::container::{combine, Body, Op, BLOCK_KEYS};
-use super::{BlockRowSet, Span};
+use super::{leading, BlockRowSet, Span};
 
 /// A position in the spans `at..end` of a row set, for a walk in block order.
 pub(super) struct Cursor<'a> {
@@ -37,18 +37,16 @@ impl<'a> Cursor<'a> {
     }
 
     /// Moves to the first block at or after `limit`. With `out`, the keys passed are added to
-    /// it; without, whole spans are skipped by binary search.
+    /// it.
     fn pass(&mut self, limit: u64, mut out: Option<&mut BlockRowSet>) {
         while let Some(block) = self.block().filter(|&b| b < limit) {
             let span = self.span();
             if self.passed == 0 && span.end() <= limit {
-                let whole = match out.as_deref_mut() {
-                    Some(out) => {
-                        out.push(span.block, span.body.clone(), self.set.keys_of(self.at));
-                        1
-                    }
-                    None => self.set.spans[self.at..self.end].partition_point(|s| s.end() <= limit),
-                };
+                let rest = &self.set.spans[self.at..self.end];
+                let whole = leading(rest, |s| s.end() <= limit);
+                if let Some(out) = out.as_deref_mut() {
+                    out.extend(self.set, self.at, self.at + whole);
+                }
                 self.at += whole;
             } else {
                 // Part of a span of whole blocks: what is left of it, or up to the limit.

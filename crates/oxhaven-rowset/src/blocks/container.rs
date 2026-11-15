@@ -239,29 +239,29 @@ impl Piece {
     /// The stored form and the number of keys, or `None` when there is no key.
     pub fn seal(self) -> Option<(Body, u64)> {
         match self {
-            Piece::Runs(runs) => seal_runs(runs),
+            Piece::Runs(runs) => seal_runs(&runs),
             Piece::Bits(words) => {
                 if count_runs(&words) > MAX_RUNS {
                     let keys = words.iter().map(|w| u64::from(w.count_ones())).sum();
                     Some((Body::Bits(Arc::from(words)), keys))
                 } else {
-                    seal_runs(BitRuns::new(&words).collect())
+                    seal_runs(&BitRuns::new(&words).collect::<Vec<Run>>())
                 }
             }
         }
     }
 }
 
-fn seal_runs(runs: Vec<Run>) -> Option<(Body, u64)> {
+fn seal_runs(runs: &[Run]) -> Option<(Body, u64)> {
     let keys = runs.iter().map(|r| r.len()).sum();
-    let body = match runs.as_slice() {
+    let body = match runs {
         [] => return None,
         [run] if *run == Run::WHOLE => Body::Full(1),
         [run] => Body::One(*run),
         _ if runs.len() <= MAX_RUNS => Body::Runs(Arc::from(runs)),
         _ => {
             let mut words: Box<Words> = Box::new([0; WORDS]);
-            for run in &runs {
+            for run in runs {
                 set_run(&mut words, *run);
             }
             Body::Bits(Arc::from(words))
@@ -328,7 +328,7 @@ fn union_runs(a: &[Run], b: &[Run]) -> Vec<Run> {
 }
 
 fn intersect_runs(a: &[Run], b: &[Run]) -> Vec<Run> {
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(a.len().max(b.len()));
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         let (x, y) = (a[i], b[j]);
@@ -346,7 +346,7 @@ fn intersect_runs(a: &[Run], b: &[Run]) -> Vec<Run> {
 }
 
 fn minus_runs(a: &[Run], b: &[Run]) -> Vec<Run> {
-    let mut out = Vec::new();
+    let mut out = Vec::with_capacity(a.len() + b.len());
     let mut j = 0;
     for x in a {
         // The first offset of `x` not yet decided; one past `x.last` when all of it is.
@@ -388,11 +388,11 @@ impl BlockRuns {
         }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn take(&mut self) -> Piece {
-        Piece::Runs(std::mem::take(&mut self.0))
+    /// The stored form of the runs collected so far, and their number of keys; `None` when
+    /// there are none. Starts a new block.
+    pub fn seal(&mut self) -> Option<(Body, u64)> {
+        let sealed = seal_runs(&self.0);
+        self.0.clear();
+        sealed
     }
 }

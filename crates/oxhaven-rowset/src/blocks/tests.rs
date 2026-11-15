@@ -116,7 +116,7 @@ fn ranges(rng: &mut Rng) -> Vec<RowRange> {
     let mut out = Vec::new();
     for _ in 0..rng.below(6) {
         let base = BASES[rng.below(BASES.len() as u64) as usize];
-        match rng.below(7) {
+        match rng.below(8) {
             0 => {
                 for _ in 0..rng.below(40) {
                     let key = base + rng.key_below(2 * B);
@@ -168,6 +168,10 @@ fn ranges(rng: &mut Rng) -> Vec<RowRange> {
                         out.push(RowRange::new(key, key));
                     }
                 }
+            }
+            6 => {
+                // Whole blocks exactly, so that two sets have whole blocks side by side.
+                out.push(RowRange::new(base, base + (1 + rng.key_below(2)) * B - 1));
             }
             _ => {
                 let first = base + rng.key_below(B);
@@ -394,7 +398,7 @@ fn every_operation_matches_the_contract_row_set() {
         ("bitmaps", seen.bits),
     ] {
         assert!(
-            count >= at_least_for(3000, seeds.clone()),
+            count >= at_least_for(2500, seeds.clone()),
             "only {count} spans of {layout}"
         );
     }
@@ -518,4 +522,65 @@ fn intersecting_skips_the_spans_between_the_other_sets_blocks() {
         "took {:?}",
         started.elapsed()
     );
+}
+
+#[test]
+fn invert_rejects_a_range_whose_ends_are_present_but_not_its_middle() {
+    let rows = BlockRowSet::from_keys([1, 2, 5, 6]);
+    assert_eq!(
+        rows.invert(&BlockRowSet::from_keys([2, 5])),
+        Ok(BlockRowSet::from_keys([1, 2]))
+    );
+    assert_eq!(
+        rows.invert(&BlockRowSet::from_range(2, 5)),
+        Err(RowSetError::NotASubset)
+    );
+    // The same with the gap between two whole blocks.
+    let rows = BlockRowSet::from_ranges([RowRange::new(0, B - 1), RowRange::new(2 * B, 3 * B - 1)]);
+    assert_eq!(
+        rows.invert(&BlockRowSet::from_keys([B - 1, 2 * B])),
+        Ok(BlockRowSet::from_range(B - 1, B))
+    );
+    assert_eq!(
+        rows.invert(&BlockRowSet::from_range(B - 1, 2 * B)),
+        Err(RowSetError::NotASubset)
+    );
+}
+
+#[test]
+fn whole_blocks_side_by_side_become_one_span() {
+    let (low, high) = (
+        BlockRowSet::from_range(0, 2 * B - 1),
+        BlockRowSet::from_range(2 * B, 5 * B - 1),
+    );
+    let both = BlockRowSet::from_range(0, 5 * B - 1);
+    assert_eq!(both.spans.len(), 1);
+    for (a, b) in [(&low, &high), (&high, &low)] {
+        assert_eq!(a.union(b), both);
+        let mut joined = a.clone();
+        joined.insert(b);
+        assert_eq!(joined, both);
+    }
+    // What is left on either side of a removed block is two spans, and one again when the
+    // block comes back from the other operand.
+    let middle = BlockRowSet::from_range(2 * B, 3 * B - 1);
+    let holed = both.minus(&middle);
+    assert_eq!(holed.spans.len(), 2);
+    assert_eq!(holed.union(&middle), both);
+    // Blocks that stay whole next to blocks that the other set completes.
+    let evens = BlockRowSet::from_keys((2 * B..3 * B).filter(|k| k % 2 == 0));
+    let odds = BlockRowSet::from_keys((2 * B..3 * B).filter(|k| k % 2 == 1));
+    assert_eq!(holed.union(&evens).union(&odds), both);
+    let mut rows = holed.clone();
+    rows.insert(&evens);
+    rows.insert(&odds);
+    assert_eq!(rows, both);
+    validate(&rows, &mut Seen::default());
+}
+
+#[test]
+#[should_panic(expected = "beyond the key space")]
+fn shifting_past_the_last_key_panics() {
+    let rows = BlockRowSet::from_range(RowKey::MAX - 2 * B, RowKey::MAX - 5);
+    let _ = rows.shift(B);
 }
