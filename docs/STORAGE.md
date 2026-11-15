@@ -145,9 +145,10 @@ They wait for the column types, not for this design.
 
 | Crate | Licence | Why |
 | --- | --- | --- |
-| `parquet` 60.1, features `arrow`, `lz4`, `flate2` | Apache-2.0 | The reader |
+| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend` | Apache-2.0 | The reader |
 | `lz4_flex` | MIT | `LZ4` and `LZ4_RAW` pages |
-| `flate2` | MIT or Apache-2.0 | `GZIP` pages |
+| `flate2`, `crc32fast` | MIT or Apache-2.0 | `GZIP` pages |
+| `miniz_oxide`, `adler2`, `simd-adler32` | MIT or Zlib or Apache-2.0; 0BSD or MIT or Apache-2.0; MIT | The inflate behind `flate2` (its `rust_backend`; the `zlib-rs` backend that `parquet` takes by default is under the Zlib licence only) |
 | `seq-macro`, `twox-hash` | MIT or Apache-2.0; MIT | Needed by `parquet` |
 
 `serde_json` (already in the workspace) reads the `deephaven` footer entry.
