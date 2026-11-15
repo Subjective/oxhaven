@@ -614,3 +614,15 @@ For owner review, differences it reports in failure paths: NullPointerException 
 sorted merge, a schema that Java fails to build for a restriction naming a non-column, the
 text for a non-int index in move_columns, and which column SortRowRedirection names.
 Tasks 6.9 and 6.10 (conversion, input tables) started as one run.
+
+## 2026-11-15 19:40 UTC: Widened fuzzer up as PR 81; findings become task 4.17
+
+The fuzzer now draws every ported operation. With its restrictions in place, 12 of 13
+families are clean over 1000 seeds and one seed differs (aj losing a left row). Before the
+restrictions the first wide generator had 69, 103 and 12 differing seeds in aggregations,
+groups and update_by, so the earlier "83 of 83 scenarios clean" overstated parity: the
+recorded scenarios did not reach array-column aggregations, attribute copies or in-cycle
+failures. Seven open engine defects are written up as tasks/4.17-fuzz-findings.md with the
+minimal scenarios beside it. For owner review: A5 (Java's head_by cast changes a column's
+type; reproduce or not), the serving of tables that failed in a cycle (A7, open since
+before), and five Java defects (J1 to J5) that Oxhaven does not reproduce.
