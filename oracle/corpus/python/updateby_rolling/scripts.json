@@ -4,6 +4,60 @@
     {
       "step": 0,
       "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling sum (tick) UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: UpdateBy rolling window size must be non-negative",
+      "operation": "failed to create a rolling sum (tick) UpdateByOperation."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling average (tick) UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: UpdateBy rolling window size may not exceed MAX_ARRAY_SIZE (2147483639)",
+      "operation": "failed to create a rolling average (tick) UpdateByOperation."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling minimum (tick) UpdateByOperation. : RuntimeError: no matching Java method overloads found",
+      "operation": "failed to create a rolling minimum (tick) UpdateByOperation."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling formula (tick) UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: formula must not be empty",
+      "operation": "failed to create a rolling formula (tick) UpdateByOperation."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling formula (tick) UpdateByOperation. : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"sum(N)\"",
+      "operation": "failed to create a rolling formula (tick) UpdateByOperation."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "count_where aggregation requires a string value for the 'col' argument. : count_where aggregation requires a string value for the 'col' argument.",
+      "operation": "count_where aggregation requires a string value for the 'col' argument."
+    },
+    {
+      "step": 7,
+      "outcome": "ok"
+    },
+    {
+      "step": 8,
+      "outcome": "ok"
+    },
+    {
+      "step": 9,
+      "outcome": "ok"
     }
   ]
 }

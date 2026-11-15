@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "join_natural",
-  "scenario_sha256": "fd23b1e7478db742c1da9e742defdb2041850f2775a4a804d91100306efe772d",
+  "scenario_sha256": "d2ae93554cb029e6882739e0a7736c862754f4708616101b713e9a0f7735e8b8",
   "reference": "42.9",
   "entries": [
     {
@@ -20,6 +20,288 @@
       "step": 0,
       "table": "exact",
       "file": "step000.exact.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "from_text",
+      "file": "step000.from_text.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "renamed_key",
+      "file": "step000.renamed_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "first_match",
+      "file": "step000.first_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "last_match",
+      "file": "step000.last_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "one_match",
+      "file": "step000.one_match.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "no_key",
+      "file": "step000.no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "exact_all",
+      "file": "step000.exact_all.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "all_columns",
+      "file": "step001.all_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "some_columns",
+      "file": "step001.some_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "exact",
+      "file": "step001.exact.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "from_text",
+      "file": "step001.from_text.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "renamed_key",
+      "file": "step001.renamed_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "first_match",
+      "file": "step001.first_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "last_match",
+      "file": "step001.last_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "one_match",
+      "file": "step001.one_match.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "no_key",
+      "file": "step001.no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "exact_all",
+      "file": "step001.exact_all.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "all_columns",
+      "file": "step002.all_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "some_columns",
+      "file": "step002.some_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "exact",
+      "file": "step002.exact.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "from_text",
+      "file": "step002.from_text.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "renamed_key",
+      "file": "step002.renamed_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "first_match",
+      "file": "step002.first_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "last_match",
+      "file": "step002.last_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "one_match",
+      "file": "step002.one_match.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "no_key",
+      "file": "step002.no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "exact_all",
+      "file": "step002.exact_all.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "all_columns",
+      "file": "step003.all_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "some_columns",
+      "file": "step003.some_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "exact",
+      "file": "step003.exact.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "from_text",
+      "file": "step003.from_text.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "renamed_key",
+      "file": "step003.renamed_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "first_match",
+      "file": "step003.first_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "last_match",
+      "file": "step003.last_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "one_match",
+      "file": "step003.one_match.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "no_key",
+      "file": "step003.no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "exact_all",
+      "file": "step003.exact_all.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "all_columns",
+      "file": "step004.all_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "some_columns",
+      "file": "step004.some_columns.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "exact",
+      "file": "step004.exact.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "from_text",
+      "file": "step004.from_text.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "renamed_key",
+      "file": "step004.renamed_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "first_match",
+      "file": "step004.first_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "last_match",
+      "file": "step004.last_match.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "one_match",
+      "file": "step004.one_match.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "no_key",
+      "file": "step004.no_key.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "exact_all",
+      "file": "step004.exact_all.arrow",
       "rows": 5
     }
   ]
