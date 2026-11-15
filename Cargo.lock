@@ -1248,6 +1248,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxhaven-csv"
+version = "0.0.0"
+dependencies = [
+ "arrow",
+ "oxhaven-column",
+ "oxhaven-contracts",
+ "oxhaven-engine",
+ "serde_json",
+]
+
+[[package]]
 name = "oxhaven-engine"
 version = "0.0.0"
 dependencies = [
@@ -1323,6 +1334,7 @@ dependencies = [
  "libc",
  "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-csv",
  "oxhaven-engine",
  "oxhaven-expr",
  "oxhaven-parquet",

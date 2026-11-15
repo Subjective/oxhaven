@@ -1,0 +1,1239 @@
+{
+  "format": 2,
+  "scenario": "csv_read_options",
+  "scenario_sha256": "675b5eba3b729b80a285cec65598e615a19e082b319f1552097303692ea9cffc",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "headless",
+      "file": "step000.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "header_row",
+      "file": "step000.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "skipped",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "beyond",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "none",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "pipes",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "tabs",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "single_quotes",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "kept_blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "trimmed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "quoted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "line_ends",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "short_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "long_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "headless",
+      "file": "step001.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "header_row",
+      "file": "step001.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "renamed",
+      "file": "step001.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "skipped",
+      "file": "step001.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "beyond",
+      "file": "step001.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "none",
+      "file": "step001.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "pipes",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "tabs",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "single_quotes",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "kept_blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "trimmed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "quoted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "line_ends",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "short_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "long_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "no_empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "headless",
+      "file": "step002.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "header_row",
+      "file": "step002.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "renamed",
+      "file": "step002.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "skipped",
+      "file": "step002.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "file": "step002.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "beyond",
+      "file": "step002.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "none",
+      "file": "step002.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "pipes",
+      "file": "step002.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "tabs",
+      "file": "step002.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "single_quotes",
+      "file": "step002.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "kept_blanks",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "trimmed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "quoted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "line_ends",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "short_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "long_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "no_empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "headless",
+      "file": "step003.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "header_row",
+      "file": "step003.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "renamed",
+      "file": "step003.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "skipped",
+      "file": "step003.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "file": "step003.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "beyond",
+      "file": "step003.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "none",
+      "file": "step003.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "pipes",
+      "file": "step003.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "tabs",
+      "file": "step003.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "single_quotes",
+      "file": "step003.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "blanks",
+      "file": "step003.blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "kept_blanks",
+      "file": "step003.kept_blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "trimmed",
+      "file": "step003.trimmed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "quoted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "line_ends",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "short_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "long_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "no_empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "headless",
+      "file": "step004.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "header_row",
+      "file": "step004.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "renamed",
+      "file": "step004.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "skipped",
+      "file": "step004.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "file": "step004.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "beyond",
+      "file": "step004.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "none",
+      "file": "step004.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "pipes",
+      "file": "step004.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "tabs",
+      "file": "step004.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "single_quotes",
+      "file": "step004.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "blanks",
+      "file": "step004.blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "kept_blanks",
+      "file": "step004.kept_blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "trimmed",
+      "file": "step004.trimmed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "quoted",
+      "file": "step004.quoted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "line_ends",
+      "file": "step004.line_ends.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "short_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "long_rows",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "no_empty_lines",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "headless",
+      "file": "step005.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "header_row",
+      "file": "step005.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "renamed",
+      "file": "step005.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "skipped",
+      "file": "step005.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "file": "step005.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "beyond",
+      "file": "step005.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "none",
+      "file": "step005.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "pipes",
+      "file": "step005.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "tabs",
+      "file": "step005.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "single_quotes",
+      "file": "step005.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "blanks",
+      "file": "step005.blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "kept_blanks",
+      "file": "step005.kept_blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "trimmed",
+      "file": "step005.trimmed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "quoted",
+      "file": "step005.quoted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "line_ends",
+      "file": "step005.line_ends.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "short_rows",
+      "file": "step005.short_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "long_rows",
+      "file": "step005.long_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "empty_lines",
+      "file": "step005.empty_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "no_empty_lines",
+      "file": "step005.no_empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "names",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "repeated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "bom",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "headless",
+      "file": "step006.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "header_row",
+      "file": "step006.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "renamed",
+      "file": "step006.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "skipped",
+      "file": "step006.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "beyond",
+      "file": "step006.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "none",
+      "file": "step006.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "pipes",
+      "file": "step006.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "tabs",
+      "file": "step006.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "single_quotes",
+      "file": "step006.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "blanks",
+      "file": "step006.blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "kept_blanks",
+      "file": "step006.kept_blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "trimmed",
+      "file": "step006.trimmed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "quoted",
+      "file": "step006.quoted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "line_ends",
+      "file": "step006.line_ends.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "short_rows",
+      "file": "step006.short_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "long_rows",
+      "file": "step006.long_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "empty_lines",
+      "file": "step006.empty_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "no_empty_lines",
+      "file": "step006.no_empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "names",
+      "file": "step006.names.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "repeated",
+      "file": "step006.repeated.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "bom",
+      "file": "step006.bom.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "no_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "only_headers",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "headless",
+      "file": "step007.headless.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "header_row",
+      "file": "step007.header_row.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "renamed",
+      "file": "step007.renamed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "skipped",
+      "file": "step007.skipped.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "counted",
+      "file": "step007.counted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "beyond",
+      "file": "step007.beyond.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "none",
+      "file": "step007.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "pipes",
+      "file": "step007.pipes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "tabs",
+      "file": "step007.tabs.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "single_quotes",
+      "file": "step007.single_quotes.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "blanks",
+      "file": "step007.blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "kept_blanks",
+      "file": "step007.kept_blanks.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "trimmed",
+      "file": "step007.trimmed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "quoted",
+      "file": "step007.quoted.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "line_ends",
+      "file": "step007.line_ends.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "short_rows",
+      "file": "step007.short_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "long_rows",
+      "file": "step007.long_rows.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "empty_lines",
+      "file": "step007.empty_lines.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "no_empty_lines",
+      "file": "step007.no_empty_lines.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "names",
+      "file": "step007.names.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "repeated",
+      "file": "step007.repeated.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "bom",
+      "file": "step007.bom.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "no_columns",
+      "file": "step007.no_columns.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "only_headers",
+      "file": "step007.only_headers.arrow",
+      "rows": 0
+    }
+  ]
+}
