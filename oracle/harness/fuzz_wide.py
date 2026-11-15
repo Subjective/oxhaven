@@ -11,7 +11,7 @@ What it adds to `fuzz._Generator`:
   `agg_all_by`, `group_by`, `ungroup`, `snapshot`, `snapshot_when` and `meta_table`;
 - `update_by` with the cumulative operators, `forward_fill`, `delta` with its controls, the
   `em*` family and the rolling operators in ticks and in time, with their windows, decays and
-  bad-data controls; `agg_by` with every aggregation that takes no formula; joins with several
+  bad-data controls; `agg_by` with every aggregation (`formula` with a few formulas over a group's values); joins with several
   match columns and with all right columns; structured filters with string, timestamp, `in`,
   pattern and case-insensitive conditions; absolute sorts;
 - inputs: a timestamp column `T` that does not decrease from row to row (what the time windows
@@ -46,9 +46,9 @@ Not generated, each for a stated reason:
 - `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
   `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
 
-- `rolling_formula_*`, `cum_count_where`, `rolling_count_where_*` and the `formula`
-  aggregation: Oxhaven answers them `UNIMPLEMENTED` by design (the engine lists
-  them as not ported), so every scenario with one would differ in the same known way.
+- `rolling_formula_*`, `cum_count_where` and `rolling_count_where_*`: Oxhaven answers them
+  `UNIMPLEMENTED` by design (the engine lists them as not ported), so every scenario with
+  one would differ in the same known way.
 - `time_table`: its rows depend on the clock. `empty_table`: it has no columns to operate on.
   `column_statistics`: no handler in Oxhaven.
 - An aggregation of an array column into arrays (`group` of a `group`): the comparison rules
@@ -167,8 +167,19 @@ AGGREGATIONS: dict[str, tuple[tuple[str, ...], Callable[[str], str]]] = {
 }
 # Drawn for `agg_by`; the simple ones are listed twice so that a table with a few
 # aggregations usually has one whose result can feed the next operation.
-_AGG_DRAW = tuple(AGGREGATIONS) + ("count", "count_where", "sum", "min", "max", "first",
-                                   "last", "avg")
+_AGG_DRAW = tuple(AGGREGATIONS) + ("count", "count_where", "formula", "sum", "min", "max",
+                                   "first", "last", "avg")
+# The `formula` aggregation: formulas over the group's values `each`, the column types each is
+# drawn for, and the result type. Sums and averages only of integers: the comparison rules
+# give a formula's result no tolerance.
+_INTEGERS = tuple(INT_BITS)
+FORMULAS: dict[str, tuple[tuple[str, ...], Callable[[str], str]]] = {
+    "sum(each)": (_INTEGERS, _long),
+    "avg(each)": (_INTEGERS, _double),
+    "min(each)": (NUMERIC, _same),
+    "max(each)": (NUMERIC, _same),
+    "each.size()": (NUMERIC, _long),
+}
 _AGG_ALL_DRAW = tuple(name for name in AGGREGATIONS if not name.startswith("weighted"))
 
 _UNIQUE_KEYS: dict[str, list[Any]] = {
@@ -694,6 +705,17 @@ class _Wide(_Generator):
             out = self.fresh("N")
             columns.append((out, "int64"))
             return {"agg": "count_where", "column": out, "args": {"filters": filters}}
+        if agg == "formula":
+            formula = rng.choice(list(FORMULAS))
+            accepted, result = FORMULAS[formula]
+            pool = [c for c in candidates if source.type_of(c) in accepted]
+            if not pool:
+                return None
+            column = rng.choice(pool)
+            out = self.fresh("A")
+            columns.append((out, result(source.type_of(column))))
+            return {"agg": "formula", "columns": [f"{out} = {column}"],
+                    "args": {"formula": formula, "formula_param": "each"}}
         accepted, result = AGGREGATIONS[agg]
         pool = [c for c in candidates if source.type_of(c) in accepted]
         if agg not in ("group", "distinct") and self.chance(0.04):

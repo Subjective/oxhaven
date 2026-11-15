@@ -180,7 +180,8 @@ def test_requests_are_mostly_ones_the_reference_takes():
                     specs = [(o["op"], o["columns"], fuzz_wide.UPDATE_BY) for o in op["ops"]]
                 elif op["op"] == "agg_by":
                     specs = [(a["agg"], a["columns"], fuzz_wide.AGGREGATIONS)
-                             for a in op["aggs"] if "columns" in a]
+                             for a in op["aggs"]
+                             if "columns" in a and a["agg"] != "formula"]
                 else:
                     continue
                 types = dict(predicted[op["source"]])
@@ -215,17 +216,20 @@ def test_every_operation_and_variant_is_drawn():
     assert any(len(op["by"]) == 2 for op in OPERATIONS if op["op"] == "update_by")
 
     aggregations = {a["agg"] for op in OPERATIONS if op["op"] == "agg_by" for a in op["aggs"]}
-    assert aggregations == set(sc.AGGREGATIONS) - {"formula"}
+    assert aggregations == set(sc.AGGREGATIONS)
     assert {op["agg"]["agg"] for op in OPERATIONS if op["op"] == "agg_all_by"} >= {
         "sum", "avg", "min", "max", "first", "last", "std", "var", "median", "pct", "group",
         "count_distinct", "distinct", "unique", "sorted_first", "sorted_last", "abs_sum"}
-    # A sentinel of each kind is rare; look at more seeds of the one family that draws them.
-    sentinels = [a["args"]["non_unique_sentinel"]
-                 for seed in range(1500)
-                 for op in fuzz.generate(seed, fuzz.FAMILIES["aggregations"], "all")[0][
-                     "operations"] if op["op"] == "agg_by"
-                 for a in op["aggs"] if "non_unique_sentinel" in a.get("args", {})]
+    # A sentinel of each kind and each formula are rare; look at more seeds of the one family
+    # that draws them.
+    more = [a for seed in range(1500)
+            for op in fuzz.generate(seed, fuzz.FAMILIES["aggregations"], "all")[0]["operations"]
+            if op["op"] == "agg_by" for a in op["aggs"]]
+    sentinels = [a["args"]["non_unique_sentinel"] for a in more
+                 if "non_unique_sentinel" in a.get("args", {})]
     assert {type(value) for value in sentinels} == {int, float, str}
+    assert {a["args"]["formula"] for a in more if a["agg"] == "formula"} == set(
+        fuzz_wide.FORMULAS)
 
     joins = [op for op in OPERATIONS if op["op"] in (
         "natural_join", "exact_join", "join", "left_join", "aj", "raj")]

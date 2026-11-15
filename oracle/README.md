@@ -359,7 +359,7 @@ There are two generators, chosen by `--variants`:
 - `all` (`harness/fuzz_wide.py`) builds every operation, each with its variants: `update_by`
   with the cumulative operators, `forward_fill`, `delta`, the `em*` family and the rolling
   operators in ticks and in time, with windows, decays and bad-data controls; every
-  aggregation that takes no formula, in `agg_by` and `agg_all_by`; joins on several columns
+  aggregation, in `agg_by` and (but for `formula`) `agg_all_by`; joins on several columns
   and with all right columns; `raj`; `range_join` with its range rules; `multi_join`;
   `where_in`, also inverted; structured filters on strings, timestamps and patterns; absolute
   sorts; array columns from `group_by` and the `group` and `distinct` aggregations, into
@@ -428,7 +428,7 @@ the column (the aggregation or `update_by` operator), the metadata keys, both va
 whether it shows at the first step or later. `harness/known.py` documents the fields.
 
 `fuzz` sets the mismatches that fit an entry apart. A scenario counts as known only if every
-one of its mismatches fits; it is then listed (`known seed 351: agg-by-min-zero-sign`, or a
+one of its mismatches fits; it is then listed (`known seed 39: aj-reference-history`, or a
 `KNOWN` line per finding with `--keep-going`), still written to `--out`, and counted in the
 last line as `N more with known findings only (not counted as differences)`. A scenario with
 one mismatch that fits no entry is a difference as before, reported and shrunk by the
@@ -821,7 +821,7 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   (it returns its source; every result is already fetched). `--ops` rejects these names and
   any other name outside the table above.
 - The fuzzer builds only the operations listed under Fuzz. The table sources (`time_table`,
-  `empty_table`), `column_statistics`, the `formula` aggregation,
+  `empty_table`), `column_statistics`,
   `rolling_formula` and the `count_where` operators of `update_by` are covered by recorded
   scenarios only, and so is anything the module comment of `harness/fuzz_wide.py` lists as
   not generated.
