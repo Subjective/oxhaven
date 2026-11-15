@@ -480,3 +480,11 @@ Merged pull requests cannot be changed by this: their pages keep the original co
 
 Owner decided to leave existing history as it is. The history rewrite task is dropped.
 Going forward stays: owner as author, Claude co-author trailer.
+
+## 2026-11-15 04:38 UTC
+
+Owner settled the identity question: keep things as they were. Branch and run-log commits
+are made under the Claude identity, and squash merges use GitHub's default message, which
+shows the owner and Claude as co-authors. The repo-local identity override is removed.
+Commits between 04:33 and 04:37 (run-log entries and the squash of PR 61) were made under
+the owner's identity and stay as they are. No history rewrite.
