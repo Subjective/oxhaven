@@ -1,0 +1,80 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (Id). : TypeError: 'str' object cannot be interpreted as an integer",
+      "operation": "failed to create an InputColumn (Id)."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (S). : ValueError: cannot convert a Python 'int' to a Java 'java.lang.String'",
+      "operation": "failed to create an InputColumn (S)."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (L). : OverflowError: int too big to convert",
+      "operation": "failed to create an InputColumn (L)."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create an InputColumn (1d). : RuntimeError: io.deephaven.api.util.NameValidator$InvalidNameException: Invalid column name \"1d\"",
+      "operation": "failed to create an InputColumn (1d)."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a new time table. : RuntimeError: java.lang.IllegalArgumentException: All columns must be the same size",
+      "operation": "failed to create a new time table."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a new time table. : ValueError: All arrays must be of the same length",
+      "operation": "failed to create a new time table."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "primitive type int is not callable. : primitive type int is not callable.",
+      "operation": "primitive type int is not callable."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "TypeError",
+      "text": "null_remap() must be called with a primitive DType"
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "Unexpected TableDefinitionLike type: <class 'int'> : Unexpected TableDefinitionLike type: <class 'int'>",
+      "operation": "Unexpected TableDefinitionLike type: <class 'int'>"
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: Supplied ColumnDefinitions include duplicate names [A]"
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "Expected TableDefinitionLike Mapping to contain DType values, found type <class 'type'> : Expected TableDefinitionLike Mapping to contain DType values, found type <class 'type'>",
+      "operation": "Expected TableDefinitionLike Mapping to contain DType values, found type <class 'type'>"
+    }
+  ]
+}

@@ -711,8 +711,6 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
 
 - The script scenarios compare tables only. A variable that holds anything else (a number, a
   figure, a partitioned table) is not a result, and what a script prints is not compared.
-- A `char` column is Arrow `uint16`, which the rules do not know, so no script scenario
-  builds one (`char_col`); `tests/test_scripts.py` refuses a recording with such a column.
 - The scripts of one run share the server's one Python session. The runner removes a
   scenario's variables afterwards, but not what a script changes elsewhere: a module it
   patches, a listener it leaves registered.
