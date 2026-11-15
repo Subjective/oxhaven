@@ -83,7 +83,7 @@ use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use aggregator::{Aggregator, Layout, Planned};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::fmt;
@@ -835,7 +835,7 @@ pub fn aggregate(
     preserve_empty: bool,
     group_by: &[&str],
 ) -> Result<Arc<dyn Table>, AggregateError> {
-    aggregate_inner(parent, aggregations, preserve_empty, group_by, None)
+    aggregate_inner(parent, aggregations, preserve_empty, group_by, None, false)
 }
 
 /// [`aggregate`], with the compiler of the formulas among the filters of a
@@ -854,6 +854,37 @@ pub fn aggregate_with(
         preserve_empty,
         group_by,
         Some(compiler),
+        false,
+    )
+}
+
+/// `spec` applied to each of `pairs`, as the aggregation of every column of `parent` that
+/// is not grouped by: the result of [`aggregate_with`] for that one aggregation, with the
+/// attributes of `parent` that Java copies to a first or a last of every column. Of the
+/// attributes this engine has that is `AppendOnly`, for a first.
+///
+/// Which columns the pairs are is the caller's to say; Java leaves out the group-by
+/// columns and the columns the spec reads.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#aggAllBy, which walks the spec with
+/// io.deephaven.engine.table.impl.AggAllByCopyAttributes, and the entries of
+/// io.deephaven.engine.table.impl.BaseTable#attributeToCopySet that list
+/// `CopyAttributeOperation.FirstBy` or `LastBy`
+pub fn aggregate_all_with(
+    parent: &Arc<dyn Table>,
+    spec: AggSpec,
+    pairs: impl IntoIterator<Item = Pair>,
+    group_by: &[&str],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, AggregateError> {
+    let append_only = matches!(spec, AggSpec::First) && parent.attributes().append_only;
+    aggregate_inner(
+        parent,
+        &[Aggregation::columns(spec, pairs)],
+        false,
+        group_by,
+        Some(compiler),
+        append_only,
     )
 }
 
@@ -1219,6 +1250,7 @@ fn aggregate_inner(
     preserve_empty: bool,
     group_by: &[&str],
     compiler: Option<&dyn FormulaCompiler>,
+    append_only: bool,
 ) -> Result<Arc<dyn Table>, AggregateError> {
     if aggregations.is_empty() {
         return Err(AggregateError::NoAggregations);
@@ -1359,6 +1391,11 @@ fn aggregate_inner(
         let mut spec = TableSpec::new(result_definition, rows, aggregator.columns());
         if flat {
             spec = spec.flat();
+        }
+        if append_only {
+            let mut attributes = TableAttributes::default();
+            attributes.append_only = true;
+            spec = spec.with_attributes(attributes);
         }
         let state = Mutex::new(aggregator);
         let operator = move |_result: &QueryTable, upstream: &TableUpdate| {
