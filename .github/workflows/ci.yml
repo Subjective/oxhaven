@@ -69,7 +69,8 @@ jobs:
     # One result under the name this job had before it ran on several Pythons, for whatever
     # requires that name: it passes when every Python above passed.
     needs: python-console-on
-    if: always()
+    # Not `always()`: a cancelled run must not leave a failed check behind on the commit.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - name: Every Python passed
