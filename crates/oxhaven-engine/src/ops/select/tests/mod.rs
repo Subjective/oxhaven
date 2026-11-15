@@ -1,8 +1,9 @@
 //! Tests of the select family. `statics` covers results on static tables and refused
-//! requests, `ticking` every incremental case under the consistency checker, and `corpus`
-//! the results recorded from the Java server.
+//! requests, `ticking` every incremental case under the consistency checker, `corpus` the results
+//! recorded from the Java server, and `renames` the renaming and moving of columns.
 
 mod corpus;
+mod renames;
 mod statics;
 mod ticking;
 mod vectors;

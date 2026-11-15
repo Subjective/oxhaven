@@ -314,8 +314,7 @@ pub(super) fn sortable_after_select(of_parent: &Marks, plan: &Plan) -> Option<St
     for step in &plan.steps {
         match &step.kind {
             Kind::Source(source) => {
-                if current.contains(&source.name.as_str()) && !added.contains(&step.name.as_str())
-                {
+                if current.contains(&source.name.as_str()) && !added.contains(&step.name.as_str()) {
                     added.push(&step.name);
                 }
             }

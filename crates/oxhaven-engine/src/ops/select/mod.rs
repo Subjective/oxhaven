@@ -38,15 +38,13 @@ mod tests;
 use crate::table::{mark, marks, memoized, CopyType, Marks, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 pub use array_formula::ArrayFormula;
-pub use rename::{
-    move_columns, move_columns_down, move_columns_up, rename_columns, ColumnPair,
-};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use plan::{Kind, Plan, Sources};
+pub use rename::{move_columns, move_columns_down, move_columns_up, rename_columns, ColumnPair};
 use sources::{ConstantSource, FormulaInput, FormulaSource, LazySource};
 use std::fmt;
 use std::sync::Arc;
