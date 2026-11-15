@@ -722,3 +722,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   its pinning test; the agent reverted its earlier lift, so `fuzz_wide.py` equals main.
   Changing what the fuzzer skips is left to the owner.
 - Merged pull request 87 (6.10, Python input tables) on six green checks.
+- Merged pull request 88 (4.17, fuzzer findings) on six green checks, on a head containing pull request 87.
