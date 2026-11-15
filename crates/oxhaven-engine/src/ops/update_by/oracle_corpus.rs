@@ -295,6 +295,12 @@ fn spec(op: &str, args: &Value) -> Option<UpdateBySpec> {
         "rolling_max" => UpdateBySpec::RollingMax(window()?),
         "rolling_count" => UpdateBySpec::RollingCount(window()?),
         "rolling_prod" => UpdateBySpec::RollingProduct(window()?),
+        "rolling_std" => UpdateBySpec::RollingStd(window()?),
+        "rolling_wavg" => UpdateBySpec::RollingWAvg {
+            window: window()?,
+            weight_column: text(&args["wcol"]).to_string(),
+        },
+        "emstd" => UpdateBySpec::EmStd(em()?),
         "ema" => UpdateBySpec::Ema(em()?),
         "ems" => UpdateBySpec::Ems(em()?),
         "emmin" => UpdateBySpec::EmMin(em()?),
@@ -310,13 +316,7 @@ fn unported(op: &str) -> bool {
     let family = op.trim_end_matches("_tick").trim_end_matches("_time");
     matches!(
         family,
-        "emstd"
-            | "rolling_std"
-            | "rolling_wavg"
-            | "rolling_group"
-            | "rolling_formula"
-            | "rolling_count_where"
-            | "cum_count_where"
+        "rolling_group" | "rolling_formula" | "rolling_count_where" | "cum_count_where"
     )
 }
 
@@ -591,9 +591,8 @@ fn results_match_the_recorded_java_results() {
     tally.compared.sort();
 
     // Every result table of the corpus that is an `update_by` of an input, without the
-    // result columns of the operators left `unported!` (a rolling group, standard deviation,
-    // weighted average, formula or count where, an exponential standard deviation, a
-    // cumulative count where). Everything else needs another operation or, for
+    // result columns of the operators left `unported!` (a rolling group, formula or count
+    // where, a cumulative count where). Everything else needs another operation or, for
     // `update_by_time_and_ema/bad_duration`, the gRPC handler's parse of a duration.
     let expected = [
         "empty_table_ops/ub",
@@ -620,23 +619,23 @@ fn results_match_the_recorded_java_results() {
         "update_by_cumulative/time_delta",
         "update_by_cumulative/unknown_column",
         "update_by_cumulative/unknown_key",
-        "update_by_rolling_tick/by_key without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/by_key without GroupI, GroupD, AroundGroupI, Pos, FormI",
         "update_by_rolling_tick/empty_window",
         "update_by_rolling_tick/negative_window",
-        "update_by_rolling_tick/no_key without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
-        "update_by_rolling_tick/of_empty without StdI, StdD, GroupI, GroupD, WavgD, AroundGroupI, Pos, FormI",
-        "update_by_rolling_tick/of_special without StdI, StdD, GroupI, GroupD, WavgD",
+        "update_by_rolling_tick/no_key without GroupI, GroupD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/of_empty without GroupI, GroupD, AroundGroupI, Pos, FormI",
+        "update_by_rolling_tick/of_special without GroupI, GroupD",
         "update_by_rolling_tick/one_row_window",
         "update_by_rolling_tick/string_sum",
-        "update_by_time_and_ema/ema_by_key without EmstdD, EmstdTimeD",
-        "update_by_time_and_ema/ema_no_key without EmstdD, EmstdTimeD",
+        "update_by_time_and_ema/ema_by_key",
+        "update_by_time_and_ema/ema_no_key",
         "update_by_time_and_ema/ema_null_timestamp",
-        "update_by_time_and_ema/ema_special_ticks without EmstdD",
+        "update_by_time_and_ema/ema_special_ticks",
         "update_by_time_and_ema/int_timestamp",
         "update_by_time_and_ema/null_timestamp",
-        "update_by_time_and_ema/timed_by_key without GroupI, StdD, WavgD, Pos, FormI",
-        "update_by_time_and_ema/timed_empty without GroupI, StdD, WavgD, Pos, FormI, EmstdD, EmstdTimeD",
-        "update_by_time_and_ema/timed_no_key without GroupI, StdD, WavgD, Pos, FormI",
+        "update_by_time_and_ema/timed_by_key without GroupI, Pos, FormI",
+        "update_by_time_and_ema/timed_empty without GroupI, Pos, FormI",
+        "update_by_time_and_ema/timed_no_key without GroupI, Pos, FormI",
     ];
     assert_eq!(tally.compared, expected);
     // 33 tables of static scenarios at one step, 2 ticking ones at 6 steps and 6 at 8.

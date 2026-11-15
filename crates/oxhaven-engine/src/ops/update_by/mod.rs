@@ -12,9 +12,10 @@
 //! | --- | --- |
 //! | cumulative sum, product, minimum, maximum; forward fill; delta | yes |
 //! | rolling sum, average, minimum, maximum, count, product, over rows or time | yes |
-//! | rolling standard deviation, weighted average, group, formula, count-where | no (`unported!`) |
+//! | rolling standard deviation and weighted average, over rows or time | yes |
+//! | rolling group, formula, count-where | no (`unported!`) |
 //! | exponential moving average, sum, minimum, maximum, decaying by ticks or time | yes |
-//! | exponential moving standard deviation | no (`unported!`) |
+//! | exponential moving standard deviation, decaying by ticks or time | yes |
 //! | cumulative count-where | no (`unported!`) |
 //!
 //! One `update_by` takes at most one timestamp column, for all operations in time. Within
@@ -49,7 +50,7 @@ use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use arrow::array::UInt32Array;
 use arrow::compute::take;
 use cumulative::Cumulative;
-use em::{Em, EmKind};
+use em::{Em, EmKind, StdState};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
@@ -284,6 +285,11 @@ struct Column {
     result: usize,
     /// Whether the operation is in time, so that the timestamp column affects it too.
     timed: bool,
+    /// Index and type of the weight column in the parent, for a weighted average.
+    weight: Option<(usize, ColumnType)>,
+    /// The average and the variance after each row, for an exponential moving standard
+    /// deviation: what a run that starts inside a bucket is seeded with.
+    std_state: Option<[WritableSource; 2]>,
 }
 
 struct Plan {
@@ -434,14 +440,8 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
         UpdateBySpec::RollingMax(window) => rolling(Rolling::Max, window),
         UpdateBySpec::RollingCount(window) => rolling(Rolling::Count, window),
         UpdateBySpec::RollingProduct(window) => rolling(Rolling::Product, window),
-        UpdateBySpec::RollingStd(window) => {
-            ticks_of(window)?;
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingStdOperator")
-        }
-        UpdateBySpec::RollingWAvg { window, .. } => {
-            ticks_of(window)?;
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator")
-        }
+        UpdateBySpec::RollingStd(window) => rolling(Rolling::Std, window),
+        UpdateBySpec::RollingWAvg { window, .. } => rolling(Rolling::WAvg, window),
         UpdateBySpec::RollingGroup(window) => {
             ticks_of(window)?;
             unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator")
@@ -461,9 +461,7 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
         UpdateBySpec::Ems(spec) => Ok(em_of(EmKind::Sum, spec)),
         UpdateBySpec::EmMin(spec) => Ok(em_of(EmKind::Min, spec)),
         UpdateBySpec::EmMax(spec) => Ok(em_of(EmKind::Max, spec)),
-        UpdateBySpec::EmStd(_) => {
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmStdOperator")
-        }
+        UpdateBySpec::EmStd(spec) => Ok(em_of(EmKind::Std, spec)),
     }
 }
 
@@ -471,8 +469,8 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
 ///
 /// Behavior: io.deephaven.api.updateby.spec.UpdateBySpec#applicableTo as implemented by
 /// `CumSumSpec`, `CumProdSpec`, `CumMinMaxSpec`, `FillBySpec`, `DeltaSpec`, `RollingSumSpec`,
-/// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec`, `RollingProductSpec`, `EmaSpec`,
-/// `EmsSpec` and `EmMinMaxSpec`
+/// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec`, `RollingProductSpec`,
+/// `RollingStdSpec`, `RollingWAvgSpec`, `EmaSpec`, `EmsSpec`, `EmMinMaxSpec` and `EmStdSpec`
 fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     use ColumnType::*;
     let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
@@ -489,7 +487,9 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
         Kernel::Cumulative(Cumulative::Min | Cumulative::Max)
         | Kernel::Rolling(Rolling::Min | Rolling::Max) => numeric || character || comparable,
         Kernel::Cumulative(Cumulative::ForwardFill) | Kernel::Rolling(Rolling::Count) => true,
-        Kernel::Cumulative(Cumulative::Delta(_)) | Kernel::Em(_) => numeric || character,
+        Kernel::Cumulative(Cumulative::Delta(_))
+        | Kernel::Rolling(Rolling::Std | Rolling::WAvg)
+        | Kernel::Em(_) => numeric || character,
     }
 }
 
@@ -562,6 +562,28 @@ impl Plan {
                     .index_of(&input_name)
                     .ok_or_else(|| invalid(format!("Column {input_name} does not exist")))?;
                 let input_type = declared[input].column_type.clone();
+                // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingWAvgOperator,
+                // which looks at the weight column before the input column
+                let weight = match &operation.spec {
+                    UpdateBySpec::RollingWAvg { weight_column, .. } => {
+                        let index =
+                            parent.definition().index_of(weight_column).ok_or_else(|| {
+                                invalid(format!("Column {weight_column} does not exist"))
+                            })?;
+                        let weight_type = declared[index].column_type.clone();
+                        use ColumnType::*;
+                        if !matches!(
+                            weight_type,
+                            Byte | Char | Short | Int | Long | Float | Double
+                        ) {
+                            return Err(invalid(format!(
+                                "Can not perform RollingWAvg on weight column type {weight_type:?}"
+                            )));
+                        }
+                        Some((index, weight_type))
+                    }
+                    _ => None,
+                };
                 let output_type = match kernel {
                     Kernel::Cumulative(kernel) => kernel.output_type(&input_type),
                     Kernel::Rolling(kernel) => kernel.output_type(&input_type),
@@ -596,6 +618,8 @@ impl Plan {
                     Some((_, members)) => members.push(columns.len()),
                     None => windows.push((window, vec![columns.len()])),
                 }
+                let std_state = matches!(kernel, Kernel::Em(em) if em.kind == EmKind::Std)
+                    .then(|| [(); 2].map(|()| WritableSource::new(ColumnType::Double)));
                 columns.push(Column {
                     kernel,
                     input,
@@ -603,6 +627,8 @@ impl Plan {
                     output,
                     result: position,
                     timed: timestamp_column.is_some(),
+                    weight,
+                    std_state,
                 });
             }
         }
@@ -890,6 +916,41 @@ impl Plan {
                             };
                             kernel.accumulate(&column.input_type, &values, seed.as_ref())?
                         }
+                        Kernel::Em(em) if em.kind == EmKind::Std => {
+                            let [averages, variances] =
+                                column.std_state.as_ref().ok_or_else(|| {
+                                    internal("a standard deviation without its state")
+                                })?;
+                            let seed = match &before {
+                                None => None,
+                                Some(before) => {
+                                    let read = |source: &WritableSource| match Values::read(
+                                        &source.chunk(before)?,
+                                        &ColumnType::Double,
+                                    )? {
+                                        Values::Float(v) => Ok(v[0]),
+                                        _ => Err(internal("an exponential result of another type")),
+                                    };
+                                    let state = StdState {
+                                        value: read(&column.output)?,
+                                        average: read(averages)?,
+                                        variance: read(variances)?,
+                                    };
+                                    let stamp = self.seed_timestamp(
+                                        members,
+                                        column.input,
+                                        rows,
+                                        position - 1,
+                                    )?;
+                                    Some((state, stamp))
+                                }
+                            };
+                            let results =
+                                em.accumulate_std(&column.input_type, &values, &stamps, seed)?;
+                            averages.fill(affected, &results.averages)?;
+                            variances.fill(affected, &results.variances)?;
+                            results.values
+                        }
                         Kernel::Em(em) => {
                             let seed = match &before {
                                 None => None,
@@ -937,7 +998,12 @@ impl Plan {
                         return Err(internal("a cumulative operator in a rolling window"));
                     };
                     let values = self.parent.column(column.input).chunk(&influencers)?;
-                    let results = kernel.evaluate(&column.input_type, &values, &slides)?;
+                    let weights = match &column.weight {
+                        Some((index, _)) => Some(self.parent.column(*index).chunk(&influencers)?),
+                        None => None,
+                    };
+                    let weights = column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
+                    let results = kernel.evaluate(&column.input_type, &values, weights, &slides)?;
                     column.output.fill(affected, &results)?;
                 }
             }
@@ -970,7 +1036,12 @@ impl Plan {
                         return Err(internal("a cumulative operator in a rolling window"));
                     };
                     let values = self.parent.column(column.input).chunk(&influencers)?;
-                    let results = kernel.evaluate(&column.input_type, &values, &slides)?;
+                    let weights = match &column.weight {
+                        Some((index, _)) => Some(self.parent.column(*index).chunk(&influencers)?),
+                        None => None,
+                    };
+                    let weights = column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
+                    let results = kernel.evaluate(&column.input_type, &values, weights, &slides)?;
                     let results = take(results.as_ref(), &indices, None)
                         .map_err(|e| internal(&e.to_string()))?;
                     column.output.fill(affected, &results)?;
@@ -1129,9 +1200,12 @@ impl Plan {
         let shift_error = |e| failure(format!("update_by: {e}"));
         let survivors = self.parent.prev_row_set().minus(&upstream.removed);
         for column in &self.columns {
-            column.output.remove(&upstream.removed);
-            if !upstream.shifted.is_empty() {
-                column.output.apply_shifts(&upstream.shifted, &survivors)?;
+            let state = column.std_state.iter().flatten();
+            for source in std::iter::once(&*column.output).chain(state) {
+                source.remove(&upstream.removed);
+                if !upstream.shifted.is_empty() {
+                    source.apply_shifts(&upstream.shifted, &survivors)?;
+                }
             }
         }
 
@@ -1177,6 +1251,10 @@ impl Plan {
                 let column = &self.columns[*member];
                 columns_modified
                     && (upstream.modified_columns.contains(column.input)
+                        || column
+                            .weight
+                            .as_ref()
+                            .is_some_and(|(weight, _)| upstream.modified_columns.contains(*weight))
                         || (column.timed && timestamps_modified))
             };
             for (window, members) in &self.windows {
