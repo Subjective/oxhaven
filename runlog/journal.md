@@ -694,3 +694,6 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   the other differences listed in the pull request and `docs/CSV.md`.
 - 6.10 started by resuming the console agent of 6.14 in its worktree, since it knows the
   command threading that the lock release facility has to work with.
+- 20:41 UTC: merged pull request 85 (6.11, Python functions in query strings) on six green
+  checks, on a head containing pull request 79. The CSV and input table agents were told
+  to merge main again.
