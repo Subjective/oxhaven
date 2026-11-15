@@ -475,3 +475,8 @@ History rewrite task, added steps: push a backup branch of the old main first; a
 rewrite verify that the final tree hash, and the tree of every commit in order, equal the
 originals before force pushing; keep the backup branch until the owner says to drop it.
 Merged pull requests cannot be changed by this: their pages keep the original commits.
+
+## 2026-11-15 04:36 UTC (later)
+
+Owner decided to leave existing history as it is. The history rewrite task is dropped.
+Going forward stays: owner as author, Claude co-author trailer.
