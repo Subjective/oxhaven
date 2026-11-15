@@ -99,6 +99,10 @@ def _update_by(spec: dict[str, Any]) -> updateby.UpdateByOperation:
     args = dict(spec.get("args", {}))
     if "delta_control" in args:
         args["delta_control"] = updateby.DeltaControl[args["delta_control"]]
+    if "op_control" in args:
+        # {"on_null": name, "on_nan": name}, names of updateby.BadDataBehavior
+        args["op_control"] = updateby.OperationControl(**{
+            key: updateby.BadDataBehavior[value] for key, value in args["op_control"].items()})
     if "count_where" in spec["op"]:
         return function(col=spec["columns"][0], **args)
     return function(cols=spec["columns"], **args)

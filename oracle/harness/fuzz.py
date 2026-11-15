@@ -42,14 +42,39 @@ FLOATS = ("float32", "float64")
 NUMERIC = INTS + FLOATS
 ORDERED_STAMPS = ("int32", "int64", "float64", "timestamp")  # as-of match columns
 JOINS = ("natural_join", "exact_join", "join", "aj")
-# The operations the generator can build. The scenario for a seed depends on the set asked
-# for, so adding an operation here changes no scenario that did not ask for it.
-OPERATIONS = frozenset({
+# The operations of the recorded generator (`_Generator`, variants "recorded"). The scenario
+# for a seed depends on the set asked for and on nothing else, and the seeds in the run log
+# were found with it: nothing may change what it builds for a seed.
+RECORDED_OPERATIONS = frozenset({
     "where", "sort", "head", "tail", "view", "select", "update", "drop_columns", "merge",
     "agg_by", "natural_join", "exact_join", "join", "aj", "update_by",
     "lazy_update", "update_view", "slice", "flatten", "reverse", "filter", "select_distinct",
     "head_by", "tail_by",
 })
+# Every operation that can be generated: those above and the ones only the wide generator
+# builds (`fuzz_wide._Wide`, variants "all").
+OPERATIONS = RECORDED_OPERATIONS | {
+    "raj", "left_join", "where_in", "range_join", "multi_join", "agg_all_by", "group_by",
+    "ungroup", "snapshot", "snapshot_when", "meta_table",
+}
+VARIANTS = ("recorded", "all")
+# Operation sets to fuzz one area at a time; `--family` on the command line.
+FAMILIES: dict[str, frozenset[str]] = {
+    "update_by": frozenset({"update_by"}),
+    "aggregations": frozenset({"agg_by", "agg_all_by", "drop_columns"}),
+    "groups": frozenset({"group_by", "ungroup", "head_by", "tail_by"}),
+    "joins": frozenset({"natural_join", "exact_join", "join", "left_join"}),
+    "asof": frozenset({"aj", "raj"}),
+    "range_join": frozenset({"range_join"}),
+    "multi_join": frozenset({"multi_join"}),
+    "sets": frozenset({"where_in", "select_distinct"}),
+    "snapshots": frozenset({"snapshot", "snapshot_when"}),
+    "shape": frozenset({"merge", "reverse", "flatten", "slice", "head", "tail", "sort"}),
+    "filters": frozenset({"filter", "where"}),
+    "formulas": frozenset({"view", "select", "update", "update_view", "lazy_update",
+                           "drop_columns", "meta_table"}),
+    "all": OPERATIONS,
+}
 MAX_ROWS = 400  # a generated table is never expected to grow beyond this
 
 _STRINGS = ["", "a", "b", "A", "aa", "ab", "z", "é", "ß", "\U0001d11e"]
@@ -63,15 +88,22 @@ class _Table:
     columns: list[tuple[str, str]]  # (name, scenario type)
     rows: int  # upper bound on the row count, over all steps
     computed: frozenset[str] = frozenset()
+    # Kept by the wide generator only (`fuzz_wide`):
+    live: bool = False  # derived from a ticking input, so a step can change it
+    ordered: bool = False  # has a timestamp column `T` that does not decrease
+    unique: tuple[str, ...] = ()  # columns whose values name at most one row
+    origin: dict[str, str] = field(default_factory=dict)  # array column -> what sized it
 
     def type_of(self, column: str) -> str:
         return dict(self.columns)[column]
 
     def usable(self, types: tuple[str, ...] | None = None) -> list[str]:
-        """Columns that may be used as operands: not computed, and of one of `types`."""
+        """Columns that may be used as operands: not computed, and of one of `types`; of
+        any type but an array when `types` is None."""
         return [
             name for name, kind in self.columns
-            if name not in self.computed and (types is None or kind in types)
+            if name not in self.computed
+            and (not kind.startswith("list:") if types is None else kind in types)
         ]
 
 
@@ -611,11 +643,23 @@ def _divide(a: str, b: str) -> str:
     return "float64"
 
 
-def generate(seed: int, ops: frozenset[str] | set[str]) -> tuple[dict[str, Any], dict[str, list]]:
+def default_variants(ops: frozenset[str] | set[str]) -> str:
+    """ "recorded" for a set of operations the recorded generator builds, so that a seed
+    from the run log is the scenario it was; "all" for a set with a newer operation."""
+    return "recorded" if set(ops) <= RECORDED_OPERATIONS else "all"
+
+
+def generate(seed: int, ops: frozenset[str] | set[str],
+             variants: str | None = None) -> tuple[dict[str, Any], dict[str, list]]:
     """The scenario document for `seed` over `ops`, and the predicted columns of each table.
 
-    `ops` are harness operation names (`scenario.OPERATIONS`).
+    `ops` are harness operation names (`scenario.OPERATIONS`). `variants` chooses the
+    generator: "recorded" builds what the fuzzer built when the seeds in the run log were
+    found, "all" every operation and variant of `fuzz_wide`; None is `default_variants`.
     """
+    variants = variants or default_variants(ops)
+    if variants not in VARIANTS:
+        raise sc.ScenarioError(f"variants must be one of {', '.join(VARIANTS)}")
     unknown = sorted(set(ops) - OPERATIONS)
     if unknown:
         raise sc.ScenarioError(
@@ -624,8 +668,18 @@ def generate(seed: int, ops: frozenset[str] | set[str]) -> tuple[dict[str, Any],
     chosen = tuple(sorted(ops))
     if not chosen:
         raise sc.ScenarioError("fuzz needs at least one table operation")
+    if variants == "recorded" and not set(ops) <= RECORDED_OPERATIONS:
+        raise sc.ScenarioError(
+            f"the recorded generator does not build "
+            f"{', '.join(sorted(set(ops) - RECORDED_OPERATIONS))}; use the variants \"all\"")
     # A string seed is hashed by `random` in a way that does not vary between runs.
-    gen = _Generator(random.Random(f"oxhaven-fuzz:{seed}:{','.join(chosen)}"), chosen)
+    if variants == "all":
+        from .fuzz_wide import _Wide  # imported here: it imports this module
+
+        gen: _Generator = _Wide(
+            random.Random(f"oxhaven-fuzz-all:{seed}:{','.join(chosen)}"), chosen)
+    else:
+        gen = _Generator(random.Random(f"oxhaven-fuzz:{seed}:{','.join(chosen)}"), chosen)
     gen.make_inputs()
     steps = gen.make_steps()
     wanted = gen.rng.randrange(1, 6)
@@ -742,6 +796,8 @@ def _candidates(doc: dict[str, Any]):
     # Fewer operations: bypass an operation by pointing its users at its source.
     for index, op in enumerate(doc["operations"]):
         source = op.get("source") or op.get("left") or (op.get("sources") or [None])[0]
+        if source is None and op.get("inputs"):
+            source = op["inputs"][0]["table"]
         if source is None:
             continue
 
@@ -749,11 +805,14 @@ def _candidates(doc: dict[str, Any]):
                    source: str = source) -> None:
             d["operations"].pop(i)
             for other in d["operations"]:
-                for key in ("source", "left", "right"):
+                for key in sc.TABLE_KEYS:
                     if other.get(key) == name:
                         other[key] = source
                 if "sources" in other:
                     other["sources"] = [source if s == name else s for s in other["sources"]]
+                for item in other.get("inputs", ()):
+                    if item["table"] == name:
+                        item["table"] = source
             for result in d["results"]:
                 if result["table"] == name:
                     result["table"] = source
@@ -763,11 +822,12 @@ def _candidates(doc: dict[str, Any]):
         yield variant(bypass)
     # Fewer arguments.
     for index, op in enumerate(doc["operations"]):
-        for key in ("filters", "formulas", "aggs", "by", "columns", "sources", "joins", "on"):
+        for key in ("filters", "formulas", "aggs", "by", "columns", "sources", "joins", "on",
+                    "ops", "inputs", "conditions", "stamp_columns"):
             if isinstance(op.get(key), list) and len(op[key]) > 1:
                 for position in range(len(op[key])):
                     yield variant(lambda d, i=index, k=key, p=position: d["operations"][i][k].pop(p))
-        if op["op"] == "agg_by" and len(op["by"]) == 1:
+        if op["op"] in ("agg_by", "update_by") and len(op["by"]) == 1:
             yield variant(lambda d, i=index: d["operations"][i].update(by=[]))
     # Fewer rows: halves first, then one at a time.
     for index, item in enumerate(doc["inputs"]):

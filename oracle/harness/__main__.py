@@ -176,6 +176,13 @@ _ARROW_NAMES = {"bool": "bool", "float32": "float", "float64": "double",
                 "timestamp": "timestamp[ns, tz=UTC]"}
 
 
+def _arrow_name(kind: str) -> str:
+    """How pyarrow prints the type of a predicted column; `list:<type>` is an array."""
+    if kind.startswith("list:"):
+        return f"list<: {_arrow_name(kind[len('list:'):])}>"
+    return _ARROW_NAMES.get(kind, kind)
+
+
 def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> list[str]:
     """Result tables whose columns the generator predicted wrongly (a generator defect)."""
     out = []
@@ -183,7 +190,7 @@ def _prediction_misses(predicted: dict[str, list], results: res.ResultSet) -> li
         data = results.get(step, table)
         if step != 0 or isinstance(data, res.Failure):
             continue
-        want = [(name, _ARROW_NAMES.get(kind, kind)) for name, kind in predicted[table]]
+        want = [(name, _arrow_name(kind)) for name, kind in predicted[table]]
         have = [(f.name, str(f.type)) for f in data.schema]
         if want != have:
             out.append(f"{results.scenario}.{table}: predicted {want}, got {have}")
@@ -212,7 +219,7 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
     groups: dict[tuple[str, str, str], dict[str, Any]] = {}
     clean = not_run = differing = 0
     for seed in range(args.seed, args.seed + args.seeds):
-        doc, _ = fz.generate(seed, ops)
+        doc, _ = fz.generate(seed, ops, args.variants)
         scenario = sc.parse(doc)
         try:
             found = rules.compare_scenario(
@@ -250,7 +257,14 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
 
 
 def cmd_fuzz(args: argparse.Namespace) -> int:
-    ops = _ops(args.ops) - {sc.INPUT_TABLE}
+    if (args.ops is None) == (args.family is None):
+        raise sc.ScenarioError("fuzz needs --ops or --family, and not both")
+    if args.family is not None:
+        ops = fz.FAMILIES[args.family]
+        args.variants = args.variants or "all"
+    else:
+        ops = _ops(args.ops) - {sc.INPUT_TABLE}
+        args.variants = args.variants or fz.default_variants(ops)
     target_a = open_target(args.a)
     target_b = open_target(args.b or args.a)
     out_dir = Path(args.out)
@@ -259,10 +273,15 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
     misses: list[str] = []
     print(f"fuzz {target_a} vs {target_b}: seeds {args.seed}..{args.seed + args.seeds - 1} "
           f"over {', '.join(sorted(ops))}")
+    if args.variants == "recorded":
+        print("variants: recorded (what the fuzzer built when the seeds in the run log were "
+              "found; --variants all draws every variant of each operation)")
+    else:
+        print("variants: all")
     if args.keep_going:
         return _fuzz_all(args, ops, target_a, target_b)
     for seed in range(args.seed, args.seed + args.seeds):
-        doc, predicted = fz.generate(seed, ops)
+        doc, predicted = fz.generate(seed, ops, args.variants)
         scenario = sc.parse(doc)
         try:
             expected = target_a.run(scenario)
@@ -382,7 +401,15 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("fuzz", help="compare two servers on generated scenarios")
     p.add_argument("--a", required=True, help="URL of the expected side (the reference)")
     p.add_argument("--b", help="URL of the actual side; default is --a again")
-    p.add_argument("--ops", required=True, help="comma-separated operations to draw from")
+    p.add_argument("--ops", help="comma-separated operations to draw from")
+    p.add_argument("--family", choices=sorted(fz.FAMILIES),
+                   help="instead of --ops: a named set of operations (fuzz.FAMILIES), with "
+                        "the variants \"all\" unless --variants says otherwise")
+    p.add_argument("--variants", choices=fz.VARIANTS,
+                   help="recorded: the generator of the seeds in the run log, the default "
+                        "for --ops it can build. all: every operation and variant "
+                        "(harness/fuzz_wide.py), the default when --ops names a newer "
+                        "operation. A seed means a different scenario under each")
     p.add_argument("--seeds", type=int, default=100, help="how many seeds to run")
     p.add_argument("--seed", type=int, default=0, help="the first seed")
     p.add_argument("--exact", action="store_true",
