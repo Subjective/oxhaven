@@ -53,7 +53,10 @@ use tonic::{Request, Response, Status, Streaming};
 use crate::app::scope_ticket;
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
 use logs::LogBuffer;
-pub use session::{Changes, Console, ScriptSession, Variable};
+pub use session::{
+    type_name_if_displayable, Changes, Console, ScriptSession, Variable,
+    CHECK_SCOPE_CHANGES_INTERVAL, TABLE_TYPE_NAME,
+};
 
 /// The status of a console call a server without a script session does not have.
 fn no_session(method: &str) -> Status {

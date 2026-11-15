@@ -24,6 +24,12 @@ Usage: oxhaven-server [options]
                             ide_ticking, which the web IDE acceptance test expects
   --console <type>          python or none: the language of the console (default python if
                             the server was built with the python feature, otherwise none)
+  --python-home <directory> the virtual environment or Python installation whose packages
+                            the Python console imports (default: the directory VIRTUAL_ENV
+                            names, otherwise the Python the server was built with); its
+                            Python version must be the one the server is linked against
+  --python-path <paths>     directories the Python console searches for modules before
+                            the environment's own, separated as in PATH; may be repeated
   --web-root <directory>    the web IDE's files, served at /ide/, /iframe/ and /jsapi/;
                             scripts/extract-web-root.sh makes the directory (default: none)
 ";
@@ -37,6 +43,8 @@ struct Args {
     cycle: Duration,
     demo_tables: bool,
     console: Option<String>,
+    python_home: Option<PathBuf>,
+    python_path: Vec<PathBuf>,
     web_root: Option<PathBuf>,
 }
 
@@ -50,6 +58,8 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
         cycle: DEFAULT_TARGET_CYCLE_DURATION,
         demo_tables: false,
         console: None,
+        python_home: None,
+        python_path: Vec::new(),
         web_root: None,
     };
     while let Some(flag) = args.next() {
@@ -75,6 +85,11 @@ fn parse_args(mut args: impl Iterator<Item = String>) -> Result<Args, String> {
             }
             "--demo-tables" => parsed.demo_tables = true,
             "--console" => parsed.console = Some(value()?),
+            "--python-home" => parsed.python_home = Some(PathBuf::from(value()?)),
+            "--python-path" => {
+                let paths = value()?;
+                parsed.python_path.extend(std::env::split_paths(&paths));
+            }
             "--web-root" => parsed.web_root = Some(PathBuf::from(value()?)),
             "-h" | "--help" => return Err(USAGE.to_string()),
             other => return Err(format!("unknown option {other}\n\n{USAGE}")),
@@ -114,13 +129,29 @@ fn start_console(args: &Args, state: &mut ServerState) -> Result<(), String> {
     } else {
         "none"
     };
-    match args.console.as_deref().unwrap_or(default) {
+    let console = args.console.as_deref().unwrap_or(default);
+    if console != "python" && (args.python_home.is_some() || !args.python_path.is_empty()) {
+        return Err(format!(
+            "--python-home and --python-path are for the Python console, and the console \
+             is {console}"
+        ));
+    }
+    match console {
         "none" => Ok(()),
         #[cfg(feature = "python")]
         "python" => {
-            oxhaven_server::console::python::start(state)?;
-            let version = oxhaven_server::console::python::python_version()?;
-            tracing::info!("Python console: Python {version}");
+            use oxhaven_server::console::python::{self, env};
+            let environment = env::PythonEnv {
+                home: args.python_home.clone().or_else(env::virtual_env),
+                path: args.python_path.clone(),
+            };
+            let interpreter = env::initialize(&environment)?;
+            python::start(state)?;
+            tracing::info!(
+                "Python console: Python {}, packages from {}",
+                interpreter.version,
+                interpreter.prefix
+            );
             Ok(())
         }
         #[cfg(not(feature = "python"))]

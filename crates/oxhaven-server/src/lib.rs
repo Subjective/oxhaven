@@ -39,7 +39,10 @@ use oxhaven_proto::script::console_service_server::ConsoleServiceServer;
 use tokio::net::TcpListener;
 use tonic::service::Routes;
 
-use app::{ApplicationGrpc, ApplicationTicketResolver, Applications, Scope, ScopeTicketResolver};
+use app::{
+    ApplicationGrpc, ApplicationTicketResolver, Applications, Scope, ScopeTicketResolver,
+    ScopedCompiler,
+};
 use flight::FlightGrpc;
 use inputtable::InputTableGrpc;
 use session::{
@@ -125,12 +128,15 @@ impl ServerState {
     }
 
     /// What table operations run with: the server's graph, the wall clock and the formula
-    /// language.
+    /// language, whose formulas may name the variables of the query scope.
     pub fn op_context(&self) -> OpContext {
         OpContext {
             graph: self.graph.clone(),
             clock: Arc::new(WallClock),
-            compiler: Arc::new(oxhaven_expr::Compiler),
+            compiler: Arc::new(ScopedCompiler::new(
+                Arc::new(oxhaven_expr::Compiler),
+                self.scope.clone(),
+            )),
         }
     }
 
@@ -148,10 +154,13 @@ impl ServerState {
         .add_service(InputTableServiceServer::new(InputTableGrpc::new(
             self.tickets.clone(),
         )))
-        .add_service(ConfigServiceServer::new(config::ConfigGrpc::new(
-            self.sessions.auth_handlers(),
-            self.sessions.expiration_delay_ms(),
-        )))
+        .add_service(ConfigServiceServer::new(
+            config::ConfigGrpc::new(
+                self.sessions.auth_handlers(),
+                self.sessions.expiration_delay_ms(),
+            )
+            .with_python_version(config::python_version(self.console.as_deref())),
+        ))
         .add_service(TableServiceServer::new(table::TableGrpc::new(
             self.tickets.clone(),
             self.op_context(),

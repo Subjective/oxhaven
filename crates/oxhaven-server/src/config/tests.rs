@@ -81,3 +81,21 @@ fn the_session_duration_is_the_token_lifetime() {
         )]
     );
 }
+
+#[test]
+fn the_python_version_is_reported_only_when_there_is_one() {
+    let handlers = AuthHandlers::new(vec![AuthHandler::Anonymous]).unwrap();
+    let without = ConfigGrpc::new(&handlers, 1).with_python_version(None);
+    assert!(!without.configuration.contains_key("python.version"));
+    assert_eq!(without.configuration.len(), 9);
+
+    let with = ConfigGrpc::new(&handlers, 1).with_python_version(Some("3.13.2".to_string()));
+    assert_eq!(
+        with.configuration["python.version"].kind,
+        Some(Kind::StringValue("3.13.2".to_string()))
+    );
+    assert_eq!(with.configuration.len(), 10);
+
+    // a server without a console has no Python to report
+    assert_eq!(python_version(None), None);
+}

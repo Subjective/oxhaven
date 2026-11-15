@@ -25,6 +25,7 @@ import threading
 import time
 
 import grpc
+import pyarrow
 from google.protobuf import text_format
 
 from deephaven_core.proto import (
@@ -144,6 +145,21 @@ class Server:
             thread.join(5)
 
         return messages, status, cancel
+
+
+def print_columns(name: str, response):
+    """The names and Deephaven types of the columns of a table creation response."""
+    print(f"== {name}")
+    if response is None or not response.schema_header:
+        print("columns: none")
+    else:
+        schema = pyarrow.ipc.open_stream(response.schema_header).schema
+        columns = [
+            f"{field.name} {(field.metadata or {}).get(b'deephaven:type', b'?').decode()}"
+            for field in schema
+        ]
+        print(f"columns: {', '.join(columns)}")
+    print()
 
 
 def execute(server: Server, name: str, console, code: str):
@@ -271,6 +287,110 @@ def main() -> int:
         console_pb2.BindTableToVariableRequest(console_id=console, variable_name="bound3"),
     )
     execute(server, "use the bound variable", console, "c = bound.head(1)\nprint(bound.size)")
+
+    # The query scope is one set of variables for Python and for clients.
+    server.unary(
+        "export a variable that is no table",
+        "SessionService/ExportFromTicket",
+        session_pb2.ExportRequest(
+            source_id=ticket_pb2.Ticket(ticket=b"s/n"), result_id=export_ticket(5)
+        ),
+    )
+    server.unary(
+        "publish the object to a scope ticket",
+        "SessionService/PublishFromTicket",
+        session_pb2.PublishRequest(
+            source_id=export_ticket(5), result_id=ticket_pb2.Ticket(ticket=b"s/m")
+        ),
+    )
+    time.sleep(SETTLE)
+    server.unary(
+        "publish a table to a scope ticket",
+        "SessionService/PublishFromTicket",
+        session_pb2.PublishRequest(
+            source_id=export_ticket(3), result_id=ticket_pb2.Ticket(ticket=b"s/published")
+        ),
+    )
+    time.sleep(SETTLE)
+    execute(
+        server,
+        "read what was published in Python",
+        console,
+        "print(m, m is n)\n"
+        "print(type(published).__module__, type(published).__name__, published.size)\n"
+        "d = published.head(2)",
+    )
+    server.unary(
+        "export a variable that does not exist",
+        "SessionService/ExportFromTicket",
+        session_pb2.ExportRequest(
+            source_id=ticket_pb2.Ticket(ticket=b"s/nothing"), result_id=export_ticket(6)
+        ),
+    )
+    execute(
+        server,
+        "a variable set by a thread",
+        console,
+        "import threading\n"
+        "def _later():\n    global threaded\n    threaded = empty_table(2)\n"
+        "threading.Timer(0.3, _later).start()",
+    )
+    time.sleep(1.0)
+    server.unary(
+        "fetch the variable the thread set",
+        "TableService/FetchTable",
+        table_pb2.FetchTableRequest(
+            source_id=table_pb2.TableReference(ticket=ticket_pb2.Ticket(ticket=b"s/threaded")),
+            result_id=export_ticket(7),
+        ),
+    )
+    execute(
+        server,
+        "scope variables in formulas",
+        console,
+        "xi = 41\nxl = 2**40\nxf = 1.5\nxs = 'abc'\nxb = True\n"
+        "r = empty_table(3).update(['A = xi', 'B = xi + i', 'C = xl', 'D = xf * 2', "
+        "'E = xs + `d`', 'F = xb'])\n"
+        "print(r.where('B > xi').size, r.where('E = `abcd` && xb').size)",
+    )
+    fetched = server.unary(
+        "fetch the table the formulas made",
+        "TableService/FetchTable",
+        table_pb2.FetchTableRequest(
+            source_id=table_pb2.TableReference(ticket=ticket_pb2.Ticket(ticket=b"s/r")),
+            result_id=export_ticket(8),
+        ),
+    )
+    print_columns("the columns of that table", fetched)
+    updated = server.unary(
+        "a scope variable in the formula of a client",
+        "TableService/Update",
+        table_pb2.SelectOrUpdateRequest(
+            source_id=table_pb2.TableReference(ticket=ticket_pb2.Ticket(ticket=b"s/t")),
+            result_id=export_ticket(10),
+            column_specs=["Z = xi + X", "S = xs"],
+        ),
+    )
+    print_columns("the columns of the client's table", updated)
+    execute(
+        server,
+        "a formula in a function names its locals",
+        console,
+        "def _local():\n    xi = 'local'\n    zz = 2\n"
+        "    return empty_table(1).update(['A = xi', 'B = zz'])\n"
+        "local = _local()",
+    )
+    fetched = server.unary(
+        "fetch the table the function made",
+        "TableService/FetchTable",
+        table_pb2.FetchTableRequest(
+            source_id=table_pb2.TableReference(ticket=ticket_pb2.Ticket(ticket=b"s/local")),
+            result_id=export_ticket(11),
+        ),
+    )
+    print_columns("the columns of the function's table", fetched)
+    execute(server, "a formula that negates a variable", console, "neg = t.update('Y = -xi')")
+    execute(server, "a formula that names a list", console, "lst = [1, 2]\nbad = t.update('Y = lst')")
     server.unary(
         "cancel command",
         "ConsoleService/CancelCommand",
