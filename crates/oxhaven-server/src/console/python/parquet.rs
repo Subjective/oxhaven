@@ -1,15 +1,25 @@
-//! `deephaven.parquet` reaches the Parquet reader here.
+//! `deephaven.parquet` reaches the Parquet reader and writer here.
 //!
-//! Java has no gRPC call that reads a file, so this is not a table service operation: the
-//! Python module calls [`read_parquet`] with the arguments of `deephaven.parquet.read`,
-//! and the table comes from `oxhaven_parquet::read` (`docs/STORAGE.md`).
+//! Java has no gRPC call that reads or writes a file, so these are not table service
+//! operations: the Python module calls [`read_parquet`] with the arguments of
+//! `deephaven.parquet.read`, and the table comes from `oxhaven_parquet::read`; it calls
+//! [`write_parquet`] with the arguments of `write` and `batch_write`, and the files come
+//! from `oxhaven_parquet::write` (`docs/STORAGE.md`).
 
+use std::sync::Arc;
+
+use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::Table;
-use oxhaven_parquet::{ColumnInstruction, Layout, ReadError, ReadOptions, UnsignedLongTarget};
+use oxhaven_parquet::{
+    ColumnInstruction, Layout, ReadError, ReadOptions, RowGroups, UnsignedLongTarget, WriteColumn,
+    WriteOptions,
+};
 use pyo3::exceptions::{PyNotImplementedError, PyOSError, PyValueError};
 use pyo3::prelude::*;
 
+use super::ops::{failure, guarded};
 use super::TableHandle;
+use crate::schema::column_type_for_java_names;
 use crate::table::support::validate_column_name;
 
 /// The Python exception of a failed read; `deephaven.parquet.read` wraps it in a `DHError`.
@@ -94,6 +104,125 @@ pub(super) fn read_parquet(
         }
     }
     Ok(TableHandle { table })
+}
+
+/// One column instruction of a write: the name in the table, the name in the file, the
+/// codec, whether the column gets a dictionary whatever its size.
+type WrittenColumn = (String, Option<String>, Option<String>, bool);
+
+/// A column of a table definition given in Python: the name and the Java class name of
+/// the type, as `new_table` takes them.
+type DefinedColumn = (String, String);
+
+/// The row groups of a `deephaven.parquet.RowGroupInfo`, which the package hands over as
+/// the name of the method that made it, its number and its columns.
+type RowGroupInfo = (String, Option<i64>, Vec<String>);
+
+/// A Python integer as the Java `int` jpy makes of it for a setter of
+/// `ParquetInstructions.Builder`: the low 32 bits.
+fn java_int(value: Option<i64>) -> Option<i32> {
+    value.map(|value| value as i32)
+}
+
+fn row_groups((kind, number, columns): RowGroupInfo) -> PyResult<RowGroups> {
+    let needed = || PyValueError::new_err(format!("{kind} row groups need a number"));
+    Ok(match kind.as_str() {
+        "single_group" => RowGroups::Single,
+        "max_groups" => RowGroups::MaxGroups(number.ok_or_else(needed)?),
+        "max_rows" => RowGroups::MaxRows(number.ok_or_else(needed)?),
+        "by_groups" => RowGroups::ByGroups {
+            columns,
+            max_rows: number,
+        },
+        other => return Err(PyValueError::new_err(format!("no row groups {other}"))),
+    })
+}
+
+/// Writes each of `tables` to the Parquet file at the path of `paths` with the same
+/// position; all of them or none. The files have the columns of `definition`, or of the
+/// table `definition_of`, or without either the columns of the tables.
+///
+/// The tables are read under the update graph's shared lock when one of them changes,
+/// taken while the interpreter lock is released (`docs/PYTHON_UDF.md`, "Locks"), so the
+/// files hold the rows of one cycle. Java asks for the same: it refuses to write a
+/// refreshing table from a thread that holds no lock of the graph.
+///
+/// Behavior: `deephaven.parquet.write` and `batch_write`, which build a
+/// `ParquetInstructions` from their arguments and call
+/// `io.deephaven.parquet.table.ParquetTools#writeTables`
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn write_parquet(
+    py: Python<'_>,
+    tables: Vec<PyRef<'_, TableHandle>>,
+    paths: Vec<String>,
+    definition: Option<Vec<DefinedColumn>>,
+    definition_of: Option<PyRef<'_, TableHandle>>,
+    columns: Vec<WrittenColumn>,
+    compression_codec_name: Option<String>,
+    max_dictionary_keys: Option<i64>,
+    max_dictionary_size: Option<i64>,
+    target_page_size: Option<i64>,
+    generate_metadata_files: bool,
+    index_columns: Vec<Vec<String>>,
+    row_group_info: Option<RowGroupInfo>,
+) -> PyResult<()> {
+    let definition = match (definition_of, definition) {
+        (Some(table), _) => Some(table.table.definition().clone()),
+        (None, Some(columns)) => {
+            let columns = columns.into_iter().map(|(name, type_name)| {
+                let column_type = column_type_for_java_names(&type_name, None);
+                let column_type = column_type.ok_or_else(|| {
+                    PyValueError::new_err(format!("the engine has no column type for {type_name}"))
+                })?;
+                Ok(ColumnDefinition::new(name, column_type))
+            });
+            let columns = columns.collect::<PyResult<Vec<_>>>()?;
+            let definition = TableDefinition::new(columns);
+            Some(definition.map_err(|duplicate| PyValueError::new_err(duplicate.to_string()))?)
+        }
+        (None, None) => None,
+    };
+    let columns = columns.into_iter();
+    let options = WriteOptions {
+        definition,
+        columns: columns
+            .map(|(name, parquet_name, codec, use_dictionary)| WriteColumn {
+                name,
+                parquet_name,
+                codec,
+                use_dictionary,
+            })
+            .collect(),
+        compression: compression_codec_name,
+        max_dictionary_keys: java_int(max_dictionary_keys),
+        max_dictionary_size: java_int(max_dictionary_size),
+        target_page_size: java_int(target_page_size),
+        generate_metadata_files,
+        index_columns,
+        row_groups: row_group_info
+            .map(row_groups)
+            .transpose()?
+            .unwrap_or_default(),
+    };
+    let tables: Vec<Arc<dyn Table>> = tables.iter().map(|table| table.table.clone()).collect();
+    let paths: Vec<&str> = paths.iter().map(String::as_str).collect();
+    let written = py.detach(|| {
+        guarded(&tables, || {
+            Ok(oxhaven_parquet::write(&tables, &paths, &options))
+        })
+    });
+    written.map_err(failure)?.map_err(exception)
+}
+
+/// Removes the file or directory at `path`.
+///
+/// Behavior: `deephaven.parquet.delete`, which calls
+/// `io.deephaven.parquet.table.ParquetTools#deleteTable`
+#[pyfunction]
+pub(super) fn delete_parquet(py: Python<'_>, path: &str) -> PyResult<()> {
+    py.detach(|| oxhaven_parquet::delete(path))
+        .map_err(exception)
 }
 
 #[cfg(test)]

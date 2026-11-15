@@ -42,7 +42,7 @@ fn io_error(path: &Path, error: std::io::Error) -> ReadError {
 /// Whether `path` starts with a URI scheme, `s3:` for example.
 ///
 /// Behavior: `io.deephaven.base.FileUtils#startsWithScheme`
-fn has_scheme(path: &str) -> bool {
+pub(crate) fn has_scheme(path: &str) -> bool {
     let Some((scheme, _)) = path.split_once(':') else {
         return false;
     };
