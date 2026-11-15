@@ -21,11 +21,12 @@ impl TableOp for Handler {
 
     /// Behavior: `SliceGrpcImpl#validateRequest`
     fn validate(request: &SliceRequest) -> Result<(), Status> {
-        if request.source_id.is_none() {
+        let Some(source) = &request.source_id else {
             return Err(Status::invalid_argument(
                 "io.deephaven.proto.backplane.grpc.SliceRequest must have field source_id (2)",
             ));
-        }
+        };
+        validate_reference(source)?;
         let first = request.first_position_inclusive;
         let last = request.last_position_exclusive;
         if first >= 0 && last >= 0 && last < first {

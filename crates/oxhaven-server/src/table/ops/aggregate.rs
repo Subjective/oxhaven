@@ -296,11 +296,15 @@ impl TableOp for Aggregate {
     /// Behavior: `AggregateGrpcImpl#validateRequest`,
     /// `io.deephaven.server.table.ops.AggregationAdapter#validate`
     fn validate(request: &AggregateRequest) -> Result<(), Status> {
-        if request.source_id.is_none() {
+        let Some(source) = &request.source_id else {
             return Err(missing_field("AggregateRequest", "source_id", 2));
-        }
+        };
         if request.aggregations.is_empty() {
             return Err(empty_field("AggregateRequest", "aggregations", 5));
+        }
+        validate_reference(source)?;
+        if let Some(initial_groups) = &request.initial_groups_id {
+            validate_reference(initial_groups)?;
         }
         for aggregation in &request.aggregations {
             validate_aggregation(aggregation)?;
@@ -376,13 +380,14 @@ impl TableOp for AggregateAll {
 
     /// Behavior: `AggregateAllGrpcImpl#validateRequest`
     fn validate(request: &AggregateAllRequest) -> Result<(), Status> {
-        if request.source_id.is_none() {
+        let Some(source) = &request.source_id else {
             return Err(missing_field("AggregateAllRequest", "source_id", 2));
-        }
-        match &request.spec {
-            None => Err(missing_field("AggregateAllRequest", "spec", 3)),
-            Some(spec) => validate_spec(spec),
-        }
+        };
+        let Some(spec) = &request.spec else {
+            return Err(missing_field("AggregateAllRequest", "spec", 3));
+        };
+        validate_reference(source)?;
+        validate_spec(spec)
     }
 
     /// The spec applied to every column that is not grouped by.
