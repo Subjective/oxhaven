@@ -376,3 +376,97 @@ def test_array_columns_are_only_used_where_they_are_valid():
                             "select_distinct"):
                     for table, column in _named_columns(op):
                         assert not types[table][column].startswith("list:"), (doc["name"], op)
+
+
+# ---------------------------------------------------------------- what is kept out
+
+
+def _refreshing(doc: dict) -> set[str]:
+    """The tables of a scenario that change in its steps."""
+    refreshing = {i["name"] for i in doc["inputs"] if "ticking" in i}
+    for op in doc["operations"]:
+        if op["op"] == "snapshot_when":
+            if op["trigger"] in refreshing:
+                refreshing.add(op["name"])
+        elif set(sc.references(op)) & refreshing and op["op"] not in ("snapshot", "meta_table"):
+            refreshing.add(op["name"])
+    return refreshing
+
+
+def test_nothing_is_drawn_that_can_fail_a_refreshing_table_in_a_later_cycle():
+    """A table that fails during an update cycle cannot be compared (README, Known limits),
+    so arguments that are valid now and fail on rows of a later step go to static tables."""
+    seen: Counter = Counter()
+    for runs in GENERATED.values():
+        for doc, _ in runs:
+            refreshing = _refreshing(doc)
+            for op in doc["operations"]:
+                kind = op["op"]
+                live = bool(set(sc.references(op)) & refreshing)
+                if kind == "update_by":
+                    for operator in op["ops"]:
+                        args = operator.get("args", {})
+                        bad = bool(
+                            args.get("rev_ticks", 1) + args.get("fwd_ticks", 0) < 1
+                            or args.get("decay_ticks", 1) <= 0
+                            or args.get("decay_time") in ("PT0S", "PT-1S")
+                            or args.get("rev_time") == "PT-3S"
+                            or {"THROW", "POISON"} & set(args.get("op_control", {}).values()))
+                        seen["update_by", bad, live] += 1
+                        assert not (bad and live), (doc["name"], op)
+                elif kind in ("agg_by", "agg_all_by"):
+                    for agg in op["aggs"] if kind == "agg_by" else [op["agg"]]:
+                        bad = not 0 <= agg.get("args", {}).get("percentile", 0.5) <= 1
+                        seen["percentile", bad, live] += 1
+                        assert not (bad and live), (doc["name"], op)
+                elif kind == "exact_join" or op.get("type") in (
+                        "exactly_one_match", "error_on_duplicate"):
+                    seen["strict join", live] += 1
+                    if live and (kind == "exact_join" or op["type"] == "exactly_one_match"):
+                        # Every row must match exactly once: only a table with itself, on a
+                        # key the generator keeps unique through the steps (the test above).
+                        assert op["left"] == op["right"], (doc["name"], op)
+                        assert not any("=" in match for match in op["on"]), (doc["name"], op)
+                for text in op.get("formulas", []):
+                    if " % " in text and live:
+                        seen["remainder", live] += 1
+                        assert text.split(" % ")[1].strip().isdigit(), (doc["name"], op)
+    assert seen["update_by", True, False] > 5 and seen["update_by", False, True] > 100
+    assert seen["percentile", False, True] > 20
+    assert seen["strict join", True] > 5 and seen["strict join", False] > 5
+    assert seen["remainder", True] > 5
+
+
+def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
+    """What the module comment of `fuzz_wide` lists as not generated."""
+    seen: Counter = Counter()
+    for runs in GENERATED.values():
+        for doc, predicted in runs:
+            for op in doc["operations"]:
+                kind = op["op"]
+                if kind == "agg_all_by":
+                    source = predicted[op["source"]]
+                    agg = op["agg"]["agg"]
+                    rest = [t for c, t in source if c not in op["by"]]
+                    if agg in ("first", "last"):
+                        seen["first"] += 1
+                        assert op["by"] == [c for c, _ in source][:len(op["by"])], (
+                            doc["name"], op)
+                    else:
+                        assert not any(t.startswith("list:") for t in rest), (doc["name"], op)
+                    if agg == "distinct":
+                        assert "timestamp" not in rest, (doc["name"], op)
+                elif kind == "agg_by":
+                    types = dict(predicted[op["source"]])
+                    for agg in op["aggs"]:
+                        if agg["agg"] == "distinct" and types[
+                                rules.split_pair(agg["columns"][0])[1]] == "timestamp":
+                            seen["distinct"] += 1
+                            assert agg["args"]["include_nulls"] is True, (doc["name"], op)
+                elif kind in ("head_by", "tail_by"):
+                    seen[kind] += 1
+                    arrays = {t for c, t in predicted[op["source"]] if c not in op["by"]}
+                    assert not arrays & {"list:string", "list:bool", "list:timestamp"}, (
+                        doc["name"], op)
+    assert seen["first"] > 5 and seen["distinct"] > 3
+    assert seen["head_by"] > 20 and seen["tail_by"] > 20
