@@ -72,6 +72,12 @@ impl AggOperator for FirstLast {
         self.column_type.clone()
     }
 
+    /// Behavior: FirstOrLastChunkedOperator#resultColumns, each an
+    /// io.deephaven.engine.table.impl.sources.RedirectedColumnSource
+    fn holds_results(&self) -> bool {
+        false
+    }
+
     fn needs_group_rows(&self) -> bool {
         self.mode == FirstLastMode::Tracked
     }
@@ -241,6 +247,12 @@ impl FirstLastCell {
 impl AggOperator for FirstLastCell {
     fn result_type(&self) -> ColumnType {
         self.column_type.clone()
+    }
+
+    /// Behavior: FirstOrLastChunkedOperator#resultColumns, each an
+    /// io.deephaven.engine.table.impl.sources.RedirectedColumnSource
+    fn holds_results(&self) -> bool {
+        false
     }
 
     fn needs_group_rows(&self) -> bool {

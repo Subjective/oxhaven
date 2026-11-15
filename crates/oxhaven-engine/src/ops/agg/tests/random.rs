@@ -43,18 +43,53 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
 ///   `NullSafeAddition#plusLong`, which drops a chunk sum that wrapped to exactly
 ///   `NULL_LONG` (`LongChunkedWeightedSumOperator#addChunk`); a null `int` value and weight
 ///   count as -2147483648 each, so two such rows do that.
-fn every_aggregation(weighted_averages: bool, keyed: bool) -> Vec<Aggregation> {
+fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Aggregation> {
+    let keyed = !by.is_empty();
+    let each = |formula: &str, pair: String| {
+        let spec = AggSpec::Formula {
+            formula: formula.to_string(),
+            param_token: "each".to_string(),
+        };
+        agg(spec, &[&pair])
+    };
     let mut aggregations = vec![
         count("N"),
         Aggregation::count_where("W1", ["I > 0"]),
         Aggregation::count_where("W2", ["D >= 0", "!isNull(L)", "S != `a`"]),
+        // Formulas of several columns, of no column, and of a key column.
+        Aggregation::formula("XM", "sum(I) + count(D) + len(S) + max(Y)"),
+        Aggregation::formula("XV", "L"),
+        Aggregation::formula("XC", "7"),
     ];
+    if let Some(key) = by.first() {
+        let keyed = format!("isNull({key}) ? -1 : len(I)");
+        aggregations.push(Aggregation::formula("XK", keyed));
+    }
+    // The formulas with a token come last: before a `group` aggregation that a later one
+    // extends, Java fails (`SharedGroup`).
+    let mut formulas = Vec::new();
     for (name, column_type) in &parent_columns()[3..] {
         if column_type.list_element().is_some() {
             aggregations.push(agg(AggSpec::Group, &[&format!("G{name} = {name}")]));
             aggregations.push(agg(AggSpec::First, &[&format!("F{name} = {name}")]));
             aggregations.push(agg(AggSpec::Last, &[&format!("L{name} = {name}")]));
             continue;
+        }
+        formulas.push(each("len(each)", format!("XL{name} = {name}")));
+        // The formula language of this port has no element of a Boolean vector.
+        if *column_type != ColumnType::Boolean {
+            formulas.push(each(
+                "each.size() > 1 ? each.get(1) : null",
+                format!("XG{name} = {name}"),
+            ));
+        }
+        if !matches!(
+            column_type,
+            ColumnType::String | ColumnType::Instant | ColumnType::Boolean
+        ) {
+            formulas.push(each("sum(each)", format!("XS{name} = {name}")));
+            formulas.push(each("max(each) - min(each)", format!("XR{name} = {name}")));
+            formulas.push(each("sort(each)", format!("XO{name} = {name}")));
         }
         let sentinel = match column_type {
             ColumnType::Int => Sentinel::Long(-7),
@@ -162,6 +197,7 @@ fn every_aggregation(weighted_averages: bool, keyed: bool) -> Vec<Aggregation> {
             aggregations.push(agg(spec, &[&format!("A{index}{name} = {name}")]));
         }
     }
+    aggregations.extend(formulas);
     aggregations
 }
 
@@ -213,7 +249,7 @@ impl Run {
             !(self.weighted_averages && self.kinds[2]),
             "weighted averages are compared only without modifications"
         );
-        let aggregations = every_aggregation(self.weighted_averages, !self.by.is_empty());
+        let aggregations = every_aggregation(self.weighted_averages, self.by);
         let result = aggregate(&parent, &aggregations, self.preserve_empty, self.by)
             .expect("an aggregation");
 

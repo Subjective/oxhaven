@@ -36,8 +36,9 @@ jobs:
       - run: cargo test --workspace
 
   python-console:
-    # The Python console embeds CPython, so it is a cargo feature that the other jobs build
-    # without: this job is the only one that compiles and tests it. See docs/CONSOLE.md.
+    # The Python console embeds CPython, so it is a cargo feature that the rust job builds
+    # without: this job lints it and runs its unit tests, and oracle-replay runs a server
+    # that has it. See docs/CONSOLE.md.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -53,13 +54,17 @@ jobs:
       - run: "cargo test -p oxhaven-server --features python --lib -- console::"
 
   oracle-replay:
-    # Builds the server, starts it, and compares it with the recorded Java results and the
-    # client smoke checks, against oracle/replay-baseline.json. See oracle/README.md.
+    # Builds the server with its Python console, starts it, and compares it with the recorded
+    # Java results (table scenarios and script scenarios) and the client smoke checks, against
+    # oracle/replay-baseline.json. See oracle/README.md.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
+      # This Python runs the harness (oracle/.venv is made from it) and is the one the
+      # server embeds: ci-replay.sh builds with `--features python`, PyO3 takes `python3`
+      # from PATH, and the script puts its libpython on the server's library path.
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"

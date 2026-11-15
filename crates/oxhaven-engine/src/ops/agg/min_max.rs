@@ -1,83 +1,182 @@
 //! Minimum and maximum.
 
-use super::operator::{AggOperator, Effect, GroupReader};
-use super::values::{build, Run, Scalar, Values};
+use super::operator::{AggOperator, Effect};
+use super::values::{build, Run, Scalar};
 use arrow::array::ArrayRef;
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
-
-/// Rows read at a time when a group is recomputed.
-const CHUNK_SIZE: u64 = 4096;
+use std::collections::BTreeMap;
 
 /// The least or greatest non-null value of a column of any type, by Java's ordering (see
 /// [`Scalar::compare`]). Null when the group has no non-null value. A NaN in the group
 /// makes both the minimum and the maximum NaN.
 ///
-/// Among values that compare equal (`0.0` and `-0.0`), the one kept is the first one
-/// given. Java keeps a sorted multiset on tables that remove rows, and which zero that
-/// shows depends on its sort and merge history; that is not reproduced.
+/// The two zeros compare equal, so which one a group shows is decided by how the result
+/// is kept, and Java keeps it in two ways.
 ///
-/// On a parent that never removes rows the state is the best value so far. On one that
-/// does, a removal of the best value cannot be answered from that, so the operator asks
-/// for the group's rows and reads them again.
+/// On a parent that never removes rows (a static table is one:
+/// io.deephaven.engine.table.impl.BaseTable#isAddOnly) the state is the best value so far,
+/// replaced only by a strictly better one, so the first zero given is the one kept.
+///
+/// On a parent that removes rows Java keeps a sorted multiset of each group's values, and
+/// [`Multiset`] is that. A zero in it has the sign of the rows that made its entry, for as
+/// long as any zero is in the group: rows arrive a chunk at a time, sorted by
+/// `Arrays.sort`, which puts `-0.0` before `0.0`, and equal neighbours are folded into the
+/// first, so rows that bring both zeros make a negative entry. The result cell is then
+/// written only when the multiset's answer does not compare equal to what the cell holds,
+/// so a cell that shows one zero keeps it while the answer is a zero, whatever the entry.
 ///
 /// Behavior: io.deephaven.engine.table.impl.by.DoubleChunkedAddOnlyMinMaxOperator (and its
-/// per-type copies) for the first
-/// case and io.deephaven.engine.table.impl.by.ssmminmax.SsmChunkedMinMaxOperator for the
-/// second, where the multiset is replaced by the recompute.
+/// per-type copies) for the first case;
+/// io.deephaven.engine.table.impl.by.ssmminmax.SsmChunkedMinMaxOperator,
+/// io.deephaven.engine.table.impl.by.ssmminmax.DoubleSetResult#setResult and
+/// io.deephaven.engine.table.impl.sources.DoubleArraySource#getAndSetUnsafe for the second.
 pub struct MinMax {
     column_type: ColumnType,
     minimum: bool,
-    /// Whether rows can leave a group.
-    retracts: bool,
-    /// The best value that is not NaN, or null.
-    best: Vec<Scalar>,
-    /// The number of NaN values.
-    nan: Vec<u64>,
+    state: State,
+}
+
+enum State {
+    /// Rows only join a group.
+    Growing {
+        /// The best value that is not NaN, or null.
+        best: Vec<Scalar>,
+        /// Whether the group has a NaN.
+        nan: Vec<bool>,
+    },
+    /// Rows can leave a group.
+    Retracting {
+        values: Vec<Multiset>,
+        /// The result cell of each group.
+        cells: Vec<Scalar>,
+    },
+}
+
+/// A non-null value in Java's order, in which the two zeros are one value and so are all
+/// NaNs.
+struct Ordered(Scalar);
+
+impl PartialEq for Ordered {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Ordered {}
+
+impl PartialOrd for Ordered {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Ordered {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.compare(&other.0)
+    }
+}
+
+/// The non-null values of a group, each distinct value once with the number of rows that
+/// have it. The value kept for an entry is the one that made it.
+///
+/// Behavior: io.deephaven.engine.table.impl.ssms.DoubleSegmentedSortedMultiset#insert,
+/// #remove (and the per-type copies)
+#[derive(Default)]
+struct Multiset {
+    entries: BTreeMap<Ordered, u64>,
+}
+
+fn is_negative_zero(value: &Scalar) -> bool {
+    matches!(value, Scalar::Double(v) if *v == 0.0 && v.is_sign_negative())
+}
+
+impl Multiset {
+    /// Takes the values of rows that joined the group in one call. Java sorts them first,
+    /// and its sort puts `-0.0` before `0.0`, so a negative zero among them is the one
+    /// that makes a new zero entry.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.util.compact.DoubleCompactKernel#compactAndCount
+    fn insert(&mut self, run: &Run<'_>) {
+        let mut values: Vec<Scalar> = run
+            .scalars()
+            .map(|(_, value)| value)
+            .filter(|value| !value.is_null())
+            .collect();
+        if let Some(at) = values.iter().position(is_negative_zero) {
+            values.swap(0, at);
+        }
+        for value in values {
+            *self.entries.entry(Ordered(value)).or_insert(0) += 1;
+        }
+    }
+
+    fn remove(&mut self, run: &Run<'_>) {
+        for (_, value) in run.scalars() {
+            if value.is_null() {
+                continue;
+            }
+            let value = Ordered(value);
+            if let Some(count) = self.entries.get_mut(&value) {
+                *count -= 1;
+                if *count == 0 {
+                    self.entries.remove(&value);
+                }
+            }
+        }
+    }
+
+    /// The least or greatest value, NaN when there is one, null when there is none.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.by.ssmminmax.DoubleSetResult#setResult
+    fn extreme(&self, minimum: bool) -> Scalar {
+        let last = self.entries.keys().next_back();
+        let found = match last {
+            Some(last) if minimum && !last.0.is_nan() => self.entries.keys().next(),
+            last => last,
+        };
+        found.map_or(Scalar::Null, |value| value.0.clone())
+    }
 }
 
 impl MinMax {
+    /// `retracts` says whether rows can leave a group.
     pub fn new(column_type: ColumnType, minimum: bool, retracts: bool) -> MinMax {
+        let state = if retracts {
+            State::Retracting {
+                values: Vec::new(),
+                cells: Vec::new(),
+            }
+        } else {
+            State::Growing {
+                best: Vec::new(),
+                nan: Vec::new(),
+            }
+        };
         MinMax {
             column_type,
             minimum,
-            retracts,
-            best: Vec::new(),
-            nan: Vec::new(),
+            state,
         }
     }
 
-    fn better(&self, candidate: &Scalar, best: &Scalar) -> bool {
-        let wanted = if self.minimum {
-            Ordering::Less
-        } else {
-            Ordering::Greater
+    /// Writes the multiset's answer for `slot` into its cell, unless the cell holds a
+    /// value that compares equal to it. Whether the cell changed.
+    fn write(&mut self, slot: usize) -> Effect {
+        let State::Retracting { values, cells } = &mut self.state else {
+            return Effect::UNCHANGED;
         };
-        best.is_null() || candidate.compare(best) == wanted
-    }
-
-    /// Takes `value` into `best` and `nan`. Whether either changed.
-    fn take(&self, value: Scalar, best: &mut Scalar, nan: &mut u64) -> bool {
-        if value.is_null() {
-            false
-        } else if value.is_nan() {
-            *nan += 1;
-            true
-        } else if self.better(&value, best) {
-            *best = value;
-            true
-        } else {
-            false
+        let answer = values[slot].extreme(self.minimum);
+        let cell = &mut cells[slot];
+        let equal = match (answer.is_null(), cell.is_null()) {
+            (true, true) => true,
+            (false, false) => answer.compare(cell) == Ordering::Equal,
+            _ => false,
+        };
+        if !equal {
+            *cell = answer;
         }
-    }
-
-    fn result(&self, slot: usize) -> Scalar {
-        if self.nan[slot] > 0 {
-            Scalar::Double(f64::NAN)
-        } else {
-            self.best[slot].clone()
-        }
+        Effect::modified_if(!equal)
     }
 }
 
@@ -86,77 +185,97 @@ impl AggOperator for MinMax {
         self.column_type.clone()
     }
 
-    fn needs_group_rows(&self) -> bool {
-        self.retracts
-    }
-
     fn ensure_slots(&mut self, slots: usize) {
-        if self.best.len() < slots {
-            self.best.resize(slots, Scalar::Null);
-            self.nan.resize(slots, 0);
+        match &mut self.state {
+            State::Growing { best, nan } => {
+                if best.len() < slots {
+                    best.resize(slots, Scalar::Null);
+                    nan.resize(slots, false);
+                }
+            }
+            State::Retracting { values, cells } => {
+                if values.len() < slots {
+                    values.resize_with(slots, Multiset::default);
+                    cells.resize(slots, Scalar::Null);
+                }
+            }
         }
     }
 
     fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let before = self.result(slot);
-        let mut best = std::mem::replace(&mut self.best[slot], Scalar::Null);
-        let mut nan = self.nan[slot];
-        for (_, value) in run.scalars() {
-            self.take(value, &mut best, &mut nan);
+        let wanted = if self.minimum {
+            Ordering::Less
+        } else {
+            Ordering::Greater
+        };
+        match &mut self.state {
+            State::Growing { best, nan } => {
+                // A group with a NaN can never change.
+                if nan[slot] {
+                    return Effect::UNCHANGED;
+                }
+                let mut changed = false;
+                for (_, value) in run.scalars() {
+                    if value.is_nan() {
+                        nan[slot] = true;
+                        return Effect::MODIFIED;
+                    }
+                    if !value.is_null()
+                        && (best[slot].is_null() || value.compare(&best[slot]) == wanted)
+                    {
+                        best[slot] = value;
+                        changed = true;
+                    }
+                }
+                Effect::modified_if(changed)
+            }
+            State::Retracting { values, .. } => {
+                values[slot].insert(run);
+                self.write(slot)
+            }
         }
-        self.best[slot] = best;
-        self.nan[slot] = nan;
-        Effect::modified_if(!before.same(&self.result(slot)))
     }
 
     fn remove(&mut self, slot: usize, run: &Run<'_>) -> Effect {
-        let before = self.result(slot);
-        let mut recompute = false;
-        for (_, value) in run.scalars() {
-            if value.is_nan() {
-                self.nan[slot] = self.nan[slot].saturating_sub(1);
-            } else if !value.is_null() && value.compare(&self.best[slot]) == Ordering::Equal {
-                recompute = true;
+        match &mut self.state {
+            // Rows never leave such a group.
+            State::Growing { .. } => Effect::UNCHANGED,
+            State::Retracting { values, .. } => {
+                values[slot].remove(run);
+                self.write(slot)
             }
-        }
-        // The result can change here and not in the recompute: a NaN that leaves shows
-        // the best value again, which the recompute may then confirm.
-        Effect {
-            modified: !before.same(&self.result(slot)),
-            recompute,
         }
     }
 
-    fn recompute(
-        &mut self,
-        slots: &[usize],
-        groups: &GroupReader<'_>,
-    ) -> Result<Vec<bool>, TableFailure> {
-        let input = groups.input();
-        let mut changed = Vec::with_capacity(slots.len());
-        for &slot in slots {
-            let before = self.result(slot);
-            let rows = groups.rows(slot);
-            let mut best = Scalar::Null;
-            let mut nan = 0;
-            let mut start = 0;
-            while start < rows.size() {
-                let chunk = rows.sub_set_by_position_range(start, start + CHUNK_SIZE);
-                let values = Values::decode(&self.column_type, &input.chunk(&chunk)?)?;
-                for position in 0..values.len() {
-                    self.take(values.scalar(position), &mut best, &mut nan);
-                }
-                start += CHUNK_SIZE;
+    /// The old values leave and the new ones join before the cell is looked at, so a cell
+    /// that shows a zero keeps it when the group's zeros are all replaced.
+    ///
+    /// Behavior: SsmChunkedMinMaxOperator#modifyChunk
+    fn modify(&mut self, slot: usize, old: &Run<'_>, new: &Run<'_>) -> Effect {
+        match &mut self.state {
+            State::Growing { .. } => Effect::UNCHANGED,
+            State::Retracting { values, .. } => {
+                values[slot].remove(old);
+                values[slot].insert(new);
+                self.write(slot)
             }
-            self.best[slot] = best;
-            self.nan[slot] = nan;
-            changed.push(!before.same(&self.result(slot)));
         }
-        Ok(changed)
     }
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
-        let results: Vec<Scalar> = slots.iter().map(|&slot| self.result(slot)).collect();
+        let results: Vec<Scalar> = slots
+            .iter()
+            .map(|&slot| match &self.state {
+                State::Growing { best, nan } => {
+                    if nan[slot] {
+                        Scalar::Double(f64::NAN)
+                    } else {
+                        best[slot].clone()
+                    }
+                }
+                State::Retracting { cells, .. } => cells[slot].clone(),
+            })
+            .collect();
         build(&self.column_type, results.iter())
     }
 }

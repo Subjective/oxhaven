@@ -4,7 +4,7 @@
 use super::ranges::{match_columns, ranges, Ranges};
 use super::{RangeAggregation, RangeJoinError, RangeJoinMatch};
 use crate::ops::join::JoinMatch;
-use crate::table::{QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, TableSpec};
 use arrow::array::{ArrayRef, ListArray};
 use arrow::buffer::{NullBuffer, OffsetBuffer};
 use arrow::datatypes::Field;
@@ -152,7 +152,7 @@ pub(super) fn join(
                     present: present.map(|column| column.name.clone()).collect(),
                 });
             };
-            let column: Arc<dyn ColumnSource> = Arc::new(GroupColumn::new(
+            let column = reads_through(GroupColumn::new(
                 right.column(input),
                 ranges.clone(),
                 rows.clone(),

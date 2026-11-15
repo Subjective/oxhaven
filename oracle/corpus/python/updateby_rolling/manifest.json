@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "scenario": "updateby_rolling",
+  "scenario_sha256": "a35d8a1a67ad8c6ececc79d619e061b8b8df431633a95545a186ed1caef2fb01",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rolled",
+      "file": "step000.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "smoothed",
+      "file": "step000.smoothed.arrow",
+      "rows": 10
+    }
+  ]
+}

@@ -12,7 +12,7 @@ mod union;
 mod tests;
 
 pub use flatten::flatten;
-pub(crate) use flatten::{flattened_shift_data, positional};
+pub(crate) use flatten::{flattened_shift_data, pivoted, positional};
 pub use union::merge;
 
 use oxhaven_contracts::table::TableFailure;

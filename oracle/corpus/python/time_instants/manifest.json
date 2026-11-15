@@ -1,0 +1,20 @@
+{
+  "format": 2,
+  "scenario": "time_instants",
+  "scenario_sha256": "e162dfb30f403a83d97d7c80b6e81219ad55002839d4c34ccd6e9c3a31b20e64",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "instants",
+      "file": "step000.instants.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "shifted",
+      "file": "step000.shifted.arrow",
+      "rows": 3
+    }
+  ]
+}

@@ -10,6 +10,9 @@ No Java counterpart: harness entry point.
     fuzz          generate scenarios from seeds, compare two servers, shrink the first difference
     client-smoke  exercise one area of the client protocol against one server
     show          run scenarios and print their results
+    record-scripts  run the script scenarios on the Java reference and store what they leave
+    replay-scripts  run the script scenarios on one server and compare with the recordings
+    show-scripts    run script scenarios and print what they leave
     formulas      record the formula corpus from Java, or compare one server with it
 
 With `ORACLE_STACKS_AFTER=<seconds>` in the environment, a command that is still running after
@@ -39,6 +42,8 @@ from .runner import RunError, open_target
 ORACLE = Path(__file__).resolve().parent.parent
 SCENARIOS = ORACLE / "scenarios"
 CORPUS = ORACLE / "corpus"
+SCRIPT_SCENARIOS = SCENARIOS / "python"
+SCRIPT_CORPUS = CORPUS / "python"
 BASELINE = ORACLE / "replay-baseline.json"
 FUZZ_OUT = ORACLE / ".fuzz"
 REFERENCE = "42.9"  # oracle/REFERENCE.md
@@ -159,6 +164,104 @@ def cmd_show(args: argparse.Namespace) -> int:
             print(f"--- {scenario.name} step {step} table {table} ({data.num_rows} rows)")
             for field in data.schema:
                 print(f"{field.name}: {field.type} = {data.column(field.name).to_pylist()}")
+    return 0
+
+
+def _load_scripts(args: argparse.Namespace) -> list[Any]:
+    from . import scripts
+
+    select = [name.strip() for name in (args.scripts or "").split(",") if name.strip()]
+    scenarios = scripts.load_all(Path(args.scenarios), select)
+    if not scenarios:
+        raise sc.ScenarioError(f"no script scenario under {args.scenarios}")
+    return scenarios
+
+
+def cmd_record_scripts(args: argparse.Namespace) -> int:
+    from . import scripts
+
+    corpus = Path(args.corpus)
+    target = scripts.Target(args.url)
+    failed = 0
+    scenarios = _load_scripts(args)
+    for scenario in scenarios:
+        try:
+            recorded = target.run(scenario)
+            problems = scripts.undeclared(scenario, recorded)
+            if problems:
+                raise RunError("; ".join(problems))
+        except RunError as error:
+            failed += 1
+            print(f"ERROR {scenario.name}: {error}")
+            continue
+        scripts.save(recorded, corpus / scenario.name, scenario, REFERENCE)
+        errors = sum(outcome is not None for outcome in recorded.outcomes)
+        print(f"saved {scenario.name}: {len(recorded.outcomes)} scripts, {errors} of them "
+              f"fail; {len(recorded.tables.keys())} results, {recorded.tables.failures()} of "
+              "them failures")
+    print(f"record-scripts {args.url}: {len(scenarios)} scenarios, "
+          f"{len(scenarios) - failed} saved, {failed} not run")
+    return 2 if failed else 0
+
+
+def cmd_replay_scripts(args: argparse.Namespace) -> int:
+    from . import scripts
+
+    corpus = Path(args.corpus)
+    target = scripts.Target(args.url)
+    clean = different = missing = failed = mismatches = 0
+    scenarios = _load_scripts(args)
+    for scenario in scenarios:
+        try:
+            expected = scripts.load(corpus / scenario.name, scenario)
+            actual = target.run(scenario)
+        except (RunError, res.RecordingError) as error:
+            failed += 1
+            print(f"ERROR {scenario.name}: {error}")
+            continue
+        found = scripts.compare(scenario, expected, actual)
+        absent = [m for m in found if m.kind == rules.MISSING]
+        if absent:
+            missing += 1
+            print(f"MISSING {scenario.name}: step {absent[0].step}: {absent[0].actual}")
+        elif found:
+            different += 1
+            print(f"DIFF  {scenario.name}")
+        else:
+            clean += 1
+            print(f"ok    {scenario.name}")
+        for mismatch in found:
+            if mismatch.kind != rules.MISSING:
+                mismatches += 1
+                print(f"      {mismatch}")
+    print(f"replay-scripts {target} vs recordings: {len(scenarios)} scenarios, {clean} clean, "
+          f"{different} with differences ({mismatches} mismatches), {missing} missing, "
+          f"{failed} not run")
+    if failed:
+        return 2
+    return 1 if different or missing else 0
+
+
+def cmd_show_scripts(args: argparse.Namespace) -> int:
+    from . import scripts
+
+    target = scripts.Target(args.url)
+    for scenario in _load_scripts(args):
+        run = target.run(scenario)
+        for step, outcome in enumerate(run.outcomes):
+            if outcome is not None:
+                print(f"--- {scenario.name} step {step} script: fails with {outcome.type}: "
+                      f"{outcome.text}")
+            for table in (key[1] for key in run.tables.keys() if key[0] == step):
+                data = run.tables.get(step, table)
+                if isinstance(data, res.Failure):
+                    print(f"--- {scenario.name} step {step} table {table}: fails with "
+                          f"{data.code}")
+                    continue
+                print(f"--- {scenario.name} step {step} table {table} ({data.num_rows} rows)")
+                for field in data.schema:
+                    print(f"{field.name}: {field.type} = "
+                          f"{data.column(field.name).to_pylist()}")
     return 0
 
 
@@ -395,8 +498,32 @@ def main(argv: list[str] | None = None) -> int:
                         "print one example per group; nothing is shrunk")
     p.set_defaults(run=cmd_fuzz)
 
+    def scripts(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--url", required=True)
+        p.add_argument("--scenarios", default=str(SCRIPT_SCENARIOS),
+                       help="directory of script scenarios, or one scenario file")
+        p.add_argument("--scripts", help="comma-separated names, or starts of names "
+                                         "(agg_): only these script scenarios")
+
+    p = sub.add_parser("record-scripts",
+                       help="store what the Java reference answers to the script scenarios")
+    scripts(p)
+    p.add_argument("--corpus", default=str(SCRIPT_CORPUS))
+    p.set_defaults(run=cmd_record_scripts)
+
+    p = sub.add_parser("replay-scripts",
+                       help="compare one server with the recordings of the script scenarios")
+    scripts(p)
+    p.add_argument("--corpus", default=str(SCRIPT_CORPUS))
+    p.set_defaults(run=cmd_replay_scripts)
+
+    p = sub.add_parser("show-scripts", help="run script scenarios and print what they leave")
+    scripts(p)
+    p.set_defaults(run=cmd_show_scripts)
+
     p = sub.add_parser("client-smoke", help="exercise one area of the client protocol")
-    p.add_argument("area", choices=["session", "tables", "flight", "barrage", "inputtable"])
+    p.add_argument("area", choices=["session", "tables", "flight", "barrage", "inputtable",
+                                    "console"])
     p.add_argument("--url", required=True)
     p.set_defaults(run=cmd_client_smoke)
 
