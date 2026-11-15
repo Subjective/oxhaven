@@ -2,6 +2,7 @@
 
 mod corpus;
 mod fixtures;
+mod formula;
 mod group;
 mod incremental;
 mod random;

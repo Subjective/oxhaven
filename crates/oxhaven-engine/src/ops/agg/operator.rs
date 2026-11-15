@@ -2,9 +2,11 @@
 
 use super::values::Run;
 use arrow::array::ArrayRef;
+use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use std::sync::Arc;
 
 /// What a call did to a group's result. Both can be true: a removal that needs the
 /// group read again, followed by an addition that changed the result.
@@ -54,11 +56,25 @@ impl Effect {
 pub struct GroupReader<'a> {
     rows: &'a [RowSet],
     input: Option<&'a dyn ColumnSource>,
+    keys: &'a [Arc<WritableSource>],
 }
 
 impl<'a> GroupReader<'a> {
-    pub(super) fn new(rows: &'a [RowSet], input: Option<&'a dyn ColumnSource>) -> Self {
-        GroupReader { rows, input }
+    pub(super) fn new(
+        rows: &'a [RowSet],
+        input: Option<&'a dyn ColumnSource>,
+        keys: &'a [Arc<WritableSource>],
+    ) -> Self {
+        GroupReader { rows, input, keys }
+    }
+
+    /// The values of key column `index` of the aggregation, one per group: the key of
+    /// group `slot` is at row key `slot`. Read current values only.
+    ///
+    /// # Panics
+    /// If the aggregation has no such key column.
+    pub fn key(&self, index: usize) -> &'a dyn ColumnSource {
+        &*self.keys[index]
     }
 
     /// The parent's rows that are in group `slot` now, in the parent's current key space.
@@ -145,17 +161,36 @@ pub trait AggOperator: Send {
         Ok(vec![false; slots.len()])
     }
 
-    /// A failure of the calls since this was last asked, for an operator that reads the
-    /// parent itself while it is given rows. The framework asks after every chunk and
-    /// fails the result with it.
     /// The rows `before` of group `slot` are now the rows `after`, in the same order. Only
     /// called for an operator that [needs group rows](AggOperator::needs_group_rows).
     ///
     /// Behavior: IterativeChunkedAggregationOperator#shiftChunk
     fn shifted(&mut self, _slot: usize, _before: &RowSet, _after: &RowSet) {}
 
+    /// A failure of the calls since this was last asked, for an operator that reads the
+    /// parent itself while it is given rows. The framework asks after every chunk and
+    /// fails the result with it.
     fn take_failure(&mut self) -> Option<TableFailure> {
         None
+    }
+
+    /// What a group without rows that the first result shows (one kept by
+    /// `preserve_empty`, which is then the only group of an aggregation without keys)
+    /// does to the operator, which was given no rows for it.
+    ///
+    /// Behavior: IterativeChunkedAggregationOperator#propagateInitialState
+    fn shown_empty(&mut self, _slot: usize) -> Effect {
+        Effect::UNCHANGED
+    }
+
+    /// Whether a change of this operator's results puts its column into the modified
+    /// column set of the result's update.
+    ///
+    /// Behavior: the `UnaryOperator<ModifiedColumnSet>` an operator returns from
+    /// IterativeChunkedAggregationOperator#initializeRefreshing, which names the result
+    /// column for every operator here but a formula that reads no column
+    fn names_result(&self) -> bool {
+        true
     }
 
     /// The results of `slots`, as an array of `result_type`.
