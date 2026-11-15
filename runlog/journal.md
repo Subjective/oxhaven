@@ -462,3 +462,12 @@ local git identity is set accordingly, which worktrees inherit; squash merges ge
 trailer in an explicit message. He asked whether existing history can be rewritten; no
 rewrite or force push is to happen without his explicit go-ahead.
 PRs 62 (rolling group) and 63 (CI seed budget, main runs no longer cancelled) opened.
+
+## 2026-11-15 04:36 UTC
+
+Owner asked whether main's history can be rewritten after all implementation is done,
+keeping order. Yes: recorded as a final task. Scope: change only the author of the older
+commits to the owner and add the Claude co-author trailer where missing; keep commit
+order, dates, messages and content. It needs a force push of main, so it waits for the
+owner's explicit confirmation at that time and for no branches to be open.
+Launched: console and Python session design spike (6.1), second parity fixes (4.15).
