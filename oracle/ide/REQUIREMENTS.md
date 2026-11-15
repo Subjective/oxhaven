@@ -12,6 +12,7 @@ section names the file it comes from.
 | `traces/http-console-*.txt` | http, Python console, tables as query scope variables | panels, console |
 | `traces/https-console-*.txt` | https (self-signed), Python console, scope variables | panels, jsapi, console |
 | `traces/probe-faults.txt` | http, Python console | one run per call with that call taken away |
+| `traces/http-flows-*.txt` | http, Python console, scope variables, `-Dstorage.path=<a new directory>` | notebook, grid, errors, log, reconnect |
 
 The first server is the shape Oxhaven has at first: no console, tables that exist before a
 client connects. All three routes pass against it.
@@ -261,7 +262,7 @@ The responses, each a `FlightData`:
 A viewport change is a second `BarrageSubscriptionRequest` on the same stream with the new
 row range; seen once, when the second panel resized the first
 (`traces/http-console-console.txt`; `NextDoExchange` over https). Scrolling, sorting and
-filtering were not exercised.
+filtering are under "Sorting, filtering and scrolling a grid" below.
 
 ## What the console route adds
 
@@ -280,6 +281,104 @@ filtering were not exercised.
   static files include the Monaco editor, its web worker and, for Python, a wasm linter.
 - With `-Ddeephaven.console.disable=true` the console route fails ("no console input"), as it
   should.
+
+## What the flows around the console add
+
+Recorded on 2026-11-15 with the routes `notebook`, `grid`, `errors`, `log` and `reconnect`
+against the Java reference on http with a Python console and a storage directory of its own
+(`-Dstorage.path=<directory>`): `traces/http-flows-<route>.txt`. Each route starts with the
+eleven calls of the console route's start, and `ConsoleService/GetHeapInfo` and
+`AutoCompleteStream` go on underneath; they are left out below. What each step shows is what
+the route checks.
+
+### The File Explorer and a notebook (`notebook`)
+
+The File Explorer lists `web.storage.notebook.directory` (`/notebooks`) and nothing above
+it. Every change is followed by `ListItems{path: "/notebooks"}`, usually three of them.
+
+| Step in the IDE | Calls |
+| --- | --- |
+| Open the File Explorer tab | `ListItems{path: "/notebooks"}` |
+| New folder, a name, Create | `ListItems{path: "/notebooks/", filter_glob: "<name>"}` (does it exist?), `CreateDirectory{path: "/notebooks/<name>"}` |
+| New notebook, type | none: the notebook is in the browser until it is saved |
+| Run Selected (one line selected) | `ExecuteCommand{code: <the selected text>}`, then `FetchTable`, `ApplyPreviewColumns`, `DoExchange` for the table it made |
+| Run | `ExecuteCommand{code: <the whole text>}`; a variable that existed is `updated` in `changes`, and the IDE releases the exports of its open panel and fetches it again |
+| Save (Ctrl+S), a name, Save | `ListItems{path: "/notebooks/", filter_glob: "<file name>"}`, `SaveFile{allow_overwrite: true, path: "/notebooks/<file>", contents}` answered with an `etag` |
+| Close the tab, double-click the file | `FetchFile{path}` with no etag, answered `{contents, etag}` |
+| Edit, Save | `SaveFile{allow_overwrite: true, ...}` |
+| Rename (context menu) | `ListItems{path: "/notebooks/", filter_glob: "<new name>"}`, `MoveItem{old_path, new_path}` without `allow_overwrite` |
+| Drag the file onto a folder | `MoveItem{old_path: "/notebooks/<file>", new_path: "/notebooks/<folder>/<file>"}` |
+| Open the folder | `ListItems{path: "/notebooks/<folder>"}` |
+| Delete the file, confirm | `DeleteItem{path: "/notebooks/<folder>/<file>"}` |
+| Delete the folder, confirm | `DeleteItem{path: "/notebooks/<folder>/"}`, with the trailing `/` |
+
+Two things a server has to get right that the calls do not say: the name of a new file or
+folder is sent as a **glob** (`filter_glob`), so a name with `*`, `?`, `[` or `{` in it is a
+pattern there; and the `etag` of `ListItems`, `FetchFile` and `SaveFile` has to be the same
+function of the contents in all three (Java: Murmur3 128 with seed 0, in hexadecimal). The
+IDE sent no `FetchFileRequest.etag` in these runs. `/layouts` is only listed
+(`filter_glob: "*.json"`); when it holds a `.json` file the IDE fetches it at start (seen
+once, by hand).
+
+What Java answers to each storage call, with the paths that try to leave the storage, is
+recorded call by call in `crates/oxhaven-server/src/storage/fixtures/java.txt`.
+
+### Sorting, filtering and scrolling a grid (`grid`)
+
+A table of 300 rows made in the console; the IDE's first viewport is rows `0-50`.
+
+| Step in the IDE | Calls |
+| --- | --- |
+| Scroll to the end, and back | no new call: a further `BarrageSubscriptionRequest` on the open `DoExchange` per viewport (`252-327`, then `0-50`), each answered with a snapshot of the new viewport |
+| Header menu, Sort by, `K` Descending | `Batch{ops: [sort{source_id: <the fetched table>, sorts: [{column_name: "K", direction: DESCENDING}]}]}`, `Release` of the preview export, `ApplyPreviewColumns` of the sorted table, a new `DoExchange` |
+| Cell menu (right click) | `ApplyPreviewColumns` and a `DoExchange` with a `BarrageSnapshotRequest` for that one cell (`viewport={0}`, one column), which ends with `OK` |
+| Filter by Value, is equal to | `Batch{ops: [filter{source_id: <the fetched table>, filters: [compare{EQUALS, reference "G", literal double 5.0}]}, sort{source_id: <the filter's result>, ...}]}`: one answer per operation; then `Release`, `ApplyPreviewColumns`, `Release`, a new `DoExchange` |
+
+So the grid always rebuilds from the table it fetched: filters first, then sorts, in one
+`Batch`, with the operations referring to each other by export ticket. The literal of a
+filter on an `int` column is sent as a double. Java's schema of a sorted table carries
+`deephaven:attribute.SortedColumns`; the IDE showed the same without it.
+
+### A command that fails, a variable that goes away (`errors`)
+
+- `ExecuteCommand` of a command that raises ends with `OK` and `error_message` set, and
+  carries no `changes`. The IDE does not show `error_message` in the console. What it shows
+  is a record of the **log stream**: the server logs "Error running script: " and the error
+  at level `ERROR`, and the console shows that record's first line, which opens to the rest.
+  A server that does not log the failure, or whose `SubscribeToLogs` does not deliver it,
+  shows nothing for a failed command. (The oracle's Java also shows every log line again as
+  `STDERR`, which is its logging configuration.)
+- A variable assigned before the error is in the scope afterwards.
+- Removing a variable (`del name`) answers `changes { removed { ... } }`. The IDE closes the
+  variable's panel, disables the variable's button in the console, and sends
+  `SessionService/Release` for the panel's two exports. It makes no other call.
+
+### The Log panel and Command History (`log`)
+
+Neither makes a call. The Log panel shows the stream of `SubscribeToLogs` that the console
+opened at start, one line per record: time, level, text; what a script prints is a record
+of level `STDOUT`. Command History is kept by the browser (it lists the commands of this
+browser profile, not of the server), and "Open selected commands in the console" puts the
+text into the console input; running it is an ordinary `ExecuteCommand`.
+
+### The server restarts (`reconnect`)
+
+- When the websocket closes the IDE shows "Attempting to reconnect..." over the dashboard
+  and each table panel shows "Table disconnected". It opens a new websocket (to
+  `/ConfigService/GetConfigurationConstants`) with growing pauses, six attempts in three
+  seconds in one run.
+- Once a server answers, it calls `GetConfigurationConstants` with the **bearer token of the
+  old session**. Java, restarted, does not know the token and answers `UNAUTHENTICATED`
+  (seen with the message "Authentication details invalid" and with none). The IDE then
+  stays on "Attempting to reconnect..." and repeats the call; it does not go back to the
+  login form (watched for 20 seconds).
+- Loading the page again logs in with the key in the IDE's cookie and starts a console as
+  on a first visit. The layout is the browser's, so the panel of the table that no longer
+  exists is opened again: `FetchTable` of `s/<name>` answers `NOT_FOUND`
+  ("variable '<name>' not found"), and the panel fills once a command makes the variable
+  again.
+- Not determined: what the IDE does when the server it reconnects to still knows the
+  session (a network interruption, not a restart). No run did that.
 
 ## What Oxhaven needs, in order
 
@@ -333,11 +432,13 @@ change, and the engine operations the scripts call (6.1 to 6.7).
   has no `authorization` response header, so the login fails before the values matter.
 - Whether a server may decline `permessage-deflate`, and frame size limits on the websocket.
   Java accepted the extension; nothing larger than a few kilobytes was sent.
-- Token refresh at half the session duration, GO_AWAY on the websocket, and reconnection:
-  read in source only.
-- Anything a user does in the grid after it shows: scrolling beyond the first viewport,
-  sorting, filtering, column statistics, copy, downloads. These will call table operations
-  (`Batch`) that no run made.
+- Token refresh at half the session duration and GO_AWAY on the websocket: read in source
+  only. Reconnection was run only against a server that had restarted.
+- What a user does in the grid beyond scrolling, one sort and one "Filter by Value": the
+  other filter kinds, quick filters, column statistics, copy, downloads, roll-ups. These will
+  call table operations that no run made.
+- The File Explorer beyond one folder and one notebook: copying a file, moving a folder,
+  names that are glob patterns, a file changed on the server while it is open.
 - A Java server with no console type at all (`-Ddeephaven.console.type=none`): the wheel's
   embedded server cannot start that way. `-Ddeephaven.console.disable=true` and
   `--empty ConsoleService/GetConsoleTypes` are what was run instead.

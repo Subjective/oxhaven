@@ -1,13 +1,25 @@
-//! The `StorageService` gRPC service of a server that stores nothing.
+//! The `StorageService` gRPC service: the files the web IDE keeps on the server, which are
+//! its saved layouts and the notebooks of its File Explorer.
 //!
-//! The web IDE asks for its saved layouts when it starts. Java keeps them, and notebooks, as
-//! files under a storage directory that it creates with two empty directories in it. This
-//! server answers `ListItems` as Java does for that storage before anything was saved: the
-//! root holds the directories `/layouts` and `/notebooks`, and they hold nothing. The calls
-//! that read or change files are refused with `UNIMPLEMENTED` and their name.
+//! Java keeps them under a storage directory that it creates with two empty directories in
+//! it. A server started with a storage directory ([`StorageRoot`], `--storage-root`) does
+//! the same over that directory. A client names every path, so [`root`] is where the checks
+//! are that keep a call inside the directory. One of them is stricter than Java: a symbolic
+//! link that leads out of the directory is not followed (`PARITY.md`, A8).
+//!
+//! A server without a storage directory stores nothing. It answers `ListItems` as Java does
+//! for a storage before anything was saved: the root holds the directories `/layouts` and
+//! `/notebooks`, and they hold nothing. The calls that read or change files are refused
+//! with `UNIMPLEMENTED` and their name.
 
+mod etag;
+mod root;
+#[cfg(test)]
+mod root_tests;
 #[cfg(test)]
 mod tests;
+
+use std::sync::Arc;
 
 use oxhaven_proto::grpc::storage_service_server::StorageService;
 use oxhaven_proto::grpc::{
@@ -19,18 +31,23 @@ use tonic::{Request, Response, Status};
 
 use crate::session::current_session;
 use crate::table::support::internal_status;
+pub use root::StorageRoot;
+use root::DIRECTORIES;
 
-/// The directories Java creates in an empty storage: the values of the configuration
-/// constants `web.storage.layout.directory` and `web.storage.notebook.directory`, sorted.
-///
-/// Behavior: `FilesystemStorageServiceGrpcImpl#PRE_CREATE_PATHS`
-const DIRECTORIES: [&str; 2] = ["layouts", "notebooks"];
-
-/// The status of a storage call this server does not have.
+/// The status of a storage call on a server without a storage directory.
 fn unimplemented(method: &str) -> Status {
     Status::unimplemented(format!(
         "StorageService/{method} is not implemented: this server stores no files"
     ))
+}
+
+/// Runs work on the file system off the threads that serve calls.
+async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, Status> + Send + 'static,
+) -> Result<T, Status> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| internal_status(format_args!("a storage call did not finish: {e}")))?
 }
 
 /// One piece of a file name pattern.
@@ -96,13 +113,14 @@ fn glob_matches(pattern: &[Glob], name: &[char]) -> bool {
     }
 }
 
-/// The directory a path names, as its names from the root down. One leading `/` is dropped;
-/// empty names and `.` are skipped; `..` takes the last name away again, whether or not a
-/// directory of that name exists.
+/// The directory a path names on a server without a storage directory, as its names from
+/// the root down. One leading `/` is dropped; empty names and `.` are skipped; `..` takes
+/// the last name away again, whether or not a directory of that name exists.
 ///
 /// A path that leaves the root is `INVALID_ARGUMENT`. Java also accepts a path that leaves
-/// the root and comes back through the root's own name (`/../storage/layouts`); the storage
-/// of this server has no name outside itself, so such a path is refused here.
+/// the root and comes back through the root's own name (`/../storage/layouts`), and so does
+/// a server with a storage directory; the storage of a server without one has no name
+/// outside itself, so such a path is refused there.
 ///
 /// Behavior: `FilesystemStorageServiceGrpcImpl#resolveOrThrow`, `java.nio.file.Path#normalize`
 fn resolve(path: &str) -> Result<Vec<&str>, Status> {
@@ -132,7 +150,21 @@ fn resolve(path: &str) -> Result<Vec<&str>, Status> {
 }
 
 /// Behavior: `io.deephaven.server.notebook.FilesystemStorageServiceGrpcImpl`
-pub struct StorageGrpc;
+pub struct StorageGrpc {
+    root: Option<Arc<StorageRoot>>,
+}
+
+impl StorageGrpc {
+    /// The service over `root`, or that of a server that stores nothing.
+    pub fn new(root: Option<Arc<StorageRoot>>) -> Self {
+        Self { root }
+    }
+
+    /// The storage directory, or the refusal of `method` on a server that has none.
+    fn root(&self, method: &str) -> Result<Arc<StorageRoot>, Status> {
+        self.root.clone().ok_or_else(|| unimplemented(method))
+    }
+}
 
 #[tonic::async_trait]
 impl StorageService for StorageGrpc {
@@ -144,6 +176,19 @@ impl StorageService for StorageGrpc {
         current_session(&request)?;
         let request = request.into_inner();
         let pattern = request.filter_glob.as_deref().map(parse_glob).transpose()?;
+        let matches = move |name: &str| {
+            pattern
+                .as_ref()
+                .is_none_or(|pattern| glob_matches(pattern, &name.chars().collect::<Vec<_>>()))
+        };
+        if let Some(root) = self.root.clone() {
+            let (canonical_path, items) =
+                blocking(move || root.list(&request.path, matches)).await?;
+            return Ok(Response::new(ListItemsResponse {
+                items,
+                canonical_path,
+            }));
+        }
         let directory = resolve(&request.path)?;
         let names: &[&str] = match directory[..] {
             [] => &DIRECTORIES,
@@ -152,11 +197,7 @@ impl StorageService for StorageGrpc {
         };
         let items = names
             .iter()
-            .filter(|name| {
-                pattern
-                    .as_ref()
-                    .is_none_or(|pattern| glob_matches(pattern, &name.chars().collect::<Vec<_>>()))
-            })
+            .filter(|name| matches(name))
             .map(|name| ItemInfo {
                 path: format!("/{name}"),
                 r#type: ItemType::Directory as i32,
@@ -170,38 +211,77 @@ impl StorageService for StorageGrpc {
         }))
     }
 
+    /// Behavior: `FilesystemStorageServiceGrpcImpl#fetchFile`
     async fn fetch_file(
         &self,
-        _request: Request<FetchFileRequest>,
+        request: Request<FetchFileRequest>,
     ) -> Result<Response<FetchFileResponse>, Status> {
-        Err(unimplemented("FetchFile"))
+        current_session(&request)?;
+        let root = self.root("FetchFile")?;
+        let request = request.into_inner();
+        let (contents, etag) = blocking(move || root.fetch(&request.path)).await?;
+        // a client that has the contents of this etag is not sent them again
+        let unchanged = request.etag.as_deref() == Some(etag.as_str());
+        Ok(Response::new(FetchFileResponse {
+            contents: if unchanged { Vec::new() } else { contents },
+            etag: Some(etag),
+        }))
     }
 
+    /// Behavior: `FilesystemStorageServiceGrpcImpl#saveFile`
     async fn save_file(
         &self,
-        _request: Request<SaveFileRequest>,
+        request: Request<SaveFileRequest>,
     ) -> Result<Response<SaveFileResponse>, Status> {
-        Err(unimplemented("SaveFile"))
+        current_session(&request)?;
+        let root = self.root("SaveFile")?;
+        let request = request.into_inner();
+        let etag =
+            blocking(move || root.save(&request.path, &request.contents, request.allow_overwrite))
+                .await?;
+        Ok(Response::new(SaveFileResponse { etag: Some(etag) }))
     }
 
+    /// Behavior: `FilesystemStorageServiceGrpcImpl#moveItem`
     async fn move_item(
         &self,
-        _request: Request<MoveItemRequest>,
+        request: Request<MoveItemRequest>,
     ) -> Result<Response<MoveItemResponse>, Status> {
-        Err(unimplemented("MoveItem"))
+        current_session(&request)?;
+        let root = self.root("MoveItem")?;
+        let request = request.into_inner();
+        blocking(move || {
+            root.move_item(
+                &request.old_path,
+                &request.new_path,
+                request.allow_overwrite,
+            )
+        })
+        .await?;
+        Ok(Response::new(MoveItemResponse {}))
     }
 
+    /// Behavior: `FilesystemStorageServiceGrpcImpl#createDirectory`
     async fn create_directory(
         &self,
-        _request: Request<CreateDirectoryRequest>,
+        request: Request<CreateDirectoryRequest>,
     ) -> Result<Response<CreateDirectoryResponse>, Status> {
-        Err(unimplemented("CreateDirectory"))
+        current_session(&request)?;
+        let root = self.root("CreateDirectory")?;
+        let request = request.into_inner();
+        blocking(move || root.create_directory(&request.path)).await?;
+        Ok(Response::new(CreateDirectoryResponse {}))
     }
 
+    /// Behavior: `FilesystemStorageServiceGrpcImpl#deleteItem`
     async fn delete_item(
         &self,
-        _request: Request<DeleteItemRequest>,
+        request: Request<DeleteItemRequest>,
     ) -> Result<Response<DeleteItemResponse>, Status> {
-        Err(unimplemented("DeleteItem"))
+        current_session(&request)?;
+        let root = self.root("DeleteItem")?;
+        let request = request.into_inner();
+        blocking(move || root.delete(&request.path)).await?;
+        Ok(Response::new(DeleteItemResponse {}))
     }
 }

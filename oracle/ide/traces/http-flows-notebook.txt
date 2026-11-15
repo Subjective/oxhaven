@@ -1,0 +1,361 @@
+  1011ms WEBSOCKET ws://127.0.0.1:10958/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=1426 closed=None error=None
+
+  1020ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
+         request headers: {'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: AuthenticationConstantsRequest{}
+         response 0: AuthenticationConstantsResponse{config_values { key: "AuthHandlers" value { string_value: "io.deephaven.authentication.psk.PskAuthenticationHandler" } }}
+  1081ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'io.deephaven.authentication.psk.PskAuthenticationHandler <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1094ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {}
+         request 0: TerminationNotificationRequest{}
+  1094ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExportedTableUpdatesRequest{}
+         response 0: ExportedTableUpdateMessage{export_id { ticket: "e\002\000\000\000" } size: 2}
+         response 1: ExportedTableUpdateMessage{export_id { ticket: "e\003\000\000\000" } size: 2}
+         response 2: ExportedTableUpdateMessage{export_id { ticket: "e\004\000\000\000" } size: 2}
+         response 3: ExportedTableUpdateMessage{export_id { ticket: "e\005\000\000\000" } size: 5}
+         response ... 1 more ...
+         response 5: ExportedTableUpdateMessage{export_id { ticket: "e\007\000\000\000" } size: 5}
+  1098ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ConfigurationConstantsRequest{}
+         response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
+  1213ms ws-multiplex [stream 5] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetConsoleTypes -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: GetConsoleTypesRequest{}
+         response 0: GetConsoleTypesResponse{console_types: "python"}
+  1213ms ws-multiplex [stream 6] io.deephaven.proto.backplane.script.grpc.ConsoleService/StartConsole -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: StartConsoleRequest{result_id { ticket: "e\001\000\000\000" } session_type: "python"}
+         response 0: StartConsoleResponse{result_id { ticket: "e\001\000\000\000" }}
+  1213ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/layouts" filter_glob: "*.json"}
+         response 0: ListItemsResponse{canonical_path: "/layouts"}
+  1216ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListFieldsRequest{}
+         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/ide_static" } type: "Table" } field_name: "ide_static" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_ticking" } type: "Table" } field_name: "ide_ticking" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_console_static" } type: "Table" } field_name: "ide_console_static" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_console_ti ... (727 chars)
+         response 1: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/ide_notebook_selected" } type: "Table" } field_name: "ide_notebook_selected" field_description: "query scope variable" application_id: "scope" }}
+         response 2: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/ide_notebook_static" } type: "Table" } field_name: "ide_notebook_static" field_description: "query scope variable" application_id: "scope" } updated { typed_ticket { ticket { ticket: "s/ide_notebook_selected" } type: "Table" } field_name: "ide_notebook_selected" field_description: "query scope variable" application_id: "scope" }}
+  1304ms ws-multiplex [stream 9] io.deephaven.proto.backplane.script.grpc.ConsoleService/SubscribeToLogs -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: LogSubscriptionRequest{}
+         response 0: LogSubscriptionData{micros: 1794777733868000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | Starting up io.deephaven.python.server.EmbeddedServer..."}
+         response 1: LogSubscriptionData{micros: 1794777733889000 log_level: "INFO" message: "main                 | i.d.c.ParsedProperties    | Loading dh-defaults.prop"}
+         response 2: LogSubscriptionData{micros: 1794777733928000 log_level: "INFO" message: "main                 | i.d.c.Configuration       | Configuration: configuration file is dh-defaults.prop"}
+         response 3: LogSubscriptionData{micros: 1794777733936000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | io.deephaven.python.server.EmbeddedServer: starting up"}
+         response ... 132 more ...
+         response 136: LogSubscriptionData{micros: 1794777753031000 log_level: "STDERR" message: "21:22:33.031 INFO  e.u.i.PeriodicUpdateGraph | DEFAULT: Minimal Update Graph Processor cycle times: 27.941ms / 4 cycles = 6.985ms/cycle average), safePointTime=0ms\n"}
+  1304ms ws-multiplex [stream 10] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetHeapInfo -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: GetHeapInfoRequest{}
+         response 0: GetHeapInfoResponse{max_memory: 1073741824 total_memory: 166723584 free_memory: 16673008}
+  2085ms ws-multiplex [stream 11] io.deephaven.proto.backplane.script.grpc.ConsoleService/AutoCompleteStream -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: AutoCompleteRequest{open_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/YVKrcKrhv28z7mlPzpUeb" language_id: "python" version: 1 } } console_id { ticket: "e\001\000\000\000" }}
+         request 1: AutoCompleteRequest{open_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://model/3" language_id: "python" version: 1 } } console_id { ticket: "e\001\000\000\000" }}
+         request 2: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://model/3" version: 2 } content_changes { range { start { } end { } } text: "f" } } console_id { ticket: "e\001\000\000\000" }}
+         request 3: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://model/3" version: 3 } content_changes { range { start { character: 1 } end { character: 1 } } text: "r" } } console_id { ticket: "e\001\000\000\000" }}
+         request ... 427 more ...
+         request 431: AutoCompleteRequest{close_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://model/4" } } console_id { ticket: "e\001\000\000\000" }}
+         response 0: AutoCompleteResponse{completion_items { items { start: 12 length: 3 label: "abs" kind: 3 detail: "abs(x: SupportsAbs[_T], /) -> _T" text_edit { range { start { line: 3 character: 12 } end { line: 3 character: 12 } } text: "abs" } sort_text: "00000" insert_text_format: 2 documentation { kind: "plaintext" value: "Return the absolute value of the argument." } } items { start: 12 length: 3 label: "all" kind: 3 detail: "all(iterable: Iterable[object], /) -> bool" text_edit { range { start { line: 3 character: 12 } end { line: 3 character: 12 } } text: "all" } sort_text: "00001" insert_text_format:  ... (105037 chars)
+
+==== new folder (at 2209ms) ====
+
+  2245ms ws-multiplex [stream 12] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  2342ms ws-multiplex [stream 13] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  2405ms ws-multiplex [stream 14] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks/" filter_glob: "ide_dir_mwicbznmqg"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  2412ms ws-multiplex [stream 15] io.deephaven.proto.backplane.grpc.StorageService/CreateDirectory -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: CreateDirectoryRequest{path: "/notebooks/ide_dir_mwicbznmqg"}
+         response 0: CreateDirectoryResponse{}
+  2496ms ws-multiplex [stream 16] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  2496ms ws-multiplex [stream 17] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+
+==== new notebook (at 2617ms) ====
+
+
+==== run selected (at 3276ms) ====
+
+  3496ms ws-multiplex [stream 18] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "from deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col(\'Sel\', [7, 8])])"}
+         response 0: ExecuteCommandResponse{changes { created { typed_ticket { ticket { ticket: "s/ide_notebook_selected" } type: "Table" } field_name: "ide_notebook_selected" field_description: "query scope variable" application_id: "scope" } } start_timestamp: 1794777752224296183 end_timestamp: 1794777752228434763}
+  3573ms ws-multiplex [stream 19] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchTableRequest{source_id { ticket { ticket: "s/ide_notebook_selected" } } result_id { ticket: "e\002\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\002\000\000\000" } } success: true is_static: true size: 2} schema_header: arrow Schema bodyLength=0 fields=[Sel:int] metadata={}
+  3776ms ws-multiplex [stream 20] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\002\000\000\000" } } result_id { ticket: "e\003\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\003\000\000\000" } } success: true is_static: true size: 2} schema_header: arrow Schema bodyLength=0 fields=[Sel:int] metadata={}
+  3829ms ws-multiplex [stream 21] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x03\x00\x00\x00' columns=[0] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Sel:int] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=8 rows=2 nodes=1 buffers=2; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0] added_rows={0-1} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}'] table_size=2; data_body=8 bytes}
+
+==== run (at 4047ms) ====
+
+  4164ms ws-multiplex [stream 22] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col\nide_notebook_static = new_table([int_col(\'Id\', [1, 2, 3, 4, 5]), string_col(\'Sym\', [\'AAPL\', \'MSFT\', \'GOOG\', \'AMZN\', \'OXHV\']), double_col(\'Price\', [101.5, 202.25, 303.125, 404.0, 505.75])])\nfrom deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col(\'Sel\', [7, 8])])"}
+         response 0: ExecuteCommandResponse{changes { created { typed_ticket { ticket { ticket: "s/ide_notebook_static" } type: "Table" } field_name: "ide_notebook_static" field_description: "query scope variable" application_id: "scope" } updated { typed_ticket { ticket { ticket: "s/ide_notebook_selected" } type: "Table" } field_name: "ide_notebook_selected" field_description: "query scope variable" application_id: "scope" } } start_timestamp: 1794777752850370071 end_timestamp: 1794777752855409711}
+  4202ms ws-multiplex [stream 23] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\002\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4202ms ws-multiplex [stream 24] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\003\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4202ms ws-multiplex [stream 25] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchTableRequest{source_id { ticket { ticket: "s/ide_notebook_selected" } } result_id { ticket: "e\004\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\004\000\000\000" } } success: true is_static: true size: 2} schema_header: arrow Schema bodyLength=0 fields=[Sel:int] metadata={}
+  4202ms ws-multiplex [stream 26] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchTableRequest{source_id { ticket { ticket: "s/ide_notebook_static" } } result_id { ticket: "e\005\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\005\000\000\000" } } success: true is_static: true size: 5} schema_header: arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}
+  4287ms ws-multiplex [stream 27] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\004\000\000\000" } } result_id { ticket: "e\006\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\006\000\000\000" } } success: true is_static: true size: 2} schema_header: arrow Schema bodyLength=0 fields=[Sel:int] metadata={}
+  4300ms ws-multiplex [stream 28] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x06\x00\x00\x00' columns=[0] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Sel:int] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=8 rows=2 nodes=1 buffers=2; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0] added_rows={0-1} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}'] table_size=2; data_body=8 bytes}
+  4431ms ws-multiplex [stream 29] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\005\000\000\000" } } result_id { ticket: "e\007\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\007\000\000\000" } } success: true is_static: true size: 5} schema_header: arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}
+  4444ms ws-multiplex [stream 30] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x07\x00\x00\x00' columns=[0, 1, 2] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Id:int, Sym:java.lang.String, Price:double] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=112 rows=5 nodes=3 buffers=7; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2] added_rows={0-4} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=5; data_body=112 bytes}
+
+==== save as (at 4745ms) ====
+
+  4855ms ws-multiplex [stream 31] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  4888ms ws-multiplex [stream 32] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks/" filter_glob: "ide_nb_mwicbznmqg.py"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  4911ms ws-multiplex [stream 33] io.deephaven.proto.backplane.grpc.StorageService/SaveFile -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: SaveFileRequest{allow_overwrite: true path: "/notebooks/ide_nb_mwicbznmqg.py" contents: "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col\nide_notebook_static = new_table([int_col(\'Id\', [1, 2, 3, 4, 5]), string_col(\'Sym\', [\'AAPL\', \'MSFT\', \'GOOG\', \'AMZN\', \'OXHV\']), double_col(\'Price\', [101.5, 202.25, 303.125, 404.0, 505.75])])\nfrom deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col(\'Sel\', [7, 8])])"}
+         response 0: SaveFileResponse{etag: "00c189a69bb49db03679280d4da367d2"}
+  4978ms ws-multiplex [stream 34] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 413 etag: "00c189a69bb49db03679280d4da367d2" } canonical_path: "/notebooks"}
+  4978ms ws-multiplex [stream 35] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 413 etag: "00c189a69bb49db03679280d4da367d2" } canonical_path: "/notebooks"}
+  4978ms ws-multiplex [stream 36] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 413 etag: "00c189a69bb49db03679280d4da367d2" } canonical_path: "/notebooks"}
+
+==== close and open (at 5112ms) ====
+
+  5268ms ws-multiplex [stream 37] io.deephaven.proto.backplane.grpc.StorageService/FetchFile -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FetchFileRequest{path: "/notebooks/ide_nb_mwicbznmqg.py"}
+         response 0: FetchFileResponse{contents: "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col\nide_notebook_static = new_table([int_col(\'Id\', [1, 2, 3, 4, 5]), string_col(\'Sym\', [\'AAPL\', \'MSFT\', \'GOOG\', \'AMZN\', \'OXHV\']), double_col(\'Price\', [101.5, 202.25, 303.125, 404.0, 505.75])])\nfrom deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col(\'Sel\', [7, 8])])" etag: "00c189a69bb49db03679280d4da367d2"}
+
+==== save (at 5504ms) ====
+
+  5568ms ws-multiplex [stream 38] io.deephaven.proto.backplane.grpc.StorageService/SaveFile -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: SaveFileRequest{allow_overwrite: true path: "/notebooks/ide_nb_mwicbznmqg.py" contents: "from deephaven import new_table; from deephaven.column import int_col, string_col, double_col\nide_notebook_static = new_table([int_col(\'Id\', [1, 2, 3, 4, 5]), string_col(\'Sym\', [\'AAPL\', \'MSFT\', \'GOOG\', \'AMZN\', \'OXHV\']), double_col(\'Price\', [101.5, 202.25, 303.125, 404.0, 505.75])])\nfrom deephaven import new_table; from deephaven.column import int_col; ide_notebook_selected = new_table([int_col(\'Sel\', [7, 8])])\n# mwicbznmqg"}
+         response 0: SaveFileResponse{etag: "9e9ed39e5943184e7a85cfe4ac169f48"}
+  5672ms ws-multiplex [stream 39] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } canonical_path: "/notebooks"}
+  5672ms ws-multiplex [stream 40] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } canonical_path: "/notebooks"}
+  5672ms ws-multiplex [stream 41] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } items { path: "/notebooks/ide_nb_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } canonical_path: "/notebooks"}
+
+==== rename (at 5772ms) ====
+
+  5895ms ws-multiplex [stream 42] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks/" filter_glob: "ide_renamed_mwicbznmqg.py"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  5906ms ws-multiplex [stream 43] io.deephaven.proto.backplane.grpc.StorageService/MoveItem -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: MoveItemRequest{old_path: "/notebooks/ide_nb_mwicbznmqg.py" new_path: "/notebooks/ide_renamed_mwicbznmqg.py"}
+         response 0: MoveItemResponse{}
+  5984ms ws-multiplex [stream 44] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_renamed_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  5984ms ws-multiplex [stream 45] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_renamed_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  5984ms ws-multiplex [stream 46] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_renamed_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+
+==== move (at 6118ms) ====
+
+  6230ms ws-multiplex [stream 47] io.deephaven.proto.backplane.grpc.StorageService/MoveItem -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: MoveItemRequest{old_path: "/notebooks/ide_renamed_mwicbznmqg.py" new_path: "/notebooks/ide_dir_mwicbznmqg/ide_renamed_mwicbznmqg.py"}
+         response 0: MoveItemResponse{}
+  6288ms ws-multiplex [stream 48] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6288ms ws-multiplex [stream 49] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6288ms ws-multiplex [stream 50] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+
+==== delete (at 6506ms) ====
+
+  6596ms ws-multiplex [stream 51] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6600ms ws-multiplex [stream 52] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks/ide_dir_mwicbznmqg"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg/ide_renamed_mwicbznmqg.py" type: FILE size: 426 etag: "9e9ed39e5943184e7a85cfe4ac169f48" } canonical_path: "/notebooks/ide_dir_mwicbznmqg"}
+  6899ms ws-multiplex [stream 53] io.deephaven.proto.backplane.grpc.StorageService/DeleteItem -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: DeleteItemRequest{path: "/notebooks/ide_dir_mwicbznmqg/ide_renamed_mwicbznmqg.py"}
+         response 0: DeleteItemResponse{}
+  6958ms ws-multiplex [stream 54] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6958ms ws-multiplex [stream 55] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6958ms ws-multiplex [stream 56] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{items { path: "/notebooks/ide_dir_mwicbznmqg" type: DIRECTORY } canonical_path: "/notebooks"}
+  6960ms ws-multiplex [stream 57] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks/ide_dir_mwicbznmqg"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks/ide_dir_mwicbznmqg"}
+  7249ms ws-multiplex [stream 58] io.deephaven.proto.backplane.grpc.StorageService/DeleteItem -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: DeleteItemRequest{path: "/notebooks/ide_dir_mwicbznmqg/"}
+         response 0: DeleteItemResponse{}
+  7315ms ws-multiplex [stream 59] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  7315ms ws-multiplex [stream 60] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
+  7315ms ws-multiplex [stream 61] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ListItemsRequest{path: "/notebooks"}
+         response 0: ListItemsResponse{canonical_path: "/notebooks"}
