@@ -240,6 +240,9 @@ written by Java's own `deephaven.parquet.write`, some by pyarrow.
 The harness has no comparison for a `char` column (`unsupported_type`), so the scenarios
 compare a char column through `(int)` in a `view`. The Rust tests compare the chars
 themselves with what Java read.
+It has none either for `BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime` and `byte[]`,
+so `parquet_read_more_types` compares those as text: the slice that ports them also
+needs `toString` of each in a formula.
 
 ## Differences from Java
 
