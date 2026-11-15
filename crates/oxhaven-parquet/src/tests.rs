@@ -177,7 +177,7 @@ fn compressed_pages_are_read() {
         assert_java_types(&read_default(name).unwrap());
     }
     // pyarrow's LZ4 is the framed codec, Java's the raw one
-    for codec in ["snappy", "gzip", "lz4"] {
+    for codec in ["snappy", "zstd", "gzip", "lz4"] {
         let name = format!("codec_{codec}.parquet");
         let table = read_default(&name).unwrap();
         let expected: Vec<_> = (0..20).map(|row| row.to_string()).collect();
@@ -189,15 +189,12 @@ fn compressed_pages_are_read() {
 
 #[test]
 fn a_codec_that_is_not_built_in_is_refused_by_name() {
-    let files = [
-        ("codec_zstd.parquet", "ZSTD"),
-        ("codec_brotli.parquet", "BROTLI"),
-    ];
-    for (name, codec) in files {
-        let (java, what) = not_ported(read_default(name));
-        assert!(java.ends_with("DeephavenCompressorAdapterFactory#getByName"));
-        assert!(what.contains(codec) && what.contains(name), "{what}");
-    }
+    let (java, what) = not_ported(read_default("codec_brotli.parquet"));
+    assert!(java.ends_with("DeephavenCompressorAdapterFactory#getByName"));
+    assert!(
+        what.contains("BROTLI") && what.contains("codec_brotli.parquet"),
+        "{what}"
+    );
     // no file of the test data has LZO pages
     let path = std::path::Path::new("lzo.parquet");
     let lzo = crate::location::check_codec(path, parquet::basic::Compression::LZO);

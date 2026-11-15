@@ -145,24 +145,26 @@ They wait for the column types, not for this design.
 
 | Crate | Licence | Why |
 | --- | --- | --- |
-| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend`, `snap` | Apache-2.0 | The reader |
+| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend`, `snap`, `zstd` | Apache-2.0 | The reader |
 | `lz4_flex` | MIT | `LZ4` and `LZ4_RAW` pages |
 | `flate2`, `crc32fast` | MIT or Apache-2.0 | `GZIP` pages |
 | `miniz_oxide`, `adler2`, `simd-adler32` | MIT or Zlib or Apache-2.0; 0BSD or MIT or Apache-2.0; MIT | The inflate behind `flate2` (its `rust_backend`; the `zlib-rs` backend that `parquet` takes by default is under the Zlib licence only) |
 | `seq-macro`, `twox-hash` | MIT or Apache-2.0; MIT | Needed by `parquet` |
 | `snap` | BSD-3-Clause | `SNAPPY` pages |
+| `zstd`, `zstd-safe` | BSD-3-Clause | `ZSTD` pages |
+| `zstd-sys` | BSD-3-Clause and BSD-2-Clause | The Zstandard C library, compiled when the crate is built |
+| `jobserver`, `pkg-config` | MIT or Apache-2.0 | Build dependencies of `zstd-sys` |
 
 `serde_json` (already in the workspace) reads the `deephaven` footer entry.
 
-`snap` is under the exception to the licence rule that `PORTING.md` records
-("Dependencies"): the owner accepted BSD-3-Clause for the Snappy, Zstandard and Brotli
-codec crates of `parquet` and what they depend on, on 2026-11-15, and for nothing else.
-Snappy is the default of Java's `write`, of pyarrow and of Spark.
-
-**Zstandard is not enabled**, because the exception does not cover what it needs. The
-`zstd` and `zstd-safe` crates are BSD-3-Clause, but `zstd-sys` 2.1.3, which holds the C
-library, declares `BSD-3-Clause AND BSD-2-Clause`: the decoders of the legacy formats in
-it are under the 2-clause licence. The owner decides that one.
+`snap`, `zstd`, `zstd-safe` and `zstd-sys` are under the exception to the licence rule
+that `PORTING.md` records ("Dependencies"): the owner accepted BSD-3-Clause for the
+Snappy, Zstandard and Brotli codec crates of `parquet` and what they depend on, on
+2026-11-15, and for nothing else. Snappy is the default of Java's `write`, of pyarrow
+and of Spark. `zstd-sys` 2.1.3 declares `BSD-3-Clause AND BSD-2-Clause`, because the
+decoders of the legacy formats in the C library are under the 2-clause licence; the
+owner accepted BSD-2-Clause for that crate alone, the same day. Building `zstd-sys`
+compiles the C library, so a build needs a C compiler.
 
 **Brotli is not enabled**, for parity and not for its licence. Its crates fit the
 exception (`brotli` is BSD-3-Clause and MIT, `brotli-decompressor` BSD-3-Clause or MIT,
@@ -175,8 +177,8 @@ needs an allowed difference in `PARITY.md` and that kind in the baseline, both p
 changes; with them it is one word in the workspace `Cargo.toml` and one line in
 `location.rs`.
 
-A file with a column chunk in Zstandard, Brotli or any other codec this build does not
-have (`LZO`) is refused by name when it is opened.
+A file with a column chunk in Brotli or any other codec this build does not have
+(`LZO`) is refused by name when it is opened.
 
 ## Errors
 
@@ -201,7 +203,7 @@ In:
 - `col_instructions` for renaming a column and for `unsigned_long_target`; `file_layout`;
   the errors Java raises for a missing file, an empty directory, a layout that does not
   fit, and `is_refreshing` with a single file.
-- Uncompressed, `SNAPPY`, `GZIP`, `LZ4` and `LZ4_RAW` pages.
+- Uncompressed, `SNAPPY`, `GZIP`, `ZSTD`, `LZ4` and `LZ4_RAW` pages.
 
 Out, each refused with `NotPorted`:
 
@@ -215,7 +217,6 @@ Out, each refused with `NotPorted`:
 | The types listed under "Which types" | New column types |
 | A column name that Java would change to make it legal (`a b`, `2x`, `int`) | `NameValidator#legalizeColumnName` |
 | A codec named in `col_instructions` | Codecs |
-| Zstandard | The owner's decision on the BSD-2-Clause licence of `zstd-sys` |
 | Brotli | A decision on parity: the reference fails to read it ("Dependencies") |
 
 Not done and not refused, because nothing observable depends on them yet: data indexes
@@ -249,7 +250,7 @@ written by Java's own `deephaven.parquet.write`, some by pyarrow.
 | `parquet_read_directory` | clean | Directories: the three layouts that read one, the order of files, hidden files, files with other columns, no rows |
 | `parquet_read_foreign` | clean | Files of another writer: unsigned integers, timestamps, `INT96`, row groups, Java's nulls, column instructions |
 | `parquet_read_errors` | clean | Fourteen reads that fail in Java |
-| `parquet_read_codecs` | differs | Snappy, read; Zstandard and Brotli, refused |
+| `parquet_read_codecs` | differs | Snappy and Zstandard, read; Brotli, refused |
 | `parquet_read_more_types` | differs | The types without a column type |
 | `parquet_read_partitioned` | differs | Partition directories, `_metadata`, refreshing directories |
 | `parquet_read_names` | differs | Names Java makes legal |

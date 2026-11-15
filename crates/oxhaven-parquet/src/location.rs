@@ -52,6 +52,7 @@ pub(crate) fn check_codec(path: &Path, codec: Compression) -> Result<(), ReadErr
         | Compression::SNAPPY
         | Compression::GZIP(_)
         | Compression::LZ4
+        | Compression::ZSTD(_)
         | Compression::LZ4_RAW => Ok(()),
         other => Err(not_ported(
             "io.deephaven.parquet.compress.DeephavenCompressorAdapterFactory#getByName",

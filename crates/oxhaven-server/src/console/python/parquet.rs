@@ -138,6 +138,7 @@ signed = read("{DATA}/uint64_big.parquet", col_instructions=[ColumnInstruction(
     column_name="V", parquet_column_name="V", unsigned_long_target=UnsignedLongTarget.SIGNED_LONG,
 )])
 snappy = read("{DATA}/types_snappy.parquet")
+zstd = read("{DATA}/codec_zstd.parquet")
 "#
         ));
         assert_eq!(changes.error, None);
@@ -147,6 +148,8 @@ snappy = read("{DATA}/types_snappy.parquet")
         assert_eq!(snappy[..3], expected[..3]);
         assert_eq!(snappy[3], None);
         assert_eq!(snappy[4..], expected[3..]);
+        let expected: Vec<_> = (0..20).map(Some).collect();
+        assert_eq!(ints(&*table("zstd"), "X"), expected);
         assert_eq!(table("flat").row_set().size(), 12);
         assert_eq!(ints(&*table("doubled"), "Y"), [0, 2, 4, 6].map(Some));
         assert_eq!(ints(&*table("one"), "X"), [0, 1, 2, 3, 4].map(Some));
@@ -182,10 +185,11 @@ snappy = read("{DATA}/types_snappy.parquet")
             failure(&format!(r#"read("{DATA}/reserved.parquet")"#)),
             "not ported yet: io.deephaven.api.util.NameValidator#legalizeColumnName: column name 'int'"
         );
-        let zstd = failure(&format!(r#"read("{DATA}/codec_zstd.parquet")"#));
+        let brotli = failure(&format!(r#"read("{DATA}/codec_brotli.parquet")"#));
         assert!(
-            zstd.starts_with("not ported yet: ") && zstd.contains("pages compressed with ZSTD"),
-            "{zstd}"
+            brotli.starts_with("not ported yet: ")
+                && brotli.contains("pages compressed with BROTLI"),
+            "{brotli}"
         );
         for (argument, java) in [
             ("table_definition={}", "Builder#setTableDefinition"),

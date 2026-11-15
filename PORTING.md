@@ -93,6 +93,10 @@ and `brotli` features of the `parquet` crate) and for the crates those depend on
 BSD-3-Clause only and these codecs only: no other licence, and no other use of a
 BSD-3-Clause crate. `docs/STORAGE.md`, "Dependencies", lists the crates it covers today.
 
+Within that exception, also approved by the owner on 2026-11-15: BSD-2-Clause is accepted for
+the `zstd-sys` crate alone, which holds the Zstandard C library and is under
+`BSD-3-Clause AND BSD-2-Clause`. No other crate may be under BSD-2-Clause.
+
 ## Verification every pull request must pass
 
 1. `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`,
