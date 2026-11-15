@@ -35,23 +35,48 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
 
-  python-console:
+  python-console-on:
     # The Python console embeds CPython, so it is a cargo feature that the rust job builds
-    # without: this job lints it and runs its unit tests, and oracle-replay runs a server
-    # that has it. See docs/CONSOLE.md.
+    # without. This job lints the server with the feature and runs the server's whole test
+    # suite, on the oldest and the newest Python the project supports (docs/CONSOLE.md,
+    # "Build and CI"). It installs no packages and names no environment: these tests may
+    # import only the standard library. What needs numpy or pandas is a script scenario,
+    # which oracle-replay runs in a pinned environment.
+    name: python-console (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: ${{ matrix.python }}
       - name: Let the test binary find the libpython it is linked against
         run: |
           libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
           echo "LD_LIBRARY_PATH=$libdir:${LD_LIBRARY_PATH:-}" >> "$GITHUB_ENV"
       - uses: Swatinem/rust-cache@v2
+        with:
+          # the build of PyO3 and of the server differs per Python
+          key: python-${{ matrix.python }}
       - run: cargo clippy -p oxhaven-server --features python --all-targets -- -D warnings
-      - run: "cargo test -p oxhaven-server --features python --lib -- console::"
+      - run: cargo test -p oxhaven-server --features python
+
+  python-console:
+    # One result under the name this job had before it ran on several Pythons, for whatever
+    # requires that name: it passes when every Python above passed.
+    needs: python-console-on
+    # Not `always()`: a cancelled run must not leave a failed check behind on the commit.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every Python passed
+        env:
+          RESULT: ${{ needs.python-console-on.result }}
+        run: test "$RESULT" = success
 
   oracle-replay:
     # Builds the server with its Python console, starts it, and compares it with the recorded
@@ -64,7 +89,10 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # This Python runs the harness (oracle/.venv is made from it) and is the one the
       # server embeds: ci-replay.sh builds with `--features python`, PyO3 takes `python3`
-      # from PATH, and the script puts its libpython on the server's library path.
+      # from PATH, and the script puts its libpython on the server's library path. The
+      # server's packages are those of oracle/.venv (VIRTUAL_ENV below), not whatever the
+      # runner's Python has: the versions the recordings were made with, here as on a
+      # developer's machine. See docs/CONSOLE.md, "The Python environment".
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -79,6 +107,7 @@ jobs:
         run: .venv/bin/python -m pytest -q
       - name: Replay the recorded Java results and run the client smokes
         env:
+          VIRTUAL_ENV: ${{ github.workspace }}/oracle/.venv
           ORACLE_GATE_OUT: ${{ runner.temp }}/oracle-replay
           ORACLE_GATE_TIMEOUT: "300"
         run: oracle/bin/ci-replay.sh

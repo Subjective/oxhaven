@@ -833,26 +833,21 @@ async fn refused_uploads_get_the_status_codes_of_java() {
 }
 
 #[tokio::test]
-async fn uploads_java_accepts_and_this_server_does_not() {
+async fn an_upload_to_a_scope_descriptor_is_a_variable_as_in_java() {
     let server = Server::start().await;
     // Java resolves `scope/x` with its query scope resolver and publishes the table as the
-    // variable `x`. There is no query scope here, so the route is unknown.
-    assert_eq!(
-        fixture_lines("refused_not_an_export.status"),
-        [
-            "DoPut OK",
-            "GetSchema DEADLINE_EXCEEDED",
-            "DoGet DEADLINE_EXCEEDED"
-        ]
-    );
+    // variable `x`. No export is made, so the reads of the export id wait for one.
     assert_eq!(
         refused(&server, "refused_not_an_export", 2008).await,
-        [
-            "DoPut FAILED_PRECONDITION",
-            "GetSchema DEADLINE_EXCEEDED",
-            "DoGet DEADLINE_EXCEEDED"
-        ]
+        fixture_lines("refused_not_an_export.status")
     );
+    let variable = server.state.scope.get("x").expect("the variable x");
+    assert!(variable.as_table().is_some());
+}
+
+#[tokio::test]
+async fn uploads_java_accepts_and_this_server_does_not() {
+    let server = Server::start().await;
     // Java renames the columns `a b` and `1x` to legal names and then fails every read of
     // the table. Renaming is not ported: the upload is refused and says so.
     assert_eq!(

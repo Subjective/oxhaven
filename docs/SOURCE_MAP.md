@@ -42,7 +42,7 @@ per primitive type and replaced by one generic implementation.
 | `engine/function` over vectors and arrays (`Numeric`, `Basic`, `Sort`), `engine/vector` methods in formulas | `oxhaven-expr::functions::vectors`, `oxhaven-engine::ops::select::ArrayFormula` | 5.6 |
 | `engine/tuple`, `engine/tuplesource` | Rust tuples and generic keys; not ported | |
 | `QueryCompiler*`, formula class generation, `engine/context` | not ported | |
-| `impl/locations`, `impl/dataindex`, `PartitionAwareSourceTable` | table-provider trait | 7.1 |
+| `impl/locations`, `sources/regioned`, `SourceTable`, `PartitionAwareSourceTable` | `oxhaven-engine::source` (`docs/STORAGE.md`); `impl/dataindex` not ported | 7.1 |
 
 ## Server and wire
 
@@ -68,7 +68,7 @@ per primitive type and replaced by one generic implementation.
 
 | Java | Oxhaven | Tasks |
 | --- | --- | --- |
-| `extensions/parquet` | Parquet provider | 7.1, 7.2 |
+| `extensions/parquet` | `oxhaven-parquet` | 7.1, 7.2 |
 | `extensions/csv` | CSV provider | 7.3 |
 | `extensions/kafka` | Kafka provider | 7.4, 7.5 |
 | `extensions/iceberg`, `jdbc`, `flight-sql`, `protobuf`, `json`, `s3` | out of scope for now | |

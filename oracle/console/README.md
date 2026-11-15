@@ -15,8 +15,11 @@ What a server with a Python console answers, on the Java reference and on Oxhave
 
 The probe covers `GetConsoleTypes`, `StartConsole`, `GetHeapInfo`, `ExecuteCommand` (tables
 created, replaced and removed, values that are not tables, output, four kinds of error),
-`FetchTable` of scope tickets, `BindTableToVariable`, `CancelCommand`, `CancelAutoComplete`,
-`AutoCompleteStream`, and beside them one `SubscribeToLogs` and one `ListFields` stream. It
+`FetchTable` of scope tickets, `BindTableToVariable`, the query scope (`ExportFromTicket`
+and `PublishFromTicket` with scope tickets, a variable set by a thread, scope variables in
+the formulas of Python and of a client, with the column types they give), `CancelCommand`,
+`CancelAutoComplete`, `AutoCompleteStream`, and beside them one `SubscribeToLogs` and one
+`ListFields` stream. It
 leaves variables in the query scope, so every run needs a server that was just started.
 
 Oxhaven has a console only when built with the `python` feature:

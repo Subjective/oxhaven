@@ -15,11 +15,16 @@
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
 
+mod checks;
+pub mod env;
+mod ops;
+mod parquet;
 #[cfg(test)]
 mod tests;
 
+use std::cell::RefCell;
 use std::ffi::CString;
-use std::sync::{Arc, OnceLock, PoisonError, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError, RwLock};
 
 use arrow::array::{ArrayRef, BooleanArray, Float64Array, Int32Array, Int64Array, StringArray};
 use oxhaven_column::FlatSource;
@@ -33,10 +38,11 @@ use oxhaven_proto::grpc::batch_table_request::Operation;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
 
 use super::logs::LogBuffer;
-use super::session::{Changes, Console, ScriptSession, Variable};
+use super::session::{Changes, Console, ScriptSession, CHECK_SCOPE_CHANGES_INTERVAL};
+use crate::app::FormulaValue;
 use crate::schema::java_type_name;
 use crate::session::{ExportError, ExportValue};
 use crate::table::run_local;
@@ -138,8 +144,37 @@ fn error_text(error: ExportError) -> String {
     }
 }
 
+thread_local! {
+    /// The variables a formula compiled on this thread may name, while a table operation
+    /// that Python code called runs on it: `None` for the globals of the session.
+    ///
+    /// Behavior: the scope stack of `io.deephaven.engine.util.PythonScopeJpyImpl`, which
+    /// `PythonDeephavenSession#pushScope` and `#popScope` fill
+    static CALLER_SCOPE: RefCell<Option<Py<PyDict>>> = const { RefCell::new(None) };
+}
+
+/// Makes `scope` the caller scope of this thread until it is dropped.
+struct CallerScope {
+    before: Option<Py<PyDict>>,
+}
+
+impl CallerScope {
+    fn enter(scope: Option<Py<PyDict>>) -> Self {
+        Self {
+            before: CALLER_SCOPE.replace(scope),
+        }
+    }
+}
+
+impl Drop for CallerScope {
+    fn drop(&mut self) {
+        CALLER_SCOPE.set(self.before.take());
+    }
+}
+
 /// Runs one table service operation, given in protobuf JSON form, on `sources`, which the
-/// operation's table references name by position.
+/// operation's table references name by position. A formula of the operation may name the
+/// variables of the code that called the package.
 #[pyfunction]
 fn table_op(
     py: Python<'_>,
@@ -149,6 +184,11 @@ fn table_op(
     let op = parse_operation(json).map_err(PyValueError::new_err)?;
     let tables: Vec<Arc<dyn Table>> = sources.iter().map(|handle| handle.table.clone()).collect();
     let runtime = runtime()?;
+    let scope: Option<Py<PyDict>> = py
+        .import("_oxhaven_bootstrap")?
+        .call_method0("caller_scope")?
+        .extract()?;
+    let _scope = CallerScope::enter(scope);
     py.detach(|| run_local(&runtime.context, op, &tables))
         .map(|table| TableHandle { table })
         .map_err(|error| PyRuntimeError::new_err(error_text(error)))
@@ -237,6 +277,9 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(table_op, &native)?)?;
         native.add_function(wrap_pyfunction!(new_table, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        ops::register(&native)?;
+        checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");
@@ -257,6 +300,71 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
     py.import("_oxhaven_bootstrap")
 }
 
+/// A Python object that is not a table, as the value of an export: what a scope ticket
+/// resolves to for a variable that holds a number, a list, a function or anything else.
+/// Java exports the Java object its conversion of the variable gives; clients can tell
+/// neither from the other, because no call accepts such an export.
+pub struct PythonObject(Py<PyAny>);
+
+/// The value of a variable as a client may open it; `None` for `None`.
+///
+/// Behavior: `PythonDeephavenSession#unwrapObject`
+fn export_of(value: &Bound<'_, PyAny>) -> Option<ExportValue> {
+    if value.is_none() {
+        return None;
+    }
+    Some(match value.cast::<TableHandle>() {
+        Ok(handle) => ExportValue::Table(handle.get().table.clone()),
+        Err(_) => ExportValue::object(PythonObject(value.clone().unbind())),
+    })
+}
+
+/// The value of a variable as a formula sees it.
+///
+/// Behavior: `PythonScopeJpyImpl#convert`; jpy's `PyObject#getObjectValue` gives a `bool`
+/// as `Boolean`, an `int` as the smallest of `Byte`, `Short`, `Integer` and `Long` that
+/// holds it, a `float` as `Double` and a `str` as `String`
+fn formula_value(value: &Bound<'_, PyAny>) -> FormulaValue {
+    if let Ok(value) = value.cast::<PyBool>() {
+        return FormulaValue::Boolean(value.is_true());
+    }
+    if value.is_instance_of::<PyInt>() {
+        return match value.extract::<i64>() {
+            Ok(value) => {
+                if let Ok(value) = i8::try_from(value) {
+                    FormulaValue::Byte(value)
+                } else if let Ok(value) = i16::try_from(value) {
+                    FormulaValue::Short(value)
+                } else if let Ok(value) = i32::try_from(value) {
+                    FormulaValue::Int(value)
+                } else {
+                    FormulaValue::Long(value)
+                }
+            }
+            Err(_) => FormulaValue::Other("an int beyond 64 bits".to_string()),
+        };
+    }
+    if value.is_instance_of::<PyFloat>() {
+        if let Ok(value) = value.extract::<f64>() {
+            return FormulaValue::Double(value);
+        }
+    }
+    if value.is_instance_of::<PyString>() {
+        return match value.extract::<String>() {
+            Ok(value) => FormulaValue::String(value),
+            Err(_) => FormulaValue::Other("a str that is not valid Unicode".to_string()),
+        };
+    }
+    if value.is_none() {
+        return FormulaValue::Other("None".to_string());
+    }
+    let type_name = value.get_type().name();
+    FormulaValue::Other(match type_name {
+        Ok(name) => format!("a Python {name}"),
+        Err(_) => "a Python object".to_string(),
+    })
+}
+
 /// The Python script session of a server.
 ///
 /// Behavior: `io.deephaven.integrations.python.PythonDeephavenSession`
@@ -266,12 +374,22 @@ pub struct PythonSession {
     helpers: Py<PyModule>,
     /// The global variables of the session.
     globals: Py<PyDict>,
+    /// The globals as they were when they were last looked at for changes. Whoever looks
+    /// holds the lock, a command for as long as it runs; the interpreter lock is taken
+    /// after it, never before.
+    ///
+    /// Behavior: `AbstractScriptSession#lastSnapshot`, and the monitor of the session that
+    /// `evaluateScript`, `observeScopeChanges` and `setVariable` synchronize on
+    snapshot: Mutex<Py<PyDict>>,
 }
 
 impl PythonSession {
-    /// Starts the interpreter if this process has none yet and creates a session with no
-    /// variables. From now on the `deephaven` package runs its operations in `context`.
+    /// Starts the interpreter if this process has none yet, in the environment that
+    /// [`env::initialize`] was given or else the one the process was started in, and
+    /// creates a session with no variables. From now on the `deephaven` package runs its
+    /// operations in `context`.
     pub fn new(context: OpContext, logs: Arc<LogBuffer>) -> Result<Self, String> {
+        env::interpreter()?;
         let runtime = Arc::new(Runtime { context, logs });
         *RUNTIME.write().unwrap_or_else(PoisonError::into_inner) = Some(runtime.clone());
         Python::attach(|py| {
@@ -280,57 +398,81 @@ impl PythonSession {
             Ok(Self {
                 runtime,
                 helpers: helpers.unbind(),
+                snapshot: Mutex::new(PyDict::new(py).unbind()),
                 globals: globals.unbind(),
             })
         })
         .map_err(|error: PyErr| format!("the Python session could not start: {error}"))
     }
 
-    /// What changed between two snapshots of the globals.
-    fn changes(
-        &self,
-        py: Python<'_>,
-        before: &Bound<'_, PyDict>,
-        after: &Bound<'_, PyDict>,
-    ) -> PyResult<Changes> {
-        type Handles<'py> = Vec<(String, PyRef<'py, TableHandle>)>;
-        let (created, updated, removed): (Handles, Handles, Handles) = self
+    /// What changed in the globals since `snapshot`, which becomes the globals of now.
+    ///
+    /// Behavior: `AbstractScriptSession#observeScopeChanges`,
+    /// `PythonDeephavenSession#createDiff`
+    fn observed(&self, py: Python<'_>, snapshot: &mut Py<PyDict>) -> PyResult<Changes> {
+        let after = self.globals.bind(py).copy()?;
+        let changed: Vec<(String, Bound<'_, PyAny>, Bound<'_, PyAny>)> = self
             .helpers
             .bind(py)
-            .call_method1("changes", (before, after))?
+            .call_method1("changes", (snapshot.bind(py), &after))?
             .extract()?;
-        let variables = |handles: Handles, keep_value: bool| {
-            handles
-                .into_iter()
-                .map(|(name, handle)| Variable {
-                    name,
-                    // Behavior: `AbstractScriptSession#getTypeNameIfDisplayable`
-                    type_name: "Table".to_string(),
-                    value: keep_value.then(|| ExportValue::Table(handle.table.clone())),
-                })
-                .collect()
-        };
-        Ok(Changes {
-            created: variables(created, true),
-            updated: variables(updated, true),
-            removed: variables(removed, false),
-            error: None,
-        })
+        let mut changes = Changes::default();
+        for (name, from, to) in changed {
+            changes.note(&name, export_of(&from).as_ref(), export_of(&to).as_ref());
+        }
+        *snapshot = after.unbind();
+        Ok(changes)
     }
 
-    fn run(&self, py: Python<'_>, code: &str) -> PyResult<Changes> {
-        let globals = self.globals.bind(py);
-        let before = globals.copy()?;
+    fn run(&self, py: Python<'_>, code: &str, snapshot: &mut Py<PyDict>) -> PyResult<Changes> {
         let error: Option<String> = self
             .helpers
             .bind(py)
-            .call_method1("run", (code, globals))?
+            .call_method1("run", (code, self.globals.bind(py)))?
             .extract()?;
-        let mut changes = self.changes(py, &before, &globals.copy()?)?;
+        let mut changes = self.observed(py, snapshot)?;
         // Java: "java.lang.RuntimeException: Error in Python interpreter:", the same
         // traceback, and the stack of the JVM
         changes.error = error.map(|trace| format!("Error in Python interpreter:\n{trace}"));
         Ok(changes)
+    }
+
+    /// The variables a formula compiled now on this thread may name: those of the code
+    /// that called the table operation running on this thread, or the globals.
+    ///
+    /// Behavior: `PythonScopeJpyImpl#currentScope`
+    fn current_scope<'py>(&self, py: Python<'py>) -> Bound<'py, PyDict> {
+        CALLER_SCOPE
+            .with_borrow(|scope| scope.as_ref().map(|scope| scope.bind(py).clone()))
+            .unwrap_or_else(|| self.globals.bind(py).clone())
+    }
+
+    /// The value `value` has as a Python global: a table as the package's `Table`.
+    ///
+    /// Behavior: `PythonDeephavenSession#setVariable`, which wraps a Java object for
+    /// Python; `deephaven._wrapper` then gives Python code its wrapper class
+    fn wrap<'py>(&self, py: Python<'py>, value: ExportValue) -> PyResult<Bound<'py, PyAny>> {
+        match &value {
+            ExportValue::Table(table) => {
+                let handle = Py::new(
+                    py,
+                    TableHandle {
+                        table: table.clone(),
+                    },
+                )?;
+                py.import("deephaven.table")?
+                    .getattr("Table")?
+                    .call1((handle,))
+            }
+            ExportValue::Object(_) => match value.downcast_ref::<PythonObject>() {
+                Some(object) => Ok(object.0.bind(py).clone()),
+                // Java makes any Java object a Python variable through jpy
+                None => Err(PyRuntimeError::new_err(
+                    "not ported: io.deephaven.engine.util.PythonObjectWrapper#wrap of an \
+                     object that is neither a table nor a Python object",
+                )),
+            },
+        }
     }
 }
 
@@ -343,50 +485,99 @@ impl ScriptSession for PythonSession {
     /// Behavior: `PythonDeephavenSession#evaluate`, `AbstractScriptSession#evaluateScript`
     fn evaluate(&self, code: &str) -> Changes {
         tracing::info!("Evaluating command: {code}");
+        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
         locked(self.runtime.context.graph.as_ref(), || {
-            Python::attach(|py| self.run(py, code)).unwrap_or_else(|error| Changes {
+            Python::attach(|py| self.run(py, code, &mut snapshot)).unwrap_or_else(|error| Changes {
                 error: Some(format!("the Python session failed: {error}")),
                 ..Default::default()
             })
         })
     }
 
+    /// Behavior: `AbstractScriptSession#observeScopeChanges`
+    fn observe(&self) -> Changes {
+        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
+        Python::attach(|py| self.observed(py, &mut snapshot)).unwrap_or_else(|error| {
+            tracing::error!("the variables of the Python session could not be read: {error}");
+            Changes::default()
+        })
+    }
+
     /// Behavior: `PythonDeephavenSession#setVariable`
-    fn put_table(&self, name: &str, table: Arc<dyn Table>) -> Result<Changes, String> {
+    fn put(&self, name: &str, value: ExportValue) -> Result<Changes, String> {
+        let mut snapshot = self.snapshot.lock().unwrap_or_else(PoisonError::into_inner);
         Python::attach(|py| {
-            let globals = self.globals.bind(py);
-            let before = globals.copy()?;
-            let handle = Py::new(py, TableHandle { table })?;
-            let wrapped = py
-                .import("deephaven.table")?
-                .getattr("Table")?
-                .call1((handle,))?;
-            globals.set_item(name, wrapped)?;
-            self.changes(py, &before, &globals.copy()?)
+            let wrapped = self.wrap(py, value)?;
+            self.globals.bind(py).set_item(name, wrapped)?;
+            self.observed(py, &mut snapshot)
         })
         .map_err(|error: PyErr| format!("the variable {name} could not be set: {error}"))
+    }
+
+    /// Behavior: `PythonDeephavenSession#getVariable`, `#unwrapObject`
+    fn get(&self, name: &str) -> Option<ExportValue> {
+        Python::attach(|py| {
+            let value = self.globals.bind(py).get_item(name).ok()??;
+            let unwrapped = self
+                .helpers
+                .bind(py)
+                .call_method1("unwrap", (value,))
+                .ok()?;
+            export_of(&unwrapped)
+        })
+    }
+
+    /// Behavior: `PythonDeephavenSession#getVariableNames`
+    fn names(&self) -> Vec<String> {
+        let mut names: Vec<String> = Python::attach(|py| {
+            let globals = self.globals.bind(py);
+            globals
+                .keys()
+                .iter()
+                .filter_map(|name| name.extract().ok())
+                .collect()
+        });
+        names.sort_unstable();
+        names
+    }
+
+    /// Fails, as every formula does in Java, while a variable holds an `int` beyond 64
+    /// bits: Java converts every variable for every formula, and that conversion fails.
+    ///
+    /// Behavior: `PythonDeephavenSession#getAllValues`
+    fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
+        Python::attach(|py| {
+            let scope = self.current_scope(py);
+            for (_, value) in scope.iter() {
+                if value.is_instance_of::<PyInt>() && value.extract::<i64>().is_err() {
+                    return Err("OverflowError: int too big to convert".to_string());
+                }
+            }
+            names
+                .iter()
+                .map(|name| match scope.get_item(*name) {
+                    Ok(value) => Ok(value.as_ref().map(formula_value)),
+                    Err(error) => Err(error.to_string()),
+                })
+                .collect()
+        })
     }
 }
 
 /// Gives `state` a Python console: starts the interpreter and makes a new Python session
-/// the script session of the server.
+/// the script session of the server and the holder of its query scope. Must be called
+/// inside a tokio runtime, which looks at the variables for changes from then on.
 pub fn start(state: &mut ServerState) -> Result<(), String> {
     let session = PythonSession::new(state.op_context(), state.logs.clone())?;
-    state.console = Some(Console::new(
-        Arc::new(session),
-        state.scope.clone(),
-        state.applications.clone(),
-    ));
+    let console = Console::new(Arc::new(session), state.applications.clone());
+    state.scope.hold(console.clone());
+    console.watch(CHECK_SCOPE_CHANGES_INTERVAL);
+    state.console = Some(console);
     Ok(())
 }
 
 /// The version of the interpreter the server embeds, as `platform.python_version()` gives
 /// it.
 pub fn python_version() -> Result<String, String> {
-    Python::attach(|py| {
-        py.import("platform")?
-            .call_method0("python_version")?
-            .extract()
-    })
-    .map_err(|error: PyErr| error.to_string())
+    env::interpreter().map(|interpreter| interpreter.version)
 }

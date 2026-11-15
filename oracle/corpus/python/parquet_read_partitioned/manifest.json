@@ -1,0 +1,168 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_partitioned",
+  "scenario_sha256": "222662d51defca0aeb8608647d8a4b34f30018c35deabed2f15b53830399a35f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "key_value",
+      "file": "step000.key_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "metadata",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "key_value",
+      "file": "step001.key_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "by_layout",
+      "file": "step001.by_layout.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "metadata",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "key_value",
+      "file": "step002.key_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "by_layout",
+      "file": "step002.by_layout.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "metadata",
+      "file": "step002.metadata.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "key_value",
+      "file": "step003.key_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "by_layout",
+      "file": "step003.by_layout.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "metadata",
+      "file": "step003.metadata.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "metadata_file",
+      "file": "step003.metadata_file.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "key_value",
+      "file": "step004.key_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "by_layout",
+      "file": "step004.by_layout.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "metadata",
+      "file": "step004.metadata.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "metadata_file",
+      "file": "step004.metadata_file.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "refreshing",
+      "file": "step004.refreshing.arrow",
+      "rows": 7
+    }
+  ]
+}

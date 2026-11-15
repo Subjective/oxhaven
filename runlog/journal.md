@@ -538,3 +538,46 @@ PR 69 (second parity fixes) merged on green, on a head that included PR 67.
 ## 2026-11-15 08:20 UTC
 
 Task 6.4 (Python table core) came back with the gate red by design: about a quarter of the listed Python methods need engine operators no task owned (head_pct family, rename/move columns, restrict_sort_to, where of an OR, merge_sorted of static tables, attributes). The agent refused to change protected baseline lines on its own and set the task to blocked, which is the right behaviour. Decision (mine, for owner review): record the four `table_*` lines as `differs` with the real failure kinds under the `oracle-change` label, and open task 4.16 for the operators, whose gate is promoting those lines to clean. Reason: the lines said `missing` because the Python names did not exist; they now exist and refuse honestly, and the baseline should say what is true. Size verdict for 6.4: the Python surface fit, the planning missed engine dependencies.
+
+## 2026-11-15 08:24 UTC
+
+PRs 70 (Python environment) and 72 (query scope) merged on green. PR 71 (Python table core) conflicts with both in `console/python/mod.rs`; its author is merging main and rerunning the gate. Three console tasks ran in parallel over the same module file: acceptable cost (one conflict round), but the next Python API tasks get distinct files per task.
+
+## 2026-11-15 08:45 UTC
+
+PR 73 opened (block row set). Measured: the contract RowSet costs O(ranges) for size, get, find and single-key adds (adding one key to a 2M-range set takes 64 ms); the block row set is 100 to 30000 times faster on those and uses 1 MB instead of 32 MB, and is slower on range walks and unaligned shifts. It is not the engine row set yet: swapping it changes `RowSet::ranges` in the contracts (about 35 callers). Decision: do the swap as its own contract-change task (7.7b) once the engine branches in flight (update_by count-where, table shape operators) have merged, to avoid a workspace-wide conflict. Owner review item: the contract change and the performance trade-offs in docs/ROWSET.md.
+
+## 2026-11-15 08:54 UTC
+
+PR 74 merged on green: every replay scenario is clean (83 of 83), every client smoke clean (31 of 31), and every `UpdateBySpec` operator is ported. What the gate does not show: the `unported!` refusals listed in the pull requests, the Python script scenarios (3 of 21 clean, in progress) and the two open owner questions from the fuzzer (failed tables keep serving in Java; one as-of join incremental difference).
+
+## 2026-11-15 08:58 UTC
+
+PR 73 (block row set) merged on green. Its checked head had PR 71 but not PR 74; merged anyway because the change is a self-contained module nothing uses and PR 74 touches no row set or contract code. The main push run is the check on the combined tree.
+
+## 2026-11-15 09:40 UTC
+
+PR 75 (Python aggregations, joins, update_by) and PR 76 (Parquet read, first slice) opened. Owner decision recorded for the summary: Snappy, Zstandard and Brotli decoding need BSD-3-Clause crates (`snap`, `zstd`, `brotli`), outside the Apache-2.0/MIT rule; Snappy is the default codec Java writes, so Deephaven-written Parquet files are refused until Josh decides. Missing engine pieces found by the Python tasks, for a follow-up task: partition aggregation, aggBy initial groups, count_where with no filter, keyed transpose, range_join with no aggregation, multi_join with no key.
+
+## 2026-11-15 09:42 UTC
+
+PR 75 merged. Its head showed one red check, `python-console`, from the run that the label event cancelled seconds after the pull request opened; the full run that replaced it on the same commit passed every job including `python-console`. The aggregate job added in PR 70 reports failure when its matrix jobs are cancelled, so every labelled pull request shows a stale red mark. To fix in the next CI change: the aggregate job should not run (or should report cancelled) when the run is cancelled.
+
+## 2026-11-15 09:44 UTC: Parquet read merged (PR 76); CI fix for the stale check open (PR 77)
+
+PR 76 merged on a green run whose head contained PR 75. Python scripts are now 16 of 34 clean
+(nine `parquet_read_*` scenarios added, five clean). Still for owner review: `docs/STORAGE.md`,
+and whether Snappy, Zstandard and Brotli may be enabled (their crates are BSD-3-Clause, and
+Snappy is what Java writes by default).
+
+PR 77 changes the `python-console` aggregate job from `always()` to `!cancelled()`, so the run
+that a label event cancels no longer leaves a failed check on the commit.
+
+## 2026-11-15 18:52 UTC: Usage limit stop, 09:46 to 18:52 UTC
+
+All four running agents (0.15 fuzz coverage, 6.14 console logs and cancel, 4.16 table shape
+operators, 6.8 Python dtypes) stopped at about 09:46 UTC on the model usage limit, and the run
+was idle for nine hours until the owner reset it. The machine restarted in between, so servers
+and builds were lost; the worktrees and pushed branches were intact (one uncommitted file in
+4.16, one in 6.14, six unpushed commits in 6.14). All four were resumed in their existing
+context rather than restarted. Cost of the stop: nine hours of wall time, no lost work found.

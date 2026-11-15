@@ -15,8 +15,10 @@
 //! - The ticket `a/my_app/f/trades` resolves to the value wherever a ticket is accepted, for
 //!   example as the source of `TableService/FetchTable` ([`ApplicationTicketResolver`]).
 //!
-//! A [`Scope`] holds the variables that tickets of the form `s/<name>` name. Nothing lists
-//! them yet: Java lists the variables of its script session, and this server has none.
+//! A [`Scope`] holds the variables that tickets of the form `s/<name>` name and that a
+//! formula may name ([`ScopedCompiler`]). On a server with a script session they are the
+//! session's variables ([`ScopeHolder`]), and the console lists those a client can open
+//! under the application id `scope`.
 //!
 //! [`demo`] is a built-in application with the two tables of the web IDE acceptance test.
 
@@ -32,4 +34,7 @@ mod tests;
 pub use fields::{Application, ApplicationError, Applications, FieldUpdates};
 pub use grpc::ApplicationGrpc;
 pub use resolver::{application_field_ticket, ApplicationTicketResolver, APPLICATION_TICKET_ROUTE};
-pub use scope::{scope_ticket, Scope, ScopeTicketResolver, SCOPE_TICKET_ROUTE};
+pub use scope::{
+    scope_ticket, FormulaValue, Scope, ScopeHolder, ScopeTicketResolver, ScopedCompiler,
+    SCOPE_DESCRIPTOR_ROUTE, SCOPE_TICKET_ROUTE,
+};

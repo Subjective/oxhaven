@@ -88,7 +88,8 @@ impl FlightGrpc {
 
     /// Answers a unary call with something computed from the flight info of the table a
     /// descriptor names, once that table is exported. Exports and shared tickets can be
-    /// named by a descriptor; the scope and application resolvers have no route yet.
+    /// named by a descriptor, and so can scope variables; the application resolver has no
+    /// route yet.
     ///
     /// Behavior: `FlightServiceGrpcImpl#getFlightInfo`, `#getSchema`, and
     /// `flightInfoFor` of `io.deephaven.server.session.ExportTicketResolver` and
