@@ -57,7 +57,7 @@ per primitive type and replaced by one generic implementation.
 | `server/config`, `server/browserstreaming` | `oxhaven-server::config`, `::transport` | 2.6 |
 | `server/console` | `oxhaven-server::console` | 6.1 (`6.1-console-design`), 6.2, 6.13 to 6.15 |
 | `server/object`, `plugin/` | `oxhaven-server::object` | 7.10, 7.11 |
-| `server/notebook` (storage service) | `oxhaven-server::storage` | 6.1 (`6.1-ide-services`) |
+| `server/notebook` (storage service) | `oxhaven-server::storage` | 6.1 (`6.1-ide-services`), 6.17 |
 | `server/hierarchicaltable` | `oxhaven-server::hierarchical` | 7.8, 7.9 |
 | `server/partitionedtable` | `oxhaven-server::partitioned` | 7.6 |
 | `server/appmode` | `oxhaven-server::application` | 6.18 |
