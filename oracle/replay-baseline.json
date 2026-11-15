@@ -1,12 +1,12 @@
 {
  "format": 1,
  "replay": {
-  "agg_all_by": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["distinct_by_key"], "why": "no gRPC adapter for the aggregations distinct and group"},
+  "agg_all_by": {"state": "clean"},
   "agg_by_avg": {"state": "clean"},
   "agg_by_int_overflow": {"state": "clean"},
   "agg_by_min_max_first_last": {"state": "clean"},
   "agg_by_no_keys": {"state": "clean"},
-  "agg_by_sets": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED", "failure_unexpected:UNIMPLEMENTED"], "tables": ["by_bool", "by_key", "count_where_unknown", "formula_bad", "no_key", "of_empty", "of_empty_by_key", "unique_sentinel"], "why": "no gRPC adapter for the aggregations count_where, distinct, formula and group; unique with a non-unique sentinel other than null is not ported"},
+  "agg_by_sets": {"state": "differs", "kinds": ["failure_code:UNIMPLEMENTED", "failure_unexpected:UNIMPLEMENTED"], "tables": ["by_key", "formula_bad", "no_key", "of_empty", "of_empty_by_key"], "why": "no gRPC adapter for the aggregations count_where, distinct, formula and group; unique with a non-unique sentinel other than null is not ported"},
   "agg_by_statistics": {"state": "clean"},
   "agg_by_sum_count": {"state": "clean"},
   "aj_int_keys": {"state": "clean"},
