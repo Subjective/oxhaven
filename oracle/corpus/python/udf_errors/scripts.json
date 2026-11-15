@@ -1,0 +1,149 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_int",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_int",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_float",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_str",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_bool",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_int",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_int",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_nothing",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : takes_list",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : TypeError: takes_int() takes 1 positional argument but 2 were given",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : TypeError: takes_int() missing 1 required positional argument: 'x'",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 11,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : ValueError: no 0",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 12,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table select operation failed. : ValueError: no 0",
+      "operation": "table select operation failed."
+    },
+    {
+      "step": 13,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : ValueError: no 0",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 14,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : java.lang.RuntimeException: Invalid condition filter expression type: boolean required.",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 15,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : java.lang.NullPointerException: Cannot invoke \"java.lang.Boolean.booleanValue()\" because the return value of \"io.deephaven.engine.util.PyCallableWrapperJpyImpl.call(Object[])\" is null",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 16,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : java.lang.NullPointerException: Cannot invoke \"java.lang.Boolean.booleanValue()\" because the return value of \"io.deephaven.engine.table.impl.lang.QueryLanguageFunctionUtils.not(java.lang.Boolean)\" is null",
+      "operation": "table where operation failed."
+    },
+    {
+      "step": 17,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot find method hidden(int)",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 18,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot find method no_such_function(int)",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 19,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Character (java.lang.String and java.lang.Character are in module java.base of loader 'bootstrap')",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 20,
+      "outcome": "ok"
+    }
+  ]
+}
