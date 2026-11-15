@@ -724,3 +724,13 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Merged pull request 87 (6.10, Python input tables) on six green checks.
 - Merged pull request 88 (4.17, fuzzer findings) on six green checks, on a head containing pull request 87.
 - 7.2 (Parquet write) reported after 63 minutes; pull request 89 opened. Follow-up task needed: partitioned writes, _metadata files and index files, alongside partitioned reads.
+
+## 2026-11-15 22:15 UTC
+
+- 6.17 (IDE flows) reported after 55 minutes; pull request 90 opened and held. My brief
+  told the agent a client path must not escape the storage root through symlinks; Java
+  does let it escape, so the check is a difference from Java that PARITY.md does not
+  allow yet. Asked the owner on a decision card. Lesson: when a brief asks for behaviour
+  stricter than Java, say in the brief that it needs a parity entry and a ruling.
+- Open: the `reconnect` route failed once in 12 runs (click timeout at the console
+  input), cause not found.
