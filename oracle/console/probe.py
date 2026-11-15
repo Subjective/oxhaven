@@ -13,7 +13,8 @@ figures by `<n>`, error ids by `<id>`; the lines of a Java stack trace in an err
 are left out. A server stream is cancelled at the end (`OPEN`). The two streams that run
 beside the commands are printed after them: of the log, the records of level `STDOUT` and
 the `STDERR` records that start with `[probe]` (Java's `STDERR` also carries its own log);
-of the field changes, one line per change. The script waits after each command so that every
+of the server's own log, the records that hold `[probe-log]`, without the names of the
+thread and the logger; of the field changes, one line per change. The script waits after each command so that every
 change is sent by itself. The sequence leaves variables in the query scope, so use a server
 that was just started.
 """
@@ -47,7 +48,10 @@ SETTLE = 0.4
 PSK_AUTH_TYPE = "io.deephaven.authentication.psk.PskAuthenticationHandler"
 
 VOLATILE = [
-    (re.compile(r"(start_timestamp|end_timestamp|micros): \d+"), r"\1: <ts>"),
+    (
+        re.compile(r"(start_timestamp|end_timestamp|micros|last_seen_log_timestamp): \d+"),
+        r"\1: <ts>",
+    ),
     (re.compile(r"(max_memory|total_memory|free_memory): \d+"), r"\1: <n>"),
     (re.compile(r"Details Logged w/ID '[0-9a-f-]+'"), "Details Logged w/ID '<id>'"),
     (re.compile(r"0x[0-9a-f]{6,}"), "0x<addr>"),
@@ -221,6 +225,10 @@ def main() -> int:
             last_seen_log_timestamp=since, levels=["STDOUT", "STDERR"]
         ),
     )
+    server_log, server_log_status, server_log_cancel = server.open_stream(
+        "ConsoleService/SubscribeToLogs",
+        console_pb2.LogSubscriptionRequest(last_seen_log_timestamp=since, levels=["INFO"]),
+    )
     fields, fields_status, fields_cancel = server.open_stream(
         "ApplicationService/ListFields", application_pb2.ListFieldsRequest()
     )
@@ -391,6 +399,30 @@ def main() -> int:
     print_columns("the columns of the function's table", fetched)
     execute(server, "a formula that negates a variable", console, "neg = t.update('Y = -xi')")
     execute(server, "a formula that names a list", console, "lst = [1, 2]\nbad = t.update('Y = lst')")
+    execute(server, "a command the server logs", console, "logged = 1  # [probe-log]")
+
+    # A command whose call the client cancels while it runs, and the command after it.
+    code = "import time\nran_on = False\ntime.sleep(3)\nran_on = True"
+    request = console_pb2.ExecuteCommandRequest(console_id=console, code=code)
+    method = server.head("a command whose call is cancelled", "ConsoleService/ExecuteCommand", request)
+    call = method.future(request, metadata=server.metadata)
+    time.sleep(0.5)
+    call.cancel()
+    try:
+        call.result()
+        print("status: OK")
+    except grpc.FutureCancelledError:
+        print("status: cancelled by the client after 0.5 seconds")
+    except grpc.RpcError as error:
+        print(f"status: {error.code().name}: {scrub(error.details() or '')!r}")
+    print()
+    execute(
+        server,
+        "the command after the cancelled one",
+        console,
+        "print('the cancelled command ran to its end:', ran_on)",
+    )
+
     server.unary(
         "cancel command",
         "ConsoleService/CancelCommand",
@@ -458,6 +490,7 @@ def main() -> int:
     print()
 
     logs_cancel()
+    server_log_cancel()
     fields_cancel()
     print("== what the commands printed")
     print("call: ConsoleService/SubscribeToLogs")
@@ -465,6 +498,18 @@ def main() -> int:
     for message in logs:
         if message.log_level == "STDOUT" or message.message.startswith("[probe]"):
             print(f"message: {one_line(message)}")
+    print()
+    print("== what the server logged of the marked command")
+    print("call: ConsoleService/SubscribeToLogs")
+    print(f"status: {server_log_status[0]}")
+    for message in server_log:
+        if "[probe-log]" in message.message:
+            # thread | logger | text: the names differ, the widths and the text do not
+            thread, logger, text = message.message.split(" | ", 2)
+            print(
+                f"record: log_level: {message.log_level!r} thread: {len(thread)} characters "
+                f"logger: {len(logger)} characters text: {text!r}"
+            )
     print()
     print("== field changes seen by a listener during the commands")
     print("call: ApplicationService/ListFields")
@@ -481,6 +526,33 @@ def main() -> int:
         session_pb2.ReleaseRequest(id=console),
     )
     execute(server, "execute on the released console", console, "x = 1")
+
+    # The log stream of a session ends when the session does.
+    other = Server(args.address, args.psk, args.listen)
+    request = console_pb2.LogSubscriptionRequest(
+        last_seen_log_timestamp=int(time.time() * 1_000_000), levels=["STDOUT"]
+    )
+    method = other.head("the log stream of a session that is closed", "ConsoleService/SubscribeToLogs", request)
+    stream = method(request, metadata=other.metadata)
+    ended = []
+
+    def read_to_the_end():
+        try:
+            for _ in stream:
+                pass
+            ended.append("OK")
+        except grpc.RpcError as error:
+            ended.append(f"{error.code().name}: {scrub(error.details() or '')!r}")
+
+    reader = threading.Thread(target=read_to_the_end, daemon=True)
+    reader.start()
+    time.sleep(0.5)
+    other.stubs["SessionService"].CloseSession(
+        session_pb2.HandshakeRequest(), metadata=other.metadata, timeout=CALL_TIMEOUT
+    )
+    reader.join(5)
+    print(f"status: {ended[0] if ended else 'OPEN'}")
+    print()
     return 0
 
 

@@ -1,0 +1,68 @@
+{
+  "format": 2,
+  "scenario": "convert_numpy",
+  "scenario_sha256": "769fc52d29c96a3b78b17d148cb139015c1f5bbfe8431683b09d3d283b0cc2e7",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "longs",
+      "file": "step000.longs.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "doubles",
+      "file": "step000.doubles.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "floats",
+      "file": "step000.floats.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "strings",
+      "file": "step000.strings.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "bools",
+      "file": "step000.bools.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "instants",
+      "file": "step000.instants.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "chars",
+      "file": "step000.chars.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "single",
+      "file": "step000.single.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "no_rows",
+      "file": "step000.no_rows.arrow",
+      "rows": 0
+    }
+  ]
+}

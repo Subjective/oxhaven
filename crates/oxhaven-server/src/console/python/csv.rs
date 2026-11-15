@@ -5,11 +5,11 @@
 //! `deephaven.csv.read` and [`write_csv`] with those of `deephaven.csv.write`, and the
 //! work is `oxhaven_csv::read` and `oxhaven_csv::write` (`docs/CSV.md`).
 
-use oxhaven_contracts::graph::locked;
 use oxhaven_csv::{ColumnSpec, CsvError, Parser, ReadOptions};
 use pyo3::exceptions::{PyNotImplementedError, PyOSError, PyValueError};
 use pyo3::prelude::*;
 
+use super::ops::{failure, guarded};
 use super::TableHandle;
 
 /// The Python exception of a failed read or write; `deephaven.csv` wraps it in a
@@ -95,7 +95,8 @@ pub(super) fn read_csv(
 }
 
 /// Writes `columns` of `source` (every column for none) to the CSV file at `path`, read
-/// under the update graph's shared lock if the table is refreshing. `zone` is the id of
+/// under the update graph's shared lock if the table is refreshing, with the interpreter
+/// lock released. `zone` is the id of
 /// the server's time zone, in which Java writes an instant.
 ///
 /// Behavior: `deephaven.csv.write`, which calls
@@ -109,19 +110,12 @@ pub(super) fn write_csv(
     zone: &str,
 ) -> PyResult<()> {
     let table = source.table.clone();
-    let graph = if table.is_refreshing() {
-        table.update_graph()
-    } else {
-        None
-    };
-    py.detach(|| {
-        let write = || oxhaven_csv::write(table.as_ref(), path, &columns, zone);
-        match &graph {
-            Some(graph) => locked(graph.as_ref(), write),
-            None => write(),
-        }
-    })
-    .map_err(exception)
+    let written = py.detach(|| {
+        guarded(std::slice::from_ref(&table), || {
+            Ok(oxhaven_csv::write(table.as_ref(), path, &columns, zone))
+        })
+    });
+    written.map_err(failure)?.map_err(exception)
 }
 
 #[cfg(test)]

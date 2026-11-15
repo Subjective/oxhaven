@@ -666,3 +666,31 @@ the interpreter's own thread, which is where the lock is held.
 The console agent saw 1.6 GB free while six agents had build directories and replay runs
 alive (each about 3 to 4 GB of target plus a venv). Nothing failed. Rule from here: at most
 four agents that build at once, and none started below 12 GB free.
+
+## 2026-11-15 20:28 UTC: Repository made public by the owner
+
+The owner made Subjective/oxhaven public so that standard runners are free (he had asked
+what more Actions minutes would cost; estimate given: about 4,000 to 5,000 minutes used,
+2,500 to 4,000 to finish). Checked: no secret patterns in the tree or in history; commit
+addresses are GitHub and vendor noreply addresses; workflows use `pull_request`, no secrets,
+hosted runners only. PR 84 makes the workflow token read-only. Raised with the owner: the
+repository has no LICENSE file, and it holds a `deephaven` Python package written to match
+a reference that is under the Deephaven Community License (docs/CONSOLE.md records that
+nothing was copied).
+
+## 2026-11-15 20:40 UTC: Python functions in query strings up as PR 85
+
+For owner review from PR 85: a filter whose Python function returns None fails where Java
+drops the row; an unported library name does not fall through to a Python function of the
+same name; call order of impure functions across the formulas of one update is fixed here
+and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
+
+## 2026-11-15 20:50 UTC
+
+- Merged pull request 79 (6.14, console log and stopping a cancelled command) on six green
+  checks, after the author resolved the `Cargo.toml` conflict with pull request 82.
+- 7.3 (CSV) reported: 66 minutes, 290k tokens. Pull request 86 opened. For the owner: the
+  reader refuses date-times in zones with rules (the engine has no time zone rules), and
+  the other differences listed in the pull request and `docs/CSV.md`.
+- 6.10 started by resuming the console agent of 6.14 in its worktree, since it knows the
+  command threading that the lock release facility has to work with.

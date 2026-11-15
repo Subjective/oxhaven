@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a pyarrow table from a Deephaven table. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [X]",
+      "operation": "failed to create a pyarrow table from a Deephaven table."
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a pyarrow table from a Deephaven table. : AttributeError: 'int' object has no attribute 'j_table'",
+      "operation": "failed to create a pyarrow table from a Deephaven table."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "unsupported arrow data type : large_string, refer to deephaven.arrow.SUPPORTED_ARROW_TYPES for the list of supported pyarrow types. : unsupported arrow data type : large_string, refer to deephaven.arrow.SUPPORTED_ARROW_TYPES for the list of supported pyarrow types.",
+      "operation": "unsupported arrow data type"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "unsupported arrow data type : dictionary<values=string, indices=int32, ordered=0>, refer to deephaven.arrow.SUPPORTED_ARROW_TYPES for the list of supported pyarrow types. : unsupported arrow data type : dictionary<values=string, indices=int32, ordered=0>, refer to deephaven.arrow.SUPPORTED_ARROW_TYP",
+      "operation": "unsupported arrow data type"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "unsupported arrow data type : struct<a: int64>, refer to deephaven.arrow.SUPPORTED_ARROW_TYPES for the list of supported pyarrow types. : unsupported arrow data type : struct<a: int64>, refer to deephaven.arrow.SUPPORTED_ARROW_TYPES for the list of supported pyarrow types.",
+      "operation": "unsupported arrow data type"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "KeyError",
+      "text": "'Field \"Nope\" does not exist in schema'"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "AttributeError",
+      "text": "'list' object has no attribute 'schema'"
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a Deephaven table from a pyarrow table. : AttributeError: 'pyarrow.lib.RecordBatch' object has no attribute 'to_batches'",
+      "operation": "failed to create a Deephaven table from a pyarrow table."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a Deephaven table from a pyarrow table. : RuntimeError: java.lang.IllegalArgumentException: Supplied ColumnDefinitions include duplicate names [A]",
+      "operation": "failed to create a Deephaven table from a pyarrow table."
+    }
+  ]
+}

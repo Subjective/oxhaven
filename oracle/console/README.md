@@ -17,9 +17,11 @@ The probe covers `GetConsoleTypes`, `StartConsole`, `GetHeapInfo`, `ExecuteComma
 created, replaced and removed, values that are not tables, output, four kinds of error),
 `FetchTable` of scope tickets, `BindTableToVariable`, the query scope (`ExportFromTicket`
 and `PublishFromTicket` with scope tickets, a variable set by a thread, scope variables in
-the formulas of Python and of a client, with the column types they give), `CancelCommand`,
-`CancelAutoComplete`, `AutoCompleteStream`, and beside them one `SubscribeToLogs` and one
-`ListFields` stream. It
+the formulas of Python and of a client, with the column types they give), a command whose
+call is cancelled while it runs and the command after it, `CancelCommand`,
+`CancelAutoComplete`, `AutoCompleteStream`, and beside them two `SubscribeToLogs` streams
+(what scripts print, and the server's own log of one marked command) and one `ListFields`
+stream; at the end, the log stream of a second session that is closed. It
 leaves variables in the query scope, so every run needs a server that was just started.
 
 Oxhaven has a console only when built with the `python` feature:

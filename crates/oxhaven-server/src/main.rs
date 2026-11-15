@@ -5,11 +5,15 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
 
+use oxhaven_server::console::logs::{self, LogBuffer};
 use oxhaven_server::session::{random_psk, AuthHandler, AuthHandlers, DEFAULT_TOKEN_EXPIRE_MS};
 use oxhaven_server::update_graph::DEFAULT_TARGET_CYCLE_DURATION;
 use oxhaven_server::web::WebRoot;
 use oxhaven_server::{app, serve, ServerConfig, ServerState};
 use tokio::net::TcpListener;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 
 const USAGE: &str = "\
 Usage: oxhaven-server [options]
@@ -167,7 +171,7 @@ fn start_console(args: &Args, state: &mut ServerState) -> Result<(), String> {
     }
 }
 
-async fn run(args: Args) -> Result<(), String> {
+async fn run(args: Args, logs: Arc<LogBuffer>) -> Result<(), String> {
     let web_root = match &args.web_root {
         Some(dir) => Some(Arc::new(WebRoot::open(dir)?)),
         None => None,
@@ -177,6 +181,7 @@ async fn run(args: Args) -> Result<(), String> {
         token_expire_ms: args.token_expire_ms,
         target_cycle_duration: Some(args.cycle),
     })?;
+    state.logs = logs;
     if args.demo_tables {
         let application = app::demo::install(&state.applications, &state.op_context())?;
         tracing::info!(
@@ -203,11 +208,17 @@ async fn run(args: Args) -> Result<(), String> {
 
 #[tokio::main]
 async fn main() -> ExitCode {
-    tracing_subscriber::fmt()
-        .with_writer(std::io::stderr)
+    // The log goes to standard error and, as in Java, into the buffer that clients read
+    // with ConsoleService/SubscribeToLogs: from INFO up, the root level of the Java
+    // server's logging configuration.
+    let logs = Arc::new(LogBuffer::new());
+    tracing_subscriber::registry()
+        .with(LevelFilter::INFO)
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(logs::layer(logs.clone()))
         .init();
     let outcome = match parse_args(std::env::args().skip(1)) {
-        Ok(args) => run(args).await,
+        Ok(args) => run(args, logs).await,
         Err(message) => Err(message),
     };
     match outcome {
