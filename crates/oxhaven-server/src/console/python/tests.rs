@@ -10,9 +10,14 @@ use std::sync::Arc;
 use arrow::array::{Array, Float64Array, Int32Array, StringArray};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
+use oxhaven_proto::grpc::application_service_client::ApplicationServiceClient;
+use oxhaven_proto::grpc::session_service_client::SessionServiceClient;
 use oxhaven_proto::grpc::table_reference::Ref;
 use oxhaven_proto::grpc::table_service_client::TableServiceClient;
-use oxhaven_proto::grpc::{FetchTableRequest, TableReference, Ticket};
+use oxhaven_proto::grpc::{
+    FetchTableRequest, FieldInfo, ListFieldsRequest, PublishRequest, SelectOrUpdateRequest,
+    TableReference, Ticket,
+};
 use oxhaven_proto::script::console_service_client::ConsoleServiceClient;
 use oxhaven_proto::script::{
     ExecuteCommandRequest, GetConsoleTypesRequest, LogSubscriptionRequest, StartConsoleRequest,
@@ -22,7 +27,7 @@ use tokio::sync::{Mutex, MutexGuard};
 use tokio_stream::StreamExt;
 
 use super::super::{Changes, Console, Variable};
-use crate::session::export_id_to_ticket;
+use crate::session::{export_id_to_ticket, ExportValue};
 use crate::test_support::{with_auth, TestServer};
 
 pub(super) static ONE_INTERPRETER: Mutex<()> = Mutex::const_new(());
@@ -389,4 +394,314 @@ async fn a_bound_table_is_a_python_variable() {
         python.printed(0).split_off(since),
         [("STDOUT".to_string(), "4 Table\n".to_string())]
     );
+}
+
+/// `name: type = first value, ...` of each column of the scope variable `name`.
+fn described(python: &Python, name: &str) -> Vec<String> {
+    let table = python.table(name);
+    let snapshot = TableSnapshot::current(table.as_ref()).unwrap();
+    let columns = table.definition().columns().iter();
+    columns
+        .zip(&snapshot.columns)
+        .map(|(column, values)| {
+            let cells: Vec<String> = (0..values.len())
+                .map(|row| arrow::util::display::array_value_to_string(values, row).unwrap())
+                .collect();
+            format!(
+                "{}: {:?} = {}",
+                column.name,
+                column.column_type,
+                cells.join(", ")
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn the_scope_tickets_and_the_python_globals_are_one_set_of_variables() {
+    let python = Python::start().await;
+    python.run("from deephaven import empty_table\nt = empty_table(4)\nn = 41 + 1\nnone = None");
+    let scope = &python.server.state.scope;
+
+    // what a client publishes to a scope ticket is a global, a table as the package's Table
+    scope
+        .put("published", ExportValue::Table(python.table("t")))
+        .unwrap();
+    let since = python.printed(0).len();
+    let used = python.run(
+        "print(type(published).__module__, type(published).__name__, published.size)\n\
+         head = published.head(1)",
+    );
+    assert_eq!(summary(&used), "head /  / ");
+    assert_eq!(
+        python.printed(0).split_off(since),
+        [(
+            "STDOUT".to_string(),
+            "deephaven.table Table 4\n".to_string()
+        )]
+    );
+
+    // any variable resolves: what is no table as an object, which can be published again
+    let number = scope.get("n").expect("a variable that holds a number");
+    assert!(number.as_table().is_none());
+    scope.put("m", number).unwrap();
+    python.run("assert m == 42 and m is n, m");
+    // None is no value, as a variable that does not exist is none
+    assert!(scope.get("none").is_none());
+    assert!(scope.get("nothing").is_none());
+    let names = scope.names();
+    for name in ["head", "m", "n", "none", "published", "t"] {
+        assert!(names.contains(&name.to_string()), "{name} in {names:?}");
+    }
+
+    // Java wraps any object of the server for Python; here only tables have a wrapper
+    let refused = scope.put("unit", ExportValue::unit()).unwrap_err();
+    assert!(refused.contains("not ported"), "{refused}");
+    python.run("assert 'unit' not in globals()");
+}
+
+#[tokio::test]
+async fn a_variable_set_by_a_thread_is_listed_without_a_command() {
+    let python = Python::start().await;
+    let bearer = python.server.login().await;
+    let mut fields = ApplicationServiceClient::new(python.server.channel.clone())
+        .list_fields(with_auth(ListFieldsRequest {}, &bearer))
+        .await
+        .unwrap()
+        .into_inner();
+    let mut next = async || {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(5), fields.next()).await;
+        let message = message
+            .expect("a message within five seconds")
+            .unwrap()
+            .unwrap();
+        let name = |field: &FieldInfo| field.field_name.clone();
+        (
+            message.created.iter().map(name).collect::<Vec<_>>(),
+            message.removed.iter().map(name).collect::<Vec<_>>(),
+        )
+    };
+    assert_eq!(next().await, (vec![], vec![]));
+
+    let started = python.run(
+        "from deephaven import empty_table\n\
+         import threading\n\
+         def _later():\n    global threaded\n    threaded = empty_table(2)\n\
+         threading.Timer(0.3, _later).start()",
+    );
+    assert_eq!(summary(&started), " /  / ");
+    assert_eq!(next().await, (vec!["threaded".to_string()], vec![]));
+    assert_eq!(python.table("threaded").row_set().size(), 2);
+
+    // the next command does not report it again
+    assert_eq!(summary(&python.run("u = threaded.head(1)")), "u /  / ");
+    assert_eq!(next().await, (vec!["u".to_string()], vec![]));
+    python.run(
+        "def _drop():\n    global threaded\n    del threaded\n\
+         threading.Timer(0.1, _drop).start()",
+    );
+    assert_eq!(next().await, (vec![], vec!["threaded".to_string()]));
+}
+
+#[tokio::test]
+async fn a_formula_names_python_variables_with_the_types_java_gives_them() {
+    let python = Python::start().await;
+    python.run(
+        "from deephaven import empty_table\n\
+         xi = 41\nxsh = 300\nxint = 100000\nxl = 2**40\nxf = 1.5\nxs = 'abc'\nxb = True\n\
+         r = empty_table(2).update(['A = xi', 'B = xsh', 'C = xint', 'D = xl + i', \
+         'E = xf * 2', 'F = xs + `d`', 'G = xb', 'H = xi + i'])",
+    );
+    assert_eq!(
+        described(&python, "r"),
+        [
+            "A: Byte = 41, 41",
+            "B: Short = 300, 300",
+            "C: Int = 100000, 100000",
+            "D: Long = 1099511627776, 1099511627777",
+            "E: Double = 3.0, 3.0",
+            "F: String = abcd, abcd",
+            "G: Boolean = true, true",
+            "H: Int = 41, 42",
+        ]
+    );
+
+    // a column comes before a variable, and the variable has the value of the moment the
+    // table is made
+    python.run(
+        "c = empty_table(1).update(['xi = 5', 'Y = xi'])\n\
+         cv = 5\ncaptured = empty_table(1).update_view('Y = cv + 1')\ncv = 1000",
+    );
+    assert_eq!(described(&python, "c"), ["xi: Int = 5", "Y: Int = 5"]);
+    assert_eq!(described(&python, "captured"), ["Y: Int = 6"]);
+
+    // filters
+    python.run(
+        "b = empty_table(50).update('X = i')\n\
+         w = b.where('X > xi && X < 44')\nm = b.where('X = xi')\nflag = b.where('xb').head(1)",
+    );
+    assert_eq!(described(&python, "w"), ["X: Int = 42, 43"]);
+    assert_eq!(described(&python, "m"), ["X: Int = 41"]);
+    assert_eq!(described(&python, "flag"), ["X: Int = 0"]);
+
+    // refused as Java refuses it, and refused because Java's result is not ported
+    for (code, expected) in [
+        (
+            "bad = b.update('Y = -xi')",
+            "the negation of the query scope variable xi",
+        ),
+        (
+            "bad = b.update('Y = nosuch + 1')",
+            "cannot find column nosuch",
+        ),
+        (
+            "lst = [1, 2]\nbad = b.update('Y = lst')",
+            "which holds a Python list",
+        ),
+        (
+            "bad = b.update('Y = threading')",
+            "cannot find column threading",
+        ),
+        (
+            "none = None\nbad = b.update('Y = none')",
+            "which holds None",
+        ),
+        ("bad = b.where('X >= xf')", "Failed to convert value <xf>"),
+    ] {
+        let error = python.console.evaluate(code).error.unwrap_or_default();
+        assert!(error.contains(expected), "{code}: {error}");
+    }
+    assert!(python.server.state.scope.get("bad").is_none());
+}
+
+#[tokio::test]
+async fn a_formula_called_in_a_function_names_its_locals_then_the_globals() {
+    let python = Python::start().await;
+    python.run(
+        "from deephaven import empty_table\n\
+         xi = 41\n\
+         def local():\n    xi = 7\n    zz = 2\n    return empty_table(1).update(['A = xi', 'B = zz + xi'])\n\
+         f = local()\n\
+         def reads_global():\n    return empty_table(1).update('A = xi + 1')\n\
+         g = reads_global()\n\
+         class K:\n    q = 3\n    t = empty_table(1).update('A = q')\n\
+         k = K.t\n\
+         lam = (lambda zz: empty_table(1).update('A = zz'))('text')\n\
+         def filtered():\n    low = 2\n    return empty_table(4).update('X = i').where('X >= low')\n\
+         w = filtered()\n\
+         top = empty_table(1).update('A = xi')",
+    );
+    assert_eq!(described(&python, "f"), ["A: Byte = 7", "B: Int = 9"]);
+    assert_eq!(described(&python, "g"), ["A: Int = 42"]);
+    assert_eq!(described(&python, "k"), ["A: Byte = 3"]);
+    assert_eq!(described(&python, "lam"), ["A: String = text"]);
+    assert_eq!(described(&python, "w"), ["X: Int = 2, 3"]);
+    assert_eq!(described(&python, "top"), ["A: Byte = 41"]);
+
+    // the locals of the caller only: not those of a function further out, used or not
+    for code in [
+        "def helper(t, f):\n    return t.update(f)\n\
+         def outer():\n    zz = 5\n    return helper(empty_table(1), 'A = zz')\n\
+         bad = outer()",
+        "def enclosing():\n    zz = 7\n    def inner():\n        return empty_table(1).update('A = zz')\n    return inner()\n\
+         bad = enclosing()",
+    ] {
+        let error = python.console.evaluate(code).error.unwrap_or_default();
+        assert!(error.contains("cannot find column zz"), "{code}: {error}");
+    }
+}
+
+#[tokio::test]
+async fn an_int_beyond_64_bits_fails_every_formula_while_it_is_a_variable() {
+    let python = Python::start().await;
+    let bearer = python.server.login().await;
+    python
+        .run("from deephaven import empty_table\nb = empty_table(3).update('X = i')\nbig = 2**63");
+    let mut tables = TableServiceClient::new(python.server.channel.clone());
+    let mut update = async |result: i32| {
+        let request = SelectOrUpdateRequest {
+            result_id: Some(export_id_to_ticket(result)),
+            source_id: Some(TableReference {
+                r#ref: Some(Ref::Ticket(Ticket {
+                    ticket: b"s/b".to_vec(),
+                })),
+            }),
+            column_specs: vec!["Z = X + 1".to_string()],
+        };
+        tables.update(with_auth(request, &bearer)).await
+    };
+
+    // Java: OverflowError, for the formulas of Python and of every client
+    let failed = python.console.evaluate("bad = b.update('Y = X + 1')");
+    let error = failed.error.unwrap_or_default();
+    assert!(error.contains("int too big to convert"), "{error}");
+    let refused = update(1).await.unwrap_err();
+    assert_eq!(refused.code(), tonic::Code::InvalidArgument);
+    // a column that is only copied involves no formula
+    python.run("copied = b.update('Y = X')\nviewed = b.view('X')");
+    // in a function the variable is one of its globals
+    let in_function = python
+        .console
+        .evaluate("def f():\n    return b.update('Y = X + 1')\nbad = f()");
+    let error = in_function.error.unwrap_or_default();
+    assert!(error.contains("int too big to convert"), "{error}");
+
+    python.run("big = 2**63 - 1\nok = b.update(['Y = X + 1', 'Z = big'])");
+    assert_eq!(
+        described(&python, "ok")[1..],
+        [
+            "Y: Int = 1, 2, 3",
+            "Z: Long = 9223372036854775807, 9223372036854775807, 9223372036854775807"
+        ]
+    );
+    let updated = update(2).await.unwrap().into_inner();
+    assert!(updated.success);
+}
+
+#[tokio::test]
+async fn a_client_formula_names_the_variables_of_the_session() {
+    let python = Python::start().await;
+    let bearer = python.server.login().await;
+    python.run("from deephaven import empty_table\nb = empty_table(3).update('X = i')\nxi = 41\nxs = 'abc'");
+    let mut tables = TableServiceClient::new(python.server.channel.clone());
+    let request = SelectOrUpdateRequest {
+        result_id: Some(export_id_to_ticket(1)),
+        source_id: Some(TableReference {
+            r#ref: Some(Ref::Ticket(Ticket {
+                ticket: b"s/b".to_vec(),
+            })),
+        }),
+        column_specs: vec!["Z = xi + X".to_string(), "S = xs".to_string()],
+    };
+    let updated = tables.update(with_auth(request, &bearer)).await;
+    assert!(updated.unwrap().into_inner().success);
+    // the result, made a variable so that it can be read here
+    python
+        .server
+        .state
+        .tickets
+        .resolve(None, b"s/b", "test")
+        .unwrap();
+    let mut sessions = SessionServiceClient::new(python.server.channel.clone());
+    sessions
+        .publish_from_ticket(with_auth(
+            PublishRequest {
+                source_id: Some(export_id_to_ticket(1)),
+                result_id: Some(Ticket {
+                    ticket: b"s/from_client".to_vec(),
+                }),
+            },
+            &bearer,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        described(&python, "from_client"),
+        [
+            "X: Int = 0, 1, 2",
+            "Z: Int = 41, 42, 43",
+            "S: String = abc, abc, abc"
+        ]
+    );
+    python.run("assert from_client.size == 3 and from_client.column_names == ['X', 'Z', 'S']");
 }
