@@ -148,10 +148,13 @@ impl ServerState {
         .add_service(InputTableServiceServer::new(InputTableGrpc::new(
             self.tickets.clone(),
         )))
-        .add_service(ConfigServiceServer::new(config::ConfigGrpc::new(
-            self.sessions.auth_handlers(),
-            self.sessions.expiration_delay_ms(),
-        )))
+        .add_service(ConfigServiceServer::new(
+            config::ConfigGrpc::new(
+                self.sessions.auth_handlers(),
+                self.sessions.expiration_delay_ms(),
+            )
+            .with_python_version(config::python_version(self.console.as_deref())),
+        ))
         .add_service(TableServiceServer::new(table::TableGrpc::new(
             self.tickets.clone(),
             self.op_context(),
