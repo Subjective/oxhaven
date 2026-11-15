@@ -419,3 +419,13 @@ Follow-ups: `min` keeps 0.0 where Java keeps -0.0 (agg fuzz seeds 337, 351, 785)
 `why` texts in the baseline for agg_by_sets, update_by_time_and_ema, update_by_rolling_tick.
 Owner review items added by PR 59: distinct null-to-[] reported modified; first/last
 modified decided at cycle end rather than per chunk.
+
+## 2026-11-15 03:50 UTC
+
+Second usage-limit stop. All five running agents (list wire, parity fixes, CI test time,
+expression vectors, update_by group/count-where) failed on the Fable limit at about
+02:05 UTC and the machine restarted; nothing ran for about 1h45m. The owner reset the
+limit at 03:46 and all five were resumed in their existing contexts. Uncommitted work in
+the worktrees survived; servers did not. PRs 58 (multi_join) and 59 (aggregations) had
+merged before the stop: main is at 73 of 83 scenarios. Disk is at 8.5 GB free.
+Token use so far, summed from tasks.csv: about 14.2M subagent tokens over 68 runs.

@@ -354,7 +354,12 @@ enum Cells {
     Str(StringArray),
 }
 
-fn read(table: &dyn Table, column: usize, rows: &RowSet) -> Result<Cells, TableFailure> {
+fn read(
+    table: &dyn Table,
+    column: usize,
+    rows: &RowSet,
+    use_prev: bool,
+) -> Result<Cells, TableFailure> {
     let source = table.column(column);
     // Java filters a vector or an array column as a column of objects: a null test and a
     // match against null work, and what else does is not ported.
@@ -365,7 +370,12 @@ fn read(table: &dyn Table, column: usize, rows: &RowSet) -> Result<Cells, TableF
             source.column_type()
         );
     }
-    let values = sentinels_to_nulls(&source.chunk(rows)?)?;
+    let chunk = if use_prev {
+        source.prev_chunk(rows)?
+    } else {
+        source.chunk(rows)?
+    };
+    let values = sentinels_to_nulls(&chunk)?;
     macro_rules! widen {
         ($kind:ident, $arrow:ty, $to:ty) => {
             Cells::$kind(
@@ -604,11 +614,14 @@ fn selected(selection: &RowSet, mask: impl IntoIterator<Item = bool>) -> RowSet 
 }
 
 impl Resolved {
-    /// The rows of `selection` this filter accepts, read from the current values of `table`.
+    /// The rows of `selection` this filter accepts, read from the current values of
+    /// `table`, or with `use_prev` from its previous values, `selection` then being rows of
+    /// its previous row set.
     pub(super) fn filter(
         &self,
         table: &dyn Table,
         selection: &RowSet,
+        use_prev: bool,
     ) -> Result<RowSet, TableFailure> {
         if selection.is_empty() {
             return Ok(RowSet::empty());
@@ -627,14 +640,14 @@ impl Resolved {
                         RowSet::empty()
                     });
                 }
-                let mask = matches(&read(table, *column, selection)?, keys, *options)?;
+                let mask = matches(&read(table, *column, selection, use_prev)?, keys, *options)?;
                 Ok(selected(
                     selection,
                     mask.into_iter().map(|m| m != options.inverted),
                 ))
             }
             Resolved::Range { column, op, pivot } => {
-                let mask = in_range(&read(table, *column, selection)?, *op, pivot)?;
+                let mask = in_range(&read(table, *column, selection, use_prev)?, *op, pivot)?;
                 Ok(selected(selection, mask))
             }
             // Behavior: WhereFilterPatternImpl#find, #findPatternInverted, #matches,
@@ -643,7 +656,7 @@ impl Resolved {
                 column,
                 matcher,
                 invert_pattern,
-            } => match read(table, *column, selection)? {
+            } => match read(table, *column, selection, use_prev)? {
                 Cells::Str(values) => Ok(selected(
                     selection,
                     values
@@ -655,7 +668,7 @@ impl Resolved {
             // Behavior: ConditionFilter.ChunkFilter#filter. The generated kernel assigns the
             // formula's value to a `boolean`, so a null `Boolean` throws.
             Resolved::Condition { formula, text } => {
-                let values = formula.evaluate(table, selection, false)?;
+                let values = formula.evaluate(table, selection, use_prev)?;
                 let values = values.as_boolean_opt().ok_or_else(|| {
                     failure(format!("filter={{ {text} }} did not evaluate to booleans"))
                 })?;
@@ -678,7 +691,7 @@ impl Resolved {
             Resolved::And(filters) => {
                 let mut matched = selection.clone();
                 for filter in filters {
-                    matched = filter.filter(table, &matched)?;
+                    matched = filter.filter(table, &matched, use_prev)?;
                 }
                 Ok(matched)
             }
@@ -688,16 +701,27 @@ impl Resolved {
                 let Some((first, rest)) = filters.split_first() else {
                     return Ok(selection.clone());
                 };
-                let mut matched = first.filter(table, selection)?;
+                let mut matched = first.filter(table, selection, use_prev)?;
                 for filter in rest {
                     if matched.size() == selection.size() {
                         break;
                     }
                     let remaining = selection.minus(&matched);
-                    matched.insert(&filter.filter(table, &remaining)?);
+                    matched.insert(&filter.filter(table, &remaining, use_prev)?);
                 }
                 Ok(matched)
             }
+        }
+    }
+
+    /// Whether the filter is a formula that uses `i`, `ii` or `k`.
+    pub(super) fn uses_row_variables(&self) -> bool {
+        match self {
+            Resolved::Condition { formula, .. } => formula.uses_row_variables(),
+            Resolved::And(filters) | Resolved::Or(filters) => {
+                filters.iter().any(Resolved::uses_row_variables)
+            }
+            _ => false,
         }
     }
 

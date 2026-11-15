@@ -10,6 +10,7 @@ pub mod join;
 #[cfg(test)]
 mod list_columns;
 pub mod merge;
+pub mod multi_join;
 #[cfg(test)]
 pub(crate) mod oracle;
 pub mod range_join;
