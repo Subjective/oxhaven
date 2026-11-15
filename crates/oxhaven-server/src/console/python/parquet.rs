@@ -137,9 +137,16 @@ renamed = read("{DATA}/flat/part0.parquet", col_instructions=[
 signed = read("{DATA}/uint64_big.parquet", col_instructions=[ColumnInstruction(
     column_name="V", parquet_column_name="V", unsigned_long_target=UnsignedLongTarget.SIGNED_LONG,
 )])
+snappy = read("{DATA}/types_snappy.parquet")
 "#
         ));
         assert_eq!(changes.error, None);
+        // the codec Java writes by default
+        let snappy = ints(&*table("snappy"), "I");
+        let expected = [-300000, -200000, -100000, 100000, 200000, 300000].map(Some);
+        assert_eq!(snappy[..3], expected[..3]);
+        assert_eq!(snappy[3], None);
+        assert_eq!(snappy[4..], expected[3..]);
         assert_eq!(table("flat").row_set().size(), 12);
         assert_eq!(ints(&*table("doubled"), "Y"), [0, 2, 4, 6].map(Some));
         assert_eq!(ints(&*table("one"), "X"), [0, 1, 2, 3, 4].map(Some));
@@ -175,10 +182,10 @@ signed = read("{DATA}/uint64_big.parquet", col_instructions=[ColumnInstruction(
             failure(&format!(r#"read("{DATA}/reserved.parquet")"#)),
             "not ported yet: io.deephaven.api.util.NameValidator#legalizeColumnName: column name 'int'"
         );
-        let snappy = failure(&format!(r#"read("{DATA}/types_snappy.parquet")"#));
+        let zstd = failure(&format!(r#"read("{DATA}/codec_zstd.parquet")"#));
         assert!(
-            snappy.starts_with("not ported yet: ") && snappy.ends_with("SNAPPY"),
-            "{snappy}"
+            zstd.starts_with("not ported yet: ") && zstd.ends_with("ZSTD"),
+            "{zstd}"
         );
         for (argument, java) in [
             ("table_definition={}", "Builder#setTableDefinition"),

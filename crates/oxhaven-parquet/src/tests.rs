@@ -167,12 +167,19 @@ fn a_file_java_wrote_reads_with_its_types_and_nulls() {
 }
 
 #[test]
-fn gzip_and_lz4_pages_are_read() {
-    assert_java_types(&read_default("types_gzip.parquet").unwrap());
-    assert_java_types(&read_default("types_lz4.parquet").unwrap());
+fn compressed_pages_are_read() {
+    // Snappy is what Java writes when it is not told a codec
+    for name in [
+        "types_snappy.parquet",
+        "types_gzip.parquet",
+        "types_lz4.parquet",
+    ] {
+        assert_java_types(&read_default(name).unwrap());
+    }
     // pyarrow's LZ4 is the framed codec, Java's the raw one
-    for name in ["codec_gzip.parquet", "codec_lz4.parquet"] {
-        let table = read_default(name).unwrap();
+    for codec in ["snappy", "brotli", "gzip", "lz4"] {
+        let name = format!("codec_{codec}.parquet");
+        let table = read_default(&name).unwrap();
         let expected: Vec<_> = (0..20).map(|row| row.to_string()).collect();
         assert_eq!(cells(&table, "X"), expected, "{name}");
         let expected: Vec<_> = (0..20).map(|row| format!("s{}", row % 3)).collect();
@@ -181,18 +188,20 @@ fn gzip_and_lz4_pages_are_read() {
 }
 
 #[test]
-fn the_codecs_that_are_not_built_in_are_refused_by_name() {
-    let files = [
-        ("types_snappy.parquet", "SNAPPY"),
-        ("codec_snappy.parquet", "SNAPPY"),
-        ("codec_zstd.parquet", "ZSTD"),
-        ("codec_brotli.parquet", "BROTLI"),
-    ];
-    for (name, codec) in files {
-        let (java, what) = not_ported(read_default(name));
-        assert!(java.ends_with("DeephavenCompressorAdapterFactory#getByName"));
-        assert!(what.contains(codec) && what.contains(name), "{what}");
-    }
+fn a_codec_that_is_not_built_in_is_refused_by_name() {
+    let (java, what) = not_ported(read_default("codec_zstd.parquet"));
+    assert!(java.ends_with("DeephavenCompressorAdapterFactory#getByName"));
+    assert!(
+        what.contains("ZSTD") && what.contains("codec_zstd.parquet"),
+        "{what}"
+    );
+    // no file of the test data has LZO pages
+    let path = std::path::Path::new("lzo.parquet");
+    let lzo = crate::location::check_codec(path, parquet::basic::Compression::LZO);
+    let Err(ReadError::NotPorted { what, .. }) = lzo else {
+        panic!("LZO pages were accepted");
+    };
+    assert!(what.ends_with("LZO"), "{what}");
 }
 
 #[test]

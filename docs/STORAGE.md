@@ -145,22 +145,32 @@ They wait for the column types, not for this design.
 
 | Crate | Licence | Why |
 | --- | --- | --- |
-| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend` | Apache-2.0 | The reader |
+| `parquet` 60.1, features `arrow`, `lz4`, `flate2`, `flate2-rust_backend`, `snap`, `brotli` | Apache-2.0 | The reader |
 | `lz4_flex` | MIT | `LZ4` and `LZ4_RAW` pages |
 | `flate2`, `crc32fast` | MIT or Apache-2.0 | `GZIP` pages |
 | `miniz_oxide`, `adler2`, `simd-adler32` | MIT or Zlib or Apache-2.0; 0BSD or MIT or Apache-2.0; MIT | The inflate behind `flate2` (its `rust_backend`; the `zlib-rs` backend that `parquet` takes by default is under the Zlib licence only) |
 | `seq-macro`, `twox-hash` | MIT or Apache-2.0; MIT | Needed by `parquet` |
+| `snap` | BSD-3-Clause | `SNAPPY` pages |
+| `brotli`, `brotli-decompressor` | BSD-3-Clause and MIT; BSD-3-Clause or MIT | `BROTLI` pages |
+| `alloc-no-stdlib`, `alloc-stdlib` | BSD-3-Clause | Needed by `brotli` |
 
 `serde_json` (already in the workspace) reads the `deephaven` footer entry.
 
-**Snappy, Zstandard and Brotli are not enabled**, because the crates that `parquet` uses
-for them are not under Apache-2.0 or MIT alone: `snap` and `zstd` are BSD-3-Clause, and
-`brotli` is BSD-3-Clause and MIT. A
-file with a column chunk in one of them is refused by name when it is opened. **This is
-the main limit of the slice**: Snappy is the default of Java's `write`, of pyarrow and of
-Spark. Enabling a codec is one word in the workspace `Cargo.toml` once the owner accepts
-the licence; nothing else changes. (The reference server as packaged has no Brotli codec
-either: it makes the table and fails when a column is read.)
+The last three rows are under the exception to the licence rule that `PORTING.md`
+records ("Dependencies"): the owner accepted BSD-3-Clause for the Snappy, Zstandard and
+Brotli codec crates of `parquet` and what they depend on, on 2026-11-15, and for nothing
+else.
+
+**Zstandard is not enabled**, because the exception does not cover what it needs. The
+`zstd` and `zstd-safe` crates are BSD-3-Clause, but `zstd-sys` 2.1.3, which holds the C
+library, declares `BSD-3-Clause AND BSD-2-Clause`: the decoders of the legacy formats in
+it are under the 2-clause licence. A file with a column chunk in Zstandard, or in any
+other codec this build does not have (`LZO`), is refused by name when it is opened.
+Enabling Zstandard is one word in the workspace `Cargo.toml` and one line in
+`location.rs` once the owner accepts that licence.
+
+The reference server as packaged has no Brotli codec: it makes the table and fails when
+a column is read. Oxhaven reads the file.
 
 ## Errors
 
@@ -185,7 +195,7 @@ In:
 - `col_instructions` for renaming a column and for `unsigned_long_target`; `file_layout`;
   the errors Java raises for a missing file, an empty directory, a layout that does not
   fit, and `is_refreshing` with a single file.
-- Uncompressed, `GZIP`, `LZ4` and `LZ4_RAW` pages.
+- Uncompressed, `SNAPPY`, `GZIP`, `BROTLI`, `LZ4` and `LZ4_RAW` pages.
 
 Out, each refused with `NotPorted`:
 
@@ -199,7 +209,7 @@ Out, each refused with `NotPorted`:
 | The types listed under "Which types" | New column types |
 | A column name that Java would change to make it legal (`a b`, `2x`, `int`) | `NameValidator#legalizeColumnName` |
 | A codec named in `col_instructions` | Codecs |
-| Snappy, Zstandard, Brotli | The owner's decision on licences |
+| Zstandard | The owner's decision on the BSD-2-Clause licence of `zstd-sys` |
 
 Not done and not refused, because nothing observable depends on them yet: data indexes
 and the sorted-column marks in the `deephaven` footer entry (`impl/dataindex`), pushing
@@ -253,6 +263,8 @@ Besides what is refused:
   convert parquet DOUBLE column to int"), and converts between some types.
 - A codec named in `col_instructions` is refused; Java takes it and ignores it for a
   column that needs none.
+- A file with Brotli pages is read. The reference as packaged makes the table and fails
+  when a column is read, for want of the codec.
 - An instruction that names a Parquet column and no table column is a `ValueError`
   inside the `DHError`; in Java it is a `NullPointerException` inside it.
 - A table without rows does not carry the attribute `EmptySourceTable`.

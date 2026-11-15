@@ -23,9 +23,10 @@ http-body-util = "0.1"
 httpdate = "1"
 hyper = { version = "1.12", features = ["http1", "http2", "server"] }
 hyper-util = { version = "0.1.21", features = ["http1", "http2", "server-auto", "server-graceful", "tokio"] }
-# Reads Parquet files into Arrow arrays; the same major version as arrow. Only the codecs
-# whose crates are under Apache-2.0 or MIT are enabled (docs/STORAGE.md, "Dependencies").
-parquet = { version = "60.1.0", default-features = false, features = ["arrow", "flate2", "flate2-rust_backend", "lz4"] }
+# Reads Parquet files into Arrow arrays; the same major version as arrow. `snap` and `brotli`
+# bring BSD-3-Clause crates, which the owner accepted for the Parquet codecs only
+# (PORTING.md, "Dependencies"). `zstd` stays off: zstd-sys is also under BSD-2-Clause.
+parquet = { version = "60.1.0", default-features = false, features = ["arrow", "brotli", "flate2", "flate2-rust_backend", "lz4", "snap"] }
 prost = "0.14.6"
 prost-reflect = { version = "0.16.5", features = ["serde"] }
 prost-types = "0.14.6"
