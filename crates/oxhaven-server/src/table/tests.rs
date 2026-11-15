@@ -788,7 +788,6 @@ async fn a_malformed_batch_is_refused_as_a_whole() {
     for (source, message) in [
         (by_offset(7), "invalid table reference: batch_offset: 7\n"),
         (by_offset(-1), "invalid table reference: batch_offset: -1\n"),
-        (None, "invalid table reference: "),
     ] {
         let refused = c.batch(vec![fetch(source, None)]).await.unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
@@ -810,6 +809,358 @@ async fn a_malformed_batch_is_refused_as_a_whole() {
         .await
         .unwrap_err();
     assert_eq!(refused.code(), Code::FailedPrecondition);
+}
+
+/// The outcome of a batch whose stream the server reset: what a client of the Java server
+/// sees when the status has a message that ends in a space.
+fn assert_reset(outcome: Result<(Vec<ExportedTableCreationResponse>, Option<Status>), Status>) {
+    let status = match outcome {
+        Err(status) => status,
+        Ok((_, Some(status))) => status,
+        Ok((responses, None)) => panic!("the batch ended without a status: {responses:?}"),
+    };
+    assert_eq!(status.code(), Code::Cancelled, "{status:?}");
+    assert!(
+        !status.message().contains("invalid table reference"),
+        "the status was sent: {status:?}"
+    );
+}
+
+/// The status of a definition of an export that is already defined.
+fn assert_defined_twice(status: &Status) {
+    assert_eq!(status.code(), Code::InvalidArgument);
+    let id = status
+        .message()
+        .strip_prefix("Details Logged w/ID '")
+        .and_then(|rest| rest.strip_suffix('\''))
+        .unwrap_or_else(|| panic!("not an error id: {}", status.message()));
+    assert_eq!(id.len(), 36, "{id}");
+}
+
+/// An operation of every shape of request whose handler leaves an unset reference to the
+/// batch: one source, two sources, a list of sources.
+fn operations_over(source: Option<TableReference>) -> Vec<(&'static str, Op)> {
+    use oxhaven_proto::grpc::{sort_descriptor::SortDirection, SortDescriptor};
+    let select = |formula: &str| SelectOrUpdateRequest {
+        result_id: None,
+        source_id: source.clone(),
+        column_specs: vec![formula.to_string()],
+    };
+    vec![
+        ("fetch_table", fetch(source.clone(), None)),
+        (
+            "drop_columns",
+            Op::DropColumns(DropColumnsRequest {
+                result_id: None,
+                source_id: source.clone(),
+                column_names: vec!["A".to_string()],
+            }),
+        ),
+        ("update", Op::Update(select("X = 1"))),
+        ("lazy_update", Op::LazyUpdate(select("X = 1"))),
+        ("view", Op::View(select("X = 1"))),
+        ("update_view", Op::UpdateView(select("X = 1"))),
+        ("select", Op::Select(select("X = 1"))),
+        (
+            "select_distinct",
+            Op::SelectDistinct(SelectDistinctRequest {
+                result_id: None,
+                source_id: source.clone(),
+                column_names: vec!["A".to_string()],
+            }),
+        ),
+        (
+            "unstructured_filter",
+            Op::UnstructuredFilter(UnstructuredFilterTableRequest {
+                result_id: None,
+                source_id: source.clone(),
+                filters: vec!["A > 1".to_string()],
+            }),
+        ),
+        (
+            "sort",
+            Op::Sort(SortTableRequest {
+                result_id: None,
+                source_id: source.clone(),
+                sorts: vec![SortDescriptor {
+                    column_name: "A".to_string(),
+                    is_absolute: false,
+                    direction: SortDirection::Ascending as i32,
+                }],
+            }),
+        ),
+        (
+            "head",
+            Op::Head(HeadOrTailRequest {
+                result_id: None,
+                source_id: source.clone(),
+                num_rows: 1,
+            }),
+        ),
+        (
+            "head_by",
+            Op::HeadBy(HeadOrTailByRequest {
+                result_id: None,
+                source_id: source.clone(),
+                num_rows: 1,
+                group_by_column_specs: vec!["B".to_string()],
+            }),
+        ),
+        (
+            "ungroup",
+            Op::Ungroup(UngroupRequest {
+                result_id: None,
+                source_id: source.clone(),
+                null_fill: false,
+                columns_to_ungroup: Vec::new(),
+            }),
+        ),
+        (
+            "merge",
+            Op::Merge(MergeTablesRequest {
+                result_id: None,
+                source_ids: source.iter().cloned().collect(),
+                key_column: String::new(),
+            }),
+        ),
+        (
+            "natural_join",
+            Op::NaturalJoin(NaturalJoinTablesRequest {
+                result_id: None,
+                left_id: source.clone(),
+                right_id: source.clone(),
+                columns_to_match: vec!["A".to_string()],
+                columns_to_add: vec!["B2 = B".to_string()],
+                join_type: 0,
+            }),
+        ),
+        (
+            "cross_join",
+            Op::CrossJoin(CrossJoinTablesRequest {
+                result_id: None,
+                left_id: source.clone(),
+                right_id: source.clone(),
+                columns_to_match: vec!["B".to_string()],
+                columns_to_add: vec!["A2 = A".to_string()],
+                reserve_bits: 0,
+            }),
+        ),
+        (
+            "flatten",
+            Op::Flatten(FlattenRequest {
+                result_id: None,
+                source_id: source.clone(),
+            }),
+        ),
+        (
+            "meta_table",
+            Op::MetaTable(MetaTableRequest {
+                result_id: None,
+                source_id: source,
+            }),
+        ),
+    ]
+}
+
+#[tokio::test]
+async fn a_batch_operation_with_an_unset_table_reference_resets_the_stream() {
+    let mut c = Connected::start().await;
+    // these operations are accepted over a table, so what is refused below is the reference
+    let request = c.auth(empty(ticket(1), 3));
+    c.client.empty_table(request).await.unwrap();
+    let request = c.auth(SelectOrUpdateRequest {
+        result_id: ticket(2),
+        source_id: by_ticket(1),
+        column_specs: vec!["A = i".to_string(), "B = i % 2".to_string()],
+    });
+    c.client.update(request).await.unwrap();
+    for (name, op) in operations_over(by_ticket(2)) {
+        let (responses, status) = c.batch(vec![op]).await.unwrap();
+        assert!(status.is_none(), "{name}: {status:?}");
+        assert!(responses[0].success, "{name}: {}", responses[0].error_info);
+    }
+
+    // a reference that names neither a ticket nor an offset, and for the operations that
+    // do not ask for the field, no reference
+    let unset = Some(TableReference { r#ref: None });
+    for (name, op) in operations_over(unset.clone()) {
+        let outcome = c.batch(vec![op]).await;
+        let seen = format!("{name}: {outcome:?}");
+        assert!(
+            !matches!(&outcome, Ok((responses, _)) if !responses.is_empty()),
+            "{seen}"
+        );
+        assert_reset(outcome);
+    }
+    assert_reset(c.batch(vec![fetch(None, None)]).await);
+
+    // the request checks of every operation come before the references of any
+    let refused = c
+        .batch(vec![
+            fetch(unset.clone(), None),
+            Op::EmptyTable(empty(None, -1)),
+        ])
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument);
+    assert_eq!(refused.message(), "Size must be greater than zero");
+    // and references are read in order: the first that is bad is the one reported
+    let refused = c
+        .batch(vec![fetch(by_offset(9), None), fetch(unset.clone(), None)])
+        .await
+        .unwrap_err();
+    assert_eq!(refused.code(), Code::InvalidArgument);
+    assert_eq!(
+        refused.message(),
+        "invalid table reference: batch_offset: 9\n"
+    );
+    assert_reset(
+        c.batch(vec![fetch(unset, None), fetch(by_offset(9), None)])
+            .await,
+    );
+
+    // the session goes on
+    let request = c.auth(empty(ticket(3), 1));
+    c.client.empty_table(request).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_batch_that_is_reset_runs_nothing_and_keeps_the_exports_it_named() {
+    let mut c = Connected::start().await;
+    let unset = Some(TableReference { r#ref: None });
+    assert_reset(
+        c.batch(vec![
+            Op::EmptyTable(empty(ticket(1), 3)),
+            fetch(unset, ticket(2)),
+            Op::EmptyTable(empty(ticket(3), 5)),
+            fetch(by_offset(1), ticket(4)),
+        ])
+        .await,
+    );
+
+    // none of the operations ran, before the bad one or after it
+    let session = c.server.session(&c.bearer);
+    for id in 1..=4 {
+        let export = session.get_export(id).unwrap();
+        assert_eq!(export.state(), ExportState::Unknown, "export {id}");
+    }
+    // and each of their ids is taken
+    for id in 1..=4 {
+        let request = c.auth(empty(ticket(id), 7));
+        let refused = c.client.empty_table(request).await.unwrap_err();
+        assert_defined_twice(&refused);
+        let refused = c
+            .batch(vec![Op::EmptyTable(empty(ticket(id), 7))])
+            .await
+            .unwrap_err();
+        assert_defined_twice(&refused);
+    }
+    for id in 1..=4 {
+        assert_eq!(
+            session.get_export(id).unwrap().state(),
+            ExportState::Unknown
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_export_id_is_defined_once_by_a_call_or_by_a_batch() {
+    let mut c = Connected::start().await;
+    let request = c.auth(empty(ticket(1), 3));
+    c.client.empty_table(request).await.unwrap();
+
+    // one-shot, by the same operation and by another
+    let request = c.auth(empty(ticket(1), 4));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    let request = c.auth(FetchTableRequest {
+        source_id: by_ticket(1),
+        result_id: ticket(1),
+    });
+    assert_defined_twice(&c.client.fetch_table(request).await.unwrap_err());
+    assert_eq!(*c.table(1).row_set(), RowSet::flat(3));
+
+    // in a batch the id is refused before any operation runs, wherever it stands, and
+    // the ids named before it are taken and never resolve
+    let refused = c
+        .batch(vec![
+            Op::EmptyTable(empty(ticket(2), 2)),
+            Op::EmptyTable(empty(ticket(1), 4)),
+            Op::EmptyTable(empty(ticket(3), 2)),
+        ])
+        .await
+        .unwrap_err();
+    assert_defined_twice(&refused);
+    let session = c.server.session(&c.bearer);
+    assert_eq!(session.get_export(2).unwrap().state(), ExportState::Unknown);
+    let request = c.auth(empty(ticket(2), 7));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    // the one named after it was not reached
+    let request = c.auth(empty(ticket(3), 7));
+    c.client.empty_table(request).await.unwrap();
+
+    // one id twice in one batch
+    let refused = c
+        .batch(vec![
+            Op::EmptyTable(empty(ticket(5), 1)),
+            fetch(by_offset(0), None),
+            Op::EmptyTable(empty(ticket(5), 2)),
+        ])
+        .await
+        .unwrap_err();
+    assert_defined_twice(&refused);
+    assert_eq!(session.get_export(5).unwrap().state(), ExportState::Unknown);
+
+    // an id whose work failed is defined all the same
+    let request = c.auth(SelectOrUpdateRequest {
+        result_id: ticket(6),
+        source_id: by_ticket(1),
+        column_specs: vec!["X = Nope + 1".to_string()],
+    });
+    let failed = c.client.update(request).await.unwrap_err();
+    assert_eq!(failed.code(), Code::InvalidArgument);
+    let request = c.auth(empty(ticket(6), 1));
+    assert_defined_twice(&c.client.empty_table(request).await.unwrap_err());
+    // one whose request was refused is not
+    let request = c.auth(empty(ticket(7), -1));
+    let refused = c.client.empty_table(request).await.unwrap_err();
+    assert_eq!(refused.message(), "Size must be greater than zero");
+    let request = c.auth(empty(ticket(7), 1));
+    c.client.empty_table(request).await.unwrap();
+}
+
+#[tokio::test]
+async fn a_status_message_that_ends_in_a_space_reaches_the_client_as_cancelled() {
+    let mut c = Connected::start().await;
+    let request = c.auth(empty(ticket(1), 3));
+    c.client.empty_table(request).await.unwrap();
+    let distinct = |column: &str, result: Option<Ticket>| SelectDistinctRequest {
+        result_id: result,
+        source_id: by_ticket(1),
+        column_names: vec![column.to_string()],
+    };
+
+    let request = c.auth(distinct("Z", ticket(2)));
+    let refused = c.client.select_distinct(request).await.unwrap_err();
+    assert_eq!(refused.code(), Code::FailedPrecondition);
+    assert_eq!(refused.message(), "column(s) not found: Z");
+    // a tab is escaped on the wire and arrives
+    let request = c.auth(distinct("Z\t", ticket(3)));
+    let refused = c.client.select_distinct(request).await.unwrap_err();
+    assert_eq!(refused.code(), Code::FailedPrecondition);
+    assert_eq!(refused.message(), "column(s) not found: Z\t");
+
+    for (result, column) in (4..).zip(["Z ", "", " "]) {
+        let request = c.auth(distinct(column, ticket(result)));
+        let reset = c.client.select_distinct(request).await.unwrap_err();
+        assert_eq!(reset.code(), Code::Cancelled, "{column:?}: {reset:?}");
+        assert_reset(
+            c.batch(vec![
+                Op::EmptyTable(empty(None, 1)),
+                Op::SelectDistinct(distinct(column, None)),
+            ])
+            .await,
+        );
+    }
 }
 
 #[tokio::test]

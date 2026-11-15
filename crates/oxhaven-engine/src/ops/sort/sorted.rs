@@ -6,9 +6,11 @@
 //! and row keys are not compared (`PARITY.md` A4).
 
 use super::keys::{KeyEncoder, SortKey};
-use super::{SortColumn, SortError};
+use super::{SortColumn, SortDirection, SortError};
 use crate::ops::merge::flattened_shift_data;
-use crate::table::{reads_through, QueryTable, TableSpec};
+use crate::table::{
+    copy_of, mark, marks, memoized, reads_through, CopyType, Marks, QueryTable, TableSpec,
+};
 use crate::update::ModifiedColumnTransformer;
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -112,6 +114,43 @@ fn carried_input_table(parent: &dyn Table, columns: &[SortColumn]) -> Option<Arc
     }
 }
 
+/// The column a sort result is marked as sorted by, and whether it is descending: the
+/// first sort column. `None` for a sort with a column sorted by its absolute value, which
+/// Java's server sorts by a column it adds and then drops, and dropping columns drops the
+/// marks of a sort.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortOperation#setSorted,
+/// io.deephaven.server.table.ops.SortTableGrpcImpl#create and the
+/// `SORTED_COLUMNS_ATTRIBUTE` entry of
+/// io.deephaven.engine.table.impl.BaseTable#attributeToCopySet
+fn first_column(columns: &[SortColumn]) -> Option<(&str, bool)> {
+    if columns.iter().any(|column| column.absolute) {
+        return None;
+    }
+    let first = columns.first()?;
+    Some((
+        first.column.as_str(),
+        first.direction == SortDirection::Descending,
+    ))
+}
+
+/// The marks of a new sort result: those of `parent` that a sort copies, the first sort
+/// column, and for `redirected` what Java notes of the row redirection.
+fn sorted_marks(parent: &dyn Table, first: (&str, bool), redirected: Option<bool>) -> Marks {
+    let mut marks = CopyType::Sort.sort_marks(&marks(parent));
+    marks.sorted.insert(first.0.to_string(), first.1);
+    if let Some(redirected) = redirected {
+        marks.identity_sort = Some(!redirected);
+    }
+    marks
+}
+
+/// A sort by one column that Java holds `parent` sorted by is `parent` itself. A sort of a
+/// copy is answered with a copy: see [`memoized`]. A sort with a column sorted by its
+/// absolute value is neither: in Java it is three operations, and what they come to for a
+/// copy, or for a table that is already in order, is not ported; such a sort is answered
+/// as it was before copies were told apart.
+///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#sort and
 /// io.deephaven.engine.table.impl.SortOperation#initialize
 pub(super) fn sort(
@@ -121,33 +160,61 @@ pub(super) fn sort(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
+    let first = first_column(columns);
+    if let (Some((column, descending)), 1) = (first, columns.len()) {
+        if marks(&**parent).sorted.get(column) == Some(&descending) {
+            return Ok(parent.clone());
+        }
+    }
     let encoder = KeyEncoder::new(&**parent, columns)?;
     let input = carried_input_table(&**parent, columns);
-    if !parent.is_refreshing() {
-        return Ok(static_sort(parent, &encoder, input)?);
+    let result = if !parent.is_refreshing() {
+        static_sort(parent, &encoder, input, first)?
+    } else if parent.attributes().blink {
+        blink_sort(parent, encoder, input, first)?
+    } else {
+        incremental_sort(parent, encoder, input, first)?
+    };
+    if first.is_none() {
+        return Ok(result);
     }
-    if parent.attributes().blink {
-        return Ok(blink_sort(parent, encoder, input)?);
-    }
-    Ok(incremental_sort(parent, encoder, input)?)
+    Ok(memoized(parent, CopyType::Sort, false, result)?)
 }
 
-/// Behavior: io.deephaven.engine.table.impl.SortOperation#historicalSort
+/// A table that is already in order is answered with a copy of it that is marked as sorted
+/// by the first sort column, or with the table itself if it has those marks already.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortOperation#historicalSort and #withSorted,
+/// and io.deephaven.engine.table.impl.LiveAttributeMap#withAttributes, which returns the
+/// table itself when it has the attributes already
 fn static_sort(
     parent: &Arc<dyn Table>,
     encoder: &KeyEncoder,
     input: Option<Arc<dyn InputTable>>,
+    first: Option<(&str, bool)>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     if parent.is_failed() {
         return Err(failure("the parent table has failed"));
     }
     let rows = parent.row_set();
     let entries = sorted_entries(encoder, &**parent, &rows)?;
-    // A table that is already in order is returned as it is, with its own row keys, unless
-    // the result is to lose the parent's input table.
+    // A table that is already in order keeps its own row keys, unless the result is to
+    // lose the parent's input table.
     let keeps_input = input.is_some() == parent.input_table().is_some();
     if keeps_input && entries.iter().map(|entry| entry.parent_key).eq(rows.iter()) {
-        return Ok(parent.clone());
+        let Some((column, descending)) = first else {
+            return Ok(parent.clone());
+        };
+        let of_parent = marks(&**parent);
+        if of_parent.sorted.get(column) == Some(&descending)
+            && of_parent.identity_sort == Some(true)
+        {
+            return Ok(parent.clone());
+        }
+        return copy_of(parent, false, |marks| {
+            marks.sorted.insert(column.to_string(), descending);
+            marks.identity_sort = Some(true);
+        });
     }
     let redirection = Arc::new(WritableRowRedirection::new());
     remap(&redirection, &[], entries.iter().map(|e| e.parent_key));
@@ -158,7 +225,14 @@ fn static_sort(
     )
     .with_attributes(sort_attributes(&**parent))
     .flat();
-    Ok(QueryTable::new_static(TableSpec { input, ..spec }))
+    let result = QueryTable::new_static(TableSpec { input, ..spec });
+    if let Some(first) = first {
+        // Behavior: SortOperation#populateRedirectedColumns names a redirected column,
+        // and the identity if there is none
+        let redirected = !parent.definition().columns().is_empty();
+        mark(&result, sorted_marks(&**parent, first, Some(redirected)));
+    }
+    Ok(result)
 }
 
 /// The sort of a blink table: every cycle the result is the sorted rows of that cycle.
@@ -168,6 +242,7 @@ fn blink_sort(
     parent: &Arc<dyn Table>,
     encoder: KeyEncoder,
     input: Option<Arc<dyn InputTable>>,
+    first: Option<(&str, bool)>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
         let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
@@ -216,6 +291,9 @@ fn blink_sort(
         };
         Ok((spec, operator))
     })?;
+    if let Some(first) = first {
+        mark(&result, sorted_marks(&**parent, first, None));
+    }
     Ok(result)
 }
 
@@ -438,6 +516,7 @@ fn incremental_sort(
     parent: &Arc<dyn Table>,
     encoder: KeyEncoder,
     input: Option<Arc<dyn InputTable>>,
+    first: Option<(&str, bool)>,
 ) -> Result<Arc<dyn Table>, TableFailure> {
     let result = QueryTable::derive(parent, || {
         let entries = sorted_entries(&encoder, &**parent, &parent.row_set())?;
@@ -469,5 +548,9 @@ fn incremental_sort(
             operator.on_update(upstream)
         }))
     })?;
+    if let Some(first) = first {
+        let redirected = !parent.definition().columns().is_empty();
+        mark(&result, sorted_marks(&**parent, first, Some(redirected)));
+    }
     Ok(result)
 }

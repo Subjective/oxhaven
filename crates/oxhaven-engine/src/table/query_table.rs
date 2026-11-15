@@ -177,6 +177,12 @@ pub struct QueryTable {
     input: Option<Arc<dyn InputTable>>,
 }
 
+impl Drop for QueryTable {
+    fn drop(&mut self) {
+        super::copied::forget(self);
+    }
+}
+
 impl QueryTable {
     fn build(
         mut spec: TableSpec,

@@ -238,19 +238,20 @@ async fn aj_and_raj_refuse_the_rules_of_the_other_and_what_is_not_a_match() {
             "Invalid column name \"in\": \"in\" is a reserved keyword".to_string(),
         ),
     ];
-    for (op, message) in cases {
+    for (unused, (op, message)) in (900..).zip(cases) {
         let refused = refusal(&mut c, op.clone()).await;
         assert_eq!(refused.code(), Code::InvalidArgument, "{refused:?}");
         assert_eq!(refused.message(), message);
 
-        // in a batch, before any operation of the batch is created
+        // in a batch, before any operation of the batch is created. The export named
+        // before the refused operation stays claimed, so each batch names another
         let refused = c
-            .batch(vec![Op::EmptyTable(empty(ticket(90), 1)), op])
+            .batch(vec![Op::EmptyTable(empty(ticket(unused), 1)), op])
             .await
             .unwrap_err();
         assert_eq!(refused.code(), Code::InvalidArgument);
         assert_eq!(refused.message(), message);
-        let unused = c.server.session(&c.bearer).get_export(90).unwrap();
+        let unused = c.server.session(&c.bearer).get_export(unused).unwrap();
         assert_ne!(unused.state(), ExportState::Exported);
     }
 }

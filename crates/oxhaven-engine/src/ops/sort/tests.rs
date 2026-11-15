@@ -460,12 +460,20 @@ fn a_sort_fails_with_its_parent() {
     let source: Arc<dyn Table> = t.script.table();
     for table in [&source, &t.result] {
         assert!(matches!(
-            sort(table, &ascending()),
+            sort(table, &descending()),
             Err(SortError::Table(_))
         ));
         assert!(matches!(head(table, 1), Err(SortError::Table(_))));
         assert!(matches!(reverse(table), Err(SortError::Table(_))));
     }
+    assert!(matches!(
+        sort(&source, &ascending()),
+        Err(SortError::Table(_))
+    ));
+    // By the one column it is sorted by, the result is returned as it is, before Java
+    // looks at anything else (QueryTable#sort and LiveAttributeMap#prepareReturnThis).
+    let again = sort(&t.result, &ascending()).unwrap();
+    assert!(Arc::ptr_eq(&again, &t.result));
 }
 
 #[test]
