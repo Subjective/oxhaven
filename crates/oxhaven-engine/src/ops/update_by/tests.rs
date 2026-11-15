@@ -363,18 +363,86 @@ fn em() -> EmSpec {
 
 #[test]
 #[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeEmStdOperator"
+    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator"
 )]
-fn em_std_is_unported() {
-    request(UpdateBySpec::EmStd(em()));
+fn rolling_group_is_unported() {
+    request(UpdateBySpec::RollingGroup(RollingWindow::ticks(3, 0)));
 }
 
 #[test]
 #[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingStdOperator"
+    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeCountWhereOperator"
 )]
-fn rolling_std_is_unported() {
-    request(UpdateBySpec::RollingStd(RollingWindow::ticks(3, 0)));
+fn cum_count_where_is_unported() {
+    request(UpdateBySpec::CumCountWhere {
+        result_column: "R".into(),
+        filters: vec!["I > 0".into()],
+    });
+}
+
+#[test]
+fn the_standard_deviations_and_the_weighted_average_are_refused_like_the_others() {
+    let window = RollingWindow::ticks(3, 0);
+    let wavg = |weight: &str, column: &str| {
+        let spec = UpdateBySpec::RollingWAvg {
+            window: window.clone(),
+            weight_column: weight.into(),
+        };
+        refused(&[op(spec, &[column])], &[])
+    };
+    assert_eq!(wavg("Nope", "R = I"), "Column Nope does not exist");
+    assert_eq!(wavg("I", "R = Nope"), "Column Nope does not exist");
+    assert!(wavg("K", "R = I").contains("Can not perform RollingWAvg on weight column type"));
+    assert!(wavg("I", "R = K").contains("Can not perform"));
+    let std = op(UpdateBySpec::RollingStd(window), &["R = K"]);
+    assert!(refused(&[std], &[]).contains("Can not perform"));
+    let em_std = op(UpdateBySpec::EmStd(em()), &["R = K"]);
+    assert!(refused(&[em_std], &[]).contains("Can not perform"));
+}
+
+/// The result of a row is kept with the average and the variance it came from, so a run
+/// that starts inside the table continues exactly where a computation from scratch is.
+#[test]
+fn an_exponential_standard_deviation_continues_from_its_variance() {
+    let t = ticking(vec![op(UpdateBySpec::EmStd(em()), &["R = D"])], &[]);
+    let results = |t: &Ticking| {
+        let snapshot = TableSnapshot::current(&*t.result).unwrap();
+        let array = snapshot.columns[R]
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap()
+            .clone();
+        array.iter().map(|v| v.unwrap()).collect::<Vec<f64>>()
+    };
+    let before = results(&t);
+    let update = t
+        .step(TableChange::new().add([50], row("a", 0, 0.75)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![50], vec![], vec![], ModifiedColumnSet::empty())
+    );
+    let after = results(&t);
+    assert!(before[0].is_nan());
+    assert_eq!(after[1..5], before[1..]);
+    // The fold of the last row by hand, from the state after the fifth.
+    let alpha = (-1.0f64 / 5.0).exp();
+    let (mut average, mut variance) = (0.5f64, 0.0f64);
+    for value in [1.5, 2.5, 3.5, 4.5, 0.75] {
+        variance = alpha * (variance + (1.0 - alpha) * ((value - average) * (value - average)));
+        average = average * alpha + (1.0 - alpha) * value;
+    }
+    // The square of the fifth result is not the variance it is the root of, which is
+    // what makes Java's result for the added row differ.
+    assert_ne!((before[4] * before[4]).to_bits(), {
+        let (mut average, mut variance) = (0.5f64, 0.0f64);
+        for value in [1.5, 2.5, 3.5, 4.5] {
+            variance = alpha * (variance + (1.0 - alpha) * ((value - average) * (value - average)));
+            average = average * alpha + (1.0 - alpha) * value;
+        }
+        variance.to_bits()
+    });
+    assert_eq!(after[5].to_bits(), variance.sqrt().to_bits());
 }
 
 /// Every ported operator on every column it takes. `float` and `double` columns are left
@@ -437,6 +505,28 @@ fn everything() -> Vec<UpdateByOperation> {
         ),
         op(UpdateBySpec::RollingSum(window(0, 3)), &["Rs4 = L"]),
         op(UpdateBySpec::RollingCount(window(1, 0)), &["Rc3 = B"]),
+        op(
+            UpdateBySpec::RollingStd(window(3, 0)),
+            &["Sd1 = I", "Sd2 = D", "Sd3 = B", "Sd4 = C"],
+        ),
+        op(
+            UpdateBySpec::RollingStd(window(2, 2)),
+            &["Sd5 = L", "Sd6 = F", "Sd7 = Y"],
+        ),
+        op(
+            UpdateBySpec::RollingWAvg {
+                window: window(3, 0),
+                weight_column: "H".into(),
+            },
+            &["Wa1 = I", "Wa2 = D", "Wa3 = C"],
+        ),
+        op(
+            UpdateBySpec::RollingWAvg {
+                window: window(-1, 3),
+                weight_column: "D".into(),
+            },
+            &["Wa4 = L", "Wa5 = Y", "Wa6 = F"],
+        ),
     ]
 }
 
@@ -845,6 +935,49 @@ fn everything_in_time() -> Vec<UpdateByOperation> {
         op(
             UpdateBySpec::EmMax(em(decay(2), None, None)),
             &["Ex1 = C", "Ex2 = H"],
+        ),
+        op(
+            UpdateBySpec::EmStd(em(
+                WindowScale::Ticks(2.5),
+                None,
+                Some(BadDataBehavior::Poison),
+            )),
+            &["Ed1 = I", "Ed2 = D", "Ed3 = C"],
+        ),
+        // Not poisoned by NaN in time: as Java, the operator refuses the value after a NaN
+        // that came before any other. And on `D` and `F` with the treatment of NaN that the
+        // averages above have: the timestamp a run is seeded with is found by the rule of
+        // the first operator in time on the column (`Plan::seed_timestamp`), so operators
+        // with different rules on one column depend, as in Java, on the updates so far.
+        op(
+            UpdateBySpec::EmStd(em(decay(4), Some(BadDataBehavior::Reset), None)),
+            &["Ed4 = I", "Ed5 = H", "Ed6 = L"],
+        ),
+        op(
+            UpdateBySpec::EmStd(em(decay(3), None, Some(BadDataBehavior::Reset))),
+            &["Ed7 = D", "Ed8 = F", "Ed9 = Y"],
+        ),
+        op(
+            UpdateBySpec::RollingStd(time(5, 0)),
+            &["Sd1 = I", "Sd2 = D"],
+        ),
+        op(
+            UpdateBySpec::RollingStd(time(-2, 6)),
+            &["Sd3 = L", "Sd4 = F"],
+        ),
+        op(
+            UpdateBySpec::RollingWAvg {
+                window: time(3, 3),
+                weight_column: "H".into(),
+            },
+            &["Wa1 = I", "Wa2 = D"],
+        ),
+        op(
+            UpdateBySpec::RollingWAvg {
+                window: RollingWindow::ticks(2, 1),
+                weight_column: "D".into(),
+            },
+            &["Wa3 = L"],
         ),
     ]
 }
