@@ -1,0 +1,44 @@
+{
+  "format": 2,
+  "scenario": "input_writer",
+  "scenario_sha256": "231d97ea9ff8bb51bfed88e98cf2dd1a64f8041a6db65b884492529b23f2094f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "written",
+      "file": "step000.written.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "in_script",
+      "file": "step000.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "written",
+      "file": "step001.written.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "in_script",
+      "file": "step001.in_script.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "written",
+      "file": "step002.written.arrow",
+      "rows": 9
+    },
+    {
+      "step": 2,
+      "table": "in_script",
+      "file": "step002.in_script.arrow",
+      "rows": 1
+    }
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "format": 2,
+  "scenario": "input_in_command",
+  "scenario_sha256": "76bbdb066aee096c0b918c4d06a00e9c62eb53de8fa0fbcccbbb2bef3d537be7",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "appended",
+      "file": "step000.appended.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "sizes",
+      "file": "step000.sizes.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "names",
+      "file": "step000.names.arrow",
+      "rows": 9
+    },
+    {
+      "step": 0,
+      "table": "large",
+      "file": "step000.large.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "appended",
+      "file": "step001.appended.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "sizes",
+      "file": "step001.sizes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "names",
+      "file": "step001.names.arrow",
+      "rows": 9
+    },
+    {
+      "step": 1,
+      "table": "large",
+      "file": "step001.large.arrow",
+      "rows": 1
+    }
+  ]
+}

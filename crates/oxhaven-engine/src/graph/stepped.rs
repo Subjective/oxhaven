@@ -85,6 +85,39 @@ impl SteppedUpdateGraph {
     }
 }
 
+impl SteppedUpdateGraph {
+    /// Runs `wait`, which waits for a cycle of this graph that another thread runs, as
+    /// [`UpdateGraph::run_cycle`] waits for its own: without this thread's holds of the
+    /// shared lock when the thread is inside
+    /// [`yielding_to_cycles`](super::yielding_to_cycles).
+    ///
+    /// # Panics
+    /// If the thread holds the shared lock and is not inside `yielding_to_cycles`.
+    pub fn waiting_for_cycle<T>(&self, wait: impl FnOnce() -> T) -> T {
+        self.lock.released(wait)
+    }
+
+    /// One cycle, on this thread.
+    fn cycle(&self) {
+        let _exclusive = self.lock.exclusive();
+        let step = {
+            let mut clock = lock(&self.clock);
+            clock.step += 1;
+            clock.phase = ClockPhase::Updating;
+            clock.step
+        };
+        *lock(&self.cycle_thread) = Some(thread::current().id());
+        let _end = CycleEnd(self);
+
+        // No notification runs until every source has refreshed.
+        for source in self.live_sources() {
+            source.refresh();
+        }
+        self.sources_satisfied_step.store(step, Ordering::SeqCst);
+        self.flush_notifications(step);
+    }
+}
+
 /// Returns the graph to idle when a cycle ends, normally or by a panic.
 ///
 /// Behavior: io.deephaven.engine.updategraph.LogicalClockImpl#ensureUpdateCycleCompleted
@@ -129,31 +162,21 @@ impl UpdateGraph for SteppedUpdateGraph {
         self.sources_satisfied_step.load(Ordering::SeqCst) == step
     }
 
+    /// A thread that holds the shared lock inside
+    /// [`yielding_to_cycles`](super::yielding_to_cycles) gives its holds up for the cycle and
+    /// has them again when this returns.
+    ///
     /// # Panics
     /// If called from inside a cycle of this graph, or by a thread that holds the shared
-    /// lock. If notifications remain that can never run. A panic in a source or a
-    /// notification propagates to the caller after the graph has returned to idle.
+    /// lock and is not inside `yielding_to_cycles`. If notifications remain that can never
+    /// run. A panic in a source or a notification propagates to the caller after the graph
+    /// has returned to idle.
     fn run_cycle(&self) {
         assert!(
             !self.current_thread_processes_updates(),
             "run_cycle called from inside an update cycle"
         );
-        let _exclusive = self.lock.exclusive();
-        let step = {
-            let mut clock = lock(&self.clock);
-            clock.step += 1;
-            clock.phase = ClockPhase::Updating;
-            clock.step
-        };
-        *lock(&self.cycle_thread) = Some(thread::current().id());
-        let _end = CycleEnd(self);
-
-        // No notification runs until every source has refreshed.
-        for source in self.live_sources() {
-            source.refresh();
-        }
-        self.sources_satisfied_step.store(step, Ordering::SeqCst);
-        self.flush_notifications(step);
+        self.lock.released(|| self.cycle());
     }
 
     fn with_shared_lock(&self, f: &mut dyn FnMut()) {

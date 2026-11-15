@@ -9,17 +9,33 @@ the server's table service. `docs/CONSOLE.md` lists what exists.
 from .csv import read as read_csv
 from .csv import write as write_csv
 from .dherror import DHError
+from .replay import TableReplayer
 from .table import SortDirection
-from .table_factory import empty_table, merge, merge_sorted, new_table, time_table
+from .table_factory import (
+    DynamicTableWriter,
+    empty_table,
+    function_generated_table,
+    input_table,
+    merge,
+    merge_sorted,
+    new_table,
+    ring_table,
+    time_table,
+)
 
 __all__ = [
     "DHError",
+    "DynamicTableWriter",
     "SortDirection",
+    "TableReplayer",
     "empty_table",
+    "function_generated_table",
+    "input_table",
     "merge",
     "merge_sorted",
     "new_table",
     "read_csv",
+    "ring_table",
     "time_table",
     "write_csv",
 ]
