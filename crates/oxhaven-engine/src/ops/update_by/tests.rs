@@ -1867,7 +1867,11 @@ fn an_empty_window_fails_the_result_when_rows_arrive() {
         )]
     };
     let rows = [Some(1_700_000_002), Some(1_699_999_998)];
-    let refused = update_by(&static_table(&columns(&rows)), &operations(), &[] as &[&str]);
+    let refused = update_by(
+        &static_table(&columns(&rows)),
+        &operations(),
+        &[] as &[&str],
+    );
     match refused {
         Err(UpdateByError::Failed(failure)) => {
             assert!(failure.message.contains("Assertion failed"), "{failure}");
