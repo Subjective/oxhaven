@@ -48,6 +48,12 @@ CASES = [
     ("double_forms_4", "A,B,C,D,E,F,G,H\n1.e5,0.,-.5e-3,1e99999999999,1e-99999999999,0e5,- 1,1 e5\n", ""),
     ("double_hex", "A,B,C,D,E,F,G\n0x1p-1074,0x1p-1075,0x1.8p-1075,0x.8p-1073,0x1.00000000000008p0,0x1.00000000000018p0,0x1.0000000000000800000000000000000000001p0\n", ""),
     ("double_hex_2", "A,B,C,D,E,F,G\n0xffffffffffffffffffffffffffffffffffffp0,0x1.fffffffffffff8p1023,0x0p0,0x0.0p99999,-0x1p0,0x1p+3d,0x1.p1\n", ""),
+    # Java drops the hexadecimal digits after the first sixteen, without rounding
+    ("double_hex_long", "A,B,C,D,E,F,G\n0x123456789abcdef01p0,0x123456789abcdef81p0,0xde0b6b3a763ffff8p0,0xde0b6b3a764000008p0,0x0.000000000000000000001p0,0x1.00000000000008p-1023,0x00000000000000001.8p0\n", ""),
+    # an exponent stops growing at 1024 in Java's parser
+    ("double_hex_exponent", "A,B,C,D\n0x0." + "0" * 300 + "1p10240,0x1" + "0" * 300 + "p-10240,0x1p10240,0x1p-10750\n", ""),
+    ("double_exponent", "A,B,C\n1e10240,1e-10240,0." + "0" * 800 + "1e1100\n", ""),
+    ("double_exponent_short", "A,B\n0." + "0" * 800 + "1e10240,1" + "0" * 800 + "e-10240\n", ""),
     ("double_null_value", "A,B\n-1.7976931348623157e308,1.7976931348623157e308\n1,1\n", ""),
     ("double_precision", "A,B,C\n0.1,123456789012345678901234567890,2.2250738585072011e-308\n0.30000000000000004,1.7976931348623157E308,8.41e21\n", ""),
     ("negative_zero", "A,B\n-0,-0.0\n1,1\n", ""),

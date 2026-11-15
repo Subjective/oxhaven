@@ -21,10 +21,16 @@ const RECORDED: &str = include_str!("../tests/data/recorded.json");
 
 /// The reads Java makes a table of and this crate refuses, with the Java method the
 /// refusal names.
-const REFUSED: [(&str, &str); 1] = [(
-    "datetime_regions",
-    "io.deephaven.csv.DeephavenTimeZoneParser#tryParse",
-)];
+const REFUSED: [(&str, &str); 2] = [
+    (
+        "datetime_regions",
+        "io.deephaven.csv.DeephavenTimeZoneParser#tryParse",
+    ),
+    (
+        "double_exponent_short",
+        "ch.randelshofer.fastdoubleparser.JavaDoubleParser#parseDouble",
+    ),
+];
 
 fn parser_of(dtype: &str) -> Parser {
     match dtype {
@@ -48,10 +54,7 @@ fn options_of(args: &Value) -> ReadOptions {
     for (name, value) in args.as_object().unwrap() {
         let flag = || value.as_bool().unwrap();
         let count = || value.as_i64().unwrap();
-        let byte = || {
-            let character = value.as_str().unwrap().chars().next().unwrap();
-            u8::try_from(u32::from(character)).unwrap()
-        };
+        let character = || value.as_str().unwrap().chars().next().unwrap();
         match name.as_str() {
             "header" => {
                 for pair in value.as_array().unwrap() {
@@ -68,8 +71,8 @@ fn options_of(args: &Value) -> ReadOptions {
             "ignore_empty_lines" => options.ignore_empty_lines = flag(),
             "allow_missing_columns" => options.allow_missing_columns = flag(),
             "ignore_excess_columns" => options.ignore_excess_columns = flag(),
-            "delimiter" => options.delimiter = byte(),
-            "quote" => options.quote = byte(),
+            "delimiter" => options.delimiter = character(),
+            "quote" => options.quote = character(),
             "ignore_surrounding_spaces" => options.ignore_surrounding_spaces = flag(),
             "trim" => options.trim = flag(),
             other => panic!("no option {other}"),
@@ -476,35 +479,45 @@ fn writes_what_java_writes_and_reads_it_back() {
     std::fs::write(source.path(), WRITTEN).unwrap();
     let table = read(&format!("file:{}", source.path()), &every_type()).unwrap();
     let written = TempFile::new("written.csv");
-    write(&*table, written.path(), &[]).unwrap();
+    write(&*table, written.path(), &[], "UTC").unwrap();
     assert_eq!(std::fs::read_to_string(written.path()).unwrap(), WRITTEN);
 
     let some = ["I".to_string(), "Str".to_string()];
-    write(&*table, written.path(), &some).unwrap();
+    write(&*table, written.path(), &some, "UTC").unwrap();
     let text = std::fs::read_to_string(written.path()).unwrap();
     assert_eq!(text, "I,Str\n1,plain\n-2,\"q\"\"uo,te\"\n,\n");
 
     // a column that is not there: the error of Java, and the file it left empty
-    let error = write(&*table, written.path(), &["Nope".to_string()]).unwrap_err();
+    let error = write(&*table, written.path(), &["Nope".to_string()], "UTC").unwrap_err();
     assert_eq!(
         error.to_string(),
         "Unknown column names [Nope], available column names are [B, By, C, S, I, L, F, D, \
          Str, T]"
     );
     assert_eq!(std::fs::read_to_string(written.path()).unwrap(), "");
-    let nowhere = write(&*table, "/no/such/directory/a.csv", &[]);
+    let nowhere = write(&*table, "/no/such/directory/a.csv", &[], "UTC");
     assert!(matches!(nowhere, Err(CsvError::Io(_))));
+
+    // Java writes an instant with the offset of the machine's zone: only UTC is here
+    write(&*table, written.path(), &[], "Etc/UTC").unwrap();
+    assert_eq!(std::fs::read_to_string(written.path()).unwrap(), WRITTEN);
+    for zone in ["America/New_York", "Etc/GMT+5", "utc", ""] {
+        let refused = write(&*table, written.path(), &[], zone).unwrap_err();
+        let java = "io.deephaven.time.DateTimeUtils#timeZone";
+        assert!(matches!(refused, CsvError::NotPorted { java: named, .. } if named == java));
+        write(&*table, written.path(), &some, zone).unwrap();
+    }
 }
 
 #[test]
 fn writes_a_table_without_rows_or_without_columns() {
     let written = TempFile::new("empty.csv");
     let no_rows = read_bytes(b"A,B\n", &ReadOptions::default()).unwrap();
-    write(&*no_rows, written.path(), &[]).unwrap();
+    write(&*no_rows, written.path(), &[], "UTC").unwrap();
     assert_eq!(std::fs::read_to_string(written.path()).unwrap(), "A,B\n");
     // rows and no column: Java writes the empty header line and nothing else
     let no_columns = read_bytes(b"\n\n\n", &ReadOptions::default()).unwrap();
     assert_eq!(no_columns.row_set().size(), 2);
-    write(&*no_columns, written.path(), &[]).unwrap();
+    write(&*no_columns, written.path(), &[], "UTC").unwrap();
     assert_eq!(std::fs::read_to_string(written.path()).unwrap(), "\n");
 }

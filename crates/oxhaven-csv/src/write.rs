@@ -193,12 +193,18 @@ fn cells_of(column_type: &ColumnType, values: &ArrayRef) -> Result<Vec<String>, 
 /// column names, then a line per row. `columns` names the columns to write, in order;
 /// empty writes them all.
 ///
-/// Instants are written in UTC. Java writes them in the time zone of its machine, so a
-/// caller on a machine in another zone must refuse instead of calling this.
+/// Java writes an instant as the local time and the offset of its time zone, which is
+/// that of its machine unless it is configured. `zone` is the id of that zone; for one
+/// that is not UTC throughout, a column of instants is refused.
 ///
 /// Behavior: `io.deephaven.csv.CsvTools#writeCsv(Table, boolean, String, String...)`
-/// without compression, for the time zone UTC
-pub fn write(table: &dyn Table, path: &str, columns: &[String]) -> Result<(), CsvError> {
+/// without compression
+pub fn write(
+    table: &dyn Table,
+    path: &str,
+    columns: &[String],
+    zone: &str,
+) -> Result<(), CsvError> {
     let io = |error: std::io::Error| CsvError::Io(format!("{path}: {error}"));
     // Java opens the file before it looks at the columns, so a refused write leaves an
     // empty file behind
@@ -230,6 +236,12 @@ pub fn write(table: &dyn Table, path: &str, columns: &[String]) -> Result<(), Cs
             )));
         };
         let column = table.column(index);
+        if *column.column_type() == ColumnType::Instant && !crate::zones::is_utc(zone) {
+            return Err(not_ported(
+                "io.deephaven.time.DateTimeUtils#timeZone",
+                format_args!("an Instant written in the time zone {zone}"),
+            ));
+        }
         let values = column
             .chunk(&rows)
             .map_err(|failure| CsvError::Invalid(failure.message))?;

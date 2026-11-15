@@ -99,8 +99,10 @@ pub struct ReadOptions {
     pub allow_missing_columns: bool,
     /// Whether the cells of a row beyond the last column are dropped.
     pub ignore_excess_columns: bool,
-    pub delimiter: u8,
-    pub quote: u8,
+    /// What separates the cells of a row. Java takes none but a 7-bit ASCII character.
+    pub delimiter: char,
+    /// What a quoted cell begins and ends with; the same holds for it.
+    pub quote: char,
     /// Whether spaces and tabs around a cell that is not quoted are no part of it. They
     /// are also what may precede the quote of a quoted cell.
     pub ignore_surrounding_spaces: bool,
@@ -119,8 +121,8 @@ impl Default for ReadOptions {
             ignore_empty_lines: false,
             allow_missing_columns: false,
             ignore_excess_columns: false,
-            delimiter: b',',
-            quote: b'"',
+            delimiter: ',',
+            quote: '"',
             ignore_surrounding_spaces: true,
             trim: false,
         }
@@ -133,9 +135,8 @@ impl ReadOptions {
     /// Behavior: `io.deephaven.csv.CsvSpecs#check`
     fn check(&self) -> Result<(), CsvError> {
         let mut problems = Vec::new();
-        for (what, byte) in [("quote", self.quote), ("delimiter", self.delimiter)] {
-            if !byte.is_ascii() {
-                let character = char::from(byte);
+        for (what, character) in [("quote", self.quote), ("delimiter", self.delimiter)] {
+            if !character.is_ascii() {
                 problems.push(format!(
                     "{what} is set to '{character}' but is required to be 7-bit ASCII"
                 ));

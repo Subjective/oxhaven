@@ -69,6 +69,12 @@ fn key(name: &[u8], longest_name: usize) -> Option<i32> {
     (key >= 0).then_some(key)
 }
 
+/// Whether the zone with this id is UTC at every instant.
+pub(crate) fn is_utc(id: &str) -> bool {
+    let mut lines = include_str!("zones.txt").lines();
+    lines.any(|line| line.split_once(' ') == Some((id, "0")))
+}
+
 /// The zone that the text after the space of a date-time cell names, if it names one.
 ///
 /// Behavior: `io.deephaven.csv.DeephavenTimeZoneParser#tryParse`

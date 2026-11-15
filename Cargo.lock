@@ -1316,6 +1316,7 @@ dependencies = [
  "hyper-util",
  "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-csv",
  "oxhaven-engine",
  "oxhaven-expr",
  "oxhaven-parquet",

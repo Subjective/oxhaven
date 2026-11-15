@@ -18,6 +18,7 @@
 mod checks;
 #[cfg(test)]
 mod column_tests;
+mod csv;
 pub mod env;
 mod ops;
 mod parquet;
@@ -361,6 +362,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
+        native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;

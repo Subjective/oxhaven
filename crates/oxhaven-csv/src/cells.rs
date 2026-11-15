@@ -345,8 +345,9 @@ pub(crate) fn read_cells(input: &[u8], options: &ReadOptions) -> Result<Cells, C
     let mut grabber = Grabber {
         input,
         offset: 0,
-        quote: options.quote,
-        delimiter: options.delimiter,
+        // both are ASCII: `ReadOptions::check` has passed
+        quote: options.quote as u8,
+        delimiter: options.delimiter as u8,
         ignore_surrounding_spaces: options.ignore_surrounding_spaces,
         trim: options.trim,
         physical_row: 0,
