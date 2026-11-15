@@ -1,9 +1,11 @@
 //! `update_by` against the results recorded from the Java reference server in
-//! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`).
+//! `fixtures/java_update_by.json` (written by `fixtures/record_java_update_by.py`) and
+//! `fixtures/java_update_by_rest.json` (`fixtures/record_java_update_by_rest.py`).
 //!
 //! Values are compared exactly, floating point cells bit for bit (any NaN equals any
 //! NaN). The tolerance of PARITY.md's allowed difference A1 is not used: the operators
-//! add and multiply in Java's order.
+//! add and multiply in Java's order. The one exception is the exponential moving standard
+//! deviation of a ticking table, see [`ticking_scenarios`].
 
 use super::values::Values;
 use super::{
@@ -27,6 +29,9 @@ use serde_json::Value;
 use std::sync::Arc;
 
 const RECORDED: &str = include_str!("fixtures/java_update_by.json");
+/// The rolling standard deviation and weighted average and the exponential moving standard
+/// deviation.
+const RECORDED_REST: &str = include_str!("fixtures/java_update_by_rest.json");
 
 fn column_type(name: &str) -> ColumnType {
     match name {
@@ -147,6 +152,12 @@ fn operation(op: &Value) -> UpdateByOperation {
         "rolling_max" => UpdateBySpec::RollingMax(window(op)),
         "rolling_count" => UpdateBySpec::RollingCount(window(op)),
         "rolling_prod" => UpdateBySpec::RollingProduct(window(op)),
+        "rolling_std" => UpdateBySpec::RollingStd(window(op)),
+        "rolling_wavg" => UpdateBySpec::RollingWAvg {
+            window: window(op),
+            weight_column: op["weight"].as_str().unwrap().into(),
+        },
+        "emstd" => UpdateBySpec::EmStd(em(op)),
         "ema" => UpdateBySpec::Ema(em(op)),
         "ems" => UpdateBySpec::Ems(em(op)),
         "emmin" => UpdateBySpec::EmMin(em(op)),
@@ -188,8 +199,31 @@ fn floats_match(java: Option<f64>, ours: Option<f64>) -> bool {
     }
 }
 
+/// PARITY.md, allowed difference A1 for a `double`; nulls, NaN and the infinities match
+/// only themselves.
+fn floats_close(java: Option<f64>, ours: Option<f64>) -> bool {
+    match (java, ours) {
+        (Some(a), Some(b)) if a.is_finite() && b.is_finite() => {
+            (a - b).abs() <= (1e-9 * a.abs().max(b.abs())).max(1e-12)
+        }
+        _ => floats_match(java, ours),
+    }
+}
+
 /// What differs between the recorded `columns` and `table`, if anything.
 fn differences(table: &dyn Table, columns: &Value) -> Vec<String> {
+    differences_within(table, columns, &[])
+}
+
+/// As [`differences`], with the columns named in `tolerant` compared under A1.
+fn differences_within(table: &dyn Table, columns: &Value, tolerant: &[&str]) -> Vec<String> {
+    let floats_match = |name: &str, java, ours| {
+        if tolerant.contains(&name) {
+            floats_close(java, ours)
+        } else {
+            floats_match(java, ours)
+        }
+    };
     let snapshot = TableSnapshot::current(table).unwrap();
     let mut out = Vec::new();
     for column in columns.as_array().unwrap() {
@@ -211,7 +245,7 @@ fn differences(table: &dyn Table, columns: &Value) -> Vec<String> {
             (Values::Int(a), Values::Int(b)) => a == b,
             (Values::Text(a), Values::Text(b)) => a == b,
             (Values::Float(a), Values::Float(b)) => {
-                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| floats_match(*a, *b))
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| floats_match(name, *a, *b))
             }
             _ => false,
         };
@@ -253,8 +287,8 @@ fn definition(columns: &Value) -> TableDefinition {
 
 /// Runs every case of one recorded table, `section`, which holds at least `at_least` cases
 /// that Java answers.
-fn static_section(section: &str, at_least: usize) {
-    let recorded: Value = serde_json::from_str(RECORDED).unwrap();
+fn static_section(recorded: &str, section: &str, at_least: usize) {
+    let recorded: Value = serde_json::from_str(recorded).unwrap();
     let columns = &recorded[section]["columns"];
     let definition = definition(columns);
     let values: Vec<ArrayRef> = columns
@@ -317,21 +351,38 @@ fn static_section(section: &str, at_least: usize) {
 
 #[test]
 fn static_results_match_java() {
-    static_section("static", 800);
+    static_section(RECORDED, "static", 800);
 }
 
 /// Sums and products that round, over windows up to and beyond the 64 slots the operators
 /// start with: the results are Java's only if they are taken in Java's order.
 #[test]
 fn rounded_results_match_java() {
-    static_section("long", 170);
+    static_section(RECORDED, "long", 170);
 }
 
 /// Rolling operators over windows in time, and the exponential moving operators decaying by
 /// ticks and by time, with every way of treating null and NaN values.
 #[test]
 fn timed_results_match_java() {
-    static_section("timed", 1135);
+    static_section(RECORDED, "timed", 1135);
+}
+
+#[test]
+fn static_results_of_the_rest_match_java() {
+    static_section(RECORDED_REST, "static", 284);
+}
+
+/// Sums of values, squares and products that round, over windows up to and beyond the 128
+/// slots the standard deviation and the weighted average start with.
+#[test]
+fn rounded_results_of_the_rest_match_java() {
+    static_section(RECORDED_REST, "long", 310);
+}
+
+#[test]
+fn timed_results_of_the_rest_match_java() {
+    static_section(RECORDED_REST, "timed", 412);
 }
 
 fn batch(columns: &Value, rows: &Value) -> RecordBatch {
@@ -366,9 +417,25 @@ fn frozen(table: &dyn Table) -> Arc<dyn Table> {
 
 #[test]
 fn ticking_results_match_java() {
-    let recorded: Value = serde_json::from_str(RECORDED).unwrap();
+    ticking_scenarios(RECORDED, 5);
+}
+
+#[test]
+fn ticking_results_of_the_rest_match_java() {
+    ticking_scenarios(RECORDED_REST, 4);
+}
+
+/// Replays the `count` ticking scenarios of `recorded` with the consistency checker and a
+/// recompute from the static path, and compares the result columns after every step.
+///
+/// The results of an exponential moving standard deviation are compared under PARITY.md's
+/// allowed difference A1, and nothing else is: after an update Java restarts from the
+/// square of a result where it had a variance (see `Em::accumulate_std`), so what it holds
+/// differs in the last bits from what it computes from scratch, and from the results here.
+fn ticking_scenarios(recorded: &str, count: usize) {
+    let recorded: Value = serde_json::from_str(recorded).unwrap();
     let scenarios = recorded["ticking"].as_array().unwrap();
-    assert_eq!(scenarios.len(), 5);
+    assert_eq!(scenarios.len(), count);
     let mut failures = Vec::new();
     for scenario in scenarios {
         let name = scenario["name"].as_str().unwrap();
@@ -379,6 +446,15 @@ fn ticking_results_match_java() {
             keyed_input_table(graph.clone(), definition(columns), &keys, None).unwrap();
         let input = source.input_table().unwrap();
         let (ops, by) = (scenario["ops"].clone(), scenario["by"].clone());
+        let tolerant: Vec<String> = ops
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|op| op["op"] == "emstd")
+            .flat_map(|op| strings(&op["columns"]))
+            .map(|pair| pair.split('=').next().unwrap().trim().to_owned())
+            .collect();
+        let tolerant: Vec<&str> = tolerant.iter().map(String::as_str).collect();
         let result = run(&source, &ops, &by).unwrap();
         let checker = {
             let source = source.clone();
@@ -407,7 +483,7 @@ fn ticking_results_match_java() {
                 rows.is_empty(),
                 "{name} step {number}: source rows differ: {rows:?}"
             );
-            for difference in differences(&*result, &step["result"]) {
+            for difference in differences_within(&*result, &step["result"], &tolerant) {
                 failures.push(format!("{name} step {number}: {difference}"));
             }
         }
