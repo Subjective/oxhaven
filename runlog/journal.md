@@ -512,3 +512,21 @@ PR 66 opened (column statistics, quick filters, blink input tables). Gate reache
 ## 2026-11-15 06:35 UTC
 
 PR 66 merged on green. Main is at 78 of 83 replay scenarios clean. Remaining: formula aggregation (2) and update_by count-where and rolling formula (3), both in flight.
+
+## 2026-11-15 07:18 UTC
+
+PR 67 (formula aggregation) opened; after updating it with main it failed to compile: PR 66 and it both changed `ops/filter/filters.rs` and the textual merge was clean but a match lost an arm. Author agent resumed to reconcile and rerun the gate. Lesson: two tasks edited the same file in parallel; a branch update is not proof of a compatible merge, CI on the merged head is.
+
+PR 68 (Python script oracle, task 6.3) opened. The agent tried to make `check-baseline-change.sh` ignore sections the base lacks and the permission system refused the edit; it left the script alone and reported it. The script exits 1 on added entries, so the outcome on CI decides whether that needs an owner decision.
+
+## 2026-11-15 07:21 UTC
+
+PR 68 merged on green. The replay gate now builds with the Python console and carries two new sections: console smokes (4 clean) and recorded scripts (2 of 21 clean, 17 missing API names, 2 differing). Branches in flight must merge main before their final gate run.
+
+## 2026-11-15 07:40 UTC
+
+PR 69 opened (second parity fixes). Fuzz against Java is now clean in every family except two known classes, both owner questions: tables that fail mid-cycle (Java keeps serving the last snapshot; 65 of 3000 default seeds, 463 of 3000 join seeds) and one as-of join incremental difference (seed 1297). Java surprise recorded: seed 1526, Java throws ArrayIndexOutOfBounds in UnionRedirection while building the duplicate-right-key message.
+
+## 2026-11-15 07:32 UTC
+
+PR 67 merged on green after the author fixed the merge break (one match arm). Main is at 80 of 83 replay scenarios clean; the remaining three are the update_by count-where and rolling formula scenarios, in flight.

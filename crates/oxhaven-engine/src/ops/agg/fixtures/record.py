@@ -64,8 +64,12 @@ and the operations of the oracle's scenarios (`natural_join`, `update_view`, ...
     {"agg": "weighted_avg" | "weighted_sum", "cols", "weight": column}
     {"agg": "sorted_first" | "sorted_last", "cols", "order_by": column}
     {"agg": "count", "column": name}
+    {"agg": "formula", "cols", "formula": formula, "param": token}
+    {"agg": "formula", "formula": "Out = formula"}
 
 with `cols` written `"Out=In"` or `"Col"`, as `pydeephaven.agg` takes them. The `type` of a
+formula with `cols` is an `AggSpecFormula`, sent with the token as it is written, also an
+empty one; a formula without is an `Aggregation.Formula`. The `type` of a
 non-unique sentinel is the field of the request that carries it: `byte`, `short`, `int`,
 `long`, `float`, `double`, `char`, `string` or `bool`; a floating point value may be one of
 the words `"NaN"`, `"Infinity"` and `"-Infinity"`.
@@ -271,6 +275,12 @@ def aggregation(entry):
         return agg.distinct(cols, include_nulls=entry["include_nulls"])
     if kind == "count_where":
         return agg.count_where(entry["column"], entry["filters"])
+    if kind == "formula" and cols is None:
+        return agg.formula(entry["formula"])
+    if kind == "formula":
+        # `agg.formula` takes an empty token for the other form.
+        spec = table_pb2.AggSpec.AggSpecFormula(formula=entry["formula"], param_token=entry["param"])
+        return _AggregationColumns(agg_spec=table_pb2.AggSpec(formula=spec), cols=cols)
     if kind in ("weighted_avg", "weighted_sum"):
         return getattr(agg, kind)(entry["weight"], cols)
     if kind in ("sorted_first", "sorted_last"):

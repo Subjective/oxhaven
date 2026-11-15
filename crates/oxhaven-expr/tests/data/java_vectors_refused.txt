@@ -141,39 +141,6 @@ java-accepts	update	arrayObj(VT)	function arrayObj() with a vector or array argu
 java-rejects	update	arrayObj(AS)	function arrayObj() with a vector or array argument
 java-rejects	update	arrayObj(AB)	function arrayObj() with a vector or array argument
 java-rejects	update	arrayObj(AT)	function arrayObj() with a vector or array argument
-java-accepts	update	absAvg(VI)	function absAvg() with a vector or array argument
-java-accepts	update	absAvg(AD)	function absAvg() with a vector or array argument
-java-accepts	update	absAvg(VC)	function absAvg() with a vector or array argument
-java-accepts	update	ste(VI)	function ste() with a vector or array argument
-java-accepts	update	ste(AD)	function ste() with a vector or array argument
-java-accepts	update	ste(VC)	function ste() with a vector or array argument
-java-accepts	update	tstat(VI)	function tstat() with a vector or array argument
-java-accepts	update	tstat(AD)	function tstat() with a vector or array argument
-java-accepts	update	tstat(VC)	function tstat() with a vector or array argument
-java-accepts	update	countPos(VI)	function countPos() with a vector or array argument
-java-accepts	update	countPos(AD)	function countPos() with a vector or array argument
-java-accepts	update	countPos(VC)	function countPos() with a vector or array argument
-java-accepts	update	countNeg(VI)	function countNeg() with a vector or array argument
-java-accepts	update	countNeg(AD)	function countNeg() with a vector or array argument
-java-accepts	update	countNeg(VC)	function countNeg() with a vector or array argument
-java-accepts	update	countZero(VI)	function countZero() with a vector or array argument
-java-accepts	update	countZero(AD)	function countZero() with a vector or array argument
-java-accepts	update	countZero(VC)	function countZero() with a vector or array argument
-java-accepts	update	indexOfMax(VI)	function indexOfMax() with a vector or array argument
-java-accepts	update	indexOfMax(AD)	function indexOfMax() with a vector or array argument
-java-accepts	update	indexOfMax(VC)	function indexOfMax() with a vector or array argument
-java-accepts	update	indexOfMin(VI)	function indexOfMin() with a vector or array argument
-java-accepts	update	indexOfMin(AD)	function indexOfMin() with a vector or array argument
-java-accepts	update	indexOfMin(VC)	function indexOfMin() with a vector or array argument
-java-accepts	update	cumprod(VI)	function cumprod() with a vector or array argument
-java-accepts	update	cumprod(AD)	function cumprod() with a vector or array argument
-java-accepts	update	cumprod(VC)	function cumprod() with a vector or array argument
-java-accepts	update	cummin(VI)	function cummin() with a vector or array argument
-java-accepts	update	cummin(AD)	function cummin() with a vector or array argument
-java-accepts	update	cummin(VC)	function cummin() with a vector or array argument
-java-accepts	update	cummax(VI)	function cummax() with a vector or array argument
-java-accepts	update	cummax(AD)	function cummax() with a vector or array argument
-java-accepts	update	cummax(VC)	function cummax() with a vector or array argument
 java-accepts	update	forwardFill(VI)	function forwardFill() with a vector or array argument
 java-accepts	update	forwardFill(AD)	function forwardFill() with a vector or array argument
 java-accepts	update	forwardFill(VC)	function forwardFill() with a vector or array argument
@@ -189,19 +156,12 @@ java-rejects	update	unbox(VC)	function unbox() with a vector or array argument
 java-accepts	update	enlist(VI)	function enlist() with a vector or array argument
 java-accepts	update	enlist(AD)	function enlist() with a vector or array argument
 java-accepts	update	enlist(VC)	function enlist() with a vector or array argument
-java-accepts	update	percentile(0.5, VD)	function percentile() with a vector or array argument
-java-accepts	update	percentile(0.5, AI)	function percentile() with a vector or array argument
 java-fails	update	nth(1, VI)	function nth() with a vector or array argument
 java-fails	update	nth(1, AD)	function nth() with a vector or array argument
 java-accepts	update	firstIndexOf(1, VI)	function firstIndexOf() with a vector or array argument
 java-accepts	update	countDistinct(VI, true)	function countDistinct() with a vector or array argument
 java-accepts	update	distinct(AD, true)	function distinct() with a vector or array argument
-java-fails	update	wsum(VI, VD)	function wsum() with a vector or array argument
-java-fails	update	wavg(AD, AI)	function wavg() with a vector or array argument
-java-accepts	update	cov(VD, VD)	function cov() with a vector or array argument
-java-accepts	update	cor(AI, AI)	function cor() with a vector or array argument
 java-fails	update	wvar(VD, VI)	function wvar() with a vector or array argument
-java-accepts	update	diff(1, VI)	function diff() with a vector or array argument
 java-accepts	update	concat(VI, VI)	function concat() with a vector or array argument
 java-accepts	update	concat(AI, AI)	function concat() with a vector or array argument
 java-fails	update	in(1, VI)	function in() with a vector or array argument
@@ -270,3 +230,10 @@ java-accepts	update	R == 2 ? null : VB.subVector(-1, 1)	method call .subVector()
 java-rejects	where	firstObj(VB)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
 java-rejects	where	R != 2 && VB.get(0)	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
 java-rejects	where	R != 2 && VB[0]	an element of a Boolean vector or array, which Java compiles in a formula column and not in a filter
+java-rejects	update	diff(1, VC)	function diff() with a vector or array argument
+java-rejects	update	diff(-1, VC)	function diff() with a vector or array argument
+java-rejects	update	diff(2, VC)	function diff() with a vector or array argument
+java-rejects	update	diff(0, VC)	function diff() with a vector or array argument
+java-rejects	update	diff(1, AC)	function diff() with a vector or array argument
+java-rejects	update	diff(1L, VI)	function diff() with a vector or array argument
+java-rejects	update	diff(1.0, VI)	function diff() with a vector or array argument

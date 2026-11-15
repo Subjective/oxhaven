@@ -34,6 +34,21 @@ class Failure:
     code: str
 
 
+@dataclass(frozen=True)
+class ScriptError:
+    """A script that the server's Python session did not run to its end.
+
+    `type` is the exception's class as Python prints it (`ZeroDivisionError`,
+    `deephaven.dherror.DHError`), `text` the first line of its message, and `operation` the
+    part of a `DHError` message that says what failed (`table update operation failed.`),
+    `None` for any other exception. Only `type` and `operation` are compared.
+    """
+
+    type: str
+    text: str
+    operation: str | None = None
+
+
 class ResultSet:
     """The results of one scenario run, keyed by (step, table), in the order produced.
 
