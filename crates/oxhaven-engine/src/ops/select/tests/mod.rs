@@ -2,6 +2,7 @@
 //! requests, `ticking` every incremental case under the consistency checker, `corpus` the results
 //! recorded from the Java server, and `renames` the renaming and moving of columns.
 
+mod arrays;
 mod corpus;
 mod renames;
 mod statics;

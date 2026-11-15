@@ -433,11 +433,20 @@ impl Checker<'_> {
             // Behavior: `QueryLanguageParser#visit(ArrayAccessExpr)`: an index into
             // anything that is not a Java array is a call of `get`, here on the vector
             // that `Col_` names, or on a column that is itself named `Col_`.
-            Expr::ColumnArrayAccess { column, position } => self.method_call(
-                &Expr::Column(format!("{column}_")),
-                crate::parse::INDEX_METHOD,
-                std::slice::from_ref(position),
-            ),
+            Expr::ColumnArrayAccess { column, position } => {
+                let name = format!("{column}_");
+                let known = [name.as_str(), column.as_str()]
+                    .iter()
+                    .any(|name| self.definition.index_of(name).is_some());
+                if !known {
+                    return Err(type_error(format!("cannot find column {column}")));
+                }
+                self.method_call(
+                    &Expr::Column(name),
+                    crate::parse::INDEX_METHOD,
+                    std::slice::from_ref(position),
+                )
+            }
         }
     }
 

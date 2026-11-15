@@ -5,7 +5,9 @@ use super::arrays::{self, ShiftedColumn};
 use super::{Flavor, SelectError};
 use crate::table::holds_values;
 use crate::update::ModifiedColumnTransformer;
-use oxhaven_contracts::expr::{Expr, Formula, FormulaCompiler, Literal, RowVariable};
+use oxhaven_contracts::expr::{
+    ColumnAssignment, Expr, Formula, FormulaCompiler, Literal, RowVariable,
+};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table};
 use std::collections::BTreeSet;
@@ -332,7 +334,10 @@ fn validate_safe_for_refresh(
     Ok(())
 }
 
-/// Reads the column list of one call against `parent`.
+/// Reads the column list of one call against `parent`. With `first`, the first column is
+/// that assignment in place of what its text says: a formula whose reads at a fixed
+/// distance have been replaced by shifted columns of `parent`, which is not looked
+/// through for such reads again.
 ///
 /// Behavior: io.deephaven.api.Selectable#parse, the two forms of
 /// io.deephaven.engine.table.impl.select.SelectColumnFactory, the choice between a source
@@ -343,6 +348,7 @@ pub(super) fn analyze<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
+    mut first: Option<ColumnAssignment>,
 ) -> Result<Plan, SelectError> {
     let mut scope: Vec<Named> = parent
         .definition()
@@ -371,7 +377,11 @@ pub(super) fn analyze<S: AsRef<str>>(
             column: text.trim().to_string(),
             error,
         };
-        let assignment = compiler.parse_assignment(text).map_err(formula_error)?;
+        let replaced = first.is_some();
+        let assignment = match first.take() {
+            Some(assignment) => assignment,
+            None => compiler.parse_assignment(text).map_err(formula_error)?,
+        };
         validate_name(&assignment.name)?;
 
         // `Name` alone always names a column. `Name = Other` names one when the text after
@@ -425,10 +435,20 @@ pub(super) fn analyze<S: AsRef<str>>(
                 )
             }
             None => {
-                let formula = compiler
-                    .compile(&assignment.expr, &definition_of(&scope))
-                    .map_err(formula_error)?;
-                if let Some(rewritten) = arrays::constant_array_accesses(text, &assignment.expr) {
+                let compiled = compiler.compile(&assignment.expr, &definition_of(&scope));
+                // A shifted column needs no more of its column than that it exists, so
+                // the formula is judged once the shifted columns stand in for what they
+                // can: a column of vectors has no column array here, and can be shifted.
+                let rewritten = (!replaced)
+                    .then(|| arrays::constant_array_accesses(text, &assignment.expr))
+                    .flatten()
+                    .filter(|rewritten| {
+                        compiled.is_ok()
+                            || rewritten.shifts.iter().all(|shift| {
+                                scope.iter().any(|named| named.name == shift.column)
+                            })
+                    });
+                if let Some(rewritten) = rewritten {
                     shifted = Some(ShiftedColumn {
                         index,
                         name: assignment.name,
@@ -437,6 +457,7 @@ pub(super) fn analyze<S: AsRef<str>>(
                     });
                     break;
                 }
+                let formula = compiled.map_err(formula_error)?;
                 validate_safe_for_refresh(text, &assignment.expr, &*formula, &**parent)?;
                 let depends =
                     depends_on(&mut formula.columns().iter().chain(formula.column_arrays()));

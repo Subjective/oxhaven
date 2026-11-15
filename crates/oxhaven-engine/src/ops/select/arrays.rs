@@ -623,10 +623,7 @@ pub(crate) fn add_shifted_columns(
 /// with, and every other text as `compiler` does.
 pub(crate) struct Replacing<'a> {
     compiler: &'a dyn FormulaCompiler,
-    /// Texts that are whole expressions.
     expressions: Vec<(String, Expr)>,
-    /// A column string.
-    assignment: Option<(&'a str, ColumnAssignment)>,
 }
 
 impl<'a> Replacing<'a> {
@@ -637,7 +634,6 @@ impl<'a> Replacing<'a> {
         Self {
             compiler,
             expressions,
-            assignment: None,
         }
     }
 }
@@ -651,10 +647,7 @@ impl FormulaCompiler for Replacing<'_> {
     }
 
     fn parse_assignment(&self, text: &str) -> Result<ColumnAssignment, FormulaError> {
-        match &self.assignment {
-            Some((known, assignment)) if *known == text => Ok(assignment.clone()),
-            _ => self.compiler.parse_assignment(text),
-        }
+        self.compiler.parse_assignment(text)
     }
 
     fn compile(
@@ -754,23 +747,33 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
         .iter()
         .map(Shift::result_name)
         .collect();
-    let replacing = Replacing {
-        compiler,
-        expressions: Vec::new(),
-        assignment: Some((
-            text,
-            ColumnAssignment {
-                name: shifted.name.clone(),
-                expr: shifted.rewritten.expr,
-            },
-        )),
+    let rewritten = ColumnAssignment {
+        name: shifted.name.clone(),
+        expr: shifted.rewritten.expr,
     };
-    let computing = match flavor {
-        Flavor::Select | Flavor::Update => Flavor::Update,
-        Flavor::View | Flavor::UpdateView => Flavor::UpdateView,
-        Flavor::LazyUpdate => Flavor::LazyUpdate,
-    };
-    let computed = run(&with_shifts, &[text], &replacing, computing)?;
+    let computed = match flavor {
+        Flavor::Select | Flavor::Update => super::materialize::stored(
+            &with_shifts,
+            &[text],
+            compiler,
+            Flavor::Update,
+            Some(rewritten),
+        ),
+        Flavor::View | Flavor::UpdateView => super::computed_on_read(
+            &with_shifts,
+            &[text],
+            compiler,
+            Flavor::UpdateView,
+            Some(rewritten),
+        ),
+        Flavor::LazyUpdate => super::computed_on_read(
+            &with_shifts,
+            &[text],
+            compiler,
+            Flavor::LazyUpdate,
+            Some(rewritten),
+        ),
+    }?;
 
     let mut attributes = TableAttributes::default();
     if parent.is_refreshing() {

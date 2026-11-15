@@ -27,7 +27,7 @@ fn columns(size: usize) -> Vec<ArrayRef> {
 
 /// A static table at the given row keys with `A` 10, 20, ... and `B` 1, 2, ..., that does
 /// not declare itself flat.
-fn keyed(keys: &[i64]) -> Arc<dyn Table> {
+pub(super) fn keyed(keys: &[i64]) -> Arc<dyn Table> {
     let rows = RowSet::from_keys(keys.iter().copied());
     let values = ReferenceTable::new_static(sym_a_b(), rows.clone(), columns(keys.len()));
     // The reference table makes a new source on every call; holding one of each lets the
@@ -37,7 +37,7 @@ fn keyed(keys: &[i64]) -> Arc<dyn Table> {
 }
 
 /// The same values in a flat in-memory table.
-fn flat(size: usize) -> Arc<dyn Table> {
+pub(super) fn flat(size: usize) -> Arc<dyn Table> {
     let fields: Vec<Field> = sym_a_b()
         .columns()
         .iter()

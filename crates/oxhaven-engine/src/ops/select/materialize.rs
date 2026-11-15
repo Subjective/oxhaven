@@ -8,7 +8,7 @@ use crate::table::{
 };
 use arrow::array::ArrayRef;
 use oxhaven_column::{FlatSource, RedirectedSource, RowRedirection, WritableSource};
-use oxhaven_contracts::expr::{Formula, FormulaCompiler};
+use oxhaven_contracts::expr::{ColumnAssignment, Formula, FormulaCompiler};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -16,14 +16,17 @@ use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::sync::Arc;
 
+/// `first` is as for [`plan::analyze`].
+///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#selectOrUpdate
 pub(super) fn stored<S: AsRef<str>>(
     parent: &Arc<dyn Table>,
     columns: &[S],
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
+    first: Option<ColumnAssignment>,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    let mut plan = plan::analyze(parent, columns, compiler, flavor)?;
+    let mut plan = plan::analyze(parent, columns, compiler, flavor, first)?;
     if let Some(shifted) = plan.shifted.take() {
         return super::arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
     }

@@ -442,13 +442,20 @@ fn where_specs(
             .collect::<Result<Vec<_>, _>>()
             .map_err(FilterError::Invalid)
     };
-    let filters = resolve(parent.definition(), compiler)?;
+    let filters = resolve(parent.definition(), compiler);
     let (mut rewritten, mut shifts) = (Vec::new(), Vec::new());
     for spec in specs {
         shifted_reads(spec, compiler, &mut rewritten, &mut shifts);
     }
-    if shifts.is_empty() {
-        return where_resolved(parent, filters);
+    // A shifted column needs no more of its column than that it exists, so filters that
+    // do not fit the table are judged again once the shifted columns stand in.
+    let shifted = !shifts.is_empty()
+        && (filters.is_ok()
+            || shifts
+                .iter()
+                .all(|shift| parent.definition().index_of(&shift.column).is_some()));
+    if !shifted {
+        return where_resolved(parent, filters?);
     }
     let with_shifts = add_shifted_columns(parent, &shifts)?;
     let replacing = Replacing::expressions(compiler, rewritten);

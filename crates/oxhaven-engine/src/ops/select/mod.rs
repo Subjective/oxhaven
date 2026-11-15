@@ -40,7 +40,7 @@ mod tests;
 use crate::table::{mark, marks, memoized, CopyType, Marks, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 pub use array_formula::ArrayFormula;
-use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
+use oxhaven_contracts::expr::{ColumnAssignment, FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
@@ -154,7 +154,7 @@ pub fn view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
-    computed_on_read(parent, columns, compiler, Flavor::View)
+    computed_on_read(parent, columns, compiler, Flavor::View, None)
 }
 
 /// The parent's columns and the listed ones, each computed from the parent's current values
@@ -169,7 +169,7 @@ pub fn update_view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
-    computed_on_read(parent, columns, compiler, Flavor::UpdateView)
+    computed_on_read(parent, columns, compiler, Flavor::UpdateView, None)
 }
 
 /// As [`update_view`], but each formula remembers its result for every distinct tuple of
@@ -192,7 +192,7 @@ pub fn lazy_update<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    computed_on_read(parent, columns, compiler, Flavor::LazyUpdate)
+    computed_on_read(parent, columns, compiler, Flavor::LazyUpdate, None)
 }
 
 /// The listed columns with their values stored, so that a formula is computed once per row
@@ -216,9 +216,9 @@ pub fn select<S: AsRef<str>>(
             .iter()
             .map(|column| column.name.as_str())
             .collect();
-        return materialize::stored(parent, &all, compiler, Flavor::Select);
+        return materialize::stored(parent, &all, compiler, Flavor::Select, None);
     }
-    materialize::stored(parent, columns, compiler, Flavor::Select)
+    materialize::stored(parent, columns, compiler, Flavor::Select, None)
 }
 
 /// The parent's columns and the listed ones, the listed ones with their values stored as
@@ -230,7 +230,7 @@ pub fn update<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    materialize::stored(parent, columns, compiler, Flavor::Update)
+    materialize::stored(parent, columns, compiler, Flavor::Update, None)
 }
 
 /// The parent without the named columns. With no names, the parent itself.
@@ -333,6 +333,8 @@ fn spec(
     }
 }
 
+/// `first` is as for [`plan::analyze`].
+///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#viewOrUpdateView and #lazyUpdate,
 /// with the layers io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer#createContext
 /// makes in its `VIEW_EAGER` and `VIEW_LAZY` modes
@@ -341,8 +343,9 @@ fn computed_on_read<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
+    first: Option<ColumnAssignment>,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    let mut plan = plan::analyze(parent, columns, compiler, flavor)?;
+    let mut plan = plan::analyze(parent, columns, compiler, flavor, first)?;
     if let Some(shifted) = plan.shifted.take() {
         return arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
     }
