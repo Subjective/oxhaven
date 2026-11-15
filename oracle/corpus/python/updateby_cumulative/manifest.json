@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "updateby_cumulative",
-  "scenario_sha256": "7301eb9b0fbe774af043d3ecd5eabffd92ebf9cb50725325e9404fc7efafb0d3",
+  "scenario_sha256": "b9c526ae2e5c64c8fe98ba6b81278867db2f27b9e2850e56d9da8933893a7383",
   "reference": "42.9",
   "entries": [
     {
@@ -14,6 +14,252 @@
       "step": 0,
       "table": "overall",
       "file": "step000.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "pairs",
+      "file": "step000.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "deltas",
+      "file": "step000.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "nothing_added",
+      "file": "step000.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_key",
+      "file": "step001.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "overall",
+      "file": "step001.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "pairs",
+      "file": "step001.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "deltas",
+      "file": "step001.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "nothing_added",
+      "file": "step001.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_key",
+      "file": "step002.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "overall",
+      "file": "step002.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "pairs",
+      "file": "step002.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "deltas",
+      "file": "step002.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "nothing_added",
+      "file": "step002.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_key",
+      "file": "step003.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "overall",
+      "file": "step003.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "pairs",
+      "file": "step003.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "deltas",
+      "file": "step003.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "nothing_added",
+      "file": "step003.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_key",
+      "file": "step004.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "overall",
+      "file": "step004.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "pairs",
+      "file": "step004.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "deltas",
+      "file": "step004.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "nothing_added",
+      "file": "step004.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_key",
+      "file": "step005.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "overall",
+      "file": "step005.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "pairs",
+      "file": "step005.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "deltas",
+      "file": "step005.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "nothing_added",
+      "file": "step005.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_key",
+      "file": "step006.by_key.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "overall",
+      "file": "step006.overall.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "pairs",
+      "file": "step006.pairs.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "deltas",
+      "file": "step006.deltas.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "nothing_added",
+      "file": "step006.nothing_added.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
       "rows": 10
     }
   ]

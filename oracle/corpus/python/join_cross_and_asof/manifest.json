@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "join_cross_and_asof",
-  "scenario_sha256": "2d00f7468d3f57b5794f2577c1e2c5e0785d64abbfffd2cb0cd34b4599400c03",
+  "scenario_sha256": "ad6b6ab1d5668dcab5949992a413f130586795db3654fafae19749d21aacb7b8",
   "reference": "42.9",
   "entries": [
     {
@@ -26,6 +26,282 @@
       "step": 0,
       "table": "reverse_as_of",
       "file": "step000.reverse_as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "keyed_all",
+      "file": "step000.keyed_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "strictly_before",
+      "file": "step000.strictly_before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "unkeyed",
+      "file": "step000.unkeyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "by_default",
+      "file": "step000.by_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "strictly_after",
+      "file": "step000.strictly_after.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "unkeyed_reverse",
+      "file": "step000.unkeyed_reverse.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "crossed",
+      "file": "step001.crossed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "keyed",
+      "file": "step001.keyed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 1,
+      "table": "as_of",
+      "file": "step001.as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "reverse_as_of",
+      "file": "step001.reverse_as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "keyed_all",
+      "file": "step001.keyed_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 1,
+      "table": "strictly_before",
+      "file": "step001.strictly_before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "unkeyed",
+      "file": "step001.unkeyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "by_default",
+      "file": "step001.by_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "strictly_after",
+      "file": "step001.strictly_after.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "unkeyed_reverse",
+      "file": "step001.unkeyed_reverse.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "crossed",
+      "file": "step002.crossed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "keyed",
+      "file": "step002.keyed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 2,
+      "table": "as_of",
+      "file": "step002.as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "reverse_as_of",
+      "file": "step002.reverse_as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "keyed_all",
+      "file": "step002.keyed_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 2,
+      "table": "strictly_before",
+      "file": "step002.strictly_before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "unkeyed",
+      "file": "step002.unkeyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "by_default",
+      "file": "step002.by_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "strictly_after",
+      "file": "step002.strictly_after.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "unkeyed_reverse",
+      "file": "step002.unkeyed_reverse.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "crossed",
+      "file": "step003.crossed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "keyed",
+      "file": "step003.keyed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 3,
+      "table": "as_of",
+      "file": "step003.as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "reverse_as_of",
+      "file": "step003.reverse_as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "keyed_all",
+      "file": "step003.keyed_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 3,
+      "table": "strictly_before",
+      "file": "step003.strictly_before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "unkeyed",
+      "file": "step003.unkeyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "by_default",
+      "file": "step003.by_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "strictly_after",
+      "file": "step003.strictly_after.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "unkeyed_reverse",
+      "file": "step003.unkeyed_reverse.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "crossed",
+      "file": "step004.crossed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "keyed",
+      "file": "step004.keyed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 4,
+      "table": "as_of",
+      "file": "step004.as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "reverse_as_of",
+      "file": "step004.reverse_as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "keyed_all",
+      "file": "step004.keyed_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 4,
+      "table": "strictly_before",
+      "file": "step004.strictly_before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "unkeyed",
+      "file": "step004.unkeyed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "by_default",
+      "file": "step004.by_default.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "strictly_after",
+      "file": "step004.strictly_after.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "unkeyed_reverse",
+      "file": "step004.unkeyed_reverse.arrow",
       "rows": 4
     }
   ]

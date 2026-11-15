@@ -1,0 +1,49 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling sum (time) UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: UpdateBy rolling window size must be non-negative",
+      "operation": "failed to create a rolling sum (time) UpdateByOperation."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling average (time) UpdateByOperation. : java.time.format.DateTimeParseException: Text cannot be parsed to a Duration",
+      "operation": "failed to create a rolling average (time) UpdateByOperation."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a rolling minimum (time) UpdateByOperation. : RuntimeError: java.lang.IllegalArgumentException: WindowScale.timestampCol() must not be an empty string",
+      "operation": "failed to create a rolling minimum (time) UpdateByOperation."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update-by operation failed. : RuntimeError: java.lang.IllegalArgumentException: Unsupported timestamp column type int for column 'K'",
+      "operation": "table update-by operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "ok"
+    },
+    {
+      "step": 6,
+      "outcome": "ok"
+    },
+    {
+      "step": 7,
+      "outcome": "ok"
+    }
+  ]
+}

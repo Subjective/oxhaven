@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "updateby_rolling",
-  "scenario_sha256": "a35d8a1a67ad8c6ececc79d619e061b8b8df431633a95545a186ed1caef2fb01",
+  "scenario_sha256": "f8e374edcca716e46a458cd44d9dfca0fb15795c56055ce0a2ab2e52ca9c5256",
   "reference": "42.9",
   "entries": [
     {
@@ -14,6 +14,438 @@
       "step": 0,
       "table": "smoothed",
       "file": "step000.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "windows",
+      "file": "step000.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "groups",
+      "file": "step000.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "rolled",
+      "file": "step001.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "smoothed",
+      "file": "step001.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "windows",
+      "file": "step001.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "groups",
+      "file": "step001.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "rolled",
+      "file": "step002.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "smoothed",
+      "file": "step002.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "windows",
+      "file": "step002.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "groups",
+      "file": "step002.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 2,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "rolled",
+      "file": "step003.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "smoothed",
+      "file": "step003.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "windows",
+      "file": "step003.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "groups",
+      "file": "step003.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 3,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "rolled",
+      "file": "step004.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "smoothed",
+      "file": "step004.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "windows",
+      "file": "step004.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "groups",
+      "file": "step004.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 4,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "rolled",
+      "file": "step005.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "smoothed",
+      "file": "step005.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "windows",
+      "file": "step005.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "groups",
+      "file": "step005.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "rolled",
+      "file": "step006.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "smoothed",
+      "file": "step006.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "windows",
+      "file": "step006.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "groups",
+      "file": "step006.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_formula",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "rolled",
+      "file": "step007.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "smoothed",
+      "file": "step007.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "windows",
+      "file": "step007.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "groups",
+      "file": "step007.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_formula",
+      "file": "step007.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_columns",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "rolled",
+      "file": "step008.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "smoothed",
+      "file": "step008.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "windows",
+      "file": "step008.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "groups",
+      "file": "step008.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "by_formula",
+      "file": "step008.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "by_columns",
+      "file": "step008.by_columns.arrow",
+      "rows": 10
+    },
+    {
+      "step": 8,
+      "table": "counted",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "rolled",
+      "file": "step009.rolled.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "smoothed",
+      "file": "step009.smoothed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "windows",
+      "file": "step009.windows.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "groups",
+      "file": "step009.groups.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "by_formula",
+      "file": "step009.by_formula.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "by_columns",
+      "file": "step009.by_columns.arrow",
+      "rows": 10
+    },
+    {
+      "step": 9,
+      "table": "counted",
+      "file": "step009.counted.arrow",
       "rows": 10
     }
   ]
