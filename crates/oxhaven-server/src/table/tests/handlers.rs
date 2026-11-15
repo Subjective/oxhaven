@@ -11,6 +11,7 @@ use oxhaven_proto::grpc::SortDescriptor;
 mod asof;
 mod head_by;
 mod range_join;
+mod ungroup;
 mod update_by;
 
 /// What the Java server answers for any exception out of the engine.

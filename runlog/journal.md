@@ -371,3 +371,13 @@ change. Third independent sighting, first in CI. The debugging agent has the CI 
 Until it is found, a red oracle-replay job with "did not finish within 300 seconds" and no
 PROMOTE/TIGHTEN/REGRESSED line is this stall; it gets one comment on the pull request and the
 merge waits for a green run on the head, never a merge over red.
+
+## 00:20 State
+
+Merged through PR 54. Baseline: 65 of 83 scenarios clean, 27 of 27 smokes. The rust job in
+Actions now takes 16 minutes (8 three hours ago); the engine suite is the cost. Follow-up
+queued: take random-test seed counts from an environment variable with a smaller default in CI
+and the full count in a nightly job, without dropping any test.
+
+Running: stall investigation, head_by handler with the cross join static fix, list columns on
+the wire, remaining aggregations, remaining update_by operators.
