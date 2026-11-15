@@ -15,6 +15,8 @@
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
 //! released while an engine operation runs.
 
+#[cfg(test)]
+mod column_tests;
 pub mod env;
 mod ops;
 #[cfg(test)]
@@ -225,7 +227,9 @@ fn input_values(column_type: &ColumnType, values: &Bound<'_, PyAny>) -> PyResult
         ColumnType::Float => {
             // the values are doubles that hold floats: `deephaven.dtypes` has rounded them
             let floats = items::<f64>(values)?.into_iter();
-            let floats = floats.map(|value| value.map(|value| value as f32)).collect();
+            let floats = floats
+                .map(|value| value.map(|value| value as f32))
+                .collect();
             Arc::new(Float32Array::from(without(floats, -f32::MAX)))
         }
         ColumnType::Double => Arc::new(Float64Array::from(without(items(values)?, -f64::MAX))),
