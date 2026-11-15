@@ -757,20 +757,26 @@ fn beside(destination: &Path, prefix: &str) -> PathBuf {
     destination.with_file_name(format!(".{prefix}_{name}"))
 }
 
+/// One destination of a write, and what the write has done to it so far.
+struct Stream {
+    destination: PathBuf,
+    /// The first directory created for the destination, if any.
+    created: Option<PathBuf>,
+    /// Whether the new file is in the place of the destination.
+    completed: bool,
+}
+
 /// What a write has put on disk so far, to take back if it fails.
 #[derive(Default)]
 struct Written {
-    /// For each destination made ready: the first directory created for it, if any.
-    created: Vec<Option<PathBuf>>,
-    shadows: Vec<PathBuf>,
-    /// The destinations whose new file is in place, each with its old file if it had one.
-    installed: Vec<(PathBuf, Option<PathBuf>)>,
+    streams: Vec<Stream>,
 }
 
 impl Written {
     /// Makes the directory of `destination`, and refuses a destination Java refuses.
     ///
-    /// Behavior: `LocalCompletableOutputStream#prepareDestinationFileLocation`
+    /// Behavior: `LocalCompletableOutputStream#prepareDestinationFileLocation`, and
+    /// `#deleteBackupFile` for a file left by an earlier write
     fn prepare(&mut self, destination: &Path) -> Result<(), WriteError> {
         if destination.is_dir() {
             return Err(invalid(format!(
@@ -780,7 +786,8 @@ impl Written {
         }
         let mut first_created = None;
         let parent = destination.parent().unwrap_or(Path::new("/"));
-        if !destination.exists() && !parent.is_dir() {
+        let make = !destination.exists() && !parent.is_dir();
+        if make {
             for ancestor in parent.ancestors() {
                 if ancestor.is_dir() {
                     break;
@@ -794,8 +801,14 @@ impl Written {
                 }
                 first_created = Some(ancestor.to_path_buf());
             }
-            // noted before it is made, so that a failure half way is taken back too
-            self.created.push(first_created);
+        }
+        // noted before the directory is made, so that a failure half way is taken back too
+        self.streams.push(Stream {
+            destination: destination.to_path_buf(),
+            created: first_created,
+            completed: false,
+        });
+        if make {
             fs::create_dir_all(parent).map_err(|error| io(parent, error))?;
         }
         let old = beside(destination, "OLD");
@@ -810,7 +823,6 @@ impl Written {
     fn write_shadow(&mut self, plan: &Plan) -> Result<(), WriteError> {
         let shadow = beside(&plan.destination, "NEW");
         let file = fs::File::create(&shadow).map_err(|error| io(&shadow, error))?;
-        self.shadows.push(shadow.clone());
         let problem = |error: parquet::errors::ParquetError| io(&plan.destination, error);
         let schema = SchemaDescriptor::new(plan.parquet_schema.clone());
         let writer_options = ArrowWriterOptions::new()
@@ -831,48 +843,64 @@ impl Written {
         file.sync_all().map_err(|error| io(&shadow, error))
     }
 
-    /// Puts every finished file in the place of its destination.
+    /// Puts every finished file in the place of its destination, then removes the files
+    /// that were there before.
     ///
     /// Behavior: `LocalCompletableOutputStream#complete` and `#installShadowFile`, then
-    /// `#close`, which removes the file that was there before
-    fn install(&mut self, plans: &[Plan]) -> Result<(), WriteError> {
-        for plan in plans {
-            let destination = &plan.destination;
+    /// `#close`
+    fn install(&mut self) -> Result<(), WriteError> {
+        for stream in &mut self.streams {
+            let destination = &stream.destination;
             let old = beside(destination, "OLD");
-            let had = destination.exists();
-            if had {
-                fs::rename(destination, &old).map_err(|error| io(destination, error))?;
+            if destination.exists() && fs::rename(destination, &old).is_err() {
+                return Err(invalid(format!(
+                    "Failed to install shadow file at {} because a file already exists at the \
+                     path which couldn't be renamed to {}",
+                    destination.display(),
+                    old.display()
+                )));
             }
-            self.installed
-                .push((destination.clone(), had.then(|| old.clone())));
             let shadow = beside(destination, "NEW");
-            fs::rename(&shadow, destination).map_err(|error| io(destination, error))?;
-        }
-        for (_, old) in self.installed.drain(..) {
-            if let Some(old) = old {
-                // the write is done; a file left behind is not its failure
-                let _ = fs::remove_file(old);
+            if fs::rename(&shadow, destination).is_err() {
+                return Err(invalid(format!(
+                    "Failed to install shadow file at {} because couldn't rename temporary \
+                     shadow file from {} to {}",
+                    destination.display(),
+                    shadow.display(),
+                    destination.display()
+                )));
             }
+            stream.completed = true;
+        }
+        for stream in &self.streams {
+            // the write is done; a file left behind is not its failure
+            let _ = fs::remove_file(beside(&stream.destination, "OLD"));
         }
         Ok(())
     }
 
-    /// Takes back what was written: the unfinished files, the files put in place, and
-    /// the directories made.
+    /// Takes back what was written, one destination after the other: the file put in
+    /// place, for the file that was there before; the unfinished file; the directories
+    /// made.
     ///
-    /// Behavior: `LocalCompletableOutputStream#rollback`
+    /// These are Java's steps in Java's order, so that a write Java takes back in part
+    /// leaves the same files. The one known case is a destination given twice: both
+    /// tables are written to the one unfinished file, the first destination is put in
+    /// place, the second moves it aside and finds no unfinished file, and taking the
+    /// first back restores what was moved aside. The destination is then the last table.
+    ///
+    /// Behavior: `LocalCompletableOutputStream#rollback` and `#rollbackShadowFiles`
     fn roll_back(self) {
-        for (destination, old) in self.installed.into_iter().rev() {
-            let _ = fs::remove_file(&destination);
-            if let Some(old) = old {
-                let _ = fs::rename(old, destination);
+        for stream in self.streams {
+            let shadow = beside(&stream.destination, "NEW");
+            if stream.completed {
+                let _ = fs::rename(&stream.destination, &shadow);
+                let _ = fs::rename(beside(&stream.destination, "OLD"), &stream.destination);
             }
-        }
-        for shadow in self.shadows {
             let _ = fs::remove_file(shadow);
-        }
-        for created in self.created.into_iter().rev().flatten() {
-            let _ = fs::remove_dir_all(created);
+            if let Some(created) = stream.created {
+                let _ = fs::remove_dir_all(created);
+            }
         }
     }
 }
@@ -899,7 +927,8 @@ fn destination(path: &str) -> Result<PathBuf, WriteError> {
 
 /// Writes each of `tables` to the Parquet file at the path of `paths` with the same
 /// position. Either every file is written or none is: a file that was there before a
-/// failed write is there after it, and a directory made for it is not.
+/// failed write is there after it, and a directory made for it is not. The exception is
+/// Java's: a destination given twice fails and is left as the last table written to it.
 ///
 /// The files have the columns of `options.definition`, or without one the columns the
 /// tables have, which must then be the same for all of them.
@@ -935,17 +964,10 @@ pub fn write(
             definition
         }
     };
-    let mut destinations: Vec<PathBuf> = Vec::with_capacity(paths.len());
-    for path in paths {
-        let destination = destination(path)?;
-        if destinations.contains(&destination) {
-            // Java writes both and fails to put the second in place
-            return Err(invalid(format!(
-                "Failed to install shadow file at {path}: the destination is given twice"
-            )));
-        }
-        destinations.push(destination);
-    }
+    let destinations = paths
+        .iter()
+        .map(|path| destination(path))
+        .collect::<Result<Vec<_>, _>>()?;
     if definition.columns().is_empty() {
         return Err(invalid("Cannot write a parquet table with zero columns"));
     }
@@ -954,14 +976,12 @@ pub fn write(
 
     let mut written = Written::default();
     let all = || {
-        let mut plans = Vec::with_capacity(tables.len());
         for (table, destination) in tables.iter().zip(destinations) {
             written.prepare(&destination)?;
             let plan = plan(table.as_ref(), destination, &columns, codec, options)?;
             written.write_shadow(&plan)?;
-            plans.push(plan);
         }
-        written.install(&plans)
+        written.install()
     };
     let result = all();
     if result.is_err() {
