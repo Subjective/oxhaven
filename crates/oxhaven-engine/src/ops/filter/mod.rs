@@ -89,11 +89,31 @@ fn accepted(
 }
 
 /// Filter strings checked against a table, for an operation that asks row by row which
-/// rows pass, before and after a change: the `count_where` aggregation.
+/// rows pass, before and after a change: the `count_where` aggregation and the count-where
+/// operators of `update_by`.
 pub(crate) struct RowFilters {
     filters: Vec<Resolved>,
     columns: Vec<usize>,
     reads_arrays: bool,
+    shapes: Vec<FilterShape>,
+}
+
+/// What an operator that treats the kinds of filter differently needs to know of one.
+pub(crate) struct FilterShape {
+    /// The filter is a formula.
+    pub(crate) formula: bool,
+    /// It was written as one, and is not a comparison that became one because its column
+    /// or value did not fit a match or a range filter. Java keeps such a formula inside
+    /// the filter it tried first, where a test for a `ConditionFilter` does not see it.
+    pub(crate) written_as_formula: bool,
+    /// It is a formula that was written as a match (`A == B`, `A in x`).
+    pub(crate) written_as_match: bool,
+    /// It uses `i`, `ii` or `k`.
+    pub(crate) row_variables: bool,
+    /// It reads a column at other rows.
+    pub(crate) arrays: bool,
+    /// The columns it reads at the current row, as indexes.
+    pub(crate) columns: Vec<usize>,
 }
 
 impl RowFilters {
@@ -109,17 +129,36 @@ impl RowFilters {
         let mut filters = Vec::with_capacity(texts.len());
         let mut columns = BTreeSet::new();
         let mut reads_arrays = false;
+        let mut shapes = Vec::with_capacity(texts.len());
         for text in texts {
             let spec = factory::parse_filter(text)?;
             let filter = filters::resolve(&spec, definition, compiler)?;
-            reads_arrays |= filter.inputs(definition, &mut columns);
+            let mut own = BTreeSet::new();
+            let arrays = filter.inputs(definition, &mut own);
+            reads_arrays |= arrays;
+            shapes.push(FilterShape {
+                formula: matches!(filter, Resolved::Condition { .. }),
+                written_as_formula: matches!(spec, FilterSpec::Condition(_)),
+                written_as_match: matches!(filter, Resolved::Condition { .. })
+                    && matches!(spec, FilterSpec::Match { .. }),
+                row_variables: filter.uses_row_variables(),
+                arrays,
+                columns: own.iter().copied().collect(),
+            });
+            columns.extend(own);
             filters.push(filter);
         }
         Ok(RowFilters {
             filters,
             columns: columns.into_iter().collect(),
             reads_arrays,
+            shapes,
         })
+    }
+
+    /// The shape of each filter, in order.
+    pub(crate) fn shapes(&self) -> &[FilterShape] {
+        &self.shapes
     }
 
     /// The columns the filters read at the current row, as indexes, increasing.

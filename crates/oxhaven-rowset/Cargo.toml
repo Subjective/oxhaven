@@ -9,3 +9,6 @@ workspace = true
 
 [dependencies]
 oxhaven-contracts = { path = "../oxhaven-contracts" }
+
+[dev-dependencies]
+oxhaven-testkit = { path = "../oxhaven-testkit" }

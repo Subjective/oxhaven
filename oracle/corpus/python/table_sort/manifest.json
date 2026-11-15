@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "table_sort",
-  "scenario_sha256": "223d5183f4456bdddd624f2d02bfda02010c5c142acce919f2f7566f86a8ef64",
+  "scenario_sha256": "64687f78bf6f7d4f5c0186fd12202aa16af8bf1e427f31f680899482fc032969",
   "reference": "42.9",
   "entries": [
     {
@@ -24,9 +24,39 @@
     },
     {
       "step": 0,
+      "table": "one_direction",
+      "file": "step000.one_direction.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "unsorted",
+      "file": "step000.unsorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
       "table": "reversed",
       "file": "step000.reversed.arrow",
       "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "twice_reversed",
+      "file": "step000.twice_reversed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "clock_descending",
+      "file": "step000.clock_descending.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "clock_reversed",
+      "file": "step000.clock_reversed.arrow",
+      "rows": 5
     }
   ]
 }
