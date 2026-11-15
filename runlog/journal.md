@@ -764,3 +764,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   the agent's local 3.13 run could not; agents should run the server tests on the oldest
   supported Python too when they touch the Python package (`PYO3_PYTHON=/usr/bin/python3.11`).
 - Pull request 90: PARITY.md A8 added after the owner's ruling; waiting on checks.
+- Merged pull request 90 (6.17, IDE flows, with PARITY.md A8) on six green checks.
