@@ -3,14 +3,43 @@
 //!
 //! The web IDE runs this on every table before it subscribes to it. For a table whose
 //! columns are all of types a client can display as they are, the result is the source
-//! table itself. A table with an array or vector column that the request converts is not
-//! ported.
+//! table itself. Otherwise it is the source with each such column computed on read as the
+//! text of its value: an array or vector as its first five elements, any other value as
+//! Java's `toString` of it.
+//!
+//! In Java the new columns have classes of their own, `ArrayPreview` and `DisplayWrapper`,
+//! which reach a client as strings whose `deephaven:type` is that class. Here they are
+//! `String` columns, and [`crate::schema::remember_previews`] keeps what the client is
+//! told about them.
 
 use super::prelude::*;
-use crate::schema::java_type_name;
-use oxhaven_contracts::schema::TableDefinition;
+use crate::java_text::{object_texts, vector_text};
+use crate::schema::{java_type_name, previews_of, remember_previews, PreviewColumn};
+use arrow::array::{Array, ArrayRef, AsArray, StringArray};
+use oxhaven_contracts::expr::{ColumnAssignment, Expr, Formula, FormulaCompiler, FormulaError};
+use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::schema::{ColumnType, TableDefinition};
+use oxhaven_contracts::table::TableFailure;
 use oxhaven_contracts::unported;
+use oxhaven_engine::ops::select;
 use oxhaven_proto::grpc::ApplyPreviewColumnsRequest;
+use std::collections::HashMap;
+
+/// `ArrayPreview.ARRAY_SIZE_CUTOFF`: the elements of an array or vector a preview shows.
+const ARRAY_SIZE_CUTOFF: usize = 5;
+
+/// `DisplayWrapper.MAX_CHARACTERS`, the default of the configuration property
+/// `DisplayWrapper.maxCharacters`: the UTF-16 code units of a value's text that are kept.
+const MAX_CHARACTERS: usize = 10_000;
+
+/// The Java class of the preview of an array or vector.
+const ARRAY_PREVIEW: &str = "io.deephaven.engine.table.impl.preview.ArrayPreview";
+
+/// The Java class of the text of a value of a type the client did not list.
+const DISPLAY_WRAPPER: &str = "io.deephaven.engine.table.impl.preview.DisplayWrapper";
+
+/// The function the preview columns are written with, for the engine's `update_view`.
+const PREVIEW_FUNCTION: &str = "preview";
 
 /// Behavior: `io.deephaven.server.table.ops.ApplyPreviewColumnsGrpcImpl`
 pub struct Handler;
@@ -42,26 +71,126 @@ impl TableOp for Handler {
         request: &ApplyPreviewColumnsRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
-        let source = &sources[0];
-        let wrapped = wrapped_columns(
-            source.definition(),
+        preview_table(
+            &sources[0],
             &request.unpreviewed_types,
             request.convert_arrays,
-        );
-        if wrapped.is_empty() {
-            return Ok(source.clone());
-        }
-        // The result has a column of type `DisplayWrapper` or `ArrayPreview` for each of
-        // these, and the attributes `PreviewParentTable` and `ColumnDescriptions`. The
-        // contracts have neither those column types nor those attributes.
-        unported!(
-            "io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable",
-            "columns {wrapped:?} are replaced by a preview of their values"
         )
     }
 }
 
-/// The columns Java replaces by a preview of their values.
+/// How a column's values become text.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Kind {
+    /// The first [`ARRAY_SIZE_CUTOFF`] elements of an array or vector.
+    ///
+    /// Behavior: `ArrayPreview#fromVector`, `ArrayPreview#fromArray`
+    Array,
+    /// The first [`MAX_CHARACTERS`] of `toString`.
+    ///
+    /// Behavior: `DisplayWrapper#make`
+    Display,
+}
+
+impl Kind {
+    fn java_type(self) -> &'static str {
+        match self {
+            Kind::Array => ARRAY_PREVIEW,
+            Kind::Display => DISPLAY_WRAPPER,
+        }
+    }
+}
+
+/// A column Java replaces by a preview of its values.
+#[derive(Clone, PartialEq, Eq, Debug)]
+struct Wrapped {
+    name: String,
+    kind: Kind,
+    /// The column's entry in the result's `ColumnDescriptions`.
+    description: String,
+}
+
+/// `source` with the columns of [`wrapped_columns`] replaced by text, or `source` itself
+/// when there are none.
+///
+/// # Panics
+/// By `unported!`, for an array or vector whose elements are arrays, or vectors of
+/// arrays: Java prints such an element as its class and identity hash (`[I@1b6d3586`).
+///
+/// Behavior: `ColumnPreviewManager#applyPreview(Table, boolean, List)`,
+/// `ColumnPreviewManager#applyPreview(Table)`, `ColumnPreviewManager#makePreviewTable`
+fn preview_table(
+    source: &Arc<dyn Table>,
+    unpreviewed: &[String],
+    convert_arrays: bool,
+) -> Result<Arc<dyn Table>, ExportError> {
+    let wrapped = wrapped_columns(
+        source.definition(),
+        &previews_of(&**source),
+        unpreviewed,
+        convert_arrays,
+    );
+    if wrapped.is_empty() {
+        return Ok(source.clone());
+    }
+    for column in &wrapped {
+        let index = source
+            .definition()
+            .index_of(&column.name)
+            .expect("a wrapped column is a column of the source");
+        let column_type = &source.definition().columns()[index].column_type;
+        if let (Kind::Array, Some(element)) = (column.kind, column_type.list_element()) {
+            if holds_array(element) {
+                unported!(
+                    "java.lang.Object#toString",
+                    "the preview of column {} of type {column_type:?}, whose text holds the \
+                     identity hash of each array",
+                    column.name
+                );
+            }
+        }
+    }
+    let compiler = PreviewCompiler {
+        kinds: wrapped
+            .iter()
+            .map(|column| (column.name.clone(), column.kind))
+            .collect(),
+    };
+    let formulas: Vec<String> = wrapped
+        .iter()
+        .map(|column| format!("{0} = {PREVIEW_FUNCTION}({0})", column.name))
+        .collect();
+    // `makePreviewTable` then copies the attributes Java lists for a preview. Of the
+    // attributes a table has here, `updateView` has copied them all already.
+    let result = select::update_view(source, &formulas, &compiler)?;
+    remember_previews(
+        &result,
+        wrapped
+            .into_iter()
+            .map(|column| {
+                let preview = PreviewColumn {
+                    java_type: column.kind.java_type(),
+                    description: column.description,
+                };
+                (column.name, preview)
+            })
+            .collect(),
+    );
+    Ok(result)
+}
+
+/// Whether the text of a value of this type holds the text of an array.
+fn holds_array(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Array(_) => true,
+        ColumnType::Vector(element) => holds_array(element),
+        _ => false,
+    }
+}
+
+/// The columns Java replaces by a preview of their values, in the order of the definition.
+/// `previews` are the columns of the table that are previews already; such a column has
+/// the preview class for its type, which is neither an array nor a vector.
 ///
 /// With a list of `unpreviewed` types, an array or vector column is replaced exactly when
 /// `convert_arrays` is set, whether or not its type is listed, and any other column when
@@ -71,37 +200,204 @@ impl TableOp for Handler {
 ///
 /// Without a list, every array and vector column is replaced, and of the others those that
 /// `ColumnPreviewManager#isColumnTypeDisplayable` refuses. It accepts primitives, their
-/// boxes, `String` and `Instant`, so no other column of this engine is replaced.
+/// boxes, `String` and `Instant`, so of the columns of this engine only a preview is
+/// replaced.
+///
+/// The description of a replaced column names the type it had, followed on a new line by
+/// the description it had, if any.
 ///
 /// Behavior: `ColumnPreviewManager#applyPreview(Table, boolean, List)`,
-/// `ColumnPreviewManager#applyPreview(Table)`
-fn wrapped_columns<'a>(
-    definition: &'a TableDefinition,
+/// `ColumnPreviewManager#applyPreview(Table)`, `ColumnPreviewManager#makePreviewTable`
+fn wrapped_columns(
+    definition: &TableDefinition,
+    previews: &HashMap<String, PreviewColumn>,
     unpreviewed: &[String],
     convert_arrays: bool,
-) -> Vec<&'a str> {
+) -> Vec<Wrapped> {
     definition
         .columns()
         .iter()
-        .filter(|column| {
-            let list = column.column_type.list_element().is_some();
-            if unpreviewed.is_empty() {
-                list
-            } else if list {
-                convert_arrays
+        .filter_map(|column| {
+            let preview = previews.get(&column.name);
+            let list = preview.is_none() && column.column_type.list_element().is_some();
+            let type_name = match preview {
+                Some(preview) => preview.java_type.into(),
+                None => java_type_name(&column.column_type),
+            };
+            let kind = if list {
+                (unpreviewed.is_empty() || convert_arrays).then_some(Kind::Array)
+            } else if unpreviewed.is_empty() {
+                preview.is_some().then_some(Kind::Display)
             } else {
-                let type_name = java_type_name(&column.column_type);
-                !unpreviewed.iter().any(|listed| *listed == type_name)
+                (!unpreviewed.iter().any(|listed| *listed == type_name)).then_some(Kind::Display)
+            }?;
+            let mut description = format!("Preview of type: {type_name}");
+            if let Some(current) = preview.filter(|preview| !preview.description.is_empty()) {
+                description.push('\n');
+                description.push_str(&current.description);
             }
+            Some(Wrapped {
+                name: column.name.clone(),
+                kind,
+                description,
+            })
         })
-        .map(|column| column.name.as_str())
         .collect()
+}
+
+/// The text of each of `values`, the cells of a column of `column_type`; null for a null
+/// cell.
+///
+/// Behavior: `ArrayPreview#fromVector`, `ArrayPreview#fromArray` (which wraps the array
+/// as a vector), `DisplayWrapper#make`
+fn preview_texts(kind: Kind, column_type: &ColumnType, values: &ArrayRef) -> StringArray {
+    match (kind, column_type.list_element()) {
+        (Kind::Array, Some(element)) => {
+            let cells = values.as_list::<i32>();
+            cells
+                .iter()
+                .map(|cell| cell.map(|cell| vector_text(element, &cell, ARRAY_SIZE_CUTOFF)))
+                .collect()
+        }
+        _ => object_texts(column_type, values)
+            .into_iter()
+            .map(|text| text.map(first_characters))
+            .collect(),
+    }
+}
+
+/// The first [`MAX_CHARACTERS`] UTF-16 code units of `text`, as Java's `substring` cuts
+/// it. A character outside the basic plane is two units; cut between them, Java keeps
+/// half a character, which it sends as `?`.
+///
+/// Behavior: `DisplayWrapper#DisplayWrapper`
+fn first_characters(text: String) -> String {
+    let mut units = 0;
+    for (index, character) in text.char_indices() {
+        let before = units;
+        units += character.len_utf16();
+        if units > MAX_CHARACTERS {
+            let mut cut = text[..index].to_string();
+            if before < MAX_CHARACTERS {
+                cut.push('?');
+            }
+            return cut;
+        }
+    }
+    text
+}
+
+/// Compiles `Name = preview(Name)`, the only formula a preview table has.
+struct PreviewCompiler {
+    /// The columns to preview and how.
+    kinds: HashMap<String, Kind>,
+}
+
+impl FormulaCompiler for PreviewCompiler {
+    fn parse(&self, text: &str) -> Result<Expr, FormulaError> {
+        let column = text
+            .strip_prefix(PREVIEW_FUNCTION)
+            .and_then(|rest| rest.strip_prefix('('))
+            .and_then(|rest| rest.strip_suffix(')'))
+            .ok_or_else(|| FormulaError::Unsupported(text.to_string()))?;
+        Ok(Expr::Call {
+            function: PREVIEW_FUNCTION.to_string(),
+            arguments: vec![Expr::Column(column.to_string())],
+        })
+    }
+
+    fn parse_assignment(&self, text: &str) -> Result<ColumnAssignment, FormulaError> {
+        let (name, expr) = text
+            .split_once(" = ")
+            .ok_or_else(|| FormulaError::Unsupported(text.to_string()))?;
+        Ok(ColumnAssignment {
+            name: name.to_string(),
+            expr: self.parse(expr)?,
+        })
+    }
+
+    fn compile(
+        &self,
+        expr: &Expr,
+        definition: &TableDefinition,
+    ) -> Result<Arc<dyn Formula>, FormulaError> {
+        let column = match expr {
+            Expr::Call {
+                function,
+                arguments,
+            } if function == PREVIEW_FUNCTION => match arguments.as_slice() {
+                [Expr::Column(column)] => column,
+                _ => return Err(FormulaError::Unsupported(format!("{expr:?}"))),
+            },
+            _ => return Err(FormulaError::Unsupported(format!("{expr:?}"))),
+        };
+        let unknown = || FormulaError::Type(format!("no column {column} to preview"));
+        let kind = *self.kinds.get(column).ok_or_else(unknown)?;
+        let index = definition.index_of(column).ok_or_else(unknown)?;
+        Ok(Arc::new(PreviewFormula {
+            columns: vec![column.clone()],
+            source_type: definition.columns()[index].column_type.clone(),
+            kind,
+        }))
+    }
+}
+
+/// The text of one column's values.
+///
+/// Behavior: the `FunctionalColumn` of `ColumnPreviewManager.PreviewColumnFactory#makeColumn`
+struct PreviewFormula {
+    /// The one column read.
+    columns: Vec<String>,
+    source_type: ColumnType,
+    kind: Kind,
+}
+
+impl Formula for PreviewFormula {
+    fn result_type(&self) -> &ColumnType {
+        &ColumnType::String
+    }
+
+    fn columns(&self) -> &[String] {
+        &self.columns
+    }
+
+    fn column_arrays(&self) -> &[String] {
+        &[]
+    }
+
+    fn uses_row_variables(&self) -> bool {
+        false
+    }
+
+    fn evaluate(
+        &self,
+        table: &dyn Table,
+        rows: &RowSet,
+        use_prev: bool,
+    ) -> Result<ArrayRef, TableFailure> {
+        let index = table
+            .definition()
+            .index_of(&self.columns[0])
+            .expect("the formula is evaluated against the definition it was compiled for");
+        let source = table.column(index);
+        let values = if use_prev {
+            source.prev_chunk(rows)?
+        } else {
+            source.chunk(rows)?
+        };
+        debug_assert_eq!(values.len() as u64, rows.size());
+        Ok(Arc::new(preview_texts(
+            self.kind,
+            &self.source_type,
+            &values,
+        )))
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use oxhaven_contracts::schema::{ColumnDefinition, ColumnType};
+    use oxhaven_contracts::schema::ColumnDefinition;
 
     fn definition() -> TableDefinition {
         TableDefinition::new(vec![
@@ -117,6 +413,22 @@ mod tests {
         names.iter().map(|name| (*name).to_string()).collect()
     }
 
+    /// The names and kinds of the wrapped columns of a table without previews.
+    fn wrapped(
+        definition: &TableDefinition,
+        unpreviewed: &[String],
+        convert_arrays: bool,
+    ) -> Vec<(String, Kind)> {
+        wrapped_columns(definition, &HashMap::new(), unpreviewed, convert_arrays)
+            .into_iter()
+            .map(|column| (column.name, column.kind))
+            .collect()
+    }
+
+    fn of(kind: Kind, names: &[&str]) -> Vec<(String, Kind)> {
+        names.iter().map(|name| ((*name).to_string(), kind)).collect()
+    }
+
     #[test]
     fn a_column_is_wrapped_unless_the_java_name_of_its_type_is_listed() {
         let definition = definition();
@@ -126,14 +438,14 @@ mod tests {
             "java.lang.String",
             "java.time.Instant",
         ]);
-        assert!(wrapped_columns(&definition, &all, false).is_empty());
+        assert!(wrapped(&definition, &all, false).is_empty());
         // the primitive name does not cover a Boolean column, nor the box an int column
         let near = names(&["boolean", "java.lang.Integer", "java.lang.String"]);
         assert_eq!(
-            wrapped_columns(&definition, &near, false),
-            vec!["Flag", "Id", "When"]
+            wrapped(&definition, &near, false),
+            of(Kind::Display, &["Flag", "Id", "When"])
         );
-        assert!(wrapped_columns(&definition, &[], false).is_empty());
+        assert!(wrapped(&definition, &[], false).is_empty());
     }
 
     #[test]
@@ -147,13 +459,109 @@ mod tests {
         // Listing the type of a list column does not keep it from being converted,
         let listed = names(&["int", "io.deephaven.vector.IntVector"]);
         assert_eq!(
-            wrapped_columns(&definition, &listed, true),
-            vec!["Vec", "Arr"]
+            wrapped(&definition, &listed, true),
+            of(Kind::Array, &["Vec", "Arr"])
         );
         // and leaving it out does not convert it.
         let only_int = names(&["int"]);
-        assert!(wrapped_columns(&definition, &only_int, false).is_empty());
+        assert!(wrapped(&definition, &only_int, false).is_empty());
         // Without a list of types Java always converts them.
-        assert_eq!(wrapped_columns(&definition, &[], false), vec!["Vec", "Arr"]);
+        assert_eq!(
+            wrapped(&definition, &[], false),
+            of(Kind::Array, &["Vec", "Arr"])
+        );
+    }
+
+    /// Recorded from Java 2026-11-15: the `deephaven:description` of the columns of
+    /// `ApplyPreviewColumns` over uploaded `int[]`, `IntVector`, `ObjectVector` and `int`
+    /// columns, and over the result of `ApplyPreviewColumns` itself.
+    #[test]
+    fn the_description_names_the_type_and_keeps_the_description_before_it() {
+        let definition = TableDefinition::new(vec![
+            ColumnDefinition::new("Arr", ColumnType::array(ColumnType::Int)),
+            ColumnDefinition::new("Vec", ColumnType::vector(ColumnType::Int)),
+            ColumnDefinition::new("Obj", ColumnType::vector(ColumnType::String)),
+            ColumnDefinition::new("Id", ColumnType::Int),
+        ])
+        .unwrap();
+        let first = wrapped_columns(&definition, &HashMap::new(), &names(&["long"]), true);
+        let descriptions: Vec<&str> = first.iter().map(|c| c.description.as_str()).collect();
+        assert_eq!(
+            descriptions,
+            [
+                "Preview of type: int[]",
+                "Preview of type: io.deephaven.vector.IntVector",
+                "Preview of type: io.deephaven.vector.ObjectVector",
+                "Preview of type: int",
+            ]
+        );
+
+        // the result of that, previewed again: the columns are strings to the engine
+        let strings = TableDefinition::new(
+            ["Arr", "Vec", "Obj", "Id"]
+                .map(|name| ColumnDefinition::new(name, ColumnType::String))
+                .to_vec(),
+        )
+        .unwrap();
+        let previews: HashMap<String, PreviewColumn> = first
+            .iter()
+            .filter(|column| column.name != "Obj")
+            .map(|column| {
+                let preview = PreviewColumn {
+                    java_type: column.kind.java_type(),
+                    description: column.description.clone(),
+                };
+                (column.name.clone(), preview)
+            })
+            .collect();
+        let listed = names(&["java.lang.String"]);
+        let second = wrapped_columns(&strings, &previews, &listed, true);
+        let second: Vec<(&str, Kind, &str)> = second
+            .iter()
+            .map(|c| (c.name.as_str(), c.kind, c.description.as_str()))
+            .collect();
+        assert_eq!(
+            second,
+            [
+                (
+                    "Arr",
+                    Kind::Display,
+                    "Preview of type: io.deephaven.engine.table.impl.preview.ArrayPreview\n\
+                     Preview of type: int[]"
+                ),
+                (
+                    "Vec",
+                    Kind::Display,
+                    "Preview of type: io.deephaven.engine.table.impl.preview.ArrayPreview\n\
+                     Preview of type: io.deephaven.vector.IntVector"
+                ),
+                (
+                    "Id",
+                    Kind::Display,
+                    "Preview of type: io.deephaven.engine.table.impl.preview.DisplayWrapper\n\
+                     Preview of type: int"
+                ),
+            ]
+        );
+        // without a list a preview class is not one a client can display
+        let legacy = wrapped_columns(&strings, &previews, &[], false);
+        let legacy: Vec<&str> = legacy.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(legacy, ["Arr", "Vec", "Id"]);
+    }
+
+    #[test]
+    fn the_text_of_a_value_is_cut_at_ten_thousand_utf16_units() {
+        let exact = "x".repeat(MAX_CHARACTERS);
+        assert_eq!(first_characters(exact.clone()), exact);
+        assert_eq!(first_characters(format!("{exact}y")), exact);
+        // two units each: 5000 fit
+        let wide = "\u{1F600}".repeat(5001);
+        assert_eq!(first_characters(wide), "\u{1F600}".repeat(5000));
+        // a pair cut in two is sent as a question mark
+        let split = format!("{}\u{1F600}z", "x".repeat(MAX_CHARACTERS - 1));
+        assert_eq!(
+            first_characters(split),
+            format!("{}?", "x".repeat(MAX_CHARACTERS - 1))
+        );
     }
 }

@@ -16,6 +16,7 @@ use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 
 /// Prefix of every Deephaven metadata key. `BarrageUtil.ATTR_DH_PREFIX`.
 pub const METADATA_PREFIX: &str = "deephaven:";
@@ -43,6 +44,8 @@ pub struct SchemaContext {
     /// The key column names if the table is an input table; `Some(vec![])` for an
     /// append-only input table, `None` for any other table.
     pub input_table_keys: Option<Vec<String>>,
+    /// The columns that hold a preview of the values of another table's column, by name.
+    pub previews: HashMap<String, PreviewColumn>,
 }
 
 impl SchemaContext {
@@ -51,8 +54,59 @@ impl SchemaContext {
             attributes: table.attributes(),
             is_flat: table.is_flat(),
             input_table_keys: table.input_table().map(|input| input.key_columns()),
+            previews: previews_of(table),
         }
     }
+}
+
+/// A column of text that stands for the values of a column a user interface could not
+/// show: what `ApplyPreviewColumns` puts in the place of that column.
+///
+/// In Java such a column has a type of its own, a class that holds the text. A column type
+/// here cannot say so; the column is a `String` column to the engine, and this says what
+/// a client is told about it.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct PreviewColumn {
+    /// The Java class of the column: `deephaven:type`.
+    pub java_type: &'static str,
+    /// `deephaven:description`: Java's entry for the column in the table attribute
+    /// `ColumnDescriptions`.
+    pub description: String,
+}
+
+/// The preview columns of tables, by the table that has them.
+///
+/// Java keeps the class in the column definition and the description in a table
+/// attribute. A table here has no place for either, so they are kept beside the table,
+/// found by the table's address, and forgotten when the table is dropped.
+static PREVIEWS: Mutex<Vec<TablePreviews>> = Mutex::new(Vec::new());
+
+/// A table and its preview columns.
+type TablePreviews = (Weak<dyn Table>, HashMap<String, PreviewColumn>);
+
+/// Remembers that these columns of `table` are previews.
+///
+/// Behavior: `io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable`
+/// (the column types of its `updateView`, and the `COLUMN_DESCRIPTIONS_ATTRIBUTE` it sets)
+pub fn remember_previews(table: &Arc<dyn Table>, previews: HashMap<String, PreviewColumn>) {
+    let mut all = PREVIEWS.lock().unwrap_or_else(PoisonError::into_inner);
+    all.retain(|(table, _)| table.strong_count() > 0);
+    all.push((Arc::downgrade(table), previews));
+}
+
+/// The preview columns of `table`; none for a table that is not the result of
+/// `ApplyPreviewColumns`. A table derived from such a result has none either: in Java its
+/// columns keep their class and lose their description.
+pub fn previews_of(table: &dyn Table) -> HashMap<String, PreviewColumn> {
+    let wanted: *const () = (table as *const dyn Table).cast();
+    let all = PREVIEWS.lock().unwrap_or_else(PoisonError::into_inner);
+    all.iter()
+        .find_map(|(candidate, previews)| {
+            // a dropped table's address may belong to another table by now
+            let live = candidate.upgrade()?;
+            (Arc::as_ptr(&live).cast::<()>() == wanted).then(|| previews.clone())
+        })
+        .unwrap_or_default()
 }
 
 /// Field metadata key holding the Java class name of the elements of an array or vector
@@ -300,8 +354,10 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
         .map(|column| {
             let name = column.name.as_str();
             let mut metadata = HashMap::new();
-            // Java writes the entry only when it is true.
-            if is_sortable(&column.column_type) {
+            let preview = context.previews.get(name);
+            // Java writes the entry only when it is true. A preview class is not
+            // `Comparable` and has no comparator.
+            if preview.is_none() && is_sortable(&column.column_type) {
                 put(&mut metadata, "isSortable", TRUE);
             }
             for (key, suffix) in [
@@ -314,9 +370,18 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                     put(&mut metadata, key, &format_column);
                 }
             }
-            put(&mut metadata, "type", &java_type_name(&column.column_type));
-            if let Some(component) = java_component_type_name(&column.column_type) {
-                put(&mut metadata, "componentType", &component);
+            match preview {
+                // Java sends a class it has no Arrow type for as the text of its values
+                Some(preview) => {
+                    put(&mut metadata, "type", preview.java_type);
+                    put(&mut metadata, "description", &preview.description);
+                }
+                None => {
+                    put(&mut metadata, "type", &java_type_name(&column.column_type));
+                    if let Some(component) = java_component_type_name(&column.column_type) {
+                        put(&mut metadata, "componentType", &component);
+                    }
+                }
             }
             if name == ROW_STYLE_COLUMN {
                 put(&mut metadata, "isRowStyle", TRUE);
