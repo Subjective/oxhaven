@@ -646,7 +646,7 @@ fn formulas_that_are_not_ported_are_refused() {
     let size = values[0].len() as u64;
     let source: Arc<dyn Table> = ReferenceTable::new_static(definition, RowSet::flat(size), values);
     let cases = recorded["unported"]["cases"].as_array().unwrap();
-    assert!(cases.len() >= 60);
+    assert!(cases.len() >= 40);
     let answered: Vec<String> = cases
         .iter()
         .filter(|case| {

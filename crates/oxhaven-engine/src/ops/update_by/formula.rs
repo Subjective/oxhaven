@@ -67,8 +67,9 @@ const ARRAY_CAST: &str = "class [Ljava.lang.Object; cannot be cast to class [Lja
 /// is not primitive. Gives what Java throws for every row, if the formula has such a
 /// call.
 ///
-/// With `unported!` for an element or a part of a vector (`get`, an index, `subVector`):
-/// a window throws `NoSuchElementException` where a vector column gives null
+/// With `unported!` for an element or a part of a vector (`get`, an index, `subVector`,
+/// and `diff` of a window, which reads past its end): a window throws
+/// `NoSuchElementException` where a vector column gives null
 /// (`IntRingBufferVectorWrapper#get`, `IntRingBuffer#front`), and for `len` of anything
 /// that is not a column or the result of a function.
 fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'static str> {
@@ -93,6 +94,14 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
             match (function.as_str(), arguments.as_slice()) {
                 ("len", [Expr::Column(name)]) if objects(name) => Some(ARRAY_CAST),
                 ("len", [Expr::Column(_) | Expr::Call { .. }]) => inner,
+                // Behavior: `io.deephaven.function.Numeric#diff`, which reads `stride`
+                // elements past the end of the vector, where a vector column gives null.
+                ("diff", [_, Expr::Column(_)]) => {
+                    unported!(
+                        "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
+                        "diff in a rolling formula: outside a window Java throws NoSuchElementException"
+                    )
+                }
                 ("len", [_]) => unported!(
                     "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.ObjectRingBufferVectorWrapper#toArray",
                     "len of an expression in a rolling formula, which Java fails for a window of objects"

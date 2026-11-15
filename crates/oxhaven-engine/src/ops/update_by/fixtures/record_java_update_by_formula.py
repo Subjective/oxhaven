@@ -258,6 +258,9 @@ def static_cases():
     case([multi("R = len(I)", 0, 0)])
     case([multi("R = 1", 0, 0)])
     case([multi("R = K", 0, 0)], ("K",))
+    for op in STATISTICS:
+        for by in ((), ("K",)):
+            case([op], by)
     for column in list(NUMBERS) + ["C"]:
         case([each("count(q)", [f"R = {column}"], 0, 0)])
     # A window of no rows that lies ahead of the row, or behind it.
@@ -318,7 +321,8 @@ def validated_cases():
 
 
 # Functions the expression crate refuses by name, and an element or a part of a window.
-UNPORTED = [
+# The statistics of vectors, with a token and without one.
+STATISTICS = [
     each("wsum(q, q)", ["R = I"], 3, 1),
     each("wavg(q, q)", ["R = D"], 3, 1),
     each("percentile(0.5, q)", ["R = D"], 3, 1),
@@ -326,11 +330,35 @@ UNPORTED = [
     each("cummin(q)", ["R = I"], 3, 1),
     each("countPos(q)", ["R = I"], 3, 1),
     each("countZero(q)", ["R = I"], 3, 1),
-    each("diff(1, q)", ["R = I"], 3, 1),
-    each("in(2, q)", ["R = I"], 3, 1),
-    each("firstIndexOf(q, 2)", ["R = I"], 3, 1),
+    each("diff(1, sort(q))", ["R = I"], 3, 1),
+    each("absAvg(q)", ["R = I", "Q = D"], 3, 1),
+    each("countNeg(q)", ["R = I", "Q = D"], 3, 1),
+    each("cummax(q)", ["R = I", "Q = D"], 3, 1),
+    each("cumsum(q)", ["R = I", "Q = D"], 3, 1),
+    each("indexOfMax(q)", ["R = I", "Q = D"], 3, 1),
+    each("indexOfMin(q)", ["R = I", "Q = D"], 3, 1),
+    each("median(q)", ["R = I", "Q = D"], 3, 1),
+    each("percentile(0.25, q)", ["R = I", "Q = D"], 3, 1),
+    each("var(q)", ["R = I", "Q = D"], 3, 1),
+    each("product(q)", ["R = I", "Q = D"], 3, 1),
     each("ste(q)", ["R = D"], 3, 1),
     each("tstat(q)", ["R = D"], 3, 1),
+    multi("R = wavg(D, I)", 3, 1),
+    multi("R = cov(D, F)", 3, 1),
+    multi("R = cor(D, F)", 3, 1),
+]
+
+UNPORTED = [
+    each("wstd(q, q)", ["R = I", "Q = D"], 3, 1),
+    each("wste(q, q)", ["R = I", "Q = D"], 3, 1),
+    each("wvar(q, q)", ["R = I", "Q = D"], 3, 1),
+    each("wtstat(q, q)", ["R = I", "Q = D"], 3, 1),
+    # `diff` reads past the end of its vector, where a window throws.
+    each("diff(1, q)", ["R = I"], 3, 1),
+    each("diff(0, q)", ["R = I"], 3, 1),
+    multi("R = diff(2, D)", 3, 1),
+    each("in(2, q)", ["R = I"], 3, 1),
+    each("firstIndexOf(q, 2)", ["R = I"], 3, 1),
     each("containsNonFinite(q)", ["R = D"], 3, 1),
     each("anyNull(q)", ["R = I"], 3, 1),
     each("nth(1, q)", ["R = I"], 3, 1),
@@ -348,9 +376,6 @@ UNPORTED = [
     each("q[5]", ["R = I"], 3, 1),
     each("q.subVector(0, 1)", ["R = I"], 3, 1),
     each("q.get(1)", ["R = S"], 3, 1),
-    multi("R = wavg(D, I)", 3, 1),
-    multi("R = cov(D, F)", 3, 1),
-    multi("R = cor(D, F)", 3, 1),
     multi("R = sum(I * 2)", 3, 1),
     multi("R = sum(I + L2)", 3, 1),
     multi("R = sum(D * F)", 3, 1),
