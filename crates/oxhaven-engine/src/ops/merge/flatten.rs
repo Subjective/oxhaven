@@ -137,7 +137,7 @@ fn mirror(positions: &RowSet, size: u64) -> RowSet {
 /// Behavior: io.deephaven.engine.table.impl.FlattenOperation#initialize and #onUpdate. The
 /// reversed form gives the row order of
 /// io.deephaven.engine.table.impl.ReverseOperation with this key space instead of Java's
-/// pivot.
+/// pivot; it is for a refreshing table, and [`pivoted`] is for a static one.
 pub(crate) fn positional(
     parent: &Arc<dyn Table>,
     reversed: bool,
@@ -201,6 +201,67 @@ pub(crate) fn positional(
     })
 }
 
+/// The row key that the reverse of a table whose last row key is `last` counts back from:
+/// the row at key `k` is at key `pivot - k` of the reverse.
+///
+/// Behavior: io.deephaven.engine.table.impl.ReverseOperation#computePivot
+fn pivot(last: RowKey) -> RowKey {
+    // Behavior: `MINIMUM_PIVOT`, the block size of a row set, and `PIVOT_GROWTH_FACTOR`
+    const MINIMUM: RowKey = 1 << 16;
+    const GROWTH: RowKey = 4;
+    // Behavior: java.lang.Long#highestOneBit, 0 for 0 and for the -1 of an empty table
+    let highest = match last {
+        RowKey::MIN..=0 => 0,
+        _ => 1 << (63 - last.leading_zeros()),
+    };
+    if highest > RowKey::MAX / GROWTH {
+        RowKey::MAX
+    } else {
+        (highest * GROWTH - 1).max(MINIMUM)
+    }
+}
+
+/// Maps a row key of the reverse of a table to the table's: both count from the pivot.
+///
+/// Behavior: io.deephaven.engine.table.impl.ReverseOperation#transform(long)
+struct PivotRedirection(RowKey);
+
+impl RowRedirection for PivotRedirection {
+    fn redirect(&self, keys: &[RowKey], _use_prev: bool) -> Vec<RowKey> {
+        let mirrored = |&key: &RowKey| if key < 0 { key } else { self.0 - key };
+        keys.iter().map(mirrored).collect()
+    }
+}
+
+/// The rows of a static `parent`, last row first, at the row keys Java gives them. The
+/// keys are not otherwise compared (`PARITY.md` A4), but whether they are `0..size`
+/// decides what a later `flatten`, `select` or `update` answers, and they never are.
+///
+/// Behavior: io.deephaven.engine.table.impl.ReverseOperation#initialize
+pub(crate) fn pivoted(parent: &Arc<dyn Table>, attributes: TableAttributes) -> Arc<QueryTable> {
+    let definition = parent.definition().clone();
+    let rows = parent.row_set();
+    let pivot = pivot(rows.last_row_key().unwrap_or(-1));
+    let mirrored = RowSet::from_ranges(
+        rows.ranges()
+            .iter()
+            .rev()
+            .map(|range| RowRange::new(pivot - range.last(), pivot - range.first())),
+    );
+    let redirection: Arc<dyn RowRedirection> = Arc::new(PivotRedirection(pivot));
+    let columns = (0..definition.columns().len())
+        .map(|index| {
+            reads_through(RedirectedSource::new(
+                redirection.clone(),
+                parent.column(index),
+            ))
+        })
+        .collect();
+    QueryTable::new_static(
+        TableSpec::new(definition, mirrored, columns).with_attributes(attributes),
+    )
+}
+
 /// The rows of `parent` in the same order at the row keys `0..size`.
 ///
 /// A table that is already flat is returned as it is. A static table whose row set is
@@ -254,6 +315,20 @@ mod tests {
             data.apply(&survivors).unwrap(),
             RowSet::flat(10).minus(&added)
         );
+    }
+
+    #[test]
+    fn the_pivot_of_a_reverse_is_javas() {
+        // What `ReverseOperation#computePivot` returns for the same last row keys.
+        assert_eq!(pivot(-1), 65536);
+        assert_eq!(pivot(0), 65536);
+        assert_eq!(pivot(16384), 65536);
+        assert_eq!(pivot(32767), 65536);
+        assert_eq!(pivot(32768), 131071);
+        assert_eq!(pivot(65536), 262143);
+        assert_eq!(pivot(1 << 60), (1 << 62) - 1);
+        assert_eq!(pivot(1 << 61), RowKey::MAX);
+        assert_eq!(pivot(RowKey::MAX), RowKey::MAX);
     }
 
     #[test]

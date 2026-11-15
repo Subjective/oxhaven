@@ -1461,3 +1461,37 @@ fn a_where_of_a_where_stays_consistent() {
     };
     assert!(check_random(0..40, 60, all, operation) > at_least_for(1000, 0..40));
 }
+
+/// Behavior: recorded from Java 42.9 with `where` over a vector column made by `group_by`
+/// and a join, and the array `array(V)` of it.
+#[test]
+fn a_vector_or_array_column_matches_null_and_nothing_else() {
+    let cells = |column_type: &ColumnType| {
+        oxhaven_testkit::list_of(
+            column_type,
+            [None, Some(2), Some(0), None],
+            Arc::new(Int32Array::from(vec![Some(5), None])),
+        )
+    };
+    let (vector, array) = (
+        ColumnType::vector(ColumnType::Int),
+        ColumnType::array(ColumnType::Int),
+    );
+    let t = static_table(vec![
+        ("V", vector.clone(), cells(&vector)),
+        ("A", array.clone(), cells(&array)),
+    ]);
+    for column in ["V", "A"] {
+        let kept = |filter: &str| kept(&t, &[&format!("{column} {filter}")]);
+        assert_eq!(kept("== null"), [0, 3]);
+        assert_eq!(kept("= null"), [0, 3]);
+        assert_eq!(kept("!= null"), [1, 2]);
+        assert_eq!(kept("in null, null"), [0, 3]);
+        assert_eq!(kept("not in null"), [1, 2]);
+        assert_eq!(kept("icase in null"), [0, 3]);
+        // Java has no value but null for such a column, and no formula `V == 3` either.
+        refused(&t, &[&format!("{column} == 3")]);
+        refused(&t, &[&format!("{column} == `a`")]);
+    }
+    assert_eq!(kept(&t, &["V == null", "A != null"]), [] as [i64; 0]);
+}

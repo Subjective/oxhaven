@@ -58,6 +58,12 @@ impl AggOperator for Group {
         self.result_type.clone()
     }
 
+    /// Behavior: GroupByChunkedOperator#getResultColumns, each an
+    /// io.deephaven.engine.table.impl.sources.aggregate.AggregateColumnSource
+    fn holds_results(&self) -> bool {
+        false
+    }
+
     fn needs_group_rows(&self) -> bool {
         true
     }

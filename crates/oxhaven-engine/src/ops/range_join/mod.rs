@@ -36,6 +36,7 @@ mod tests;
 
 use crate::ops::agg::Pair;
 use crate::ops::join::JoinMatch;
+use crate::table::{memoized, CopyType};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
@@ -362,14 +363,15 @@ impl From<TableFailure> for RangeJoinError {
 /// The result has the left table's columns, and for each pair of each `group` aggregation
 /// a column of vectors named by its output. An output named like a column that is already
 /// there replaces it where it stands. The result is static and carries no attribute of
-/// the left table.
+/// the left table. The join of a left table that is a copy is a copy: see [`memoized`].
 ///
 /// Refusals are checked in Java's order: refreshing tables, the exact matches, the range
 /// match, the type of the range columns, the aggregations, then the order of the right
 /// table, then the inputs of the aggregations.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#rangeJoin and
-/// io.deephaven.engine.table.impl.rangejoin.RangeJoinOperation
+/// io.deephaven.engine.table.impl.rangejoin.RangeJoinOperation, whose result is memoized
+/// on the left table (RangeJoinOperation#getMemoizedOperationKey)
 pub fn range_join(
     left: &Arc<dyn Table>,
     right: &Arc<dyn Table>,
@@ -377,5 +379,6 @@ pub fn range_join(
     range: &RangeJoinMatch,
     aggregations: &[RangeAggregation],
 ) -> Result<Arc<dyn Table>, RangeJoinError> {
-    grouped::join(left, right, exact, range, aggregations)
+    let result = grouped::join(left, right, exact, range, aggregations)?;
+    Ok(memoized(left, CopyType::None, false, result)?)
 }

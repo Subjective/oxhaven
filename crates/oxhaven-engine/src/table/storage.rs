@@ -93,3 +93,32 @@ impl<T: ColumnSource> ColumnSource for ReadsThrough<T> {
 pub fn reads_through<T: ColumnSource + 'static>(source: T) -> Arc<dyn ColumnSource> {
     register_reads_through(ReadsThrough(source))
 }
+
+/// A source that is shared with the operation that writes it.
+struct Shared<T>(Arc<T>);
+
+impl<T: ColumnSource> ColumnSource for Shared<T> {
+    fn column_type(&self) -> &ColumnType {
+        self.0.column_type()
+    }
+
+    fn chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+        self.0.chunk(rows)
+    }
+
+    fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
+        self.0.prev_chunk(rows)
+    }
+
+    fn chunk_by_keys(&self, keys: &[RowKey], use_prev: bool) -> Result<ArrayRef, TableFailure> {
+        self.0.chunk_by_keys(keys, use_prev)
+    }
+}
+
+/// [`reads_through`] for a source that its operation keeps writing: the column of a result
+/// whose values Java reads from the operation's state, where this port stores them.
+pub(crate) fn shared_reads_through<T: ColumnSource + 'static>(
+    source: &Arc<T>,
+) -> Arc<dyn ColumnSource> {
+    reads_through(Shared(source.clone()))
+}
