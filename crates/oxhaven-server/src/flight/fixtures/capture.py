@@ -5,6 +5,8 @@
         dh+psk://oxhaven@127.0.0.1:10400
     oracle/bin/stop-java.sh 10400
 
+With `lists` after the address it captures only the cases of `lists`.
+
 Every call goes over plain gRPC with the message bytes untouched, so the files hold exactly
 what the server sent (and, for `.put`, what the client sent). Files per case:
 
@@ -32,6 +34,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PSK_AUTH_TYPE = "io.deephaven.authentication.psk.PskAuthenticationHandler"
 FLIGHT = "/arrow.flight.protocol.FlightService/"
 INPUT_TABLE = "/io.deephaven.proto.backplane.grpc.InputTableService/"
+TABLE = "/io.deephaven.proto.backplane.grpc.TableService/"
+# The types the web IDE asks to be left as they are.
+UNPREVIEWED_TYPES = [
+    "byte", "java.lang.Byte", "char", "java.lang.Character", "short", "java.lang.Short",
+    "int", "java.lang.Integer", "long", "java.lang.Long", "float", "java.lang.Float",
+    "double", "java.lang.Double", "boolean", "java.lang.Boolean", "java.lang.String",
+    "java.math.BigDecimal", "java.math.BigInteger", "java.time.Instant",
+    "java.time.ZonedDateTime", "java.time.LocalDate", "java.time.LocalTime",
+]
 
 
 def identity(data: bytes) -> bytes:
@@ -151,6 +162,15 @@ class Capture:
         self.do_put(messages)
         self.capture_export(case, number)
 
+    def capture_preview(self, case: str, source: int, number: int) -> None:
+        """`ApplyPreviewColumns` on export `source` as the web IDE calls it, into export
+        `number`."""
+        request = (field(1, field(1, field(1, export_ticket(source))))
+                   + field(2, field(1, export_ticket(number))) + b"\x18\x01"
+                   + b"".join(field(4, name.encode()) for name in UNPREVIEWED_TYPES))
+        self.unary("ApplyPreviewColumns", request, TABLE)
+        self.capture_export(case, number)
+
     def status_of_put(self, case: str, messages: list[bytes], number: int) -> None:
         self.write(f"{case}.put", framed(messages))
         descriptor = path_descriptor("export", str(number))
@@ -196,9 +216,98 @@ def arrow_batch(with_nulls: bool, typed: bool) -> tuple[pa.Schema, pa.RecordBatc
     return schema, pa.record_batch(arrays, schema=schema)
 
 
-def main(url: str) -> None:
+LIST_ELEMENTS = [
+    ("Bo", pa.bool_(), [True, None, False], "java.lang.Boolean", "ObjectVector"),
+    ("By", pa.int8(), [1, None, -3], "byte", "ByteVector"),
+    ("Ch", pa.uint16(), [97, None, 0x1F0], "char", "CharVector"),
+    ("Sh", pa.int16(), [1, None, -3], "short", "ShortVector"),
+    ("In", pa.int32(), [1, None, -3], "int", "IntVector"),
+    ("Lo", pa.int64(), [1, None, -3], "long", "LongVector"),
+    ("Fl", pa.float32(), [1.5, None, math.nan], "float", "FloatVector"),
+    ("Do", pa.float64(), [1.5, None, math.inf], "double", "DoubleVector"),
+    ("St", pa.string(), ["a", None, "é𝄞"], "java.lang.String", "ObjectVector"),
+    ("Ti", pa.timestamp("ns", tz="UTC"), [0, None, 1700000000000000001], "java.time.Instant",
+     "ObjectVector"),
+]
+VECTOR = "io.deephaven.vector."
+
+
+def list_batch(nested: bool, metadata) -> tuple[pa.Schema, pa.RecordBatch]:
+    """A list column of every element type. The rows: three elements with a null among them,
+    a null cell, an empty cell, a cell of one null, and two elements; nested, each of those
+    is in turn an element."""
+    fields = []
+    arrays = []
+    for name, element, values, java, vector in LIST_ELEMENTS:
+        if nested:
+            arrow_type = pa.list_(pa.list_(element))
+            cells = [[values, [], None], None, [], [None], [values[::2]]]
+        else:
+            arrow_type = pa.list_(element)
+            cells = [values, None, [], [None], values[::2]]
+        entries = metadata(java, vector) if metadata else None
+        fields.append(pa.field(name, arrow_type, metadata=entries))
+        arrays.append(pa.array(cells, arrow_type))
+    schema = pa.schema(fields)
+    return schema, pa.record_batch(arrays, schema=schema)
+
+
+def lists(capture: Capture) -> None:
+    """Uploads with array and vector columns."""
+    capture.next_export = 1100
+    # Without `deephaven:type` a list is an array of its elements' default type,
+    schema, batch = list_batch(False, None)
+    capture.capture_put("put_list_arrays", schema, [batch, batch.slice(1, 3)])
+    # What the web IDE shows of it: every cell as text, of at most five elements.
+    capture.capture_preview("preview_list_arrays", 1100, 1150)
+    long = pa.array([list(range(n)) for n in (5, 6, 12)], pa.list_(pa.int32()))
+    long = pa.record_batch([long], schema=pa.schema([pa.field("In", long.type)]))
+    capture.capture_put("put_list_long_arrays", long.schema, [long])
+    capture.capture_preview("preview_list_long_arrays", 1101, 1151)
+    schema, batch = list_batch(True, None)
+    capture.capture_put("put_list_nested_arrays", schema, [batch])
+    # with the name of a vector class it is that vector,
+    schema, batch = list_batch(False, lambda java, vector: {"deephaven:type": VECTOR + vector})
+    capture.capture_put("put_list_vectors", schema, [batch])
+    capture.capture_preview("preview_list_vectors", 1103, 1152)
+    # and a vector of objects holds what `deephaven:componentType` names.
+    schema, batch = list_batch(True, lambda java, vector: {
+        "deephaven:type": VECTOR + "ObjectVector", "deephaven:componentType": java + "[]"})
+    capture.capture_put("put_list_vectors_of_arrays", schema, [batch])
+
+    ints = pa.array([[1, None], None, []], pa.list_(pa.int32()))
+
+    def refused(case: str, number: int, arrow_type, array, metadata) -> None:
+        schema = pa.schema([pa.field("X", arrow_type, metadata=metadata)])
+        batch = pa.record_batch([array], schema=schema)
+        capture.status_of_put(case, put_messages(number, schema, [batch]), number)
+
+    # A component type that is not the one of the type.
+    refused("refused_list_component", 2101, ints.type, ints,
+            {"deephaven:type": "int[]", "deephaven:componentType": "long"})
+    # A vector of objects whose elements are primitives.
+    refused("refused_list_object_vector_of_int", 2102, ints.type, ints,
+            {"deephaven:type": VECTOR + "ObjectVector"})
+    # A vector of objects whose elements are vectors of objects.
+    nested = pa.array([[["a"]]], pa.list_(pa.list_(pa.string())))
+    refused("refused_list_object_vector_of_object_vector", 2103, nested.type, nested,
+            {"deephaven:type": VECTOR + "ObjectVector",
+             "deephaven:componentType": VECTOR + "ObjectVector"})
+    # A list that is told to be a scalar, and a scalar that is told to be an array.
+    refused("refused_list_as_int", 2104, ints.type, ints, {"deephaven:type": "int"})
+    refused("refused_int_as_array", 2105, pa.int32(), pa.array([1, None], pa.int32()),
+            {"deephaven:type": "int[]"})
+    large = pa.array([[1, None], None, []], pa.large_list(pa.int32()))
+    refused("refused_large_list", 2106, large.type, large, None)
+
+
+def main(url: str, only: str | None = None) -> None:
     capture = Capture(url)
     session = capture.session
+    if only == "lists":
+        lists(capture)
+        session.close()
+        return
 
     # Tables made by the engine: the schema is derived from the table definition.
     formulas = [
@@ -358,10 +467,11 @@ def main(url: str) -> None:
         codes.append(f"{what}: {capture.code(call)}")
     capture.write("calls.status", ("\n".join(codes) + "\n").encode())
 
+    lists(capture)
     session.close()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:3])
     sys.stdout.flush()
     os._exit(0)
