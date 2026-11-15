@@ -526,3 +526,7 @@ PR 68 merged on green. The replay gate now builds with the Python console and ca
 ## 2026-11-15 07:40 UTC
 
 PR 69 opened (second parity fixes). Fuzz against Java is now clean in every family except two known classes, both owner questions: tables that fail mid-cycle (Java keeps serving the last snapshot; 65 of 3000 default seeds, 463 of 3000 join seeds) and one as-of join incremental difference (seed 1297). Java surprise recorded: seed 1526, Java throws ArrayIndexOutOfBounds in UnionRedirection while building the duplicate-right-key message.
+
+## 2026-11-15 07:32 UTC
+
+PR 67 merged on green after the author fixed the merge break (one match arm). Main is at 80 of 83 replay scenarios clean; the remaining three are the update_by count-where and rolling formula scenarios, in flight.
