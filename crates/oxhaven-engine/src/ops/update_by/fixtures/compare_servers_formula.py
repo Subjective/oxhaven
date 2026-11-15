@@ -44,6 +44,8 @@ def refusal(error):
 
 
 def same(a, b):
+    if isinstance(a, list) and isinstance(b, list):
+        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b))
     if isinstance(a, float) and isinstance(b, float):
         return (math.isnan(a) and math.isnan(b)) or (a == b and math.copysign(1, a) == math.copysign(1, b))
     return a == b
