@@ -453,6 +453,58 @@ async fn sort_refuses_as_java_does() {
     assert_eq!(accepted.size, 6);
 }
 
+/// What Java 42.9 answers shows the three operations an absolute sort is: the attributes
+/// are those `dropColumns` keeps, and a column named like the one it adds is dropped.
+#[tokio::test]
+async fn an_absolute_sort_is_an_update_view_a_sort_and_a_drop_columns() {
+    use SortDirection::{Ascending, Reverse};
+    let mut c = Connected::start().await;
+    numbers(&mut c, 9).await;
+    let filter = UnstructuredFilterTableRequest {
+        result_id: ticket(1),
+        source_id: by_ticket(9),
+        filters: vec!["I >= 0".to_string()],
+    };
+    call(&mut c, Op::UnstructuredFilter(filter)).await.unwrap();
+    let add_only = |table: Arc<dyn Table>| {
+        let attributes = table.attributes();
+        (attributes.add_only, attributes.append_only)
+    };
+    assert_eq!(add_only(c.table(1)), (true, true));
+
+    // The rows are in order already. A sort then answers a copy with the attributes of
+    // its parent; with an absolute value the copy is of the `updateView` result, and
+    // `dropColumns` of a copy is a copy without them.
+    call(&mut c, sorted(2, vec![sort_by(Ascending, "I")]))
+        .await
+        .unwrap();
+    assert_eq!(add_only(c.table(2)), (true, true));
+    call(&mut c, sorted(3, vec![absolute(sort_by(Ascending, "I"))]))
+        .await
+        .unwrap();
+    assert_eq!(add_only(c.table(3)), (false, false));
+    assert_eq!(values(c.table(3).as_ref(), "I"), ints(&[0, 1, 2, 3, 4, 5]));
+
+    // A column of the source named like an added one is replaced and then dropped,
+    // sorted by or not.
+    call(&mut c, Op::Update(formulas(1, 4, &["__ABS__N = I"])))
+        .await
+        .unwrap();
+    for (result, descriptor, expected) in [
+        (5, sort_by(Ascending, "N"), [3, 2, 4, 1, 5, 0]),
+        (6, sort_by(Reverse, "N"), [5, 4, 3, 2, 1, 0]),
+    ] {
+        let sort = SortTableRequest {
+            result_id: ticket(result),
+            source_id: by_ticket(4),
+            sorts: vec![absolute(descriptor)],
+        };
+        call(&mut c, Op::Sort(sort)).await.unwrap();
+        assert_eq!(column_names(c.table(result).as_ref()), ["I", "N", "S"]);
+        assert_eq!(values(c.table(result).as_ref(), "I"), ints(&expected));
+    }
+}
+
 // ---------------------------------------------------------------- head, tail, slice
 
 fn rows(result: i32, num_rows: i64) -> HeadOrTailRequest {
