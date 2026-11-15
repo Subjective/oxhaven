@@ -530,3 +530,11 @@ PR 69 opened (second parity fixes). Fuzz against Java is now clean in every fami
 ## 2026-11-15 07:32 UTC
 
 PR 67 merged on green after the author fixed the merge break (one match arm). Main is at 80 of 83 replay scenarios clean; the remaining three are the update_by count-where and rolling formula scenarios, in flight.
+
+## 2026-11-15 07:38 UTC
+
+PR 69 (second parity fixes) merged on green, on a head that included PR 67.
+
+## 2026-11-15 08:20 UTC
+
+Task 6.4 (Python table core) came back with the gate red by design: about a quarter of the listed Python methods need engine operators no task owned (head_pct family, rename/move columns, restrict_sort_to, where of an OR, merge_sorted of static tables, attributes). The agent refused to change protected baseline lines on its own and set the task to blocked, which is the right behaviour. Decision (mine, for owner review): record the four `table_*` lines as `differs` with the real failure kinds under the `oracle-change` label, and open task 4.16 for the operators, whose gate is promoting those lines to clean. Reason: the lines said `missing` because the Python names did not exist; they now exist and refuse honestly, and the baseline should say what is true. Size verdict for 6.4: the Python surface fit, the planning missed engine dependencies.

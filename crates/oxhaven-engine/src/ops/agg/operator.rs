@@ -124,6 +124,16 @@ pub trait AggOperator: Send {
         false
     }
 
+    /// Whether Java's result column holds a value for each group, as the array sources of
+    /// most operators do. The others read the rows of the parent that a group names; a
+    /// static `select` copies such a column instead of passing it through.
+    ///
+    /// Behavior: whether the operator's `resultColumns` are an
+    /// io.deephaven.engine.table.impl.sources.InMemoryColumnSource
+    fn holds_results(&self) -> bool {
+        true
+    }
+
     /// Makes slots `0..slots` usable. New slots start empty.
     ///
     /// Behavior: IterativeChunkedAggregationOperator#ensureCapacity

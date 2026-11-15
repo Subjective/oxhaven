@@ -3,7 +3,7 @@
 use super::keys::KeyTable;
 use super::operator::{AggOperator, Effect, GroupReader};
 use super::values::{failure, Run, Values};
-use crate::table::tracked_source;
+use crate::table::{shared_reads_through, tracked_source};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_column::WritableSource;
@@ -303,10 +303,26 @@ impl Aggregator {
         let places = self.layout.keys.iter().copied();
         let mut placed: Vec<(usize, Arc<dyn ColumnSource>)> = keys
             .zip(places)
-            .filter_map(|(source, place)| Some((place?, source.clone() as Arc<dyn ColumnSource>)))
+            .filter_map(|(source, place)| {
+                let place = place?;
+                // Behavior: ChunkedOperatorAggregationHelper#aggregation, which copies the
+                // keys of a refreshing parent out of the hash table and for a static
+                // parent shows the hash table's own sources through a redirection.
+                let source = if self.parent.is_refreshing() {
+                    source.clone() as Arc<dyn ColumnSource>
+                } else {
+                    shared_reads_through(source)
+                };
+                Some((place, source))
+            })
             .collect();
         for (column, &place) in self.ops.iter().zip(&self.layout.ops) {
-            placed.push((place, column.result.clone()));
+            let source = if column.plan.op.holds_results() {
+                column.result.clone() as Arc<dyn ColumnSource>
+            } else {
+                shared_reads_through(&column.result)
+            };
+            placed.push((place, source));
         }
         placed.sort_by_key(|(place, _)| *place);
         placed.into_iter().map(|(_, source)| source).collect()

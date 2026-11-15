@@ -18,7 +18,7 @@
 use super::stamps::{self, primitive, Stamp};
 use super::{AsOfJoinError, AsOfMatch, JoinAddition, JoinMatch};
 use crate::ops::join::keys::{Cell, Key, KeyColumns};
-use crate::table::{MergedOperator, QueryTable, TableSpec};
+use crate::table::{reads_through, MergedOperator, QueryTable, TableSpec};
 use crate::update::{modified_pre_shift, ModifiedColumnTransformer};
 use oxhaven_column::{Clock, RedirectedSource, RowRedirection, WritableRowRedirection};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
@@ -368,7 +368,7 @@ fn result_spec(
     for (name, source) in additions {
         let column_type = right.definition().columns()[*source].column_type.clone();
         definition.push(ColumnDefinition::new(name.as_str(), column_type));
-        columns.push(Arc::new(RedirectedSource::new(
+        columns.push(reads_through(RedirectedSource::new(
             shared.clone(),
             right.column(*source),
         )));

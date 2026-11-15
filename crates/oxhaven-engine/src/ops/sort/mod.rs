@@ -18,7 +18,7 @@ pub(crate) mod testing;
 #[cfg(test)]
 mod tests;
 
-use crate::ops::merge::positional;
+use crate::ops::merge::{pivoted, positional};
 use crate::table::{memoized, CopyType};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
@@ -143,7 +143,8 @@ pub fn sort(parent: &Arc<dyn Table>, columns: &[SortColumn]) -> Result<Arc<dyn T
 }
 
 /// The rows of `parent`, last row first. The result is not flat and keeps the blink
-/// attribute of its parent.
+/// attribute of its parent. The reverse of a static table has the row keys Java gives it,
+/// which are never `0..size`; the reverse of a refreshing table has the keys `0..size`.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#reverse,
 /// io.deephaven.engine.table.impl.ReverseOperation and the `Reverse` entries of the
@@ -151,7 +152,11 @@ pub fn sort(parent: &Arc<dyn Table>, columns: &[SortColumn]) -> Result<Arc<dyn T
 pub fn reverse(parent: &Arc<dyn Table>) -> Result<Arc<dyn Table>, SortError> {
     let mut attributes = TableAttributes::default();
     attributes.blink = parent.attributes().blink;
-    let result = positional(parent, true, attributes, false)?;
+    let result = if parent.is_refreshing() {
+        positional(parent, true, attributes, false)?
+    } else {
+        pivoted(parent, attributes)
+    };
     Ok(memoized(parent, CopyType::Reverse, false, result)?)
 }
 

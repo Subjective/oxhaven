@@ -7,6 +7,8 @@ mod copied_tests;
 pub mod crossjoin;
 pub mod distinct;
 pub mod filter;
+#[cfg(test)]
+mod flat_select_tests;
 pub mod head_by;
 pub mod join;
 #[cfg(test)]
