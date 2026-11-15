@@ -1,4 +1,6 @@
-//! Reading Parquet files as tables.
+//! Parquet files as tables, and tables as Parquet files.
+//!
+//! [`write`] is `io.deephaven.parquet.table.ParquetTools#writeTables`: it is in `write.rs`.
 //!
 //! [`read`] is `io.deephaven.parquet.table.ParquetTools#readTable`: from a path to a static
 //! table whose columns are read from the files when an operation asks for them. The table
@@ -9,6 +11,7 @@
 mod layout;
 mod location;
 mod schema;
+mod write;
 
 #[cfg(test)]
 mod tests;
@@ -21,8 +24,9 @@ use std::fmt;
 use std::sync::Arc;
 
 pub use layout::Layout;
+pub use write::{delete, write, RowGroups, WriteColumn, WriteOptions};
 
-/// Why a table could not be read.
+/// Why a table could not be read, or written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReadError {
     /// Java does this and this crate does not yet: `java` names the method that defines
@@ -45,6 +49,9 @@ impl fmt::Display for ReadError {
 }
 
 impl std::error::Error for ReadError {}
+
+/// Why tables could not be written: the same three cases as for a read.
+pub type WriteError = ReadError;
 
 impl From<ReadError> for TableFailure {
     fn from(error: ReadError) -> Self {

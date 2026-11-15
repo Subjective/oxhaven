@@ -1,0 +1,46 @@
+{
+  "format": 2,
+  "scenario": "input_ring_and_generated",
+  "scenario_sha256": "71c24c4457a8b4fe7c0e3982bea674993e79a8502fecc958eb19476f4c6843fb",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ring",
+      "file": "step000.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "generated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "ring",
+      "file": "step001.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "generated",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "ring",
+      "file": "step002.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "generated",
+      "file": "step002.generated.arrow",
+      "rows": 2
+    }
+  ]
+}

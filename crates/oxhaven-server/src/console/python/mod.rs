@@ -13,7 +13,8 @@
 //! Locks are taken in the order update graph, then interpreter lock. Code runs under the
 //! graph's shared lock, so no update cycle runs while a command does (Java holds the
 //! exclusive lock, which also keeps other clients' operations out). The interpreter lock is
-//! released while an engine operation runs.
+//! released while an engine operation runs. A command that writes to an input table and
+//! waits for the write gives the graph's lock up for that wait ([`input`]), as Java's does.
 //!
 //! Commands run on one thread, the interpreter's main thread, where a command whose
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
@@ -29,6 +30,7 @@ mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
+mod input;
 pub mod interrupt;
 mod ops;
 mod parquet;
@@ -55,6 +57,7 @@ use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table};
+use oxhaven_engine::graph::yielding_to_cycles;
 use oxhaven_engine::table::{QueryTable, TableSpec};
 use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use oxhaven_proto::grpc::batch_table_request::Operation;
@@ -387,10 +390,13 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::write_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
+        input::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
@@ -561,15 +567,19 @@ impl PythonSession {
     }
 
     /// Runs `code` under the graph's lock on the calling thread, which is the
-    /// interpreter's main thread when a request to `stop` is to interrupt the code.
+    /// interpreter's main thread when a request to `stop` is to interrupt the code. The
+    /// code gives the lock up while it waits for a cycle to apply its write to an input
+    /// table.
     fn evaluate_here(&self, code: &str, stop: &Stop) -> Changes {
         let mut snapshot = self.snapshot();
         locked(self.runtime.context.graph.as_ref(), || {
-            Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(|error| {
-                Changes {
-                    error: Some(format!("the Python session failed: {error}")),
-                    ..Default::default()
-                }
+            yielding_to_cycles(|| {
+                Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
+                    |error| Changes {
+                        error: Some(format!("the Python session failed: {error}")),
+                        ..Default::default()
+                    },
+                )
             })
         })
     }

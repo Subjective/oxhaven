@@ -1,0 +1,33 @@
+{
+  "format": 2,
+  "scenario": "input_key_types",
+  "scenario_sha256": "56a51ee6a315f5d9ac34e69e08476acf33a9a583c1bfe2cebb3d5aa7e3c71d34",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "no_columns",
+      "file": "step000.no_columns.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "by_double",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "no_columns",
+      "file": "step001.no_columns.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "by_double",
+      "file": "step001.by_double.arrow",
+      "rows": 1
+    }
+  ]
+}

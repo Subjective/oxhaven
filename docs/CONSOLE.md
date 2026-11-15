@@ -90,7 +90,8 @@ ConsoleService (console/mod.rs)          any build
 - **Locks**: update graph first, then the interpreter lock. A command runs under the graph's
   shared lock, so no cycle runs during it; Java holds the exclusive lock, which also keeps
   other clients' operations out. Commands of one client session run one after the other on
-  its serial queue.
+  its serial queue. A command gives the lock up only while it waits for its own write to an
+  input table ("Input tables written from a command").
 - **Threads**: the interpreter is started on a thread of its own, Python's main thread, and
   every command runs there, one at a time; that is what lets a command be stopped
   ("Stopping a running command"). Everything else that needs the interpreter (reading a
@@ -434,6 +435,42 @@ another command.
   it does not in the Java server; a script that takes `SIGINT` takes `Ctrl-C` from the
   server.
 - Unix only.
+
+## Input tables written from a command
+
+Task 6.10; `crates/oxhaven-server/src/console/python/input.rs`, and
+`oxhaven_engine::graph::yielding_to_cycles`.
+
+`InputTable.add` and `delete` return when the change is in the table, and the script reads
+it on the next line. The change is applied by an update cycle, and a command keeps cycles
+out. In Java the command holds the exclusive lock and waits on a condition of that lock,
+which gives the lock up for the wait. Here the command holds the shared lock, and:
+
+- A command runs inside `yielding_to_cycles`. There, and only there, `run_cycle` called by
+  a thread that holds the shared lock releases the thread's holds, waits for the cycle and
+  takes them again. Anywhere else the call panics as before, so a handler that reads a
+  snapshot under the lock cannot lose it by accident.
+- The command releases the interpreter lock before it waits and takes it again after it
+  has the graph lock back: graph lock first, interpreter lock second
+  (`docs/PYTHON_UDF.md`).
+- What the script read from a ticking table before the write may have changed after it, as
+  in Java.
+
+`add_async`, `delete_async` and the rows of a `DynamicTableWriter` do not wait. They are
+checked, and their rows are read, at the call; one thread, the writer thread, then makes
+the changes in the order of the calls and calls the callbacks. A command keeps cycles out,
+so these changes show after the command that asked for them, as in Java, unless the
+command waits for a synchronous change, which is then made after them. Changes that are
+waiting together and are additions to one table, or deletions from one, are made in one
+cycle.
+
+| | Java | Here |
+| --- | --- | --- |
+| `input_table` with `init_table` | the factory fills the table | made empty by the table service's `CreateInputTable`, then the rows are the first change, before the table is handed out |
+| A keyed input table with a `float` or `double` key column | made | refused: `KeyedArrayBackedInputTable#make` is not ported for such a key |
+| A value that is not a string for a string column of a `DynamicTableWriter` | stored unchecked, reads as its `toString` | an `int` or `bool` is written as that text; anything else is refused by the name of the Java method |
+| `ring_table`, `function_generated_table`, `TableReplayer` | exist | refused by the name of the Java method: the engine has none of the three |
+| Callbacks of the asynchronous forms | called on a thread of Java's common pool, in no defined order | called on the writer thread, in the order of the calls |
 
 ## Differences from Java, per call
 

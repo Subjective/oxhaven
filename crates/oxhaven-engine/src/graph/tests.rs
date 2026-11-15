@@ -1089,10 +1089,115 @@ fn the_thread_running_a_cycle_takes_the_shared_lock_without_waiting() {
 }
 
 #[test]
-#[should_panic(expected = "while holding the shared lock")]
+#[should_panic(expected = "run_cycle called while holding the update graph's shared lock")]
 fn running_a_cycle_while_holding_the_shared_lock_panics() {
     let graph = SteppedUpdateGraph::new();
     locked(&*graph, || graph.run_cycle());
+}
+
+#[test]
+#[should_panic(expected = "run_cycle called while holding the update graph's shared lock")]
+fn yielding_ends_with_its_closure() {
+    let graph = SteppedUpdateGraph::new();
+    yielding_to_cycles(|| ());
+    locked(&*graph, || graph.run_cycle());
+}
+
+#[test]
+fn a_yielding_holder_gives_up_its_holds_for_the_cycle_and_has_them_again_after_it() {
+    let graph = SteppedUpdateGraph::new();
+    let start = graph.clock().step;
+    let (cycled_tx, cycled_rx) = channel();
+    let other = locked(&*graph, || {
+        locked(&*graph, || {
+            // Two holds, both given up: the cycle runs on this thread.
+            yielding_to_cycles(|| graph.run_cycle());
+            assert_eq!(graph.clock().step, start + 1);
+        });
+        // The holds are back: another thread's cycle waits for this one, at either depth.
+        let g = graph.clone();
+        let other = thread::spawn(move || {
+            g.run_cycle();
+            cycled_tx.send(()).unwrap();
+        });
+        thread::sleep(SETTLE);
+        assert!(
+            cycled_rx.try_recv().is_err(),
+            "a cycle ran under a hold that was taken again"
+        );
+        assert_eq!(graph.clock().step, start + 1);
+        other
+    });
+    // And they were released once each: nothing is left held.
+    other.join().unwrap();
+    assert_eq!(graph.clock().step, start + 2);
+    graph.run_cycle();
+}
+
+#[test]
+fn a_yielding_holder_lets_a_waiting_cycle_run_and_waits_for_it_to_end() {
+    let graph = SteppedUpdateGraph::new();
+    let start = graph.clock().step;
+    let (inside_tx, inside_rx) = channel();
+    let (release_tx, release_rx) = channel::<()>();
+    let (inside_tx, release_rx) = (Mutex::new(inside_tx), Mutex::new(release_rx));
+    let slow = AtomicBool::new(true);
+    let _source = source(&graph, move || {
+        // Only the other thread's cycle stops here.
+        if slow.swap(false, Ordering::SeqCst) {
+            inside_tx.lock().unwrap().send(()).unwrap();
+            release_rx.lock().unwrap().recv().unwrap();
+        }
+    });
+
+    locked(&*graph, || {
+        let g = graph.clone();
+        let waiting = thread::spawn(move || g.run_cycle());
+        thread::sleep(SETTLE);
+        assert_eq!(graph.clock().step, start, "the cycle ran under a hold");
+
+        let releaser = thread::spawn(move || {
+            inside_rx.recv().unwrap();
+            thread::sleep(SETTLE);
+            release_tx.send(()).unwrap();
+        });
+        // Gives way to the waiting cycle, then runs its own, then holds the lock again.
+        yielding_to_cycles(|| graph.run_cycle());
+        assert_eq!(
+            graph.clock(),
+            ClockValue {
+                step: start + 2,
+                phase: ClockPhase::Idle
+            }
+        );
+        waiting.join().unwrap();
+        releaser.join().unwrap();
+    });
+}
+
+#[test]
+fn the_holds_come_back_when_the_cycle_panics() {
+    let graph = SteppedUpdateGraph::new();
+    let _source = source(&graph, || panic!("refresh fails"));
+    let (cycled_tx, cycled_rx) = channel();
+    let other = locked(&*graph, || {
+        let failed = catch_unwind(AssertUnwindSafe(|| {
+            yielding_to_cycles(|| graph.run_cycle())
+        }));
+        assert!(failed.is_err());
+        let g = graph.clone();
+        let other = thread::spawn(move || {
+            let _ = catch_unwind(AssertUnwindSafe(|| g.run_cycle()));
+            cycled_tx.send(()).unwrap();
+        });
+        thread::sleep(SETTLE);
+        assert!(
+            cycled_rx.try_recv().is_err(),
+            "a cycle ran under a hold that a panic should have given back"
+        );
+        other
+    });
+    other.join().unwrap();
 }
 
 #[test]

@@ -1,0 +1,128 @@
+{
+  "format": 2,
+  "scenario": "parquet_write_options",
+  "scenario_sha256": "cfdca6dd6da485b15f3f8580e112e31c13c3a2b496842b260e41de2f8826bc42",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "codecs",
+      "file": "step000.codecs.arrow",
+      "rows": 150
+    },
+    {
+      "step": 0,
+      "table": "groups",
+      "file": "step000.groups.arrow",
+      "rows": 120
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "defined",
+      "file": "step000.defined.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "second",
+      "file": "step000.second.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "replaced",
+      "file": "step000.replaced.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "ticking",
+      "file": "step000.ticking.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "files",
+      "file": "step000.files.arrow",
+      "rows": 283
+    },
+    {
+      "step": 0,
+      "table": "left",
+      "file": "step000.left.arrow",
+      "rows": 11
+    },
+    {
+      "step": 1,
+      "table": "codecs",
+      "file": "step001.codecs.arrow",
+      "rows": 150
+    },
+    {
+      "step": 1,
+      "table": "groups",
+      "file": "step001.groups.arrow",
+      "rows": 120
+    },
+    {
+      "step": 1,
+      "table": "renamed",
+      "file": "step001.renamed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "defined",
+      "file": "step001.defined.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "first",
+      "file": "step001.first.arrow",
+      "rows": 10
+    },
+    {
+      "step": 1,
+      "table": "second",
+      "file": "step001.second.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "replaced",
+      "file": "step001.replaced.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "ticking",
+      "file": "step001.ticking.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "files",
+      "file": "step001.files.arrow",
+      "rows": 283
+    },
+    {
+      "step": 1,
+      "table": "left",
+      "file": "step001.left.arrow",
+      "rows": 11
+    }
+  ]
+}
