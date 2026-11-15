@@ -1,0 +1,154 @@
+{
+  "format": 2,
+  "scenario": "udf_calls",
+  "scenario_sha256": "4309d1505066e4e0499717beeb729366f2234d5137bec5e074d0ce3fcd204277",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "counted_again",
+      "file": "step000.counted_again.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "counted_where",
+      "file": "step000.counted_where.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "counted_total",
+      "file": "step000.counted_total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "local",
+      "file": "step000.local.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "instance",
+      "file": "step000.instance.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "bound",
+      "file": "step000.bound.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "library",
+      "file": "step000.library.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "python_sqrt",
+      "file": "step000.python_sqrt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "lazy",
+      "file": "step000.lazy.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "before",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "after",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "counted_again",
+      "file": "step001.counted_again.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "counted_where",
+      "file": "step001.counted_where.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "counted_total",
+      "file": "step001.counted_total.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "local",
+      "file": "step001.local.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "instance",
+      "file": "step001.instance.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "bound",
+      "file": "step001.bound.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "library",
+      "file": "step001.library.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "python_sqrt",
+      "file": "step001.python_sqrt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "lazy",
+      "file": "step001.lazy.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "before",
+      "file": "step001.before.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "after",
+      "file": "step001.after.arrow",
+      "rows": 4
+    }
+  ]
+}

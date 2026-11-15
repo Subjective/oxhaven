@@ -1,0 +1,68 @@
+{
+  "format": 2,
+  "scenario": "udf_arguments",
+  "scenario_sha256": "813a68971a198b69890b1a13545065bb2fd9710eeec4034241372a9bd8b233f9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "unannotated",
+      "file": "step000.unannotated.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "constants",
+      "file": "step000.constants.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "annotated",
+      "file": "step000.annotated.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "optional_long",
+      "file": "step000.optional_long.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "optional_int",
+      "file": "step000.optional_int.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "optional_double",
+      "file": "step000.optional_double.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "optional_other",
+      "file": "step000.optional_other.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "optional_null",
+      "file": "step000.optional_null.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "numpy_given",
+      "file": "step000.numpy_given.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "several",
+      "file": "step000.several.arrow",
+      "rows": 4
+    }
+  ]
+}
