@@ -29,9 +29,18 @@ fails during an update cycle is not a consistent table afterwards):
 - a time window over a table whose timestamps can go backwards in a later step;
 - on a refreshing table, arguments that are valid for the rows it has now and not for rows a
   step can add: an `ungroup` of arrays that only happen to have equal lengths, a `multi_join`
-  of a table whose key only happens to be unique.
+  of a table whose key only happens to be unique, an `exact_join` or a strict `natural_join`
+  whose matches only happen to be unique, a remainder by a column, an empty rolling window,
+  a decay or percentile out of range, the THROW and POISON bad-data controls.
 
 Not generated, each for a stated reason:
+
+- `agg_all_by` of `first` or `last` with keys that are not the leading columns: the reference
+  serves the result under the source's column order (see `build_agg_all_by`).
+- `distinct` of a timestamp column without the nulls: the reference cannot serve a group
+  whose timestamps are all null (see `aggregation`).
+- `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
+  `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
 
 - `rolling_group_*`, `rolling_formula_*`, `cum_count_where`, `rolling_count_where_*` and the
   `formula` aggregation: Oxhaven answers them `UNIMPLEMENTED` by design (the engine lists
@@ -44,12 +53,13 @@ Not generated, each for a stated reason:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from . import rules
 from . import scenario as sc
 from .fuzz import (FLOATS, INT_BITS, JOINS, MAX_ROWS, NUMERIC, ORDERED_STAMPS, T0, _Generator,
-                   _Table)
+                   _Table, _promote)
 
 LIST = "list:"
 SECOND = 1_000_000_000
@@ -460,6 +470,15 @@ class _Wide(_Generator):
 
     # -- filters
 
+    def formula(self, table: _Table) -> tuple[str, str] | None:
+        made = super().formula(table)
+        if made and table.live and re.search(r" % [A-Za-z_]", made[0]):
+            # A remainder by a column fails on a zero, which in a step would fail the table
+            # during an update cycle.
+            dividend = made[0].split(" % ")[0]
+            return f"{dividend} % 3", _promote(table.type_of(dividend), "int32")
+        return made
+
     def build_filter(self, name: str) -> bool:
         source = self.pick_table()
         conditions = [c for c in (self.wide_condition(source)
@@ -565,17 +584,19 @@ class _Wide(_Generator):
             op = f"{rng.choice(EM_OPERATORS)}_{unit}"
             if unit == "tick":
                 args["decay_ticks"] = rng.choice([1, 2, 3, 5, 10, 1.5, 0.5])
-                if self.chance(0.03):
+                if not source.live and self.chance(0.03):
                     args["decay_ticks"] = rng.choice([0, -1])
             else:
                 args["ts_col"] = stamps
                 args["decay_time"] = rng.choice(["PT1S", "PT2S", "PT5S", "PT0.5S", "PT1M"])
-                if self.chance(0.03):
+                if not source.live and self.chance(0.03):
                     args["decay_time"] = rng.choice(["PT0S", "PT-1S"])
             if self.chance(0.3):
-                # THROW fails the table when a null or NaN arrives, which on a refreshing
-                # table would be a failure during an update cycle.
-                behaviors = ["SKIP", "RESET", "POISON"] + ([] if source.live else ["THROW"])
+                # THROW fails the table when a null or NaN arrives, and so does POISON over
+                # a time window when the bad value comes before any good one
+                # (DoubleEMOperator: "Timestamp values in UpdateBy operators must not
+                # decrease"). On a refreshing table that is a failure during an update cycle.
+                behaviors = ["SKIP", "RESET"] + ([] if source.live else ["POISON", "THROW"])
                 args["op_control"] = {"on_null": rng.choice(behaviors),
                                       "on_nan": rng.choice(behaviors)}
         else:
@@ -586,11 +607,15 @@ class _Wide(_Generator):
                 args["fwd_ticks"] = rng.choice([0, 0, 0, 1, 2, -1])
                 if self.chance(0.03):
                     args["rev_ticks"] = -2
+                if source.live and args["rev_ticks"] + args["fwd_ticks"] < 1:
+                    # An empty window fails the reference when a row arrives (an assertion
+                    # on the window buffer), so only static tables get one.
+                    args["rev_ticks"], args["fwd_ticks"] = 1, 0
             else:
                 args["ts_col"] = stamps
                 args["rev_time"] = rng.choice(["PT0S", "PT1S", "PT2S", "PT5S", "PT1M"])
                 args["fwd_time"] = rng.choice(["PT0S", "PT0S", "PT1S", "PT2S"])
-                if self.chance(0.03):
+                if not source.live and self.chance(0.03):
                     args["rev_time"] = "PT-3S"
             if name == "wavg":
                 weights = source.usable(NUMERIC if not self.chance(0.04) else None)
@@ -656,7 +681,7 @@ class _Wide(_Generator):
         if agg in ("median", "pct"):
             if agg == "pct":
                 args["percentile"] = rng.choice([0.0, 0.1, 0.25, 0.5, 0.75, 0.9, 1.0])
-                if self.chance(0.03):
+                if not source.live and self.chance(0.03):
                     args["percentile"] = rng.choice([1.5, -0.1])
             if agg == "pct" or self.chance(0.5):
                 args["average_evenly_divided"] = self.chance(0.5)
@@ -669,6 +694,11 @@ class _Wide(_Generator):
         elif agg == "distinct":
             if self.chance(0.5):
                 args["include_nulls"] = self.chance(0.5)
+            if kind == "timestamp":
+                # Without the nulls, a group of only null timestamps is an empty set that
+                # the reference cannot serve (a NullPointerException in
+                # InstantSsmSourceWrapper$ValueWrapper#size when the snapshot is written).
+                args["include_nulls"] = True
         elif agg == "unique":
             if self.chance(0.5):
                 args["include_nulls"] = self.chance(0.5)
@@ -721,12 +751,26 @@ class _Wide(_Generator):
         accepted, result = AGGREGATIONS[agg]
         if self.has_lists(source, by) and agg in ("group", "distinct"):
             return False  # arrays of arrays
+        if agg == "distinct" and any(kind == "timestamp" for _, kind in rest):
+            return False  # see `aggregation`: the reference cannot serve an empty set of them
         if not all(kind in accepted for _, kind in rest) and not self.chance(0.1):
             # The reference refuses the whole request for one column it cannot aggregate;
             # keep those rare and take an aggregation of every type instead.
             agg = rng.choice(["min", "max", "first", "last", "count_distinct", "unique",
                               "median"])
             accepted, result = AGGREGATIONS[agg]
+        if agg in ("first", "last") and by != [c for c, _ in source.columns][:len(by)]:
+            # The reference copies the source's schema attribute to a first or last of
+            # every column (BaseTable#copyAttributes, CopyAttributeOperation.FirstBy and
+            # LastBy), so with keys that are not the leading columns it serves the key-first
+            # data under the source's column order. A defect of the reference alone, and one
+            # that would differ on every such draw.
+            agg = "min" if agg == "first" else "max"
+            accepted, result = AGGREGATIONS[agg]
+        if self.has_lists(source, by) and agg not in ("first", "last"):
+            # Oxhaven answers an aggregation of an array column UNIMPLEMENTED unless it is a
+            # first or a last (the engine lists the others as not ported).
+            return False
         spec: dict[str, Any] = {"agg": agg, "columns": []}
         even = agg == "median"
         if agg == "pct":
@@ -809,6 +853,10 @@ class _Wide(_Generator):
         right = self.pick_table() if self.chance(0.4) else self.tables.get("r", left)
         if kind == "exact_join" and self.unique_right and self.chance(0.6):
             left = right = self.tables["r"]  # every row has exactly one match in itself
+        join_type = None
+        if kind == "natural_join":
+            join_type = rng.choice(["error_on_duplicate", "first_match", "last_match",
+                                    "first_match", "last_match", "exactly_one_match"])
         pairs = self.matches(left, right)
         on: list[str] = []
         used_right: set[str] = set()
@@ -847,6 +895,18 @@ class _Wide(_Generator):
             rows = left.rows * max(right.rows, 1) if kind == "join" else left.rows
             if rows > MAX_ROWS:
                 return False
+        if left.live or right.live:
+            # A duplicate or a missing match that arrives in a step fails the table during
+            # an update cycle, which is not comparable. On refreshing tables those joins are
+            # drawn only where the tracked unique key rules the failure out.
+            keyed = bool(right.unique) and used_right == set(right.unique)
+            own = keyed and left is right and on == list(right.unique)
+            if kind == "exact_join" and not own:
+                return False
+            if join_type == "exactly_one_match" and not own:
+                join_type = "first_match"
+            if join_type == "error_on_duplicate" and not keyed:
+                join_type = "last_match"
         joinable = [c for c, _ in right.columns if c not in used_right]
         if not joinable:
             return False
@@ -867,9 +927,8 @@ class _Wide(_Generator):
                 joins.append(f"{out} = {column}")
                 columns.append((out, right.type_of(column)))
             op["joins"] = joins
-        if kind == "natural_join":
-            op["type"] = rng.choice(["error_on_duplicate", "first_match", "last_match",
-                                     "first_match", "last_match", "exactly_one_match"])
+        if join_type:
+            op["type"] = join_type
         self.add(op, columns, rows)
         return True
 

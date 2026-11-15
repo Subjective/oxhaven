@@ -25,12 +25,18 @@ every field given there fits:
 - `key`: the metadata keys whose values differ, sorted and joined by commas.
 - `expected`, `actual`: both sides exactly as the mismatch reports them. A float matches by
   its bits, so 0.0 is not -0.0; NaN is written "NaN". `{"type": "float"}` in place of a value
-  matches any float that is not NaN, for a finding whose values vary.
+  matches any float that is not NaN, for a finding whose values vary; `{"type": "zero"}`
+  matches 0.0 and -0.0, for a finding in which either side can hold either zero.
 - `steps`: `first` for step 0 only, `later` for the steps after it.
 - `requires`: `reference_inconsistent`. The mismatch is the finding's only if the reference
   itself, asked for the same table again from the inputs as they are after that step, answers
   differently from what it kept up to date incrementally (`runner.run_fresh`). The harness
   checks this by running the scenario once more; a target that cannot be asked never fits.
+
+A table defined from one with a known mismatch shows it again (a wrong value passed on, a
+refusal of everything downstream). Such a mismatch belongs to the same finding if the table
+is defined, directly or through others, from the table of a mismatch that fits, in the same
+step, with the same kind and metadata keys and with both sides exactly equal.
 
 What keeps an entry from hiding anything else: a scenario counts as known only if every one
 of its mismatches fits an entry, field by field; otherwise it is reported as differing, with
@@ -110,9 +116,12 @@ def parse(doc: Any, where: str = "known findings") -> list[Finding]:
 
 def producer(op: Mapping[str, Any] | None, column: str | None) -> str | None:
     """What made `column` of the table that `op` defines; see the module comment."""
-    if op is None or column is None:
+    if op is None:
         return None
     kind = op["op"]
+    if column is None:
+        # A mismatch of the whole table: `agg_all_by` has one aggregation to name.
+        return op["agg"]["agg"] if kind == "agg_all_by" else None
     if kind in ("agg_by", "range_join"):
         if kind == "agg_by" and column in op["by"]:
             return "key"
@@ -143,7 +152,9 @@ def metadata_key(mismatch: rules.Mismatch) -> str:
 
 def _same_value(pattern: Any, value: Any) -> bool:
     if isinstance(pattern, dict) and set(pattern) == {"type"}:
-        return pattern["type"] == "float" and isinstance(value, float) and not math.isnan(value)
+        if not isinstance(value, float) or math.isnan(value):
+            return False
+        return pattern["type"] == "float" or (pattern["type"] == "zero" and value == 0.0)
     if pattern == "NaN":
         return isinstance(value, float) and math.isnan(value)
     if isinstance(pattern, float) or isinstance(value, float):
@@ -216,4 +227,39 @@ class Known:
                 found = finding
                 break
             out.append(found)
+        # What a table shows wrongly, the tables defined from it show too.
+        changed = True
+        while changed:
+            changed = False
+            for index, mismatch in enumerate(mismatches):
+                if out[index] is not None or mismatch.table not in by_name:
+                    continue
+                above = _ancestors(mismatch.table, by_name)
+                for other, finding in zip(mismatches, out):
+                    if finding is not None and other.table in above and _same_symptom(
+                            mismatch, other):
+                        out[index] = finding
+                        changed = True
+                        break
         return out
+
+
+def _ancestors(table: str, by_name: Mapping[str, Mapping[str, Any]]) -> set[str]:
+    seen: set[str] = set()
+    todo = [table]
+    while todo:
+        op = by_name.get(todo.pop())
+        for name in sc.references(op) if op else ():
+            if name not in seen:
+                seen.add(name)
+                todo.append(name)
+    return seen
+
+
+def _same_symptom(mismatch: rules.Mismatch, other: rules.Mismatch) -> bool:
+    """`mismatch` repeats `other`: the same step, kind and metadata keys, and both sides
+    exactly equal. The column is not compared, since an operation can rename it."""
+    return (mismatch.step == other.step and mismatch.kind == other.kind
+            and metadata_key(mismatch) == metadata_key(other)
+            and _same_value(other.expected, mismatch.expected)
+            and _same_value(other.actual, mismatch.actual))
