@@ -39,6 +39,8 @@ Not generated, each for a stated reason:
   serves the result under the source's column order (see `build_agg_all_by`).
 - `distinct` of a timestamp column without the nulls: the reference cannot serve a group
   whose timestamps are all null (see `aggregation`).
+- `head_by` and `tail_by` of a table with an array column of strings, booleans or
+  timestamps: the reference answers with an array of objects (see `build`).
 - `agg_all_by` of an array column with anything but `first` or `last`: Oxhaven answers
   `UNIMPLEMENTED` (the engine lists aggregations of vector columns as not ported).
 
@@ -79,6 +81,7 @@ ORDER_KEEPING = frozenset({
 })
 # Operations whose result has, per row of the first source, at most one row with its columns.
 KEY_KEEPING = ORDER_KEEPING | {"sort", "reverse"}
+_UNTYPED_ARRAYS = frozenset(LIST + kind for kind in ("string", "bool", "timestamp"))
 
 
 def _same(kind: str) -> str:
@@ -453,6 +456,16 @@ class _Wide(_Generator):
             return False
         op = self.operations[-1]
         table = self.tables[op["name"]]
+        if kind in ("head_by", "tail_by") and any(
+                column_kind in _UNTYPED_ARRAYS for column, column_kind in table.columns
+                if column not in op["by"]):
+            # The reference's head_by and tail_by end in a cast to the raw vector class
+            # (QueryTable#headOrTailBy, `updateView(casting)`), which forgets what an array
+            # of strings, booleans or timestamps holds: the column comes back as an array
+            # of objects. Oxhaven keeps the type, so every such draw would differ.
+            self.operations.pop()
+            del self.tables[op["name"]]
+            return False
         if kind == "sort":
             for by in op["by"]:
                 if table.type_of(by["column"]) in NUMERIC and self.chance(0.15):
