@@ -559,6 +559,24 @@ fn mark_merged(result: &Arc<QueryTable>) {
     );
 }
 
+/// A static table of `definition` without rows.
+pub(super) fn empty(definition: TableDefinition) -> Result<Arc<QueryTable>, TableFailure> {
+    let columns = definition
+        .columns()
+        .iter()
+        .map(|column| {
+            let empty = new_empty_array(&column.column_type.arrow_type());
+            Ok(Arc::new(FlatSource::new(column.column_type.clone(), empty)?)
+                as Arc<dyn ColumnSource>)
+        })
+        .collect::<Result<_, TableFailure>>()?;
+    Ok(QueryTable::new_static(TableSpec::new(
+        definition,
+        RowSet::empty(),
+        columns,
+    )))
+}
+
 /// Behavior: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#merge
 pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, PartitionedError> {
     let underlying = partitioned.table().clone();
@@ -571,19 +589,7 @@ pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, Pa
                 return crate::ops::merge::merge(&constituents)
                     .map_err(|error| PartitionedError::IllegalArgument(error.to_string()));
             }
-            let columns = definition
-                .columns()
-                .iter()
-                .map(|column| {
-                    let empty = new_empty_array(&column.column_type.arrow_type());
-                    Ok(
-                        Arc::new(FlatSource::new(column.column_type.clone(), empty)?)
-                            as Arc<dyn ColumnSource>,
-                    )
-                })
-                .collect::<Result<_, TableFailure>>()?;
-            let result =
-                QueryTable::new_static(TableSpec::new(definition, RowSet::empty(), columns));
+            let result = empty(definition)?;
             mark_merged(&result);
             return Ok(result);
         }

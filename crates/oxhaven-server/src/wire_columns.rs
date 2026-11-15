@@ -433,4 +433,20 @@ mod tests {
             .unwrap();
         assert_eq!(&sent, &stored);
     }
+
+    #[test]
+    fn a_table_is_sent_as_the_text_java_has_for_it_and_never_as_its_handle() {
+        use oxhaven_contracts::schema::TableClass;
+        for class in [TableClass::Table, TableClass::QueryTable] {
+            let column = WireColumn::described(&ColumnType::Table(class));
+            assert_eq!(column.arrow_type(), DataType::Utf8);
+            let stored: ArrayRef = Arc::new(arrow::array::Int64Array::from(vec![Some(41), None]));
+            let sent = column.cells(stored).unwrap();
+            let sent = sent.as_string::<i32>();
+            assert_eq!(
+                sent.iter().collect::<Vec<_>>(),
+                [Some("QueryTable"), None]
+            );
+        }
+    }
 }

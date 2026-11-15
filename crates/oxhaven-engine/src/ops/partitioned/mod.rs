@@ -20,9 +20,9 @@ use crate::ops::join::JoinMatch;
 use crate::table::{QueryTable, TableSpec};
 use arrow::array::{ArrayRef, AsArray, Int64Array};
 use arrow::datatypes::Int64Type;
-use oxhaven_column::FlatSource;
+use oxhaven_column::{FlatSource, RedirectedSource, WritableRowRedirection};
 use oxhaven_contracts::graph::{locked, Dependency, UpdateGraph};
-use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{
     ColumnSource, InputTable, Table, TableAttributes, TableFailure, UpdateListener,
@@ -52,6 +52,8 @@ pub enum PartitionedError {
     IllegalArgument(String),
     /// What Java reports as `UnsupportedOperationException`.
     Unsupported(String),
+    /// What Java reports as `IllegalStateException`.
+    IllegalState(String),
     Table(TableFailure),
 }
 
@@ -63,7 +65,9 @@ impl fmt::Display for PartitionedError {
                  BlinkTableTools.blinkToAppendOnly to accumulate full history",
             ),
             PartitionedError::Aggregate(error) => error.fmt(f),
-            PartitionedError::IllegalArgument(message) | PartitionedError::Unsupported(message) => {
+            PartitionedError::IllegalArgument(message)
+            | PartitionedError::Unsupported(message)
+            | PartitionedError::IllegalState(message) => {
                 f.write_str(message)
             }
             PartitionedError::Table(failure) => failure.fmt(f),
@@ -277,57 +281,96 @@ impl PartitionedTable {
         Ok(merged)
     }
 
-    /// A partitioned table of `tables`, one row each, with the key columns `keys` (each
-    /// array one value per table). Nothing about it can change.
+    /// A table without rows that has the columns of a constituent.
     ///
-    /// Behavior: the result of PartitionedTableImpl#transform for a partitioned table
-    /// that is not refreshing: the constituent column is declared as
-    /// io.deephaven.engine.table.Table, by
-    /// io.deephaven.engine.table.impl.partitioned.TableTransformationColumn
-    pub fn of_tables(
-        keys: Vec<(ColumnDefinition, ArrayRef)>,
-        constituent_column: &str,
-        constituent_definition: TableDefinition,
-        unique_keys: bool,
+    /// Behavior: PartitionedTableImpl#emptyConstituent
+    pub fn empty_constituent(&self) -> Result<Arc<dyn Table>, PartitionedError> {
+        Ok(merge::empty(self.constituent_definition.clone())?)
+    }
+
+    /// This partitioned table with `tables` in place of its constituents, one for each row
+    /// of the underlying table in the order of its rows: what a transform of each
+    /// constituent made. `constituent_definition` is the definition of the new
+    /// constituents. Every other column, the rows and their keys are those of this
+    /// partitioned table.
+    ///
+    /// Only for a partitioned table that is not refreshing, whose new constituents may
+    /// not be refreshing either.
+    ///
+    /// Behavior: PartitionedTableImpl#transform, whose `update` with a
+    /// io.deephaven.engine.table.impl.partitioned.TableTransformationColumn declares the
+    /// constituent column as io.deephaven.engine.table.Table, and #assertResultsStatic
+    pub fn transformed(
+        &self,
         tables: Vec<Arc<dyn Table>>,
+        constituent_definition: TableDefinition,
     ) -> Result<PartitionedTable, PartitionedError> {
+        if self.table.is_refreshing() {
+            return Err(PartitionedError::Unsupported(
+                "unported: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#transform: \
+                 a refreshing partitioned table"
+                    .to_string(),
+            ));
+        }
+        if tables.iter().any(|table| table.is_refreshing()) {
+            return Err(PartitionedError::IllegalState(
+                "Static partitioned tables cannot contain refreshing constituents. Did you mean \
+                 to specify expectRefreshingResults=true for this transform?"
+                    .to_string(),
+            ));
+        }
+        let rows = self.table.row_set();
+        if tables.len() as u64 != rows.size() {
+            return Err(PartitionedError::IllegalArgument(format!(
+                "{} tables for {} constituents",
+                tables.len(),
+                rows.size()
+            )));
+        }
         let cells = Arc::new(TableCells::default());
         let handles: Int64Array = tables
             .into_iter()
             .map(|table| Some(cells.register(table)))
             .collect();
-        let size = handles.len() as u64;
+        let positions = WritableRowRedirection::new();
+        for (position, key) in rows.iter().enumerate() {
+            positions.put(key, position as RowKey);
+        }
         let column_type = ColumnType::Table(TableClass::Table);
+        let constituents: Arc<dyn ColumnSource> = Arc::new(TableColumn::new(
+            Arc::new(RedirectedSource::new(
+                Arc::new(positions),
+                Arc::new(FlatSource::new(column_type.clone(), Arc::new(handles))?),
+            )),
+            cells,
+        ));
         let mut definitions = Vec::new();
         let mut columns: Vec<Arc<dyn ColumnSource>> = Vec::new();
-        let mut key_columns = Vec::new();
-        for (definition, values) in keys {
-            key_columns.push(definition.name.clone());
-            columns.push(Arc::new(FlatSource::new(
-                definition.column_type.clone(),
-                values,
-            )?));
-            definitions.push(definition);
+        for (index, column) in self.table.definition().columns().iter().enumerate() {
+            if column.name == self.constituent_column {
+                definitions.push(ColumnDefinition::new(
+                    column.name.as_str(),
+                    column_type.clone(),
+                ));
+                columns.push(constituents.clone());
+            } else {
+                definitions.push(column.clone());
+                columns.push(self.table.column(index));
+            }
         }
-        definitions.push(ColumnDefinition::new(
-            constituent_column,
-            column_type.clone(),
-        ));
-        columns.push(Arc::new(TableColumn::new(
-            Arc::new(FlatSource::new(column_type, Arc::new(handles))?),
-            cells,
-        )));
         let definition = TableDefinition::new(definitions)
             .map_err(|duplicate| PartitionedError::IllegalArgument(duplicate.to_string()))?;
-        let table =
-            QueryTable::new_static(TableSpec::new(definition, RowSet::flat(size), columns).flat());
+        let mut spec = TableSpec::new(definition, (*rows).clone(), columns);
+        if self.table.is_flat() {
+            spec = spec.flat();
+        }
         PartitionedTable::new(
-            table,
-            key_columns,
-            unique_keys,
-            constituent_column.to_string(),
+            QueryTable::new_static(spec),
+            self.key_columns.clone(),
+            self.unique_keys,
+            self.constituent_column.clone(),
             constituent_definition,
-            false,
+            self.constituent_changes_permitted,
         )
     }
 }

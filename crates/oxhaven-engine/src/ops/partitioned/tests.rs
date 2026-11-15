@@ -7,6 +7,7 @@ use crate::graph::SteppedUpdateGraph;
 use crate::ops::agg::Pair;
 use crate::ops::agg::{aggregate, AggSpec};
 use arrow::array::{Float64Array, Int32Array};
+use arrow::datatypes::Int32Type;
 use arrow::util::display::array_value_to_string;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::update::TableUpdate;
@@ -386,33 +387,41 @@ fn a_merge_of_the_rows_for_some_keys_follows_the_key_table() {
 }
 
 #[test]
-fn a_transformed_partition_is_a_static_table_of_the_given_tables() {
+fn a_transformed_partition_keeps_its_rows_and_holds_the_given_tables() {
     let partitioned = partition_by(&seven_rows(), &["K"], false).unwrap();
-    let key_values = partitioned
-        .table()
-        .column(0)
-        .chunk(&partitioned.table().row_set())
+    let reversed: Vec<Arc<dyn Table>> = partitioned
+        .constituents()
+        .unwrap()
+        .into_iter()
+        .rev()
+        .collect();
+    let transformed = partitioned
+        .transformed(reversed, partitioned.constituent_definition().clone())
         .unwrap();
-    let transformed = PartitionedTable::of_tables(
-        vec![(ColumnDefinition::new("K", ColumnType::Int), key_values)],
-        "__CONSTITUENT__",
-        partitioned.constituent_definition().clone(),
-        true,
-        partitioned
-            .constituents()
-            .unwrap()
-            .into_iter()
-            .rev()
-            .collect(),
-    )
-    .unwrap();
     assert_eq!(
         transformed.table().definition().columns()[1].column_type,
         ColumnType::Table(TableClass::Table)
     );
+    assert!(transformed.table().is_flat());
+    assert_eq!(transformed.key_columns(), ["K"]);
     assert_eq!(
         rows(&*transformed.merge().unwrap()),
         ["2|3.0", "2|7.5", "1|1.5", "1|6.0", "0|0.0", "0|4.5", "0|9.0"]
+    );
+    // the key column still reads the keys of the partition: 0, 1, 2
+    let keys = transformed
+        .table()
+        .column(0)
+        .chunk(&transformed.table().row_set())
+        .unwrap();
+    assert_eq!(keys.as_primitive::<Int32Type>().values(), &[0, 1, 2]);
+
+    let short = partitioned.transformed(Vec::new(), partitioned.constituent_definition().clone());
+    assert!(matches!(short, Err(PartitionedError::IllegalArgument(_))));
+    assert_eq!(partitioned.empty_constituent().unwrap().row_set().size(), 0);
+    assert_eq!(
+        partitioned.empty_constituent().unwrap().definition(),
+        partitioned.constituent_definition()
     );
 }
 

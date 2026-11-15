@@ -37,7 +37,9 @@ pub const TABLE_TYPE_NAME: &str = "Table";
 pub fn type_name_if_displayable(value: &ExportValue) -> Option<&'static str> {
     match value {
         ExportValue::Table(_) => Some(TABLE_TYPE_NAME),
-        ExportValue::Object(_) => None,
+        ExportValue::Object(_) => {
+            crate::partitioned::partitioned_of(value).map(|_| crate::partitioned::TYPE_NAME)
+        }
     }
 }
 
