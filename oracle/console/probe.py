@@ -9,9 +9,13 @@ that are expected.
 
 Each case prints the call, the request and the status, then one line per response message in
 protobuf text format. What differs from run to run is replaced: timestamps by `<ts>`, memory
-figures by `<n>`, error ids by `<id>`. A server stream is read for `--listen` seconds and then
-cancelled (`OPEN`). The sequence leaves variables in the query scope, so use a server that
-was just started.
+figures by `<n>`, error ids by `<id>`; the lines of a Java stack trace in an error message
+are left out. A server stream is cancelled at the end (`OPEN`). The two streams that run
+beside the commands are printed after them: of the log, the records of level `STDOUT` and
+the `STDERR` records that start with `[probe]` (Java's `STDERR` also carries its own log);
+of the field changes, one line per change. The script waits after each command so that every
+change is sent by itself. The sequence leaves variables in the query scope, so use a server
+that was just started.
 """
 
 import argparse
@@ -38,6 +42,7 @@ from deephaven_core.proto import (
 )
 
 CALL_TIMEOUT = 20
+SETTLE = 0.4
 PSK_AUTH_TYPE = "io.deephaven.authentication.psk.PskAuthenticationHandler"
 
 VOLATILE = [
@@ -45,6 +50,7 @@ VOLATILE = [
     (re.compile(r"(max_memory|total_memory|free_memory): \d+"), r"\1: <n>"),
     (re.compile(r"Details Logged w/ID '[0-9a-f-]+'"), "Details Logged w/ID '<id>'"),
     (re.compile(r"0x[0-9a-f]{6,}"), "0x<addr>"),
+    (re.compile(r'File \\"[^"\\]*/site-packages/'), 'File \\"<site-packages>/'),
 ]
 
 
@@ -55,6 +61,18 @@ def scrub(text: str) -> str:
 
 
 def one_line(message) -> str:
+    if hasattr(message, "error_message") and message.error_message:
+        copy = type(message)()
+        copy.CopyFrom(message)
+        lines = message.error_message.split("\n")
+        copy.error_message = "\n".join(line for line in lines if not line.startswith("\tat "))
+        message = copy
+    if getattr(message, "schema_header", b""):
+        # compared by the table service's own tests; here only that there is one
+        copy = type(message)()
+        copy.CopyFrom(message)
+        copy.schema_header = b"<%d bytes>" % len(message.schema_header)
+        message = copy
     return scrub(text_format.MessageToString(message, as_one_line=True))
 
 
@@ -130,7 +148,10 @@ class Server:
 
 def execute(server: Server, name: str, console, code: str):
     request = console_pb2.ExecuteCommandRequest(console_id=console, code=code)
-    return server.unary(name, "ConsoleService/ExecuteCommand", request)
+    response = server.unary(name, "ConsoleService/ExecuteCommand", request)
+    # longer than the interval in which a server gathers field changes into one message
+    time.sleep(SETTLE)
+    return response
 
 
 def main() -> int:
@@ -193,12 +214,11 @@ def main() -> int:
     execute(server, "execute on an export that does not exist", export_ticket(77), "x = 1")
     execute(server, "import", console, "from deephaven import empty_table")
     execute(server, "create a table", console, 't = empty_table(5).update(["X = i"])')
-    time.sleep(0.4)
     execute(server, "replace a table", console, 't = empty_table(3).update(["X = i"])')
     execute(server, "a variable that is no table", console, "n = 41 + 1")
     execute(server, "print", console, 'print("hello from the console")\nprint(n)')
     execute(server, "expression statement", console, "n")
-    execute(server, "write to stderr", console, 'import sys\nsys.stderr.write("to stderr\\n")')
+    execute(server, "write to stderr", console, 'import sys\nsys.stderr.write("[probe] to stderr\\n")')
     execute(server, "python exception", console, "1 / 0")
     execute(server, "syntax error", console, "t = = 1")
     execute(server, "undefined name", console, "u = no_such_name")
@@ -212,9 +232,8 @@ def main() -> int:
     execute(server, "two tables and a removal", console, "a = t\nb = t.view(['X'])\ndel v")
     execute(server, "table set to None", console, "a = None")
     execute(server, "empty code", console, "")
-    time.sleep(0.4)
 
-    fetched = server.unary(
+    server.unary(
         "fetch the scope variable",
         "TableService/FetchTable",
         table_pb2.FetchTableRequest(
@@ -222,8 +241,6 @@ def main() -> int:
             result_id=export_ticket(3),
         ),
     )
-    if fetched is not None:
-        print(f"# schema_header: {len(fetched.schema_header)} bytes\n")
     server.unary(
         "fetch a variable that is no table",
         "TableService/FetchTable",
@@ -239,6 +256,7 @@ def main() -> int:
             console_id=console, variable_name="bound", table_id=export_ticket(3)
         ),
     )
+    time.sleep(SETTLE)
     server.unary(
         "bind without a console id",
         "ConsoleService/BindTableToVariable",
@@ -246,6 +264,7 @@ def main() -> int:
             variable_name="bound2", table_id=export_ticket(3)
         ),
     )
+    time.sleep(SETTLE)
     server.unary(
         "bind without a table id",
         "ConsoleService/BindTableToVariable",
@@ -320,17 +339,20 @@ def main() -> int:
 
     logs_cancel()
     fields_cancel()
-    print("== log lines of the commands (levels STDOUT and STDERR)")
+    print("== what the commands printed")
     print("call: ConsoleService/SubscribeToLogs")
     print(f"status: {logs_status[0]}")
     for message in logs:
-        print(f"message: {one_line(message)}")
+        if message.log_level == "STDOUT" or message.message.startswith("[probe]"):
+            print(f"message: {one_line(message)}")
     print()
     print("== field changes seen by a listener during the commands")
     print("call: ApplicationService/ListFields")
     print(f"status: {fields_status[0]}")
     for message in fields:
-        print(f"message: {one_line(message)}")
+        for kind in ("created", "updated", "removed"):
+            for field in getattr(message, kind):
+                print(f"{kind}: {one_line(field)}")
     print()
 
     server.unary(
