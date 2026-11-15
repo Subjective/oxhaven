@@ -235,6 +235,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "TIME_TABLE",
             "FETCH_TABLE",
             "META_TABLE",
+            "MULTI_JOIN",
             "APPLY_PREVIEW_COLUMNS",
             "UPDATE",
             "LAZY_UPDATE",

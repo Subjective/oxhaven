@@ -269,6 +269,7 @@ handlers! {
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
+    multi_join { MultiJoin => Handler }
     range_join { RangeJoin => Handler }
     select {
         Update => Update,
