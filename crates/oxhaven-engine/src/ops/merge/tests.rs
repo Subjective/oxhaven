@@ -1,4 +1,4 @@
-use super::{flatten, merge, MergeError};
+use super::{flatten, merge, merge_sorted, MergeError};
 use crate::ops::sort::testing::{
     blink_table, cells, check_random, graph, keys, keys_of, operation, scripted, shifts,
     static_table, tags, Ticking,
@@ -495,4 +495,286 @@ fn random_updates_through_a_merge_with_a_static_table() {
         }),
     ];
     check_random(0..40, 30, 1, &RANDOM_COLUMNS, &operations);
+}
+
+// ---- merge_sorted --------------------------------------------------------------------------
+// The expectations are what Java 42.9 answered to the same calls.
+
+fn pairs(k: impl IntoIterator<Item = i32>, v: impl IntoIterator<Item = i32>) -> Arc<dyn Table> {
+    static_table(&[
+        ("K", ColumnType::Int, ints(k)),
+        ("V", ColumnType::Int, ints(v)),
+    ])
+}
+
+/// `K` from 0 to 2 with `V = K * 10`, and `K` from 1 to 3 with `V = (K - 1) * 100`.
+fn two_sorted() -> (Arc<dyn Table>, Arc<dyn Table>) {
+    (pairs(0..3, [0, 10, 20]), pairs(1..4, [0, 100, 200]))
+}
+
+/// The rows of a table of `K` and `V` as `K:V`.
+fn rows_of(table: &Arc<dyn Table>) -> Vec<String> {
+    let (k, v) = (cells(&**table, 0), cells(&**table, 1));
+    k.iter().zip(&v).map(|(k, v)| format!("{k}:{v}")).collect()
+}
+
+fn sorted_rows(tables: &[Arc<dyn Table>], key: &str) -> Vec<String> {
+    rows_of(&merge_sorted(tables, key).unwrap())
+}
+
+#[test]
+fn a_sorted_merge_takes_the_least_next_row_and_the_earlier_table_on_a_tie() {
+    let (a, b) = two_sorted();
+    let merged = merge_sorted(&[a.clone(), b.clone()], "K").unwrap();
+    assert_eq!(
+        rows_of(&merged),
+        ["0:0", "1:10", "1:0", "2:20", "2:100", "3:200"]
+    );
+    // a table of its own: static, the row keys 0..size, not flat, no attributes
+    assert!(!merged.is_refreshing());
+    assert!(!merged.is_flat());
+    assert_eq!(keys_of(&*merged), [0, 1, 2, 3, 4, 5]);
+    assert!(crate::table::attribute_map(&*merged).is_empty());
+
+    assert_eq!(
+        sorted_rows(&[b.clone(), a.clone()], "K"),
+        ["0:0", "1:0", "1:10", "2:100", "2:20", "3:200"]
+    );
+    assert_eq!(
+        sorted_rows(&[a.clone(), b.clone(), a.clone()], "K"),
+        ["0:0", "0:0", "1:10", "1:0", "1:10", "2:20", "2:100", "2:20", "3:200"]
+    );
+    assert_eq!(
+        sorted_rows(&[a.clone(), b.clone()], "V"),
+        ["0:0", "1:0", "1:10", "2:20", "2:100", "3:200"]
+    );
+    assert_eq!(sorted_rows(&[a.clone()], "K"), ["0:0", "1:10", "2:20"]);
+}
+
+#[test]
+fn a_sorted_merge_does_not_sort_its_tables() {
+    let (a, b) = two_sorted();
+    let descending = sort(&a, &[SortColumn::descending("K")]).unwrap();
+    assert_eq!(
+        sorted_rows(std::slice::from_ref(&descending), "K"),
+        ["2:20", "1:10", "0:0"]
+    );
+    // the least of the next rows at each step, whatever follows them
+    assert_eq!(
+        sorted_rows(&[descending, b], "K"),
+        ["1:0", "2:20", "1:10", "0:0", "2:100", "3:200"]
+    );
+}
+
+#[test]
+fn a_sorted_merge_reads_tables_that_are_not_flat_empty_or_ordered_otherwise() {
+    let (a, b) = two_sorted();
+    // rows at the keys 0 and 2 of one table, 0 and 2 of the other
+    let odd = RowSet::from_keys([0, 2]);
+    let part = |table: &Arc<dyn Table>| -> Arc<dyn Table> {
+        let snapshot = oxhaven_testkit::TableSnapshot::current(&**table).unwrap();
+        ReferenceTable::new_static(table.definition().clone(), odd.clone(), {
+            let keep = arrow::array::UInt32Array::from(vec![0, 2]);
+            snapshot
+                .columns
+                .iter()
+                .map(|column| arrow::compute::take(column, &keep, None).unwrap())
+                .collect()
+        })
+    };
+    assert_eq!(
+        sorted_rows(&[part(&a), part(&b)], "K"),
+        ["0:0", "1:0", "2:20", "3:200"]
+    );
+
+    let none = head(&a, 0).unwrap();
+    assert!(sorted_rows(&[none.clone(), head(&b, 0).unwrap()], "K").is_empty());
+    assert_eq!(
+        sorted_rows(&[none, b.clone()], "K"),
+        ["1:0", "2:100", "3:200"]
+    );
+
+    // the columns are matched by name; the result has the first table's order
+    let turned = static_table(&[
+        ("V", ColumnType::Int, ints([0, 100, 200])),
+        ("K", ColumnType::Int, ints(1..4)),
+    ]);
+    let merged = merge_sorted(&[a, turned], "K").unwrap();
+    assert_eq!(
+        rows_of(&merged),
+        ["0:0", "1:10", "1:0", "2:20", "2:100", "3:200"]
+    );
+
+    // no tables: a table without columns or rows
+    let empty = merge_sorted(&[], "K").unwrap();
+    assert!(empty.definition().columns().is_empty());
+    assert_eq!(empty.row_set().size(), 0);
+    assert!(!empty.is_flat());
+}
+
+#[test]
+fn keys_are_compared_as_java_compares_the_boxed_values() {
+    let keyed = |column_type: ColumnType, k: ArrayRef, v: &[i32]| {
+        static_table(&[
+            ("K", column_type, k),
+            ("V", ColumnType::Int, ints(v.iter().copied())),
+        ])
+    };
+    // -0.0 before 0.0, and NaN the greatest and equal to itself
+    let d1 = keyed(
+        ColumnType::Double,
+        doubles([-1.0, -0.0, 0.0, f64::NAN]),
+        &[1, 2, 3, 4],
+    );
+    let d2 = keyed(
+        ColumnType::Double,
+        doubles([-0.0, 0.0, 1.0, f64::NAN]),
+        &[10, 20, 30, 40],
+    );
+    let values = |tables: &[Arc<dyn Table>]| cells(&*merge_sorted(tables, "K").unwrap(), 1);
+    assert_eq!(
+        values(&[d1.clone(), d2.clone()]),
+        ["1", "2", "10", "3", "20", "30", "4", "40"]
+    );
+    assert_eq!(
+        values(&[d2, d1]),
+        ["1", "10", "2", "20", "3", "30", "40", "4"]
+    );
+    // strings by code unit: upper case first
+    let s1 = keyed(ColumnType::String, strings(["A", "a", "b"]), &[1, 2, 3]);
+    let s2 = keyed(ColumnType::String, strings(["B", "a", "c"]), &[10, 20, 30]);
+    assert_eq!(values(&[s1, s2]), ["1", "10", "2", "20", "3", "30"]);
+    // false before true
+    let flags = || {
+        keyed(
+            ColumnType::Boolean,
+            Arc::new(BooleanArray::from(vec![false, true])),
+            &[1, 2],
+        )
+    };
+    assert_eq!(values(&[flags(), flags()]), ["1", "1", "2", "2"]);
+}
+
+#[test]
+fn a_null_key_is_refused_only_where_it_is_compared() {
+    let with_null = |k: [Option<i32>; 3]| {
+        static_table(&[
+            (
+                "K",
+                ColumnType::Int,
+                Arc::new(arrow::array::Int32Array::from(k.to_vec())) as ArrayRef,
+            ),
+            ("V", ColumnType::Int, ints(0..3)),
+        ])
+    };
+    let (a, _) = two_sorted();
+    // one table alone has no key to be compared with
+    let alone = with_null([Some(0), None, Some(2)]);
+    assert_eq!(
+        cells(
+            &*merge_sorted(std::slice::from_ref(&alone), "K").unwrap(),
+            1
+        ),
+        ["0", "1", "2"]
+    );
+    // the null is the key of the cursor that is compared
+    assert_eq!(
+        error(merge_sorted(&[alone, a.clone()], "K")),
+        MergeError::NullKey(
+            "Cannot invoke \"java.lang.Comparable.compareTo(Object)\" because \
+             \"this.currentKey\" is null"
+                .into()
+        )
+    );
+    // the null is the key it is compared with
+    let first = with_null([None, Some(1), Some(2)]);
+    assert!(matches!(
+        error(merge_sorted(&[first, a.clone()], "K")),
+        MergeError::NullKey(_)
+    ));
+    // the null comes when the other table has no rows left
+    let late = with_null([Some(7), None, Some(9)]);
+    assert_eq!(
+        cells(&*merge_sorted(&[a, late], "K").unwrap(), 1),
+        ["0", "10", "20", "0", "1", "2"]
+    );
+}
+
+#[test]
+fn a_sorted_merge_refuses_what_java_refuses() {
+    let (a, b) = two_sorted();
+    let both = |other: Arc<dyn Table>, key: &str| error(merge_sorted(&[a.clone(), other], key));
+    assert_eq!(
+        both(b.clone(), "Q"),
+        MergeError::NoSuchColumn(
+            "Unknown column names [Q], available column names are [K, V]".into()
+        )
+    );
+    assert_eq!(
+        both(b.clone(), ""),
+        MergeError::NoSuchColumn(
+            "Unknown column names [], available column names are [K, V]".into()
+        )
+    );
+    let other_name = static_table(&[
+        ("K", ColumnType::Int, ints(1..4)),
+        ("W", ColumnType::Int, ints(1..4)),
+    ]);
+    assert_eq!(
+        both(other_name, "K"),
+        MergeError::Runtime("Incompatible column sources: [K, V] and [K, W]".into())
+    );
+    let more = static_table(&[
+        ("K", ColumnType::Int, ints(1..4)),
+        ("V", ColumnType::Int, ints(1..4)),
+        ("Z", ColumnType::Int, ints(1..4)),
+    ]);
+    assert_eq!(
+        both(more, "K"),
+        MergeError::Runtime("Incompatible column sources: [K, V] and [K, V, Z]".into())
+    );
+    let fewer = static_table(&[("K", ColumnType::Int, ints(1..4))]);
+    assert_eq!(
+        both(fewer, "K"),
+        MergeError::Runtime("Incompatible column sources: [K, V] and [K]".into())
+    );
+    let other_type = static_table(&[
+        ("K", ColumnType::Int, ints(1..4)),
+        ("V", ColumnType::Long, oxhaven_testkit::longs([1, 2, 3])),
+    ]);
+    assert_eq!(
+        both(other_type, "K"),
+        MergeError::Runtime(
+            "Requirement failed: required source.getType() == innerSources.get(0).getType(), \
+             instead source.getType() == long, innerSources.get(0).getType() == int."
+                .into()
+        )
+    );
+
+    let graph = graph();
+    let ticking: Arc<dyn Table> = scripted(&graph, [1], &columns([1], &["a"])).table();
+    assert_eq!(
+        error(merge_sorted(&[fixed([1], &["a"]), ticking], "K")),
+        MergeError::Unsupported("mergeSorted does not yet support refreshing tables!".into())
+    );
+}
+
+#[test]
+#[should_panic(expected = "unported: io.deephaven.engine.table.impl.util.MergeSortedHelper")]
+fn a_sorted_merge_by_a_vector_column_is_not_ported() {
+    let vectors = || {
+        let column_type = ColumnType::vector(ColumnType::Int);
+        let k = oxhaven_testkit::list_of(&column_type, [Some(1), Some(1)], ints([1, 2]));
+        static_table(&[("K", column_type, k)])
+    };
+    let _ = merge_sorted(&[vectors(), vectors()], "K");
+}
+
+#[test]
+fn a_merge_is_marked_as_one() {
+    let merged = merge(&[fixed([1], &["a"]), fixed([2], &["b"])]).unwrap();
+    assert_eq!(
+        crate::table::attribute_map(&*merged),
+        [("MergedTable", crate::table::AttributeValue::Bool(true))]
+    );
 }
