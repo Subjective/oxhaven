@@ -11,8 +11,8 @@
 //! of PARITY.md A1 for `cum_sum` is not used: the sums are taken in Java's order.
 
 use super::{
-    update_by, DeltaControl, EmSpec, RollingWindow, UpdateByError, UpdateByOperation, UpdateBySpec,
-    WindowScale,
+    update_by_with, DeltaControl, EmSpec, RollingWindow, UpdateByError, UpdateByOperation,
+    UpdateBySpec, WindowScale,
 };
 use crate::graph::SteppedUpdateGraph;
 use crate::table::{append_only_input_table, in_memory_table, keyed_input_table};
@@ -243,8 +243,13 @@ fn nanos(text: &str) -> Option<i64> {
 
 /// The operation a scenario names by its `pydeephaven.updateby` function and arguments
 /// (`oracle/harness/runner.py`, `_update_by`), or `None` when it is not ported or needs the
-/// gRPC handler to parse an argument.
-fn spec(op: &str, args: &Value) -> Option<UpdateBySpec> {
+/// gRPC handler to parse an argument. A count-where is named with its result column as its
+/// one column.
+fn spec(op: &str, args: &Value, columns: &[&str]) -> Option<UpdateBySpec> {
+    let filters = || -> Vec<String> {
+        let filters = list(&args["filters"]).iter();
+        filters.map(|filter| text(filter).to_string()).collect()
+    };
     let ticks = |key: &str| Some(WindowScale::Ticks(args[key].as_f64()?));
     let time = |key: &str| {
         Some(WindowScale::Time {
@@ -306,19 +311,22 @@ fn spec(op: &str, args: &Value) -> Option<UpdateBySpec> {
         "ems" => UpdateBySpec::Ems(em()?),
         "emmin" => UpdateBySpec::EmMin(em()?),
         "emmax" => UpdateBySpec::EmMax(em()?),
-        family if unported(family) => return None,
+        "cum_count_where" => UpdateBySpec::CumCountWhere {
+            result_column: columns[0].to_string(),
+            filters: filters(),
+        },
+        "rolling_count_where" => UpdateBySpec::RollingCountWhere {
+            window: window()?,
+            result_column: columns[0].to_string(),
+            filters: filters(),
+        },
+        "rolling_formula" => UpdateBySpec::RollingFormula {
+            window: window()?,
+            formula: text(&args["formula"]).to_string(),
+            param_token: args["formula_param"].as_str().map(String::from),
+        },
         other => panic!("no update_by operation {other}"),
     })
-}
-
-/// Whether the operation of `op`, a `pydeephaven.updateby` function, is left `unported!` in
-/// this module.
-fn unported(op: &str) -> bool {
-    let family = op.trim_end_matches("_tick").trim_end_matches("_time");
-    matches!(
-        family,
-        "rolling_formula" | "rolling_count_where" | "cum_count_where"
-    )
 }
 
 /// Defines the table of `operation` from `tables`.
@@ -335,18 +343,15 @@ fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
         Built::NotRun => return Built::NotRun,
     };
     let mut operations = Vec::new();
-    let mut left_out = Vec::new();
+    let left_out: Vec<String> = Vec::new();
     for op in list(&operation["ops"]) {
         let columns: Vec<&str> = list(&op["columns"]).iter().map(text).collect();
-        match spec(text(&op["op"]), &op["args"]) {
+        match spec(text(&op["op"]), &op["args"], &columns) {
+            Some(
+                spec
+                @ (UpdateBySpec::CumCountWhere { .. } | UpdateBySpec::RollingCountWhere { .. }),
+            ) => operations.push(UpdateByOperation::new::<&str>(spec, &[])),
             Some(spec) => operations.push(UpdateByOperation::new(spec, &columns)),
-            // Java computes the result columns of each operation on their own, so the other
-            // operations are compared without it.
-            None if unported(text(&op["op"])) => left_out.extend(
-                columns
-                    .iter()
-                    .map(|pair| pair.split('=').next().expect("a name").trim().to_string()),
-            ),
             None => return Built::NotRun,
         }
     }
@@ -354,7 +359,7 @@ fn define(tables: &BTreeMap<String, Built>, operation: &Value) -> Built {
         return Built::NotRun;
     }
     let by: Vec<&str> = list(&operation["by"]).iter().map(text).collect();
-    match update_by(&parent, &operations, &by) {
+    match update_by_with(&parent, &operations, &by, &oxhaven_expr::Compiler) {
         Ok(table) => Built::Table(table, left_out),
         Err(error) => Built::Refused(code(&error)),
     }
@@ -591,9 +596,8 @@ fn results_match_the_recorded_java_results() {
     }
     tally.compared.sort();
 
-    // Every result table of the corpus that is an `update_by` of an input, without the
-    // result columns of the operators left `unported!` (a rolling formula or count where, a
-    // cumulative count where). Everything else needs another operation or, for
+    // Every result table of the corpus that is an `update_by` of an input. Everything else
+    // needs another operation or, for
     // `update_by_time_and_ema/bad_duration`, the gRPC handler's parse of a duration.
     let expected = [
         "empty_table_ops/ub",
@@ -609,22 +613,22 @@ fn results_match_the_recorded_java_results() {
         "ticking_update_by_full/rolling",
         "update_by_cum_sum/keyed",
         "update_by_cum_sum/whole",
-        "update_by_cumulative/by_key without Pos",
+        "update_by_cumulative/by_key",
         "update_by_cumulative/in_place",
-        "update_by_cumulative/no_key without Pos",
-        "update_by_cumulative/of_empty without Pos",
-        "update_by_cumulative/of_special without Pos",
+        "update_by_cumulative/no_key",
+        "update_by_cumulative/of_empty",
+        "update_by_cumulative/of_special",
         "update_by_cumulative/string_fill",
         "update_by_cumulative/string_min",
         "update_by_cumulative/string_sum",
         "update_by_cumulative/time_delta",
         "update_by_cumulative/unknown_column",
         "update_by_cumulative/unknown_key",
-        "update_by_rolling_tick/by_key without Pos, FormI",
+        "update_by_rolling_tick/by_key",
         "update_by_rolling_tick/empty_window",
         "update_by_rolling_tick/negative_window",
-        "update_by_rolling_tick/no_key without Pos, FormI",
-        "update_by_rolling_tick/of_empty without Pos, FormI",
+        "update_by_rolling_tick/no_key",
+        "update_by_rolling_tick/of_empty",
         "update_by_rolling_tick/of_special",
         "update_by_rolling_tick/one_row_window",
         "update_by_rolling_tick/string_sum",
@@ -634,9 +638,9 @@ fn results_match_the_recorded_java_results() {
         "update_by_time_and_ema/ema_special_ticks",
         "update_by_time_and_ema/int_timestamp",
         "update_by_time_and_ema/null_timestamp",
-        "update_by_time_and_ema/timed_by_key without Pos, FormI",
-        "update_by_time_and_ema/timed_empty without Pos, FormI",
-        "update_by_time_and_ema/timed_no_key without Pos, FormI",
+        "update_by_time_and_ema/timed_by_key",
+        "update_by_time_and_ema/timed_empty",
+        "update_by_time_and_ema/timed_no_key",
     ];
     assert_eq!(tally.compared, expected);
     // 33 tables of static scenarios at one step, 2 ticking ones at 6 steps and 6 at 8.
