@@ -157,6 +157,15 @@ def test_the_exception_that_ended_the_script_is_found(text: str) -> None:
          '  File "<string>", line 2, in helper\n'
          "    raise KeyError\nKeyError\n",
          "KeyError", ""),
+        # a script that catches one exception and raises another: the last one ended it
+        ("Error in Python interpreter:\nTraceback (most recent call last):\n"
+         '  File "<string>", line 2, in <module>\n'
+         "ZeroDivisionError: division by zero\n\n"
+         "During handling of the above exception, another exception occurred:\n\n"
+         "Traceback (most recent call last):\n"
+         '  File "<string>", line 4, in <module>\n'
+         "ValueError: no\n",
+         "ValueError", "no"),
         ("Error in Python interpreter:\nTraceback (most recent call last):\n"
          '  File "<string>", line 1, in <module>\n'
          "AttributeError: 'Table' object has no attribute 'slice'. Did you mean: 'size'?\n",
