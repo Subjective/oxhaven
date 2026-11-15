@@ -873,9 +873,13 @@ pub(super) fn to_spec(condition: &Condition) -> Result<FilterSpec, String> {
             ignore_case: ignore_case(case_sensitivity),
             invert_pattern: *match_type == MatchType::Inverted,
         }),
-        Condition::Search { .. } => {
-            unported!("io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter")
-        }
+        Condition::Search {
+            search_string,
+            columns,
+        } => Ok(FilterSpec::Search {
+            text: search_string.clone(),
+            columns: columns.clone(),
+        }),
     }
 }
 
@@ -1456,13 +1460,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "unported: io.deephaven.engine.table.impl.select.WhereFilterFactory#expandQuickFilter"
-    )]
-    fn a_search_is_not_ported() {
-        let _ = to_spec(&Condition::Search {
+    fn a_search_waits_for_the_table_to_know_its_columns() {
+        let spec = to_spec(&Condition::Search {
             search_string: "x".to_string(),
-            columns: vec![],
+            columns: vec!["A".to_string()],
         });
+        assert_eq!(
+            spec,
+            Ok(FilterSpec::Search {
+                text: "x".to_string(),
+                columns: vec!["A".to_string()],
+            })
+        );
     }
 }

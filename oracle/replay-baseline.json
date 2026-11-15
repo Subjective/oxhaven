@@ -19,7 +19,7 @@
   "error_types_and_matches": {"state": "clean"},
   "error_unknown_column": {"state": "clean"},
   "exact_join": {"state": "clean"},
-  "filter_structured": {"state": "differs", "kinds": ["failure_unexpected:UNIMPLEMENTED"], "tables": ["search", "search_columns"], "why": "quick filters (search) are not ported"},
+  "filter_structured": {"state": "clean"},
   "flatten_reverse": {"state": "clean"},
   "group_by_ungroup": {"state": "clean"},
   "head_by_tail_by": {"state": "clean"},

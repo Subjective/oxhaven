@@ -15,6 +15,7 @@ mod factory;
 mod filters;
 mod literal;
 mod pattern;
+mod search;
 
 #[cfg(test)]
 mod corpus_tests;
