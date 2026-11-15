@@ -30,15 +30,17 @@ pub const TABLE_TYPE_NAME: &str = "Table";
 ///
 /// A table is a `Table`. Java leaves out a table with the attribute `NonDisplayTable`; the
 /// tables of this engine have no such attribute, so every table is listed. Java's other
-/// displayable kinds are `HierarchicalTable`, `PartitionedTable` and the objects a plugin
-/// has a type for; this server has none of them yet, and the tasks that add them name
-/// them here.
+/// displayable kinds are `PartitionedTable`, which is listed, and `HierarchicalTable` and
+/// the objects a plugin has a type for; this server has neither of those yet, and the
+/// tasks that add them name them here.
 ///
 /// Behavior: `io.deephaven.engine.util.AbstractScriptSession#getTypeNameIfDisplayable`
 pub fn type_name_if_displayable(value: &ExportValue) -> Option<&'static str> {
     match value {
         ExportValue::Table(_) => Some(TABLE_TYPE_NAME),
-        ExportValue::Object(_) => None,
+        ExportValue::Object(_) => {
+            crate::partitioned::partitioned_of(value).map(|_| crate::partitioned::TYPE_NAME)
+        }
     }
 }
 
@@ -222,6 +224,11 @@ pub trait ScriptSession: Send + Sync {
     /// See [`ScopeHolder::formula_values`].
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String>;
 
+    /// See [`ScopeHolder::refuses_formulas`].
+    fn refuses_formulas(&self) -> Option<String> {
+        None
+    }
+
     /// What answers the completion requests of a stream that a client opens now, made
     /// ready for it; `Ok(None)` if the session has nothing that does, and the requests of
     /// the stream are then answered "nothing found". Called once per stream; it may block.
@@ -357,5 +364,9 @@ impl ScopeHolder for Console {
 
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
         self.session.formula_values(names)
+    }
+
+    fn refuses_formulas(&self) -> Option<String> {
+        self.session.refuses_formulas()
     }
 }

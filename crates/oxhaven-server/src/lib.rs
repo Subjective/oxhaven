@@ -7,6 +7,8 @@ pub mod console;
 pub mod flight;
 pub mod inputtable;
 pub mod java_text;
+pub mod object;
+pub mod partitioned;
 pub mod schema;
 pub mod session;
 pub mod storage;
@@ -32,6 +34,8 @@ use oxhaven_proto::flight::flight_service_server::FlightServiceServer;
 use oxhaven_proto::grpc::application_service_server::ApplicationServiceServer;
 use oxhaven_proto::grpc::config_service_server::ConfigServiceServer;
 use oxhaven_proto::grpc::input_table_service_server::InputTableServiceServer;
+use oxhaven_proto::grpc::object_service_server::ObjectServiceServer;
+use oxhaven_proto::grpc::partitioned_table_service_server::PartitionedTableServiceServer;
 use oxhaven_proto::grpc::session_service_server::SessionServiceServer;
 use oxhaven_proto::grpc::storage_service_server::StorageServiceServer;
 use oxhaven_proto::grpc::table_service_server::TableServiceServer;
@@ -174,6 +178,12 @@ impl ServerState {
             self.logs.clone(),
         )))
         .add_service(StorageServiceServer::new(storage::StorageGrpc))
+        .add_service(PartitionedTableServiceServer::new(
+            partitioned::PartitionedTableGrpc::new(self.tickets.clone()),
+        ))
+        .add_service(ObjectServiceServer::new(object::ObjectGrpc::new(
+            self.tickets.clone(),
+        )))
     }
 }
 

@@ -425,6 +425,16 @@ class Table:
         except Exception as e:
             raise DHError(e, failure) from e
 
+    def _scoped_op(self, name: str, request: dict, failure: str) -> "Table":
+        """`_op` for an operation Java makes filters or formulas for whatever its
+        arguments are, which it cannot where there is no query scope: in the function of
+        a partitioned table's transform (`PartitionedTable.transform`)."""
+        try:
+            _engine.native.require_query_scope()
+        except Exception as e:
+            raise DHError(e, failure) from e
+        return self._op(name, request, failure)
+
     def _local_op(self, name: str, args: dict, failure: str) -> "Table":
         """The result of the local operation `name` (`console/python/ops.rs`)."""
         try:
@@ -574,11 +584,9 @@ class Table:
 
     def where(self, filters: Union[str, Sequence[str], None] = None) -> "Table":
         """A new table with the rows that pass every filter."""
-        return self._op(
-            "unstructured_filter",
-            {"filters": _engine.to_sequence(filters)},
-            "table where operation failed.",
-        )
+        filters = _engine.to_sequence(filters)
+        op = self._scoped_op if filters else self._op
+        return op("unstructured_filter", {"filters": filters}, "table where operation failed.")
 
     def _where_in(self, filter_table: "Table", cols, inverted: bool, failure: str) -> "Table":
         try:
@@ -610,7 +618,12 @@ class Table:
         filters = _engine.to_sequence(filters)
         if len(filters) == 1:
             # Behavior: `io.deephaven.api.filter.Filter#or`, which of one filter is that filter
-            return self._op("unstructured_filter", {"filters": filters}, failure)
+            return self._scoped_op("unstructured_filter", {"filters": filters}, failure)
+        if filters:
+            try:
+                _engine.native.require_query_scope()
+            except Exception as e:
+                raise DHError(e, failure) from e
         return self._local_op("where_one_of", {"filters": filters}, failure)
 
     def head(self, num_rows: int) -> "Table":
@@ -724,14 +737,15 @@ class Table:
         failure = "table head_by operation failed."
         self._positions(failure, num_rows)
         request = {"num_rows": num_rows, "group_by_column_specs": _engine.to_sequence(by)}
-        return self._op("head_by", request, failure)
+        # Behavior: `QueryTable#headBy`, which makes formulas
+        return self._scoped_op("head_by", request, failure)
 
     def tail_by(self, num_rows: int, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
         """A new table with the last `num_rows` rows of each group."""
         failure = "table tail_by operation failed."
         self._positions(failure, num_rows)
         request = {"num_rows": num_rows, "group_by_column_specs": _engine.to_sequence(by)}
-        return self._op("tail_by", request, failure)
+        return self._scoped_op("tail_by", request, failure)
 
     def group_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
         """A new table with one row per group and the other columns as arrays."""
@@ -1000,6 +1014,57 @@ class Table:
         except Exception as e:
             raise DHError(e, "table update-by operation failed.") from e
 
+    # Partitioned tables (task 7.6)
+
+    def partition_by(
+        self, by: Union[str, Sequence[str]], drop_keys: bool = False
+    ) -> "PartitionedTable":
+        """A partitioned table with one constituent table for each distinct value of the
+        `by` columns, which holds the rows with that value. With `drop_keys` the
+        constituents do not have the `by` columns."""
+        try:
+            if not isinstance(drop_keys, bool):
+                raise DHError(message="drop_keys must be a boolean value.")
+            by = list(_engine.to_sequence(by))
+            return PartitionedTable(_engine.native.partition_by(self.j_table, by, drop_keys))
+        except Exception as e:
+            raise DHError(e, "failed to create a partitioned table.") from e
+
+    def partitioned_agg_by(
+        self,
+        aggs: Union[Aggregation, Sequence[Aggregation]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+        preserve_empty: bool = False,
+        initial_groups: Optional["Table"] = None,
+    ) -> "PartitionedTable":
+        """The result of `agg_by` as a partitioned table. If `aggs` has no partition
+        aggregation (`deephaven.agg.partition`), one is added, in the column
+        `__CONSTITUENT__`.
+
+        Behavior: `io.deephaven.engine.table.impl.QueryTable#partitionedAggBy`
+        """
+        try:
+            aggs = list(_engine.to_sequence(aggs))
+            by = list(_engine.to_sequence(by))
+            partitions = [agg.j_aggregation["partition"] for agg in aggs if "partition" in agg.j_aggregation]
+            if partitions:
+                partition = partitions[0]
+            else:
+                partition = {"column_name": "__CONSTITUENT__", "include_group_by_columns": True}
+                aggs.append(Aggregation(j_aggregation={"partition": partition}))
+            aggregated = self.agg_by(aggs, by, preserve_empty, initial_groups)
+            return PartitionedTable(
+                _engine.native.partitioned_aggregation(
+                    self.j_table,
+                    aggregated.j_table,
+                    by,
+                    partition["column_name"],
+                    partition["include_group_by_columns"],
+                )
+            )
+        except Exception as e:
+            raise DHError(e, "table partitioned_agg_by operation failed.") from e
+
 
 # Aggregations (task 6.5)
 
@@ -1007,6 +1072,9 @@ class Table:
 def _aggregations(aggs: Sequence[Aggregation]) -> List[dict]:
     """The `Aggregation` messages of `aggs`."""
     messages = [agg.j_aggregation for agg in aggs]
+    if any("count_where" in message for message in messages):
+        # Java makes the filters of a count_where with the query scope at hand
+        _engine.native.require_query_scope()
     if any(agg._reaggregating for agg in aggs):
         # Behavior: `AggregationProcessor#validateFormulaIsNotReaggregating`
         error = "AggFormula does not support reaggregating except in a rollup."
@@ -1173,3 +1241,270 @@ def keyed_transpose(
         return Table(_engine.local_op("keyed_transpose", args, handles))
     except Exception as e:
         raise DHError(e, "keyed_transpose operation failed.") from e
+
+
+# Partitioned tables (task 7.6)
+
+
+def _java_text(value) -> str:
+    """A key value as Java's `Arrays#toString` shows it."""
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+class PartitionedTable:
+    """A table of tables. Its underlying table has one row for each constituent table: the
+    key columns, which say which constituent it is, and one column that holds the
+    constituent. Every constituent has the same columns.
+
+    `Table.partition_by` and `Table.partitioned_agg_by` make one.
+
+    Behavior: `deephaven.table.PartitionedTable`
+    """
+
+    def __init__(self, j_partitioned_table):
+        if not isinstance(j_partitioned_table, _oxhaven.PartitionedHandle):
+            raise DHError(
+                message=f"not a partitioned table handle: {type(j_partitioned_table).__name__}"
+            )
+        self.j_partitioned_table = j_partitioned_table
+        self._table = None
+        self._definition = None
+
+    @property
+    def j_object(self):
+        """The engine's handle. In the reference package this is the Java partitioned
+        table."""
+        return self.j_partitioned_table
+
+    @classmethod
+    def from_partitioned_table(
+        cls,
+        table: Table,
+        key_cols=None,
+        unique_keys=None,
+        constituent_column=None,
+        constituent_table_columns=None,
+        constituent_changes_permitted=None,
+    ) -> "PartitionedTable":
+        """Not ported: a partitioned table made from a table that has a column of tables."""
+        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.PartitionedTableFactory#of")
+
+    @classmethod
+    def from_constituent_tables(
+        cls, tables: List[Table], constituent_table_columns=None
+    ) -> "PartitionedTable":
+        """Not ported: a partitioned table made from tables."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.PartitionedTableFactory#ofTables"
+        )
+
+    @property
+    def table(self) -> Table:
+        """The underlying table: the key columns and the column of constituents."""
+        if self._table is None:
+            self._table = Table(self.j_partitioned_table.table())
+        return self._table
+
+    @property
+    def update_graph(self):
+        """Not ported: the package has no update graph objects."""
+        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.Table#getUpdateGraph")
+
+    @property
+    def is_refreshing(self) -> bool:
+        """Whether the underlying table is refreshing."""
+        return self.table.is_refreshing
+
+    @property
+    def key_columns(self) -> List[str]:
+        """The names of the key columns."""
+        return self.j_partitioned_table.key_columns()
+
+    def keys(self) -> Table:
+        """A table of the keys, one row each: the key columns of the underlying table,
+        without duplicates."""
+        if self.unique_keys:
+            return self.table.view(self.key_columns)
+        return self.table.select_distinct(self.key_columns)
+
+    @property
+    def unique_keys(self) -> bool:
+        """Whether no two rows of the underlying table have the same key."""
+        return self.j_partitioned_table.unique_keys()
+
+    @property
+    def constituent_column(self) -> str:
+        """The name of the column that holds the constituents."""
+        return self.j_partitioned_table.constituent_column()
+
+    @property
+    def constituent_table_definition(self) -> TableDefinition:
+        """The columns every constituent has."""
+        if self._definition is None:
+            self._definition = Table(self.j_partitioned_table.empty_constituent()).definition
+        return self._definition
+
+    @property
+    def constituent_table_columns(self) -> List[ColumnDefinition]:
+        """The column definitions every constituent has."""
+        return list(self.constituent_table_definition.values())
+
+    @property
+    def constituent_changes_permitted(self) -> bool:
+        """Whether rows of the underlying table may be added, removed or moved, or a cell
+        of the constituent column may change."""
+        return self.j_partitioned_table.constituent_changes_permitted()
+
+    def merge(self) -> Table:
+        """One table with the rows of every constituent: the constituents one after the
+        other, in the order of the rows of the underlying table."""
+        try:
+            return Table(self.j_partitioned_table.merge())
+        except Exception as e:
+            raise DHError(e, "failed to merge all the constituent tables.") from e
+
+    def filter(self, filters: Union[str, Sequence[str]]) -> "PartitionedTable":
+        """A partitioned table with the rows of the underlying table that pass the
+        filters. A filter cannot use the constituent column."""
+        try:
+            filtered = self.table.where(filters)
+            return PartitionedTable(self.j_partitioned_table.with_table(filtered.j_table))
+        except Exception as e:
+            raise DHError(e, "failed to apply filters to the partitioned table.") from e
+
+    def sort(
+        self,
+        order_by: Union[str, Sequence[str]],
+        order: Optional[Union[SortDirection, Sequence[SortDirection]]] = None,
+    ) -> "PartitionedTable":
+        """A partitioned table with the rows of the underlying table sorted by the
+        columns, which cannot include the constituent column."""
+        try:
+            order_by = _engine.to_sequence(order_by)
+            if not order:
+                order = (SortDirection.ASCENDING,) * len(order_by)
+            order = _engine.to_sequence(order)
+            if len(order_by) != len(order):
+                raise DHError(
+                    message="The number of sort columns must be the same as the number of sort directions."
+                )
+            if self.constituent_column in order_by:
+                # Behavior: `PartitionedTableImpl#sort`
+                raise RuntimeError(
+                    "java.lang.IllegalArgumentException: Unsupported sort on constituent column "
+                    f"{self.constituent_column}"
+                )
+            ordered = self.table.sort(order_by, order)
+            return PartitionedTable(self.j_partitioned_table.with_table(ordered.j_table))
+        except Exception as e:
+            raise DHError(e, "failed to sort the partitioned table.") from e
+
+    def get_constituent(self, key_values: Union[Any, Sequence[Any]]) -> Optional[Table]:
+        """The constituent with the key values, one for each key column in their order,
+        or `None` if there is none. More than one is an error."""
+        try:
+            key_values = _engine.to_sequence(key_values)
+            names = self.key_columns
+            if len(key_values) != len(names):
+                # Behavior: `PartitionedTableImpl#constituentFor`
+                raise RuntimeError(
+                    "java.lang.IllegalArgumentException: Key count mismatch: expected one key "
+                    f"column value for each key column name in [{', '.join(names)}], instead "
+                    f"received [{', '.join(map(_java_text, key_values))}]"
+                )
+            definition = self.table.definition
+            try:
+                keys = _engine.new_table(
+                    [
+                        (name, dtypes._engine_type(definition[name].data_type), [value])
+                        for name, value in zip(names, key_values)
+                    ]
+                )
+            except Exception as e:
+                raise dtypes._java_time.NotPorted(
+                    "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#constituentFor",
+                    f"a key value that is not a value of its key column's type ({e})",
+                ) from e
+            handle = self.j_partitioned_table.constituent_for(keys)
+            return Table(handle) if handle is not None else None
+        except Exception as e:
+            raise DHError(e, "unable to get constituent table.") from e
+
+    @property
+    def constituent_tables(self) -> List[Table]:
+        """The constituents now, in the order of the rows of the underlying table."""
+        return [Table(handle) for handle in self.j_partitioned_table.constituents()]
+
+    def transform(self, func, dependencies=None) -> "PartitionedTable":
+        """A partitioned table whose constituents are what `func` makes of the
+        constituents of this one. The other columns of the underlying table are kept.
+
+        Only for a partitioned table that is not refreshing: the transform of one that is
+        applies `func` to constituents as they appear, which is not ported.
+
+        As in the reference, `func` cannot use a formula or a filter: they fail there for
+        want of a query scope.
+
+        Behavior: `PartitionedTableImpl#transform`, which applies the function to each
+        constituent and then to a table without rows, for the columns of the result
+        """
+        try:
+            if self.is_refreshing:
+                raise dtypes._java_time.NotPorted(
+                    "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#transform",
+                    "a refreshing partitioned table",
+                )
+            sources = self.j_partitioned_table.constituents()
+            sources.append(self.j_partitioned_table.empty_constituent())
+            results = []
+            for source in sources:
+                # Java applies the function where there is no query scope
+                before = _engine.native.without_query_scope(True)
+                try:
+                    result = func(Table(source))
+                finally:
+                    _engine.native.without_query_scope(before)
+                if result is not None and not isinstance(result, Table):
+                    raise TypeError(
+                        f"the transform function returned a {type(result).__name__}, not a Table"
+                    )
+                results.append(result)
+            if results[-1] is None:
+                # Behavior: `PartitionedTableImpl#transform`, which reads the definition of
+                # what the function made of the table without rows
+                raise RuntimeError(
+                    'java.lang.NullPointerException: Cannot invoke "io.deephaven.engine.table.'
+                    'Table.getDefinition()" because "resultEmptyConstituent" is null'
+                )
+            if None in results:
+                raise dtypes._java_time.NotPorted(
+                    "io.deephaven.engine.table.impl.partitioned.TableTransformationColumn",
+                    "a transform function that returns None for a constituent",
+                )
+            results = [result.j_table for result in results]
+            definition = results.pop()
+            return PartitionedTable(self.j_partitioned_table.transformed(results, definition))
+        except Exception as e:
+            raise DHError(e, "failed to transform the PartitionedTable.") from e
+
+    def partitioned_transform(self, other: "PartitionedTable", func, dependencies=None) -> "PartitionedTable":
+        """Not ported: a transform of the constituents of two partitioned tables with the
+        same keys."""
+        try:
+            raise dtypes._java_time.NotPorted(
+                "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#partitionedTransform"
+            )
+        except Exception as e:
+            raise DHError(
+                e, "failed to transform the PartitionedTable with another PartitionedTable."
+            ) from e
+
+    def proxy(self, require_matching_keys: bool = True, sanity_check_joins: bool = True):
+        """Not ported: a proxy that applies table operations to every constituent."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#proxy"
+        )

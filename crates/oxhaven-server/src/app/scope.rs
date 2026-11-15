@@ -85,6 +85,16 @@ pub trait ScopeHolder: Send + Sync {
     ///
     /// Behavior: `QueryScope#toMap`, as `FormulaAnalyzer` and `ConditionFilter` read it
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String>;
+
+    /// Why no formula and no filter can be made now on this thread, if that is so: Java
+    /// has no query scope where the code runs, as in the function of a partitioned
+    /// table's transform.
+    ///
+    /// Behavior: `io.deephaven.engine.context.PoisonedQueryScope`, whose every use fails
+    /// with `ExecutionContextRegistrationException`
+    fn refuses_formulas(&self) -> Option<String> {
+        None
+    }
 }
 
 /// The variables of the server, by name. In Java these are the variables of the script
@@ -172,6 +182,10 @@ impl Scope {
     /// The values of `names` for a formula; see [`ScopeHolder::formula_values`]. A value a
     /// client published to a server without a script session is a table or an object, which
     /// no formula can hold here.
+    fn refuses_formulas(&self) -> Option<String> {
+        self.holder()?.refuses_formulas()
+    }
+
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
         match self.holder() {
             Some(holder) => holder.formula_values(names),
@@ -789,6 +803,10 @@ fn java_primitive_name(column_type: &ColumnType) -> String {
 
 impl FormulaCompiler for ScopedCompiler {
     fn parse(&self, text: &str) -> Result<Expr, FormulaError> {
+        // Java makes a filter of the text with the query scope at hand, whatever the text
+        if let Some(why) = self.scope.refuses_formulas() {
+            return Err(FormulaError::Type(why));
+        }
         self.inner.parse(text)
     }
 
@@ -801,6 +819,9 @@ impl FormulaCompiler for ScopedCompiler {
         expr: &Expr,
         definition: &TableDefinition,
     ) -> Result<Arc<dyn Formula>, FormulaError> {
+        if let Some(why) = self.scope.refuses_formulas() {
+            return Err(FormulaError::Type(why));
+        }
         let mut names = Vec::new();
         candidate_names(expr, &mut names);
         // columns, and the arrays of columns, take precedence over variables

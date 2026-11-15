@@ -110,13 +110,14 @@ def unwrap(value):
 
     Behavior: `deephaven._wrapper.javaify`, without the wrapping of other Python objects
     """
-    if isinstance(value, _oxhaven.TableHandle):
+    handles = (_oxhaven.TableHandle, _oxhaven.PartitionedHandle)
+    if isinstance(value, handles):
         return value
     try:
         handle = getattr(value, "j_object", None)
     except Exception:  # a property of somebody else's class
         return value
-    return handle if isinstance(handle, _oxhaven.TableHandle) else value
+    return handle if isinstance(handle, handles) else value
 
 
 def changes(before, after):

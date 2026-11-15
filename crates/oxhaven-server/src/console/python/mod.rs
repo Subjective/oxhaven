@@ -38,6 +38,7 @@ pub mod interrupt;
 mod listener;
 mod ops;
 mod parquet;
+mod partitioned;
 #[cfg(test)]
 mod tests;
 mod udf;
@@ -192,6 +193,38 @@ thread_local! {
     /// Behavior: the scope stack of `io.deephaven.engine.util.PythonScopeJpyImpl`, which
     /// `PythonDeephavenSession#pushScope` and `#popScope` fill
     static CALLER_SCOPE: RefCell<Option<Py<PyDict>>> = const { RefCell::new(None) };
+}
+
+thread_local! {
+    /// Whether the code that runs on this thread has no query scope in Java: the function
+    /// of a partitioned table's transform.
+    static NO_QUERY_SCOPE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Says whether the code that runs on this thread from now on has no query scope, and
+/// returns what was said before. While it has none, no formula and no filter can be made.
+///
+/// Behavior: the `ExecutionContext` a `PartitionedTableImpl#transform` from a script
+/// session applies its function in, which has no query scope: observed, every `where` with
+/// a filter and every formula in the function fails with
+/// `ExecutionContextRegistrationException`
+#[pyfunction]
+fn without_query_scope(without: bool) -> bool {
+    NO_QUERY_SCOPE.replace(without)
+}
+
+const NO_QUERY_SCOPE_TEXT: &str = "io.deephaven.util.ExecutionContextRegistrationException: No \
+     ExecutionContext registered, or current ExecutionContext has no QueryScope";
+
+/// Fails if the code that runs on this thread has no query scope; see
+/// [`without_query_scope`]. For the operations Java makes a filter or a formula for
+/// without the server's formula compiler being asked here.
+#[pyfunction]
+fn require_query_scope() -> PyResult<()> {
+    if NO_QUERY_SCOPE.get() {
+        return Err(PyRuntimeError::new_err(NO_QUERY_SCOPE_TEXT));
+    }
+    Ok(())
 }
 
 /// Makes `scope` the caller scope of this thread until it is dropped.
@@ -400,6 +433,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(column_definitions, &native)?)?;
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
+        native.add_function(wrap_pyfunction!(without_query_scope, &native)?)?;
+        native.add_function(wrap_pyfunction!(require_query_scope, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::write_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
@@ -409,6 +444,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         data::register(&native)?;
         input::register(&native)?;
         listener::register(&native)?;
+        partitioned::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
@@ -443,10 +479,14 @@ fn export_of(value: &Bound<'_, PyAny>) -> Option<ExportValue> {
     if value.is_none() {
         return None;
     }
-    Some(match value.cast::<TableHandle>() {
-        Ok(handle) => ExportValue::Table(handle.get().table.clone()),
-        Err(_) => ExportValue::object(PythonObject(value.clone().unbind())),
-    })
+    if let Ok(handle) = value.cast::<TableHandle>() {
+        return Some(ExportValue::Table(handle.get().table.clone()));
+    }
+    if let Ok(handle) = value.cast::<partitioned::PartitionedHandle>() {
+        let partitioned = handle.get().partitioned.clone();
+        return Some(crate::partitioned::export_value(partitioned));
+    }
+    Some(ExportValue::object(PythonObject(value.clone().unbind())))
 }
 
 /// The value of a variable as a formula sees it.
@@ -651,14 +691,24 @@ impl PythonSession {
                     .getattr("Table")?
                     .call1((handle,))
             }
-            ExportValue::Object(_) => match value.downcast_ref::<PythonObject>() {
-                Some(object) => Ok(object.0.bind(py).clone()),
+            ExportValue::Object(_) => {
+                if let Some(object) = value.downcast_ref::<PythonObject>() {
+                    return Ok(object.0.bind(py).clone());
+                }
+                if let Some(partitioned) = crate::partitioned::partitioned_of(&value) {
+                    let partitioned = partitioned.clone();
+                    let handle = Py::new(py, partitioned::PartitionedHandle { partitioned })?;
+                    return py
+                        .import("deephaven.table")?
+                        .getattr("PartitionedTable")?
+                        .call1((handle,));
+                }
                 // Java makes any Java object a Python variable through jpy
-                None => Err(PyRuntimeError::new_err(
+                Err(PyRuntimeError::new_err(
                     "not ported: io.deephaven.engine.util.PythonObjectWrapper#wrap of an \
                      object that is neither a table nor a Python object",
-                )),
-            },
+                ))
+            }
         }
     }
 }
@@ -731,6 +781,12 @@ impl ScriptSession for PythonSession {
     /// bits: Java converts every variable for every formula, and that conversion fails.
     ///
     /// Behavior: `PythonDeephavenSession#getAllValues`
+    fn refuses_formulas(&self) -> Option<String> {
+        NO_QUERY_SCOPE
+            .get()
+            .then(|| NO_QUERY_SCOPE_TEXT.to_string())
+    }
+
     fn formula_values(&self, names: &[&str]) -> Result<Vec<Option<FormulaValue>>, String> {
         Python::attach(|py| {
             let scope = self.current_scope(py);
