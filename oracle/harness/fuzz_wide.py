@@ -32,7 +32,8 @@ fails during an update cycle is not a consistent table afterwards):
   step can add: an `ungroup` of arrays that only happen to have equal lengths, a `multi_join`
   of a table whose key only happens to be unique, an `exact_join` or a strict `natural_join`
   whose matches only happen to be unique, a remainder by a column, an empty rolling window,
-  a decay or percentile out of range, the THROW and POISON bad-data controls.
+  a decay or percentile out of range, the THROW and POISON bad-data controls, a rolling
+  group over time (a null timestamp in a later row fails it on the reference).
 
 Not generated, each for a stated reason:
 
@@ -620,6 +621,12 @@ class _Wide(_Generator):
                                       "on_nan": rng.choice(behaviors)}
         else:
             name = rng.choice(list(ROLLING_OPERATORS))
+            if name == "group" and source.live:
+                # A row with a null timestamp that arrives in a step fails the reference's
+                # rolling group over time during the update cycle ("keys argument has
+                # elements not in the rowSet", UpdateByWindowRollingBase
+                # #processWindowBucketOperatorSet); as initial rows it is answered.
+                unit = "tick"
             op = f"rolling_{name}_{unit}"
             if unit == "tick":
                 args["rev_ticks"] = rng.choice([1, 1, 2, 3, 4, 0, 5])
