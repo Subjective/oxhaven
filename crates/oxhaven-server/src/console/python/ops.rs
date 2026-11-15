@@ -5,10 +5,9 @@
 //! is one function in [`OPERATIONS`] that takes its arguments as a JSON object and the
 //! tables it reads, and calls the engine's Rust API. [`local_op`] runs it as
 //! `table::run_local` runs a handler: under the update graph's shared lock when a source is
-//! refreshing, and with an `unported!` panic turned into `UNIMPLEMENTED`. An operation whose
-//! engine operator does not exist yet is in the list all the same and refuses with the name
-//! of the Java method, so that the Python method raises `DHError` and is never left out or
-//! approximated.
+//! refreshing, and with an `unported!` panic turned into `UNIMPLEMENTED`. Some are a call of
+//! the table service's handler without its checks of the request, where Java's engine
+//! answers what its table service refuses.
 //!
 //! The rest reads a table: [`is_flat`], [`is_blink`], [`read_columns`] for the iterators
 //! and [`to_string`].
@@ -20,8 +19,10 @@ use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::select::ColumnPair;
-use oxhaven_engine::ops::{distinct, filter, merge, select, sort};
+use oxhaven_engine::ops::transpose::{NewColumnBehavior, TransposeError};
+use oxhaven_engine::ops::{distinct, filter, merge, select, sort, transpose};
 use oxhaven_engine::table::{attribute_map, AttributeValue};
+use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -29,9 +30,11 @@ use serde_json::Value;
 use tonic::Status;
 
 use super::data::cells;
-use super::{error_text, runtime, TableHandle};
+use super::{error_text, parse_operation, runtime, TableHandle};
 use crate::java_text::object_texts;
 use crate::session::ExportError;
+use crate::table::ops::adapt_aggregations;
+use crate::table::run_local_unchecked;
 use crate::table::support::{not_ported, OpContext};
 
 type Created = Result<Arc<dyn Table>, ExportError>;
@@ -48,9 +51,11 @@ const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
     ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
+    ("multi_join", multi_join),
     ("move_columns", move_columns),
     ("move_columns_down", move_columns_down),
     ("move_columns_up", move_columns_up),
+    ("range_join", range_join),
     ("rename_columns", rename_columns),
     ("restrict_sort_to", restrict_sort_to),
     ("slice_pct", slice_pct),
@@ -209,19 +214,69 @@ fn merge_sorted(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Crea
     Ok(merge::merge_sorted(sources, text(args, "order_by")?)?)
 }
 
-/// The refusal of an operation whose engine operator is not written: `UNIMPLEMENTED`
-/// naming the Java method and the call.
-fn no_operator(java: &str, call: String) -> Created {
-    Err(not_ported(java, call).into())
+/// The table service operation `name` with the request `request`, as the package writes
+/// it for `table_op`.
+fn operation(name: &str, request: &Value) -> Result<Op, ExportError> {
+    let json = serde_json::json!({ name: request }).to_string();
+    parse_operation(&json).map_err(|error| Status::invalid_argument(error).into())
+}
+
+/// A multi join of inputs without key columns, which the table service refuses and
+/// Java's engine answers with one row, or with a refusal of its own when only some of the
+/// inputs have none.
+///
+/// Behavior: `io.deephaven.engine.table.MultiJoinFactory#of`
+fn multi_join(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let request = args.get("request").unwrap_or(&Value::Null);
+    run_local_unchecked(context, operation("multi_join", request)?, sources)
+}
+
+/// A range join without aggregations, which the table service refuses and Java's engine
+/// answers with the columns of the left table, after every check of the tables.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#rangeJoin`
+fn range_join(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let request = args.get("request").unwrap_or(&Value::Null);
+    run_local_unchecked(context, operation("range_join", request)?, sources)
+}
+
+/// What Java's keyed transpose refuses is an exception out of the engine.
+impl From<TransposeError> for ExportError {
+    fn from(error: TransposeError) -> Self {
+        match error {
+            TransposeError::Aggregate(error) => error.into(),
+            TransposeError::Partitioned(error) => error.into(),
+            TransposeError::MultiJoin(error) => error.into(),
+            TransposeError::Table(failure) => failure.into(),
+            TransposeError::IllegalArgument(message) => ExportError::Internal(message),
+        }
+    }
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
-fn keyed_transpose(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn keyed_transpose(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let (rows, columns) = (strings(args, "row_by_cols")?, strings(args, "col_by_cols")?);
-    no_operator(
-        "io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose",
-        format!("keyedTranspose by {rows:?} and {columns:?}"),
-    )
+    let behavior = match text(args, "new_column_behavior")? {
+        "FAIL" => NewColumnBehavior::Fail,
+        "IGNORE" => NewColumnBehavior::Ignore,
+        _ => return Err(bad_argument("new_column_behavior", "FAIL or IGNORE")),
+    };
+    let aggregations = args.get("aggregations").unwrap_or(&Value::Null);
+    let request = serde_json::json!({ "aggregations": aggregations });
+    let Op::Aggregate(request) = operation("aggregate", &request)? else {
+        return Err(bad_argument("aggregations", "a list of aggregations"));
+    };
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let columns: Vec<&str> = columns.iter().map(String::as_str).collect();
+    Ok(transpose::keyed_transpose(
+        &sources[0],
+        &adapt_aggregations(&request.aggregations)?,
+        &rows,
+        &columns,
+        sources.get(1),
+        behavior,
+        context.compiler.as_ref(),
+    )?)
 }
 
 /// The status of an `unported!` panic, which names what is missing.

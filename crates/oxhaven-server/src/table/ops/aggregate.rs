@@ -338,6 +338,57 @@ fn run(
     })
 }
 
+/// The engine's aggregations for those of a request, checked as [`run`] checks them.
+///
+/// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#adapt`
+pub(crate) fn adapt(requested: &[proto::Aggregation]) -> Result<Vec<Aggregation>, ExportError> {
+    let missing = |name: &str| {
+        ExportError::Status(not_ported(
+            "io.deephaven.server.table.ops.AggregationAdapter#adapt",
+            format!("the aggregation {name}"),
+        ))
+    };
+    let mut aggregations = Vec::new();
+    for aggregation in requested {
+        aggregations.push(match &aggregation.r#type {
+            Some(AggregationType::Columns(columns)) => {
+                let kind = spec(columns.spec.as_ref().ok_or_else(|| {
+                    missing_field("Aggregation.AggregationColumns", "spec", 1)
+                })?)?;
+                let pairs = columns
+                    .match_pairs
+                    .iter()
+                    .map(|text| pair(text))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Aggregation::columns(kind, pairs)
+            }
+            Some(AggregationType::Count(count)) => {
+                Aggregation::count(column_name(&count.column_name)?)
+            }
+            Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
+            Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
+            // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
+            Some(AggregationType::Partition(partition)) => Aggregation::Partition {
+                column: column_name(&partition.column_name)?,
+                include_group_by_columns: partition.include_group_by_columns,
+            },
+            Some(AggregationType::Formula(formula)) => {
+                let (column, expression) = selectable(formula.selectable.as_ref())?;
+                Aggregation::formula(column, expression)
+            }
+            // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
+            // `ColumnName#of` takes the name as it is.
+            Some(AggregationType::CountWhere(count)) => Aggregation::count_where(
+                spec_column(&count.column_name)?,
+                count.filters.iter().cloned(),
+            ),
+            None => return Err(missing_one_of("Aggregation").into()),
+        });
+    }
+    check_filters(&aggregations)?;
+    Ok(aggregations)
+}
+
 /// Behavior: `io.deephaven.server.table.ops.AggregateGrpcImpl`
 pub struct Aggregate;
 
@@ -378,49 +429,7 @@ impl TableOp for Aggregate {
         request: &AggregateRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
-        let missing = |name: &str| {
-            ExportError::Status(not_ported(
-                "io.deephaven.server.table.ops.AggregationAdapter#adapt",
-                format!("the aggregation {name}"),
-            ))
-        };
-        let mut aggregations = Vec::new();
-        for aggregation in &request.aggregations {
-            aggregations.push(match &aggregation.r#type {
-                Some(AggregationType::Columns(columns)) => {
-                    let kind = spec(columns.spec.as_ref().ok_or_else(|| {
-                        missing_field("Aggregation.AggregationColumns", "spec", 1)
-                    })?)?;
-                    let pairs = columns
-                        .match_pairs
-                        .iter()
-                        .map(|text| pair(text))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Aggregation::columns(kind, pairs)
-                }
-                Some(AggregationType::Count(count)) => {
-                    Aggregation::count(column_name(&count.column_name)?)
-                }
-                Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
-                Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
-                // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
-                Some(AggregationType::Partition(partition)) => Aggregation::Partition {
-                    column: column_name(&partition.column_name)?,
-                    include_group_by_columns: partition.include_group_by_columns,
-                },
-                Some(AggregationType::Formula(formula)) => {
-                    let (column, expression) = selectable(formula.selectable.as_ref())?;
-                    Aggregation::formula(column, expression)
-                }
-                // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
-                // `ColumnName#of` takes the name as it is.
-                Some(AggregationType::CountWhere(count)) => Aggregation::count_where(
-                    spec_column(&count.column_name)?,
-                    count.filters.iter().cloned(),
-                ),
-                None => return Err(missing_one_of("Aggregation").into()),
-            });
-        }
+        let aggregations = adapt(&request.aggregations)?;
         run(
             context,
             &sources[0],
