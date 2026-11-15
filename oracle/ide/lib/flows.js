@@ -405,7 +405,67 @@ module.exports = (t) => {
     return `${language} console: "${shows}" shown for a failing command; the panel of ${gone.name} closed when the variable was removed`;
   }
 
-  return { notebook: routeNotebook, log: routeLog, grid: routeGrid, errors: routeErrors };
-};
+  // ---------------------------------------------------------------------------------------
+  // reconnect: the server restarts under an open IDE
+  // ---------------------------------------------------------------------------------------
 
-void execFile;
+  // Runs the command of --restart, which stops the server and returns once a new one
+  // answers on the same address.
+  function restartServer(command) {
+    return new Promise((resolve, reject) => {
+      execFile('bash', ['-c', command], { timeout: 300000 }, (error, stdout, stderr) => {
+        if (error) reject(new Failure(`the --restart command failed: ${String(stderr || stdout || error.message).trim().slice(-300)}`));
+        else resolve();
+      });
+    });
+  }
+
+  async function routeReconnect(ctx) {
+    const { page, opts, expected, shot } = ctx;
+    if (!opts.restart) throw new Failure('the reconnect route needs --restart <command>: a command that restarts the server');
+    const language = await openConsole(ctx);
+    const create = commandsFor(ctx, 'console', language).static;
+    const spec = Object.assign({}, expected.static, { name: expected.console.staticName });
+    await runCommand(page, create);
+    await expectStaticGrid(page, spec, opts.timeout);
+    const before = await countCalls(ctx);
+
+    // While the server is away the IDE says so, and the table's panel is disconnected.
+    ctx.trace.mark('restart');
+    const restarted = restartServer(opts.restart);
+    restarted.catch(() => {});
+    const dialog = page.locator('.modal-dialog', { hasText: 'Attempting to reconnect' });
+    try {
+      await dialog.waitFor({ timeout: opts.timeout });
+    } catch (_) {
+      await restarted;
+      throw new Failure('the IDE did not say that it is reconnecting after the server went away');
+    }
+    await expectText(ctx, `the panel of ${spec.name}, with the server gone,`, () => page.locator('.iris-grid-panel, .lm_item_container').allInnerTexts().then((s) => s.join('\n')), 'Table disconnected');
+    await shot('disconnected');
+    await restarted;
+
+    // The new server does not know the session of the old one. The IDE comes back with the
+    // token it has, which the server has to refuse as it refuses any unknown token; the IDE
+    // then stays where it is until the page is loaded again.
+    ctx.trace.mark('server is back');
+    await poll(opts.timeout * 2, 'the IDE did not come back to the restarted server with its old token', async () => {
+      const since = (await calls(ctx)).slice(before).filter((c) => short(c) === 'ConfigService/GetConfigurationConstants' && c.status !== undefined);
+      if (!since.length) return {};
+      if (since[0].status !== 16) throw new Failure(`the restarted server answered the old session's token with status ${since[0].status}, expected 16 (UNAUTHENTICATED)`);
+      return { done: true };
+    });
+
+    // Loading the page again logs in with the key the IDE kept, and the console works.
+    ctx.trace.mark('reload');
+    await page.reload();
+    await waitForIde(page, opts.timeout);
+    await page.locator('.console-input .monaco-editor').first().waitFor({ timeout: opts.timeout });
+    await runCommand(page, create);
+    await expectStaticGrid(page, spec, opts.timeout);
+    await shot('reloaded');
+    return `${language} console: the IDE reported the restart, its old token was refused, and after a reload ${spec.name} was made again`;
+  }
+
+  return { notebook: routeNotebook, log: routeLog, grid: routeGrid, errors: routeErrors, reconnect: routeReconnect };
+};
