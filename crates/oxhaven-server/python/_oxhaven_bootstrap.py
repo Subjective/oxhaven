@@ -93,53 +93,75 @@ def redirect_output():
     sys.stderr = _LogStream("STDERR")
 
 
+_session_globals = None
+
+
 def new_globals():
-    """The globals of a script session: those of a fresh `__main__`."""
-    return {"__name__": "__main__", "__builtins__": __builtins__, "__doc__": None}
+    """The globals of a script session: those of a fresh `__main__`. They are the query
+    scope of the server from now on."""
+    global _session_globals
+    _session_globals = {"__name__": "__main__", "__builtins__": __builtins__, "__doc__": None}
+    return _session_globals
 
 
-def _handle(value):
-    """The table handle of a value clients can open, or None."""
+def unwrap(value):
+    """The engine's handle of a value that wraps one, such as the package's `Table`;
+    otherwise the value itself.
+
+    Behavior: `deephaven._wrapper.javaify`, without the wrapping of other Python objects
+    """
     if isinstance(value, _oxhaven.TableHandle):
         return value
-    handle = getattr(value, "j_object", None)
-    return handle if isinstance(handle, _oxhaven.TableHandle) else None
+    try:
+        handle = getattr(value, "j_object", None)
+    except Exception:  # a property of somebody else's class
+        return value
+    return handle if isinstance(handle, _oxhaven.TableHandle) else value
 
 
 def changes(before, after):
-    """What differs between two snapshots of the globals, for the values clients can open.
+    """What differs between two snapshots of the globals: a list of
+    `(name, old value, new value)`, with None for a variable that does not exist. Which of
+    the values clients can open is for the caller to say.
 
-    Returns `(created, updated, removed)`, each a list of `(name, handle)`; a variable whose
-    kind of value changed would be in `created` and in `removed`.
-
-    Behavior: `deephaven_internal.script_session.create_change_list` and
-    `io.deephaven.engine.util.AbstractScriptSession#applyVariableChangeToDiff`
+    Behavior: `deephaven_internal.script_session.create_change_list`
     """
-    created, updated, removed = [], [], []
+    changed = []
     for name, new_value in after.items():
         if not isinstance(name, str):
             continue
-        old_value = before.get(name)
-        if name in before and new_value is old_value:
-            continue
-        old, new = _handle(old_value), _handle(new_value)
-        if old is None and new is None:
-            continue
-        if old is not None and new is not None and old.is_same(new):
-            continue
-        if old is None:
-            created.append((name, new))
-        elif new is None:
-            removed.append((name, old))
-        else:
-            updated.append((name, new))
+        if name not in before:
+            changed.append((name, None, unwrap(new_value)))
+        elif new_value is not before[name]:
+            changed.append((name, unwrap(before[name]), unwrap(new_value)))
     for name, old_value in before.items():
-        if not isinstance(name, str) or name in after:
-            continue
-        old = _handle(old_value)
-        if old is not None:
-            removed.append((name, old))
-    return created, updated, removed
+        if isinstance(name, str) and name not in after:
+            changed.append((name, unwrap(old_value), None))
+    return changed
+
+
+def caller_scope():
+    """The variables that a formula of the table operation being called may name: None for
+    the globals of the session, or a dict of the globals and the locals of the code that
+    called the `deephaven` package, the locals first.
+
+    The caller is the nearest frame outside this package. Code at the top level of a
+    command sees the session's globals as they are. Code in a function, a class body, a
+    lambda or another module sees a copy of its own globals and locals, as they are now;
+    the variables of an enclosing function are not among them unless the code uses them.
+
+    Behavior: `deephaven._query_scope.query_scope_ctx`
+    """
+    frame = sys._getframe(1)
+    while frame is not None and frame.f_code.co_filename.startswith("<oxhaven>/"):
+        frame = frame.f_back
+    if frame is None:
+        return None
+    if frame.f_globals is _session_globals and frame.f_locals is frame.f_globals:
+        return None
+    scope = dict(frame.f_globals)
+    scope.update(frame.f_locals)
+    return scope
 
 
 def run(code, namespace):
