@@ -95,6 +95,7 @@ fn list_fields_are_described_as_java_recorded_them() {
     // The kinds of array and vector the corpus has. One that is added shows up here, and
     // a walk that finds no files does not pass.
     let expected: BTreeSet<(String, String)> = [
+        ("int[]", "int"),
         ("io.deephaven.vector.DoubleVector", "double"),
         ("io.deephaven.vector.FloatVector", "float"),
         ("io.deephaven.vector.IntVector", "int"),
