@@ -1,0 +1,26 @@
+{
+  "format": 2,
+  "scenario": "time_zones",
+  "scenario_sha256": "f94cd679e8b8e178d38424c50e1d61447ecb0ab17590f3da3bf0a1e88da9133f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "aliases",
+      "file": "step000.aliases.arrow",
+      "rows": 15
+    },
+    {
+      "step": 0,
+      "table": "added",
+      "file": "step000.added.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "clock",
+      "file": "step000.clock.arrow",
+      "rows": 5
+    }
+  ]
+}

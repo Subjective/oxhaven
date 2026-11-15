@@ -106,6 +106,8 @@ def _different_value(arrow_type: pa.DataType, value: Any) -> Any:
         return value * 2.0 + 1.0 if value >= 0 else value * 2.0 - 1.0
     # Integers and timestamps: step by one, away from the upper limit of the type.
     bits = 64 if pat.is_timestamp(arrow_type) else arrow_type.bit_width
+    if pat.is_unsigned_integer(arrow_type):
+        bits += 1
     return value - 1 if value == (1 << (bits - 1)) - 1 else value + 1
 
 
@@ -218,6 +220,7 @@ _OTHER_TYPE = {
     pa.bool_(): pa.int8(),
     pa.int8(): pa.int16(),
     pa.int16(): pa.int32(),
+    pa.uint16(): pa.int32(),
     pa.int32(): pa.int64(),
     pa.int64(): pa.float64(),
     pa.float32(): pa.float64(),

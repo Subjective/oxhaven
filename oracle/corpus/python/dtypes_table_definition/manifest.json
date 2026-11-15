@@ -1,0 +1,38 @@
+{
+  "format": 2,
+  "scenario": "dtypes_table_definition",
+  "scenario_sha256": "387b7114245f69467ad5ddb1f2815b05e27892ed04bb3286b6da41298aa3375d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "from_mapping",
+      "file": "step000.from_mapping.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "from_columns",
+      "file": "step000.from_columns.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "of_table",
+      "file": "step000.of_table.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "texts",
+      "file": "step000.texts.arrow",
+      "rows": 21
+    },
+    {
+      "step": 0,
+      "table": "answers",
+      "file": "step000.answers.arrow",
+      "rows": 9
+    }
+  ]
+}

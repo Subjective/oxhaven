@@ -581,3 +581,27 @@ was idle for nine hours until the owner reset it. The machine restarted in betwe
 and builds were lost; the worktrees and pushed branches were intact (one uncommitted file in
 4.16, one in 6.14, six unpushed commits in 6.14). All four were resumed in their existing
 context rather than restarted. Cost of the stop: nine hours of wall time, no lost work found.
+
+## 2026-11-15 19:02 UTC: Owner approved BSD-3-Clause for the Parquet codecs
+
+The owner answered the open licence question: the Snappy, Zstandard and Brotli codec crates
+(BSD-3-Clause) may be used. The exception is for these Parquet codecs only; the Apache-2.0/MIT
+rule otherwise stands. The author of the Parquet read task was resumed with the follow-up
+(task 7.1b, branch task/7.1b-parquet-codecs).
+
+Correction, 19:05 UTC: the 7.1 author could not be resumed, because an agent whose worktree
+has been removed cannot be resumed. Task 7.1b went to a fresh agent. Lesson for the run: keep
+an author's worktree until its likely follow-ups are done, disk allowing.
+
+## 2026-11-15 19:20 UTC: Console logs and cancel (PR 79) held for an owner decision
+
+Task 6.15 assumed Java interrupts a command whose call is cancelled. The agent probed Java 42.9
+and found it never does: the command runs to its end after cancel and after session close.
+The task's gate still demanded a stop, and the agent followed the gate, so PR 79 stops such a
+command (SIGUSR2 to the interpreter thread, KeyboardInterrupt). That is a difference from Java
+not listed in PARITY.md, and allowed differences need the owner's sign-off, so the pull
+request is open but not to be merged until he chooses: keep the stop and record it, put it
+behind a flag that defaults to Java's behaviour, or remove it. Orchestrator error: the task
+file stated Java's behaviour without checking it. Also noted: the console transcript carries
+traceback line numbers of table.py, which go stale with every Python API change; the probe
+should scrub them (follow-up).

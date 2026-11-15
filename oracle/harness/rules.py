@@ -17,8 +17,8 @@ The rules, in the order they are applied to one result of one step:
 2. Row count is exact (Must match, item 2).
 3. Rows are compared by position, never by row key (Must match, item 3; A4). A result that the
    scenario marks unordered is compared as a multiset (A3); in v42.9 no operation qualifies.
-4. Cells (Must match, items 4 and 5). Null equals only null. Booleans, integers, strings and
-   timestamps are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
+4. Cells (Must match, items 4 and 5). Null equals only null. Booleans, integers, `char`
+   (Arrow `uint16`, Wire representation), strings and timestamps are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
    so 0.0 differs from -0.0 (A2 is proposed, not in force).
 5. Computed floats (A1). A float or double cell produced by `sum`, `avg` or an accumulating
    `update_by` operator, or by a formula that calls a library function that is not correctly
@@ -171,6 +171,8 @@ def comparison_class(arrow_type: pa.DataType) -> str | None:
     if (
         pat.is_boolean(arrow_type)
         or pat.is_signed_integer(arrow_type)
+        # `char`, the one unsigned type on the wire (PARITY.md, Wire representation)
+        or arrow_type == pa.uint16()
         or pat.is_string(arrow_type)
         or pat.is_timestamp(arrow_type)
     ):
