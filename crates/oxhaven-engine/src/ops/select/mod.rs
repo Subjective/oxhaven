@@ -24,6 +24,7 @@
 //! `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
 //! `DeferredViewTable`, which serves source tables that are not in memory.
 
+mod array_formula;
 mod materialize;
 mod plan;
 mod sources;
@@ -33,6 +34,7 @@ mod tests;
 
 use crate::table::{QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
+pub use array_formula::ArrayFormula;
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
