@@ -83,7 +83,7 @@ use crate::table::{memoized, CopyType, QueryTable, TableSpec};
 use aggregator::{Aggregator, Layout, Planned};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
-use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::TableUpdate;
 use std::fmt;
@@ -604,28 +604,63 @@ fn make_operator(
     let floating = is_floating(input_type);
     // The sums, averages, variances and weighted aggregations have no operator for a
     // vector or an array, as for a `String`. Every other aggregation takes one in Java, by
-    // its comparison and storage of objects, and the operators here read cells of the
-    // scalar types only.
-    let no_lists = |java_method: &str, column_type: &ColumnType| {
-        if column_type.list_element().is_some() {
+    // its comparison and storage of objects. A vector is a `Comparable`, ordered element
+    // by element (`Scalar::compare`), so the operators here take one whose elements are
+    // not themselves vectors or arrays. An array is not a `Comparable`: Java fails when it
+    // first compares two of them.
+    let vectors_only = |java_method: &str, column_type: &ColumnType| {
+        let vector_of_scalars = matches!(
+            column_type,
+            ColumnType::Vector(element) if element.list_element().is_none()
+        );
+        if column_type.list_element().is_some() && !vector_of_scalars {
             unported!(
                 "io.deephaven.engine.table.impl.by.AggregationProcessor",
                 "{java_method} for a column of type {column_type:?}"
             );
         }
     };
-    match spec {
-        AggSpec::Min | AggSpec::Max => no_lists("makeMinOrMaxOperator", input_type),
-        AggSpec::Distinct { .. } => no_lists("makeDistinctOperator", input_type),
-        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
-            no_lists("visit(AggSpecPercentile)", input_type);
+    // Observed: the operators that store their result as objects make its column without
+    // a component type, so a client receives the minimum of a vector of Booleans or of
+    // Instants as a list of strings. The first, the last and the sorted first and last
+    // read the input column itself, and keep its type.
+    let typed_result = |java_method: &str| {
+        if let ColumnType::Vector(element) = input_type {
+            if matches!(**element, ColumnType::Boolean | ColumnType::Instant) {
+                unported!(
+                    "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                    "{java_method} for a column of type {input_type:?}, whose result Java \
+                     gives without its component type"
+                );
+            }
         }
-        AggSpec::CountDistinct { .. } => no_lists("makeCountDistinctOperator", input_type),
-        AggSpec::Unique { .. } => no_lists("makeUniqueOperator", input_type),
+    };
+    match spec {
+        AggSpec::Min | AggSpec::Max => typed_result("makeMinOrMaxOperator"),
+        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
+            typed_result("visit(AggSpecPercentile)");
+        }
+        AggSpec::Unique { .. } => typed_result("makeUniqueOperator"),
+        _ => {}
+    }
+    match spec {
+        AggSpec::Min | AggSpec::Max => vectors_only("makeMinOrMaxOperator", input_type),
+        // The result would be a vector of vectors.
+        AggSpec::Distinct { .. } if input_type.list_element().is_some() => {
+            unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor",
+                "makeDistinctOperator for a column of type {input_type:?}"
+            );
+        }
+        AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
+            vectors_only("visit(AggSpecPercentile)", input_type);
+        }
+        AggSpec::CountDistinct { .. } => vectors_only("makeCountDistinctOperator", input_type),
+        AggSpec::Unique { .. } => vectors_only("makeUniqueOperator", input_type),
         AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns } => {
-            no_lists("addSortedFirstOrLastOperator", input_type);
+            vectors_only("addSortedFirstOrLastOperator", input_type);
             for name in columns {
-                no_lists(
+                vectors_only(
                     "addSortedFirstOrLastOperator",
                     &definition.columns()[column(name)?].column_type,
                 );
@@ -835,7 +870,7 @@ pub fn aggregate(
     preserve_empty: bool,
     group_by: &[&str],
 ) -> Result<Arc<dyn Table>, AggregateError> {
-    aggregate_inner(parent, aggregations, preserve_empty, group_by, None)
+    aggregate_inner(parent, aggregations, preserve_empty, group_by, None, false)
 }
 
 /// [`aggregate`], with the compiler of the formulas among the filters of a
@@ -854,6 +889,37 @@ pub fn aggregate_with(
         preserve_empty,
         group_by,
         Some(compiler),
+        false,
+    )
+}
+
+/// `spec` applied to each of `pairs`, as the aggregation of every column of `parent` that
+/// is not grouped by: the result of [`aggregate_with`] for that one aggregation, with the
+/// attributes of `parent` that Java copies to a first or a last of every column. Of the
+/// attributes this engine has that is `AppendOnly`, for a first.
+///
+/// Which columns the pairs are is the caller's to say; Java leaves out the group-by
+/// columns and the columns the spec reads.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#aggAllBy, which walks the spec with
+/// io.deephaven.engine.table.impl.AggAllByCopyAttributes, and the entries of
+/// io.deephaven.engine.table.impl.BaseTable#attributeToCopySet that list
+/// `CopyAttributeOperation.FirstBy` or `LastBy`
+pub fn aggregate_all_with(
+    parent: &Arc<dyn Table>,
+    spec: AggSpec,
+    pairs: impl IntoIterator<Item = Pair>,
+    group_by: &[&str],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, AggregateError> {
+    let append_only = matches!(spec, AggSpec::First) && parent.attributes().append_only;
+    aggregate_inner(
+        parent,
+        &[Aggregation::columns(spec, pairs)],
+        false,
+        group_by,
+        Some(compiler),
+        append_only,
     )
 }
 
@@ -1219,6 +1285,7 @@ fn aggregate_inner(
     preserve_empty: bool,
     group_by: &[&str],
     compiler: Option<&dyn FormulaCompiler>,
+    append_only: bool,
 ) -> Result<Arc<dyn Table>, AggregateError> {
     if aggregations.is_empty() {
         return Err(AggregateError::NoAggregations);
@@ -1359,6 +1426,11 @@ fn aggregate_inner(
         let mut spec = TableSpec::new(result_definition, rows, aggregator.columns());
         if flat {
             spec = spec.flat();
+        }
+        if append_only {
+            let mut attributes = TableAttributes::default();
+            attributes.append_only = true;
+            spec = spec.with_attributes(attributes);
         }
         let state = Mutex::new(aggregator);
         let operator = move |_result: &QueryTable, upstream: &TableUpdate| {
