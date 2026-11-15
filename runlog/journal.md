@@ -723,3 +723,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   Changing what the fuzzer skips is left to the owner.
 - Merged pull request 87 (6.10, Python input tables) on six green checks.
 - Merged pull request 88 (4.17, fuzzer findings) on six green checks, on a head containing pull request 87.
+- 7.2 (Parquet write) reported after 63 minutes; pull request 89 opened. Follow-up task needed: partitioned writes, _metadata files and index files, alongside partitioned reads.
