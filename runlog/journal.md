@@ -709,3 +709,15 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   gate the agent ran `pkill -f "cargo clippy --workspace --all-targets"`, a pattern not
   limited to its own build directory, which may have killed another agent's clippy run.
   The other agents were told. The brief should say: kill by process id, never by pattern.
+- 21:32 UTC: 4.17 (fuzzer findings) reported after 98 minutes; pull request 88 opened.
+  The task file was wrong on A1 and A7: neither is an operator defect. Both come down to
+  how a table that failed in a cycle is served (Java fails the read, Oxhaven serves the
+  last published rows), which is open for the owner. Seed 308 of `--family all` keeps
+  differing until that is decided.
+- For the owner, new from this run: Java fails the result when a vector made by `group`
+  or `distinct` changes under min, max, median, unique or count_distinct (assertions in
+  its operators); Oxhaven keeps the result up to date. The fuzzer's restriction for array
+  columns therefore stays, with an out-of-date comment.
+- The permission system refused the agent's edit narrowing that fuzzer restriction and
+  its pinning test; the agent reverted its earlier lift, so `fuzz_wide.py` equals main.
+  Changing what the fuzzer skips is left to the owner.
