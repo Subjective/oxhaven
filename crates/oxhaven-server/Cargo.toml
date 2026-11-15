@@ -10,7 +10,7 @@ workspace = true
 [features]
 # The Python console: embeds CPython, so building with it needs a Python 3 with a shared
 # libpython and its headers, and running needs that libpython. See docs/CONSOLE.md.
-python = ["dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json"]
+python = ["dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi"]
 
 [dependencies]
 arrow.workspace = true
