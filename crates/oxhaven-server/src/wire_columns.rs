@@ -12,6 +12,9 @@
 //!   `list<list<utf8>>` of the strings themselves, a `Vector(Vector(Instant))` one of
 //!   `2023-11-14T22:13:20Z` and a `Vector(Vector(Vector(Int)))` one of `[1,2]`.
 //!
+//! A column of tables, the constituent column of a partitioned table, is stored as handles
+//! and sent as strings: Java has no Arrow type for a table and sends the text of each.
+//!
 //! A table a client uploaded is sent back in the layout it was sent in, which for these
 //! types is the stored one: a client cannot upload a list whose elements are an
 //! `ObjectVector`, and a `list<int8>` it uploaded stays one.
@@ -54,6 +57,7 @@ fn wire_type_at(column_type: &ColumnType, outermost: bool) -> DataType {
         ColumnType::Array(element) | ColumnType::Vector(element) => {
             list_of(wire_type_at(element, false))
         }
+        ColumnType::Table(_) => DataType::Utf8,
         other => other.arrow_type(),
     }
 }
@@ -81,6 +85,9 @@ fn to_wire_at(
     stored: &ArrayRef,
     outermost: bool,
 ) -> Result<ArrayRef, TableFailure> {
+    if matches!(column_type, ColumnType::Table(_)) {
+        return table_texts(stored);
+    }
     let Some(element) = column_type.list_element() else {
         return Ok(stored.clone());
     };
@@ -116,6 +123,30 @@ fn to_wire_at(
     )
     .map_err(failure)?;
     Ok(Arc::new(converted))
+}
+
+/// The text Java sends for a table.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#toString`, by way of
+/// `io.deephaven.engine.table.impl.BaseTable#getDescription`. Observed for the
+/// constituents of `partitionBy` and of a transform; a table of another class (an
+/// uncoalesced source table, say) has another text, and none of them can be a constituent
+/// here yet.
+const TABLE_TEXT: &str = "QueryTable";
+
+/// The cells of a column of tables as Java sends them: the text of each table, and a null
+/// for a null. The handles the engine stores stay in the server.
+///
+/// Behavior: `io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#utf8FromObject`
+fn table_texts(stored: &ArrayRef) -> Result<ArrayRef, TableFailure> {
+    let handles = stored
+        .as_primitive_opt::<arrow::datatypes::Int64Type>()
+        .ok_or_else(|| failure(format!("a column of tables holds {}", stored.data_type())))?;
+    let texts: StringArray = handles
+        .iter()
+        .map(|handle| handle.map(|_| TABLE_TEXT))
+        .collect();
+    Ok(Arc::new(texts))
 }
 
 /// How one column of a table reaches a client.
@@ -401,5 +432,18 @@ mod tests {
             .cells(stored.clone())
             .unwrap();
         assert_eq!(&sent, &stored);
+    }
+
+    #[test]
+    fn a_table_is_sent_as_the_text_java_has_for_it_and_never_as_its_handle() {
+        use oxhaven_contracts::schema::TableClass;
+        for class in [TableClass::Table, TableClass::QueryTable] {
+            let column = WireColumn::described(&ColumnType::Table(class));
+            assert_eq!(column.arrow_type(), DataType::Utf8);
+            let stored: ArrayRef = Arc::new(arrow::array::Int64Array::from(vec![Some(41), None]));
+            let sent = column.cells(stored).unwrap();
+            let sent = sent.as_string::<i32>();
+            assert_eq!(sent.iter().collect::<Vec<_>>(), [Some("QueryTable"), None]);
+        }
     }
 }

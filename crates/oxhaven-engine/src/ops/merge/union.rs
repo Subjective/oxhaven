@@ -40,7 +40,7 @@ fn overflow() -> TableFailure {
 /// constituent gets one unit, so that every slot holds at least one key.
 ///
 /// Behavior: io.deephaven.engine.table.impl.sources.UnionRedirection#keySpaceFor
-fn key_space_for(last_row_key: Option<RowKey>) -> Result<i64, TableFailure> {
+pub(crate) fn key_space_for(last_row_key: Option<RowKey>) -> Result<i64, TableFailure> {
     let units = last_row_key.unwrap_or(0) / ALLOCATION_UNIT_ROW_KEYS + 1;
     units
         .checked_mul(ALLOCATION_UNIT_ROW_KEYS)
@@ -48,7 +48,7 @@ fn key_space_for(last_row_key: Option<RowKey>) -> Result<i64, TableFailure> {
 }
 
 /// Behavior: io.deephaven.engine.table.impl.sources.UnionRedirection#checkOverflow
-fn next_slot(first: RowKey, key_space: i64) -> Result<RowKey, TableFailure> {
+pub(crate) fn next_slot(first: RowKey, key_space: i64) -> Result<RowKey, TableFailure> {
     first.checked_add(key_space).ok_or_else(overflow)
 }
 
@@ -180,7 +180,7 @@ impl ColumnSource for UnionSource {
 /// have no rows there.
 ///
 /// Behavior: io.deephaven.engine.rowset.RowSetShiftData.Builder#appendShiftData
-fn append_shift_data(
+pub(crate) fn append_shift_data(
     builder: &mut ShiftBuilder,
     inner: &RowSetShiftData,
     prev_offset: RowKey,

@@ -743,3 +743,14 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   owner from this run: formula operations run on threads and in listeners without an
   ExecutionContext, where Java refuses them; a command holds the shared lock and is shown
   to scripts as holding the exclusive one.
+- 23:20 UTC: 7.6 (partitioned tables) reported after 103 minutes; pull request 92 opened.
+  Contract change made on the architect's judgment, for the owner's review:
+  `ColumnType::Table(TableClass)`. The run also started the object service of 7.10
+  (`FetchObject`, `MessageStream`). Follow-ups 7.6.1 to 7.6.6 are in the task file.
+- 23:05 UTC: the owner chose to keep the storage symlink check and record the difference. The author of pull request 90 was resumed to add the PARITY.md entry.
+- Merged pull request 92 (7.6, partitioned tables first slice) on green checks.
+- 23:45 UTC: 6.12 (Python listeners) follow-up done; pull request 93 opened. My request
+  to match Java's `modified_prev` was wrong: the agent's probe shows Java returns the
+  previous values of other rows, or nulls, when the cycle shifts rows. Recorded as a Java
+  defect for the owner (J6), not reproduced. My second request quoted the wrong Java
+  error text; the agent used the text Java actually raises.

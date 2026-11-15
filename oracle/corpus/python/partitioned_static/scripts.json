@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table head_by operation failed. : RuntimeError: java.lang.UnsupportedOperationException: Cannot use view or updateView to produce results of type class io.deephaven.engine.table.impl.QueryTable; use select or update instead",
+      "operation": "table head_by operation failed."
+    }
+  ]
+}
