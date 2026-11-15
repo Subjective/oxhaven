@@ -122,10 +122,13 @@ ConsoleService (console/mod.rs)          any build
     feature, once on the oldest and once on the newest supported Python
     (`actions/setup-python`). It installs no packages and names no environment, so the
     tests of the server may import only the standard library: they have to pass on every
-    supported Python, with whatever is or is not installed for it.
+    supported Python, with whatever is or is not installed for it. The tests of
+    completion that need `jedi` say that they did not run, and pass.
   - `oracle-replay` builds the server with the feature (`oracle/bin/ci-replay.sh` does) and
     runs the script scenarios against it. What needs numpy, pandas or pyarrow is gated
-    there, in the pinned environment described below.
+    there, in the pinned environment described below. That environment has `jedi` and
+    `docstring_parser`, and the job then runs the tests of completion in it with
+    `OXHAVEN_REQUIRE_JEDI=1`, which makes a test that cannot find them fail.
   - `rust` builds without the feature.
 
 ## The Python environment
@@ -187,7 +190,7 @@ runner whose Python has no pandas and works on a machine that has it. So the rep
 does not use whatever the linked Python happens to have. It runs the server in the
 harness's environment, `oracle/.venv`, which is made from `oracle/requirements-replay.txt`:
 numpy, pandas and pyarrow in the versions the Java reference had when the recordings were
-made. The `oracle-replay` job sets `VIRTUAL_ENV` to it; locally, do the same:
+made, and `jedi` and `docstring_parser` in the versions the Java reference completes with. The `oracle-replay` job sets `VIRTUAL_ENV` to it; locally, do the same:
 
 ```bash
 VIRTUAL_ENV=$PWD/oracle/.venv oracle/bin/ci-replay.sh
@@ -263,10 +266,9 @@ Stubbed or missing, each with its task:
 | Values that are not tables (figures, partitioned tables, plugin objects) | resolve as objects; none has a type name yet, so none is listed (`console::session::type_name_if_displayable`) | 7.6 to 7.10 |
 | Scope variables in formulas | numbers, strings and booleans; the rest is refused, see "The query scope" | no task yet |
 | The rest of the Python API | absent: `ImportError` or `AttributeError` | 6.4 to 6.12 |
-| Autocomplete | answers "nothing found" (Java without `jedi`); no `Open`/`NextAutoCompleteStream` | 6.13 |
 
 Done since: the log stream and `GetHeapInfo` (task 6.14, "The log stream" and "The memory
-figures"), stopping a running command (task 6.15).
+figures"), stopping a running command (task 6.15), completion (task 6.13, "Completion").
 
 ## The query scope
 
@@ -472,6 +474,63 @@ cycle.
 | `ring_table`, `function_generated_table`, `TableReplayer` | exist | refused by the name of the Java method: the engine has none of the three |
 | Callbacks of the asynchronous forms | called on a thread of Java's common pool, in no defined order | called on the writer thread, in the order of the calls |
 
+## Completion
+
+Task 6.13. Java completes Python with the library `jedi`, which runs in the session's
+interpreter and looks at the session's variables, so that `t.` offers the methods of the
+object `t` holds. This server does the same. Its package
+`deephaven_internal.auto_completer` has the names, signatures and behaviour of the
+reference's and none of its code. `jedi` and `docstring_parser` (which renders docstrings
+for signature help) are packages of the server's Python environment, both under the MIT
+licence and neither part of this server:
+
+```bash
+/tmp/console-env/bin/pip install jedi docstring_parser
+```
+
+Without them a session answers every message with "success, nothing found", as Java does
+without `jedi`, and says why in the log once.
+
+- **The stream.** `AutoCompleteStream` takes `open_document`, `change_document` and
+  `close_document` in order and does not answer them, and answers
+  `get_completion_items`, `get_signature_help`, `get_hover` and `get_diagnostic` (always
+  empty, as in Java) once the console they name is exported, in no fixed order. The
+  documents live in the session's completer, the variable `jedi_settings`, by URI: streams
+  share them, in Java too. A script may switch completion off (`jedi_settings.mode =
+  'OFF'`); requests are then answered without success.
+- **Edits.** Positions are in UTF-16 code units, and an edit replaces `range_length` units
+  from the start of its range, as in `CompletionParser#updateDocumentChanges`: an edit
+  that starts beyond the document's lines is ignored together with the rest of its
+  message, and one whose start is beyond the end of the document replaces all of it.
+- **What ends a stream.** A message without a request, an edit or a close of a document
+  that is not open, and a console ticket that does not resolve end it with the statuses
+  Java gives (`console/completer.rs`). A request that fails is answered with `success:
+  false` and the stream goes on.
+- **The browser pair.** `OpenAutoCompleteStream` and `NextAutoCompleteStream` carry the
+  stream as one call per message, with the headers `x-deephaven-stream-ticket`,
+  `-sequence` and `-halfclose`; messages are delivered in the order of their sequence
+  numbers whatever order they arrive in (`console/browser.rs`,
+  `BrowserStream`/`BrowserStreamInterceptor` in Java). The headers are checked on every
+  call of the console service, as Java's interceptor does.
+- **A running command.** A completion takes the interpreter lock for as long as `jedi`
+  runs and no other lock: not the update graph's, and not a turn behind the command. It
+  is answered while a command sleeps or computes (the interpreter switches between the two
+  threads every 5 ms), and a cycle never waits for it. `console/completer.rs` has the
+  reasoning.
+
+Differences from Java:
+
+| Case | Java | This server |
+| --- | --- | --- |
+| Opening a stream while a command runs | waits for the command: the completer is set up by a command of the session | does not wait: it is set up under the interpreter lock alone |
+| Several requests at once | `jedi` is called from several threads | one answer at a time |
+| Docstrings and signatures of the `deephaven` package | the reference package's; its annotations are strings (`head(num_rows: 'int')`) | this package's (`head(num_rows: int)`), and its docstrings are its own text |
+| `NextAutoCompleteStream` | returns when the message was handled | returns when the message is queued in order |
+| A session whose variable `jedi_settings` is not the completer and whose package cannot be imported | the exception of the call reaches the client | `UNIMPLEMENTED`, naming `ConsoleServiceGrpcImpl#autoCompleteStream` |
+| The log line for a missing package | names the reference's `pip` extra and a JVM flag | names `jedi` and `docstring_parser` |
+| A session without the packages | the process warns once, and no session of it completes again | each session warns once |
+| The property `deephaven.console.autocomplete.disable` | switches completion off | no counterpart: this server has no such property |
+
 ## Differences from Java, per call
 
 Observed with `oracle/console/probe.py` on Java 42.9 and on this server; the two transcripts
@@ -488,7 +547,7 @@ list.
 | `SubscribeToLogs` | script output is the same, record for record, and the server's log arrives under the same levels in the same layout, with this server's thread and module names and its own wording. The oracle's Java also sends each log record again as `STDERR` lines, which is its logging configuration; and Java gathers records for 100 ms ("The log stream"). A slow client and the end of the session end the stream as in Java. |
 | `GetHeapInfo` | different quantities ("The memory figures") |
 | `CancelCommand`, `CancelAutoComplete` | none: `UNIMPLEMENTED`, same text |
-| `AutoCompleteStream` | Java with `jedi` installed returns completions and does not answer `open_document`; this server answers every request with success and no items, as Java does without `jedi` |
+| `AutoCompleteStream`, `OpenAutoCompleteStream`, `NextAutoCompleteStream` | the same messages and statuses in every case of the probe, with `jedi` on both sides; what differs is text that comes from the `deephaven` package: its docstrings, and the annotations in the signatures of its methods ("Completion") |
 | `ListFields` | none for tables |
 | `FetchTable` of `s/<name>` | none: a variable that is not a table resolves and is refused with `INVALID_ARGUMENT` |
 | `ExportFromTicket` and `PublishFromTicket` with `s/<name>` | none in the cases tried: a number is exported and published as the same Python object, a table is published as the package's `Table` |
