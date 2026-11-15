@@ -503,7 +503,11 @@ fn requests_java_refuses_are_errors() {
 fn an_output_named_like_a_key_takes_the_place_of_the_key_column() {
     // Recorded from Java in `fixtures/rest_static.json` and `fixtures/rest_ticking.json`.
     let parent = static_table(&[
-        ("K", ColumnType::String, strs(&[Some("a"), Some("b"), Some("a")])),
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
         ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
     ]);
     let result = agg_by(&parent, &[agg(AggSpec::Sum, &["K = I"])], &["K"]);
@@ -551,7 +555,10 @@ fn distinct_is_a_sorted_vector_and_null_for_a_group_without_values() {
     ];
     let result = agg_by(&parent, &specs, &["K"]);
     let vector = ColumnType::vector(ColumnType::Int);
-    assert_eq!(schema(&*result)[1..], [("D".into(), vector.clone()), ("N".into(), vector)]);
+    assert_eq!(
+        schema(&*result)[1..],
+        [("D".into(), vector.clone()), ("N".into(), vector)]
+    );
     assert_eq!(rows(&*result), ["a|[1, 3]|[null, 1, 3]", "b|null|[null]"]);
     // Without keys the group without values is an empty vector.
     let nulls = static_table(&[("I", ColumnType::Int, int_opts(&[None, None]))]);
@@ -561,7 +568,11 @@ fn distinct_is_a_sorted_vector_and_null_for_a_group_without_values() {
 #[test]
 fn a_non_unique_sentinel_shows_for_several_values_and_must_fit_the_column() {
     let parent = static_table(&[
-        ("K", ColumnType::String, strs(&[Some("a"), Some("b"), Some("a")])),
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
         ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
     ]);
     let unique = |non_unique: Sentinel| {
@@ -598,7 +609,11 @@ fn a_non_unique_sentinel_shows_for_several_values_and_must_fit_the_column() {
 #[test]
 fn count_where_counts_the_rows_that_pass_every_filter() {
     let parent = static_table(&[
-        ("K", ColumnType::String, strs(&[Some("a"), Some("b"), Some("a")])),
+        (
+            "K",
+            ColumnType::String,
+            strs(&[Some("a"), Some("b"), Some("a")]),
+        ),
         ("I", ColumnType::Int, int_opts(&[Some(1), Some(2), Some(3)])),
     ]);
     let where_ = |filters: &[&str]| Aggregation::count_where("N", filters.iter().copied());

@@ -214,7 +214,7 @@ fn first_and_last_of_a_list_column_are_whole_cells() {
     let columns = TableSnapshot::current(&*result).unwrap().columns;
     // Group a has the rows `[1, 2]` and `[]`, group b the null.
     let first = list_of(&vector, [Some(2), None], ints([1, 2]));
-    let last = list_of(&vector, [Some(0), None], ints([1, 2]));
+    let last = list_of(&vector, [Some(0), None], ints([]));
     assert_eq!(columns[1].to_data(), first.to_data());
     assert_eq!(columns[2].to_data(), last.to_data());
 }

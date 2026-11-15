@@ -383,7 +383,9 @@ fn run_fixture(path: &PathBuf, tally: &mut Tally) {
             let context = format!("{name}.{} during step {step}", watched.name);
             let delivered = watched.drain(&context);
             let recorded = &fixture["java"]["updates"][step - 1][watched.name];
-            let different = DIFFERENT_UPDATES.iter().find(|(known, _)| *known == context);
+            let different = DIFFERENT_UPDATES
+                .iter()
+                .find(|(known, _)| *known == context);
             if let Some((_, ours)) = different {
                 let ours: Value = serde_json::from_str(ours).expect("an update list");
                 assert_ne!(&ours, recorded, "{context}: no longer different");

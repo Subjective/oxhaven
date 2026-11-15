@@ -202,7 +202,13 @@ impl Sentinel {
             } else if v.fract() == 0.0 {
                 // A finite double without a fraction is an integer of at most 1024 bits;
                 // beyond 127 of them it is out of every range asked about.
-                Ok(Some(if v.abs() < 1e38 { v as i128 } else if v > 0.0 { i128::MAX } else { i128::MIN }))
+                Ok(Some(if v.abs() < 1e38 {
+                    v as i128
+                } else if v > 0.0 {
+                    i128::MAX
+                } else {
+                    i128::MIN
+                }))
             } else {
                 Ok(None)
             }
@@ -297,9 +303,7 @@ fn sentinel_value(
         (ColumnType::String, Sentinel::String(v)) => Ok(Scalar::Str(v.as_str().into())),
         (ColumnType::Char, Sentinel::Char(v)) => Ok(or_null(i64::from(*v), i64::from(u16::MAX))),
         (ColumnType::Byte, Sentinel::Byte(v)) => Ok(or_null(i64::from(*v), i64::from(i8::MIN))),
-        (ColumnType::Short, Sentinel::Short(v)) => {
-            Ok(or_null(i64::from(*v), i64::from(i16::MIN)))
-        }
+        (ColumnType::Short, Sentinel::Short(v)) => Ok(or_null(i64::from(*v), i64::from(i16::MIN))),
         (ColumnType::Int, Sentinel::Int(v)) => Ok(or_null(i64::from(*v), i64::from(i32::MIN))),
         (ColumnType::Long, Sentinel::Long(v)) => Ok(or_null(*v, i64::MIN)),
         (ColumnType::Float, Sentinel::Float(v)) if *v == -f32::MAX => Ok(Scalar::Null),
@@ -315,9 +319,7 @@ fn sentinel_value(
         (ColumnType::Int, _) if sentinel.double().is_some() => {
             integer_in(i64::from(i32::MIN) + 1, i64::from(i32::MAX))
         }
-        (ColumnType::Long, _) if sentinel.double().is_some() => {
-            integer_in(i64::MIN + 1, i64::MAX)
-        }
+        (ColumnType::Long, _) if sentinel.double().is_some() => integer_in(i64::MIN + 1, i64::MAX),
         (ColumnType::Float | ColumnType::Double, _) if sentinel.double().is_some() => {
             let value = sentinel.double().expect("a number");
             if !value.is_finite() {
@@ -818,7 +820,13 @@ pub fn aggregate_with(
     group_by: &[&str],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, AggregateError> {
-    aggregate_inner(parent, aggregations, preserve_empty, group_by, Some(compiler))
+    aggregate_inner(
+        parent,
+        aggregations,
+        preserve_empty,
+        group_by,
+        Some(compiler),
+    )
 }
 
 /// The operator of a count where.
@@ -929,14 +937,12 @@ fn aggregate_inner(
             Aggregation::Columns { spec, pairs } => {
                 for pair in pairs {
                     let index = column(&pair.input)?;
-                    let operator =
-                        make_operator(spec, parent, index, kind, keyed, &pair.output)?.ok_or_else(
-                            || AggregateError::UnsupportedType {
-                                spec: spec.clone(),
-                                column: pair.input.clone(),
-                                column_type: definition.columns()[index].column_type.clone(),
-                            },
-                        )?;
+                    let operator = make_operator(spec, parent, index, kind, keyed, &pair.output)?
+                        .ok_or_else(|| AggregateError::UnsupportedType {
+                        spec: spec.clone(),
+                        column: pair.input.clone(),
+                        column_type: definition.columns()[index].column_type.clone(),
+                    })?;
                     planned.push((&pair.output, operator));
                 }
             }
@@ -972,8 +978,13 @@ fn aggregate_inner(
         ParentKind::General => !keyed,
     };
     let table = QueryTable::derive(parent, || {
-        let mut aggregator =
-            Aggregator::new(parent.clone(), key_columns, operators, preserve_empty, layout)?;
+        let mut aggregator = Aggregator::new(
+            parent.clone(),
+            key_columns,
+            operators,
+            preserve_empty,
+            layout,
+        )?;
         let rows = aggregator.initial()?;
         let mut spec = TableSpec::new(result_definition, rows, aggregator.columns());
         if flat {
