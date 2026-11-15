@@ -1,0 +1,32 @@
+{
+  "format": 2,
+  "scenario": "join_cross_and_asof",
+  "scenario_sha256": "2d00f7468d3f57b5794f2577c1e2c5e0785d64abbfffd2cb0cd34b4599400c03",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "crossed",
+      "file": "step000.crossed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "keyed",
+      "file": "step000.keyed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "as_of",
+      "file": "step000.as_of.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "reverse_as_of",
+      "file": "step000.reverse_as_of.arrow",
+      "rows": 4
+    }
+  ]
+}

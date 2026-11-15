@@ -1,0 +1,50 @@
+{
+  "format": 2,
+  "scenario": "table_select",
+  "scenario_sha256": "698355e622b31de4baeae2778ec7ff97a1c99625fe499ebd74e48e9c5387abb8",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "dropped",
+      "file": "step000.dropped.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "file": "step000.renamed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "moved",
+      "file": "step000.moved.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "moved_up",
+      "file": "step000.moved_up.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "moved_down",
+      "file": "step000.moved_down.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "distinct",
+      "file": "step000.distinct.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "described",
+      "file": "step000.described.arrow",
+      "rows": 4
+    }
+  ]
+}

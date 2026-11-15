@@ -1,0 +1,44 @@
+{
+  "format": 2,
+  "scenario": "table_head_tail",
+  "scenario_sha256": "7666abf91d750eae67dee35e40593ac1a38cff321c073ac34c4d3822075de202",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "none",
+      "file": "step000.none.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "everything",
+      "file": "step000.everything.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "middle",
+      "file": "step000.middle.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "from_end",
+      "file": "step000.from_end.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "half",
+      "file": "step000.half.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "last_quarter",
+      "file": "step000.last_quarter.arrow",
+      "rows": 2
+    }
+  ]
+}

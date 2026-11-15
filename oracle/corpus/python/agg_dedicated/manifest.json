@@ -1,0 +1,56 @@
+{
+  "format": 2,
+  "scenario": "agg_dedicated",
+  "scenario_sha256": "257abff23909ef6cda069e9dc821bbfe073f36e216b14dd1065aada4ffe68a6c",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "sums",
+      "file": "step000.sums.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "averages",
+      "file": "step000.averages.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "counts",
+      "file": "step000.counts.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "firsts",
+      "file": "step000.firsts.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lasts",
+      "file": "step000.lasts.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "minima",
+      "file": "step000.minima.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "maxima",
+      "file": "step000.maxima.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 3
+    }
+  ]
+}
