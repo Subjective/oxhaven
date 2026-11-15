@@ -129,7 +129,7 @@
   "time_table schema and refreshing flag": {"state": "clean"}
  },
  "replay-scripts": {
-  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "partitioned", "seeded"], "why": "the engine lacks the partition aggregation of AggregationAdapter#adapt and the initial groups of QueryTable#aggBy"},
+  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "seeded"], "why": "the engine lacks the initial groups of QueryTable#aggBy"},
   "agg_dedicated": {"state": "clean"},
   "convert_arrow": {"state": "clean"},
   "convert_arrow_errors": {"state": "clean"},
@@ -172,6 +172,10 @@
   "parquet_read_names": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "legal"], "why": "a column name Java changes to make it legal is refused (NameValidator#legalizeColumnName is not ported)"},
   "parquet_read_partitioned": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "by_layout", "key_value", "metadata", "metadata_file", "refreshing"], "why": "partition directories, _metadata files and refreshing directories are not read yet (docs/STORAGE.md, second slice of task 7.1)"},
   "parquet_read_types": {"state": "clean"},
+  "partitioned_agg": {"state": "clean"},
+  "partitioned_static": {"state": "clean"},
+  "partitioned_ticking": {"state": "clean"},
+  "partitioned_transform": {"state": "clean"},
   "table_creation": {"state": "clean"},
   "table_error": {"state": "clean"},
   "table_first_steps": {"state": "clean"},

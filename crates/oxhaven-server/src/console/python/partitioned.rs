@@ -181,3 +181,53 @@ pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_function(wrap_pyfunction!(partitioned_aggregation, native)?)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    //! What a script sees of a partitioned table is in the script scenarios
+    //! `partitioned_*`, recorded from Java; these are the parts no scenario reaches.
+
+    use super::super::tests::Python;
+    use crate::partitioned::partitioned_of;
+
+    #[tokio::test]
+    async fn a_partitioned_table_variable_is_listed_and_opened_as_one() {
+        let python = Python::start().await;
+        let changes = python.run(
+            "from deephaven import empty_table\n\
+             pt = empty_table(6).update('K = i % 2').partition_by('K')\n",
+        );
+        let [variable] = changes.created.as_slice() else {
+            panic!("one variable, not {:?}", changes.created);
+        };
+        assert_eq!(
+            (variable.name.as_str(), variable.type_name.as_str()),
+            ("pt", "PartitionedTable")
+        );
+        let value = python.server.state.scope.get("pt").unwrap();
+        let partitioned = partitioned_of(&value).expect("a partitioned table");
+        assert_eq!(partitioned.key_columns(), ["K"]);
+        assert_eq!(partitioned.table().row_set().size(), 2);
+    }
+
+    #[tokio::test]
+    async fn formulas_work_again_after_a_transform_whose_function_failed() {
+        let python = Python::start().await;
+        python.run(
+            "from deephaven import empty_table, DHError\n\
+             pt = empty_table(6).update('K = i % 2').partition_by('K')\n\
+             def broken(table):\n\
+             \x20   raise ValueError('no')\n\
+             for function in (broken, lambda table: table.update('W = K + 1')):\n\
+             \x20   try:\n\
+             \x20       pt.transform(function)\n\
+             \x20       raise AssertionError('the transform must fail')\n\
+             \x20   except DHError:\n\
+             \x20       pass\n\
+             assert pt.table.where('K > 0').update('W = K + 1').size == 1\n\
+             inner = pt.transform(lambda table: pt.transform(lambda t: t.head(1)).merge())\n\
+             assert inner.merge().size == 4\n\
+             assert pt.merge().where('K > 0').size == 3\n",
+        );
+    }
+}
