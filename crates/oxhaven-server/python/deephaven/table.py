@@ -8,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple, Union
 import _oxhaven
 
 from . import _engine
+from .agg import Aggregation
 from .dherror import DHError
 
 
@@ -19,6 +20,29 @@ class SortDirection(Enum):
 
     DESCENDING = auto()
     ASCENDING = auto()
+
+
+class NaturalJoinType(Enum):
+    """What a natural join does with a row of the left table that several rows of the
+    right table match. The values are the names of the table service's join types.
+
+    Behavior: `deephaven.table.NaturalJoinType`
+    """
+
+    ERROR_ON_DUPLICATE = "ERROR_ON_DUPLICATE"
+    FIRST_MATCH = "FIRST_MATCH"
+    LAST_MATCH = "LAST_MATCH"
+    EXACTLY_ONE_MATCH = "EXACTLY_ONE_MATCH"
+
+
+class NewColumnBehaviorType(Enum):
+    """What `keyed_transpose` of a ticking table does when a new column value appears.
+
+    Behavior: `deephaven.table.NewColumnBehaviorType`
+    """
+
+    FAIL = "FAIL"
+    IGNORE = "IGNORE"
 
 
 class _JavaType(str):
@@ -583,3 +607,468 @@ class Table:
             {"null_fill": False, "columns_to_ungroup": _engine.to_sequence(cols)},
             "table ungroup operation failed.",
         )
+
+    # Aggregations (task 6.5)
+
+    def _agg_all(self, spec: dict, by, failure: str) -> "Table":
+        """One aggregation applied to every column that is not grouped by.
+
+        Behavior: `io.deephaven.api.TableOperationsDefaults#aggAllBy(AggSpec, String...)`
+        """
+        request = {"spec": spec, "group_by_columns": _engine.to_sequence(by)}
+        return self._op("aggregate_all", request, failure)
+
+    def head_by(self, num_rows: int, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the first `num_rows` rows of each group."""
+        failure = "table head_by operation failed."
+        self._positions(failure, num_rows)
+        request = {"num_rows": num_rows, "group_by_column_specs": _engine.to_sequence(by)}
+        return self._op("head_by", request, failure)
+
+    def tail_by(self, num_rows: int, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the last `num_rows` rows of each group."""
+        failure = "table tail_by operation failed."
+        self._positions(failure, num_rows)
+        request = {"num_rows": num_rows, "group_by_column_specs": _engine.to_sequence(by)}
+        return self._op("tail_by", request, failure)
+
+    def group_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with one row per group and the other columns as arrays."""
+        return self._agg_all({"group": {}}, by, "table group-by operation failed.")
+
+    def first_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the first row of each group."""
+        return self._agg_all({"first": {}}, by, "table first_by operation failed.")
+
+    def last_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the last row of each group."""
+        return self._agg_all({"last": {}}, by, "table last_by operation failed.")
+
+    def sum_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the sum of every other column for each group."""
+        return self._agg_all({"sum": {}}, by, "table sum_by operation failed.")
+
+    def abs_sum_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the sum of the absolute values of every other column for each
+        group."""
+        # the text is the reference's
+        return self._agg_all({"abs_sum": {}}, by, "table asb_sum_by operation failed.")
+
+    def weighted_sum_by(
+        self, wcol: str, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "Table":
+        """A new table with the sum of every other column, weighted by `wcol`, for each
+        group."""
+        spec = {"weighted_sum": {"weight_column": wcol}}
+        return self._agg_all(spec, by, "table weighted_sum_by operation failed.")
+
+    def avg_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the average of every other column for each group."""
+        return self._agg_all({"avg": {}}, by, "table avg_by operation failed.")
+
+    def weighted_avg_by(
+        self, wcol: str, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "Table":
+        """A new table with the average of every other column, weighted by `wcol`, for each
+        group."""
+        # the text is the reference's
+        spec = {"weighted_avg": {"weight_column": wcol}}
+        return self._agg_all(spec, by, "table avg_by operation failed.")
+
+    def std_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the sample standard deviation of every other column for each
+        group."""
+        return self._agg_all({"std": {}}, by, "table std_by operation failed.")
+
+    def var_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the sample variance of every other column for each group."""
+        return self._agg_all({"var": {}}, by, "table var_by operation failed.")
+
+    def median_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the median of every other column for each group."""
+        # Behavior: `io.deephaven.api.agg.spec.AggSpec#median()`, which averages the two
+        # values in the middle of an even number
+        spec = {"median": {"average_evenly_divided": True}}
+        return self._agg_all(spec, by, "table median_by operation failed.")
+
+    def min_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the least value of every other column for each group."""
+        return self._agg_all({"min": {}}, by, "table min_by operation failed.")
+
+    def max_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the greatest value of every other column for each group."""
+        return self._agg_all({"max": {}}, by, "table max_by operation failed.")
+
+    def count_by(self, col: str, by: Optional[Union[str, Sequence[str]]] = None) -> "Table":
+        """A new table with the number of rows of each group in the column `col`."""
+        # Behavior: `io.deephaven.api.TableOperationsDefaults#countBy`, an `aggBy` of a count
+        request = {
+            "aggregations": [{"count": {"column_name": col}}],
+            "group_by_columns": _engine.to_sequence(by),
+        }
+        return self._op("aggregate", request, "table count_by operation failed.")
+
+    def agg_by(
+        self,
+        aggs: Union[Aggregation, Sequence[Aggregation]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+        preserve_empty: bool = False,
+        initial_groups: Optional["Table"] = None,
+    ) -> "Table":
+        """A new table with one row per group and the columns of the aggregations.
+
+        With `preserve_empty` a group that has no rows keeps its row; `initial_groups` is a
+        table whose distinct values of the `by` columns are the first groups.
+        """
+        try:
+            aggs = _engine.to_sequence(aggs)
+            by = _engine.to_sequence(by)
+            if not by and initial_groups:
+                raise ValueError("missing group-by column names when initial_groups is provided.")
+            request = {
+                "source_id": _engine.source(0),
+                "aggregations": _aggregations(aggs),
+                "preserve_empty": bool(preserve_empty),
+                "group_by_columns": by,
+            }
+            handles = [self.j_table]
+            if initial_groups is not None:
+                request["initial_groups_id"] = _engine.source(1)
+                handles.append(initial_groups.j_table)
+            return Table(_engine.table_op("aggregate", request, handles))
+        except Exception as e:
+            raise DHError(e, "table agg_by operation failed.") from e
+
+    def agg_all_by(
+        self, agg: Aggregation, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "Table":
+        """A new table with the aggregation applied to every column that is not grouped
+        by. An aggregation that names its own result column cannot be used."""
+        try:
+            request = {"spec": agg.j_agg_spec, "group_by_columns": _engine.to_sequence(by)}
+            return Table(
+                _engine.table_op("aggregate_all", _engine.sourced(request), [self.j_table])
+            )
+        except Exception as e:
+            raise DHError(e, "table agg_all_by operation failed.") from e
+
+    # Joins (task 6.7)
+
+    def _join(self, name: str, table: "Table", request, failure: str) -> "Table":
+        """The result of the join operation `name` of this table, the left one, with
+        `table`; `request` returns the other fields of the operation's message."""
+        try:
+            request = {"left_id": _engine.source(0), "right_id": _engine.source(1), **request()}
+            return Table(_engine.table_op(name, request, [self.j_table, table.j_table]))
+        except Exception as e:
+            raise DHError(e, failure) from e
+
+    def natural_join(
+        self,
+        table: "Table",
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+        type: NaturalJoinType = NaturalJoinType.ERROR_ON_DUPLICATE,
+    ) -> "Table":
+        """A new table with the rows of this one, each with the columns `joins` (every
+        column that is not matched, if none is given) of the row of `table` that has the
+        same values in the `on` columns, or nulls if there is none. `type` says what
+        happens when several rows of `table` match; by default that is an error."""
+        return self._join(
+            "natural_join",
+            table,
+            lambda: {
+                "columns_to_match": _split(on),
+                "columns_to_add": _split(joins),
+                "join_type": type.value,
+            },
+            "table natural_join operation failed.",
+        )
+
+    def exact_join(
+        self,
+        table: "Table",
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "Table":
+        """As `natural_join`, but every row of this table must match exactly one row of
+        `table`."""
+        return self._join(
+            "exact_join",
+            table,
+            lambda: {"columns_to_match": _split(on), "columns_to_add": _split(joins)},
+            "table exact_join operation failed.",
+        )
+
+    def join(
+        self,
+        table: "Table",
+        on: Optional[Union[str, Sequence[str]]] = None,
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "Table":
+        """A new table with one row for every pair of a row of this table and a row of
+        `table` that have the same values in the `on` columns; for every pair of rows if
+        there is no `on` column."""
+        return self._join(
+            "cross_join",
+            table,
+            lambda: {"columns_to_match": _split(on), "columns_to_add": _split(joins)},
+            "table join operation failed.",
+        )
+
+    def _as_of_join(self, name: str, table: "Table", on, joins, failure: str) -> "Table":
+        """Behavior: `io.deephaven.api.TableOperationsDefaults#aj(TABLE, String, String)`
+        and `#raj`: the last match is the as-of match, the ones before it are exact."""
+
+        def request():
+            matches = _split(on)
+            return {
+                "exact_match_columns": matches[:-1],
+                # Java fails here too when there is no match: `matches.get(-1)`
+                "as_of_column": matches[-1],
+                "columns_to_add": _split(joins),
+            }
+
+        return self._join(name, table, request, failure)
+
+    def aj(
+        self,
+        table: "Table",
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "Table":
+        """A new table with the rows of this one, each with columns of the row of `table`
+        that has the same values in all `on` columns but the last and, in the last, the
+        closest value that is not greater (`"A >= B"`, the default) or is less
+        (`"A > B"`)."""
+        return self._as_of_join("aj", table, on, joins, "table as-of join operation failed.")
+
+    def raj(
+        self,
+        table: "Table",
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "Table":
+        """As `aj` with the closest value that is not less (`"A <= B"`, the default) or
+        is greater (`"A < B"`)."""
+        failure = "table reverse-as-of join operation failed."
+        return self._as_of_join("raj", table, on, joins, failure)
+
+    def range_join(
+        self,
+        table: "Table",
+        on: Union[str, Sequence[str]],
+        aggs: Union[Aggregation, Sequence[Aggregation]],
+    ) -> "Table":
+        """A new table with the rows of this one, each with the aggregations of the rows
+        of `table` that have the same values in all `on` expressions but the last and
+        whose value lies in the range the last one names, such as
+        `"LeftStart <= RightValue <= LeftEnd"`."""
+
+        def request():
+            matches = _engine.to_sequence(on)
+            if not matches:
+                # Behavior: `io.deephaven.api.TableOperationsDefaults#rangeJoin`
+                raise ValueError(
+                    "No match expressions found; must include at least a range match expression"
+                )
+            return {
+                "exact_match_columns": matches[:-1],
+                "range_match": matches[-1],
+                "aggregations": [agg.j_aggregation for agg in _engine.to_sequence(aggs)],
+            }
+
+        return self._join("range_join", table, request, "table range_join operation failed.")
+
+    # update_by (task 6.6)
+
+    def update_by(
+        self,
+        ops: Union["UpdateByOperation", Sequence["UpdateByOperation"]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "Table":
+        """A new table with the columns of this one and the columns of the operations
+        (`deephaven.updateby`), each computed from a row and the rows around it in its
+        group."""
+        try:
+            request = {
+                "operations": [op.j_updateby_op for op in _engine.to_sequence(ops)],
+                "group_by_columns": _engine.to_sequence(by),
+            }
+            return Table(_engine.table_op("update_by", _engine.sourced(request), [self.j_table]))
+        except Exception as e:
+            raise DHError(e, "table update-by operation failed.") from e
+
+
+# Aggregations (task 6.5)
+
+
+def _aggregations(aggs: Sequence[Aggregation]) -> List[dict]:
+    """The `Aggregation` messages of `aggs`."""
+    messages = [agg.j_aggregation for agg in aggs]
+    if any(agg._reaggregating for agg in aggs):
+        # Behavior: `AggregationProcessor#validateFormulaIsNotReaggregating`
+        error = "AggFormula does not support reaggregating except in a rollup."
+        raise ValueError(error)
+    return messages
+
+
+# Joins (task 6.7)
+
+# What Java's `String#trim` removes.
+_JAVA_SPACE = "".join(map(chr, range(33)))
+
+
+def _split(columns) -> List[str]:
+    """The match or addition expressions of a join: the reference joins its arguments
+    with commas and Java splits that text at every comma, so `"A, B"` is two.
+
+    Behavior: `io.deephaven.api.TableOperationsDefaults#splitToList`
+    """
+    parts = ",".join(_engine.to_sequence(columns)).split(",")
+    return [part.strip(_JAVA_SPACE) for part in parts if part.strip(_JAVA_SPACE)]
+
+
+def _checked_pairs(columns) -> List[str]:
+    """The matches or additions of a multi join input, each `Name` or `Name = Other`,
+    whose names must be able to name columns.
+
+    Behavior: `io.deephaven.api.JoinMatch#parse` and `io.deephaven.api.JoinAddition#parse`,
+    as far as they refuse a name; the table service reads the expressions again when the
+    join is made
+    """
+    pairs = [str(item) for item in _engine.to_sequence(columns)]
+    for pair in pairs:
+        left, equals, right = pair.partition("=")
+        _engine.native.column_name(left.strip(_JAVA_SPACE))
+        if equals:
+            _engine.native.column_name(right.removeprefix("=").strip(_JAVA_SPACE))
+    return pairs
+
+
+class MultiJoinInput:
+    """One table of a multi join, with the columns to match and the columns to add (every
+    other column, if none is given).
+
+    Behavior: `deephaven.table.MultiJoinInput`
+    """
+
+    def __init__(
+        self,
+        table: Table,
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ):
+        try:
+            self.table = table
+            self._handle = table.j_table
+            self._on = _checked_pairs(on)
+            self._joins = _checked_pairs(joins)
+        except Exception as e:
+            raise DHError(e, "failed to build a MultiJoinInput object.") from e
+
+
+class MultiJoinTable:
+    """The result of a multi join; `table` is its table.
+
+    Behavior: `deephaven.table.MultiJoinTable`
+    """
+
+    def __init__(
+        self,
+        input: Union[Table, Sequence[Table], MultiJoinInput, Sequence[MultiJoinInput]],
+        on: Optional[Union[str, Sequence[str]]] = None,
+    ):
+        try:
+            inputs = _engine.to_sequence(input)
+            is_sequence = isinstance(input, Sequence)
+            if isinstance(input, Table) or (
+                is_sequence and all(isinstance(t, Table) for t in input)
+            ):
+                # Behavior: `io.deephaven.engine.table.MultiJoinInput#from`, which splits
+                # one string at its commas and takes an array as it is
+                if on is None:
+                    # the reference's call of Java matches two overloads, for one string
+                    # and for an array of them
+                    raise TypeError(
+                        "ambiguous Java method call, too many matching method overloads found"
+                    )
+                if isinstance(on, str):
+                    keys = on.split(",")
+                    while keys and not keys[-1]:
+                        keys.pop()
+                else:
+                    keys = list(_engine.to_sequence(on))
+                handles = [table.j_table for table in inputs]
+                matches = [(keys, [])] * len(handles)
+            elif isinstance(input, MultiJoinInput) or (
+                is_sequence and all(isinstance(ji, MultiJoinInput) for ji in input)
+            ):
+                if on is not None:
+                    raise DHError(
+                        message="on parameter is not permitted when MultiJoinInput objects are provided."
+                    )
+                handles = [ji._handle for ji in inputs]
+                matches = [(ji._on, ji._joins) for ji in inputs]
+            else:
+                raise DHError(
+                    message="input must be a Table, a sequence of Tables, a MultiJoinInput, or a sequence of "
+                    "MultiJoinInputs."
+                )
+            request = {
+                "multi_join_inputs": [
+                    {
+                        "source_id": _engine.source(index),
+                        "columns_to_match": match,
+                        "columns_to_add": add,
+                    }
+                    for index, (match, add) in enumerate(matches)
+                ]
+            }
+            self._handle = _engine.table_op("multi_join", request, handles)
+        except Exception as e:
+            raise DHError(e, "failed to build a MultiJoinTable object.") from e
+
+    @property
+    def table(self) -> Table:
+        """The table of the join: one row per key that any input has."""
+        return Table(self._handle)
+
+
+def multi_join(
+    input: Union[Table, Sequence[Table], MultiJoinInput, Sequence[MultiJoinInput]],
+    on: Optional[Union[str, Sequence[str]]] = None,
+) -> MultiJoinTable:
+    """Joins several tables on their key columns: one row per key that any of them has,
+    with the columns of each table's row for that key.
+
+    `input` is tables that are matched on the columns `on`, or `MultiJoinInput` objects,
+    each with its own columns to match and to add.
+    """
+    return MultiJoinTable(input, on)
+
+
+def keyed_transpose(
+    table: Table,
+    aggs: Union[Aggregation, Sequence[Aggregation]],
+    row_by_cols: Union[str, Sequence[str]],
+    col_by_cols: Union[str, Sequence[str]],
+    initial_groups: Optional[Table] = None,
+    new_column_behavior: NewColumnBehaviorType = NewColumnBehaviorType.FAIL,
+) -> Table:
+    """A table with one row per value of `row_by_cols` and, for each value of
+    `col_by_cols`, one column per aggregation. Not available yet: the engine has no such
+    operator (`io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`)."""
+    try:
+        handles = [table.j_table]
+        if initial_groups is not None:
+            handles.append(initial_groups.j_table)
+        args = {
+            "aggregations": [agg.j_aggregation for agg in _engine.to_sequence(aggs)],
+            "row_by_cols": _engine.to_sequence(row_by_cols),
+            "col_by_cols": _engine.to_sequence(col_by_cols),
+            "new_column_behavior": new_column_behavior.value,
+        }
+        return Table(_engine.local_op("keyed_transpose", args, handles))
+    except Exception as e:
+        raise DHError(e, "keyed_transpose operation failed.") from e

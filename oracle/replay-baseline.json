@@ -129,15 +129,17 @@
   "time_table schema and refreshing flag": {"state": "clean"}
  },
  "replay-scripts": {
-  "agg_by": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.agg and Table.agg_by are not written yet (task 6.5)"},
-  "agg_dedicated": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "Table.sum_by and the other dedicated aggregations are not written yet (task 6.5)"},
+  "agg_by": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "partitioned", "seeded"], "why": "the engine lacks the partition aggregation of AggregationAdapter#adapt and the initial groups of QueryTable#aggBy"},
+  "agg_dedicated": {"state": "clean"},
   "convert_pandas": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.pandas is not written yet (task 6.9)"},
   "dtypes_new_table": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.dtypes, deephaven.constants and the other column constructors are not written yet (task 6.8)"},
   "dtypes_new_table_mapping": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "inferred"], "why": "new_table refuses a mapping of column names to values (task 6.8)"},
   "input_append_only": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.dtypes and input_table are not written yet (tasks 6.8 and 6.10)"},
   "input_keyed": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "input_table is not written yet (task 6.10)"},
-  "join_cross_and_asof": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "Table.join, aj and raj are not written yet (task 6.7)"},
-  "join_natural": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "Table.natural_join and exact_join are not written yet (task 6.7)"},
+  "join_cross_and_asof": {"state": "clean"},
+  "join_multi": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "transposed"], "why": "the engine lacks KeyedTranspose#keyedTranspose"},
+  "join_natural": {"state": "clean"},
+  "join_range": {"state": "clean"},
   "listen_counts": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.dtypes, input_table and deephaven.table_listener are not written yet (tasks 6.8, 6.10 and 6.12)"},
   "table_creation": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "sorted_merge"], "why": "the engine lacks TableTools#mergeSorted of static tables (task 4.16)"},
   "table_error": {"state": "clean"},
@@ -148,7 +150,9 @@
   "table_where": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "one_of"], "why": "the engine lacks QueryTable#where of a FilterOr of filter strings (task 4.16)"},
   "time_instants": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "datetime_col and deephaven.time are not written yet (task 6.8)"},
   "udf_update": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "doubled", "kept"], "why": "a formula cannot call a Python function of the scope (task 6.11)"},
-  "updateby_cumulative": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.updateby and Table.update_by are not written yet (task 6.6)"},
-  "updateby_rolling": {"state": "differs", "kinds": ["missing"], "tables": ["(script)"], "why": "deephaven.updateby and Table.update_by are not written yet (task 6.6)"}
+  "updateby_cumulative": {"state": "clean"},
+  "updateby_exponential": {"state": "clean"},
+  "updateby_rolling": {"state": "clean"},
+  "updateby_time": {"state": "clean"}
  }
 }
