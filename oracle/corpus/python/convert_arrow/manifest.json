@@ -1,0 +1,56 @@
+{
+  "format": 2,
+  "scenario": "convert_arrow",
+  "scenario_sha256": "22d7765f58fec87bb4fc7eeb4d33a56e73339a43be84d2f6a536dcfad1fa7281",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "round_trip",
+      "file": "step000.round_trip.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "formulas",
+      "file": "step000.formulas.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "from_arrow",
+      "file": "step000.from_arrow.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "lists",
+      "file": "step000.lists.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "part",
+      "file": "step000.part.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "chunked",
+      "file": "step000.chunked.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "no_rows",
+      "file": "step000.no_rows.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 2
+    }
+  ]
+}
