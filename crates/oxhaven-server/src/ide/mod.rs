@@ -156,24 +156,10 @@ const fn differs(
 
 const NO_CONSOLE: &str = "this server has no script session; every console call but \
                           GetConsoleTypes is UNIMPLEMENTED";
-const NO_DISPLAY_WRAPPER: &str = "unported: ColumnPreviewManager#makePreviewTable needs the \
-                                  DisplayWrapper column type";
 const GLOB_SUBSET: &str = "unported: character classes, groups and syntax errors of \
                            sun.nio.fs.Globs#toUnixRegexPattern";
 
 const DIFFERENCES: &[Difference] = &[
-    differs(
-        "console_disabled",
-        "preview_static_int_not_listed",
-        "UNIMPLEMENTED: not ported: io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable",
-        NO_DISPLAY_WRAPPER,
-    ),
-    differs(
-        "console_disabled",
-        "preview_static_one_other_type",
-        "UNIMPLEMENTED: not ported: io.deephaven.engine.table.impl.preview.ColumnPreviewManager#makePreviewTable",
-        NO_DISPLAY_WRAPPER,
-    ),
     differs(
         "console_disabled",
         "storage_outside_and_back",

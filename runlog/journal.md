@@ -429,3 +429,27 @@ limit at 03:46 and all five were resumed in their existing contexts. Uncommitted
 the worktrees survived; servers did not. PRs 58 (multi_join) and 59 (aggregations) had
 merged before the stop: main is at 73 of 83 scenarios. Disk is at 8.5 GB free.
 Token use so far, summed from tasks.csv: about 14.2M subagent tokens over 68 runs.
+
+## 2026-11-15 04:17 UTC
+
+PR 60 (list columns on the wire, ApplyPreviewColumns) merged. PR 61 opened (parity fixes).
+Finding that closes an earlier owner question: Java's CANCELLED for a join match ending in
+a space, and for a batch with an unset table reference, is one mechanism. A status whose
+message ends in 0x20 is an illegal HTTP/2 field value, so Java resets the stream. We now
+do the same in the transport, so no allowed difference is needed.
+Contract gap for owner review (from PR 60): no column type for preview columns and no
+table attributes for column descriptions or the uploaded schema; the server keeps them in
+side registries that table operations do not carry.
+Possible bug to check: head_by over a table whose only column is the key fails internally.
+
+## 2026-11-15 04:25 UTC
+
+Owner asked why main shows failed runs. Cause: `concurrency.cancel-in-progress` on the
+main ref; each run-log push cancels the run of the merge commit before it. No PR was
+merged on a red head. One real failure on main: run 235 (23:39 UTC, the harness hang,
+fixed by PR 56). Fix assigned to the CI test-time task: cancel only pull request runs and
+skip push runs for runlog-only commits. Until then run-log commits are batched.
+Also found: squash merges carry a `Co-authored-by: Claude` trailer (GitHub adds it from
+the branch commits' author) and commits use the environment's "Claude" git identity,
+against the owner's no-attribution rule. From PR 61 on the squash message is written
+explicitly. Author identity is with the owner to decide.
