@@ -8,6 +8,7 @@
 mod arithmetic;
 mod comparison;
 mod corpus;
+mod external;
 mod formula;
 mod logic;
 mod recorded;

@@ -419,7 +419,7 @@ async fn a_bound_table_is_a_python_variable() {
 }
 
 /// `name: type = first value, ...` of each column of the scope variable `name`.
-fn described(python: &Python, name: &str) -> Vec<String> {
+pub(super) fn described(python: &Python, name: &str) -> Vec<String> {
     let table = python.table(name);
     let snapshot = TableSnapshot::current(table.as_ref()).unwrap();
     let columns = table.definition().columns().iter();

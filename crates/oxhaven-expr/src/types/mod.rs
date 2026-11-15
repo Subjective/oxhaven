@@ -11,6 +11,7 @@
 
 mod methods;
 
+use crate::external::{ExternalArgument, ExternalFunctions};
 use crate::functions::{self, vectors, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
@@ -241,6 +242,11 @@ pub(crate) enum Node {
         kernel: Kernel,
         arguments: Vec<Typed>,
     },
+    /// A function of the embedder; an argument that is the `null` literal is `None`.
+    External {
+        function: crate::external::Bound,
+        arguments: Vec<Option<Typed>>,
+    },
     /// `int` arguments are of type `Int`.
     StringMethod {
         method: StringMethod,
@@ -262,9 +268,14 @@ pub(crate) struct Checked {
 }
 
 /// Type-checks `expr` against `definition`.
-pub(crate) fn check(expr: &Expr, definition: &TableDefinition) -> Result<Checked, FormulaError> {
+pub(crate) fn check(
+    expr: &Expr,
+    definition: &TableDefinition,
+    functions: Option<&dyn ExternalFunctions>,
+) -> Result<Checked, FormulaError> {
     let mut checker = Checker {
         definition,
+        functions,
         columns: Vec::new(),
         positions: false,
         keys: false,
@@ -368,6 +379,8 @@ fn family(op: BinaryOp) -> Family {
 
 struct Checker<'a> {
     definition: &'a TableDefinition,
+    /// The functions a call may be when the library cannot take it.
+    functions: Option<&'a dyn ExternalFunctions>,
     columns: Vec<String>,
     positions: bool,
     keys: bool,
@@ -936,7 +949,44 @@ impl Checker<'_> {
             .iter()
             .map(|argument| argument.as_ref().map(|typed| typed.column_type.clone()))
             .collect();
-        match functions::resolve(function, &types)? {
+        let resolved = match functions::resolve(function, &types) {
+            Ok(resolved) => resolved,
+            // Behavior: `QueryLanguageParser#getMethod`: when no static import takes the
+            // call, a variable of that name that can be called does. A column of the
+            // name is a variable that cannot.
+            Err(FormulaError::Type(message)) => {
+                let external = match self.functions {
+                    Some(functions) if self.definition.index_of(function).is_none() => {
+                        let described: Vec<ExternalArgument<'_>> = checked
+                            .iter()
+                            .zip(arguments)
+                            .map(|(checked, argument)| ExternalArgument {
+                                column_type: checked.as_ref().map(|typed| &typed.column_type),
+                                literal: match argument {
+                                    Expr::Literal(literal) => Some(literal),
+                                    _ => None,
+                                },
+                            })
+                            .collect();
+                        functions.resolve(function, &described)
+                    }
+                    _ => None,
+                };
+                let Some(external) = external else {
+                    return Err(FormulaError::Type(message));
+                };
+                let external = external?;
+                return Ok(typed(
+                    external.result_type().clone(),
+                    Node::External {
+                        function: crate::external::Bound(external),
+                        arguments: checked,
+                    },
+                ));
+            }
+            Err(other) => return Err(other),
+        };
+        match resolved {
             Resolved::Call(call) => {
                 let arguments = checked.into_iter().flatten().collect();
                 Ok(library_call(call, arguments))
