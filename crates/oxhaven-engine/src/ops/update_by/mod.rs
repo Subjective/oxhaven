@@ -13,7 +13,8 @@
 //! | cumulative sum, product, minimum, maximum; forward fill; delta | yes |
 //! | rolling sum, average, minimum, maximum, count, product, over rows or time | yes |
 //! | rolling standard deviation and weighted average, over rows or time | yes |
-//! | rolling group, formula, count-where | no (`unported!`) |
+//! | rolling group, over rows or time | yes |
+//! | rolling formula, count-where | no (`unported!`) |
 //! | exponential moving average, sum, minimum, maximum, decaying by ticks or time | yes |
 //! | exponential moving standard deviation, decaying by ticks or time | yes |
 //! | cumulative count-where | no (`unported!`) |
@@ -30,11 +31,13 @@
 //! recomputes: for the cumulative operators every row from the first one a change can
 //! reach to the end of the bucket; for a rolling window the rows whose window holds an
 //! added, removed or modified row. Those rows are reported as modified in the result
-//! columns. A row whose bucket columns changed leaves its bucket and joins another, as a
+//! columns. A rolling group in time also recomputes the rows whose vector holds a row
+//! without a timestamp that changed, which Java does not (`Stamped::holding_gap`). A row whose bucket columns changed leaves its bucket and joins another, as a
 //! removed and an added row.
 
 mod cumulative;
 mod em;
+mod group;
 mod rolling;
 mod values;
 
@@ -271,6 +274,8 @@ enum Window {
 enum Kernel {
     Cumulative(Cumulative),
     Rolling(Rolling),
+    /// The rolling group: a vector of the input values over the window.
+    Group,
     Em(Em),
 }
 
@@ -442,9 +447,10 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
         UpdateBySpec::RollingProduct(window) => rolling(Rolling::Product, window),
         UpdateBySpec::RollingStd(window) => rolling(Rolling::Std, window),
         UpdateBySpec::RollingWAvg { window, .. } => rolling(Rolling::WAvg, window),
+        // Behavior: UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator
         UpdateBySpec::RollingGroup(window) => {
-            ticks_of(window)?;
-            unported!("io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator")
+            let (window, column) = rolling_window(window)?;
+            Ok((Kernel::Group, window, column))
         }
         UpdateBySpec::RollingFormula { window, .. } => {
             ticks_of(window)?;
@@ -470,7 +476,8 @@ fn kernel_of(spec: &UpdateBySpec) -> Result<(Kernel, Window, Option<String>), Up
 /// Behavior: io.deephaven.api.updateby.spec.UpdateBySpec#applicableTo as implemented by
 /// `CumSumSpec`, `CumProdSpec`, `CumMinMaxSpec`, `FillBySpec`, `DeltaSpec`, `RollingSumSpec`,
 /// `RollingAvgSpec`, `RollingMinMaxSpec`, `RollingCountSpec`, `RollingProductSpec`,
-/// `RollingStdSpec`, `RollingWAvgSpec`, `EmaSpec`, `EmsSpec`, `EmMinMaxSpec` and `EmStdSpec`
+/// `RollingStdSpec`, `RollingWAvgSpec`, `RollingGroupSpec`, `EmaSpec`, `EmsSpec`,
+/// `EmMinMaxSpec` and `EmStdSpec`
 fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
     use ColumnType::*;
     let numeric = matches!(input, Byte | Short | Int | Long | Float | Double);
@@ -486,7 +493,9 @@ fn applicable(kernel: Kernel, input: &ColumnType) -> bool {
         Kernel::Cumulative(Cumulative::Product) => numeric,
         Kernel::Cumulative(Cumulative::Min | Cumulative::Max)
         | Kernel::Rolling(Rolling::Min | Rolling::Max) => numeric || character || comparable,
-        Kernel::Cumulative(Cumulative::ForwardFill) | Kernel::Rolling(Rolling::Count) => true,
+        Kernel::Cumulative(Cumulative::ForwardFill)
+        | Kernel::Rolling(Rolling::Count)
+        | Kernel::Group => true,
         Kernel::Cumulative(Cumulative::Delta(_))
         | Kernel::Rolling(Rolling::Std | Rolling::WAvg)
         | Kernel::Em(_) => numeric || character,
@@ -547,10 +556,12 @@ impl Plan {
             // Behavior: the visitors of io.deephaven.engine.table.impl.updateby
             // .UpdateByOperatorFactory.OperationVisitor for operations in time make no
             // operator for the timestamp column itself, and UpdateBy#updateBy then fails to
-            // find the result column it was promised.
+            // find the result column it was promised. The visitor of the rolling group
+            // takes every pair, so the timestamps can be grouped.
+            let grouped = matches!(kernel, Kernel::Group);
             if let Some((output, _)) = pairs
                 .iter()
-                .find(|(_, input)| timestamp_column.as_ref() == Some(input))
+                .find(|(_, input)| !grouped && timestamp_column.as_ref() == Some(input))
             {
                 return Err(invalid(format!(
                     "Requested output column '{output}' was not found in operator output"
@@ -587,6 +598,7 @@ impl Plan {
                 let output_type = match kernel {
                     Kernel::Cumulative(kernel) => kernel.output_type(&input_type),
                     Kernel::Rolling(kernel) => kernel.output_type(&input_type),
+                    Kernel::Group => Some(group::output_type(&input_type)),
                     Kernel::Em(_) => Em::output_type(&input_type),
                 }
                 .ok_or_else(|| {
@@ -977,7 +989,7 @@ impl Plan {
                             };
                             em.accumulate(&column.input_type, &values, &stamps, seed)?
                         }
-                        Kernel::Rolling(_) => {
+                        Kernel::Rolling(_) | Kernel::Group => {
                             return Err(internal("a rolling operator in the cumulative window"))
                         }
                     };
@@ -994,8 +1006,16 @@ impl Plan {
                 let slides = ticks.slides(size, &positions, &influencer_positions);
                 for &member in members {
                     let column = &self.columns[member];
-                    let Kernel::Rolling(kernel) = column.kernel else {
-                        return Err(internal("a cumulative operator in a rolling window"));
+                    let kernel = match column.kernel {
+                        Kernel::Rolling(kernel) => kernel,
+                        Kernel::Group => {
+                            let slices = positions.iter().map(|at| ticks.slice(rows, at));
+                            let results =
+                                group::vectors(&*self.parent.column(column.input), slices)?;
+                            column.output.fill(affected, &results)?;
+                            continue;
+                        }
+                        _ => return Err(internal("a cumulative operator in a rolling window")),
                     };
                     let values = self.parent.column(column.input).chunk(&influencers)?;
                     let weights = match &column.weight {
@@ -1032,16 +1052,28 @@ impl Plan {
                     .collect();
                 for &member in members {
                     let column = &self.columns[member];
-                    let Kernel::Rolling(kernel) = column.kernel else {
-                        return Err(internal("a cumulative operator in a rolling window"));
+                    let results = match column.kernel {
+                        Kernel::Rolling(kernel) => {
+                            let values = self.parent.column(column.input).chunk(&influencers)?;
+                            let weights = match &column.weight {
+                                Some((index, _)) => {
+                                    Some(self.parent.column(*index).chunk(&influencers)?)
+                                }
+                                None => None,
+                            };
+                            let weights =
+                                column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
+                            kernel.evaluate(&column.input_type, &values, weights, &slides)?
+                        }
+                        // A row without a timestamp gets a null here too, not an empty
+                        // vector: RollingGroupOperator.Context#accumulateRolling writes a
+                        // null start and a null end for it.
+                        Kernel::Group => group::vectors(
+                            &*self.parent.column(column.input),
+                            group::time_slices(rows, &influencers, &slides),
+                        )?,
+                        _ => return Err(internal("a cumulative operator in a rolling window")),
                     };
-                    let values = self.parent.column(column.input).chunk(&influencers)?;
-                    let weights = match &column.weight {
-                        Some((index, _)) => Some(self.parent.column(*index).chunk(&influencers)?),
-                        None => None,
-                    };
-                    let weights = column.weight.as_ref().map(|(_, t)| t).zip(weights.as_ref());
-                    let results = kernel.evaluate(&column.input_type, &values, weights, &slides)?;
                     let results = take(results.as_ref(), &indices, None)
                         .map_err(|e| internal(&e.to_string()))?;
                     column.output.fill(affected, &results)?;
@@ -1190,6 +1222,46 @@ impl Plan {
         Ok(affected)
     }
 
+    /// The rows of a bucket whose vector over a window in time holds a row without a
+    /// timestamp that was added, removed or modified in an input column (`changed`). See
+    /// [`Stamped::holding_gap`] for why Java recomputes none of them.
+    #[allow(clippy::too_many_arguments)]
+    fn gap_affected(
+        &self,
+        time: Time,
+        previous: &RowSet,
+        rows: &RowSet,
+        upstream: &TableUpdate,
+        added: &RowSet,
+        removed: &RowSet,
+        changed: &RowSet,
+    ) -> Result<RowSet, TableFailure> {
+        let stamped = self.stamped(rows)?;
+        let mut affected = RowSet::empty();
+        let current = added.union(changed);
+        if !current.is_empty() {
+            for (key, stamp) in current.iter().zip(self.timestamps(&current, false)?) {
+                if stamp.is_none() {
+                    affected.insert(&stamped.holding_gap(stamped.count_before(key), time));
+                }
+            }
+        }
+        if !removed.is_empty() {
+            // Where a removed row stood: after the nearest row before it that is still there.
+            let survivors = previous.minus(removed);
+            for (key, stamp) in removed.iter().zip(self.timestamps(removed, true)?) {
+                let (Ok(at) | Err(at)) = survivors.find_or_insertion(key);
+                let before = at.checked_sub(1).and_then(|at| survivors.get(at));
+                if let (None, Some(before)) = (stamp, before) {
+                    let before = upstream.shifted.apply_to_key(before);
+                    let count = stamped.count_before(before + 1);
+                    affected.insert(&stamped.holding_gap(count, time));
+                }
+            }
+        }
+        Ok(affected)
+    }
+
     /// Behavior: io.deephaven.engine.table.impl.updateby.UpdateBy.PhasedUpdateProcessor, from
     /// the shift of the result columns to #computeDownstreamUpdate
     fn on_update(
@@ -1299,6 +1371,19 @@ impl Plan {
                         &RowSet::from_keys(change.modified_before.iter().copied()),
                     )?,
                 };
+                let mut affected = affected;
+                let grouped = |member: &usize| matches!(self.columns[*member].kernel, Kernel::Group);
+                if let (Window::Time(time), true) = (window, dirty.iter().any(grouped)) {
+                    affected.insert(&self.gap_affected(
+                        *time,
+                        &previous,
+                        rows,
+                        upstream,
+                        &added,
+                        &removed,
+                        if inputs_changed { &changed } else { &nothing },
+                    )?);
+                }
                 if affected.is_empty() {
                     continue;
                 }

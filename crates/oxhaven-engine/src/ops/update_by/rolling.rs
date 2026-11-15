@@ -204,6 +204,16 @@ impl Stamped {
         out
     }
 
+    /// The keys of the rows that have a timestamp, in order.
+    pub(super) fn keys(&self) -> &[RowKey] {
+        &self.keys
+    }
+
+    /// The timestamps of those rows.
+    pub(super) fn stamps(&self) -> &[i64] {
+        &self.stamps
+    }
+
     /// The rows that have a timestamp.
     pub(super) fn rows(&self) -> RowSet {
         RowSet::from_keys(self.keys.iter().copied())

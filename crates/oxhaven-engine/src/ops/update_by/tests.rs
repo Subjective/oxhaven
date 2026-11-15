@@ -11,7 +11,9 @@ use super::{
     UpdateByOperation, UpdateBySpec, WindowScale,
 };
 use crate::ops::sort::testing::{keys, shifts, static_table, Ticking};
-use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, StringArray};
+use arrow::array::{
+    Array, ArrayRef, Float64Array, Int32Array, Int64Array, ListArray, StringArray,
+};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -361,12 +363,98 @@ fn em() -> EmSpec {
     }
 }
 
+/// The cells of the vector column at `column`: null, or the `int` elements.
+fn int_vectors(table: &dyn Table, column: usize) -> Vec<Option<Vec<Option<i32>>>> {
+    let cells = TableSnapshot::current(table).unwrap().columns[column].clone();
+    let cells = cells.as_any().downcast_ref::<ListArray>().unwrap();
+    cells
+        .iter()
+        .map(|cell| {
+            cell.map(|cell| {
+                let cell = cell.as_any().downcast_ref::<Int32Array>().unwrap();
+                cell.iter().collect()
+            })
+        })
+        .collect()
+}
+
+fn cell(values: &[i32]) -> Option<Vec<Option<i32>>> {
+    Some(values.iter().copied().map(Some).collect())
+}
+
+fn rolling_group(window: RollingWindow, by: &'static [&'static str]) -> Ticking {
+    ticking(vec![op(UpdateBySpec::RollingGroup(window), &["R = I"])], by)
+}
+
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.updateby.UpdateByOperatorFactory.OperationVisitor#makeRollingGroupOperator"
-)]
-fn rolling_group_is_unported() {
-    request(UpdateBySpec::RollingGroup(RollingWindow::ticks(3, 0)));
+fn a_rolling_group_holds_the_values_of_each_window() {
+    let t = rolling_group(RollingWindow::ticks(2, 1), &[]);
+    assert_eq!(
+        t.result.definition().columns()[R].column_type,
+        ColumnType::vector(ColumnType::Int)
+    );
+    assert_eq!(
+        int_vectors(&*t.result, R),
+        vec![
+            cell(&[1, 2]),
+            cell(&[1, 2, 3]),
+            cell(&[2, 3, 4]),
+            cell(&[3, 4, 5]),
+            cell(&[4, 5])
+        ]
+    );
+    // Per bucket, and a window ahead of its row, which is empty at the end of the bucket.
+    let t = rolling_group(RollingWindow::ticks(-1, 2), &["K"]);
+    assert_eq!(
+        int_vectors(&*t.result, R),
+        vec![cell(&[5]), cell(&[]), cell(&[]), cell(&[]), cell(&[])]
+    );
+}
+
+#[test]
+fn a_rolling_group_over_no_rows_is_empty_where_the_other_operators_fail() {
+    let t = rolling_group(RollingWindow::ticks(0, 0), &[]);
+    assert_eq!(int_vectors(&*t.result, R), vec![cell(&[]); 5]);
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2]))]);
+    let window = || RollingWindow::ticks(0, 0);
+    let both = [
+        op(UpdateBySpec::RollingGroup(window()), &["R = I"]),
+        op(UpdateBySpec::RollingSum(window()), &["Q = I"]),
+    ];
+    let error = update_by(&source, &both, &[] as &[&str]).err().unwrap();
+    assert!(error.to_string().contains("Assertion failed"), "{error}");
+}
+
+#[test]
+fn a_rolling_group_writes_the_rows_whose_window_holds_the_change() {
+    let t = rolling_group(RollingWindow::ticks(2, 0), &[]);
+    let update = t
+        .step(TableChange::new().add([25], row("a", 10, 0.0)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![25], vec![], vec![30], ModifiedColumnSet::of([R]))
+    );
+    assert_eq!(int_vectors(&*t.result, R)[4], cell(&[10, 4]));
+    let update = t
+        .step(TableChange::new().modify([0], [(1, ints(&[7]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![0, 10], ModifiedColumnSet::of([1, R]))
+    );
+    assert_eq!(int_vectors(&*t.result, R)[1], cell(&[7, 2]));
+    // A column that is no input writes nothing.
+    let update = t
+        .step(TableChange::new().modify([0], [(2, doubles(&[9.0]))]))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![], vec![], vec![0], ModifiedColumnSet::of([2]))
+    );
+    let update = t.step(TableChange::new().remove([20])).unwrap();
+    assert_eq!(keys(&update.modified), vec![25]);
+    assert_eq!(int_vectors(&*t.result, R)[2], cell(&[2, 10]));
 }
 
 #[test]
@@ -527,6 +615,16 @@ fn everything() -> Vec<UpdateByOperation> {
             },
             &["Wa4 = L", "Wa5 = Y", "Wa6 = F"],
         ),
+        op(
+            UpdateBySpec::RollingGroup(window(3, 0)),
+            &["G1 = I", "G2 = D", "G3 = S", "G4 = B", "G5 = T", "G6 = K"],
+        ),
+        op(
+            UpdateBySpec::RollingGroup(window(-1, 3)),
+            &["G7 = C", "G8 = F"],
+        ),
+        op(UpdateBySpec::RollingGroup(window(0, 0)), &["G9 = L"]),
+        op(UpdateBySpec::RollingGroup(window(2, 2)), &["G10 = Y"]),
     ]
 }
 
@@ -684,6 +782,66 @@ fn a_row_without_a_timestamp_is_in_no_window() {
         .step(TableChange::new().modify([25], [(3, longs(&[Some(103)]))]))
         .unwrap();
     assert_eq!(keys(&update.modified), vec![0, 10, 20, 25, 30, 40]);
+}
+
+#[test]
+fn a_rolling_group_in_time_holds_the_rows_between_the_ends_of_the_window() {
+    let group = || vec![op(UpdateBySpec::RollingGroup(time(2, 0)), &["R = I"])];
+    let t = timed(group(), &[]);
+    let rows123 = || cell(&[1, 2, 3]);
+    assert_eq!(
+        int_vectors(&*t.result, TR),
+        vec![cell(&[1]), rows123(), rows123(), cell(&[4]), cell(&[5])]
+    );
+    // A row without a timestamp has a null, not an empty vector. It is in no window, but
+    // it stands between two rows of the windows of rows 10 and 20, whose vectors hold it.
+    // Java reports neither of them (see `Stamped::holding_gap`).
+    let update = t
+        .step(TableChange::new().add([15], timed_row("a", 9, None)))
+        .unwrap();
+    assert_eq!(
+        shape(&update),
+        (vec![15], vec![], vec![10, 20], ModifiedColumnSet::of([TR]))
+    );
+    let with_9 = || cell(&[1, 2, 9, 3]);
+    assert_eq!(
+        int_vectors(&*t.result, TR),
+        vec![cell(&[1]), with_9(), None, with_9(), cell(&[4]), cell(&[5])]
+    );
+    let update = t
+        .step(TableChange::new().modify([15], [(1, ints(&[8]))]))
+        .unwrap();
+    assert_eq!(keys(&update.modified), vec![10, 15, 20]);
+    assert_eq!(int_vectors(&*t.result, TR)[1], cell(&[1, 2, 8, 3]));
+    let update = t.step(TableChange::new().remove([15])).unwrap();
+    assert_eq!(keys(&update.modified), vec![10, 20]);
+    assert_eq!(int_vectors(&*t.result, TR)[1], rows123());
+    // At the end of a window it is not between two of its rows.
+    let update = t
+        .step(TableChange::new().add([25], timed_row("a", 9, None)))
+        .unwrap();
+    assert_eq!(keys(&update.modified), Vec::<RowKey>::new());
+    // A window that holds no row is an empty vector.
+    let t = timed(
+        vec![op(UpdateBySpec::RollingGroup(time(-1, 3)), &["R = I"])],
+        &[],
+    );
+    assert_eq!(
+        int_vectors(&*t.result, TR),
+        vec![cell(&[2, 3]), cell(&[]), cell(&[]), cell(&[]), cell(&[])]
+    );
+}
+
+#[test]
+fn a_rolling_group_in_time_takes_the_timestamp_column() {
+    let t = timed(
+        vec![op(UpdateBySpec::RollingGroup(time(1, 0)), &["R = T"])],
+        &[],
+    );
+    assert_eq!(
+        t.result.definition().columns()[TR].column_type,
+        ColumnType::vector(ColumnType::Long)
+    );
 }
 
 #[test]
@@ -978,6 +1136,17 @@ fn everything_in_time() -> Vec<UpdateByOperation> {
                 weight_column: "D".into(),
             },
             &["Wa3 = L"],
+        ),
+        op(
+            UpdateBySpec::RollingGroup(time(5, 0)),
+            &["G1 = I", "G2 = S", "G3 = T"],
+        ),
+        op(UpdateBySpec::RollingGroup(time(-2, 6)), &["G4 = D"]),
+        op(UpdateBySpec::RollingGroup(time(4, 4)), &["G5 = X", "G6 = B"]),
+        op(UpdateBySpec::RollingGroup(time(0, 0)), &["G7 = L"]),
+        op(
+            UpdateBySpec::RollingGroup(RollingWindow::ticks(2, 1)),
+            &["G8 = F"],
         ),
     ]
 }
