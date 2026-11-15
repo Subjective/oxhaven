@@ -704,3 +704,8 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   with `--features python`, the web root from the `deephaven-server` wheel, a sample
   script through the Python client, and `ide-test.js --routes panels,console` all passed.
   The README still says "Nothing here is usable yet"; run steps belong there (6.17).
+- 21:27 UTC: 6.10 (Python input tables) reported after 36 minutes; pull request 87 opened.
+  Resuming the console agent with its context worked well. Incident: while stopping its
+  gate the agent ran `pkill -f "cargo clippy --workspace --all-targets"`, a pattern not
+  limited to its own build directory, which may have killed another agent's clippy run.
+  The other agents were told. The brief should say: kill by process id, never by pattern.
