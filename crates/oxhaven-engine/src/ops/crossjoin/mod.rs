@@ -28,7 +28,7 @@ mod tests;
 
 use crate::ops::join::natural::Plan;
 use crate::ops::join::{JoinAddition, JoinError, JoinMatch, NaturalJoinType};
-use crate::table::{memoized, CopyType, MergedOperator, QueryTable, TableSpec};
+use crate::table::{memoized, reads_through, CopyType, MergedOperator, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 use keyed::Keyed;
 use layout::{min_bits, Layout, LeftRows, RightRows};
@@ -272,15 +272,12 @@ fn start(
     let to_left: Arc<dyn RowRedirection> = Arc::new(LeftRows(layout.clone()));
     let to_right: Arc<dyn RowRedirection> = Arc::new(RightRows(layout));
     let mut columns: Vec<Arc<dyn ColumnSource>> = (0..left_count)
-        .map(|index| {
-            Arc::new(RedirectedSource::new(to_left.clone(), left.column(index)))
-                as Arc<dyn ColumnSource>
-        })
+        .map(|index| reads_through(RedirectedSource::new(to_left.clone(), left.column(index))))
         .collect();
     for (name, source) in &plan.additions {
         let column_type = right.definition().columns()[*source].column_type.clone();
         definition.push(ColumnDefinition::new(name.as_str(), column_type));
-        columns.push(Arc::new(RedirectedSource::new(
+        columns.push(reads_through(RedirectedSource::new(
             to_right.clone(),
             right.column(*source),
         )));

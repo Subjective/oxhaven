@@ -30,7 +30,9 @@ mod where_in_tests;
 
 pub use where_in::{where_in, where_not_in, WhereInError};
 
-use crate::table::{memoized, tracked_source, CopyType, QueryTable, TableSpec};
+use crate::table::{
+    memoized, shared_reads_through, tracked_source, CopyType, QueryTable, TableSpec,
+};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_column::WritableSource;
@@ -397,8 +399,16 @@ fn with_keys(
             groups.enter(&mut state, &groups.source.row_set(), &mut Touched::new())?;
             state.rows.len() as u64
         };
-        let sources = groups.columns.iter();
-        let sources = sources.map(|source| source.clone() as Arc<dyn ColumnSource>);
+        // A static result shows the keys where the aggregation keeps them, and a
+        // refreshing one has copies of them: see `Aggregator::columns`.
+        let refreshing = groups.source.is_refreshing();
+        let sources = groups.columns.iter().map(|source| {
+            if refreshing {
+                source.clone() as Arc<dyn ColumnSource>
+            } else {
+                shared_reads_through(source)
+            }
+        });
         let mut spec = TableSpec::new(definition, RowSet::flat(size), sources.collect())
             .with_attributes(attributes);
         if flat {
