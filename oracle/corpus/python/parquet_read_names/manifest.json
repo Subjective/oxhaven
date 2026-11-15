@@ -1,0 +1,14 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_names",
+  "scenario_sha256": "0884ff53ab34168539a6c806d64001f69bad7855588acbb91611f9e43a75fe6a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "legal",
+      "file": "step000.legal.arrow",
+      "rows": 1
+    }
+  ]
+}
