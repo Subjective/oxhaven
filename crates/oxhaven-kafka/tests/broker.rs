@@ -20,8 +20,8 @@ use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_kafka::{
-    consume, ConsumeOptions, InitialOffset, JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec,
-    Spec, TableType,
+    consume, AvroMapping, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, Offsets,
+    ProduceOptions, ProduceSpec, Spec, TableType,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -666,6 +666,112 @@ fn a_simple_byte_array_column_holds_the_bytes_of_each_value() {
         })
         .collect();
     assert_eq!(cells, [vec![97, 98], vec![], vec![-61, -87]]);
+}
+
+/// A schema registry on this machine that answers the paths it is given and 404 to any
+/// other, as `tests/avro.rs` serves one: the round trip needs no registry image.
+fn serve_registry(answers: Vec<(String, String)>) -> String {
+    use std::io::{Read, Write};
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else { return };
+            let mut request = Vec::new();
+            let mut buffer = [0u8; 1024];
+            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+                match stream.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => request.extend_from_slice(&buffer[..n]),
+                }
+            }
+            let request = String::from_utf8_lossy(&request);
+            let path = request.split(' ').nth(1).unwrap_or("");
+            let found = answers.iter().find(|(p, _)| p == path);
+            let (status, body) = match found {
+                Some((_, body)) => (200, body.as_str()),
+                None => (404, r#"{"error_code":40403,"message":"Schema not found"}"#),
+            };
+            let response = format!(
+                "HTTP/1.1 {status} X\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    url
+}
+
+/// Behavior: io.deephaven.kafka.KafkaTools.Consume#avroSpec, with the key's schema given
+/// as text and the value's fetched from the registry by subject; the value was written
+/// with an older schema whose `n` is an int.
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn avro_keys_and_values_are_read_through_a_schema_registry() {
+    let topic = fresh("avro");
+    let key_schema = r#"{"type":"record","name":"K","fields":[{"name":"k","type":"string"}]}"#;
+    let writer = r#"{"type":"record","name":"V","fields":[{"name":"n","type":"int"}]}"#;
+    let reader = r#"{"type":"record","name":"V","fields":[{"name":"n","type":"long"},{"name":"s","type":["null","string"],"default":null}]}"#;
+    let schema = |text: &str| format!(r#"{{"schema":"{}"}}"#, text.replace('"', "\\\""));
+    let registry = serve_registry(vec![
+        (
+            format!("/subjects/{topic}-value/versions/latest"),
+            r#"{"id":3,"version":2}"#.to_owned(),
+        ),
+        (
+            "/schemas/ids/3?fetchMaxId=false&subject=".to_owned(),
+            schema(reader),
+        ),
+        (
+            format!("/schemas/ids/1?fetchMaxId=false&subject={topic}-key"),
+            schema(key_schema),
+        ),
+        (
+            format!("/schemas/ids/2?fetchMaxId=false&subject={topic}-value"),
+            schema(writer),
+        ),
+    ]);
+    let framed = |id: i32, body: &[u8]| [&[0][..], &id.to_be_bytes(), body].concat();
+    let producer: BaseProducer = ClientConfig::new()
+        .set("bootstrap.servers", broker())
+        .create()
+        .unwrap();
+    // Zig-zag: "a" is length 1 (2); 5 is 10 and -1 is 1.
+    for (key, value) in [(&b"\x02a"[..], &b"\x0a"[..]), (b"\x02b", b"\x01")] {
+        let (key, value) = (framed(1, key), framed(2, value));
+        let record = BaseRecord::to(&topic)
+            .partition(0)
+            .key(&key)
+            .payload(&value);
+        producer.send(record).map_err(|(error, _)| error).unwrap();
+    }
+    producer.flush(Duration::from_secs(60)).unwrap();
+
+    let graph = SteppedUpdateGraph::new();
+    let value = Spec::Avro {
+        schema: AvroSchema::Registry {
+            subject: format!("{topic}-value"),
+            version: Some("latest".to_owned()),
+        },
+        mapping: AvroMapping::Direct,
+    };
+    let mut options = options(&topic, BEGINNING, value, TableType::Append);
+    options.key = Spec::Avro {
+        schema: AvroSchema::Text(key_schema.to_owned()),
+        mapping: AvroMapping::Only(vec![("k".to_owned(), Some("K".to_owned()))]),
+    };
+    options
+        .config
+        .push(("schema.registry.url".to_owned(), registry));
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    let table = consume(shared, &options).unwrap();
+    wait_for(&graph, table.as_ref(), 2);
+    assert_eq!(
+        strings(table.as_ref(), "K"),
+        [Some("a".to_owned()), Some("b".to_owned())]
+    );
+    assert_eq!(longs(table.as_ref(), "n"), [Some(5), Some(-1)]);
+    assert_eq!(strings(table.as_ref(), "s"), [None, None]);
 }
 
 // Producing. Every record expected here is what the Java reference published to a broker

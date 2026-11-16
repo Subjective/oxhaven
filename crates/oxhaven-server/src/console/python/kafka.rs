@@ -10,8 +10,8 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_kafka::{
-    ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets, ProduceOptions,
-    ProduceSpec, Publication, Spec, TableType,
+    AvroMapping, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets,
+    ProduceOptions, ProduceSpec, Publication, Spec, TableType,
 };
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -62,8 +62,39 @@ fn spec(json: &str) -> PyResult<Spec> {
             };
             Ok(Spec::Json { columns, mapping })
         }
+        Some("avro") => {
+            let schema = match (&value["schema"], &value["subject"]) {
+                (Value::String(text), _) => AvroSchema::Text(text.clone()),
+                (_, Value::String(subject)) => AvroSchema::Registry {
+                    subject: subject.clone(),
+                    version: value["version"].as_str().map(str::to_owned),
+                },
+                _ => return Err(bad()),
+            };
+            let avro_pairs = |value: &Value| -> PyResult<Vec<(String, Option<String>)>> {
+                let pair =
+                    |pair: &Value| Ok((text(&pair[0])?, pair[1].as_str().map(str::to_owned)));
+                value.as_array().ok_or_else(bad)?.iter().map(pair).collect()
+            };
+            let mapping = match &value["mapping"] {
+                Value::String(direct) if direct == "direct" => AvroMapping::Direct,
+                Value::Object(kind) => match (kind.get("identity"), kind.get("only")) {
+                    (Some(pairs), None) => AvroMapping::Identity(avro_pairs(pairs)?),
+                    (None, Some(pairs)) => AvroMapping::Only(avro_pairs(pairs)?),
+                    _ => return Err(bad()),
+                },
+                _ => return Err(bad()),
+            };
+            Ok(Spec::Avro { schema, mapping })
+        }
         _ => Err(bad()),
     }
+}
+
+/// Reads an Avro schema given as text, as `avro_spec` does when it is called.
+#[pyfunction]
+pub(super) fn kafka_avro_schema(text: &str) -> PyResult<()> {
+    oxhaven_kafka::check_avro_schema(text).map_err(exception)
 }
 
 /// Consumes `topic` into a table. `all_offsets` is where to start in every partition, as
@@ -337,12 +368,49 @@ mod tests {
             failure("kc.consume_to_partitioned_table(CFG, 't')", CONSUME),
             "not ported: io.deephaven.kafka.KafkaTools#consumeToPartitionedTable"
         );
+        // A schema given as text is read when the spec is made; a subject is not looked up
+        // until `consume`.
+        let specs = console.evaluate(&format!(
+            "{SETUP}\
+             s = kc.avro_spec('subj')\n\
+             assert s.j_object == {{'kind': 'avro', 'mapping': 'direct', 'subject': 'subj', \
+             'version': 'latest'}}, s.j_object\n\
+             s = kc.avro_spec('subj', schema_version='2', mapping={{'a': 'A'}}, mapped_only=True)\n\
+             assert s.j_object['mapping'] == {{'only': [('a', 'A')]}}, s.j_object\n\
+             assert s.j_object['version'] == '2'\n\
+             text = '{{\"type\": \"record\", \"name\": \"R\", \"fields\": []}}'\n\
+             s = kc.avro_spec(text, mapping={{'a': None}})\n\
+             assert s.j_object == {{'kind': 'avro', 'mapping': {{'identity': [('a', None)]}}, \
+             'schema': text}}, s.j_object\n\
+             assert kc.avro_spec(text, mapping={{}}).j_object['mapping'] == 'direct'\n"
+        ));
+        assert_eq!(specs.error, None);
         assert_eq!(
             failure(
-                "kc.avro_spec('schema')",
+                "kc.avro_spec('{\"type\": \"record\", \"fields\": []}')",
                 "failed to create a Kafka key/value spec"
             ),
-            "not ported: io.deephaven.kafka.KafkaTools.Consume#avroSpec"
+            "org.apache.avro.SchemaParseException: No name in schema: \
+             {\"type\":\"record\",\"fields\":[]}"
+        );
+        assert_eq!(
+            failure(
+                "kc.consume(CFG, 't', key_spec=kc.KeyValueSpec.IGNORE, \
+                 value_spec=kc.avro_spec('{\"type\": \"record\", \"name\": \"R\", \"fields\": []}'))",
+                CONSUME
+            ),
+            "org.apache.kafka.common.config.ConfigException: Missing required configuration \
+             \"schema.registry.url\" which has no default value."
+        );
+        assert_eq!(
+            failure(
+                "kc.consume({**CFG, 'schema.registry.url': 'https://127.0.0.1:1'}, 't', \
+                 key_spec=kc.KeyValueSpec.IGNORE, value_spec=kc.avro_spec('s'))",
+                CONSUME
+            ),
+            "not ported yet: \
+             io.confluent.kafka.schemaregistry.client.rest.RestService#setSslSocketFactory: \
+             a schema registry over TLS (https://127.0.0.1:1)"
         );
         for (call, java) in [
             (
