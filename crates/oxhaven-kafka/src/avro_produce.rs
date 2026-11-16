@@ -21,7 +21,7 @@ use oxhaven_contracts::table::Table;
 
 use crate::avro_text::{Kind, Resolved, Text, Ty};
 use crate::json;
-use crate::registry::Registry;
+use crate::registry::{CallFailure, Registry};
 use crate::serialize::{double_text, float_text};
 use crate::{avro, not_ported, KafkaError};
 
@@ -75,11 +75,13 @@ impl AvroProduceSpec {
             let text = self.schema_of_table(definition, refreshing)?;
             registry
                 .register(&self.subject, &text)
-                .map_err(|failure| KafkaError::Invalid(format!("{UNCHECKED}: {}", failure.0)))?;
+                .map_err(|CallFailure(text)| {
+                    KafkaError::Invalid(format!("{UNCHECKED}: {text} (caused by {text})"))
+                })?;
             text
         } else {
             let text = registry.subject_schema_text(&self.subject, self.version.as_deref())?;
-            avro::parse(&text).map_err(KafkaError::Invalid)?;
+            avro::parse_registered(&text).map_err(KafkaError::Invalid)?;
             text
         };
         let text = Arc::new(Text::read(&text).map_err(KafkaError::Invalid)?);

@@ -145,36 +145,54 @@ impl ClientSink {
     }
 }
 
-impl RecordSink for ClientSink {
-    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#send(ProducerRecord,
-    /// Callback): what fails goes to the callback
-    fn send(&mut self, record: OutRecord) {
-        self.sent += 1;
-        if !valid_topic(&record.topic) {
+impl ClientSink {
+    /// Whether the metadata of `topic` and `partition` is known, waiting for it; when not,
+    /// the send has completed with its failure.
+    fn admit(&mut self, topic: &str, partition: Option<i32>) -> bool {
+        if !valid_topic(topic) {
             // Behavior: the metadata request of KafkaProducer#waitOnMetadata, whose
             // answer for such a name fails the send (probe c1)
             let context = self.producer.context();
             context.completed.fetch_add(1, Ordering::SeqCst);
             context.fail(format!(
-                "org.apache.kafka.common.errors.InvalidTopicException: Invalid topics: [{}]",
-                record.topic
+                "org.apache.kafka.common.errors.InvalidTopicException: Invalid topics: [{topic}]"
             ));
-            return;
+            return false;
         }
-        if self.no_metadata.contains(&record.topic) {
+        if self.no_metadata.contains(topic) {
             // Java waits for the metadata again for each record and fails it again; this
             // does not wait again within one publication.
             self.producer
                 .context()
                 .completed
                 .fetch_add(1, Ordering::SeqCst);
-            return;
+            return false;
         }
-        if let Err(failure) = self.await_metadata(&record.topic, record.partition) {
-            self.no_metadata.insert(record.topic.clone());
+        if let Err(failure) = self.await_metadata(topic, partition) {
+            self.no_metadata.insert(topic.to_owned());
             let context = self.producer.context();
             context.completed.fetch_add(1, Ordering::SeqCst);
             context.fail(failure);
+            return false;
+        }
+        true
+    }
+}
+
+impl RecordSink for ClientSink {
+    fn ready(&mut self, topic: &str, partition: Option<i32>) -> bool {
+        let admitted = self.admit(topic, partition);
+        if !admitted {
+            self.sent += 1;
+        }
+        admitted
+    }
+
+    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#send(ProducerRecord,
+    /// Callback): what fails goes to the callback
+    fn send(&mut self, record: OutRecord) {
+        self.sent += 1;
+        if !self.admit(&record.topic, record.partition) {
             return;
         }
         let mut message: BaseRecord<'_, [u8], [u8], ()> = BaseRecord::to(&record.topic);

@@ -145,6 +145,20 @@ impl Schema {
 /// Behavior: org.apache.avro.Schema.Parser#parse(String), org.apache.avro.ParseContext,
 /// org.apache.avro.Schema#parse(JsonNode, ParseContext, String), org.apache.avro.LogicalTypes#fromSchemaIgnoreInvalid
 pub(crate) fn parse(text: &str) -> Result<Schema, Failure> {
+    parse_checking(text, true)
+}
+
+/// Reads a schema as Confluent reads one it fetched from a registry: as [`parse`] does, but
+/// without checking the fields' defaults.
+///
+/// Behavior: io.confluent.kafka.schemaregistry.avro.AvroSchema#getParser with
+/// `validateAsNew` false, `Schema.Parser#setValidateDefaults(false)` (probes r_dec and
+/// h_ldef: a field whose default is not of its type is written)
+pub(crate) fn parse_registered(text: &str) -> Result<Schema, Failure> {
+    parse_checking(text, false)
+}
+
+fn parse_checking(text: &str, defaults: bool) -> Result<Schema, Failure> {
     let (node, rest) = json::parse_prefix(text).map_err(|detail| format!("{PARSE}: {detail}"))?;
     if matches!(node, Node::Missing) {
         return Err(format!("{PARSE}: No content to map due to end-of-input"));
@@ -177,7 +191,7 @@ pub(crate) fn parse(text: &str) -> Result<Schema, Failure> {
         }
     }
     // Defaults are checked once every name is known.
-    for i in 0..schema.named.len() {
+    for i in (0..schema.named.len()).filter(|_| defaults) {
         if let Named::Record { fields, .. } = &schema.named[i] {
             for field in fields {
                 if let Some(default) = &field.default {

@@ -530,12 +530,28 @@ mod tests {
                 "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)",
             ),
             (
-                "kp.produce(EMPTY, CFG, 't', IGNORE, V, topic_col='K')",
-                "not ported: io.deephaven.kafka.KafkaPublishOptions#topicColumn",
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, topic_col='V')",
+                "java.lang.ClassCastException: Cannot convert [V] of type int to type \
+                 java.lang.CharSequence",
             ),
             (
-                "kp.produce(EMPTY, CFG, 't', IGNORE, V, timestamp_col='K')",
-                "not ported: io.deephaven.kafka.KafkaPublishOptions#timestampColumn",
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, partition_col='K')",
+                "java.lang.ClassCastException: Cannot convert [K] of type java.lang.String to \
+                 type int",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, timestamp_col='Nope')",
+                "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names \
+                 [Nope], available column names are [K, V]",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, None, IGNORE, V)",
+                "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, kp.avro_spec('s'))",
+                "org.apache.kafka.common.config.ConfigException: Missing required \
+                 configuration \"schema.registry.url\" which has no default value.",
             ),
             (
                 "kp.produce(EMPTY, {}, 't', IGNORE, V)",
@@ -583,8 +599,23 @@ mod tests {
             "no matching Java method overloads found"
         );
         assert_eq!(
-            failure("kp.avro_spec('schema')", SPEC),
-            "not ported: io.deephaven.kafka.KafkaTools.Produce#avroSpec"
+            failure(
+                "kp.avro_spec('s', schema_version='2', publish_schema=True)",
+                SPEC
+            ),
+            "java.lang.IllegalArgumentException: schemaVersion must be null or \"latest\" when \
+             publishSchema=true"
         );
+        let checked = console.evaluate(&format!(
+            "{SETUP}\
+             spec = kp.avro_spec('s', field_to_col_mapping={{'a': 'K'}}, timestamp_field='ts', \
+             exclude_columns=['V'], publish_schema=True, schema_namespace='n', \
+             column_properties={{'K.x': 'y'}})\n\
+             assert spec.j_object == {{'kind': 'avro', 'subject': 's', 'version': 'latest', \
+             'mapping': [['a', 'K']], 'timestamp_field': 'ts', 'include_only': None, \
+             'exclude': ['V'], 'publish_schema': True, 'namespace': 'n', \
+             'column_properties': [('K.x', 'y')]}}, spec.j_object\n"
+        ));
+        assert_eq!(checked.error, None);
     }
 }

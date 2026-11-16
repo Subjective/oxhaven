@@ -104,6 +104,15 @@ pub struct OutRecord {
 /// by the next `flush`, which returns once every record sent before it was written or
 /// failed, as Java's `KafkaProducer#send` with a callback followed by `flush`.
 pub trait RecordSink: Send {
+    /// Whether a record to `topic` and `partition` can be sent, asked before its key and
+    /// value are serialized; when not, the sink has already counted the record and its
+    /// failure, and the record is not serialized.
+    ///
+    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#doSend waits for the
+    /// topic's metadata before it serializes (probes r_topics, a7)
+    fn ready(&mut self, _topic: &str, _partition: Option<i32>) -> bool {
+        true
+    }
     fn send(&mut self, record: OutRecord);
     fn flush(&mut self) -> Result<(), KafkaError>;
 }
@@ -386,6 +395,18 @@ impl Publisher {
                         "java.lang.IllegalArgumentException: Invalid partition: {partition}. \
                          Partition number should always be non-negative or null."
                     )));
+                }
+                // Java sends the timestamp 0 (probe r_neg_ts: -1500 ns is 0 ms); librdkafka
+                // takes 0 as "now".
+                if timestamp == Some(0) {
+                    return Err(not_ported(
+                        "org.apache.kafka.clients.producer.ProducerRecord#timestamp",
+                        "a record timestamp of 0 ms, which the Kafka client of this server \
+                         takes as the time of sending",
+                    ));
+                }
+                if !sink.ready(&topic, partition) {
+                    continue;
                 }
                 // Behavior: KafkaProducer#doSend serializes the key, then the value.
                 let key = self.finish(&self.key, key, &topic)?;

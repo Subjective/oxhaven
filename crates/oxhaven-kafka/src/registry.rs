@@ -166,7 +166,11 @@ impl Registry {
         subject: &str,
         version: Option<&str>,
     ) -> Result<String, KafkaError> {
-        let unchecked = |CallFailure(text)| KafkaError::Invalid(format!("{UNCHECKED}: {text}"));
+        // Behavior: AvroImpl#getAvroSchema, `new UncheckedDeephavenException(e)`: the
+        // cause's text, then the cause (probes r_reg_down, a11)
+        let unchecked = |CallFailure(text)| {
+            KafkaError::Invalid(format!("{UNCHECKED}: {text} (caused by {text})"))
+        };
         let path = if version == Some("latest") {
             format!("/subjects/{}/versions/latest", encode(subject))
         } else {
@@ -175,9 +179,9 @@ impl Registry {
                     Some(version) => {
                         format!("java.lang.NumberFormatException: For input string: \"{version}\"")
                     }
-                    None => {
-                        "java.lang.NumberFormatException: Cannot parse null string: null".to_owned()
-                    }
+                    // Probe r_version_none: `Integer#parseInt(null)` (the consumer's
+                    // `avro_spec` refuses a null version before it gets here).
+                    None => "java.lang.NumberFormatException: Cannot parse null string".to_owned(),
                 })
             })?;
             format!(

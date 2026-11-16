@@ -135,6 +135,11 @@ struct Sink {
 }
 
 impl RecordSink for Sink {
+    /// The topic `unready` has no metadata: its records fail before they are serialized.
+    fn ready(&mut self, topic: &str, _partition: Option<i32>) -> bool {
+        topic != "unready"
+    }
+
     fn send(&mut self, record: OutRecord) {
         self.sent.records.lock().unwrap().push(record);
     }
@@ -493,5 +498,70 @@ fn a_removed_row_is_its_previous_avro_key_without_a_value() {
         registry.requests().len(),
         3,
         "the schema is registered once"
+    );
+}
+
+/// Probes r_dec, r_topics and r_neg_ts: a fetched schema's defaults are not checked, a
+/// record whose topic has no metadata is neither serialized nor registered, and a
+/// timestamp of 0 ms is refused by name.
+#[test]
+fn a_fetched_schema_is_written_as_confluent_reads_it_once_the_topic_is_known() {
+    let registry = Registry::with_subject(
+        "dec",
+        r#"{"type":"record","name":"R","fields":[{"name":"I","type":"int","default":1.5}]}"#,
+    );
+    let table = |nanos: i64| {
+        ReferenceTable::new_static(
+            definition(&[
+                ("Top", ColumnType::String),
+                ("I", ColumnType::Int),
+                ("T", ColumnType::Instant),
+            ]),
+            RowSet::flat(2),
+            vec![
+                Arc::new(StringArray::from(vec![Some("unready"), Some("t2")])),
+                Arc::new(Int32Array::from(vec![Some(3), Some(4)])),
+                Arc::new(
+                    TimestampNanosecondArray::from(vec![Some(5_000_000), Some(nanos)])
+                        .with_timezone("UTC"),
+                ),
+            ],
+        )
+    };
+    let mut options = options(
+        &registry,
+        ProduceSpec::Ignore,
+        ProduceSpec::Avro(avro("dec")),
+    );
+    options.topic_column = Some("Top".to_owned());
+    options.timestamp_column = Some("T".to_owned());
+    let sent = Sent::default();
+    sent.publish(table(7_000_000), &options).unwrap();
+    let records = sent.take();
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        (records[0].topic.as_str(), records[0].timestamp),
+        ("t2", Some(7))
+    );
+    assert_eq!(
+        records[0].value.clone().map(hex).as_deref(),
+        Some("000000000708")
+    );
+    let schema =
+        r#"{"type":"record","name":"R","fields":[{"name":"I","type":"int","default":1.5}]}"#;
+    assert_eq!(
+        registry.requests(),
+        [
+            "GET /subjects/dec/versions/latest".to_owned(),
+            "GET /schemas/ids/3?fetchMaxId=false&subject=".to_owned(),
+            register_request("t2-value", schema),
+        ]
+    );
+
+    let error = sent.publish(table(-1500), &options).err().unwrap();
+    assert_eq!(
+        error.to_string(),
+        "not ported yet: org.apache.kafka.clients.producer.ProducerRecord#timestamp: a record \
+         timestamp of 0 ms, which the Kafka client of this server takes as the time of sending"
     );
 }
