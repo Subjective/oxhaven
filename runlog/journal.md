@@ -1110,3 +1110,11 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T16:35Z: task 7.6.4 came back complete in 50 minutes; opened pull request 133. It used 390k tokens although the brief said to hand over at 180k: the threshold is not being honoured when an agent judges itself close to done, so the next briefs state it more firmly. Its work passed every gate. Started task 4.24 (fuzzing the time column types) on the default model, as fuzzer triage stays there.
 
 - 2026-11-16T16:42Z: merged pull request 133 (columns of tables in filters, where_in, first/last and formulas) on seven green checks.
+
+- 2026-11-16T17:00Z: task 4.24 came back partial after 25 minutes and 248k tokens: the generator for the time types exists and 100 seeds gave 66 clean, 34 differing in 11 groups, none confirmed as a wrong answer yet. This agent did honour the hand-over line. New finding R6: as-of joins on date and time types are refused here where Java computes them; likely its own task. A fresh agent continues from the handover with the steps ordered so that triage and gates come before optional ports.
+
+- 2026-11-16T17:06Z: task 7.4.8 came back complete in 73 minutes and 319k tokens (again past the 180k line); opened pull request 134. It uses protox, already in the lockfile as a build dependency, now also at run time in the Kafka crate; licence MIT or Apache-2.0. Owner items 23 to 25 in docs/KAFKA.md, and a shared one: DHError text without a cause differs from the reference.
+
+- 2026-11-16T17:09Z: pull request 134 failed the python-console jobs on a lint (a for loop over one element in a test that only compiles with the Python feature). The agent had run the linter without that feature. Fixed by me in one commit and checked with the same lint command CI uses. Briefs from now on name both lint commands.
+
+- 2026-11-16T17:18Z: merged pull request 134 (Kafka Protobuf) on seven green checks after the lint fix. Started the last two Kafka tasks, 7.4.6 and 7.5.3, as one agent with a firm hand-over point between them.

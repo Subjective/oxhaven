@@ -5,7 +5,8 @@
 #
 # Starts apache/kafka on 127.0.0.1 (the port in OXHAVEN_KAFKA_PORT, default 19092, and the
 # one after it for the controller), fills the topics the tests read, runs the tests and
-# removes the container. Needs a Docker daemon; DOCKER_HOST selects one.
+# removes the container. Needs a Docker daemon; DOCKER_HOST selects one. The Avro and
+# Protobuf round trips serve their own schema registry from the test: no registry image.
 set -euo pipefail
 
 image="apache/kafka:3.9.1"

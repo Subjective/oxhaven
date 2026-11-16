@@ -53,7 +53,7 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after tasks 7.4.1, 7.4.3, 7.4.4 and 7.4.7
+## What exists after tasks 7.4.1, 7.4.3, 7.4.4, 7.4.7 and 7.4.8
 
 `deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` with:
 
@@ -73,6 +73,9 @@ and `ring(n)` is `RingTableTools.of` of it.
   and version of a Confluent schema registry (`schema.registry.url`, over plain HTTP),
   `mapping` and `mapped_only`, records in Confluent's wire format, and writer schemas
   that differ from the spec's (below);
+- `protobuf_spec` for keys and values, with the schema fetched from the registry by subject
+  and version (with the schemas it references), `schema_message_name`, `include` and both
+  `ProtobufProtocol`s (below);
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
 - the consumer properties of "Consumer properties";
 - plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
@@ -198,6 +201,59 @@ offset 4. ... (caused by org.apache.kafka.common.errors.SerializationException: 
 deserializing Avro message for id SchemaId{...}: org.apache.avro.AvroTypeException:
 Field "a" content mismatch: Found long, expecting int)`; the part in parentheses is
 Java's cause.
+
+### How a Protobuf field becomes a column
+
+Since task 7.4.8 (`tasks/7.4.8-kafka-protobuf.md`). The `.proto` text is compiled with
+`protox` into `prost-reflect` descriptors (both already in the tree, MIT or Apache-2.0);
+records are read by this crate (`protobuf.rs`), as protobuf-java's `DynamicMessage`
+reads them, for its texts and its leniencies.
+
+**The spec.** `protobuf_spec(schema=<subject>, schema_version=, schema_message_name=,
+include=, protocol=)` with Java's checks (`Must set schema or message_class`, `Must only
+set schema information, or message_class, but not both.`, a version that is not an `int`).
+`message_class` is refused by name. At `consume`, with `schema.registry.url`, the key's
+schema then the value's: `GET /subjects/<s>/versions/latest` (or `/<n>?deleted=false`; a
+version of 0 is the latest, as Python's `if schema_version:` makes it), a check that the
+type is `PROTOBUF` (`IllegalStateException: Expected schema type PROTOBUF but was AVRO`),
+`GET /schemas/ids/<id>?fetchMaxId=false&subject=<s>`, and for each reference `GET
+/subjects/<subject>/versions/<n>?deleted=true`, recursively. The message is the one named,
+by its full name or its name without the package (`Outer.Inner`), or the schema's first;
+none found is Java's bare `NullPointerException`. Imports of `google/protobuf/*.proto`
+are built in.
+
+**Columns.** One per field, nested messages flattened, the path joined with `_`. Types as
+Java's parser and `withMostAppropriateType` make them: the 32-bit integers (unsigned ones
+signed) int, the 64-bit long, float, double, bool Boolean, string String, bytes `byte[]`;
+a field with presence (proto3 `optional`, oneof members, proto2) null when absent, and
+every field below a missing message null. Repeated scalars and repeated messages are
+arrays (`int[]`, `long[]`, `float[]`, `double[]`, `boolean[]`, `String[]`, `Instant[]`,
+`byte[][]`), one column per field of the message. A map is its entries as a repeated
+message (`m_key`, `m_value...`) when the value has more than one column, as in Java;
+otherwise Java makes a `java.util.Map` (refused). Well-known types: `Timestamp` Instant,
+`Duration` Duration, the wrappers unwrapped; `Empty` no column; `Struct`, `Value` and
+`ListValue` fail with Java's cycle text, as every cyclic message does unless `include`
+leaves the cycle out. `include` takes Java's `FieldPath#anyMatches` paths: `/a/b` is that
+field, `/a/*` everything below `a`, `*` everything, and `a` or `[]` nothing.
+
+**Records.** `serdes` (the default): magic byte 0, a schema id that is not used, the
+message indexes (Kafka's zig-zag varints; not used either), then the message. `raw`: the
+message alone. Unknown fields and groups are skipped, a field of the wrong wire type is
+skipped as unknown, the last value of a field wins and messages merge, packed and
+unpacked repeated fields are read both ways, a closed (proto2) enum's unknown number is
+skipped, proto3 strings must be UTF-8 and proto2 strings are replaced as Java replaces
+them, 100 nested messages are read and 101 are not, and proto2 required fields are
+checked (`UninitializedMessageException: Message missing required fields: rin[1].r`).
+Failures are Java's texts inside `RecordDeserializationException` (`... (caused by
+org.apache.kafka.common.errors.SerializationException:
+com.google.protobuf.InvalidProtocolBufferException: Protocol message contained an invalid
+tag (zero).)`). A tombstone fails the table with `KafkaIngesterException: Null records
+are not permitted`, also when the spec has no columns. Java's null values of the columns
+are null cells, as for Avro. Where Java does not skip a missing message (right below an
+element of a repeated message), its function is given null and the table fails with
+Java's `NullPointerException` text (`Cannot invoke "java.lang.Integer.intValue()" because
+"value" is null`); a timestamp beyond `Instant`'s range fails with `DateTimeException`,
+one beyond a long of nanoseconds with `DateTimeOverflowException`.
 
 ### Failures
 
@@ -725,6 +781,18 @@ broker under the open tables of both.
   writes after a colon (as since 7.5.1) where Java chains it. Not reproduced: Java's
   serializer first asks the registry for `/associations/resources/<cluster>/<topic>`
   and goes on after a 404; Oxhaven does not ask.
+- Task 7.4.8, Protobuf: Java on 10918, Oxhaven on 10919, one broker and a stub registry
+  that logs each request, 140 cases in two rounds (`tasks/7.4.8-kafka-protobuf.md`).
+  Same in 117: the schemas, rows and failing of tables, the errors of calls (among them
+  the cycle text, `NullPointerException` for a message not found, `InvalidNameException`
+  for a well-known type as the message, the registry's errors), and every registry
+  request. Refused here in 16 where Java makes columns of Java objects (enums, maps,
+  arrays of boxed values, arrays of arrays, `Any`, `FieldMask`) and in 4 for
+  `message_class`. Different in text only (`PARITY.md` A5): a `.proto` Java's parser
+  refuses (`Could not parse Protobuf - ` then `protox`'s words, not Wire's), and
+  `DHError("text")` without a cause, whose `str()` Java writes as `text : text` (the
+  Python package's `dherror.py`, not this task's). Failure texts of tables were compared
+  from Java's log and are asserted in `tests/protobuf.rs` and the unit tests.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -836,6 +904,22 @@ broker under the open tables of both.
     schema, as it did since 7.4.7, so a registry schema with a bad default fails at
     `consume` here and not in Java. Not probed on the consume side.
 
+23. **Protobuf, columns Java makes of Java objects.** Enums (Java's
+    `EnumValueDescriptor`, which a client sees as the value's name), maps whose value is
+    one column (`java.util.Map`), repeated messages whose field has presence (`Integer[]`
+    and the other boxed arrays, holding nulls), repeated fields inside repeated messages
+    (`int[][]`) and `Any`/`FieldMask` (a `ClassCastException` at the first record in Java)
+    are refused at `consume` by name. The enum, boxed-array and `int[][]` columns could be
+    ported (a `String` column of names, a `List` of nullable values); that would differ
+    from Java's column type.
+24. **Protobuf, required fields of messages the spec does not read.** Java checks every
+    required field of the whole message before any column is filled, so a record missing
+    one fails even with `include` leaving the field out. Reproduced.
+25. **Protobuf, a `Duration` beyond a long of nanoseconds.** Java stores it and fails each
+    client's fetch (`long overflow` at DoGet); here the table fails, refused by name
+    (`java.time.Duration#toNanos`). An `Instant[]` element beyond a long of nanoseconds is
+    refused the same way.
+
 ## Refused, by Java method
 
 | What | Named in the refusal |
@@ -850,7 +934,11 @@ broker under the open tables of both.
 | JSON text with a UTF-16 surrogate without its pair (`"\ud83d"`) where it would become a `String` cell, compact JSON or an `Instant`'s text (fails the table); Java keeps the lone surrogate, which a Rust string cannot hold | `java.lang.String` |
 | Text in an `Instant` column in a spelling the expression crate's `parseInstant` does not read yet (fails the table) | `io.deephaven.time.DateTimeUtils#parseInstant` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
-| `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
+| `object_processor_spec` | `io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec` |
+| Protobuf: `message_class` | `io.deephaven.kafka.protobuf.DescriptorMessageClass#of` |
+| Protobuf: a column of an enum, a map of one value column, a boxed array, an array of arrays, `Any` or `FieldMask` (Java's column holds Java objects) | `io.deephaven.kafka.ProtobufImpl.ProtobufConsumeImpl#getIngestData`, naming the field and Java's class |
+| Protobuf: a `Duration` beyond a long of nanoseconds (Java fails the fetch) | `java.time.Duration#toNanos` |
+| Protobuf: an `Instant[]` element beyond a long of nanoseconds | `io.deephaven.time.DateTimeUtils#epochNanos` |
 | Avro: a field of `bytes` without a valid decimal, or of `fixed` | `io.deephaven.kafka.ingest.GenericRecordObjectFieldCopier` |
 | Avro: a decimal in a `fixed` (Java fails the table at its first value) | `io.deephaven.kafka.ingest.GenericRecordBigDecimalFieldCopier#copyField` |
 | Avro: a union other than of null and one type, a map, the `null` type | `io.deephaven.kafka.ingest.GenericRecordObjectFieldCopier` |
@@ -894,6 +982,10 @@ reaches it, so there is nothing to port.
 
 No longer refused since task 7.4.7: `avro_spec`, for the key and the value.
 
+No longer refused since task 7.4.8: `protobuf_spec` from a registry subject, and
+`ProtobufProtocol`. Produce-side Protobuf does not exist in Java
+(`deephaven.stream.kafka.producer` and `KafkaTools.Produce` have no Protobuf spec).
+
 No longer refused since task 7.5.2: `producer.avro_spec` for the key and the value, and
 `produce` with `topic_col`, `partition_col` and `timestamp_col`.
 
@@ -920,7 +1012,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
 | 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
 | 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
-| 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | M | 7.4.7 for the registry |
+| 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | done (`tasks/7.5.2-kafka-produce-avro.md`); raw spec not reachable from Python | 7.5.1, 7.4.7 |
 | 7.5.3 | `deephaven.stream.kafka.cdc` | M | 7.4.7 |

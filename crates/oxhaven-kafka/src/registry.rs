@@ -26,6 +26,10 @@ pub(crate) struct Registry {
     by_id: Mutex<HashMap<i32, Arc<Schema>>>,
     /// The ids of the schemas registered so far, by subject and schema text.
     registered: Mutex<HashMap<(String, String), i32>>,
+    /// The answers to the Protobuf schema requests so far, by path: Confluent's client
+    /// caches the latest metadata of a subject, schemas by id and versions, so the key
+    /// and the value of one subject ask once (probe key_both).
+    protobuf_answers: Mutex<HashMap<String, Node>>,
 }
 
 /// Why a call to the registry failed: what the registry answered, or why it could not be
@@ -113,6 +117,7 @@ impl Registry {
             urls,
             by_id: Mutex::new(HashMap::new()),
             registered: Mutex::new(HashMap::new()),
+            protobuf_answers: Mutex::new(HashMap::new()),
         })
     }
 
@@ -213,6 +218,131 @@ impl Registry {
         let schema = Arc::new(avro::parse(&schema_text(&body)?).map_err(CallFailure)?);
         let mut cache = self.by_id.lock().expect("not poisoned");
         Ok(cache.entry(id).or_insert(schema).clone())
+    }
+}
+
+/// A Protobuf schema as the registry holds it: its text, and the text of each schema it
+/// imports, by the name it imports it as.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct ProtobufText {
+    pub(crate) text: String,
+    pub(crate) references: Vec<(String, String)>,
+}
+
+impl Registry {
+    /// The Protobuf schema of `subject` at `version`, the latest for none, with the
+    /// schemas it references.
+    ///
+    /// Behavior: io.deephaven.kafka.ProtobufImpl.ProtobufConsumeImpl#descriptor;
+    /// CachedSchemaRegistryClient#getLatestSchemaMetadata, #getSchemaMetadata and
+    /// #getSchemaBySubjectAndId; ProtobufSchemaProvider#parseSchemaOrElseThrow, which
+    /// fetches each reference with `getSchemaMetadata(subject, version, true)` (probed)
+    pub(crate) fn protobuf_schema(
+        &self,
+        subject: &str,
+        version: Option<i32>,
+    ) -> Result<ProtobufText, KafkaError> {
+        let unchecked = |CallFailure(text)| {
+            KafkaError::Invalid(format!("{UNCHECKED}: {text} (caused by {text})"))
+        };
+        let path = match version {
+            None => format!("/subjects/{}/versions/latest", encode(subject)),
+            Some(number) => format!(
+                "/subjects/{}/versions/{number}?deleted=false",
+                encode(subject)
+            ),
+        };
+        let metadata = self.cached(&path).map_err(unchecked)?;
+        // Behavior: ProtobufConsumeImpl#descriptor checks the type of the metadata before
+        // it fetches the schema (probe avro_subject); a missing type is Avro's.
+        let kind = metadata
+            .get("schemaType")
+            .and_then(Node::as_str)
+            .unwrap_or("AVRO");
+        if kind != "PROTOBUF" {
+            return Err(KafkaError::Invalid(format!(
+                "java.lang.IllegalStateException: Expected schema type PROTOBUF but was {kind}"
+            )));
+        }
+        let id = metadata.get("id").and_then(Node::exact_long).unwrap_or(0);
+        let body = self
+            .cached(&format!(
+                "/schemas/ids/{id}?fetchMaxId=false&subject={}",
+                encode(subject)
+            ))
+            .map_err(unchecked)?;
+        let text = body
+            .get("schema")
+            .and_then(Node::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                unchecked(CallFailure(format!("{REST}: no schema; error code: 50005")))
+            })?;
+        let mut references = Vec::new();
+        self.protobuf_references(&body, &mut references, 0)
+            .map_err(unchecked)?;
+        Ok(ProtobufText { text, references })
+    }
+
+    /// GETs `path` once per registry.
+    fn cached(&self, path: &str) -> Result<Node, CallFailure> {
+        if let Some(node) = self
+            .protobuf_answers
+            .lock()
+            .expect("not poisoned")
+            .get(path)
+        {
+            return Ok(node.clone());
+        }
+        let node = self.get(path)?;
+        let mut answers = self.protobuf_answers.lock().expect("not poisoned");
+        answers.insert(path.to_owned(), node.clone());
+        Ok(node)
+    }
+
+    /// Adds the schemas `body` references, and theirs, to `out`, each once by name.
+    fn protobuf_references(
+        &self,
+        body: &Node,
+        out: &mut Vec<(String, String)>,
+        depth: usize,
+    ) -> Result<(), CallFailure> {
+        let Some(Node::Array(references)) = body.get("references") else {
+            return Ok(());
+        };
+        if depth > 32 {
+            return Err(CallFailure(
+                "not ported yet: io.confluent.kafka.schemaregistry.protobuf.\
+                 ProtobufSchemaProvider#resolveReferences: references nested more than 32 deep"
+                    .to_owned(),
+            ));
+        }
+        for reference in references {
+            let name = reference.get("name").and_then(Node::as_str).unwrap_or("");
+            let subject = reference
+                .get("subject")
+                .and_then(Node::as_str)
+                .unwrap_or("");
+            let version = reference
+                .get("version")
+                .and_then(Node::exact_long)
+                .unwrap_or(0);
+            if out.iter().any(|(known, _)| known == name) {
+                continue;
+            }
+            let found = self.cached(&format!(
+                "/subjects/{}/versions/{version}?deleted=true",
+                encode(subject)
+            ))?;
+            let text = found
+                .get("schema")
+                .and_then(Node::as_str)
+                .unwrap_or("")
+                .to_owned();
+            out.push((name.to_owned(), text));
+            self.protobuf_references(&found, out, depth + 1)?;
+        }
+        Ok(())
     }
 }
 

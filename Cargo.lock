@@ -1329,6 +1329,8 @@ dependencies = [
  "oxhaven-engine",
  "oxhaven-expr",
  "oxhaven-testkit",
+ "prost-reflect",
+ "protox",
  "rdkafka",
 ]
 
