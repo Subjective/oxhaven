@@ -1,0 +1,72 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: tree identifier column: Unknown column names [Nope], available column names are [Id, Parent, Name]",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: tree parent column: Unknown column names [Nope], available column names are [Id, Parent, Name]",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : RuntimeError: io.deephaven.engine.table.impl.InvalidColumnException: tree parent and identifier columns must have the same data type, but parent is [Name, class java.lang.String] and identifier is [Id, int]",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [Id, Parent, Name]",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : RuntimeError: java.lang.IllegalArgumentException: Mismatched join types, Name=Id: class java.lang.String != int",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table tree operation failed. : java.lang.IllegalStateException: Adding invalid number (2) of \"unique\" row keys for destination 1",
+      "operation": "table tree operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [Id, Parent, Name]"
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on TreeTable failed. : Cannot find variable or class Nope",
+      "operation": "with_filters operation on TreeTable failed."
+    },
+    {
+      "step": 9,
+      "outcome": "ok"
+    },
+    {
+      "step": 10,
+      "outcome": "ok"
+    }
+  ]
+}
