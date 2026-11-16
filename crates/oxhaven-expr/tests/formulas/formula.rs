@@ -336,7 +336,9 @@ fn other_field_accesses_stay_unsupported() {
         ("Float.FOO", "field access .FOO"),
         ("Integer.TYPE", "field access .TYPE"),
         ("Double.PRECISION", "field access .PRECISION"),
-        ("Math.PI", "field access .PI"),
+        ("Math.TAU", "field access .TAU"),
+        ("X.y.z", "field access .z"),
+        ("java.util.Calendar.FEBRUARY", "field access .FEBRUARY"),
         ("X.MAX_VALUE", "field access .MAX_VALUE"),
         ("(Long).MAX_VALUE", "field access .MAX_VALUE"),
     ] {

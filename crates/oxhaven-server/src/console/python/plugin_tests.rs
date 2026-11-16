@@ -709,21 +709,150 @@ async fn a_registration_is_refused_as_java_refuses_it() {
         refused("object()"),
         "NotImplementedError: Unexpected type: <class 'object'>"
     );
-    // A JS plugin is not served. It is left out with a warning, so that the object types
-    // of its package are registered.
-    let before = registry().names();
-    python.run(
-        "from deephaven.plugin.js import JsPlugin\n\
-         import pathlib\n\
+}
+
+/// A JS plugin that a package registers, with the texts Java 42.9 with jpy 2.2.0 answered
+/// to a plugin of the same shape (`docs/JS_PLUGINS.md`). The JS plugins of a process are
+/// one set, so the names of this test are its own.
+#[tokio::test]
+async fn a_js_plugin_of_a_package_is_registered_and_served() {
+    let python = plugged().await;
+    let base = std::env::temp_dir().join(format!("oxhaven-js-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(base.join("dist")).unwrap();
+    fs::write(base.join("dist/index.js"), "export default 1;").unwrap();
+    fs::write(base.join("package.json"), "{}").unwrap();
+    python.run(&format!(
+        "import pathlib\n\
+         from deephaven.plugin.js import JsPlugin\n\
+         from deephaven_internal.plugin.register import RegistrationAdapter\n\
+         BASE = {base:?}\n\
          class Js(JsPlugin):\n\
-         \x20   name = 'js'\n\
-         \x20   version = '0.1'\n\
-         \x20   main = 'index.js'\n\
+         \x20   def __init__(self, name, version='0.1', main='dist/index.js', path=None):\n\
+         \x20       self._name, self._version, self._main = name, version, main\n\
+         \x20       self._path = pathlib.Path(BASE) if path is None else path\n\
+         \x20   name = property(lambda self: self._name)\n\
+         \x20   version = property(lambda self: self._version)\n\
+         \x20   main = property(lambda self: self._main)\n\
          \x20   def path(self):\n\
-         \x20       return pathlib.Path('.')\n\
+         \x20       return self._path\n\
+         class Loaded(Js):\n\
+         \x20   def __init__(self, name, loader):\n\
+         \x20       super().__init__(name)\n\
+         \x20       self._loader = loader\n\
+         \x20   loader = property(lambda self: self._loader)\n\
+         class Fixed(JsPlugin):\n\
+         \x20   name = 'oxjs/class'\n\
+         \x20   version = '2'\n\
+         \x20   main = './dist/index.js'\n\
+         \x20   def path(self):\n\
+         \x20       return pathlib.Path(BASE)\n\
+         def refused(plugin):\n\
+         \x20   try:\n\
+         \x20       RegistrationAdapter().register(plugin)\n\
+         \x20   except BaseException as error:\n\
+         \x20       return f'{{type(error).__name__}}: {{error}}'\n\
+         \x20   return 'registered'\n\
          adapter = RegistrationAdapter()\n\
-         adapter.register(Js)\n\
-         assert adapter.object_types == 0\n",
+         adapter.register(Js('oxjs/first'))\n\
+         # a class is created, as an object type's is\n\
+         adapter.register(Fixed)\n\
+         assert (adapter.js_plugins, adapter.object_types) == (2, 0)\n\
+         big = 12345678901234567890\n\
+         jpy = 'jpy.JOverloadedMethod(class={{}}) returned a result with an exception set'\n\
+         put = jpy.format(\"'java.util.LinkedHashMap', name='put', methodCount=1\")\n\
+         add = jpy.format(\"'java.util.ArrayList', name='add', methodCount=2\")\n\
+         top = jpy.format(\"'io.deephaven.plugin.js.JsPlugin$Builder', name='loader', methodCount=1\")\n\
+         none = 'no matching Java method overloads found'\n\
+         illegal = 'RuntimeError: java.lang.IllegalArgumentException: '\n\
+         answers = [\n\
+         \x20   (refused(Js('oxjs/first')), illegal + \"js plugin with name 'oxjs/first' already exists. \
+                 See https://github.com/deephaven/deephaven-core/issues/3048\"),\n\
+         \x20   (refused(Js('oxjs/no-main', main='nope.js')), illegal + f\"main ('{{BASE}}/nope.js') must \
+                 exist and be a regular file\"),\n\
+         \x20   (refused(Js('oxjs/str', path=BASE)), \"Exception: Expecting pathlib.Path, is \
+                 type(js_plugin.path())=<class 'str'>, js_plugin=oxjs/str@0.1\"),\n\
+         \x20   (refused(Js(5)), 'RuntimeError: ' + none),\n\
+         \x20   (refused(Js(True)), 'RuntimeError: ' + none),\n\
+         \x20   (refused(Js(None)), 'RuntimeError: java.lang.NullPointerException: name'),\n\
+         \x20   (refused(Js('oxjs/v', version=3)), 'RuntimeError: ' + none),\n\
+         \x20   (refused(Js('oxjs/v', version=None)), 'RuntimeError: java.lang.NullPointerException: version'),\n\
+         \x20   (refused(Js('oxjs/m', main=5)), 'RuntimeError: ' + none),\n\
+         \x20   (refused(Js('oxjs/m', main=None)), 'RuntimeError: ambiguous Java method call, too many \
+                 matching method overloads found'),\n\
+         \x20   (refused(Loaded('oxjs/big', {{'big': big}})), 'SystemError: ' + put),\n\
+         \x20   (refused(Loaded('oxjs/big', [2**63])), 'SystemError: ' + add),\n\
+         \x20   (refused(Loaded('oxjs/big', big)), 'SystemError: ' + top),\n\
+         \x20   (refused(Loaded('oxjs/l1', {{'b': 1, 'a': 'x', 1: [True, None, {{}}], 't': (2**63 - 1, -2**63)}})), 'registered'),\n\
+         \x20   (refused(Loaded('oxjs/l2', [float('-inf'), float('inf'), float('nan'), 1e7, 1e6, 0.001, 0.0001, \
+                 123456789.125, 5e-324, 1.7976931348623157e308, 100.0, 0.1, -0.0, 2.5, 1e300])), 'registered'),\n\
+         \x20   (refused(Loaded('oxjs/l3', ['\\x00\\x1f\\x7f\\t\\r\\b\\f\\n', '\\u00e9\"<\\\\/\\u2028'])), 'registered'),\n\
+         \x20   (refused(Loaded('oxjs/l4', False)), 'registered'),\n\
+         \x20   (refused(Loaded('oxjs/l5', None)), 'registered'),\n\
+         \x20   (refused(Loaded('oxjs/l6', '')), 'registered'),\n\
+         ]\n\
+         wrong = [answer for answer in answers if answer[0] != answer[1]]\n\
+         assert not wrong, wrong\n"
+    ));
+
+    let plugins = crate::web::plugins::registry();
+    let get = |uri: &str| {
+        let mut request = http::Request::new(());
+        *request.uri_mut() = uri.parse().unwrap();
+        async move {
+            let response = crate::web::get(None, plugins, &request).await;
+            let status = response.status();
+            let body = http_body_util::BodyExt::collect(response.into_body());
+            let bytes = body.await.unwrap().to_bytes();
+            (status, String::from_utf8(bytes.to_vec()).unwrap())
+        }
+    };
+    let (status, manifest) = get("/js-plugins/manifest.json").await;
+    assert_eq!(status, http::StatusCode::OK);
+    // the plugins of this test, in the order they were registered; a refused one is not
+    // listed
+    let listed: Vec<&str> = manifest
+        .split("{\"name\":\"")
+        .filter(|entry| entry.starts_with("oxjs/"))
+        .map(|entry| entry.trim_end_matches(['}', ']', ',']))
+        .collect();
+    let entry = |name: &str, rest: &str| {
+        format!("{name}\",\"version\":\"0.1\",\"main\":\"dist/index.js\"{rest}")
+    };
+    assert_eq!(
+        listed,
+        [
+            entry("oxjs/first", ""),
+            "oxjs/class\",\"version\":\"2\",\"main\":\"dist/index.js\"".to_string(),
+            entry(
+                "oxjs/l1",
+                ",\"loader\":{\"b\":1,\"a\":\"x\",\"1\":[true,null,{}],\
+                 \"t\":[9223372036854775807,-9223372036854775808"
+            ),
+            entry(
+                "oxjs/l2",
+                ",\"loader\":[\"-Infinity\",\"Infinity\",\"NaN\",1.0E7,1000000.0,0.001,1.0E-4,\
+                 1.23456789125E8,4.9E-324,1.7976931348623157E308,100.0,0.1,-0.0,2.5,1.0E300"
+            ),
+            entry(
+                "oxjs/l3",
+                ",\"loader\":[\"\\u0000\\u001F\u{7f}\\t\\r\\b\\f\\n\",\"é\\\"<\\\\/\u{2028}\""
+            ),
+            entry("oxjs/l4", ",\"loader\":false"),
+            entry("oxjs/l5", ""),
+            entry("oxjs/l6", ",\"loader\":\"\""),
+        ]
     );
-    assert_eq!(registry().names(), before);
+    assert_eq!(
+        get("/js-plugins/oxjs/first/dist/index.js").await,
+        (http::StatusCode::OK, "export default 1;".to_string())
+    );
+    assert_eq!(
+        get("/js-plugins/oxjs/class/package.json").await,
+        (http::StatusCode::OK, "{}".to_string())
+    );
+    assert_eq!(
+        get("/js-plugins/oxjs/no-main/package.json").await.0,
+        http::StatusCode::NOT_FOUND
+    );
+    let _ = fs::remove_dir_all(base);
 }

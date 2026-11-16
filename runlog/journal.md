@@ -894,3 +894,13 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   `LocalTime`, and an `Expr` node for object and array creation. For the owner: Java's
   `java.lang` statics on null sentinels (reproduced), `false & null` is null, `(Double)`
   casts, `compareTo(long, double)` (refused), the gate counts array results as uncompared.
+- Pull request 107 merged (5.7).
+- Owner ruling (04:24 UTC): add a minimal `jpy` module whose every use of a Java class fails
+  by name, so plotly-express can load. Queued behind the four building agents (disk and
+  cores); the JS plugins author already has a stand-in to start from.
+- Owner ruling (04:24 UTC): links out of a JS plugin directory are refused. Added as allowed
+  difference A9 on pull request 106, which merges on green.
+- Pull request 106 merged (7.10.1) with allowed difference A9.
+- Owner approval (04:37 UTC, relayed): Kafka may be built on librdkafka through a Rust
+  binding, BSD-2-Clause. Any other licence in its dependency tree goes back to him. Kafka
+  starts when a build slot frees.

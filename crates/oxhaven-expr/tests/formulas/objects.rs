@@ -198,13 +198,9 @@ fn nothing_else_is_done_with_an_object_column() {
         };
         assert!(message.contains("of type"), "{formula}: {message}");
     }
-    for formula in [
-        "new String(S)",
-        "new String()",
-        "new String(Bytes, Bytes)",
-        "new Object()",
-        "new String",
-    ] {
+    // `new String(S)` and `new String()` are computed, as in Java: `statics.rs`.
+    assert!(Compiler.parse("new String").is_err());
+    for formula in ["new String(Bytes, Bytes)", "new Object()"] {
         let expr = Compiler.parse(formula);
         let refused = expr.and_then(|expr| Compiler.compile(&expr, &table.definition).map(|_| ()));
         assert!(

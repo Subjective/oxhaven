@@ -1,5 +1,8 @@
-//! Object types that Python plugins register, and the registration when the server
-//! starts.
+//! Object types and JS plugins that Python plugins register, and the registration when the
+//! server starts.
+//!
+//! A JS plugin is a directory of files for the web IDE; `crate::web::plugins` copies and
+//! serves it.
 //!
 //! A plugin's `ObjectType` is wrapped in Python (`deephaven_internal.plugin.object`) and
 //! then here ([`PythonObjectType`]), where it becomes one of the server's object types
@@ -248,9 +251,43 @@ fn register_object_type(py: Python<'_>, name: String, adapter: Py<PyAny>) -> PyR
     Ok(())
 }
 
+/// Registers a JS plugin of a package: its files are copied and served under
+/// `/js-plugins/<name>/`, and the manifest lists it. Fails with the text of Java's
+/// exception for a plugin that cannot be registered.
+///
+/// Behavior: `io.deephaven.server.plugin.python.CallbackAdapter#registerJsPlugin`
+#[pyfunction]
+#[pyo3(signature = (name, version, main, path, loader))]
+fn register_js_plugin(
+    py: Python<'_>,
+    name: String,
+    version: String,
+    main: String,
+    path: String,
+    loader: Option<String>,
+) -> PyResult<()> {
+    let plugin = crate::web::plugins::JsPlugin {
+        name,
+        version,
+        main,
+        path,
+        loader,
+    };
+    py.detach(|| crate::web::plugins::registry().register(&plugin))
+        .map_err(PyRuntimeError::new_err)?;
+    tracing::info!(
+        "Registering JS plugin: {}@{} from {}",
+        plugin.name,
+        plugin.version,
+        plugin.path
+    );
+    Ok(())
+}
+
 pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_class::<ObjectConnection>()?;
     native.add_function(wrap_pyfunction!(register_object_type, native)?)?;
+    native.add_function(wrap_pyfunction!(register_js_plugin, native)?)?;
     Ok(())
 }
 

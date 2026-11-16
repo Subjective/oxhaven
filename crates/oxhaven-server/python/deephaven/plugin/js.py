@@ -1,8 +1,7 @@
 """JS plugins: JavaScript that a package adds to the web IDE.
 
-The class is here so that a package that has one can be imported and can register its
-other plugins. This server does not serve JS plugins yet: one that is registered is left
-out, and the server's log says so (`docs/OBJECTS.md`).
+A package registers one beside its object types; the server copies the files of its
+directory when it starts and serves the copy (`docs/JS_PLUGINS.md`).
 
 The names and signatures are those of `deephaven.plugin.js` in the `deephaven-plugin`
 package (0.8.0).

@@ -106,7 +106,10 @@ impl Front {
             return browser::call(self.grpc.clone(), request.map(Body::new)).await;
         }
         Ok(match *request.method() {
-            Method::GET => crate::web::get(self.web.as_deref(), &request).await,
+            Method::GET => {
+                let plugins = crate::web::plugins::registry();
+                crate::web::get(self.web.as_deref(), plugins, &request).await
+            }
             Method::OPTIONS => {
                 // Java's file servlet answers this, and names methods of its own
                 let mut response = empty_response(StatusCode::OK);
