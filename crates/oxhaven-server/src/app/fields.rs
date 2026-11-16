@@ -12,6 +12,7 @@ use tonic::Status;
 
 use super::resolver::application_field_ticket;
 use super::scope::scope_ticket;
+use crate::console::type_name_if_displayable;
 use crate::session::{ExportValue, OnCloseId, Session};
 
 /// The application id Java keeps for the variables of the query scope.
@@ -29,11 +30,6 @@ const SCOPE_DESCRIPTION: &str = "query scope variable";
 ///
 /// Behavior: `ApplicationServiceGrpcImpl.FieldUpdatePropagationJob#UPDATE_INTERVAL_MS`
 const UPDATE_INTERVAL: Duration = Duration::from_millis(250);
-
-/// The type clients are told for a table.
-///
-/// Behavior: `io.deephaven.server.object.TypeLookup#type`
-const TABLE_TYPE: &str = "Table";
 
 /// Why an application or a field was refused.
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -418,9 +414,12 @@ impl Application {
         self.set(name, value, Some(description))
     }
 
+    /// The type clients are told is `Table` for a table, the name of its kind for another
+    /// value clients can open (`PartitionedTable`), and none for anything else.
+    ///
     /// Behavior: `ApplicationState#setField(Field)`, `StandardField#checkName`,
     /// `StandardField#checkDescription`, `ApplicationServiceGrpcImpl#onNewField`,
-    /// `ApplicationServiceGrpcImpl.State#fieldInfo`
+    /// `ApplicationServiceGrpcImpl.State#fieldInfo`, `io.deephaven.server.object.TypeLookup#type`
     fn set(
         &self,
         name: &str,
@@ -443,20 +442,28 @@ impl Application {
                 ticket: Some(Ticket {
                     ticket: application_field_ticket(&self.id, name),
                 }),
-                r#type: match &value {
-                    ExportValue::Table(_) => TABLE_TYPE.to_string(),
-                    // Java asks its object type plugins; this server has none
-                    ExportValue::Object(_) => String::new(),
-                },
+                // Java asks its object type plugins about anything that is no table, and an
+                // object none of them knows has no type and is listed all the same
+                r#type: type_name_if_displayable(&value)
+                    .unwrap_or_default()
+                    .to_string(),
             }),
             field_name: name.to_string(),
             field_description: description.unwrap_or_default().to_string(),
             application_name: application.name.clone(),
             application_id: self.id.clone(),
         };
-        application.fields.insert(name.to_string(), Field { value });
-        let id = self.field_id(name);
-        self.applications.changed(&mut state, id, Some(info));
+        let replaced = application.fields.insert(name.to_string(), Field { value });
+        // Java tells its listener of a replaced field in two steps, removed and new. With
+        // clients listening the two are one update; with none each is applied at once, and
+        // the field moves behind the others in the list (observed on Java 42.9: a script
+        // that sets a, b, c and a again is listed as b, c, a).
+        if replaced.is_some() {
+            self.applications
+                .changed(&mut state, self.field_id(name), None);
+        }
+        self.applications
+            .changed(&mut state, self.field_id(name), Some(info));
         Ok(())
     }
 
