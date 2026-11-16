@@ -13,8 +13,8 @@ from typing import Any, Callable
 import grpc
 import pyarrow as pa
 import pyarrow.flight as paflight
-from deephaven_core.proto import table_pb2
-from pydeephaven import NaturalJoinType, Session, agg, updateby
+from deephaven_core.proto import partitionedtable_pb2, partitionedtable_pb2_grpc, table_pb2
+from pydeephaven import DHError, NaturalJoinType, Session, agg, updateby
 from pydeephaven._arrow import map_arrow_type
 from pydeephaven.table import InputTable, MultiJoinInput, Table, multi_join
 from pydeephaven.ticket import ExportTicket
@@ -26,6 +26,16 @@ from .results import Failure, ResultSet
 
 class RunError(RuntimeError):
     """A scenario could not be run to completion on a server."""
+
+
+class ScriptFailed(RuntimeError):
+    """The server's Python console did not run the script of a script operation."""
+
+
+# The status of a table whose script operation the console refused. A script has no gRPC
+# status: the console answers a failed script with a message. It stands where the status
+# code of a refused request stands, so two servers that both refuse the script agree.
+SCRIPT_FAILED = "SCRIPT_FAILED"
 
 
 def _import(session: Session, data: pa.Table) -> Table:
@@ -108,17 +118,111 @@ def _update_by(spec: dict[str, Any]) -> updateby.UpdateByOperation:
     return function(cols=spec["columns"], **args)
 
 
-def _raw(session: Session, rpc: str, request: Callable[[Any], Any]) -> Table:
+def _raw(session: Session, rpc: str, request: Callable[[Any], Any], stub: Any = None) -> Table:
     """One table service call that pydeephaven has no method for. `request` builds the
-    request message from the result ticket."""
+    request message from the result ticket. `stub`: another service's stub, for a call of
+    that service that answers like a table operation."""
     ticket = session.make_export_ticket()
-    stub = session.table_service._grpc_table_stub  # noqa: SLF001
+    stub = stub or session.table_service._grpc_table_stub  # noqa: SLF001
     response = session.wrap_rpc(getattr(stub, rpc), request(ticket.pb_ticket))
     if not response.success:
         raise RunError(f"{rpc} answered without success: {response.error_info}")
     return Table(session, ticket=ExportTicket(response.result_id.ticket.ticket),
                  schema_header=response.schema_header, size=response.size,
                  is_static=response.is_static)
+
+
+_UNIQUE = {
+    "not_set": partitionedtable_pb2.GetTableRequest.NOT_SET_UNIQUE_BEHAVIOR,
+    "require_unique": partitionedtable_pb2.GetTableRequest.REQUIRE_UNIQUE_RESULTS_STATIC_SINGLE_KEY,
+    "permit_multiple": partitionedtable_pb2.GetTableRequest.PERMIT_MULTIPLE_KEYS,
+}
+
+
+def _partitioned(session: Session, tables: dict[str, Table], op: dict[str, Any]) -> Table:
+    """`partition_merge` and `partition_get`: PartitionBy of the partitioned table service,
+    then its Merge, or its GetTable with the key table."""
+    stub = partitionedtable_pb2_grpc.PartitionedTableServiceStub(session.grpc_channel)
+    partitioned = session.make_export_ticket().pb_ticket
+    session.wrap_rpc(stub.PartitionBy, partitionedtable_pb2.PartitionByRequest(
+        table_id=tables[op["source"]].pb_ticket, result_id=partitioned,
+        key_column_names=op["by"], drop_keys=op.get("drop_keys", False)))
+    if op["op"] == "partition_merge":
+        return _raw(session, "Merge", lambda result: partitionedtable_pb2.MergeRequest(
+            partitioned_table=partitioned, result_id=result), stub)
+    return _raw(session, "GetTable", lambda result: partitionedtable_pb2.GetTableRequest(
+        partitioned_table=partitioned, key_table_ticket=tables[op["key"]].pb_ticket,
+        result_id=result, unique_behavior=_UNIQUE[op.get("unique", "not_set")]), stub)
+
+
+# Script operations (`scenario.SCRIPT_OPERATIONS`, and `"script": true`): the names the
+# script uses come from the `deephaven` package of the server, under names of the harness's
+# own so that nothing a script scenario left behind is in the way.
+_SCRIPT_IMPORTS = (
+    "from deephaven import agg as _fz_agg, ring_table as _fz_ring_table\n"
+    "from deephaven.table import MultiJoinInput as _fz_input, multi_join as _fz_multi_join\n"
+    "from deephaven.table import keyed_transpose as _fz_keyed_transpose\n"
+    "from deephaven.table import NewColumnBehaviorType as _fz_new_columns\n")
+_AGG_FUNCTIONS = {"sum": "sum_", "min": "min_", "max": "max_"}
+
+
+def _aggregation_source(spec: dict[str, Any]) -> str:
+    """The Python text that builds one aggregation with the server's `deephaven.agg`: the
+    same functions and arguments as `_aggregation` calls in `pydeephaven.agg`."""
+    kind, args = spec["agg"], spec.get("args", {})
+    if kind == "count":
+        return f"_fz_agg.count_({spec['column']!r})"
+    if kind == "count_where":
+        return f"_fz_agg.count_where({spec['column']!r}, {args['filters']!r})"
+    if kind in ("sorted_first", "sorted_last", "weighted_avg", "weighted_sum"):
+        first = args["order_by"] if kind.startswith("sorted") else args["wcol"]
+        return f"_fz_agg.{kind}({first!r}, {spec['columns']!r})"
+    keywords = "".join(f", {key}={value!r}" for key, value in args.items())
+    return f"_fz_agg.{_AGG_FUNCTIONS.get(kind, kind)}(cols={spec['columns']!r}{keywords})"
+
+
+def _scripted(session: Session, sources: list[Table], expression: str) -> Table:
+    """The table that `expression` makes in the server's Python console from `sources`,
+    which it names `_fz_in0`, `_fz_in1`, ...: for operations the table service has no
+    request for. A script the console does not run is `ScriptFailed`."""
+    for index, table in enumerate(sources):
+        session.bind_table(f"_fz_in{index}", table)
+    try:
+        session.run_script(f"{_SCRIPT_IMPORTS}_fz_out = {expression}")
+    except DHError as error:
+        if failure_code(error) is not None:
+            raise  # the console itself is not there, or the call failed: a status code
+        raise ScriptFailed(" ".join(str(error).split())[:400]) from error
+    return session.open_table("_fz_out")
+
+
+def _script_operation(session: Session, tables: dict[str, Table], op: dict[str, Any]) -> Table:
+    kind = op["op"]
+    if kind == "ring_table":
+        return _scripted(session, [tables[op["source"]]], (
+            f"_fz_ring_table(_fz_in0, {op['capacity']!r}, {op.get('initialize', True)!r})"))
+    if kind == "keyed_transpose":
+        sources = [tables[op["source"]]]
+        initial = "None"
+        if "initial_groups" in op:
+            sources.append(tables[op["initial_groups"]])
+            initial = "_fz_in1"
+        aggs = ", ".join(_aggregation_source(a) for a in op["aggs"])
+        return _scripted(session, sources, (
+            f"_fz_keyed_transpose(_fz_in0, [{aggs}], {op['row_by']!r}, {op['col_by']!r}, "
+            f"initial_groups={initial}, "
+            f"new_column_behavior=_fz_new_columns.{op.get('new_columns', 'fail').upper()})"))
+    if kind == "multi_join":
+        items = ", ".join(
+            f"_fz_input(_fz_in{index}, on={item['on']!r}, joins={item.get('joins')!r})"
+            for index, item in enumerate(op["inputs"]))
+        return _scripted(session, [tables[item["table"]] for item in op["inputs"]],
+                         f"_fz_multi_join([{items}]).table")
+    if kind == "range_join":
+        aggs = ", ".join(_aggregation_source(a) for a in op["aggs"])
+        return _scripted(session, [tables[op["left"]], tables[op["right"]]],
+                         f"_fz_in0.range_join(_fz_in1, on={op['on']!r}, aggs=[{aggs}])")
+    raise RunError(f"operation {kind!r} has no script")
 
 
 def _reference(table: Table) -> Any:
@@ -211,6 +315,10 @@ def _sort(session: Session, source: Table, op: dict[str, Any]) -> Table:
 def apply_operation(session: Session, tables: dict[str, Table], op: dict[str, Any]) -> Table:
     """Translates one neutral operation into the server call it stands for."""
     kind = op["op"]
+    if kind in sc.SCRIPT_OPERATIONS or op.get("script"):
+        return _script_operation(session, tables, op)
+    if kind in ("partition_merge", "partition_get"):
+        return _partitioned(session, tables, op)
     if kind == "merge":
         return session.merge_tables([tables[name] for name in op["sources"]])
     if kind == "empty_table":
@@ -287,6 +395,15 @@ def apply_operation(session: Session, tables: dict[str, Table], op: dict[str, An
         return source.drop_columns(op["columns"])
     if kind == "select_distinct":
         return source.select_distinct(op["columns"])
+    if kind == "agg_by" and ("initial_groups" in op or "preserve_empty" in op):
+        # pydeephaven's agg_by has neither argument; the request has both.
+        initial = ({"initial_groups_id": _reference(tables[op["initial_groups"]])}
+                   if "initial_groups" in op else {})
+        return _raw(session, "Aggregate", lambda result: table_pb2.AggregateRequest(
+            result_id=result, source_id=_reference(source),
+            preserve_empty=op.get("preserve_empty", False),
+            aggregations=[_aggregation(a).make_grpc_message() for a in op["aggs"]],
+            group_by_columns=op["by"], **initial))
     if kind == "agg_by":
         return source.agg_by([_aggregation(a) for a in op["aggs"]], op["by"])
     if kind == "agg_all_by":
@@ -426,12 +543,12 @@ def _define(session: Session, tables: dict[str, Table | Failure], op: dict[str, 
     try:
         tables[op["name"]] = apply_operation(session, tables, op)
     except Exception as error:  # noqa: BLE001 - classified just below
-        code = failure_code(error)
+        code = SCRIPT_FAILED if isinstance(error, ScriptFailed) else failure_code(error)
         if code is None:
             raise
         if os.environ.get("ORACLE_TRACE"):
             # For the author of a scenario: why the server refused. Never part of a result.
-            print(f"trace: {op['name']}: {code}: {_details(error)}", file=sys.stderr)
+            print(f"trace: {op['name']}: {code}: {_details(error) or error}", file=sys.stderr)
         tables[op["name"]] = Failure(code)
 
 
