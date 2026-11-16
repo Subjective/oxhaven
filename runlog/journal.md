@@ -994,3 +994,7 @@ Pull request 115 (Kafka consumer on librdkafka) merged; the new kafka-broker job
 ## 2026-11-16T08:10Z
 
 Table formats (new task 4.21) and 7.8.2 (update views and formats of rollup nodes) reported on one branch: colour constants and functions, number and date patterns, heat maps; rollup node views through Apply and the Python recorder; trees ignore views as Java does. Four scenarios clean and a new IDE route. Opened as pull request 117 with the oracle-change label. The agent ended at 357k tokens, so any follow-up starts fresh. Left for later: tree recorder formats and where, colour values in formulas, views on constituent rows. Launched the Parquet directory read gap (partitioning columns known only to _common_metadata) on Opus.
+
+## 2026-11-16T08:16Z
+
+Pull request 117 (table formats, rollup node views and formats) merged on green. Running: second parity pass, Kafka stream adapter (Opus), formula column types (Opus), Parquet metadata directories (Opus).
