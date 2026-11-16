@@ -436,11 +436,8 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
         refused(&Spec::Ignore, &mapped(&[("a", "Z")]), &[]),
         "java.lang.IllegalArgumentException: Column not found in Deephaven table: -1"
     );
-    // Which of two fields that are one pointer Java keeps depends on a hash order.
-    assert!(
-        refused(&Spec::Ignore, &mapped(&[("a", "X"), ("/a", "Y")]), &[])
-            .starts_with("not ported yet: io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers")
-    );
+    // A mapping to an undefined column that a colliding field replaces is no error.
+    assert!(Plan::new("t", &[], &Spec::Ignore, &mapped(&[("a", "Z"), ("/a", "X")])).is_ok());
     assert!(Plan::new("t", &[], &Spec::Ignore, &mapped(&[("a", "X"), ("/a", "X")])).is_ok());
     let duplicate = Spec::Json {
         columns: vec![("KafkaOffset".to_owned(), ColumnType::Int)],
@@ -604,6 +601,63 @@ fn a_column_filled_twice_or_never_fails_the_table_when_records_arrive() {
     let xs = topic.column("X");
     let xs: Vec<Option<i32>> = xs.as_primitive::<Int32Type>().iter().collect();
     assert_eq!(xs, [Some(5)]);
+}
+
+/// Two fields of the mapping that are one pointer for two columns: the later in the
+/// order of Java's `HashMap` of the mapping keeps the pointer, and the other column is
+/// filled from the field of its own name. The values Java gave (task 7.4.3).
+///
+/// Behavior: io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers and #getIngestData
+#[test]
+fn fields_that_are_one_pointer_are_kept_in_java_hash_order() {
+    /// A mapping, a record and the cells of X and Y.
+    type Case<'a> = (&'a [(&'a str, &'a str)], &'a [u8], [Option<i32>; 2]);
+    let cases: [Case; 4] = [
+        (
+            &[("Y", "X"), ("/Y", "Y")],
+            br#"{"X": 1, "Y": 2}"#,
+            [Some(1), Some(2)],
+        ),
+        (
+            &[("/Y", "Y"), ("Y", "X")],
+            br#"{"X": 1, "Y": 2}"#,
+            [Some(1), Some(2)],
+        ),
+        (
+            &[("a", "X"), ("/a", "Y")],
+            br#"{"a": 1, "b": 2}"#,
+            [None, Some(1)],
+        ),
+        (
+            &[("/a", "Y"), ("a", "X")],
+            br#"{"a": 1, "b": 2}"#,
+            [None, Some(1)],
+        ),
+    ];
+    for (mapping, value, expected) in cases {
+        let spec = Spec::Json {
+            columns: vec![
+                ("X".to_owned(), ColumnType::Int),
+                ("Y".to_owned(), ColumnType::Int),
+            ],
+            mapping: Some(config(mapping)),
+        };
+        let plan = Plan::new("test", &[], &Spec::Ignore, &spec).unwrap();
+        let topic = Topic::new(plan, TableType::Append);
+        topic.cycle(Ok(vec![record(0, None, Some(value))]));
+        let cells: Vec<Option<i32>> = ["X", "Y"]
+            .iter()
+            .map(|name| {
+                topic
+                    .column(name)
+                    .as_primitive::<Int32Type>()
+                    .iter()
+                    .next()
+                    .unwrap()
+            })
+            .collect();
+        assert_eq!(cells, expected, "{mapping:?}");
+    }
 }
 
 /// Behavior: org.apache.kafka.common.serialization.ByteArrayDeserializer

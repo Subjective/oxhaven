@@ -229,27 +229,36 @@ fn json_pointers(
     columns: &[(String, ColumnType)],
     mapping: Option<&[(String, String)]>,
 ) -> Result<Vec<Vec<Pointer>>, KafkaError> {
-    let mut map: Vec<(String, String)> = Vec::new();
-    for (field, column) in mapping.unwrap_or_default() {
-        let pointer = if field.starts_with('/') {
+    let mapping = mapping.unwrap_or_default();
+    let pointer_of = |field: &String| {
+        if field.starts_with('/') {
             field.clone()
         } else {
             Pointer::field(field)
-        };
-        match map.iter().find(|(known, _)| *known == pointer) {
-            None => map.push((pointer, column.clone())),
-            Some((_, known)) if known == column => {}
-            Some((_, known)) => {
-                // Java keeps the later of the two in the iteration order of a `HashMap`
-                // built from the Python `dict`.
-                return Err(not_ported(
-                    "io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers",
-                    &format!(
-                        "two fields of the mapping that are both the JSON pointer {pointer}, \
-                         for the columns {known} and {column}"
-                    ),
-                ));
-            }
+        }
+    };
+    let pointers: Vec<String> = mapping.iter().map(|(field, _)| pointer_of(field)).collect();
+    let collide = (0..pointers.len()).any(|i| pointers[..i].contains(&pointers[i]));
+    // Java puts the fields, made pointers, into a new map in the order it iterates the
+    // `HashMap` that the Python `dict` became, so the later of two equal pointers wins.
+    let order: Vec<usize> = if collide {
+        let fields: Vec<&str> = mapping.iter().map(|(field, _)| field.as_str()).collect();
+        java_sized_hash_map_order(&fields).ok_or_else(|| {
+            not_ported(
+                "java.util.HashMap#treeifyBin",
+                "a JSON mapping whose fields collide as pointers and fill one bucket of \
+                 Java's hash map with eight or more",
+            )
+        })?
+    } else {
+        (0..mapping.len()).collect()
+    };
+    let mut map: Vec<(String, String)> = Vec::new();
+    for index in order {
+        let (pointer, column) = (&pointers[index], &mapping[index].1);
+        match map.iter_mut().find(|(known, _)| known == pointer) {
+            None => map.push((pointer.clone(), column.clone())),
+            Some(entry) => entry.1 = column.clone(),
         }
     }
     if map
@@ -280,6 +289,38 @@ fn json_pointers(
                 .collect()
         })
         .collect())
+}
+
+/// The indexes of `keys` (distinct, in the order of arrival) in the order Java iterates
+/// a `HashMap` made with `new HashMap(keys.length)` and given them in that order: by
+/// bucket of the final table, and within a bucket in the order of arrival, which a
+/// resize keeps. `None` where a bucket reaches eight keys, as Java then turns it into a
+/// tree or resizes early.
+///
+/// Behavior: org.jpy.PyLib via deephaven.jcompat.j_hashmap, java.util.HashMap#HashMap(int),
+/// #tableSizeFor, #putVal, #resize, #treeifyBin and HashMap.HashIterator
+fn java_sized_hash_map_order(keys: &[&str]) -> Option<Vec<usize>> {
+    let hashes: Vec<usize> = keys
+        .iter()
+        .map(|key| crate::client::java_hash(key) as usize)
+        .collect();
+    let mut capacity = keys.len().max(1).next_power_of_two();
+    for count in 1..=keys.len() {
+        let bucket = hashes[count - 1] & (capacity - 1);
+        let before = hashes[..count - 1]
+            .iter()
+            .filter(|hash| *hash & (capacity - 1) == bucket)
+            .count();
+        if before >= 7 {
+            return None;
+        }
+        if count > capacity * 3 / 4 {
+            capacity *= 2;
+        }
+    }
+    let mut order: Vec<usize> = (0..keys.len()).collect();
+    order.sort_by_key(|index| hashes[*index] & (capacity - 1));
+    Some(order)
 }
 
 /// Behavior: io.deephaven.kafka.JsonImpl.JsonConsume#getIngestData,
@@ -642,4 +683,35 @@ fn json_cells(
         }
         other => unreachable!("Plan::new admits no JSON column of type {other:?}"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::java_sized_hash_map_order;
+
+    /// Behavior: java.util.HashMap#HashMap(int), #putVal, #resize and HashMap.HashIterator
+    #[test]
+    fn keys_come_in_the_order_of_a_java_hash_map_of_their_number() {
+        // Two keys end in a table of four buckets: "Y" in 1, "/Y" in 2.
+        assert_eq!(java_sized_hash_map_order(&["/Y", "Y"]), Some(vec![1, 0]));
+        assert_eq!(java_sized_hash_map_order(&["Y", "/Y"]), Some(vec![0, 1]));
+        // "Aa" and "BB" have one hash: one bucket, in the order of arrival.
+        assert_eq!(java_sized_hash_map_order(&["BB", "Aa"]), Some(vec![0, 1]));
+        assert_eq!(java_sized_hash_map_order(&["Aa", "BB"]), Some(vec![0, 1]));
+    }
+
+    /// Behavior: java.util.HashMap#treeifyBin
+    #[test]
+    fn a_bucket_of_eight_keys_is_not_ordered() {
+        let keys: Vec<String> = (0..8u32)
+            .map(|bits| {
+                (0..3)
+                    .map(|bit| if bits >> bit & 1 == 1 { "Aa" } else { "BB" })
+                    .collect()
+            })
+            .collect();
+        let keys: Vec<&str> = keys.iter().map(String::as_str).collect();
+        assert_eq!(java_sized_hash_map_order(&keys), None);
+        assert!(java_sized_hash_map_order(&keys[..7]).is_some());
+    }
 }

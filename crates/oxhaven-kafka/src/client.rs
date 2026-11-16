@@ -314,7 +314,7 @@ const INTERNAL_TOPICS: [&str; 3] = [
 ];
 
 /// Behavior: java.lang.String#hashCode and java.util.HashMap#hash
-fn java_hash(text: &str) -> u32 {
+pub(crate) fn java_hash(text: &str) -> u32 {
     let hash = (text.encode_utf16()).fold(0u32, |hash, unit| {
         hash.wrapping_mul(31).wrapping_add(u32::from(unit))
     });

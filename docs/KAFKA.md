@@ -110,16 +110,25 @@ cell. A record that is not an object (an array, a number, text, `null`, nothing 
 is read the same way: `/0` of an array is its first element, and a field name finds
 nothing. Jackson reads one value and ignores what follows it.
 
-**The mapping and the columns.** Java turns the mapping into a map from pointer to column
-and then adds the pointer of each column the mapping does not name; a pointer already in
-the map is then given to that column. Each entry fills its column once per record, so a
-column that two fields are mapped to, or that loses its only pointer that way, makes
-Java's chunks of different sizes, and the table fails at the first record with
+**The mapping and the columns.** Java turns the mapping into a map from pointer to column,
+in the order it iterates the `HashMap` that the Python `dict` became (`j_hashmap`, made
+with the number of fields as its capacity), so of two fields that are one pointer (`a`
+and `/a`) the later in that order keeps it; the order is that of the fields' hash codes
+and is reproduced (`plan.rs`, `java_sized_hash_map_order`). Java then adds the pointer of
+each column the map does not name; a pointer already in the map is then given to that
+column. A column whose field lost its pointer to a colliding field is not named, so it is
+filled from the field of its own name (probed: `{'a': 'X', '/a': 'Y'}` fills `Y` from `a`
+and `X` from `X`). Each entry fills its column once per record, so a column that two
+fields are mapped to, or that loses its only pointer to a column's own, makes Java's
+chunks of different sizes, and the table fails at the first record with
 `IllegalStateException: Publisher chunks have size mismatch: 1, 1, 1, 2, 1` (probed;
 reproduced, with the sizes). A mapping to a column that is not defined fails the call
 (`Column not found in Deephaven table: -1`). A column type other than those above fails
 the call with Java's `Type <name> not supported for JSON` (`byte[]`, `int[]`,
-`BigDecimal`, `LocalDate`, `Duration`, `ZonedDateTime`, ...; probed).
+`String[]`; probed). `json_spec` refuses the types the engine has no column type for
+(`BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime`, and for now `Duration`, `Period`
+and `ZonedDateTime`, which Python's `dtypes` does not yet map) before Java's check is
+reached; Java fails those at `consume` with the same `Type <name> not supported for JSON`.
 
 **What Jackson refuses.** Invalid JSON fails the table with `Failed to parse JSON string.`
 Jackson's limits are kept: nesting deeper than 1000 objects and arrays, a number of more
@@ -442,6 +451,21 @@ broker under the open tables of both.
   metadata`, here librdkafka's words, both after `default.api.timeout.ms`); a malformed
   or unresolvable `bootstrap.servers`, which Java refuses at once and Oxhaven after that
   time; `topics` without `bootstrap.servers`.
+- Task 7.4.3, JSON: Java on 10986, Oxhaven on 10987, 146 tables over the same topics
+  (`json_spec` of every column type against 108 values, 30 pointers, records that are
+  arrays and scalars, Jackson's limits, mappings that collide, the refused types; simple
+  `byte[]`). Same: the schemas, every row and every failure of a table, except as
+  follows. Different in text only (`PARITY.md` A5): invalid JSON fails with `Failed to
+  parse JSON string.` in both, followed here by what the parser found and where (in
+  Java the cause is a chained exception); the traceback around a failed call. Different,
+  by design for now: `json_spec` with `BigDecimal`, `BigInteger`, `LocalDate`,
+  `LocalTime`, `Duration`, `Period` or `ZonedDateTime` is refused by `json_spec`, where
+  Java fails at `consume` (both before a table exists); a `JObject` column, which Java
+  fills with Jackson's nodes, is refused; text with a lone UTF-16 surrogate in a
+  `String` column (Java: `?` in the probe's client) fails the table by name; `Instant`
+  text that is a date or a date and time without a zone (`2024-01-02`,
+  `2024-01-02T03:04:05`) fails the table in both, here by naming
+  `DateTimeUtils#parseInstant` as not ported, in Java with `Cannot parse instant`.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -506,7 +530,7 @@ broker under the open tables of both.
 | A simple column of `UUID`, `ByteBuffer`, `Bytes` or any other type not listed above | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
 | Bytes that are not UTF-8 in a `String` column | `org.apache.kafka.common.serialization.StringDeserializer#deserialize` |
 | A JSON column of `JObject`, which Java fills with Jackson's nodes (refused by `json_spec`, as the engine has no such column type) | `io.deephaven.engine.table.ColumnDefinition#fromGenericType` (Java: `io.deephaven.kafka.ingest.JsonNodeJsonNodeFieldCopier`) |
-| Two fields of a JSON mapping that are one pointer (`a` and `/a`) for two columns: which one Java keeps depends on the order of a `HashMap` | `io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers` |
+| Two fields of a JSON mapping that are one pointer, among fields of which eight or more fall in one bucket of Java's `HashMap` (Java makes the bucket a tree or resizes early, which is not reproduced) | `java.util.HashMap#treeifyBin` |
 | JSON text with a UTF-16 surrogate without its pair (`"\ud83d"`) where it would become a `String` cell, compact JSON or an `Instant`'s text (fails the table); Java keeps the lone surrogate, which a Rust string cannot hold | `java.lang.String` |
 | Text in an `Instant` column in a spelling the expression crate's `parseInstant` does not read yet (fails the table) | `io.deephaven.time.DateTimeUtils#parseInstant` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
@@ -516,7 +540,8 @@ broker under the open tables of both.
 No longer refused since task 7.4.3: JSON columns of `char` and `Instant`, nested
 pointers and records that are arrays, fractions and text in numeric columns, objects and
 arrays in `String` and `Boolean` columns, integers of any size, several fields mapped to
-one column (now failing the table as in Java), a simple `byte[]` column.
+one column (now failing the table as in Java), two fields that are one pointer (in Java's
+hash order), a simple `byte[]` column.
 
 `KafkaTools.Consume#rawSpec` takes a Java `Deserializer` class, which no Python API of the
 reference reaches (`deephaven.stream.kafka.consumer` has no `raw_spec`); there is nothing
