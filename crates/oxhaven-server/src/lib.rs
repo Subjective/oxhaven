@@ -139,14 +139,16 @@ impl ServerState {
         })
     }
 
-    /// What table operations run with: the server's graph, the wall clock and the formula
-    /// language, whose formulas may name the variables of the query scope.
+    /// What the table operations of clients run with: the server's graph, the wall clock
+    /// and the formula language, whose formulas may name the variables of the query scope
+    /// and may not make the calls Java's `ColumnExpressionValidator` refuses a client. The
+    /// console's operations have a compiler of their own, without that refusal.
     pub fn op_context(&self) -> OpContext {
         OpContext {
             graph: self.graph.clone(),
             clock: Arc::new(WallClock),
             compiler: Arc::new(ScopedCompiler::new(
-                Arc::new(oxhaven_expr::Compiler),
+                Arc::new(oxhaven_expr::RequestCompiler),
                 self.scope.clone(),
             )),
         }

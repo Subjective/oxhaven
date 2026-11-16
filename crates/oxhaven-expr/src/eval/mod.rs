@@ -21,6 +21,7 @@ use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::sync::Arc;
+pub(crate) use text::java_strings;
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
@@ -518,6 +519,17 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 .map(|argument| evaluate(argument, batch).map(|values| with_null_values(&values)))
                 .collect::<Result<Vec<_>, _>>()?;
             crate::functions::volatile::random(*function, &arguments, batch.rows)
+        }
+        Node::Call {
+            kernel: Kernel::Static(method),
+            arguments,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::functions::statics::evaluate(method, &arguments, batch.rows)
+                .map(without_null_values)
         }
         Node::Call { kernel, arguments } => {
             let arguments = arguments

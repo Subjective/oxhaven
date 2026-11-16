@@ -24,6 +24,9 @@ pub(crate) enum StringMethod {
     EqualsIgnoreCase,
     CompareTo,
     Concat,
+    HashCode,
+    /// `replace(char, char)` or `replace(CharSequence, CharSequence)`, by its arguments.
+    Replace,
 }
 
 /// What a method parameter accepts.
@@ -119,6 +122,8 @@ impl StringMethod {
             "equalsIgnoreCase" => StringMethod::EqualsIgnoreCase,
             "compareTo" => StringMethod::CompareTo,
             "concat" => StringMethod::Concat,
+            "hashCode" => StringMethod::HashCode,
+            "replace" => StringMethod::Replace,
             _ => return None,
         })
     }
@@ -133,7 +138,9 @@ impl StringMethod {
             | StringMethod::IsEmpty
             | StringMethod::ToUpperCase
             | StringMethod::ToLowerCase
+            | StringMethod::HashCode
             | StringMethod::Trim => &[&[]],
+            StringMethod::Replace => &[&[String, String]],
             StringMethod::CharAt => &[&[Int]],
             StringMethod::Substring => &[&[Int], &[Int, Int]],
             StringMethod::Contains
@@ -168,9 +175,10 @@ impl StringMethod {
     /// The declared return type in `java.lang.String`.
     pub(crate) fn result_type(self) -> ColumnType {
         match self {
-            StringMethod::Length | StringMethod::IndexOf | StringMethod::CompareTo => {
-                ColumnType::Int
-            }
+            StringMethod::Length
+            | StringMethod::IndexOf
+            | StringMethod::CompareTo
+            | StringMethod::HashCode => ColumnType::Int,
             StringMethod::IsEmpty
             | StringMethod::Contains
             | StringMethod::StartsWith
@@ -182,6 +190,7 @@ impl StringMethod {
             | StringMethod::ToUpperCase
             | StringMethod::ToLowerCase
             | StringMethod::Trim
+            | StringMethod::Replace
             | StringMethod::Concat => ColumnType::String,
         }
     }
