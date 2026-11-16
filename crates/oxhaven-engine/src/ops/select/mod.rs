@@ -44,7 +44,6 @@ pub use array_formula::ArrayFormula;
 use oxhaven_contracts::expr::{ColumnAssignment, FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
-use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use plan::{Kind, Plan, Sources};
 pub use rename::{move_columns, move_columns_down, move_columns_up, rename_columns, ColumnPair};
@@ -182,9 +181,8 @@ pub fn update_view<S: AsRef<str>>(
 /// When the parent modifies rows the result reports every column as modified, because
 /// Java's listener for this operation does not translate modified columns.
 ///
-/// # Panics
-/// With `unported!` for a formula that uses `i`, `ii`, `k` or a column array: Java's cache
-/// key for those has not been ported.
+/// A formula that uses `i`, `ii` or `k` is remembered by those too; the column arrays it
+/// reads are no part of what it is remembered by (`LazySource`).
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#lazyUpdate, with the listener
 /// io.deephaven.engine.table.impl.BaseTable.ListenerImpl#onUpdate
