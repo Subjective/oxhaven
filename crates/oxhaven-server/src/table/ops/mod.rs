@@ -295,3 +295,4 @@ handlers! {
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }
+pub(crate) use aggregate::{adapt as adapt_aggregations, check_filters, validate_aggregation};

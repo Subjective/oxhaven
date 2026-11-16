@@ -1,5 +1,6 @@
-//! The object service, for the one kind of object the server has besides tables: a
-//! partitioned table. `FetchObject` and `MessageStream` send what its Java plugin sends.
+//! The object service, for the kinds of object the server has besides tables: a
+//! partitioned table and a hierarchical table. `FetchObject` and `MessageStream` send what
+//! their Java plugins send.
 //!
 //! Object types of plugins, and the two calls a browser without streams uses, belong to
 //! task 7.10; until then they are refused.
@@ -23,6 +24,7 @@ use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_stream::StreamExt;
 use tonic::{Request, Response, Status, Streaming};
 
+use crate::hierarchical::hierarchical_of;
 use crate::partitioned::{describe, partitioned_of, TYPE_NAME};
 use crate::session::{current_session, ExportError, ExportValue, Reply, Session, TicketRouter};
 use crate::table::support::not_ported;
@@ -41,16 +43,29 @@ fn open(
     expected: &str,
     value: &ExportValue,
 ) -> Result<ServerData, ExportError> {
+    let unexpected = |actual: &str| {
+        ExportError::from(Status::failed_precondition(format!(
+            "Unexpected ObjectType, expected type '{expected}', actual type '{actual}'"
+        )))
+    };
+    if let Some(hierarchical) = hierarchical_of(value) {
+        if expected != crate::hierarchical::TYPE_NAME {
+            return Err(unexpected(crate::hierarchical::TYPE_NAME));
+        }
+        // Behavior: `HierarchicalTableTypePlugin#writeCompatibleObjectTo`, which exports
+        // nothing
+        return Ok(ServerData {
+            payload: crate::hierarchical::describe(hierarchical),
+            exported_references: Vec::new(),
+        });
+    }
     let Some(partitioned) = partitioned_of(value) else {
         return Err(
             Status::not_found(format!("No ObjectType found, expected type '{expected}'")).into(),
         );
     };
     if expected != TYPE_NAME {
-        return Err(Status::failed_precondition(format!(
-            "Unexpected ObjectType, expected type '{expected}', actual type '{TYPE_NAME}'"
-        ))
-        .into());
+        return Err(unexpected(TYPE_NAME));
     }
     let (payload, table) = describe(partitioned)?;
     let export = session.new_server_side_export(ExportValue::Table(table))?;

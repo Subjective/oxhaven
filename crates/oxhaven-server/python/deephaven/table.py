@@ -1,5 +1,6 @@
 """The `Table` class."""
 
+import json
 from collections import namedtuple
 from collections.abc import Iterable, Mapping
 from enum import Enum, auto
@@ -1065,6 +1066,38 @@ class Table:
         except Exception as e:
             raise DHError(e, "table partitioned_agg_by operation failed.") from e
 
+    # Hierarchical tables (task 7.8)
+
+    def rollup(
+        self,
+        aggs: Union[Aggregation, Sequence[Aggregation]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+        include_constituents: bool = False,
+    ) -> "RollupTable":
+        """A rollup table: this table aggregated by the `by` columns, and by one column
+        less on each level above, up to the one row of the whole table.
+
+        Behavior: `io.deephaven.engine.table.impl.QueryTable#rollup`
+        """
+        try:
+            aggs = _engine.to_sequence(aggs)
+            by = _engine.to_sequence(by)
+            request = {
+                "aggregate": {
+                    "source_id": _engine.source(0),
+                    "aggregations": [agg.j_aggregation for agg in aggs],
+                    "group_by_columns": by,
+                }
+            }
+            handle = _oxhaven.rollup(json.dumps(request), self.j_table, bool(include_constituents))
+            return RollupTable(handle, aggs=aggs, include_constituents=include_constituents, by=by)
+        except Exception as e:
+            raise DHError(e, "table rollup operation failed.") from e
+
+    def tree(self, id_col: str, parent_col: str, promote_orphans: bool = False):
+        """Not ported: a tree table."""
+        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.impl.QueryTable#tree")
+
 
 # Aggregations (task 6.5)
 
@@ -1253,6 +1286,59 @@ def _java_text(value) -> str:
     if isinstance(value, bool):
         return "true" if value else "false"
     return str(value)
+
+
+class RollupTable:
+    """The result of `Table.rollup`: a hierarchical table whose levels aggregate by one
+    group-by column less each. A client reads it through a view; a script only makes it.
+
+    Behavior: `deephaven.table.RollupTable`
+    """
+
+    def __init__(self, j_rollup_table, aggs, include_constituents: bool, by):
+        if not isinstance(j_rollup_table, _oxhaven.HierarchicalHandle):
+            raise DHError(
+                message=f"not a hierarchical table handle: {type(j_rollup_table).__name__}"
+            )
+        self.j_rollup_table = j_rollup_table
+        self.aggs = aggs
+        self.include_constituents = include_constituents
+        self.by = by
+
+    @property
+    def j_object(self):
+        """The engine's handle. In the reference package this is the Java rollup table."""
+        return self.j_rollup_table
+
+    def node_operation_recorder(self, node_type):
+        """Not ported: a recorder of the operations to apply to the nodes."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeNodeOperationsRecorder"
+        )
+
+    def with_node_operations(self, recorders) -> "RollupTable":
+        """Not ported: this rollup with recorded operations applied to its nodes."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withNodeOperations"
+        )
+
+    def with_filters(self, filters) -> "RollupTable":
+        """Not ported: this rollup with its group-by columns filtered."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withFilter"
+        )
+
+    def with_update_view(self, formulas) -> "RollupTable":
+        """Not ported: this rollup with columns added to its nodes."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withUpdateView"
+        )
+
+
+def _wrap_hierarchical(handle) -> RollupTable:
+    """The Python object of a hierarchical table that was not made by this code: a
+    variable read back from the server's scope. What made it is not kept with it."""
+    return RollupTable(handle, aggs=(), include_constituents=False, by=())
 
 
 class PartitionedTable:

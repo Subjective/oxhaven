@@ -192,7 +192,7 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
 /// The checks of one aggregation of a request, which need no table.
 ///
 /// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#validate`
-pub(super) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
+pub(crate) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
     match &aggregation.r#type {
         None => Err(missing_one_of("Aggregation")),
         Some(AggregationType::Columns(columns)) => {
@@ -299,7 +299,7 @@ fn selectable(selectable: Option<&proto::Selectable>) -> Result<(String, String)
 
 /// The engine panics with `unported!` for a count where without filters, whose count Java
 /// leaves undefined; a request for one is refused here instead.
-fn check_filters(aggregations: &[Aggregation]) -> Result<(), Status> {
+pub(crate) fn check_filters(aggregations: &[Aggregation]) -> Result<(), Status> {
     for aggregation in aggregations {
         if let Aggregation::CountWhere { filters, .. } = aggregation {
             if filters.is_empty() {
@@ -329,6 +329,56 @@ fn run(
         &group_by,
         context.compiler.as_ref(),
     )?)
+}
+
+/// The engine's aggregations of the messages of a request.
+///
+/// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#adapt`
+pub(crate) fn adapt(requested: &[proto::Aggregation]) -> Result<Vec<Aggregation>, ExportError> {
+    let missing = |name: &str| {
+        ExportError::Status(not_ported(
+            "io.deephaven.server.table.ops.AggregationAdapter#adapt",
+            format!("the aggregation {name}"),
+        ))
+    };
+    let mut aggregations = Vec::new();
+    for aggregation in requested {
+        aggregations.push(match &aggregation.r#type {
+            Some(AggregationType::Columns(columns)) => {
+                let kind = spec(columns.spec.as_ref().ok_or_else(|| {
+                    missing_field("Aggregation.AggregationColumns", "spec", 1)
+                })?)?;
+                let pairs = columns
+                    .match_pairs
+                    .iter()
+                    .map(|text| pair(text))
+                    .collect::<Result<Vec<_>, _>>()?;
+                Aggregation::columns(kind, pairs)
+            }
+            Some(AggregationType::Count(count)) => {
+                Aggregation::count(column_name(&count.column_name)?)
+            }
+            Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
+            Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
+            // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
+            Some(AggregationType::Partition(partition)) => Aggregation::Partition {
+                column: column_name(&partition.column_name)?,
+                include_group_by_columns: partition.include_group_by_columns,
+            },
+            Some(AggregationType::Formula(formula)) => {
+                let (column, expression) = selectable(formula.selectable.as_ref())?;
+                Aggregation::formula(column, expression)
+            }
+            // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
+            // `ColumnName#of` takes the name as it is.
+            Some(AggregationType::CountWhere(count)) => Aggregation::count_where(
+                spec_column(&count.column_name)?,
+                count.filters.iter().cloned(),
+            ),
+            None => return Err(missing_one_of("Aggregation").into()),
+        });
+    }
+    Ok(aggregations)
 }
 
 /// Behavior: `io.deephaven.server.table.ops.AggregateGrpcImpl`
@@ -378,49 +428,7 @@ impl TableOp for Aggregate {
             )
             .into());
         }
-        let missing = |name: &str| {
-            ExportError::Status(not_ported(
-                "io.deephaven.server.table.ops.AggregationAdapter#adapt",
-                format!("the aggregation {name}"),
-            ))
-        };
-        let mut aggregations = Vec::new();
-        for aggregation in &request.aggregations {
-            aggregations.push(match &aggregation.r#type {
-                Some(AggregationType::Columns(columns)) => {
-                    let kind = spec(columns.spec.as_ref().ok_or_else(|| {
-                        missing_field("Aggregation.AggregationColumns", "spec", 1)
-                    })?)?;
-                    let pairs = columns
-                        .match_pairs
-                        .iter()
-                        .map(|text| pair(text))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    Aggregation::columns(kind, pairs)
-                }
-                Some(AggregationType::Count(count)) => {
-                    Aggregation::count(column_name(&count.column_name)?)
-                }
-                Some(AggregationType::FirstRowKey(_)) => return Err(missing("first_row_key")),
-                Some(AggregationType::LastRowKey(_)) => return Err(missing("last_row_key")),
-                // Behavior: `AggregationAdapter#adapt(AggregationPartition)`
-                Some(AggregationType::Partition(partition)) => Aggregation::Partition {
-                    column: column_name(&partition.column_name)?,
-                    include_group_by_columns: partition.include_group_by_columns,
-                },
-                Some(AggregationType::Formula(formula)) => {
-                    let (column, expression) = selectable(formula.selectable.as_ref())?;
-                    Aggregation::formula(column, expression)
-                }
-                // Behavior: `AggregationAdapter#adapt(AggregationCountWhere)`, whose
-                // `ColumnName#of` takes the name as it is.
-                Some(AggregationType::CountWhere(count)) => Aggregation::count_where(
-                    spec_column(&count.column_name)?,
-                    count.filters.iter().cloned(),
-                ),
-                None => return Err(missing_one_of("Aggregation").into()),
-            });
-        }
+        let aggregations = adapt(&request.aggregations)?;
         run(
             context,
             &sources[0],

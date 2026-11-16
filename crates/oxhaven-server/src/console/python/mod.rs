@@ -33,6 +33,7 @@ mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
+mod hierarchical;
 mod input;
 pub mod interrupt;
 mod listener;
@@ -445,6 +446,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         input::register(&native)?;
         listener::register(&native)?;
         partitioned::register(&native)?;
+        hierarchical::register(&native)?;
         checks::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
@@ -485,6 +487,11 @@ fn export_of(value: &Bound<'_, PyAny>) -> Option<ExportValue> {
     if let Ok(handle) = value.cast::<partitioned::PartitionedHandle>() {
         let partitioned = handle.get().partitioned.clone();
         return Some(crate::partitioned::export_value(partitioned));
+    }
+    if let Ok(handle) = value.cast::<hierarchical::HierarchicalHandle>() {
+        return Some(crate::hierarchical::export_value(
+            handle.get().table.clone(),
+        ));
     }
     Some(ExportValue::object(PythonObject(value.clone().unbind())))
 }
@@ -703,6 +710,14 @@ impl PythonSession {
                     return py
                         .import("deephaven.table")?
                         .getattr("PartitionedTable")?
+                        .call1((handle,));
+                }
+                if let Some(table) = crate::hierarchical::hierarchical_of(&value) {
+                    let table = table.clone();
+                    let handle = Py::new(py, hierarchical::HierarchicalHandle { table })?;
+                    return py
+                        .import("deephaven.table")?
+                        .getattr("_wrap_hierarchical")?
                         .call1((handle,));
                 }
                 // Java makes any Java object a Python variable through jpy
