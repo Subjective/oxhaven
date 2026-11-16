@@ -990,3 +990,7 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 ## 2026-11-16T07:46Z
 
 Pull request 115 (Kafka consumer on librdkafka) merged; the new kafka-broker job passed on its first run on GitHub. Task 7.6.2 (partitioned table proxy) reported: all 37 operations, five recorded scenarios clean, 14 items for the owner in its task file, among them a hang in Java when a proxy aggregation with a formula meets an update cycle. Merged as pull request 116. Launched 7.4.2 with 7.4.3 on Opus at 07:40, the first task under the model split. A tool check failed for some minutes, so this entry was written after the merges.
+
+## 2026-11-16T08:10Z
+
+Table formats (new task 4.21) and 7.8.2 (update views and formats of rollup nodes) reported on one branch: colour constants and functions, number and date patterns, heat maps; rollup node views through Apply and the Python recorder; trees ignore views as Java does. Four scenarios clean and a new IDE route. Opened as pull request 117 with the oracle-change label. The agent ended at 357k tokens, so any follow-up starts fresh. Left for later: tree recorder formats and where, colour values in formulas, views on constituent rows. Launched the Parquet directory read gap (partitioning columns known only to _common_metadata) on Opus.
