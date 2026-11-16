@@ -5,6 +5,7 @@ use crate::{read, ColumnInstruction, Layout, ReadError, ReadOptions, UnsignedLon
 use arrow::array::{Array, AsArray};
 use arrow::datatypes::{DataType, Int64Type, TimestampNanosecondType};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
+use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::{RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -828,6 +829,12 @@ fn what_is_missing_or_empty_is_an_error() {
         invalid(read(&data("kv"), &with_layout(Layout::FlatPartitioned))),
         no_files
     );
+    let directories = scratch("only-directories");
+    std::fs::create_dir_all(directories.join("K=1")).unwrap();
+    assert_eq!(
+        invalid(read(directories.to_str().unwrap(), &ReadOptions::default())),
+        no_files
+    );
 
     let garbage = empty.join("garbage.parquet");
     std::fs::write(&garbage, "not a parquet file at all").unwrap();
@@ -836,7 +843,7 @@ fn what_is_missing_or_empty_is_an_error() {
 }
 
 #[test]
-fn a_refreshing_table_is_refused() {
+fn a_single_file_and_a_metadata_file_cannot_be_followed() {
     let refreshing = ReadOptions {
         refreshing: true,
         ..ReadOptions::default()
@@ -848,25 +855,284 @@ fn a_refreshing_table_is_refused() {
     // the missing file is found first, as in Java
     let missing = read(&data("nope.parquet"), &refreshing);
     assert!(matches!(missing, Err(ReadError::Io(_))));
-    let (java, _) = not_ported(read(&data("flat"), &refreshing));
-    assert!(java.ends_with("PollingTableLocationProvider#refresh"));
+    for path in [data("meta"), data("meta/_metadata")] {
+        assert_eq!(
+            invalid(read(&path, &refreshing)),
+            "ParquetMetadataFileLayout does not support refreshing"
+        );
+    }
+    // a directory can, by `read_in`, which has the update graph
+    let needs_graph = invalid(read(&data("flat"), &refreshing));
+    assert!(
+        needs_graph.ends_with("needs an update graph"),
+        "{needs_graph}"
+    );
+}
+
+/// Copies the files `names` of `tests/data` into `directory`, each under its file name or
+/// under the path given after a `>`.
+fn copy(directory: &std::path::Path, names: &[&str]) {
+    for name in names {
+        let file_name = name.rsplit('/').next().unwrap();
+        let (from, to) = name.split_once('>').unwrap_or((name, file_name));
+        let to = directory.join(to);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(data(from), to).unwrap();
+    }
+}
+
+/// What Java 42.9 read from `tests/data/kv`, and from the directories of the probe of
+/// task 7.1b (`tasks/7.1b-parquet-read-more.md`).
+#[test]
+fn partition_directories_are_partitioning_columns() {
+    for options in [ReadOptions::default(), with_layout(Layout::KvPartitioned)] {
+        let table = read(&data("kv"), &options).unwrap();
+        let definition = table.definition().columns();
+        assert_eq!(
+            columns(&table),
+            [
+                ("K".to_string(), ColumnType::Int),
+                ("X".to_string(), ColumnType::Int)
+            ]
+        );
+        assert!(definition[0].partitioning && !definition[1].partitioning);
+        assert_eq!(cells(&table, "K"), ["1", "2"]);
+        assert_eq!(cells(&table, "X"), ["1", "2"]);
+        assert!(table.attributes().add_only && !table.is_refreshing());
+        // each file is a region
+        let expected = RowSet::from_ranges([RowRange::new(0, 0), RowRange::new(REGION, REGION)]);
+        assert_eq!(*table.row_set(), expected);
+        // a partitioning column is read by row keys in any order too
+        let index = table.definition().index_of("K").unwrap();
+        let keys = table
+            .column(index)
+            .chunk_by_keys(&[REGION, 0, REGION], false);
+        let keys = keys.unwrap();
+        let keys = keys.as_primitive::<arrow::datatypes::Int32Type>();
+        assert_eq!(keys.values(), &[2, 1, 2]);
+    }
+}
+
+#[test]
+fn partition_values_have_the_types_the_csv_reader_infers_and_order_the_files() {
+    let root = scratch("partitions");
+    // two levels; the values of `N` sort as numbers and those of `S` as text
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>t/N=10/S=bb/f.parquet",
+            "kv/K=2/a.parquet>t/N=9/S=bb/f.parquet",
+            "kv/K=1/a.parquet>t/N=10/S=aa/g.parquet",
+            "kv/K=2/a.parquet>t/N=10/S=aa/f.parquet",
+            "kv/K=1/a.parquet>t/N=10/.hidden/f.parquet",
+        ],
+    );
+    let table = read(root.join("t").to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(
+        columns(&table),
+        [
+            ("N".to_string(), ColumnType::Int),
+            ("S".to_string(), ColumnType::String),
+            ("X".to_string(), ColumnType::Int)
+        ]
+    );
+    assert_eq!(cells(&table, "N"), ["9", "10", "10", "10"]);
+    assert_eq!(cells(&table, "S"), ["bb", "aa", "aa", "bb"]);
+    assert_eq!(cells(&table, "X"), ["2", "2", "1", "1"]);
+
+    // a column of the files with the name of a key is not read; a key is made a legal name
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>same/X=7/a.parquet",
+            "kv/K=1/a.parquet>legal/2 k=x/a.parquet",
+            "kv/K=2/a.parquet>legal/2 k=true/a.parquet",
+        ],
+    );
+    let table = read(root.join("same").to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(columns(&table), [("X".to_string(), ColumnType::Int)]);
+    assert_eq!(cells(&table, "X"), ["7"]);
+    let table = read(
+        root.join("legal").to_str().unwrap(),
+        &ReadOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        columns(&table)[0],
+        ("column_2k".to_string(), ColumnType::String)
+    );
+    assert_eq!(cells(&table, "column_2k"), ["true", "x"]);
+    assert_eq!(cells(&table, "X"), ["2", "1"]);
+}
+
+#[test]
+fn partition_directories_java_refuses_are_refused() {
+    let root = scratch("bad-partitions");
+    let read_at = |name: &str| read(root.join(name).to_str().unwrap(), &ReadOptions::default());
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>plain/sub/a.parquet",
+            "kv/K=1/a.parquet>names/A=1/a.parquet",
+            "kv/K=1/a.parquet>names/B=1/a.parquet",
+            "kv/K=1/a.parquet>deeper/A=1/a.parquet",
+            "kv/K=1/a.parquet>deeper/A=2/B=1/a.parquet",
+            "kv/K=1/a.parquet>null/A=1/a.parquet",
+            "kv/K=1/a.parquet>null/A=/a.parquet",
+            "kv/K=1/a.parquet>last/A=/a.parquet",
+        ],
+    );
+    assert_eq!(
+        invalid(read_at("plain")),
+        "Unexpected directory name format (not key=value) at sub/a.parquet"
+    );
+    assert_eq!(
+        invalid(read_at("names")),
+        "Column name mismatch at column index 0: expected A found B at B=1/a.parquet"
+    );
+    assert_eq!(
+        invalid(read_at("deeper")),
+        "Too many partitioning levels at A=2/B=1/a.parquet (expected 1) based on earlier leaf \
+         nodes in the tree."
+    );
+    // a partition without a value is null, and comes first
+    let table = read_at("null").unwrap();
+    assert_eq!(cells(&table, "A"), ["null", "1"]);
+    let text = invalid(read_at("last"));
+    assert!(
+        text.starts_with("Last location key ")
+            && text.ends_with("has null partition value at partition key A"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_metadata_file_lists_the_files_of_a_table() {
+    for path in [data("meta"), data("meta/_metadata")] {
+        let table = read(&path, &ReadOptions::default()).unwrap();
+        assert_eq!(columns(&table), [("X".to_string(), ColumnType::Int)]);
+        assert_eq!(cells(&table, "X"), ["1"]);
+        assert!(table.attributes().add_only);
+    }
+    let table = read(&data("meta"), &with_layout(Layout::MetadataPartitioned)).unwrap();
+    assert_eq!(cells(&table, "X"), ["1"]);
+
+    // the files are the ones the metadata file names, not the ones of the directory
+    let root = scratch("metadata");
+    copy(
+        &root,
+        &[
+            "meta/_metadata",
+            "meta/a.parquet",
+            "meta/a.parquet>b.parquet",
+        ],
+    );
+    let table = read(root.to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(cells(&table, "X"), ["1"]);
+    // and a file it names must be there
+    std::fs::remove_file(root.join("a.parquet")).unwrap();
+    let missing = read(root.to_str().unwrap(), &ReadOptions::default());
+    assert!(matches!(missing, Err(ReadError::Io(text)) if text.contains("a.parquet")));
 }
 
 #[test]
 fn layouts_that_are_not_ported_are_refused() {
-    let (java, what) = not_ported(read_default("kv"));
-    assert!(java.ends_with("ParquetKeyValuePartitionedLayout#findKeys"));
-    assert!(
-        what.contains("K=1/a.parquet") || what.contains("K=2/a.parquet"),
-        "{what}"
-    );
-
-    for path in [data("meta"), data("meta/_metadata")] {
-        let (java, _) = not_ported(read(&path, &ReadOptions::default()));
-        assert!(java.ends_with("ParquetMetadataFileLayout#create"), "{path}");
-    }
     let (java, _) = not_ported(read("s3://bucket/table.parquet", &ReadOptions::default()));
     assert!(java.ends_with("SeekableChannelsProviderLoader#load"));
+}
+
+#[test]
+fn a_table_follows_the_files_that_appear_in_its_directory() {
+    use oxhaven_engine::graph::SteppedUpdateGraph;
+    use std::time::Duration;
+    let root = scratch("following");
+    copy(&root, &["flat/part1.parquet"]);
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let refreshing = ReadOptions {
+        refreshing: true,
+        ..ReadOptions::default()
+    };
+    let path = root.to_str().unwrap();
+    let following = Some((graph.clone(), Duration::ZERO));
+    let table = crate::read_table(path, &refreshing, following).unwrap();
+    // Java gives it this attribute and not the add-only one
+    assert!(table.attributes().append_only && !table.attributes().add_only);
+    assert!(table.is_refreshing());
+    assert_eq!(cells(&table, "X"), ["0", "1", "2", "3"]);
+
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 4);
+    // the new files come after the rows that are there, in the order of their paths,
+    // whatever their place among the old ones; a file without rows adds none
+    copy(
+        &root,
+        &[
+            "flat/part2.parquet",
+            "flat/part0.parquet",
+            "flat/empty.parquet",
+            "flat/part0.parquet>.hidden.parquet",
+        ],
+    );
+    stepper.run_cycle();
+    assert_eq!(
+        cells(&table, "X"),
+        ["0", "1", "2", "3", "0", "1", "2", "0", "1", "2", "3", "4"]
+    );
+    let expected = RowSet::from_ranges([
+        RowRange::new(0, 3),
+        RowRange::new(REGION, REGION + 2),
+        RowRange::new(2 * REGION, 2 * REGION + 4),
+    ]);
+    assert_eq!(*table.row_set(), expected);
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 12);
+
+    // with the wait Java has between two looks, a cycle right after does not look
+    let waiting = scratch("waiting");
+    copy(&waiting, &["flat/part1.parquet"]);
+    let table = crate::read_in(&graph, waiting.to_str().unwrap(), &refreshing).unwrap();
+    copy(&waiting, &["flat/part2.parquet"]);
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 4);
+
+    // a directory that has no file yet has no columns to give the table
+    let empty = scratch("following-empty");
+    let none = crate::read_in(&graph, empty.to_str().unwrap(), &refreshing);
+    assert!(invalid(none).starts_with("Unable to infer schema"));
+}
+
+#[test]
+fn a_followed_directory_of_partitions_gains_partitions() {
+    use oxhaven_engine::graph::SteppedUpdateGraph;
+    use std::time::Duration;
+    let root = scratch("following-partitions");
+    copy(&root, &["kv/K=2/a.parquet>K=2/a.parquet"]);
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let refreshing = ReadOptions {
+        refreshing: true,
+        ..ReadOptions::default()
+    };
+    let path = root.to_str().unwrap();
+    let table = crate::read_table(path, &refreshing, Some((graph, Duration::ZERO))).unwrap();
+    assert_eq!(cells(&table, "K"), ["2"]);
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>K=3/a.parquet",
+            "kv/K=1/a.parquet>K=1/a.parquet",
+        ],
+    );
+    stepper.run_cycle();
+    assert_eq!(cells(&table, "K"), ["2", "1", "3"]);
+    assert_eq!(cells(&table, "X"), ["2", "1", "1"]);
+    assert!(!table.is_failed());
+
+    // a partition whose value is of another type than the column fails the table
+    copy(&root, &["kv/K=1/a.parquet>K=x/a.parquet"]);
+    stepper.run_cycle();
+    assert!(table.is_failed());
 }
 
 /// A new empty directory for one test.

@@ -4,10 +4,10 @@ use crate::schema::{self, FileColumn};
 use crate::{not_ported, ReadError, ReadOptions, UnsignedLongTarget};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BinaryArray, Int64Array, Int8Array, ListArray,
-    Time64NanosecondArray,
+    Time64NanosecondArray, UInt32Array,
 };
 use arrow::buffer::{NullBuffer, OffsetBuffer, ScalarBuffer};
-use arrow::compute::{cast_with_options, concat, CastOptions};
+use arrow::compute::{cast_with_options, concat, take, CastOptions};
 use arrow::datatypes::{
     DataType, Field, Time32MillisecondType, Time64MicrosecondType, Time64NanosecondType, TimeUnit,
     TimestampNanosecondType, UInt64Type,
@@ -47,6 +47,9 @@ pub(crate) struct ParquetLocation {
     /// file does not have, which reads as nulls.
     columns: Vec<Option<FileColumn>>,
     types: Vec<ColumnType>,
+    /// For each partitioning column of the table, the value every row of the file has in
+    /// it: an array of one element.
+    constants: Vec<Option<ArrayRef>>,
     /// The first row of each row group, and after them the number of rows of the file.
     group_rows: Vec<u64>,
     /// The decoded values of each row group's columns: `groups * columns` cells.
@@ -134,6 +137,7 @@ impl ParquetLocation {
         metadata: ArrowReaderMetadata,
         columns: Vec<Option<FileColumn>>,
         types: Vec<ColumnType>,
+        constants: Vec<Option<ArrayRef>>,
     ) -> Self {
         let mut group_rows = vec![0];
         let mut rows = 0;
@@ -148,34 +152,38 @@ impl ParquetLocation {
             metadata,
             columns,
             types,
+            constants,
             group_rows,
             decoded: (0..cells).map(|_| Mutex::new(None)).collect(),
         }
     }
 
-    /// The file at `path` as the location that decides the columns of a table: the table
-    /// has the columns of the file.
+    /// The columns of the file at `path`, which need not hold rows: a metadata file has
+    /// columns too.
     ///
-    /// Behavior: `io.deephaven.parquet.table.ParquetTools#infer`
-    pub(crate) fn infer(
+    /// Behavior: `io.deephaven.parquet.table.ParquetSchemaReader#convertSchema` of the
+    /// footer of a file
+    pub(crate) fn file_columns(
         path: &Path,
         options: &ReadOptions,
-    ) -> Result<(TableDefinition, Self), ReadError> {
-        let (metadata, columns) = Self::load(path, options)?;
-        let definitions = columns.iter();
-        let definitions = definitions
-            .map(|column| ColumnDefinition::new(column.name.clone(), column.column_type.clone()))
-            .collect();
-        let definition = TableDefinition::new(definitions)
-            .map_err(|duplicate| ReadError::Invalid(duplicate.to_string()))?;
-        let types = columns.iter().map(|c| c.column_type.clone()).collect();
-        let columns = columns.into_iter().map(Some).collect();
-        Ok((definition, Self::new(path, metadata, columns, types)))
+    ) -> Result<Vec<ColumnDefinition>, ReadError> {
+        let (_, columns) = Self::load(path, options)?;
+        let columns = columns.into_iter();
+        Ok(columns
+            .map(|column| ColumnDefinition::new(column.name, column.column_type))
+            .collect())
+    }
+
+    /// The number of row groups of the file.
+    pub(crate) fn row_groups(&self) -> usize {
+        self.group_rows.len() - 1
     }
 
     /// The file at `path` as a location of a table with the columns of `definition`. A
     /// column the file does not have reads as nulls; a column the file has with another
-    /// type is refused.
+    /// type is refused. A partitioning column is not read from the file, whether the file
+    /// has it or not: every row has the value `partitions` gives for its name, an array of
+    /// one element, or null.
     ///
     /// Behavior: `io.deephaven.parquet.table.location.ParquetTableLocation#makeColumnLocation`
     /// and `ParquetColumnLocation#exists`; Java converts between some types where a file
@@ -184,10 +192,21 @@ impl ParquetLocation {
         path: &Path,
         definition: &TableDefinition,
         options: &ReadOptions,
+        partitions: &[(&str, ArrayRef)],
     ) -> Result<Self, ReadError> {
         let (metadata, mut found) = Self::load(path, options)?;
         let mut columns = Vec::with_capacity(definition.columns().len());
+        let mut constants = Vec::with_capacity(definition.columns().len());
         for wanted in definition.columns() {
+            if wanted.partitioning {
+                let value = partitions.iter().find(|(name, _)| *name == wanted.name);
+                let value = value.map(|(_, value)| value.clone());
+                let null = || new_null_array(&wanted.column_type.arrow_type(), 1);
+                constants.push(Some(value.unwrap_or_else(null)));
+                columns.push(None);
+                continue;
+            }
+            constants.push(None);
             let position = found.iter().position(|column| column.name == wanted.name);
             let column = position.map(|position| found.swap_remove(position));
             if let Some(column) = column
@@ -209,7 +228,7 @@ impl ParquetLocation {
         }
         let types = definition.columns().iter();
         let types = types.map(|column| column.column_type.clone()).collect();
-        Ok(Self::new(path, metadata, columns, types))
+        Ok(Self::new(path, metadata, columns, types, constants))
     }
 
     /// Decodes the values of row group `group` of the file column `column`.
@@ -634,6 +653,10 @@ impl TableLocation for ParquetLocation {
 
     fn read(&self, column: usize, rows: Range<u64>) -> Result<ArrayRef, TableFailure> {
         let size = (rows.end - rows.start) as usize;
+        if let Some(value) = &self.constants[column] {
+            let first = UInt32Array::from_value(0, size);
+            return take(value, &first, None).map_err(|error| failure(error.to_string()));
+        }
         let Some(source) = &self.columns[column] else {
             return Ok(new_null_array(&self.types[column].arrow_type(), size));
         };

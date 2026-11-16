@@ -82,13 +82,23 @@ fn column_infos(
 /// makes it new. A name with nothing left, or left with a reserved word, is an error.
 ///
 /// Behavior: `io.deephaven.api.util.NameValidator#legalizeColumnName(String, Function, Set)`
-/// with the replacement of `ParquetSchemaReader#convertSchema`
-fn legalize(parquet_name: &str, taken: &[String]) -> Result<String, ReadError> {
+/// with the replacement of `ParquetSchemaReader#convertSchema`; the key of a partition
+/// directory is made a name without that replacement (`space_to_underscore`), so a space
+/// in it is dropped
+pub(crate) fn legalize(
+    parquet_name: &str,
+    space_to_underscore: bool,
+    taken: &[String],
+) -> Result<String, ReadError> {
     let error = || {
         // Java: a `NameValidator.LegalizeNameException` with this text
         ReadError::Invalid(format!("Can not legalize column name {parquet_name}"))
     };
-    let mut name = parquet_name.replace(' ', "_");
+    let mut name = if space_to_underscore {
+        parquet_name.replace(' ', "_")
+    } else {
+        parquet_name.to_string()
+    };
     if is_reserved(&name) {
         name = format!("column_{name}");
     }
@@ -306,7 +316,7 @@ pub(crate) fn columns(
         let name = match options.name_of(parquet_name) {
             Some(name) => name.to_string(),
             None => {
-                let legal = legalize(parquet_name, taken.as_deref().unwrap_or(&[]))?;
+                let legal = legalize(parquet_name, true, taken.as_deref().unwrap_or(&[]))?;
                 if legal != *parquet_name {
                     let named = |c: &&crate::ColumnInstruction| c.name.as_ref() == Some(&legal);
                     let instructed = options.columns.iter().find(named);
