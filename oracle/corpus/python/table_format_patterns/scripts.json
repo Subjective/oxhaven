@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format columns. : Cannot find method Decimal(java.lang.String)",
+      "operation": "failed to color format columns."
+    }
+  ]
+}

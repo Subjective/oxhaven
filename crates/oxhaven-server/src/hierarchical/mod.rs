@@ -7,6 +7,8 @@
 
 #[cfg(test)]
 mod constituent_tests;
+#[cfg(test)]
+mod node_view_tests;
 mod subscription;
 #[cfg(test)]
 mod tests;
@@ -19,13 +21,16 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use arrow::datatypes::{Field, Schema};
+use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::agg::{AggSpec, Aggregation};
 use oxhaven_engine::ops::filter::{CheckedFilters, Condition};
 use oxhaven_engine::ops::hierarchical::{
-    promote_orphans, rollup, tree, HierarchicalError, Hierarchy, RollupTable, TreeTable, View,
-    DEPTH_COLUMN, EXPANDED_COLUMN,
+    promote_orphans, rollup, tree, HierarchicalError, Hierarchy, NodeOperations, RollupTable,
+    TreeTable, View, DEPTH_COLUMN, EXPANDED_COLUMN,
 };
+use oxhaven_engine::ops::select::format::format_assignments;
+use oxhaven_engine::ops::select::SelectError;
 use oxhaven_engine::ops::sort::SortColumn;
 use oxhaven_proto::grpc::hierarchical_table_service_server::HierarchicalTableService;
 use oxhaven_proto::grpc::hierarchical_table_view_request::Target;
@@ -34,8 +39,9 @@ use oxhaven_proto::grpc::table_reference::Ref;
 use oxhaven_proto::grpc::{
     ExportedTableCreationResponse, HierarchicalTableApplyRequest, HierarchicalTableApplyResponse,
     HierarchicalTableDescriptor, HierarchicalTableSourceExportRequest,
-    HierarchicalTableViewRequest, HierarchicalTableViewResponse, RollupRequest, RollupResponse,
-    SortDescriptor, TableReference, Ticket, TreeRequest, TreeResponse,
+    HierarchicalTableViewRequest, HierarchicalTableViewResponse, RollupNodeType, RollupRequest,
+    RollupResponse, SortDescriptor, TableReference, Ticket, TreeRequest, TreeResponse,
+    UpdateViewRequest,
 };
 use prost::Message;
 use tonic::{Request, Response, Status};
@@ -43,8 +49,8 @@ use tonic::{Request, Response, Status};
 use crate::partitioned::guarded;
 use crate::schema::{arrow_schema, schema_ipc_bytes, SchemaContext};
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
-use crate::table::ops::{adapt_aggregations, conditions, validate_aggregation};
-use crate::table::support::{missing_field, not_ported, OpContext};
+use crate::table::ops::{adapt_aggregations, conditions, selectable, validate_aggregation};
+use crate::table::support::{missing_field, OpContext};
 use crate::table::table_creation_response;
 
 /// A hierarchical table of one of the kinds there are.
@@ -252,29 +258,21 @@ pub fn apply(
         HierarchicalTable::Rollup(rollup) => {
             apply_to_rollup(context, rollup, request, &conditions, &sorts)
         }
-        HierarchicalTable::Tree(tree) => apply_to_tree(context, tree, request, &conditions, &sorts),
+        HierarchicalTable::Tree(tree) => apply_to_tree(context, tree, &conditions, &sorts),
     }
 }
 
 /// Java reads neither the update views nor the format views of a request for a tree,
-/// and answers as if it had none: a request with nothing else gives the tree back.
-/// They are refused here, as a rollup's are, until it is ruled whether that is wanted.
+/// and answers as if it had none: a request with nothing else gives the tree back, and
+/// so does one whose views do not compile. The same here.
 ///
 /// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a tree
 fn apply_to_tree(
     context: &OpContext,
     tree: &Arc<TreeTable>,
-    request: &HierarchicalTableApplyRequest,
     conditions: &[Condition],
     sorts: &[SortColumn],
 ) -> Result<Hierarchical, ExportError> {
-    if !request.update_views.is_empty() || !request.format_views.is_empty() {
-        return Err(not_ported(
-            "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
-            "update views and format views of a tree, which Java does not read",
-        )
-        .into());
-    }
     let compiler = context.compiler.as_ref();
     let source = tree.source().clone();
     guarded(&[&source], || {
@@ -293,7 +291,109 @@ fn apply_to_tree(
     })
 }
 
-/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup
+/// The update views or the format views of a request, as assignments per node type:
+/// those of the aggregated nodes, and those of the constituent nodes.
+struct NodeViews {
+    aggregated: Vec<String>,
+    constituent: Vec<String>,
+}
+
+/// The update views of a request (`formats` false) or its format views, `None` when it
+/// has none. Java checks the expression of each against the columns of the rollup's
+/// source, whatever nodes it is for, before it reads the node types: an expression that
+/// reads a result of an aggregation that is no column of the source is refused, and so
+/// is a `Decimal(..)` or `Date(..)` format, which is no expression. An expression of a
+/// format is checked here as the style it is made into.
+///
+/// Behavior: `HierarchicalTableServiceGrpcImpl#translateAndValidateUpdateViews`,
+/// `#translateAndValidateFormatViews` and `#translateNodeType`
+fn node_views(
+    views: &[UpdateViewRequest],
+    formats: bool,
+    source: &Arc<dyn Table>,
+    compiler: &dyn FormulaCompiler,
+) -> Result<Option<NodeViews>, ExportError> {
+    if views.is_empty() {
+        return Ok(None);
+    }
+    let mut specs = Vec::with_capacity(views.len());
+    for view in views {
+        let (name, expression) = selectable(view.column_spec.as_ref())?;
+        specs.push((name, expression));
+    }
+    let checked: Vec<String> = specs
+        .iter()
+        .map(|(name, expression)| {
+            if formats {
+                let assignments = format_assignments(&[format!("{name}={expression}")], &[name])?;
+                // the style of a row and a pattern are no expression
+                let style = assignments
+                    .first()
+                    .and_then(|assignment| assignment.split_once(" = "))
+                    .filter(|(hidden, _)| hidden.ends_with("__TABLE_STYLE_FORMAT"))
+                    .map(|(_, style)| style.to_string());
+                style.map(|style| format!("{name}={style}")).ok_or_else(|| {
+                    SelectError::IllegalArgument(format!("{expression} is no expression"))
+                })
+            } else {
+                Ok(format!("{name}={expression}"))
+            }
+        })
+        .collect::<Result<_, SelectError>>()?;
+    oxhaven_engine::ops::select::update_view(source, &checked, compiler)?;
+    let mut result = NodeViews {
+        aggregated: Vec::new(),
+        constituent: Vec::new(),
+    };
+    for (view, (name, expression)) in views.iter().zip(specs) {
+        let text = format!("{name}={expression}");
+        match RollupNodeType::try_from(view.node_type) {
+            Ok(RollupNodeType::Aggregated) => result.aggregated.push(text),
+            Ok(RollupNodeType::Constituent) => result.constituent.push(text),
+            other => {
+                let name = match other {
+                    Ok(known) => known.as_str_name(),
+                    Err(_) => "UNRECOGNIZED",
+                };
+                return Err(Status::invalid_argument(format!(
+                    "Unsupported or unknown node type: {name}"
+                ))
+                .into());
+            }
+        }
+    }
+    Ok(Some(result))
+}
+
+/// `rollup` with `views` recorded for its nodes by `record`: for the aggregated nodes
+/// and, in a rollup that has them, for the constituent nodes. The views of constituent
+/// nodes of a rollup without them are dropped.
+///
+/// Behavior: `HierarchicalTableServiceGrpcImpl#apply`, which makes a recorder per node
+/// type of the rollup and applies both
+fn with_node_views(
+    rollup: &Arc<RollupTable>,
+    views: &NodeViews,
+    record: impl Fn(&NodeOperations, &[String]) -> Result<NodeOperations, HierarchicalError>,
+) -> Result<Arc<RollupTable>, HierarchicalError> {
+    let aggregated = record(&rollup.node_operations(false)?, &views.aggregated)?;
+    let constituent = if rollup.includes_constituents() {
+        Some(record(&rollup.node_operations(true)?, &views.constituent)?)
+    } else {
+        None
+    };
+    let mut result = rollup.with_node_operations(false, &aggregated)?;
+    if let Some(constituent) = constituent {
+        result = result.with_node_operations(true, &constituent)?;
+    }
+    Ok(Arc::new(result))
+}
+
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup: the
+/// update views, the format views, the filters, then the sorts. A rollup whose nodes of
+/// a type have update views, formats or sorts takes neither update views nor formats
+/// for them, as Java's does not (`RollupNodeOperationsRecorder#withOperations`): so
+/// not both in one request.
 fn apply_to_rollup(
     context: &OpContext,
     rollup: &Arc<RollupTable>,
@@ -301,24 +401,22 @@ fn apply_to_rollup(
     conditions: &[Condition],
     sorts: &[SortColumn],
 ) -> Result<Hierarchical, ExportError> {
-    if !request.update_views.is_empty() {
-        return Err(not_ported(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView",
-            "update views of a rollup",
-        )
-        .into());
-    }
-    if !request.format_views.is_empty() {
-        return Err(not_ported(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumns",
-            "format views of a rollup",
-        )
-        .into());
-    }
     let compiler = context.compiler.as_ref();
     let source = rollup.source().clone();
     guarded(&[&source], || {
+        let update_views = node_views(&request.update_views, false, &source, compiler)?;
+        let format_views = node_views(&request.format_views, true, &source, compiler)?;
         let mut result = rollup.clone();
+        if let Some(views) = update_views {
+            result = with_node_views(&result, &views, |recorder, formulas| {
+                recorder.update_view(formulas, compiler)
+            })?;
+        }
+        if let Some(views) = format_views {
+            result = with_node_views(&result, &views, |recorder, formats| {
+                recorder.format_columns(formats, compiler)
+            })?;
+        }
         if !conditions.is_empty() {
             let filters = CheckedFilters::of_conditions(conditions, source.definition(), compiler)?;
             result

@@ -39,6 +39,8 @@ per primitive type and replaced by one generic implementation.
 | `impl/partitioned` | `oxhaven-engine::ops::partitioned` | 7.6 |
 | `impl/lang/QueryLanguageParser`, `select/DhFormulaColumn`, `ConditionFilter` | `oxhaven-expr` | 3.1, 5.2, 5.3, 5.5 |
 | `engine/function`, `engine/time` | `oxhaven-expr::functions` | 5.4 |
+| `TableDefaults#formatColumns`, `ColumnFormatting`, `SelectColumnFactory#getFormatExpression` | `oxhaven-engine::ops::select::format` | 4.21 |
+| `engine/util/ColorUtilImpl`, `gui/color/Color` | `oxhaven-expr::functions::color`, `oxhaven-expr::types::color` | 4.21 |
 | `engine/function` over vectors and arrays (`Numeric`, `Basic`, `Sort`), `engine/vector` methods in formulas | `oxhaven-expr::functions::vectors`, `oxhaven-engine::ops::select::ArrayFormula` | 5.6 |
 | `engine/tuple`, `engine/tuplesource` | Rust tuples and generic keys; not ported | |
 | `QueryCompiler*`, formula class generation, `engine/context` | not ported | |

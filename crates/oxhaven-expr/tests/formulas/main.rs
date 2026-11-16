@@ -7,6 +7,7 @@
 
 mod arithmetic;
 mod arrays;
+mod color;
 mod comparison;
 mod corpus;
 mod external;

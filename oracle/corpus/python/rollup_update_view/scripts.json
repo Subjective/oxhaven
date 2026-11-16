@@ -1,0 +1,75 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_update_view operation on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_update_view operation on RollupTable failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: Column Qty already exists"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: updateView does not support virtual row variables. Invalid columns: [R=i]"
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: Nope + 1"
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: Column A already exists"
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_update_view operation on RollupTable failed. : Cannot find variable or class P",
+      "operation": "with_update_view operation on RollupTable failed."
+    },
+    {
+      "step": 10,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a RollupNodeOperationsRecorder. : RuntimeError: java.lang.IllegalArgumentException: Rollup does not have constituent nodes",
+      "operation": "failed to create a RollupNodeOperationsRecorder."
+    }
+  ]
+}

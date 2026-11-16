@@ -13,8 +13,12 @@ use pyo3::prelude::*;
 
 use std::sync::Arc;
 
+use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_engine::ops::filter::CheckedFilters;
-use oxhaven_engine::ops::hierarchical::{merged_sorts, RollupTable, TreeTable};
+use oxhaven_engine::ops::hierarchical::{
+    merged_sorts, HierarchicalError, NodeOperations, RollupTable, TreeTable,
+};
+use oxhaven_engine::ops::select::format::conditional_format;
 use oxhaven_engine::ops::sort::SortColumn;
 
 use super::ops::failure;
@@ -81,6 +85,7 @@ impl HierarchicalHandle {
             table: self.table.clone(),
             constituents: false,
             sorts: Vec::new(),
+            operations: None,
         })
     }
 
@@ -100,43 +105,46 @@ impl HierarchicalHandle {
             }
             other => return Err(illegal(&format!("Unrecognized node type: {other}"))),
         };
+        let operations = rollup
+            .node_operations(constituents)
+            .map_err(|error| illegal(&error.to_string()))?;
         Ok(RecorderHandle {
             table: self.table.clone(),
             constituents,
             sorts: Vec::new(),
+            operations: Some(operations),
         })
     }
 
     /// This table with what `recorders` recorded applied to its nodes, each after the
     /// ones before it; this table itself when they recorded nothing. The sorts were
     /// checked when they were recorded, for the table the recorder was made of, and as
-    /// in Java are not checked again for this one.
+    /// in Java are not checked again for this one. A rollup whose nodes of a type have
+    /// operations takes no recorder that adds a column to them, as in Java.
     ///
     /// Behavior: `RollupTableImpl#withNodeOperations`, `TreeTableImpl#withNodeOperations`
     fn with_node_operations(
         slf: Bound<'_, Self>,
         recorders: Vec<PyRef<'_, RecorderHandle>>,
     ) -> PyResult<Py<Self>> {
-        if recorders.iter().all(|recorder| recorder.sorts.is_empty()) {
+        if recorders.iter().all(|recorder| recorder.is_empty()) {
             return Ok(slf.unbind());
         }
-        let recorded = recorders
-            .iter()
-            .filter(|recorder| !recorder.sorts.is_empty());
+        let recorded = recorders.iter().filter(|recorder| !recorder.is_empty());
         let table = Arc::new(match slf.get().table.as_ref() {
             HierarchicalTable::Rollup(rollup) => {
                 let mut result = rollup.clone();
                 for recorder in recorded {
-                    result = Arc::new(if recorder.constituents {
-                        // a recorder made of a rollup that has constituents, applied to
-                        // one that has none
+                    let Some(operations) = &recorder.operations else {
+                        return Err(PyValueError::new_err("not a recorder of a rollup"));
+                    };
+                    // a recorder made of a rollup that has constituents, applied to one
+                    // that has none, is refused here too
+                    result = Arc::new(
                         result
-                            .assert_includes_constituents()
-                            .map_err(|error| illegal(&error.to_string()))?;
-                        result.with_constituent_sorts(&recorder.sorts)
-                    } else {
-                        result.with_sorts(&recorder.sorts)
-                    });
+                            .with_node_operations(recorder.constituents, operations)
+                            .map_err(|error| illegal(&error.to_string()))?,
+                    );
                 }
                 HierarchicalTable::Rollup(result)
             }
@@ -181,8 +189,9 @@ impl HierarchicalHandle {
     }
 }
 
-/// What a script has recorded to apply to the nodes of a rollup: sorts, the one that
-/// decides first in front. The Python `RollupNodeOperationsRecorder` wraps one.
+/// What a script has recorded to apply to the nodes of a rollup or a tree: sorts, the
+/// one that decides first in front, and for a rollup update views and formats. The
+/// Python `RollupNodeOperationsRecorder` wraps one.
 ///
 /// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder`
 #[pyclass(frozen, module = "_oxhaven")]
@@ -191,7 +200,52 @@ pub(super) struct RecorderHandle {
     table: Hierarchical,
     /// Whether it records for the constituent nodes of a rollup: the rows of the source.
     constituents: bool,
+    /// The sorts of a recorder of a tree.
     sorts: Vec<SortColumn>,
+    /// What a recorder of a rollup recorded, its sorts too.
+    operations: Option<NodeOperations>,
+}
+
+impl RecorderHandle {
+    fn is_empty(&self) -> bool {
+        self.sorts.is_empty()
+            && self
+                .operations
+                .as_ref()
+                .is_none_or(NodeOperations::is_empty)
+    }
+
+    /// This recorder of a rollup with what `record` adds to its operations. The formulas
+    /// are compiled against the columns of the nodes and what the recorder added. For a
+    /// tree the Java method `java` is named as not ported.
+    fn recorded(
+        &self,
+        py: Python<'_>,
+        java: &str,
+        record: impl Fn(&NodeOperations, &dyn FormulaCompiler) -> Result<NodeOperations, HierarchicalError>
+            + Send
+            + Sync,
+    ) -> PyResult<Self> {
+        let Some(operations) = &self.operations else {
+            return Err(PyRuntimeError::new_err(format!(
+                "not ported: io.deephaven.engine.table.impl.hierarchical.{java}"
+            )));
+        };
+        let runtime = runtime()?;
+        let operations = py
+            .detach(|| {
+                guarded(&[], || {
+                    Ok(record(operations, runtime.context.compiler.as_ref())?)
+                })
+            })
+            .map_err(failure)?;
+        Ok(RecorderHandle {
+            table: self.table.clone(),
+            constituents: self.constituents,
+            sorts: Vec::new(),
+            operations: Some(operations),
+        })
+    }
 }
 
 #[pymethods]
@@ -224,19 +278,72 @@ impl RecorderHandle {
             .collect();
         let table = &self.table;
         py.detach(|| {
-            guarded(&[], || match table.as_ref() {
-                HierarchicalTable::Rollup(rollup) if self.constituents => {
-                    Ok(rollup.check_constituent_sorts(&sorts)?)
+            guarded(&[], || match (table.as_ref(), &self.operations) {
+                (HierarchicalTable::Rollup(rollup), Some(operations)) => {
+                    Ok(rollup.check_recorded_sorts(self.constituents, operations, &sorts)?)
                 }
-                HierarchicalTable::Rollup(rollup) => Ok(rollup.check_sorts(&sorts)?),
-                HierarchicalTable::Tree(tree) => Ok(tree.check_sorts(&sorts)?),
+                (HierarchicalTable::Rollup(rollup), None) => Ok(rollup.check_sorts(&sorts)?),
+                (HierarchicalTable::Tree(tree), _) => Ok(tree.check_sorts(&sorts)?),
             })
         })
         .map_err(failure)?;
-        Ok(RecorderHandle {
-            table: self.table.clone(),
-            constituents: self.constituents,
-            sorts: merged_sorts(&sorts, &self.sorts),
+        Ok(match &self.operations {
+            Some(operations) => RecorderHandle {
+                table: self.table.clone(),
+                constituents: self.constituents,
+                sorts: Vec::new(),
+                operations: Some(operations.sort(&sorts)),
+            },
+            None => RecorderHandle {
+                table: self.table.clone(),
+                constituents: self.constituents,
+                sorts: merged_sorts(&sorts, &self.sorts),
+                operations: None,
+            },
+        })
+    }
+
+    /// This recorder of a rollup with the columns of `formulas` added to the nodes.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView`
+    fn update_view(&self, py: Python<'_>, formulas: Vec<String>) -> PyResult<Self> {
+        self.recorded(
+            py,
+            "TreeNodeOperationsRecorder#updateView",
+            |operations, compiler| operations.update_view(&formulas, compiler),
+        )
+    }
+
+    /// This recorder of a rollup with the formats `formats` of columns of the nodes.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder#formatColumns`
+    fn format_columns(&self, py: Python<'_>, formats: Vec<String>) -> PyResult<Self> {
+        self.recorded(
+            py,
+            "TreeNodeOperationsRecorder#formatColumns",
+            |operations, compiler| operations.format_columns(&formats, compiler),
+        )
+    }
+
+    /// This recorder of a rollup with the format `format` of `column`, `*` for the row,
+    /// in the rows where `condition` holds.
+    ///
+    /// Behavior: `BaseNodeOperationsRecorder#formatColumnWhere` and `#formatRowWhere`
+    fn format_where(
+        &self,
+        py: Python<'_>,
+        column: &str,
+        condition: &str,
+        format: &str,
+    ) -> PyResult<Self> {
+        let formats = [conditional_format(column, condition, format)];
+        let java = if column == "*" {
+            "TreeNodeOperationsRecorder#formatRowWhere"
+        } else {
+            "TreeNodeOperationsRecorder#formatColumnWhere"
+        };
+        self.recorded(py, java, |operations, compiler| {
+            operations.format_columns(&formats, compiler)
         })
     }
 }
@@ -351,17 +458,25 @@ mod tests {
              def refused(call, java):\n\
              \x20   try:\n\
              \x20       call()\n\
-             \x20   except (DHError, NotImplementedError) as e:\n\
+             \x20   except (DHError, NotImplementedError, RuntimeError) as e:\n\
              \x20       assert java in str(e), str(e)\n\
              \x20   else:\n\
              \x20       raise AssertionError('must be refused: ' + java)\n\
              from deephaven.table import NodeType\n\
              recorder = r.node_operation_recorder(NodeType.AGGREGATED)\n\
-             refused(lambda: r.with_update_view('W = V'), 'RollupTableImpl#withUpdateView')\n\
-             refused(lambda: recorder.update_view('W = V'), 'RollupNodeOperationsRecorder#updateView')\n\
-             refused(lambda: recorder.format_column('V = RED'), 'RollupNodeOperationsRecorder#formatColumns')\n\
-             refused(lambda: recorder.format_row_where('V > 1', 'RED'), 'RollupNodeOperationsRecorder#formatRowWhere')\n\
-             refused(lambda: recorder.format_column_where('V', 'V > 1', 'RED'), 'RollupNodeOperationsRecorder#formatColumnWhere')\n\
+             viewed = r.with_update_view('W = V')\n\
+             assert viewed.by == r.by\n\
+             # Java's rollup takes one set of operations that add columns per node type\n\
+             refused(lambda: viewed.with_update_view('X = V'), 'Incompatible operation recorders')\n\
+             refused(lambda: recorder.update_view('V = 1'), 'Column V already exists')\n\
+             refused(lambda: recorder.update_view('W = i'), 'updateView does not support virtual row variables')\n\
+             refused(lambda: recorder.format_column('Nope = RED'), 'Unknown columns: [Nope]')\n\
+             refused(lambda: recorder.format_column('V RED'), 'Illegal format specification: V RED')\n\
+             refused(lambda: recorder.sort('V__TABLE_STYLE_FORMAT'), 'Unknown column names [V__TABLE_STYLE_FORMAT]')\n\
+             formats = recorder.update_view('W = V * 2').format_column('W = RED')\n\
+             formats = formats.format_row_where('V > 1', 'RED').format_column_where('V', 'V > 1', 'BLUE')\n\
+             assert r.with_node_operations([formats.sort_descending('W')]).by == r.by\n\
+             refused(lambda: viewed.with_node_operations([formats]), 'Incompatible operation recorders')\n\
              # Java takes a filter by the position of a row for one of group-by columns\n\
              refused(lambda: r.with_filters('i > 2'), 'RollupTableImpl#withFilter')\n\
              assert r.with_filters('K > 0').by == r.by\n\
