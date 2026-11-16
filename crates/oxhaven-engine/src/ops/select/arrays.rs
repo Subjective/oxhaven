@@ -824,6 +824,29 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
         run(parent, before, compiler, keeping)?
     };
 
+    // Java makes the shifted column of a column of `ObjectVector`s of `Boolean` or `Instant`
+    // one without an element type, which a client receives as strings: seen on Java 42.9
+    // for `update("X = T_[i - 1]")` and `update("X = T_[i - 1][0]")` after a `group_by`.
+    for shift in &shifted.rewritten.shifts {
+        let declared = so_far.definition();
+        let objects = declared.index_of(&shift.column).is_some_and(|index| {
+            matches!(
+                &declared.columns()[index].column_type,
+                ColumnType::Vector(element)
+                    if matches!(**element, ColumnType::Boolean | ColumnType::Instant)
+            )
+        });
+        if objects {
+            return Err(SelectError::Formula {
+                column: text.trim().to_string(),
+                error: FormulaError::Unsupported(format!(
+                    "column array {}_ of a column of vectors of booleans or instants, whose \
+                     elements Java sends as strings",
+                    shift.column
+                )),
+            });
+        }
+    }
     let with_shifts = add_shifted_columns(&so_far, &shifted.rewritten.shifts)?;
     let dropped: Vec<String> = shifted
         .rewritten
