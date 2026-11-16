@@ -838,6 +838,30 @@ fn unpaired(_: &Text) -> KafkaError {
     )
 }
 
+/// A JSON string as Jackson's generator writes one, in quotes.
+///
+/// Behavior: com.fasterxml.jackson.core.io.CharTypes#appendQuoted and the escapes of
+/// `WriterBasedJsonGenerator` by default: `"` and `\` escaped, the control characters
+/// below U+0020 as `\b`, `\t`, `\n`, `\f`, `\r` or `\u00XX` in upper case, everything
+/// else as it is
+pub(crate) fn write_quoted(text: &str, out: &mut String) {
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            c if c < ' ' => out.push_str(&format!("\\u{:04X}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+
 /// Jackson's compact JSON of a node.
 ///
 /// Behavior: com.fasterxml.jackson.databind.node.BaseJsonNode#toString, with the escapes
@@ -849,21 +873,7 @@ fn write_json(node: &Node, out: &mut String) -> Result<(), KafkaError> {
         if text.unpaired {
             return Err(unpaired(text));
         }
-        out.push('"');
-        for c in text.value.chars() {
-            match c {
-                '"' => out.push_str("\\\""),
-                '\\' => out.push_str("\\\\"),
-                '\u{8}' => out.push_str("\\b"),
-                '\t' => out.push_str("\\t"),
-                '\n' => out.push_str("\\n"),
-                '\u{c}' => out.push_str("\\f"),
-                '\r' => out.push_str("\\r"),
-                c if c < ' ' => out.push_str(&format!("\\u{:04X}", c as u32)),
-                c => out.push(c),
-            }
-        }
-        out.push('"');
+        write_quoted(&text.value, out);
         Ok(())
     }
     match node {

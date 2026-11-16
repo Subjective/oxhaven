@@ -159,21 +159,8 @@ impl ClientSettings {
     /// `KafkaConsumer#KafkaConsumer(Properties, Deserializer, Deserializer)` reads the
     /// properties `io.deephaven.kafka.ingest.KafkaIngester` passes it
     pub fn new(config: &[(String, String)]) -> Result<Self, KafkaError> {
-        if property(config, "bootstrap.servers").is_none() {
-            return Err(KafkaError::Invalid(
-                "org.apache.kafka.common.config.ConfigException: Missing required \
-                 configuration \"bootstrap.servers\" which has no default value."
-                    .to_owned(),
-            ));
-        }
-        if let Some(protocol) = property(config, "security.protocol") {
-            if !protocol.eq_ignore_ascii_case("PLAINTEXT") {
-                return Err(not_ported(
-                    "org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder",
-                    &format!("security.protocol={protocol}"),
-                ));
-            }
-        }
+        require_bootstrap_servers(config)?;
+        refuse_security_protocol(config)?;
         let group = property(config, "group.id").map(str::to_owned);
         if group
             .as_deref()
@@ -274,6 +261,200 @@ impl ClientSettings {
             reset,
             api_timeout: Duration::from_millis(api_timeout.max(0) as u64),
             max_poll_records: max_poll_records as usize,
+        })
+    }
+}
+
+fn require_bootstrap_servers(config: &[(String, String)]) -> Result<(), KafkaError> {
+    if property(config, "bootstrap.servers").is_none() {
+        return Err(KafkaError::Invalid(
+            "org.apache.kafka.common.config.ConfigException: Missing required \
+             configuration \"bootstrap.servers\" which has no default value."
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn refuse_security_protocol(config: &[(String, String)]) -> Result<(), KafkaError> {
+    match property(config, "security.protocol") {
+        Some(protocol) if !protocol.eq_ignore_ascii_case("PLAINTEXT") => Err(not_ported(
+            "org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder",
+            &format!("security.protocol={protocol}"),
+        )),
+        _ => Ok(()),
+    }
+}
+
+/// Java's batch size of 0 turns batching off; librdkafka's smallest is 1.
+fn batch_size(value: &str) -> String {
+    if value.trim() == "0" {
+        "1".to_owned()
+    } else {
+        value.to_owned()
+    }
+}
+
+/// The properties of `org.apache.kafka.clients.producer.ProducerConfig` that librdkafka
+/// has a setting for. `acks`, `enable.idempotence`, `max.block.ms`, `compression.type`
+/// and the ones refused are not here: [`ProducerSettings`] reads them.
+const PRODUCER_PASSED: &[Passed] = &[
+    passed("bootstrap.servers"),
+    passed("client.id"),
+    passed("linger.ms"),
+    passed("retries"),
+    passed("retry.backoff.ms"),
+    passed("retry.backoff.max.ms"),
+    passed("max.in.flight.requests.per.connection"),
+    passed("metadata.max.age.ms"),
+    passed("reconnect.backoff.ms"),
+    passed("reconnect.backoff.max.ms"),
+    passed("connections.max.idle.ms"),
+    passed("socket.connection.setup.timeout.ms"),
+    passed("request.timeout.ms"),
+    renamed("delivery.timeout.ms", "message.timeout.ms"),
+    renamed("max.request.size", "message.max.bytes"),
+    Passed {
+        java: "batch.size",
+        client: "batch.size",
+        value: batch_size,
+    },
+    Passed {
+        java: "receive.buffer.bytes",
+        client: "socket.receive.buffer.bytes",
+        value: buffer_size,
+    },
+    Passed {
+        java: "send.buffer.bytes",
+        client: "socket.send.buffer.bytes",
+        value: buffer_size,
+    },
+];
+
+/// Where a Java producer's default is not librdkafka's. Keys are partitioned as Java's
+/// default partitioner does (`murmur2` of the key's bytes, positive, modulo the number of
+/// partitions; `murmur2_random` is librdkafka's copy of it), and records without a key
+/// go to a partition chosen at random, sticky for a while in both.
+///
+/// Behavior: org.apache.kafka.clients.producer.ProducerConfig, the defaults of
+/// `delivery.timeout.ms`, `max.request.size` and `batch.size`;
+/// org.apache.kafka.clients.producer.internals.BuiltInPartitioner#partitionForKey
+const PRODUCER_JAVA_DEFAULTS: &[(&str, &str)] = &[
+    ("message.timeout.ms", "120000"),
+    ("message.max.bytes", "1048576"),
+    ("batch.size", "16384"),
+    ("partitioner", "murmur2_random"),
+];
+
+/// Producer properties that load a Java class which changes what is sent.
+const PRODUCER_REFUSED: &[(&str, &str)] = &[
+    (
+        "partitioner.class",
+        "org.apache.kafka.clients.producer.Partitioner",
+    ),
+    (
+        "interceptor.classes",
+        "org.apache.kafka.clients.producer.ProducerInterceptor",
+    ),
+];
+
+/// What the properties of a producer say.
+pub(crate) struct ProducerSettings {
+    pub client: ClientConfig,
+    /// Behavior: `ProducerConfig#MAX_BLOCK_MS_CONFIG`: how long a send waits for the
+    /// topic's metadata.
+    pub max_block: Duration,
+}
+
+impl ProducerSettings {
+    /// Behavior: org.apache.kafka.clients.producer.ProducerConfig, as
+    /// `KafkaProducer#KafkaProducer(Properties, Serializer, Serializer)` reads the
+    /// properties `io.deephaven.kafka.publish.PublishToKafka` passes it. The serializers
+    /// are the specs', so `key.serializer` and `value.serializer` have no effect.
+    pub fn new(config: &[(String, String)]) -> Result<Self, KafkaError> {
+        require_bootstrap_servers(config)?;
+        refuse_security_protocol(config)?;
+        for (name, java) in PRODUCER_REFUSED {
+            if let Some(value) = property(config, name) {
+                return Err(not_ported(java, &format!("{name}={value}")));
+            }
+        }
+        if let Some(id) = property(config, "transactional.id") {
+            // The reference never calls `initTransactions`, so its every send fails.
+            return Err(not_ported(
+                "org.apache.kafka.clients.producer.KafkaProducer#initTransactions",
+                &format!(
+                    "transactional.id={id}: the reference never initializes transactions, \
+                     so each record it sends fails"
+                ),
+            ));
+        }
+        let acks = match property(config, "acks").map(str::trim) {
+            None => "all",
+            Some(acks @ ("all" | "-1" | "0" | "1")) => acks,
+            Some(acks) => {
+                let why = "String must be one of: all, -1, 0, 1";
+                return Err(config_exception("acks", acks, why));
+            }
+        };
+        let compression = match property(config, "compression.type").map(str::trim) {
+            None => "none",
+            Some(codec @ ("none" | "snappy" | "lz4" | "zstd")) => codec,
+            // librdkafka has no zlib here: docs/KAFKA.md, "The client library".
+            Some("gzip") => {
+                return Err(not_ported(
+                    "org.apache.kafka.common.compress.GzipCompression",
+                    "compression.type=gzip",
+                ))
+            }
+            Some(codec) => {
+                let why = "String must be one of: none, gzip, snappy, lz4, zstd";
+                return Err(config_exception("compression.type", codec, why));
+            }
+        };
+        let max_block = match property(config, "max.block.ms") {
+            None => 60_000,
+            Some(text) => text.trim().parse::<i64>().map_err(|_| {
+                config_exception("max.block.ms", text, "Not a number of type LONG")
+            })?,
+        };
+        // Behavior: ProducerConfig#postProcessAndValidateIdempotenceConfigs: on unless
+        // asked otherwise, and quietly off where `acks`, `retries` or the number of
+        // requests in flight do not allow it, unless it was asked for.
+        let all_acks = acks == "all" || acks == "-1";
+        let idempotence = match boolean(config, "enable.idempotence")? {
+            Some(true) if !all_acks => {
+                return Err(KafkaError::Invalid(
+                    "org.apache.kafka.common.config.ConfigException: Must set acks to all in \
+                     order to use the idempotent producer. Otherwise we cannot guarantee \
+                     idempotence."
+                        .to_owned(),
+                ))
+            }
+            Some(chosen) => chosen,
+            None => {
+                let retries = property(config, "retries").map(str::trim);
+                let in_flight = property(config, "max.in.flight.requests.per.connection");
+                let in_flight = in_flight.and_then(|text| text.trim().parse::<i64>().ok());
+                all_acks && retries != Some("0") && in_flight.is_none_or(|count| count <= 5)
+            }
+        };
+
+        let mut client = ClientConfig::new();
+        for (name, value) in PRODUCER_JAVA_DEFAULTS {
+            client.set(*name, *value);
+        }
+        for (name, value) in config {
+            if let Some(passed) = PRODUCER_PASSED.iter().find(|passed| passed.java == name) {
+                client.set(passed.client, (passed.value)(value));
+            }
+        }
+        client.set("acks", acks);
+        client.set("compression.type", compression);
+        client.set("enable.idempotence", idempotence.to_string());
+        Ok(Self {
+            client,
+            max_block: Duration::from_millis(max_block.max(0) as u64),
         })
     }
 }

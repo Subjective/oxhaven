@@ -9,7 +9,10 @@ use std::sync::Arc;
 
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_kafka::{ConsumeOptions, InitialOffset, KafkaError, Offsets, Spec, TableType};
+use oxhaven_kafka::{
+    ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets, ProduceOptions,
+    ProduceSpec, Publication, Spec, TableType,
+};
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use serde_json::Value;
@@ -102,6 +105,97 @@ pub(super) fn kafka_consume(
         .detach(|| oxhaven_kafka::consume(graph, &options))
         .map_err(exception)?;
     Ok(TableHandle { table })
+}
+
+/// A key or value spec of `deephaven.stream.kafka.producer.KeyValueSpec`:
+/// `{"kind": "ignore"}`, `{"kind": "simple", "column": name}` or `{"kind": "json",
+/// "include": [names] or null, "mapping": [[column, field]] or null, "nested_delim": text
+/// or null, "output_nulls": bool, "timestamp_field": text or null}`.
+fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
+    let bad = || PyValueError::new_err(format!("not a key or value spec: {json}"));
+    let value: Value = serde_json::from_str(json).map_err(|_| bad())?;
+    let text = |value: &Value| value.as_str().map(str::to_owned).ok_or_else(bad);
+    let optional = |value: &Value| match value {
+        Value::Null => Ok(None),
+        value => text(value).map(Some),
+    };
+    match value["kind"].as_str() {
+        Some("ignore") => Ok(ProduceSpec::Ignore),
+        Some("simple") => Ok(ProduceSpec::Simple(text(&value["column"])?)),
+        Some("json") => {
+            let include = match &value["include"] {
+                Value::Null => None,
+                names => Some(names.as_array().ok_or_else(bad)?.iter().map(text).collect::<PyResult<_>>()?),
+            };
+            let mapping = match &value["mapping"] {
+                Value::Null => Vec::new(),
+                pairs => pairs
+                    .as_array()
+                    .ok_or_else(bad)?
+                    .iter()
+                    .map(|pair| Ok((text(&pair[0])?, text(&pair[1])?)))
+                    .collect::<PyResult<_>>()?,
+            };
+            Ok(ProduceSpec::Json(JsonProduceSpec {
+                include,
+                exclude: None,
+                mapping,
+                nested_delimiter: optional(&value["nested_delim"])?,
+                output_nulls: value["output_nulls"].as_bool().ok_or_else(bad)?,
+                timestamp_field: optional(&value["timestamp_field"])?,
+            }))
+        }
+        _ => Err(bad()),
+    }
+}
+
+/// A table being published; `stop` is the callback `produce` returns.
+#[pyclass(frozen, module = "_oxhaven")]
+pub(super) struct KafkaPublication {
+    publication: Publication,
+}
+
+#[pymethods]
+impl KafkaPublication {
+    fn stop(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| self.publication.stop()).map_err(exception)
+    }
+
+    /// Why publishing stopped by itself, if it did.
+    fn failure(&self) -> Option<String> {
+        self.publication.failure()
+    }
+}
+
+/// Publishes `table` to `topic` with the arguments of
+/// `deephaven.stream.kafka.producer.produce`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn kafka_produce(
+    py: Python<'_>,
+    table: &TableHandle,
+    config: Vec<(String, String)>,
+    topic: &str,
+    partition: Option<i32>,
+    key_spec: &str,
+    value_spec: &str,
+    last_by: bool,
+    publish_initial: bool,
+) -> PyResult<KafkaPublication> {
+    let options = ProduceOptions {
+        config,
+        topic: topic.to_owned(),
+        partition,
+        key: produce_spec(key_spec)?,
+        value: produce_spec(value_spec)?,
+        last_by,
+        publish_initial,
+    };
+    let table = table.table.clone();
+    let publication = py
+        .detach(|| oxhaven_kafka::produce(table, &options))
+        .map_err(exception)?;
+    Ok(KafkaPublication { publication })
 }
 
 /// The names of the topics of the broker `config` names.
