@@ -319,8 +319,10 @@ pub fn snapshot_schema(table: &HierarchicalTable) -> Schema {
     // Java asks the restriction of the rollup's sorting for every field, so that the
     // structural columns are sortable only without one.
     let sortable = rollup.sortable_columns();
-    let mut context = SchemaContext::default();
-    context.sortable = sortable.map(<[String]>::to_vec);
+    let context = SchemaContext {
+        sortable: sortable.map(<[String]>::to_vec),
+        ..SchemaContext::default()
+    };
     let plain = arrow_schema(definition, &context);
     let fields: Vec<Field> = plain
         .fields()
