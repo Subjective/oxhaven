@@ -320,7 +320,7 @@ fn transform_locked(
         return Err(failure("the parent table has failed").into());
     }
     let column_type = ColumnType::Table(TableClass::Table);
-    let handles = Arc::new(WritableSource::new(column_type.clone()));
+    let handles = Arc::new(WritableSource::of_owned_handles(column_type.clone()));
     if let Some(graph) = &graph {
         let clock: Arc<dyn Clock> = Arc::new(graph.clone());
         handles.start_tracking_prev(clock);

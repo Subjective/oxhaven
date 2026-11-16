@@ -5,11 +5,13 @@
 //!   tables write into, and that answers previous-value reads for the current cycle.
 //! - [`RedirectedSource`]: reads another source through a [`RowRedirection`].
 //! - [`sentinel`]: Java's sentinel null values and conversion to and from validity bits.
+//! - [`tables`]: the tables that the cells of a column of tables name.
 
 mod flat;
 pub mod java_values;
 mod redirect;
 pub mod sentinel;
+pub mod tables;
 mod tracked;
 mod writable;
 
