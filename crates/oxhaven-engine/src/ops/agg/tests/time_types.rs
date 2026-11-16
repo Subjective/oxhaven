@@ -242,6 +242,33 @@ fn sorted_first_and_last_by_and_of_a_zoned_date_time() {
     );
 }
 
+/// Behavior: java.time.ZonedDateTime#equals and java.time.Period#equals as group keys: one
+/// instant in two zones is two groups, and every null is one group whatever the fields
+/// under it hold (the nulls of `P` hold different days).
+#[test]
+fn zoned_date_times_and_periods_group_by_every_field() {
+    let by_z = by_k_of(&["Z"]);
+    assert_eq!(rows_of(&*by_z, &["N"]), ["1", "2", "1", "1", "1", "1", "1"]);
+    assert_eq!(
+        zoned_column(&*by_z, "Z"),
+        [
+            at(35, NY),
+            at(28, "UTC"),
+            None,
+            at(14, "UTC"),
+            at(7, NY),
+            at(0, "UTC"),
+            at(35, "Asia/Tokyo")
+        ]
+    );
+    let by_p = by_k_of(&["P"]);
+    assert_eq!(rows_of(&*by_p, &["N"]), ["3", "1", "1", "1", "1", "1"]);
+}
+
+fn by_k_of(keys: &[&str]) -> Arc<dyn Table> {
+    agg_by(&table(), &[count("N")], keys)
+}
+
 /// Seen on Java 42.9: the first and last of a `Period` column are its values, nulls
 /// included.
 #[test]
