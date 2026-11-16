@@ -36,6 +36,7 @@ mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
+mod generated;
 mod hierarchical;
 mod input;
 pub mod interrupt;
@@ -449,6 +450,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
+        generated::register(&native)?;
         input::register(&native)?;
         listener::register(&native)?;
         partitioned::register(&native)?;

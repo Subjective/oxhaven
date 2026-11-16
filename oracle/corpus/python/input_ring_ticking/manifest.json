@@ -1,0 +1,224 @@
+{
+  "format": 2,
+  "scenario": "input_ring_ticking",
+  "scenario_sha256": "c1423110112603ac4c4622fc577732e314ea70c056b9d6076bd46c500340fa0b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ring",
+      "file": "step000.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "later",
+      "file": "step000.later.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "wide",
+      "file": "step000.wide.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "of_keyed",
+      "file": "step000.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "of_static",
+      "file": "step000.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "shapes",
+      "file": "step000.shapes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "ring",
+      "file": "step001.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "later",
+      "file": "step001.later.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "wide",
+      "file": "step001.wide.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "of_keyed",
+      "file": "step001.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "of_static",
+      "file": "step001.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "shapes",
+      "file": "step001.shapes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "ring",
+      "file": "step002.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "later",
+      "file": "step002.later.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "wide",
+      "file": "step002.wide.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "of_keyed",
+      "file": "step002.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "of_static",
+      "file": "step002.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "shapes",
+      "file": "step002.shapes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "ring",
+      "file": "step003.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "later",
+      "file": "step003.later.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "wide",
+      "file": "step003.wide.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "of_keyed",
+      "file": "step003.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "of_static",
+      "file": "step003.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "shapes",
+      "file": "step003.shapes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "ring",
+      "file": "step004.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "later",
+      "file": "step004.later.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "wide",
+      "file": "step004.wide.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "of_keyed",
+      "file": "step004.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "of_static",
+      "file": "step004.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "shapes",
+      "file": "step004.shapes.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "ring",
+      "file": "step005.ring.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "later",
+      "file": "step005.later.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "wide",
+      "file": "step005.wide.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "of_keyed",
+      "file": "step005.of_keyed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "of_static",
+      "file": "step005.of_static.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "shapes",
+      "file": "step005.shapes.arrow",
+      "rows": 2
+    }
+  ]
+}

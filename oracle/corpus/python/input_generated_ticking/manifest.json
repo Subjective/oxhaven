@@ -1,0 +1,302 @@
+{
+  "format": 2,
+  "scenario": "input_generated_ticking",
+  "scenario_sha256": "358d15f32063504ab0f3ed66dcd90489a34a5fed956ab63d21227397b40163c0",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "both",
+      "file": "step000.both.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "derived",
+      "file": "step000.derived.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "shrinking",
+      "file": "step000.shrinking.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "once",
+      "file": "step000.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "never",
+      "file": "step000.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "timed",
+      "file": "step000.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "both",
+      "file": "step001.both.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "derived",
+      "file": "step001.derived.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "shrinking",
+      "file": "step001.shrinking.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "once",
+      "file": "step001.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "never",
+      "file": "step001.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 1,
+      "table": "timed",
+      "file": "step001.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "file": "step002.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "both",
+      "file": "step002.both.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "derived",
+      "file": "step002.derived.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "shrinking",
+      "file": "step002.shrinking.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "once",
+      "file": "step002.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "never",
+      "file": "step002.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 2,
+      "table": "timed",
+      "file": "step002.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "file": "step003.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "both",
+      "file": "step003.both.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "derived",
+      "file": "step003.derived.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "shrinking",
+      "file": "step003.shrinking.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "once",
+      "file": "step003.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "never",
+      "file": "step003.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 3,
+      "table": "timed",
+      "file": "step003.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "file": "step004.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "both",
+      "file": "step004.both.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "derived",
+      "file": "step004.derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "shrinking",
+      "file": "step004.shrinking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "once",
+      "file": "step004.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "never",
+      "file": "step004.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 4,
+      "table": "timed",
+      "file": "step004.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "file": "step005.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "both",
+      "file": "step005.both.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "derived",
+      "file": "step005.derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "shrinking",
+      "file": "step005.shrinking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "once",
+      "file": "step005.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "never",
+      "file": "step005.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 5,
+      "table": "timed",
+      "file": "step005.timed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "both",
+      "file": "step006.both.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "derived",
+      "file": "step006.derived.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "shrinking",
+      "file": "step006.shrinking.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "once",
+      "file": "step006.once.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "never",
+      "file": "step006.never.arrow",
+      "rows": 0
+    },
+    {
+      "step": 6,
+      "table": "timed",
+      "file": "step006.timed.arrow",
+      "rows": 1
+    }
+  ]
+}

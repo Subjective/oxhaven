@@ -817,3 +817,19 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   passed to the formula work.
 - Started 7.11 (figures and JS plugin leftovers) by resuming the object service agent.
 - Merged pull request 99 (4.10, chart downsample and seek row) on six green checks. Every batch operation of the table service now has a handler.
+- Pull request 100 opened (4.19, table sources). Script scenarios: 67 of 74 clean; the
+  seven left are five Parquet, one CSV, and one that needs partitioning columns in the
+  contracts. For the owner: `function_generated_table` whose function later returns a
+  table without a column, or with another reference type, is refused (Java keeps stale or
+  wrongly typed values); Java's float key equality depends on the number of key columns
+  (reproduced); Java hangs when a thread calls `function_generated_table` with sources
+  while the command joins it (Oxhaven returns).
+- Started 7.1b (Parquet read: more types, names, partitioned layouts). It may make an
+  additive contracts change for the new column types and the partitioning flag, decided
+  under the standing permission and labelled oracle-change for later review.
+- Pull request 100: `rules` failed with an empty label list although the label was set.
+  The run for the "opened" event started after the run for the "labeled" event and
+  cancelled it, carrying the labels as they were at opening. Not a fault of the change;
+  merging main into the branch starts a run that sees the label. If this repeats, the
+  `rules` job should read the labels from the API instead of the event payload (a change
+  to the workflow, for the owner to approve since it is the gate).
