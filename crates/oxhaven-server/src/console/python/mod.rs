@@ -43,6 +43,8 @@ mod generated;
 mod hierarchical;
 mod input;
 pub mod interrupt;
+#[cfg(test)]
+mod jpy_tests;
 mod listener;
 mod ops;
 mod parquet;
@@ -92,9 +94,9 @@ use crate::table::run_local;
 use crate::table::support::OpContext;
 use crate::ServerState;
 
-/// The modules of the `deephaven` and `deephaven_internal` packages, compiled into the binary:
-/// name, whether it is a package, source. `build.rs` lists every file under `python/deephaven`
-/// and `python/deephaven_internal`.
+/// The modules of the `deephaven` and `deephaven_internal` packages and the module `jpy`,
+/// compiled into the binary: name, whether it is a package, source. `build.rs` lists every
+/// file under `python/deephaven` and `python/deephaven_internal`, and `python/jpy.py`.
 const MODULES: &[(&str, bool, &str)] = include!(concat!(env!("OUT_DIR"), "/python_modules.rs"));
 
 const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
