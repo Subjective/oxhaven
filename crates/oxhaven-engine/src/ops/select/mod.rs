@@ -400,14 +400,7 @@ fn computed_on_read<S: AsRef<str>>(
                 let input =
                     FormulaInput::over(parent, step.scope_definition(), sources.all(&step.scope));
                 if flavor == Flavor::LazyUpdate {
-                    if formula.uses_row_variables() || !formula.column_arrays().is_empty() {
-                        unported!(
-                            "io.deephaven.engine.table.impl.select.DhFormulaColumn#generateAppropriateGetMethod",
-                            "the cache key of a lazy formula that uses i, ii, k or a column array: {}",
-                            step.name
-                        );
-                    }
-                    LazySource::shared(formula.clone(), input)?
+                    LazySource::shared(formula.clone(), input, step.row_variables)?
                 } else {
                     FormulaSource::shared(formula.clone(), input)
                 }
