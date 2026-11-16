@@ -311,18 +311,49 @@ fn values_of_each_type_are_named_as_java_prints_them() {
     );
 }
 
+/// Observed on Java 42.9: `float` values 0.5, 1.5 and NaN and the instants
+/// 2023-11-14T22:13:20Z, the same and a half second, and null name these columns.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose"
-)]
-fn a_column_by_column_of_floats_is_not_ported() {
-    let floats = arrow::array::Float32Array::from_iter_values((0..6).map(|i| i as f32));
-    let source = static_table(&vec![
-        ("R", ColumnType::Int, ints((0..6).map(|i| i % 2))),
-        ("K", ColumnType::Float, Arc::new(floats) as ArrayRef),
-        ("V", ColumnType::Int, ints(0..6)),
-    ]);
-    let _ = transposed(&source, &[sum("V")], &["R"], &["K"]);
+fn floats_and_instants_name_columns() {
+    let by = |column_type: ColumnType, values: ArrayRef| {
+        let source = static_table(&vec![
+            ("R", ColumnType::Int, ints((0..6).map(|i| i % 2))),
+            ("K", column_type, values),
+            ("V", ColumnType::Int, ints(0..6)),
+        ]);
+        let result = transposed(&source, &[sum("V")], &["R"], &["K"]).expect("transposed");
+        (names(&*result), rows(&*result))
+    };
+    let rows_of_three = ["0|0|4|2", "1|3|1|5"].map(String::from).to_vec();
+    let floats = arrow::array::Float32Array::from_iter_values(
+        (0..6).map(|i| [0.5, 1.5, f32::NAN][i % 3]),
+    );
+    assert_eq!(
+        by(ColumnType::Float, Arc::new(floats)),
+        (
+            "R, column_05, column_15, NaN".to_string(),
+            rows_of_three.clone()
+        )
+    );
+    let instants: arrow::array::TimestampNanosecondArray = (0..6)
+        .map(|i| {
+            [
+                Some(1_700_000_000_000_000_000),
+                Some(1_700_000_000_500_000_000),
+                None,
+            ][i % 3]
+        })
+        .collect();
+    assert_eq!(
+        by(
+            ColumnType::Instant,
+            Arc::new(instants.with_timezone("UTC"))
+        ),
+        (
+            "R, column_20231114T221320Z, column_20231114T221320500Z, column_null".to_string(),
+            rows_of_three
+        )
+    );
 }
 
 #[test]
