@@ -65,6 +65,16 @@ const OPERATIONS: &[Operation] = &[
     ("where_one_of", where_one_of),
 ];
 
+/// The function of a local operation.
+pub(super) type LocalOperation =
+    fn(&OpContext, &Value, &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, ExportError>;
+
+/// The local operation `name`, to run on its arguments and source tables.
+pub(super) fn local_operation(name: &str) -> Option<LocalOperation> {
+    let found = OPERATIONS.iter().find(|(known, _)| *known == name);
+    found.map(|(_, create)| *create)
+}
+
 fn bad_argument(name: &str, expected: &str) -> ExportError {
     Status::invalid_argument(format!("argument {name} must be {expected}")).into()
 }

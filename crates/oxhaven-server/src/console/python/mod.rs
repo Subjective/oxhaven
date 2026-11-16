@@ -53,6 +53,7 @@ mod partitioned;
 mod plugin;
 #[cfg(test)]
 mod plugin_tests;
+mod proxy;
 #[cfg(test)]
 mod tests;
 mod udf;
@@ -511,6 +512,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         input::register(&native)?;
         listener::register(&native)?;
         partitioned::register(&native)?;
+        proxy::register(&native)?;
         figure::register(&native)?;
         hierarchical::register(&native)?;
         plugin::register(&native)?;
