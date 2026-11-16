@@ -30,7 +30,7 @@ pub fn resolve(handle: i64) -> Option<Arc<dyn Table>> {
 /// io.deephaven.engine.table.impl.by.PartitionByChunkedOperator#linkTableReferences
 #[derive(Default)]
 pub struct TableCells {
-    owned: Mutex<Vec<(i64, Arc<dyn Table>)>>,
+    owned: Mutex<HashMap<i64, Arc<dyn Table>>>,
 }
 
 impl TableCells {
@@ -41,8 +41,20 @@ impl TableCells {
         self.owned
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
-            .push((handle, table));
+            .insert(handle, table);
         handle
+    }
+
+    /// Gives up the table that `handle` names: the handle names nothing from now on.
+    pub fn release(&self, handle: i64) {
+        let table = self
+            .owned
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&handle);
+        if table.is_some() {
+            tables().remove(&handle);
+        }
     }
 }
 
@@ -50,7 +62,7 @@ impl Drop for TableCells {
     fn drop(&mut self) {
         let owned = self.owned.get_mut().unwrap_or_else(PoisonError::into_inner);
         let mut tables = tables();
-        for (handle, _) in owned.iter() {
+        for handle in owned.keys() {
             tables.remove(handle);
         }
     }

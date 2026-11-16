@@ -911,3 +911,6 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   reading a refreshing table it did not name as a dependency.
 - Starting the minimal `jpy` module (ruled 04:24 UTC) and Kafka (licence approved 04:37 UTC)
   in the two free slots.
+- Correction: one slot was free, not two. Started the `jpy` module; Kafka waits for the next
+  slot and for disk (librdkafka builds from C).
+- Pull request 108 merged (7.6.1).

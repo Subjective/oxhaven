@@ -1,0 +1,65 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : RuntimeError: java.lang.IllegalArgumentException: Incompatible partitioned table input for partitioned transform; key column sets don't contain the same names or the same number of columns: first has [K], second has [K, L]",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : RuntimeError: java.lang.IllegalArgumentException: Incompatible partitioned table input for partitioned transform; key column definitions don't match: [K, int] doesn't match [K, long]",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.engine.table.Table.getDefinition()\" because \"resultEmptyConstituent\" is null",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : RuntimeError: java.lang.IllegalStateException: Encountered null constituent",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : RuntimeError: io.deephaven.engine.table.TableDefinition$IncompatibleTableDefinitionException: Table definition incompatibilities: ",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : AttributeError: 'Table' object has no attribute 'j_partitioned_table'",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable with another PartitionedTable. : TypeError: <lambda>() takes 1 positional argument but 2 were given",
+      "operation": "failed to transform the PartitionedTable with another PartitionedTable."
+    }
+  ]
+}

@@ -2,7 +2,8 @@
 
 How Oxhaven holds a table of tables, keeps its constituents up to date, and hands it to
 clients. Written by task 7.6 (`tasks/7.6-partitioned-tables.md`), which also built the first
-slice. The follow-on tasks, 7.6.1 to 7.6.6, are sized in that file.
+slice. The follow-on tasks, 7.6.1 to 7.6.6, are sized in that file; 7.6.1
+(`tasks/7.6.1-partitioned-transform.md`) wrote "Transforms".
 
 What Java does was read in `PartitionByChunkedOperator`, `PartitionedTableImpl`,
 `PartitionedTableServiceGrpcImpl` and `PartitionedTableTypePlugin`, and observed on Java 42.9
@@ -110,6 +111,77 @@ partitioned table alive; otherwise a client that keeps only the constituent woul
 stop. `QueryTable` gets one constructor for this, `QueryTable::dependent`: a table that
 another operator notifies.
 
+## Transforms
+
+`PartitionedTable::transform` and `PartitionedTable::partitioned_transform`
+(`ops/partitioned/transform.rs`), observed on Java 42.9 and kept as the script scenarios
+`partitioned_transform*`.
+
+**The result** has the rows and the other columns of the table it was made from; only the
+constituent column is its own, typed `Table`. The definition of its constituents is what
+the function answers for a constituent without rows, which is the last call when the
+result is made. It keeps `unique_keys`, and whether constituents can change.
+
+**When the function is called.**
+
+| What happens to a row of the underlying table | The function |
+| --- | --- |
+| it is there when the result is made | is called with its constituent, in row order |
+| it is added in a cycle: a new key, or a key that has rows again | is called in the cycle, with the constituent; for a key that comes back that is the table it was called with before, with its rows of now |
+| it is removed | is not called. What it had made for the row is given up one change later, so that a listener can still read what the row held |
+| its constituent cell is modified | is called again |
+| anything else is modified, or the rows shift | is not called |
+| rows change inside a constituent | is not called: the change reaches what the function made of the constituent, as any table operation follows its parent |
+
+One operator does Java's `update` with a `TableTransformationColumn` and the
+`ValidateConstituents` that Java's constructor adds. In a cycle the function runs when the
+underlying table has finished, so every constituent it can be given has: a table made of a
+constituent in the cycle starts from the constituent's rows of now and misses nothing.
+
+**`dependencies`** are the refreshing tables (for a partitioned table, its underlying
+table) that the function reads besides the constituent. The function is not called in a
+cycle before each has finished. With at least one, the transform of a partitioned table
+that is not refreshing is refreshing, nothing ever changes its rows, and its constituents
+may be refreshing; without one a refreshing answer is refused, with Java's text. A
+dependency that is not refreshing, or is not a table, counts for nothing, as in Java's
+Python package.
+
+**`partitioned_transform`** is, as in Java, the natural join of the two underlying tables
+on the key columns (by name when both have the same names, by position otherwise; the
+types must match), less the rows that found no constituent, then the transform with a
+function of two tables. So the result has the rows of the first table whose key the
+second has, in the first one's order, and a pair appears and goes as either side gets or
+loses the key. Constituents can change when they can in either. Java does this for a
+partitioned table with unique keys; for one without it uses `join`, which is refused
+here (no operation of this package makes such a partitioned table yet).
+
+**What the function may not answer**, when the result is made (the transform fails) and
+in a cycle (the result fails: its underlying table and every merge of it):
+
+| The function | Java |
+| --- | --- |
+| raises | the `update` fails |
+| answers `None` for a constituent | `IllegalStateException`: "Encountered null constituent" |
+| answers `None` for the table without rows | `NullPointerException` (only when the result is made) |
+| answers something that is not a table | `ClassCastException` |
+| answers a table with other columns | `IncompatibleTableDefinitionException` |
+| answers a refreshing table, in a result that is not refreshing | `IllegalStateException`: "Static partitioned tables cannot contain refreshing constituents..." |
+| makes a formula or a filter | no query scope, in a cycle as when the result is made |
+
+The partitioned table that was transformed, and other transforms of it, go on.
+
+**Python in the cycle.** The function is called on the thread that runs the cycle, which
+takes the interpreter lock for the call; a table operation in the function gives the lock
+up while the engine works, as everywhere. This is the lock order of `docs/PYTHON_UDF.md`.
+The tests `console::python::partitioned::tests` run cycles that call a function beside
+commands and a Python thread that transform, and fail when the native function keeps the
+interpreter lock.
+
+**The merge of a transform** of a partitioned table that is not refreshing, made
+refreshing by a dependency, has the attributes its constituents share, as in Java
+(`PartitionedTableImpl#computeSharedAttributes`): a merge of `head`s of static tables is
+append-only.
+
 ## `merge`
 
 The result shows the constituents in the order of the underlying table's rows, each with its
@@ -148,18 +220,9 @@ and go.
 `filter`, `sort`, `transform`, and `Table.partition_by`, `agg.partition` and
 `Table.partitioned_agg_by`.
 
-**`transform` and `partitioned_transform`.** Java calls the function once per constituent,
-when the result is made and, for a partitioned table whose constituents can change, again
-inside the update cycle for each constituent that appears. The first slice does the first
-half: on a partitioned table that is not refreshing, the function is called for each
-constituent and the result is a partitioned table of the answers, with the constituent
-column typed `Table` as in Java. The result keeps the rows of the underlying table and its
-other columns; only the constituent column is new
-(`PartitionedTable::transformed`). The constituents' definition is what the function
-answers for an empty constituent, as Java finds it. On a refreshing partitioned table
-`transform` is refused. Calling Python inside a cycle is what `docs/PYTHON_UDF.md` already
-does for formulas, with its lock order; what is missing is making tables inside a cycle
-from a table that was made in the same cycle.
+**`transform` and `partitioned_transform`.** See "Transforms" below. The function is called
+for each constituent when the result is made, and inside the update cycle for each
+constituent that appears.
 
 **No query scope inside the function.** Java runs the function in the partitioned table's
 execution context, which has no query scope, so everything that compiles a formula or a
@@ -185,10 +248,9 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `transform` on a refreshing partitioned table | `PartitionedTableImpl#transform` | 7.6.1 |
-| A transform function that answers `None` for a constituent | `TableTransformationColumn` | 7.6.1 |
-| `partitioned_transform` | `PartitionedTableImpl#partitionedTransform` | 7.6.1 |
 | `proxy` | `PartitionedTableImpl#proxy` | 7.6.2 |
+| `partitioned_transform` of a partitioned table whose keys are not unique | `PartitionedTableImpl#partitionedTransform` | 7.6.3, which makes the first such table |
+| A transform function that compiles a formula inside an execution context it enters | `deephaven.execution_context` | 6.12 |
 | `PartitionedTable.from_partitioned_table`, `from_constituent_tables` | `PartitionedTableFactory#of`, `#ofTables` | 7.6.3 |
 | `update_graph` | `Table#getUpdateGraph` | 6.12 |
 | `partitioned_agg_by` and `agg_by` of a refreshing table with `initial_groups` it has no rows for, without `preserve_empty` | `ChunkedOperatorAggregationHelper#copyKeyColumns` | 4.18, needs a ruling |
@@ -219,6 +281,20 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 - The bytes of the schema inside the `PartitionedTableDescriptor` are laid out differently
   by the two flatbuffer writers; the schema they decode to is the same.
 - The rows of the table above marked 7.6.3 and 7.6.4 work in Java and are refused here.
+- When a transform is made, Java may call the function for several constituents at once,
+  on threads of its own; here the calls are one after the other in row order. In a cycle
+  both call on the thread of the cycle.
+- A transform that failed in a cycle (PARITY Q11, not decided): Java's underlying table
+  keeps following the rows of the table it was made from, with a null cell for each row
+  it had no table for, `merge` goes on answering the failed merge, and `constituent_tables`
+  fails with `LivenessStateException`. Here the underlying table keeps the rows it had, a new
+  `merge` says that the table has failed, and `constituent_tables` answers the tables it
+  held. On both, `get_constituent`, `keys` and another transform fail. The scenario
+  `partitioned_transform_ticking_failures` compares that the tables fail, and nothing of
+  them afterwards.
+- A function that reads a refreshing table it did not name as a dependency is not safe in
+  Java, which may call it before that table has finished. Here it is called in the same
+  way, and what it makes then starts from that table's rows of the moment and follows it.
 
 ## Outside the task's paths
 
@@ -227,6 +303,9 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
   row's group, the result table once it is made). `ops/merge/`: the ranges of the union,
   shared with the merge of a partitioned table. `ops/head_by/`: the refusal above.
   `table/query_table.rs`: `QueryTable::dependent`.
+- Task 7.6.1: `ops/merge/`: the attributes that the tables of a merge share, now also
+  read by the merge of a partitioned table. `deephaven/table.py` and
+  `console/python/mod.rs`: `Table.is_failed`, which the failure scenario asserts with.
 - `crates/oxhaven-server/src/object/` (task 7.10's directory): the object service with the
   one built-in type. `schema.rs`, `wire_columns.rs`: the Java type names and the strings a
   client is sent. `table/ops/aggregate.rs`: the partition aggregation.
@@ -239,4 +318,6 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 
 `cargo test -p oxhaven-engine partitioned`, `cargo test -p oxhaven-server partitioned`
 (with and without `--features python`), and the script scenarios `partitioned_*` and
-`agg_by` in the replay gate.
+`agg_by` in the replay gate. Task 7.6.1 adds the full seed budget for the engine tests
+(`OXHAVEN_TEST_SEEDS=full`) and the scenarios `partitioned_transform_ticking*` and
+`partitioned_transform_pair*`.
