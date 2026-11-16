@@ -203,6 +203,104 @@ fn an_absolute_sort_ignores_the_sign() {
     assert_eq!(sorted_tags(&table, &absolute()), "edcfab");
 }
 
+/// Seen on Java 42.9: dates, times of day, durations and days of the week sort by value,
+/// null first, and descending is the negated order with ties in parent order.
+#[test]
+fn dates_times_durations_and_days_sort_as_their_numbers() {
+    use arrow::array::{
+        Date32Array, DurationNanosecondArray, Time64NanosecondArray, TimestampNanosecondArray,
+    };
+    let columns: [(ColumnType, ArrayRef); 5] = [
+        (
+            ColumnType::LocalDate,
+            Arc::new(Date32Array::from(vec![Some(3), None, Some(-1), Some(3)])),
+        ),
+        (
+            ColumnType::LocalTime,
+            Arc::new(Time64NanosecondArray::from(vec![
+                Some(3),
+                None,
+                Some(0),
+                Some(3),
+            ])),
+        ),
+        (
+            ColumnType::LocalDateTime,
+            Arc::new(TimestampNanosecondArray::from(vec![
+                Some(3),
+                None,
+                Some(-1),
+                Some(3),
+            ])),
+        ),
+        (
+            ColumnType::Duration,
+            Arc::new(DurationNanosecondArray::from(vec![
+                Some(3),
+                None,
+                Some(-120_000_000_000),
+                Some(3),
+            ])),
+        ),
+        (
+            ColumnType::DayOfWeek,
+            Arc::new(Int8Array::from(vec![Some(7), None, Some(1), Some(7)])),
+        ),
+    ];
+    for (column_type, values) in columns {
+        let table = tagged(column_type.clone(), values);
+        assert_eq!(sorted_tags(&table, &ascending()), "bcad", "{column_type:?}");
+        assert_eq!(
+            sorted_tags(&table, &descending()),
+            "adcb",
+            "{column_type:?}"
+        );
+    }
+}
+
+/// Seen on Java 42.9 (`zt2` of the 4.22 probes): one instant in four zones sorts as
+/// `ZonedDateTime#compareTo` orders it, by local date and time and then by zone id.
+#[test]
+fn zoned_date_times_sort_by_instant_then_offset_then_zone() {
+    let instant = 1_704_067_200_000_000_000;
+    let values = crate::ops::zoned::tests::zoned(&[
+        Some((instant, "UTC")),
+        Some((instant, "America/New_York")),
+        Some((instant, "Asia/Tokyo")),
+        Some((instant, "Europe/London")),
+        None,
+    ]);
+    let table = tagged(ColumnType::ZonedDateTime, values);
+    assert_eq!(sorted_tags(&table, &ascending()), "ebdac");
+    assert_eq!(sorted_tags(&table, &descending()), "cadbe");
+}
+
+/// Seen on Java 42.9: `P is not a sortable type: class java.time.Period`, and likewise
+/// for a `ZoneId` and an `Object` column.
+#[test]
+fn periods_zones_and_objects_are_not_sortable() {
+    use arrow::array::new_null_array;
+    for (column_type, class) in [
+        (ColumnType::Period, "java.time.Period"),
+        (ColumnType::ZoneId, "java.time.ZoneId"),
+        (
+            ColumnType::object(Some(ColumnType::Int)),
+            "java.lang.Object",
+        ),
+    ] {
+        let table = tagged(
+            column_type.clone(),
+            new_null_array(&column_type.arrow_type(), 2),
+        );
+        match sort(&table, &ascending()) {
+            Err(SortError::NotSortableColumn(message)) => {
+                assert_eq!(message, format!("K is not a sortable type: class {class}"));
+            }
+            other => panic!("expected an error, found {:?}", other.map(|_| ())),
+        }
+    }
+}
+
 #[test]
 fn an_absolute_sort_of_a_type_without_abs_is_an_error() {
     for (column_type, values) in [

@@ -8,6 +8,7 @@
 //! last, NaN first.
 
 use super::{SortColumn, SortDirection, SortError};
+use crate::ops::zoned;
 use arrow::array::{
     Array, ArrayRef, BinaryArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
     Int8Array, StringArray,
@@ -114,7 +115,7 @@ impl KeyEncoder {
                 nulls_first: !descending,
             };
             fields.push(SortField::new_with_options(
-                encoded_type(&key.column_type)?,
+                encoded_type(&column.column, &key.column_type)?,
                 options,
             ));
         }
@@ -183,9 +184,21 @@ fn check_absolute(name: &str, column_type: &ColumnType) -> Result<(), SortError>
 }
 
 /// The Arrow type of the values [`comparable`] returns for a column type.
-fn encoded_type(column_type: &ColumnType) -> Result<DataType, SortError> {
+///
+/// A date, a time of day, a date and time, a duration and a day of the week are their
+/// numbers (days, nanoseconds, the day's number), whose order is Java's `compareTo` of the
+/// class; a null is the least value of each, as `ObjectComparisons#compare` makes it.
+/// `ZoneId`, `Period` and a column Java declares as `Object` are no `Comparable` and are
+/// refused.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortOperation#SortOperation (the check that
+/// a column's class is `Comparable` or primitive), java.time.LocalDate#compareTo,
+/// java.time.LocalTime#compareTo, java.time.LocalDateTime#compareTo,
+/// java.time.Duration#compareTo, java.lang.Enum#compareTo
+fn encoded_type(name: &str, column_type: &ColumnType) -> Result<DataType, SortError> {
     Ok(match column_type {
         ColumnType::String => DataType::Binary,
+        ColumnType::ZonedDateTime => zoned::sort_key_type(),
         ColumnType::Boolean
         | ColumnType::Byte
         | ColumnType::Char
@@ -194,7 +207,22 @@ fn encoded_type(column_type: &ColumnType) -> Result<DataType, SortError> {
         | ColumnType::Long
         | ColumnType::Float
         | ColumnType::Double
-        | ColumnType::Instant => column_type.arrow_type(),
+        | ColumnType::Instant
+        | ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::LocalDateTime
+        | ColumnType::Duration
+        | ColumnType::DayOfWeek => column_type.arrow_type(),
+        ColumnType::Period | ColumnType::ZoneId | ColumnType::Object(_) => {
+            let class = match column_type {
+                ColumnType::Period => "java.time.Period",
+                ColumnType::ZoneId => "java.time.ZoneId",
+                _ => "java.lang.Object",
+            };
+            return Err(SortError::NotSortableColumn(format!(
+                "{name} is not a sortable type: class {class}"
+            )));
+        }
         other => unported!(
             "io.deephaven.engine.table.impl.SortOperation#SortOperation",
             "sort by a column of type {other:?}"
@@ -207,7 +235,8 @@ fn encoded_type(column_type: &ColumnType) -> Result<DataType, SortError> {
 /// Behavior: io.deephaven.util.compare.DoubleComparisons#compare (NaN equal to NaN and
 /// greatest, `-0.0` equal to `0.0`), io.deephaven.util.compare.ObjectComparisons#compare
 /// (`String#compareTo`, UTF-16 code unit order), io.deephaven.util.compare.CharComparisons#compare
-/// and io.deephaven.function.Numeric#abs. Null first in every type is the row format's
+/// io.deephaven.function.Numeric#abs and java.time.chrono.ChronoZonedDateTime#compareTo.
+/// Null first in every type is the row format's
 /// `nulls_first`.
 fn comparable(
     values: &ArrayRef,
@@ -221,6 +250,7 @@ fn comparable(
         ColumnType::Short if absolute => absolute_integers!(Int16Array, values),
         ColumnType::Int if absolute => absolute_integers!(Int32Array, values),
         ColumnType::Long if absolute => absolute_integers!(Int64Array, values),
+        ColumnType::ZonedDateTime => zoned::sort_key(values)?,
         ColumnType::String => {
             // Big-endian UTF-16 code units compare, as bytes, like the code units.
             let values = downcast::<StringArray>(values)?;

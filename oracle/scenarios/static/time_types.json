@@ -1,0 +1,872 @@
+{
+  "format": 1,
+  "name": "time_types",
+  "description": "LocalDate, LocalTime, Duration, DayOfWeek and ZonedDateTime columns made by formulas, through sort, match and range filters, join and group keys, select_distinct, and min, max, first, last, count_distinct, unique, median and sorted_first/sorted_last; one instant in several zones, and nulls. Each result is a view without the date, time and duration columns, which the harness does not compare; they serve as sort, filter, join and group keys.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [
+        {
+          "name": "I",
+          "type": "int32"
+        },
+        {
+          "name": "T",
+          "type": "timestamp"
+        }
+      ],
+      "rows": [
+        [
+          0,
+          1710028800000000000
+        ],
+        [
+          1,
+          1710075600000000000
+        ],
+        [
+          2,
+          null
+        ],
+        [
+          3,
+          1710169200000000000
+        ],
+        [
+          4,
+          1710028800000000000
+        ],
+        [
+          5,
+          1710075600000000000
+        ],
+        [
+          6,
+          1710122400000000000
+        ],
+        [
+          7,
+          1710169200000000000
+        ]
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "name": "base_all",
+      "op": "update",
+      "source": "t",
+      "formulas": [
+        "K = I % 2",
+        "D = toLocalDate(T, 'UTC')",
+        "LT = toLocalTime(T, 'UTC')",
+        "Dur = I == 4 ? null : (I % 3 == 0 ? 'PT1H' : 'PT-2M')",
+        "W = dayOfWeek(T, 'UTC')",
+        "Z = toZonedDateTime(T, I % 3 == 0 ? 'America/New_York' : (I % 3 == 1 ? 'UTC' : 'Asia/Tokyo'))"
+      ]
+    },
+    {
+      "name": "base",
+      "op": "view",
+      "source": "base_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_d_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "D",
+          "direction": "ascending"
+        }
+      ]
+    },
+    {
+      "name": "sort_d",
+      "op": "view",
+      "source": "sort_d_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_lt_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "LT",
+          "direction": "descending"
+        }
+      ]
+    },
+    {
+      "name": "sort_lt",
+      "op": "view",
+      "source": "sort_lt_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_dur_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "Dur",
+          "direction": "ascending"
+        },
+        {
+          "column": "I",
+          "direction": "descending"
+        }
+      ]
+    },
+    {
+      "name": "sort_dur",
+      "op": "view",
+      "source": "sort_dur_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_w_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "W",
+          "direction": "descending"
+        }
+      ]
+    },
+    {
+      "name": "sort_w",
+      "op": "view",
+      "source": "sort_w_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_z_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "Z",
+          "direction": "ascending"
+        }
+      ]
+    },
+    {
+      "name": "sort_z",
+      "op": "view",
+      "source": "sort_z_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "sort_z_desc_all",
+      "op": "sort",
+      "source": "base_all",
+      "by": [
+        {
+          "column": "Z",
+          "direction": "descending"
+        }
+      ]
+    },
+    {
+      "name": "sort_z_desc",
+      "op": "view",
+      "source": "sort_z_desc_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_d_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "D == '2024-03-10'"
+      ]
+    },
+    {
+      "name": "where_d",
+      "op": "view",
+      "source": "where_d_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_d_in_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "D in '2024-03-11', null"
+      ]
+    },
+    {
+      "name": "where_d_in",
+      "op": "view",
+      "source": "where_d_in_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_d_range_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "D >= '2024-03-11'"
+      ]
+    },
+    {
+      "name": "where_d_range",
+      "op": "view",
+      "source": "where_d_range_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_lt_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "LT < '13:00'"
+      ]
+    },
+    {
+      "name": "where_lt",
+      "op": "view",
+      "source": "where_lt_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_dur_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "Dur != null"
+      ]
+    },
+    {
+      "name": "where_dur",
+      "op": "view",
+      "source": "where_dur_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_w_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "W in MONDAY"
+      ]
+    },
+    {
+      "name": "where_w",
+      "op": "view",
+      "source": "where_w_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_w_ne_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "W != SUNDAY"
+      ]
+    },
+    {
+      "name": "where_w_ne",
+      "op": "view",
+      "source": "where_w_ne_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_z_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "Z == '2024-03-10T00:00:00 UTC'"
+      ]
+    },
+    {
+      "name": "where_z",
+      "op": "view",
+      "source": "where_z_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_z_le_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "Z <= '2024-03-10T13:00:00 UTC'"
+      ]
+    },
+    {
+      "name": "where_z_le",
+      "op": "view",
+      "source": "where_z_le_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "where_z_gt_all",
+      "op": "where",
+      "source": "base_all",
+      "filters": [
+        "Z > '2024-03-10T08:00:00 Asia/Tokyo'"
+      ]
+    },
+    {
+      "name": "where_z_gt",
+      "op": "view",
+      "source": "where_z_gt_all",
+      "formulas": [
+        "I",
+        "K",
+        "W",
+        "Z"
+      ]
+    },
+    {
+      "name": "by_d",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "D"
+      ],
+      "aggs": [
+        {
+          "agg": "first",
+          "columns": [
+            "R = I"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "join_d_all",
+      "op": "natural_join",
+      "left": "base_all",
+      "right": "by_d",
+      "on": [
+        "D"
+      ],
+      "joins": [
+        "R"
+      ]
+    },
+    {
+      "name": "join_d",
+      "op": "view",
+      "source": "join_d_all",
+      "formulas": [
+        "I",
+        "W",
+        "R"
+      ]
+    },
+    {
+      "name": "by_z_all",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "Z"
+      ],
+      "aggs": [
+        {
+          "agg": "last",
+          "columns": [
+            "R = I"
+          ]
+        },
+        {
+          "agg": "count",
+          "column": "N"
+        }
+      ]
+    },
+    {
+      "name": "by_z",
+      "op": "view",
+      "source": "by_z_all",
+      "formulas": [
+        "Z",
+        "R",
+        "N"
+      ]
+    },
+    {
+      "name": "join_z_all",
+      "op": "natural_join",
+      "left": "base_all",
+      "right": "by_z_all",
+      "on": [
+        "Z"
+      ],
+      "joins": [
+        "R",
+        "N"
+      ]
+    },
+    {
+      "name": "join_z",
+      "op": "view",
+      "source": "join_z_all",
+      "formulas": [
+        "I",
+        "Z",
+        "R",
+        "N"
+      ]
+    },
+    {
+      "name": "by_w_first",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "W"
+      ],
+      "aggs": [
+        {
+          "agg": "first",
+          "columns": [
+            "R = I"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "join_w_all",
+      "op": "exact_join",
+      "left": "base_all",
+      "right": "by_w_first",
+      "on": [
+        "W"
+      ],
+      "joins": [
+        "R"
+      ]
+    },
+    {
+      "name": "join_w",
+      "op": "view",
+      "source": "join_w_all",
+      "formulas": [
+        "I",
+        "W",
+        "R"
+      ]
+    },
+    {
+      "name": "by_dur",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "Dur"
+      ],
+      "aggs": [
+        {
+          "agg": "last",
+          "columns": [
+            "R = I"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "join_dur_all",
+      "op": "join",
+      "left": "base_all",
+      "right": "by_dur",
+      "on": [
+        "Dur"
+      ],
+      "joins": [
+        "R"
+      ]
+    },
+    {
+      "name": "join_dur",
+      "op": "view",
+      "source": "join_dur_all",
+      "formulas": [
+        "I",
+        "R"
+      ]
+    },
+    {
+      "name": "distinct_w_dur_all",
+      "op": "select_distinct",
+      "source": "base_all",
+      "columns": [
+        "W",
+        "Dur"
+      ]
+    },
+    {
+      "name": "distinct_w_dur",
+      "op": "view",
+      "source": "distinct_w_dur_all",
+      "formulas": [
+        "W"
+      ]
+    },
+    {
+      "name": "values_by_w_all",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "W"
+      ],
+      "aggs": [
+        {
+          "agg": "min",
+          "columns": [
+            "MinZ = Z",
+            "MinD = D",
+            "MinLT = LT"
+          ]
+        },
+        {
+          "agg": "max",
+          "columns": [
+            "MaxZ = Z",
+            "MaxDur = Dur"
+          ]
+        },
+        {
+          "agg": "first",
+          "columns": [
+            "FirstZ = Z"
+          ]
+        },
+        {
+          "agg": "last",
+          "columns": [
+            "LastZ = Z"
+          ]
+        },
+        {
+          "agg": "count_distinct",
+          "columns": [
+            "CdZ = Z"
+          ]
+        },
+        {
+          "agg": "count_distinct",
+          "columns": [
+            "CdnZ = Z"
+          ],
+          "args": {
+            "count_nulls": true
+          }
+        },
+        {
+          "agg": "unique",
+          "columns": [
+            "UZ = Z"
+          ]
+        },
+        {
+          "agg": "median",
+          "columns": [
+            "MedZ = Z"
+          ]
+        },
+        {
+          "agg": "sorted_first",
+          "columns": [
+            "SfI = I"
+          ],
+          "args": {
+            "order_by": "Z"
+          }
+        },
+        {
+          "agg": "sorted_last",
+          "columns": [
+            "SlI = I"
+          ],
+          "args": {
+            "order_by": "Z"
+          }
+        },
+        {
+          "agg": "sorted_first",
+          "columns": [
+            "SfZ = Z"
+          ],
+          "args": {
+            "order_by": "I"
+          }
+        }
+      ]
+    },
+    {
+      "name": "values_by_w",
+      "op": "view",
+      "source": "values_by_w_all",
+      "formulas": [
+        "W",
+        "MinZ",
+        "MaxZ",
+        "FirstZ",
+        "LastZ",
+        "CdZ",
+        "CdnZ",
+        "UZ",
+        "MedZ",
+        "SfI",
+        "SlI",
+        "SfZ"
+      ]
+    },
+    {
+      "name": "values_by_k_all",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [
+        "K"
+      ],
+      "aggs": [
+        {
+          "agg": "min",
+          "columns": [
+            "MinZ = Z"
+          ]
+        },
+        {
+          "agg": "max",
+          "columns": [
+            "MaxZ = Z"
+          ]
+        },
+        {
+          "agg": "count_distinct",
+          "columns": [
+            "CdZ = Z"
+          ]
+        },
+        {
+          "agg": "unique",
+          "columns": [
+            "UZ = Z"
+          ]
+        },
+        {
+          "agg": "sorted_last",
+          "columns": [
+            "SlZ = Z"
+          ],
+          "args": {
+            "order_by": "I"
+          }
+        }
+      ]
+    },
+    {
+      "name": "values_by_k",
+      "op": "view",
+      "source": "values_by_k_all",
+      "formulas": [
+        "K",
+        "MinZ",
+        "MaxZ",
+        "CdZ",
+        "UZ",
+        "SlZ"
+      ]
+    },
+    {
+      "name": "values_all_all",
+      "op": "agg_by",
+      "source": "base_all",
+      "by": [],
+      "aggs": [
+        {
+          "agg": "min",
+          "columns": [
+            "MinZ = Z"
+          ]
+        },
+        {
+          "agg": "max",
+          "columns": [
+            "MaxZ = Z"
+          ]
+        },
+        {
+          "agg": "count_distinct",
+          "columns": [
+            "CdZ = Z"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "values_all",
+      "op": "view",
+      "source": "values_all_all",
+      "formulas": [
+        "MinZ",
+        "MaxZ",
+        "CdZ"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "table": "base"
+    },
+    {
+      "table": "sort_d"
+    },
+    {
+      "table": "sort_lt"
+    },
+    {
+      "table": "sort_dur"
+    },
+    {
+      "table": "sort_w"
+    },
+    {
+      "table": "sort_z"
+    },
+    {
+      "table": "sort_z_desc"
+    },
+    {
+      "table": "where_d"
+    },
+    {
+      "table": "where_d_in"
+    },
+    {
+      "table": "where_d_range"
+    },
+    {
+      "table": "where_lt"
+    },
+    {
+      "table": "where_dur"
+    },
+    {
+      "table": "where_w"
+    },
+    {
+      "table": "where_w_ne"
+    },
+    {
+      "table": "where_z"
+    },
+    {
+      "table": "where_z_le"
+    },
+    {
+      "table": "where_z_gt"
+    },
+    {
+      "table": "join_d"
+    },
+    {
+      "table": "by_z"
+    },
+    {
+      "table": "join_z"
+    },
+    {
+      "table": "join_w"
+    },
+    {
+      "table": "join_dur"
+    },
+    {
+      "table": "distinct_w_dur"
+    },
+    {
+      "table": "values_by_w"
+    },
+    {
+      "table": "values_by_k"
+    },
+    {
+      "table": "values_all"
+    }
+  ]
+}
