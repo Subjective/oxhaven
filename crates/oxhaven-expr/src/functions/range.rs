@@ -217,12 +217,7 @@ fn cells(ranges: impl ExactSizeIterator<Item = Range>) -> ArrayRef {
     let rows = ranges.len();
     let mut elements = Vec::with_capacity(rows * CELL);
     for range in ranges {
-        elements.extend([
-            range.min,
-            range.max,
-            range.bin_width,
-            f64::from_bits(MARK),
-        ]);
+        elements.extend([range.min, range.max, range.bin_width, f64::from_bits(MARK)]);
     }
     Arc::new(ListArray::new(
         Arc::new(Field::new("", DataType::Float64, true)),
@@ -237,7 +232,10 @@ fn cells(ranges: impl ExactSizeIterator<Item = Range>) -> ArrayRef {
 ///
 /// An argument is read as the generated code holds it, a null as the value Java reserves
 /// for null, and a result that is the null value of its type is a null cell.
-pub(crate) fn evaluate(function: RangeFn, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
+pub(crate) fn evaluate(
+    function: RangeFn,
+    arguments: &[ArrayRef],
+) -> Result<ArrayRef, TableFailure> {
     if function == RangeFn::New {
         let min = with_null_values(&arguments[0]);
         let max = with_null_values(&arguments[1]);
