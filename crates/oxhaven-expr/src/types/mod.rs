@@ -894,7 +894,8 @@ impl Checker<'_> {
     /// each pair of elements, and return an array of what that operator returns. They
     /// exist for the primitive numeric types in every combination, for `==` on `boolean`
     /// and on objects, and for the orderings on `Comparable`. `!=` becomes `!(eqArray(..))`,
-    /// which fails the parser's assertion that `!` has a `boolean` operand.
+    /// which fails the parser's assertion that `!` has a `boolean` operand. The arithmetic
+    /// is computed here; the comparisons are not.
     fn elementwise(
         &mut self,
         op: BinaryOp,
@@ -915,34 +916,26 @@ impl Checker<'_> {
         };
         let (left_element, right_element) = (element(&left), element(&right));
         let number = |element: &ColumnType| Numeric::of(element).is_some();
-        let numbers = number(&left_element) && number(&right_element);
-        let both = |wanted: ColumnType| left_element == wanted && right_element == wanted;
-        let family = family(op);
-        let known = match family {
-            Family::Arithmetic(_) => numbers,
-            Family::Compare(compare) => {
-                numbers
-                    || both(ColumnType::String)
-                    || (compare == CompareOp::Equal && both(ColumnType::Boolean))
+        let arithmetic = match family(op) {
+            Family::Arithmetic(arithmetic) if number(&left_element) && number(&right_element) => {
+                arithmetic
             }
-            // `binaryAndArray` and its relatives exist for some types only.
-            Family::Bitwise(_) | Family::Logical(_) => false,
+            // `eqArray`, `lessArray` and their relatives return a `boolean[]`. An array of
+            // `Boolean` elements is Java's `java.lang.Boolean[]` here, a client would be
+            // told that class, and no function here takes one, so the comparison has no
+            // use that could be computed. `binaryAndArray` and its relatives exist for
+            // some types only, and `+` with a `String` prints the array's identity.
+            _ => {
+                return Err(unsupported(format!(
+                    "operator {} on {} and {}",
+                    symbol(op),
+                    java_name(&left.column_type),
+                    java_name(&right.column_type)
+                )))
+            }
         };
-        if !known {
-            return Err(unsupported(format!(
-                "operator {} on {} and {}",
-                symbol(op),
-                java_name(&left.column_type),
-                java_name(&right.column_type)
-            )));
-        }
         let one = |element: ColumnType, slot: usize| typed(element, Node::Column(slot));
-        let (a, b) = (one(left_element, 0), one(right_element, 1));
-        let body = match family {
-            Family::Arithmetic(arithmetic) => self.arithmetic(op, arithmetic, a, b)?,
-            Family::Compare(compare) => comparison(compare, a, b)?,
-            Family::Bitwise(_) | Family::Logical(_) => unreachable!("refused above"),
-        };
+        let body = self.arithmetic(op, arithmetic, one(left_element, 0), one(right_element, 1))?;
         Ok(typed(
             ColumnType::Array(Box::new(body.column_type.clone())),
             Node::Elementwise {

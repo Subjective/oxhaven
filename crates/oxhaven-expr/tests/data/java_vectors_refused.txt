@@ -186,6 +186,10 @@ java-rejects	update	len(I)	function len()
 java-accepts	update	sum(I, I)	function sum()
 java-accepts	update	count(I)	function count()
 java-accepts	update	first(I)	function first()
+java-fails	update	VI == VI	operator == on Vector(Int) and Vector(Int)
+java-fails	update	AI == AI	operator == on Array(Int) and Array(Int)
+java-fails	update	VI < VI	operator < on Vector(Int) and Vector(Int)
+java-fails	update	AD >= AD	operator >= on Array(Double) and Array(Double)
 java-accepts	update	VS + `x`	operator + on Vector(String) and String
 java-accepts	update	`x` + AI	operator + on String and Array(Int)
 java-fails	update	(int) VI	cast of Vector(Int) to int

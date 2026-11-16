@@ -148,45 +148,19 @@ fn arithmetic_with_an_array_is_arithmetic_with_each_element() {
     }
 }
 
-/// Behavior: `QueryLanguageFunctionUtils#eqArray`, `#lessArray`, `#greaterEqualsArray`:
-/// null is equal to null and less than every value.
+/// The result is an array like any other.
 #[test]
-fn a_comparison_with_an_array_compares_each_element() {
-    let truth = ColumnType::Boolean;
-    for (formula, expected) in [
-        ("A == 7", ["[false, false, true]"; 3]),
-        (
-            "A < B",
-            [
-                "[true, true, false]",
-                "[true, true, false]",
-                "[false, true, false]",
-            ],
-        ),
-        (
-            "A >= B",
-            [
-                "[false, false, true]",
-                "[false, false, true]",
-                "[true, false, true]",
-            ],
-        ),
-        ("S == `a`", ["[true, false]"; 3]),
-        ("S < `b`", ["[true, true]"; 3]),
-        (
-            "Z == true",
-            ["[true, false]", "[true, false]", "[true, true]"],
-        ),
-        ("(A == 7) == (A == 7)", ["[true, true, true]"; 3]),
-    ] {
-        assert_shown(formula, truth.clone(), expected);
-    }
-    // The result is an array like any other.
+fn the_array_an_operator_returns_is_computed_with() {
     let table = table();
     table.assert("(A + 1)[0]", ints([Some(1), Some(2), Some(3)]));
     table.assert("sum(A + 1)", longs([Some(9), Some(10), Some(11)]));
     table.assert("(V + 1).length", ints([Some(3); 3]));
     table.assert("A == null", flags([false; 3]));
+    assert_shown(
+        "(A + 1) * (X + 1)",
+        ColumnType::Int,
+        ["[1, , 8]", "[4, , 16]", "[9, , 24]"],
+    );
 }
 
 #[test]
@@ -194,16 +168,25 @@ fn what_java_refuses_for_an_array_operand_is_refused() {
     let table = table();
     // Java asserts that `!` has a `boolean` operand, finds no `negate(int[])` and no
     // `binaryAndArray(boolean[], boolean)`, and takes no array for a condition.
-    for formula in ["A != 7", "-A", "A > 1 ? 1 : 2", "(double[]) A"] {
+    for formula in ["A != 7", "-A", "(double[]) A"] {
         assert!(
             matches!(table.compile_error(formula), FormulaError::Type(_)),
             "{formula}: {:?}",
             table.compile_error(formula)
         );
     }
-    // Computed by Java and not here: a bitwise operator on arrays, and the text of an
-    // array in a concatenation, which is its identity hash.
-    for formula in ["A & 1", "Z & true", "S + `x`"] {
+    // Computed by Java and not here: a comparison, whose `boolean[]` no column type here
+    // is; a bitwise operator on arrays; and the text of an array in a concatenation, which
+    // is its identity hash.
+    for formula in [
+        "A == 7",
+        "A < B",
+        "V >= 1",
+        "S == `a`",
+        "Z == true",
+        "A & 1",
+        "S + `x`",
+    ] {
         assert!(
             matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
             "{formula}: {:?}",

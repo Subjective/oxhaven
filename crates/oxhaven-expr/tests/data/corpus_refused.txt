@@ -562,6 +562,7 @@ java-engine/QueryTableSelectUpdateTest.L1196.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.1	java-fails	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1675.0.2	java-accepts	static method call String.valueOf()
+java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on int and Vector(Int)
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
 java-engine/QueryTableWhereTest.L3130.0.0	java-accepts	static method call Long.toString()
