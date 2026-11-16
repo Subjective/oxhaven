@@ -165,7 +165,20 @@ def read_view(session: Session, name: str, keys: str | None = None,
     finally:
         session.release(export)
     stream = _ipc(schema[2]) + _ipc(batch[2], batch.get(1000, b""))
-    return pa.ipc.open_stream(stream).read_all()
+    return _distinct_names(pa.ipc.open_stream(stream).read_all())
+
+
+def _distinct_names(table: pa.Table) -> pa.Table:
+    """`table` with every column name once: a later column of a name that an earlier one
+    has is named `<name>#2`, `<name>#3`. A rollup with constituents sends the group-by
+    columns of its levels and the columns of its source under their own names, and the
+    comparison and the recordings name a column by its name."""
+    seen: dict[str, int] = {}
+    names = []
+    for name in table.schema.names:
+        seen[name] = seen.get(name, 0) + 1
+        names.append(name if seen[name] == 1 else f"{name}#{seen[name]}")
+    return table if names == table.schema.names else table.rename_columns(names)
 
 
 def describe(session: Session, name: str) -> tuple[pa.Schema, bool]:
