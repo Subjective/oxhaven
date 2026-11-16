@@ -10,8 +10,8 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_kafka::{
-    AvroMapping, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets,
-    ProduceOptions, ProduceSpec, Publication, Spec, TableType,
+    AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec,
+    KafkaError, Offsets, ProduceOptions, ProduceSpec, Publication, Spec, TableType,
 };
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -141,7 +141,10 @@ pub(super) fn kafka_consume(
 /// A key or value spec of `deephaven.stream.kafka.producer.KeyValueSpec`:
 /// `{"kind": "ignore"}`, `{"kind": "simple", "column": name}` or `{"kind": "json",
 /// "include": [names] or null, "mapping": [[column, field]] or null, "nested_delim": text
-/// or null, "output_nulls": bool, "timestamp_field": text or null}`.
+/// or null, "output_nulls": bool, "timestamp_field": text or null}` or `{"kind": "avro",
+/// "subject", "version", "mapping": [[field, column]] or null, "timestamp_field",
+/// "include_only", "exclude": [names] or null, "publish_schema": bool, "namespace",
+/// "column_properties": [[name, value]]}`.
 fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
     let bad = || PyValueError::new_err(format!("not a key or value spec: {json}"));
     let value: Value = serde_json::from_str(json).map_err(|_| bad())?;
@@ -183,6 +186,43 @@ fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
                 timestamp_field: optional(&value["timestamp_field"])?,
             }))
         }
+        Some("avro") => {
+            let names = |value: &Value| -> PyResult<Option<Vec<String>>> {
+                match value {
+                    Value::Null => Ok(None),
+                    names => names
+                        .as_array()
+                        .ok_or_else(bad)?
+                        .iter()
+                        .map(text)
+                        .collect::<PyResult<_>>()
+                        .map(Some),
+                }
+            };
+            let pairs = |value: &Value| -> PyResult<Option<Vec<(String, String)>>> {
+                match value {
+                    Value::Null => Ok(None),
+                    pairs => pairs
+                        .as_array()
+                        .ok_or_else(bad)?
+                        .iter()
+                        .map(|pair| Ok((text(&pair[0])?, text(&pair[1])?)))
+                        .collect::<PyResult<_>>()
+                        .map(Some),
+                }
+            };
+            Ok(ProduceSpec::Avro(AvroProduceSpec {
+                subject: text(&value["subject"])?,
+                version: optional(&value["version"])?,
+                mapping: pairs(&value["mapping"])?,
+                timestamp_field: optional(&value["timestamp_field"])?,
+                include_only: names(&value["include_only"])?,
+                exclude: names(&value["exclude"])?,
+                publish_schema: value["publish_schema"].as_bool().ok_or_else(bad)?,
+                namespace: optional(&value["namespace"])?,
+                column_properties: pairs(&value["column_properties"])?.unwrap_or_default(),
+            }))
+        }
         _ => Err(bad()),
     }
 }
@@ -213,17 +253,22 @@ pub(super) fn kafka_produce(
     py: Python<'_>,
     table: &TableHandle,
     config: Vec<(String, String)>,
-    topic: &str,
+    topic: Option<&str>,
     partition: Option<i32>,
     key_spec: &str,
     value_spec: &str,
     last_by: bool,
     publish_initial: bool,
+    columns: (Option<String>, Option<String>, Option<String>),
 ) -> PyResult<KafkaPublication> {
+    let (topic_column, partition_column, timestamp_column) = columns;
     let options = ProduceOptions {
         config,
-        topic: topic.to_owned(),
+        topic: topic.unwrap_or_default().to_owned(),
         partition,
+        topic_column,
+        partition_column,
+        timestamp_column,
         key: produce_spec(key_spec)?,
         value: produce_spec(value_spec)?,
         last_by,
@@ -485,12 +530,28 @@ mod tests {
                 "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)",
             ),
             (
-                "kp.produce(EMPTY, CFG, 't', IGNORE, V, topic_col='K')",
-                "not ported: io.deephaven.kafka.KafkaPublishOptions#topicColumn",
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, topic_col='V')",
+                "java.lang.ClassCastException: Cannot convert [V] of type int to type \
+                 java.lang.CharSequence",
             ),
             (
-                "kp.produce(EMPTY, CFG, 't', IGNORE, V, timestamp_col='K')",
-                "not ported: io.deephaven.kafka.KafkaPublishOptions#timestampColumn",
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, partition_col='K')",
+                "java.lang.ClassCastException: Cannot convert [K] of type java.lang.String to \
+                 type int",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, timestamp_col='Nope')",
+                "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names \
+                 [Nope], available column names are [K, V]",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, None, IGNORE, V)",
+                "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, kp.avro_spec('s'))",
+                "org.apache.kafka.common.config.ConfigException: Missing required \
+                 configuration \"schema.registry.url\" which has no default value.",
             ),
             (
                 "kp.produce(EMPTY, {}, 't', IGNORE, V)",
@@ -538,8 +599,23 @@ mod tests {
             "no matching Java method overloads found"
         );
         assert_eq!(
-            failure("kp.avro_spec('schema')", SPEC),
-            "not ported: io.deephaven.kafka.KafkaTools.Produce#avroSpec"
+            failure(
+                "kp.avro_spec('s', schema_version='2', publish_schema=True)",
+                SPEC
+            ),
+            "java.lang.IllegalArgumentException: schemaVersion must be null or \"latest\" when \
+             publishSchema=true"
         );
+        let checked = console.evaluate(&format!(
+            "{SETUP}\
+             spec = kp.avro_spec('s', field_to_col_mapping={{'a': 'K'}}, timestamp_field='ts', \
+             exclude_columns=['V'], publish_schema=True, schema_namespace='n', \
+             column_properties={{'K.x': 'y'}})\n\
+             assert spec.j_object == {{'kind': 'avro', 'subject': 's', 'version': 'latest', \
+             'mapping': [['a', 'K']], 'timestamp_field': 'ts', 'include_only': None, \
+             'exclude': ['V'], 'publish_schema': True, 'namespace': 'n', \
+             'column_properties': [('K.x', 'y')]}}, spec.j_object\n"
+        ));
+        assert_eq!(checked.error, None);
     }
 }

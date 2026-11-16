@@ -116,7 +116,7 @@ fn record_failure(failure: impl ToString) -> KafkaError {
     KafkaError::Record(failure.to_string())
 }
 
-fn cells(
+pub(crate) fn cells(
     table: &dyn Table,
     column: usize,
     rows: &RowSet,
@@ -788,7 +788,7 @@ macro_rules! java_to_string {
         /// Behavior: `java.lang.Double#toString(double)` and `java.lang.Float#toString(float)`
         /// as specified since JDK 19: the shortest decimal that rounds to the value, and
         /// among those the closest, with no fewer than two digits (`1.4E-45`).
-        fn $name(value: $native) -> String {
+        pub(crate) fn $name(value: $native) -> String {
             if value.is_nan() {
                 return "NaN".to_owned();
             }
