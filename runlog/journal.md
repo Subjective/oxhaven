@@ -816,3 +816,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   `Math.sin(...)` in a formula is refused ("static method call"), seen in passing and
   passed to the formula work.
 - Started 7.11 (figures and JS plugin leftovers) by resuming the object service agent.
+- Merged pull request 99 (4.10, chart downsample and seek row) on six green checks. Every batch operation of the table service now has a handler.
