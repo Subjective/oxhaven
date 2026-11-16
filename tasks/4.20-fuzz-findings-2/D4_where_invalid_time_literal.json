@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "name": "D4_where_invalid_time_literal",
+ "description": "where comparing a timestamp column with a literal that is no date time: no zone, a zone the reference does not know.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "T", "type": "timestamp"}], "rows": [[1700000000000000000], [1700000001000000000], [null], [1700000002000000000]]}
+ ],
+ "operations": [
+  {"name": "no_zone", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T22:13:21'"]},
+  {"name": "unknown_zone", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T22:13:21 NY'"]},
+  {"name": "in_formula", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T22:13:21 NY' && true"]}
+ ],
+ "results": [{"table": "no_zone"}, {"table": "unknown_zone"}, {"table": "in_formula"}]
+}

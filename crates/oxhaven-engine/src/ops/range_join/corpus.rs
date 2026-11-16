@@ -457,14 +457,16 @@ fn the_oracle_scenarios_give_what_java_gives() {
         "range_join/unsorted_right",
         "range_join/with_neighbours",
         "range_join/with_preceding",
+        "script_operations/ranged_by_script",
+        "script_operations/ranged_without_aggregation",
         "ticking_range_join/ticking_both",
         "ticking_range_join/ticking_left",
         "ticking_range_join/ticking_right",
     ];
     assert_eq!(tally.compared, compared);
-    // The nine tables and eight refusals of the static scenario once, the three refusals
-    // of the ticking one at each of four steps.
-    assert_eq!(tally.comparisons, 9 + 8 + 3 * 4);
+    // The nine tables and eight refusals of the static scenario once, the two tables of the
+    // script scenario once, the three refusals of the ticking one at each of four steps.
+    assert_eq!(tally.comparisons, 9 + 8 + 2 + 3 * 4);
 }
 
 #[test]

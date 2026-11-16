@@ -25,7 +25,7 @@ use std::fs::File;
 use std::path::PathBuf;
 
 /// The `agg_by` operations that are not run, as `scenario.operation: why`.
-const NOT_RUN: [&str; 39] = [
+const NOT_RUN: [&str; 42] = [
     "agg_by_no_keys.all_d: the source is made by where",
     "agg_by_sets.by_key: the source is made by update_view",
     "agg_by_sets.no_key: the source is made by update_view",
@@ -51,6 +51,8 @@ const NOT_RUN: [&str; 39] = [
     "agg_by_statistics.bool_var: no aggregation var",
     "agg_by_statistics.pct_out_of_range: no aggregation pct",
     "agg_by_statistics.string_weight: no aggregation weighted_avg",
+    "partitioned_tables.seeded: it has initial groups",
+    "partitioned_tables.seeded_kept: it has initial groups",
     "pipeline.by_region: the source is made by natural_join",
     "ticking_agg_by_full.by_key: no aggregation abs_sum",
     "ticking_agg_by_full.no_key: no aggregation abs_sum",
@@ -63,6 +65,7 @@ const NOT_RUN: [&str; 39] = [
     "ticking_blink_sort_head_tail.seen_bottom_one: the source is made by tail",
     "ticking_blink_sort_head_tail.seen_rev: the source is made by reverse",
     "ticking_blink_sort_head_tail.seen_big_by_s: the source is made by where",
+    "ticking_script_operations.seeded: it has initial groups",
     "ticking_snapshot_when.count_snapshots: the source is made by snapshot_when",
     "ticking_time_table.first_day_count: the source is made by where",
 ];
@@ -73,7 +76,7 @@ const AGG_ALL_BY: usize = 43;
 
 /// The results the test must compare, as `scenario.table xN` for a table compared at N
 /// recorded steps. A scenario or operation that silently stops being run is missing here.
-const COMPARED: [&str; 34] = [
+const COMPARED: [&str; 35] = [
     "agg_by_avg.avg_g x1",
     "agg_by_avg.avg_k x1",
     "agg_by_int_overflow.avgs x1",
@@ -99,6 +102,7 @@ const COMPARED: [&str; 34] = [
     "group_by_ungroup.grouped_empty_all x1",
     "group_by_ungroup.grouped_two x1",
     "null_sentinel_inputs.counted x1",
+    "partitioned_tables.kept x1",
     "ticking_agg_by.by_k x8",
     "ticking_agg_by.total x8",
     "ticking_empty_start.by_g x5",
@@ -568,6 +572,9 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
         let is_group_by = operation["op"] == "group_by";
         let parent = source(text(&operation["source"], "source"), &scenario, &inputs);
         let made = parent.and_then(|parent| {
+            if !operation["initial_groups"].is_null() {
+                return Err("it has initial groups".to_owned());
+            }
             let aggregations = if is_group_by {
                 Vec::new()
             } else {
@@ -586,10 +593,11 @@ fn run_scenario(path: &PathBuf, tally: &mut Tally) {
             .iter()
             .map(|column| text(column, "by"))
             .collect();
+        let preserve_empty = operation["preserve_empty"] == true;
         let result = if is_group_by {
             group_by(&parent, &by)
         } else {
-            aggregate(&parent, &aggregations, false, &by)
+            aggregate(&parent, &aggregations, preserve_empty, &by)
         };
         let initial = entries
             .iter()
@@ -658,7 +666,7 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
-    assert_eq!(scenarios, 85);
+    assert_eq!(scenarios, 88);
     assert_eq!(tally.not_run, NOT_RUN);
     assert_eq!(tally.agg_all_by, AGG_ALL_BY);
     let compared: Vec<String> = tally

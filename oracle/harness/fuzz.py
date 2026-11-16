@@ -57,7 +57,12 @@ OPERATIONS = RECORDED_OPERATIONS | {
     "raj", "left_join", "where_in", "range_join", "multi_join", "agg_all_by", "group_by",
     "ungroup", "snapshot", "snapshot_when", "meta_table",
 }
-VARIANTS = ("recorded", "all")
+# What only the generator of the second parity pass builds (`fuzz_second._Second`, variants
+# "second"), besides new forms of the operations above.
+SECOND_OPERATIONS = frozenset({
+    "partition_merge", "partition_get", "ring_table", "keyed_transpose", "column_statistics",
+})
+VARIANTS = ("recorded", "all", "second")
 # Operation sets to fuzz one area at a time; `--family` on the command line.
 FAMILIES: dict[str, frozenset[str]] = {
     "update_by": frozenset({"update_by"}),
@@ -75,6 +80,22 @@ FAMILIES: dict[str, frozenset[str]] = {
                            "drop_columns", "meta_table"}),
     "all": OPERATIONS,
 }
+# The families of the second parity pass: `--family` with the variants "second". They are
+# apart from `FAMILIES` so that a seed of one of those stays the scenario it was.
+SECOND_FAMILIES: dict[str, frozenset[str]] = {
+    "formulas2": frozenset({"view", "select", "update", "update_view", "lazy_update", "where",
+                            "group_by"}),
+    "initial_groups": frozenset({"agg_by", "select_distinct", "where"}),
+    "partitions": frozenset({"partition_merge", "partition_get", "select_distinct", "where",
+                             "head"}),
+    "ring": frozenset({"ring_table", "where", "update", "tail"}),
+    "transpose": frozenset({"keyed_transpose", "select_distinct", "where"}),
+    "script_joins": frozenset({"multi_join", "range_join", "agg_by", "head"}),
+    "update_by2": frozenset({"update_by"}),
+    "statistics": frozenset({"column_statistics", "where", "update"}),
+}
+SECOND_FAMILIES["all2"] = frozenset().union(*SECOND_FAMILIES.values()) | {
+    "sort", "natural_join", "ungroup", "merge", "snapshot"}
 MAX_ROWS = 400  # a generated table is never expected to grow beyond this
 
 _STRINGS = ["", "a", "b", "A", "aa", "ab", "z", "é", "ß", "\U0001d11e"]
@@ -645,7 +666,10 @@ def _divide(a: str, b: str) -> str:
 
 def default_variants(ops: frozenset[str] | set[str]) -> str:
     """ "recorded" for a set of operations the recorded generator builds, so that a seed
-    from the run log is the scenario it was; "all" for a set with a newer operation."""
+    from the run log is the scenario it was; "all" for a set with a newer operation;
+    "second" for a set with an operation only the second pass builds."""
+    if set(ops) & SECOND_OPERATIONS:
+        return "second"
     return "recorded" if set(ops) <= RECORDED_OPERATIONS else "all"
 
 
@@ -660,11 +684,12 @@ def generate(seed: int, ops: frozenset[str] | set[str],
     variants = variants or default_variants(ops)
     if variants not in VARIANTS:
         raise sc.ScenarioError(f"variants must be one of {', '.join(VARIANTS)}")
-    unknown = sorted(set(ops) - OPERATIONS)
+    known = OPERATIONS | SECOND_OPERATIONS if variants == "second" else OPERATIONS
+    unknown = sorted(set(ops) - known)
     if unknown:
         raise sc.ScenarioError(
             f"the fuzzer does not generate {', '.join(unknown)}; it generates "
-            f"{', '.join(sorted(OPERATIONS))}")
+            f"{', '.join(sorted(known))}")
     chosen = tuple(sorted(ops))
     if not chosen:
         raise sc.ScenarioError("fuzz needs at least one table operation")
@@ -673,10 +698,15 @@ def generate(seed: int, ops: frozenset[str] | set[str],
             f"the recorded generator does not build "
             f"{', '.join(sorted(set(ops) - RECORDED_OPERATIONS))}; use the variants \"all\"")
     # A string seed is hashed by `random` in a way that does not vary between runs.
-    if variants == "all":
+    if variants == "second":
+        from .fuzz_second import _Second  # imported here: it imports this module
+
+        gen: _Generator = _Second(
+            random.Random(f"oxhaven-fuzz-second:{seed}:{','.join(chosen)}"), chosen)
+    elif variants == "all":
         from .fuzz_wide import _Wide  # imported here: it imports this module
 
-        gen: _Generator = _Wide(
+        gen = _Wide(
             random.Random(f"oxhaven-fuzz-all:{seed}:{','.join(chosen)}"), chosen)
     else:
         gen = _Generator(random.Random(f"oxhaven-fuzz:{seed}:{','.join(chosen)}"), chosen)

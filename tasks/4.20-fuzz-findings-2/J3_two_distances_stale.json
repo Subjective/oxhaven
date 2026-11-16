@@ -1,0 +1,15 @@
+{
+ "format": 1,
+ "name": "J3_two_distances_stale",
+ "description": "Column arrays read at two distances from the current row on an append-only table that grows.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "V", "type": "int32"}], "rows": [[1], [0], [3], [-2], [5]], "ticking": {"key_columns": []}}
+ ],
+ "operations": [
+  {"name": "updated", "op": "update", "source": "t", "formulas": ["X = V_[i-1] + V_[i+1]"]},
+  {"name": "filtered", "op": "where", "source": "t", "filters": ["V_[i+1] > V && V_[i-1] < 100"]},
+  {"name": "one_distance", "op": "where", "source": "t", "filters": ["V_[i+1] > V"]}
+ ],
+ "results": [{"table": "updated"}, {"table": "filtered"}, {"table": "one_distance"}],
+ "steps": [{"actions": [{"action": "add", "table": "t", "rows": [[7]]}]}]
+}

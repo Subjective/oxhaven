@@ -1,0 +1,20 @@
+{
+ "format": 1,
+ "name": "J6_first_and_last_initial_groups",
+ "description": "agg_by with initial groups and more than one first or last aggregation: of a refreshing table, of a static one, and with one aggregation only.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "W", "type": "int32"}], "rows": [[1, 11, 5, 6]], "ticking": {"key_columns": ["Id"]}},
+  {"name": "s", "columns": [{"name": "Id", "type": "int32"}, {"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "W", "type": "int32"}], "rows": [[1, 11, 5, 6]]},
+  {"name": "a", "columns": [{"name": "K", "type": "int32"}, {"name": "V", "type": "int32"}, {"name": "W", "type": "int32"}], "rows": [[11, 5, 6]], "ticking": {"key_columns": []}}
+ ],
+ "operations": [
+  {"name": "first_and_last", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "t", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "last", "columns": ["B = W"]}]},
+  {"name": "two_firsts", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "t", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "first", "columns": ["B = W"]}]},
+  {"name": "one_first", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "t", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V", "B = W"]}]},
+  {"name": "first_and_sum", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "t", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "sum", "columns": ["B = W"]}]},
+  {"name": "static_table", "op": "agg_by", "source": "s", "by": ["K"], "initial_groups": "s", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "last", "columns": ["B = W"]}]},
+  {"name": "append_only", "op": "agg_by", "source": "a", "by": ["K"], "initial_groups": "s", "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "last", "columns": ["B = W"]}]},
+  {"name": "without_initial_groups", "op": "agg_by", "source": "t", "by": ["K"], "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A = V"]}, {"agg": "last", "columns": ["B = W"]}]}
+ ],
+ "results": [{"table": "first_and_last"}, {"table": "two_firsts"}, {"table": "one_first"}, {"table": "first_and_sum"}, {"table": "static_table"}, {"table": "append_only"}, {"table": "without_initial_groups"}]
+}

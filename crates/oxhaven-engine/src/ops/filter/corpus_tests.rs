@@ -681,7 +681,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 85);
+    assert_eq!(paths.len(), 88);
     let mut tally = Tally::default();
     for path in &paths {
         replay(&json(path), &mut tally);

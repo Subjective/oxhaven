@@ -20,6 +20,7 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `harness/rules.py` | **The comparison rules**, as data and code. Keep in step with `PARITY.md` |
 | `harness/fuzz.py` | Scenario generator and shrinker |
 | `harness/fuzz_wide.py` | The generator of every operation and variant (`--variants all`, `--family`) |
+| `harness/fuzz_second.py` | The generator of the second parity pass (`--variants second`, its families) |
 | `harness/known.py`, `fuzz-known-findings.json` | Triaged differences that `fuzz` sets apart |
 | `harness/faults.py` | Fault injection, to prove the comparator sees differences |
 | `harness/smoke.py` | Client smoke checks per protocol area |
@@ -230,7 +231,7 @@ oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
 oracle/bin/ci-replay.sh
 ```
 
-It takes about 35 seconds after the build (85 scenarios, 78 script scenarios and 31 smoke
+It takes about 35 seconds after the build (88 scenarios, 78 script scenarios and 31 smoke
 checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
@@ -384,6 +385,22 @@ generate at all and why.
 `select_distinct`), `snapshots`, `shape` (`merge`, `reverse`, `flatten`, `slice`, `head`,
 `tail`, `sort`), `filters`, `formulas` (the column operations and `meta_table`) and `all`. A
 thousand seeds of one family take five to ten minutes against two local servers.
+
+The variants `second` (`harness/fuzz_second.py`) are the wide generator with what the engine
+gained after it was written; a seed means another scenario than under `all`, and the families
+above keep theirs. It adds formulas and filters with the row variables `i`, `ii` and `k`,
+column arrays and fixed-distance reads (`C_[i-1]`), arithmetic on array columns, and time
+literals with a zone, durations and periods; `agg_by` with initial groups and
+`preserve_empty`; `partition_merge` and `partition_get`; the script operations (Scenarios,
+below) `ring_table`, `keyed_transpose`, `multi_join` without match columns and `range_join`
+without aggregations; `update_by` with `rolling_formula_*`, `cum_count_where` and
+`rolling_count_where_*`; and `column_statistics`. Its families (`fuzz.SECOND_FAMILIES`) are
+`formulas2`, `initial_groups`, `partitions`, `ring`, `transpose`, `script_joins`,
+`update_by2`, `statistics` and `all2`; `--family` with one of them, or `--ops` with one of
+the new operations, selects these variants. `ring`, `transpose`, `script_joins` and `all2`
+need servers with a Python console on both sides (Oxhaven built with `--features python`).
+The module comment lists what it keeps out and why, and `fuzz_second.RESTRICTIONS` what it
+steps around because of a finding in `tasks/4.20-fuzz-findings-2.md`.
 
 ### What a run prints
 
@@ -590,6 +607,9 @@ They need the recordings but no server.
   digests); the wide one is deterministic, valid against its own predicted columns, mostly
   accepted requests, draws every operation and variant, and keeps its promises about
   timestamps and unique keys through the steps.
+- `tests/test_fuzz_second.py`: the two older generators still build the scenarios they built
+  (pinned digests); the second one is deterministic, valid, draws every operation and form it
+  claims, and keeps its restrictions, each of which names a finding that is written up.
 - `tests/test_known.py`: what a known finding fits and what it must not, that a scenario with
   any other mismatch is still reported and shrunk, and the comparison behind `selfcheck`.
 - `tests/test_scenario.py`: the scenario format, the `--ops` filter, the corpus, recordings.
@@ -695,15 +715,19 @@ A scenario is one JSON document. `harness/scenario.py` validates it and rejects 
   | `drop_columns` | `drop_columns` | `source`, `columns` |
   | `select_distinct` | `select_distinct` | `source`, `columns` (may be empty) |
   | `merge` | `merge` | `sources` |
-  | `agg_by` | `aggregate` | `source`, `by`, `aggs`: list of aggregations, see below |
+  | `agg_by` | `aggregate` | `source`, `by`, `aggs`: list of aggregations, see below; optional `initial_groups` (a table with the `by` columns), `preserve_empty` |
   | `agg_all_by` | `aggregate_all` | `source`, `by`, `agg`: one aggregation without `columns` |
   | `group_by` | `aggregate_all` with `group` | `source`, `by` |
   | `ungroup` | `ungroup` | `source`, optional `columns`, `null_fill` |
   | `natural_join` | `natural_join` | `left`, `right`, `on`, optional `joins`, optional `type`: `error_on_duplicate` (default), `first_match`, `last_match`, `exactly_one_match` |
   | `exact_join`, `join`, `left_join` | `exact_join`, `cross_join`, `left_join` | `left`, `right`, `on`, optional `joins` |
   | `aj`, `raj` | `aj`, `raj` | `left`, `right`, `on` (the last entry is the as-of match), optional `joins` |
-  | `range_join` | `range_join` | `left`, `right`, `on` (the last entry is the range match, such as `"<- Lo <= P < Hi"`), `aggs` |
-  | `multi_join` | `multi_join` | `inputs`: list of `{"table", "on", optional "joins"}` |
+  | `range_join` | `range_join` | `left`, `right`, `on` (the last entry is the range match, such as `"<- Lo <= P < Hi"`), `aggs`; optional `script`: true to make it in the console, which also takes no aggregations |
+  | `multi_join` | `multi_join` | `inputs`: list of `{"table", "on", optional "joins"}`; optional `script`: true to make it in the console, which also takes no match columns |
+  | `partition_merge` | `partition_by` and `merge` of the partitioned table service | `source`, `by`, optional `drop_keys` |
+  | `partition_get` | `partition_by` and `get_table` of the partitioned table service | `source`, `by`, `key` (a table with the `by` columns), optional `drop_keys`, `unique`: `not_set`, `require_unique`, `permit_multiple` |
+  | `ring_table` | none: a script, `deephaven.ring_table` | `source`, `capacity`, optional `initialize` |
+  | `keyed_transpose` | none: a script, `deephaven.table.keyed_transpose` | `source`, `aggs`, `row_by`, `col_by`, optional `initial_groups`, `new_columns`: `fail`, `ignore` |
   | `update_by` | `update_by` | `source`, `by`, `ops`: list of `{"op", "columns", optional "args"}` |
   | `snapshot` | `snapshot` | `source` |
   | `snapshot_when` | `snapshot_when` | `source`, `trigger`, optional `stamp_columns`, `initial`, `incremental`, `history` |
@@ -821,10 +845,12 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   (it returns its source; every result is already fetched). `--ops` rejects these names and
   any other name outside the table above.
 - The fuzzer builds only the operations listed under Fuzz. The table sources (`time_table`,
-  `empty_table`), `column_statistics`,
-  `rolling_formula` and the `count_where` operators of `update_by` are covered by recorded
-  scenarios only, and so is anything the module comment of `harness/fuzz_wide.py` lists as
-  not generated.
+  `empty_table`) are covered by recorded scenarios only, and so is anything the module
+  comments of `harness/fuzz_wide.py` and `harness/fuzz_second.py` list as not generated.
+- A script operation (`scenario.SCRIPT_OPERATIONS`, and a join with `"script": true`) is made
+  by a script in the server's Python console: the runner binds the tables it reads, runs the
+  script and opens what it leaves. It needs a server with a console, and a script that fails
+  has the one code `SCRIPT_FAILED`, whatever failed inside it.
 - A `time_table` is only compared through operations whose result does not depend on the
   clock: a start time far in the past with `head`, `slice` or a `where` on the timestamp.
   Nothing compares when its rows arrive.

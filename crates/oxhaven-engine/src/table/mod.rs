@@ -6,7 +6,9 @@
 //! | [`in_memory_table`], [`uploaded_table`], [`empty_table`] | Static tables |
 //! | [`append_only_input_table`], [`keyed_input_table`], [`blink_input_table`] | Tables written through `Table::input_table` |
 //! | [`time_table`] | A row per period of an injected [`TimeSource`] |
+//! | [`stream_table`] | A blink table of the rows a [`StreamPublisher`] hands over |
 //! | [`ring_table`] | The rows added to a table last |
+//! | [`blink_to_append_only`] | Every row a blink table showed |
 //! | [`generated_from_sources`], [`generated_on_interval`] | The rows a function returns, made anew when a table changes or an interval has passed |
 //! | [`attribute_map`] | The attributes of a table, by the names Java gives them |
 //!
@@ -81,6 +83,7 @@
 //!   Hold the parents strongly if you read them.
 //! - Two or more refreshing parents need [`QueryTable::derive_merged`], never two results.
 
+mod append_only;
 mod copied;
 mod generated;
 mod in_memory;
@@ -88,11 +91,13 @@ mod input;
 mod query_table;
 mod ring;
 mod storage;
+mod stream;
 mod time;
 
 #[cfg(test)]
 mod tests;
 
+pub use append_only::blink_to_append_only;
 #[cfg(test)]
 pub(crate) use copied::is_copy;
 pub use copied::{attribute_map, sortable_columns, AttributeValue};
@@ -106,6 +111,7 @@ pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOp
 pub use ring::ring_table;
 pub(crate) use storage::{forget_reads_through, register_reads_through, shared_reads_through};
 pub use storage::{holds_values, reads_through};
+pub use stream::{stream_table, FlushCallback, ShutdownCallback, StreamCallbacks, StreamPublisher};
 pub use time::{time_table, TimeSource, TimeTableOptions, WallClock};
 
 use arrow::array::ArrayRef;
