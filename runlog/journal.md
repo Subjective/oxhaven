@@ -1046,3 +1046,11 @@ Task 5.10 reported from Opus: Object, DayOfWeek and boolean[] columns; the formu
 ## 2026-11-16T10:25Z
 
 Pull request 122 (Kafka JSON) merged: CI ran the gates the agent could not finish locally and all passed. Launched 7.5.1 (Kafka producing) on Opus.
+
+## 2026-11-16T10:32Z
+
+Pull request 123 (Object, DayOfWeek and boolean[] columns) merged on green, after a second CI run on top of pull request 122.
+
+## 2026-11-16T11:06Z
+
+The Kafka produce agent stopped with code written but nothing run: the disk had 327 MB free while two other build directories held 14 GB. The session has about 39 GB in all. I freed 13 GB (three stale virtual environments in worktrees of merged tasks, pip and uv caches, scratch directories of finished tasks) and resumed the agent. Rule from now: at most two building agents at a time.

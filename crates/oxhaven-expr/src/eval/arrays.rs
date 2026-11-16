@@ -172,6 +172,12 @@ fn same_in_every_row(expr: &Typed) -> bool {
             | Node::IsNull(operand)
             | Node::ObjectText(operand)
             | Node::NewString(operand)
+            | Node::ToObject(operand)
+            | Node::FromObject(operand)
+            | Node::ObjectString(operand)
+            | Node::DayOfWeek {
+                number: operand, ..
+            }
             | Node::Cast(operand)
             | Node::Widen(operand) => all(&[operand]),
             Node::Arithmetic { left, right, .. }
@@ -179,6 +185,7 @@ fn same_in_every_row(expr: &Typed) -> bool {
             | Node::Compare { left, right, .. }
             | Node::Logical { left, right, .. }
             | Node::Concat { left, right }
+            | Node::ObjectEquals { left, right }
             | Node::Elementwise { left, right, .. } => all(&[left, right]),
             Node::Ternary {
                 condition,

@@ -134,10 +134,14 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
     for (formula, construct) in [
         ("T >= 1L", "ordering comparison of Instant with long"),
         (
-            "null",
-            "null literal outside ==, !=, ?:, a cast and string concatenation",
+            "(Object) parseDuration(S)",
+            "a value of type Duration as a java.lang.Object",
         ),
-        ("true ? null : null", "null in both branches of ?:"),
+        (
+            "I == 1 ? (Object) I : (Object) S",
+            "?: whose branches are a int and a String, which makes a java.lang.Object column \
+             of two classes",
+        ),
         ("null - null", "null literal as an operand of -"),
         ("cbrt(I)", "function cbrt()"),
         (
