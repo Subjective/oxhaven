@@ -100,12 +100,26 @@ fn link(
     let mut by_key: HashMap<NodeKey, usize> = HashMap::new();
     let mut root = None;
     // Takes the directives below a replaced one out of the map; they stay in the arena,
-    // unreachable.
-    fn forget(arena: &[Linked], by_key: &mut HashMap<NodeKey, usize>, removed: usize) {
+    // unreachable. In a tree whose rows name each other as parents, a directive can be
+    // below itself: Java then finds the directive that replaced it in the map and takes
+    // that for a state it cannot be in.
+    // Behavior: HierarchicalTableImpl#removeOldChildren and its assertion
+    fn forget(
+        arena: &[Linked],
+        by_key: &mut HashMap<NodeKey, usize>,
+        removed: usize,
+    ) -> Result<(), HierarchicalError> {
         for &child in &arena[removed].children {
-            by_key.remove(&arena[child].key);
-            forget(arena, by_key, child);
+            if by_key.remove(&arena[child].key) != Some(child) {
+                return Err(failure(
+                    "Assertion failed: asserted linkedDirectives.remove(childDirective.nodeKey) \
+                     == childDirective",
+                )
+                .into());
+            }
+            forget(arena, by_key, child)?;
         }
+        Ok(())
     }
     for (key, action) in directives {
         // A key that names no node now: left over from other data or another filter.
@@ -125,7 +139,7 @@ fn link(
         // with it what hung below.
         let mut removed = by_key.insert(key.clone(), linked);
         if let Some(removed) = removed {
-            forget(&arena, &mut by_key, removed);
+            forget(&arena, &mut by_key, removed)?;
         }
         let mut key = key;
         loop {
@@ -259,6 +273,12 @@ struct Segment {
     last_expanded: bool,
 }
 
+/// The deepest the walk goes. Java has no limit and visits a node from the visit of its
+/// parent: its stack overflows on a deep tree, and on a tree with a row without an
+/// identifier, whose children are the root's rows and so itself, when every level is
+/// expanded; the process then ends. Here such a snapshot fails.
+const MAX_DEPTH: u32 = 200;
+
 struct Walk<'a> {
     hierarchy: &'a dyn Hierarchy,
     arena: Vec<Linked>,
@@ -320,6 +340,13 @@ impl Walk<'_> {
         };
         if table.row_set().is_empty() {
             return Ok(());
+        }
+        if self.depth >= MAX_DEPTH {
+            return Err(failure(format!(
+                "unported: io.deephaven.engine.table.impl.hierarchical.HierarchicalTableImpl#visitExpandedNode: \
+                 a walk more than {MAX_DEPTH} levels deep"
+            ))
+            .into());
         }
         let outer = self.expanding;
         // Behavior: SnapshotStateImpl#filling, as it is when the visit starts

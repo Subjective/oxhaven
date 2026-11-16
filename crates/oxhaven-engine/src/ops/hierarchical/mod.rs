@@ -5,17 +5,22 @@
 //! which nodes are expanded; [`View::snapshot`] gives a range of the rows of the
 //! depth-first walk of the expanded nodes. `docs/HIERARCHICAL.md` is the design.
 //!
-//! [`RollupTable`] is the one hierarchy so far. The walk ([`walk`]) knows nothing about
-//! rollups; a tree is another implementation of [`Hierarchy`].
+//! [`RollupTable`] and [`TreeTable`] are the hierarchies. The walk ([`walk`]) knows
+//! neither.
 
 mod keys;
 mod rollup;
 #[cfg(test)]
 mod tests;
+mod tree;
+mod tree_filter;
+#[cfg(test)]
+mod tree_tests;
 mod walk;
 
 pub use keys::Part;
 pub use rollup::{rollup, RollupTable};
+pub use tree::{promote_orphans, tree, TreeTable};
 pub use walk::Snapshot;
 
 use crate::ops::agg::AggregateError;
