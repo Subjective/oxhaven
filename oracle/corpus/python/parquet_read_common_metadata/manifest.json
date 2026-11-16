@@ -1,0 +1,1004 @@
+{
+  "format": 2,
+  "scenario": "parquet_read_common_metadata",
+  "scenario_sha256": "2d6a3c6e1e2fe970a38a320f348c1b1f68cbbb9edc9739d74fc3fafd7158bc8b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "inferred",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_metadata_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "by_common_file",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "renamed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "typed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "metadata_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "common_only",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "extra",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "missing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "positional",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "last",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "inferred",
+      "file": "step007.inferred.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "by_layout",
+      "file": "step007.by_layout.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "by_metadata_file",
+      "file": "step007.by_metadata_file.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "by_common_file",
+      "file": "step007.by_common_file.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "renamed",
+      "file": "step007.renamed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "typed",
+      "file": "step007.typed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "metadata_only",
+      "file": "step007.metadata_only.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "common_only",
+      "file": "step007.common_only.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "common_only_layout",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "extra",
+      "file": "step007.extra.arrow",
+      "rows": 12
+    },
+    {
+      "step": 7,
+      "table": "missing",
+      "file": "step007.missing.arrow",
+      "rows": 11
+    },
+    {
+      "step": 7,
+      "table": "refreshing",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "positional",
+      "file": "step007.positional.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "last",
+      "file": "step007.last.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "levels",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "twice",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "unknown",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "unparsed",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    }
+  ]
+}
