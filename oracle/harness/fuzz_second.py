@@ -34,7 +34,9 @@ limits). For the operations of this module those are:
   append-only by construction get one;
 - a `keyed_transpose` of a refreshing table with the new-column behaviour `fail`;
 - a `multi_join` without match columns of a refreshing table that can come to hold more
-  than one row.
+  than one row;
+- a period of months or years added to a timestamp of a refreshing table: the reference
+  fails when a row has a timestamp that is not null.
 
 Restrictions that exist only because of a finding of `tasks/4.20-fuzz-findings-2.md` or
 `tasks/4.23-fuzz-refusals.md` are marked with the finding's number where they are made
@@ -72,14 +74,11 @@ RESTRICTIONS: dict[str, str] = {
     "J5": "build_agg: no distinct of a timestamp column with preserve_empty on a refreshing "
           "table (the reference cannot write a group that lost its rows)",
     "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
-    "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
-          "a fixed-distance read outside a call",
     "J7": "build_agg: initial groups of a refreshing aggregation with first, last, "
           "sorted_first or sorted_last before any count only with preserve_empty (on an "
           "add-only table the reference's result fails when a group gets its first row)",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
     "R6": "second_formula, filter: no column array of an array column",
-    "R8": "_DURATIONS: no period of months or years",
 }
 _COLUMN_COMPARISON = re.compile(r"^([A-Za-z_]\w*) (?:<|<=|>|>=|==|!=) ([A-Za-z_]\w*)$")
 
@@ -94,7 +93,11 @@ _NO_ZONES = ("NY", "EST", "et")
 _LOCAL_TIMES = ("2023-11-14T22:13:20", "2023-11-14T22:13:21", "2023-11-14T17:13:22",
                 "2023-11-14T17:13:19.5", "2023-11-15T07:13:20", "2023-11-14T22:13:23.000000001",
                 "2024-03-10T02:30:00", "2024-11-03T01:30:00", "2023-11-14")
-_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s")  # R8: no "P1m"
+_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s")
+# Periods of months and years, which the reference fails to add to an instant that is not
+# null: a refusal for a static table that has such a row, and a failure in a later cycle
+# for a refreshing one, so only a static table gets one.
+_CALENDAR_PERIODS = ("P1m", "P1y", "P1y2m")
 # Operations whose result adds rows to an append-only table and never changes or moves one.
 _FORMULA_OPERATIONS = ("view", "select", "update", "update_view", "lazy_update")
 _APPENDING = frozenset({"where", "update", "update_view", "view", "select", "lazy_update",
@@ -204,11 +207,9 @@ class _Second(_Wide):
         arrays = [name for name, kind in table.columns
                   if kind.startswith(LIST) and kind[len(LIST):] in NUMERIC
                   and name not in table.computed]
-        lazy = self.kind == "lazy_update"  # R1
-        shapes = [] if lazy else ["row"]
+        shapes = ["row"]
         if columns:
-            if not lazy:
-                shapes += ["column_array"]
+            shapes += ["column_array"]
             if self.kind != "select" or table.name in self.input_names:  # J2
                 shapes += ["shift", "shift"]
         if stamps:
@@ -234,7 +235,7 @@ class _Second(_Wide):
             read = f"{a}_[{index}]"
             if kind in NUMERIC and self.chance(0.4):
                 return f"{a} - {read}", _promote(kind, kind)
-            if self.chance(0.15) and not lazy:  # R1: a read inside a call is not rewritten
+            if self.chance(0.15):
                 return f"isNull({read})", "bool"
             return read, kind
         if shape == "column_array":
@@ -252,11 +253,11 @@ class _Second(_Wide):
         if shape == "time":
             a = rng.choice(stamps)
             form = rng.choice(["plus", "plus", "scaled", "compare", "literal"])
-            duration = rng.choice(_DURATIONS)
+            duration = self.duration(table)
             if form == "plus":
                 return f"{a} {rng.choice(['+', '-'])} '{duration}'", "timestamp"
             if form == "scaled":
-                factor = rng.choice(["2", "3"] if lazy else ["ii", "2", "i", "3"])
+                factor = rng.choice(["ii", "2", "i", "3"])
                 return (f"{a} + '{duration}' {rng.choice(['*', '*', '/'])} {factor}"
                         if factor not in ("ii", "i") else f"{a} + '{duration}' * {factor}",
                         "timestamp")
@@ -288,6 +289,12 @@ class _Second(_Wide):
             return f"{literal} {operator} {a}", _list(_promote(element, other))
         return f"{a} {operator} {literal}", _list(_promote(element, other))
 
+    def duration(self, table: _Table) -> str:
+        """A duration or a period; for a static table now and then one of months or years."""
+        if not table.live and self.chance(0.12):
+            return self.rng.choice(_CALENDAR_PERIODS)
+        return self.rng.choice(_DURATIONS)
+
     def instant(self) -> str:
         """A time literal with a zone; now and then one the reference refuses."""
         rng = self.rng
@@ -303,7 +310,7 @@ class _Second(_Wide):
         if stamps and self.chance(0.5):
             a = rng.choice(stamps)
             if self.chance(0.4):
-                return f"{a} + '{rng.choice(_DURATIONS)}' > {self.instant()}"
+                return f"{a} + '{self.duration(table)}' > {self.instant()}"
             # The comparison of a column with a literal is a filter of its own, which reads
             # the literal with another parser than a formula does.
             return f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} {self.instant()}"
