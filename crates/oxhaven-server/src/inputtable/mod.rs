@@ -14,7 +14,7 @@ use std::sync::Arc;
 use arrow::datatypes::{Field, Schema};
 use arrow::record_batch::{RecordBatch, RecordBatchOptions};
 use oxhaven_contracts::graph::UpdateGraph;
-use oxhaven_contracts::schema::{ColumnType, TableDefinition};
+use oxhaven_contracts::schema::TableDefinition;
 use oxhaven_contracts::table::{InputTable, Table};
 use oxhaven_engine::table::{append_only_input_table, blink_input_table, keyed_input_table};
 use oxhaven_proto::grpc::create_input_table_request::input_table_kind::Kind;
