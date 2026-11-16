@@ -1,7 +1,9 @@
 // The rollup route of the IDE acceptance test: make a table in the console, make a rollup
-// of it in the Rollup Rows panel of its grid, see the grid paint the grand total and the
-// first level, expand a node by a click on its row and collapse it again, sort a column
-// from its header, and filter by the value of a cell.
+// of it in the Rollup Rows panel of its grid, with the constituents the panel includes by
+// default, see the grid paint the grand total and the first level, expand a node by a click
+// on its row, expand a finest group under it to the rows of the table and collapse both
+// again, sort a column from its header, expand the two again to see the rows of the table
+// sorted as well, and filter by the value of a cell.
 //
 // The grid is a canvas, so a row is found by the text the IDE painted (see gridHook in
 // ide-test.js) and clicked at the position of that text.
@@ -123,8 +125,9 @@ async function routeRollup(ctx, deps) {
   await ctx.trace.settle();
   let seen = ctx.trace.calls().length;
 
-  // The panel makes the rollup anew whenever its columns or its options change. Without
-  // the constituents: the rollup then has the aggregated rows only.
+  // The panel makes the rollup anew whenever its columns or its options change. It
+  // includes the constituents unless `without` names the option: under the finest groups
+  // the rollup then has the rows of the table.
   ctx.trace.mark('rollup');
   await page.locator('.iris-grid button[aria-label="Table Options"]').first().click();
   await page.locator('[data-testid="menu-item-Rollup Rows"]').click();
@@ -150,20 +153,37 @@ async function routeRollup(ctx, deps) {
   let painted = await expectRows(spec.columns, 'the grand total and the first level', spec.collapsed);
   await shot('collapsed');
 
+  // Expands the node of `spec.expand`, then the finest group of `spec.constituents.expand`
+  // under it, whose children are rows of the table.
+  const expandToConstituents = async (from, groups, rows, what) => {
+    await toggle(from, spec.expand);
+    const expanded = await expectRows(spec.columns, `the children of ${spec.expand}${what}`, groups);
+    await toggle(expanded, spec.constituents.expand);
+    return expectRows(spec.columns, `the rows of the table under ${spec.constituents.expand}${what}`, rows);
+  };
   ctx.trace.mark('expand');
   await toggle(painted, spec.expand);
   painted = await expectRows(spec.columns, `the children of ${spec.expand}`, spec.expanded);
   await shot('expanded');
+  ctx.trace.mark('constituents');
+  await toggle(painted, spec.constituents.expand);
+  painted = await expectRows(spec.columns, `the rows of the table under ${spec.constituents.expand}`, spec.constituents.rows);
+  await shot('constituents');
   ctx.trace.mark('collapse');
+  await toggle(painted, spec.constituents.expand);
+  painted = await expectRows(spec.columns, `${spec.constituents.expand} collapsed again`, spec.expanded);
   await toggle(painted, spec.expand);
   painted = await expectRows(spec.columns, `${spec.expand} collapsed again`, spec.collapsed);
   await ctx.trace.settle();
   seen = ctx.trace.calls().length;
 
+  // The sort of a column of the levels sorts the rows of the table too, by the column
+  // the level's column aggregates.
   ctx.trace.mark('sort');
   await sortDescending(painted, spec.columns, spec.sort.column);
   seen = await expectCall('HierarchicalTableService/Apply', [spec.sort.column], seen);
   painted = await expectRows(spec.columns, `the rollup sorted by ${spec.sort.column}, descending`, spec.sort.rows);
+  painted = await expandToConstituents(painted, spec.sort.expanded, spec.sort.constituents, ', sorted');
   await shot('sorted');
 
   ctx.trace.mark('filter');
@@ -171,7 +191,7 @@ async function routeRollup(ctx, deps) {
   await expectCall('HierarchicalTableService/Apply', [spec.filter.column], seen);
   await expectRows(spec.columns, `the rollup where ${spec.filter.column} is ${spec.filter.value}, still sorted`, spec.filter.rows);
   await shot('filtered');
-  return `${language} console: Rollup Rows by ${spec.groupBy.join(', ')} painted ${spec.collapsed.length} rows, ${spec.expanded.length} with ${spec.expand} expanded; sorted by ${spec.sort.column} descending; filtered to ${spec.filter.column} = ${spec.filter.value}`;
+  return `${language} console: Rollup Rows by ${spec.groupBy.join(', ')} with constituents painted ${spec.collapsed.length} rows, ${spec.expanded.length} with ${spec.expand} expanded, ${spec.constituents.rows.length} with the rows of the table under ${spec.constituents.expand}; sorted by ${spec.sort.column} descending; filtered to ${spec.filter.column} = ${spec.filter.value}`;
 }
 
 async function routeTree(ctx, deps) {
