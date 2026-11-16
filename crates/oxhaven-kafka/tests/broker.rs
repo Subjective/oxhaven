@@ -843,11 +843,11 @@ fn records_of(topic: &str, count: usize) -> Vec<Record> {
     records.collect()
 }
 
-/// As [`records_of`], with each record's timestamp in milliseconds.
-fn timed_records_of(
-    topic: &str,
-    count: usize,
-) -> Vec<(i32, Option<i64>, Option<String>, Option<String>)> {
+/// A record's partition, timestamp in milliseconds, key and value.
+type TimedRecord = (i32, Option<i64>, Option<String>, Option<String>);
+
+/// As [`records_of`], with each record's timestamp.
+fn timed_records_of(topic: &str, count: usize) -> Vec<TimedRecord> {
     let consumer: BaseConsumer = ClientConfig::new()
         .set("bootstrap.servers", broker())
         .set("group.id", fresh("reader"))
