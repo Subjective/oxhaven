@@ -5,16 +5,18 @@
 //! | [`consume`] | The table of a topic: `KafkaTools#consumeToTable` |
 //! | [`Plan`] | The columns of that table and how a record becomes a row |
 //! | [`consume_from`] | The same table over any [`RecordSource`]; tests script one |
-//! | [`wire::WireSource`] | The record source that talks to brokers |
+//! | [`client::ClientSource`] | The record source that talks to brokers, over librdkafka |
+//! | [`topics`] | The topics of a broker: `KafkaTools#listTopics` |
 //!
 //! A thread polls the source, turns each batch of records into columns and leaves them for
 //! the table, which shows what arrived since its last update cycle on the next one: as its
 //! only rows if it is a blink table, after the rows it has if it is append-only.
 
+pub mod client;
+mod config;
 pub mod json;
 mod plan;
 mod stream;
-pub mod wire;
 
 use std::fmt;
 use std::sync::Arc;
@@ -24,6 +26,7 @@ use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 
+pub use client::topics;
 pub use plan::Plan;
 pub use stream::consume_from;
 
@@ -177,28 +180,6 @@ fn property<'a>(config: &'a [(String, String)], name: &str) -> Option<&'a str> {
     found.map(|(_, value)| value.as_str())
 }
 
-/// The consumer properties whose effect is not built. Others that a Java consumer knows
-/// tune it and do not change which rows appear; they are accepted and have no effect.
-fn refuse_properties(config: &[(String, String)]) -> Result<(), KafkaError> {
-    if let Some(protocol) = property(config, "security.protocol") {
-        if !protocol.eq_ignore_ascii_case("PLAINTEXT") {
-            return Err(not_ported(
-                "org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder",
-                &format!("security.protocol={protocol}"),
-            ));
-        }
-    }
-    if let Some(level) = property(config, "isolation.level") {
-        if level != "read_uncommitted" {
-            return Err(not_ported(
-                "org.apache.kafka.clients.consumer.internals.FetchCollector",
-                &format!("isolation.level={level}"),
-            ));
-        }
-    }
-    Ok(())
-}
-
 /// Consumes a topic into a table that changes as records arrive.
 ///
 /// The partitions are read by one thread, which stops when the table is dropped. A record
@@ -215,24 +196,12 @@ pub fn consume(
         &options.key,
         &options.value,
     )?;
-    refuse_properties(&options.config)?;
-    // Behavior: org.apache.kafka.clients.consumer.ConsumerConfig, where the property is
-    // required
-    let bootstrap = property(&options.config, "bootstrap.servers").ok_or_else(|| {
-        KafkaError::Invalid(
-            "org.apache.kafka.common.config.ConfigException: Missing required configuration \
-             \"bootstrap.servers\" which has no default value."
-                .to_owned(),
-        )
-    })?;
     let wanted = |partition: i32| {
         let listed = options.partitions.as_ref();
         listed.is_none_or(|listed| listed.contains(&partition))
     };
     let initial = |partition: i32| options.offsets.of(partition);
-    // Behavior: org.apache.kafka.clients.consumer.ConsumerConfig#ALLOW_AUTO_CREATE_TOPICS_CONFIG
-    let create = property(&options.config, "allow.auto.create.topics") != Some("false");
-    let source = wire::WireSource::connect(bootstrap, &options.topic, create, &wanted, &initial)?;
+    let source = client::ClientSource::connect(&options.config, &options.topic, &wanted, &initial)?;
     consume_from(
         graph,
         plan,

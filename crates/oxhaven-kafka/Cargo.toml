@@ -10,13 +10,13 @@ workspace = true
 [dependencies]
 arrow.workspace = true
 bytes.workspace = true
-# The Kafka wire messages and the record batch format, and nothing else: no connection, no
-# compression codec, no C library. The client around it is `src/wire.rs`. docs/KAFKA.md,
-# "The client library".
-kafka-protocol = { version = "0.18", default-features = false, features = ["client"] }
 oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-engine = { path = "../oxhaven-engine" }
+# librdkafka, compiled from the sources `rdkafka-sys` carries, with its own snappy and lz4
+# and Zstandard from `zstd-sys`. No TLS, SASL, curl or zlib: docs/KAFKA.md, "The client
+# library", has the licences and why each feature is on or off.
+rdkafka = { version = "0.39", default-features = false, features = ["zstd"] }
 serde = "1"
 # `raw_value` keeps a number's text, which Java's conversions depend on (`src/json.rs`).
 serde_json = { workspace = true, features = ["raw_value"] }
