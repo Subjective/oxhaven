@@ -1289,6 +1289,7 @@ dependencies = [
  "arrow",
  "oxhaven-column",
  "oxhaven-contracts",
+ "oxhaven-csv",
  "oxhaven-engine",
  "parquet",
  "serde_json",

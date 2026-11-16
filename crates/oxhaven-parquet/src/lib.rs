@@ -125,6 +125,17 @@ impl ReadOptions {
                 )));
             };
             let earlier = self.columns[..index].iter();
+            let same_name = earlier.clone().find(|earlier| {
+                earlier.name.as_ref() == Some(name) && earlier.parquet_name != *parquet_name
+            });
+            if let Some(earlier) = same_name {
+                // Behavior: `ParquetInstructions.ColumnInstructions#setParquetColumnName`
+                return Err(ReadError::Invalid(format!(
+                    "Cannot add a mapping from parquetColumnName={parquet_name}: \
+                     columnName={name} already mapped to parquetColumnName={}",
+                    earlier.parquet_name
+                )));
+            }
             let earlier = earlier.filter(|earlier| earlier.parquet_name == *parquet_name);
             if let Some(mapped) = earlier.filter_map(|c| c.name.as_ref()).find(|n| *n != name) {
                 return Err(ReadError::Invalid(format!(

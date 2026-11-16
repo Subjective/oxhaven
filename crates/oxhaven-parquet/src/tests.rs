@@ -733,10 +733,15 @@ fn a_column_is_renamed_by_an_instruction() {
     assert_eq!(names, ["P", "Q", "S"]);
     assert_eq!(cells(&table, "Q"), ["0", "1", "2"]);
 
-    // a name Java would change is refused, unless an instruction names the column
-    let (java, what) = not_ported(read_default("names.parquet"));
-    assert!(java.ends_with("NameValidator#legalizeColumnName"));
-    assert_eq!(what, "column name 'a b'");
+    // a name that is not legal is changed, unless an instruction names the column
+    let table = read_default("names.parquet").unwrap();
+    let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["a_b", "column_2x", "ok"]);
+    assert_eq!(cells(&table, "a_b"), ["1"]);
+    assert_eq!(cells(&table, "column_2x"), ["2"]);
+    let table = read_default("reserved.parquet").unwrap();
+    let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["column_int", "ok"]);
     let named = with_columns(vec![instruction("a b", "A"), instruction("2x", "B")]);
     let table = read(&data("names.parquet"), &named).unwrap();
     let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
@@ -752,6 +757,12 @@ fn instructions_java_refuses_are_refused() {
         invalid(read(&path, &twice)),
         "Cannot add new mapping from parquetColumnName=X to columnName=B: already mapped to \
          columnName=A"
+    );
+    let shared = with_columns(vec![instruction("X", "A"), instruction("P", "A")]);
+    assert_eq!(
+        invalid(read(&path, &shared)),
+        "Cannot add a mapping from parquetColumnName=P: columnName=A already mapped to \
+         parquetColumnName=X"
     );
     let same = with_columns(vec![instruction("X", "A"), instruction("X", "A")]);
     assert!(read(&path, &same).is_ok());

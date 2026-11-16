@@ -2,6 +2,7 @@
 
 use crate::{not_ported, ReadError, ReadOptions, UnsignedLongTarget};
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_csv::is_reserved;
 use parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
 use parquet::file::metadata::KeyValue;
 use parquet::schema::types::{ColumnDescriptor, SchemaDescriptor};
@@ -25,7 +26,6 @@ pub(crate) struct FileColumn {
 }
 
 const READ_SCHEMA: &str = "io.deephaven.parquet.table.ParquetSchemaReader#readParquetSchema";
-const LEGALIZE: &str = "io.deephaven.api.util.NameValidator#legalizeColumnName";
 
 /// The key of the footer entry Deephaven writes.
 ///
@@ -75,15 +75,41 @@ fn column_infos(
     Ok(columns)
 }
 
-/// Whether a column name needs no change to be a legal one. Java renames the others; a
-/// name that is a reserved word passes here and is left to the caller, which knows the
-/// reserved words.
-fn is_plain_identifier(name: &str) -> bool {
-    let mut characters = name.chars();
-    characters
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
-        && characters.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+/// The column name Java makes of the name `parquet_name` of a file column: a space
+/// becomes an underscore; a reserved word gets the prefix `column_`; every character that
+/// is not an ASCII letter, a digit, `_` or `$` is dropped; a name that then starts with a
+/// digit gets the prefix too; and a name in `taken` gets the first number from 2 on that
+/// makes it new. A name with nothing left, or left with a reserved word, is an error.
+///
+/// Behavior: `io.deephaven.api.util.NameValidator#legalizeColumnName(String, Function, Set)`
+/// with the replacement of `ParquetSchemaReader#convertSchema`
+fn legalize(parquet_name: &str, taken: &[String]) -> Result<String, ReadError> {
+    let error = || {
+        // Java: a `NameValidator.LegalizeNameException` with this text
+        ReadError::Invalid(format!("Can not legalize column name {parquet_name}"))
+    };
+    let mut name = parquet_name.replace(' ', "_");
+    if is_reserved(&name) {
+        name = format!("column_{name}");
+    }
+    name.retain(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    if name.is_empty() {
+        return Err(error());
+    }
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        name = format!("column_{name}");
+    }
+    let mut unique = name.clone();
+    let mut next = 2;
+    while taken.contains(&unique) {
+        unique = format!("{name}{next}");
+        next += 1;
+    }
+    // what is left is ASCII, so it is a column name unless it is a reserved word
+    if is_reserved(&name) {
+        return Err(error());
+    }
+    Ok(unique)
 }
 
 /// The logical type of a column, from its logical type or, in a file that has none, from
@@ -232,9 +258,9 @@ fn value_type(
 /// The columns of a file with the Parquet schema `schema` and the footer entries
 /// `key_values`, named as `options` say.
 ///
-/// A column Java reads as a type that has no [`ColumnType`] yet, or under a name it would
-/// first make legal, is refused as not ported; a column Java refuses is refused with
-/// Java's reason.
+/// A column no instruction names gets the name Java makes of its name in the file
+/// ([`legalize`]). A column Java reads as a type that has no [`ColumnType`] yet is refused
+/// as not ported; a column Java refuses is refused with Java's reason.
 ///
 /// Behavior: `io.deephaven.parquet.table.ParquetSchemaReader#readParquetSchema` and the
 /// consumer of `#convertSchema` that turns each column into a column definition
@@ -247,6 +273,16 @@ pub(crate) fn columns(
     let no_info = ColumnInfo::default();
     let mut columns: Vec<FileColumn> = Vec::new();
     let mut previous: Option<(usize, String)> = None;
+    // The names a changed name must differ from: none until the first name is changed,
+    // then the names the instructions give and the changed names. A name read as it is in
+    // the file is not among them, so a changed name can repeat one, and the table
+    // definition then refuses the two columns of one name. The first changed name can be
+    // the name of an instruction, which the mapping then refuses.
+    //
+    // Behavior: `ParquetInstructions.Builder#getTakenNames` of the builder that
+    // `ParquetSchemaReader#readParquetSchema` makes when it first adds a name mapping,
+    // `ParquetInstructions.Builder#addColumnNameMapping`
+    let mut taken: Option<Vec<String>> = None;
     for (leaf, column) in schema.columns().iter().enumerate() {
         let path = column.path().parts();
         if column.max_rep_level() > 1 {
@@ -269,12 +305,23 @@ pub(crate) fn columns(
 
         let name = match options.name_of(parquet_name) {
             Some(name) => name.to_string(),
-            None if is_plain_identifier(parquet_name) => parquet_name.clone(),
             None => {
-                return Err(not_ported(
-                    LEGALIZE,
-                    format_args!("column name '{parquet_name}'"),
-                ))
+                let legal = legalize(parquet_name, taken.as_deref().unwrap_or(&[]))?;
+                if legal != *parquet_name {
+                    let named = |c: &&crate::ColumnInstruction| c.name.as_ref() == Some(&legal);
+                    let instructed = options.columns.iter().find(named);
+                    if let Some(instructed) = instructed {
+                        return Err(ReadError::Invalid(format!(
+                            "Cannot add a mapping from parquetColumnName={parquet_name}: \
+                             columnName={legal} already mapped to parquetColumnName={}",
+                            instructed.parquet_name
+                        )));
+                    }
+                    let instructed = options.columns.iter().filter_map(|c| c.name.clone());
+                    let taken = taken.get_or_insert_with(|| instructed.collect());
+                    taken.push(legal.clone());
+                }
+                legal
             }
         };
         let info = infos.get(&name).unwrap_or(&no_info);
@@ -452,6 +499,95 @@ mod tests {
             };
             assert!(java.ends_with("ToArrayPage#create"), "{java}");
             assert_eq!(what, format!("column V, a list of {java_type}"));
+        }
+    }
+
+    /// The names are the ones Java 42.9 gave the columns of `tests/data/names.parquet` and
+    /// `reserved.parquet`, and of files written for the probe of task 7.1b.
+    #[test]
+    fn a_name_that_is_not_legal_is_changed_as_java_changes_it() {
+        let names = |fields: &[&str], options: &ReadOptions| {
+            let fields: Vec<_> = fields
+                .iter()
+                .map(|name| {
+                    parquet::schema::types::Type::primitive_type_builder(name, PhysicalType::INT32)
+                        .build()
+                })
+                .map(|field| Arc::new(field.unwrap()))
+                .collect();
+            let message = parquet::schema::types::Type::group_type_builder("m").with_fields(fields);
+            let schema = SchemaDescriptor::new(Arc::new(message.build().unwrap()));
+            let columns = columns(&schema, None, options)?;
+            Ok::<_, ReadError>(columns.into_iter().map(|c| c.name).collect::<Vec<_>>())
+        };
+        let plain = ReadOptions::default();
+        assert_eq!(
+            names(
+                &["a b", "2x", "ok", "int", "a-b", "ünï", "i", "$x", "_"],
+                &plain
+            )
+            .unwrap(),
+            [
+                "a_b",
+                "column_2x",
+                "ok",
+                "column_int",
+                "ab",
+                "n",
+                "column_i",
+                "$x",
+                "column__"
+            ]
+        );
+        // a changed name differs from the changed names before it, by a number
+        assert_eq!(
+            names(&["a b", "a.b", "a_b!", "a,b"], &plain).unwrap(),
+            ["a_b", "ab", "a_b2", "ab2"]
+        );
+        assert_eq!(
+            names(&["a b", "x", "a  b", "a_b2", "a!b", "ab"], &plain).unwrap(),
+            ["a_b", "x", "a__b", "a_b2", "ab", "ab2"]
+        );
+        // and from the names of the instructions, but for the first name that is changed
+        let instructed = |parquet_name: &str, name: &str| ReadOptions {
+            columns: vec![ColumnInstruction {
+                parquet_name: parquet_name.to_string(),
+                name: Some(name.to_string()),
+                ..ColumnInstruction::default()
+            }],
+            ..ReadOptions::default()
+        };
+        assert_eq!(
+            names(&["c d", "a b"], &instructed("other", "a_b")).unwrap(),
+            ["c_d", "a_b2"]
+        );
+        let refused = "Cannot add a mapping from parquetColumnName=a b: columnName=a_b already \
+                       mapped to parquetColumnName=";
+        assert_eq!(
+            names(&["a b"], &instructed("other", "a_b")),
+            Err(ReadError::Invalid(format!("{refused}other")))
+        );
+        assert_eq!(
+            names(&["a b", "a_b"], &instructed("a_b", "a_b")),
+            Err(ReadError::Invalid(format!("{refused}a_b")))
+        );
+        // an instruction's name is taken as it is
+        let mapped = ReadOptions {
+            columns: vec![ColumnInstruction {
+                parquet_name: "a b".to_string(),
+                name: Some("Q".to_string()),
+                ..ColumnInstruction::default()
+            }],
+            ..ReadOptions::default()
+        };
+        assert_eq!(names(&["a b", "c d"], &mapped).unwrap(), ["Q", "c_d"]);
+        // a name that needed no change is not among the taken ones, so a later column
+        // can get it again; a changed name is, and changes a legal name after it
+        assert_eq!(names(&["a_b", "a b"], &plain).unwrap(), ["a_b", "a_b"]);
+        assert_eq!(names(&["a b", "a_b"], &plain).unwrap(), ["a_b", "a_b2"]);
+        for name in ["", "!!", "ü"] {
+            let expected = format!("Can not legalize column name {name}");
+            assert_eq!(names(&[name], &plain), Err(ReadError::Invalid(expected)));
         }
     }
 
