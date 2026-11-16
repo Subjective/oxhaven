@@ -392,10 +392,12 @@ of its own and hands the result to the cycle.
 
 ## Writing Parquet
 
-Task 7.2 (`tasks/7.2-parquet-write.md`). This section is its design; the code is
-`crates/oxhaven-parquet/src/write.rs`, the binding `console/python/parquet.rs`
-(`write_parquet`, `delete_parquet`) and `deephaven/parquet.py` (`write`, `batch_write`,
-`write_partitioned`, `delete`, `RowGroupInfo`).
+Tasks 7.2 (`tasks/7.2-parquet-write.md`) and 7.2b (`tasks/7.2b-parquet-write-more.md`).
+This section is their design; the code is `crates/oxhaven-parquet/src/write.rs` with
+`write/partitioned.rs` and `write/metadata.rs`, the binding `console/python/parquet.rs`
+(`write_parquet`, `write_parquet_partitioned`, `delete_parquet`) and
+`deephaven/parquet.py` (`write`, `batch_write`, `write_partitioned`, `delete`,
+`RowGroupInfo`).
 
 ### Decision
 
@@ -409,9 +411,12 @@ Task 7.2 (`tasks/7.2-parquet-write.md`). This section is its design; the code is
 2. **The writer is `parquet`'s `ArrowWriter`**, given the Parquet schema explicitly
    (`ArrowWriterOptions::with_parquet_schema`) and told to leave the Arrow schema out of
    the footer. No dependency is added.
-3. **One entry point.** `write(tables, paths, options)` is
+3. **One place where files are written.** `write(tables, paths, options)` is
    `ParquetTools#writeTables(Table[], String[], ParquetInstructions)`; `write` of one
-   table is the same call with one table, as in Java.
+   table is the same call with one table, as in Java. `write_partitioned(source,
+   directory, options)` is `ParquetTools#writeKeyValuePartitionedTable`: it names a
+   file for each constituent and writes them with the same step, so a partitioned write
+   is also all files or none.
 4. **A table is read whole, then written.** The caller holds the update graph's shared
    lock for a table that changes (`guarded` in the binding, graph lock first and the
    interpreter released: `docs/PYTHON_UDF.md`), so the file is the table as it is at one
@@ -434,10 +439,22 @@ Task 7.2 (`tasks/7.2-parquet-write.md`). This section is its design; the code is
 | `Float`, `Double` | `FLOAT`, `DOUBLE` |
 | `String` | `BINARY`, `STRING` |
 | `Instant` | `INT64`, `TIMESTAMP(nanos, adjusted to UTC)` |
+| `BigDecimal` | `BINARY`, `DECIMAL(precision, scale)`: the unscaled value at the column's scale |
+| `BigInteger` | `BINARY`, `DECIMAL(1, 0)` |
+| `LocalDate` | `INT32`, `DATE` |
+| `LocalTime` | `INT64`, `TIME(nanos, adjusted to UTC)` |
+| `LocalDateTime` | `INT64`, `TIMESTAMP(nanos, not adjusted to UTC)` |
 | `Vector` or `Array` of one of the above | `optional group <name> (LIST) { repeated group list { optional <element> element } }` |
 
 Every field is optional, the root is named `root`, and a null is a missing value, never
-the Java null of the type.
+the Java null of the type. A `byte[]` column is an array of `Byte`, so it is a list of
+`INT(8)`, as in Java.
+
+The scale of a `BigDecimal` column is the largest scale of its values, and its precision
+the most digits before the point of any value plus that scale
+(`BigDecimalUtils#computePrecisionAndScale`), over every table of the write. A column
+without a value is `DECIMAL(1, 1)`. One accident of Java is kept: a column whose values
+all have one digit and no scale is `DECIMAL(1, 0)`, which is read back as `BigInteger`.
 
 The footer has one key-value entry, `deephaven`, as `TableInfo` writes it:
 `{"version":"42.9"}`, then `columnTypes` with `{"columnName":<name in the
@@ -451,7 +468,13 @@ without rows has no row group.
 
 Pages are Snappy unless `compression_codec_name` says otherwise. A name is one the
 reference's Hadoop codec factory knows, in any case, with or without `Codec`:
-`uncompressed`, `snappy`, `gzip`, `jdkgzip`, `zstd`, `lz4`, `lz4raw`, `lz4_raw`. Only a
+`uncompressed`, `snappy`, `gzip`, `jdkgzip`, `zstd`, `lz4`, `lz4raw`, `lz4_raw`. A codec
+is also known by the name of its class, in the case it is spelt in:
+`org.apache.hadoop.io.compress.GzipCodec`, `io.airlift.compress.gzip.JdkGzipCodec`,
+`org.apache.parquet.hadoop.codec.SnappyCodec`,
+`org.apache.parquet.hadoop.codec.Lz4RawCodec`, `org.apache.hadoop.io.compress.Lz4Codec`,
+`io.airlift.compress.lz4.Lz4Codec` and `io.airlift.compress.zstd.ZstdCodec`. Every other
+name fails as in Java, `BROTLI` among them. Only a
 string column has a dictionary, and only while its distinct strings stay within
 `max_dictionary_keys` and `max_dictionary_size` (2^20 each by default); `use_dictionary`
 in a column instruction lifts the limits.
@@ -460,16 +483,70 @@ in a column instruction lifts the limits.
 nulls for names the table does not have. A column instruction names the column in the
 file.
 
+A destination is a path, or a `file:` URI whose path is decoded (`a%20b` is `a b`); a
+path that is not a URI is taken as it is. Java's failures for a URI are kept: an
+authority (`file://host/...`), a query, a fragment, a character a URI cannot have.
+
+### Partitioned writes
+
+`write_partitioned` takes a table, which it splits by the partitioning columns of
+`table_definition` (or of the table), or a partitioned table, whose key columns are the
+partitioning columns. Each constituent is one file,
+`<directory>/<key>=<value>/.../<base name>.parquet`, without the key columns.
+
+- `base_name` may hold `{uuid}`, a random UUID and the default; `{i}`, which counts the
+  files of one key from 0; and `{partitions}`, the directory names joined by `_`. A
+  partitioned table whose keys are not unique needs `{i}` or `{uuid}`.
+- A value is the text `PartitionFormatter` gives it: a null is the empty text, so the
+  directory is `K=`. Ported: `String`, `Boolean`, `Char`, `Byte`, `Short`, `Int`,
+  `Long`, `BigInteger`, `BigDecimal`, `LocalDate`, `LocalTime`.
+- The directory is not emptied first, as in Java: a file under a name the write uses is
+  replaced, and every other file and directory stays, so the files of an earlier write
+  under other names are still read with the new ones.
+- A write that fails leaves the files that were there as they were and nothing new.
+
+Java's failures are kept with their texts, among them a table without partitioning
+columns, a definition with nothing but partitioning columns, an index on a partitioning
+column, and three accidents: a table without rows fails with
+`java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0`; a null
+and an empty string of one key are both `K=`, and the second file cannot be put where
+the first is; a value with `:` in the first directory name (a `LocalTime`) fails, since
+Java takes what is before it for the scheme of a URI. A `/` in a value makes a directory
+below, as in Java.
+
+### Metadata files
+
+With `generate_metadata_files=True` a write also leaves `_metadata` and
+`_common_metadata` (`write/metadata.rs`, `ParquetMetadataFileWriterImpl`): for `write`
+and `batch_write` in the directory of the files, which must be one directory; for
+`write_partitioned` in the destination directory. They are written and taken back with
+the files, and replace the ones that were there, so they list the files of the last
+write only.
+
+- `_metadata` has the schema of the files and every row group of every file, each with
+  the path of its file from the directory.
+- `_common_metadata` has no row group; its schema starts with the partitioning columns
+  of a partitioned write, under their names in the file.
+- Both have the `deephaven` entry of each file under `deephaven_per_file_<path with _
+  for />`, and a `deephaven` entry for the table: the version and the column types,
+  without sorting columns.
+
+Java reads a directory written here through these files to the table it reads from its
+own. This crate does not yet read a directory whose partitioning columns only
+`_common_metadata` knows (`ParquetMetadataFileLayout#create`, in the reader), so what
+`write_partitioned` writes with metadata files is read here file by file, or after the
+two files are removed.
+
 ### Out, each refused with `NotPorted`
 
 | What | Java method named |
 | --- | --- |
-| `write_partitioned` with a definition that has partitioning columns | `ParquetTools#writeKeyValuePartitionedTable` |
-| `generate_metadata_files=True` | `ParquetMetadataFileWriterImpl#writeMetadataFiles` |
 | `index_columns` that names columns | `ParquetInstructions.Builder#addAllIndexColumns` |
 | `special_instructions` | `ParquetInstructions.Builder#setSpecialInstructions` |
-| A destination with a URI scheme, `file://` among them | `SeekableChannelsProviderLoader#load` |
-| `LZO`, and a codec named by its class | `DeephavenCompressorAdapterFactory#getByName` |
+| A destination with another URI scheme than `file` | `SeekableChannelsProviderLoader#load` |
+| `LZO`, by its name or by `io.airlift.compress.lzo.LzoCodec` | `DeephavenCompressorAdapterFactory#getByName` |
+| A partitioning column of type `Float`, `Double` or `Instant` | `PartitionFormatter#formatObject` |
+| A directory or file name of a partitioned write that is `.` or `..`, starts with `/`, or starts like a URI scheme | `ParquetUtils#resolve` |
 | `codec_name` in a column instruction | `ParquetInstructions.Builder#addColumnCodec` |
 | An empty name for the file in a column instruction | `ParquetInstructions.Builder#addColumnNameMapping` |
 | A column whose cells hold vectors or arrays, which Java writes with `SerializableCodec` | `TypeInfos#getCodecAndArgs` |
@@ -477,10 +554,8 @@ file.
 | A column that has another type in `table_definition` than in the table | `TransferObject#create` |
 | `by_groups` on a vector or array column | `RowGroupTableIteratorVisitor.SplitByGroupsIterator#next` |
 
-`write_partitioned` of a table without partitioning columns raises what Java raises
-("Table must have partitioning columns to write partitioned data"); no table of the
-engine has partitioning columns yet. The types of "Which types" that have no column type
-cannot be in a table, so they cannot be written.
+The types of "Which types" that have no column type cannot be in a table, so they cannot
+be written.
 
 ### Differences from Java
 
@@ -501,6 +576,8 @@ Besides what is refused, and none of them seen by a reader of the table:
 - A column of the table with another type in the definition is refused. Java casts: it
   fails for most pairs and writes the values under the definition's type for some (an
   `int` as a `short`).
+- The entries of a metadata file are in the order of the files, then the table's; Java's
+  are in the order of a hash map.
 - An instruction without a name for the file is a `ValueError` inside the `DHError`; in
   Java it is a `NullPointerException` inside it. Error texts are Java's where they are
   short and name no class.
@@ -522,19 +599,23 @@ oracle/bin/harness replay-scripts --url $URL --scripts parquet_write_
 | `parquet_write_types` | clean | Every column type with nulls, vectors, arrays, no rows: read back, and the footer as pyarrow reads it (schema, `deephaven` entry, row groups, codec, dictionary) |
 | `parquet_write_options` | clean | Codec names, row groups, names in the file, dictionary limits, a definition, `batch_write`, a sorted table, a replaced file, `delete`, a table that changes |
 | `parquet_write_errors` | clean | Thirty-eight writes that fail in Java, and what they leave on disk |
-| `parquet_write_unported` | differs | The refusals of the table above that Java does |
+| `parquet_write_unported` | differs | The refusals of the table above that Java does: `lzo`, `indexed`, `nested`, `narrowed` |
 
 A scenario reads the footers with `pyarrow`, which the oracle's environment and the
 reference's both have. Each server reads back its own files; that Java reads the files
 written here to the same tables as its own was checked by hand, on 27 files
 (types, vectors, arrays, codecs, row groups, dictionaries, renames, a definition), and
-is not part of the gate, which runs one server at a time.
+is not part of the gate, which runs one server at a time. For task 7.2b the same was
+done in both directions on the files of the object types, of partitioned writes and of
+writes with metadata files: Java read every file and every directory written here to
+the table it reads from its own, and this crate read every file Java wrote; the
+directories it does not read are the ones of "Metadata files" above.
 
 ### Risks
 
 1. **Memory**: a table larger than memory cannot be written. Writing row group by row
    group needs the row group sizes before the rows, which `by_groups` does not have.
-2. **Partitioned writes and metadata files** wait for partitioning columns, with the
-   partitioned reads.
+2. **A partitioned write does not clean its directory**, as in Java: a partition that
+   is no longer in the table keeps its old file, which is read with the new ones.
 3. **Two servers and one file.** Nothing locks a destination; two writes to one path
    race on `.NEW_<name>`, as in Java.
