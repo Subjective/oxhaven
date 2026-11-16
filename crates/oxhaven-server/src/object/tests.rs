@@ -17,6 +17,8 @@ use oxhaven_proto::grpc::{ClientData, ConnectRequest, PartitionedTableDescriptor
 use prost::Message;
 use tonic::Code;
 
+use oxhaven_proto::grpc::stream_response::Message as ServerMessage;
+
 use super::*;
 use crate::flight::tests::support::{schema_of_ipc, Server};
 use crate::partitioned::{export_value, partition};

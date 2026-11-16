@@ -57,7 +57,7 @@ use tonic::{Request, Response, Status, Streaming};
 
 use crate::app::scope_ticket;
 use crate::session::{
-    current_session, is_terminal, ExportError, ExportValue, OnCloseId, Reply, Session, TicketRouter,
+    current_session, ExportError, ExportValue, OnCloseId, Reply, Session, TicketRouter,
 };
 use browser::{stream_data, BrowserStream};
 use completer::{Answers, Completer};
@@ -81,10 +81,6 @@ fn java_unimplemented(method: &str) -> Status {
     Status::unimplemented(format!(
         "Method io.deephaven.proto.backplane.script.grpc.ConsoleService/{method} is unimplemented"
     ))
-}
-
-fn no_stream_headers() -> Status {
-    Status::invalid_argument("no x-deephaven-stream headers, cannot handle next request")
 }
 
 /// The completer of the console's script session for a stream that is opened now, if it
@@ -346,6 +342,11 @@ impl ConsoleService for ConsoleGrpc {
                 let start_timestamp = now_nanos();
                 let changes = console.evaluate_stoppable(&code, &stop);
                 let end_timestamp = now_nanos();
+                if let Some(failure) = changes.failure {
+                    // Java: the exception of an object type's `isType` leaves
+                    // `evaluateScript`, and the call fails though the code ran
+                    return Err(ExportError::Internal(failure));
+                }
                 if let Some(error) = &changes.error {
                     tracing::error!("Error running script: {error}");
                 }
@@ -478,19 +479,7 @@ impl ConsoleService for ConsoleGrpc {
         let console = self.console("OpenAutoCompleteStream")?;
         let data = stream_data(request.metadata())?;
         let session = current_session(&request)?;
-        let Some(data) = data else {
-            return Err(Status::invalid_argument(
-                "no x-deephaven-stream headers, cannot handle open request",
-            ));
-        };
-        if data.sequence != 0 {
-            // the messages are delivered in order from 0, so the stream would wait for
-            // ever for a message that cannot come
-            return Err(Status::invalid_argument(format!(
-                "open request must have sequence 0, received {}",
-                data.sequence
-            )));
-        }
+        let data = browser::open_headers(data)?;
         let completer = ready_completer(console).await?;
         let (stream, messages) = BrowserStream::open(&session, &data)?;
         let messages = UnboundedReceiverStream::new(messages).map(Ok);
@@ -510,57 +499,6 @@ impl ConsoleService for ConsoleGrpc {
         request: Request<AutoCompleteRequest>,
     ) -> Result<Response<BrowserNextResponse>, Status> {
         self.console("NextAutoCompleteStream")?;
-        let data = stream_data(request.metadata())?;
-        let (data, export_id) = match data {
-            Some(data) => match data.export_id {
-                Some(export_id) => (data, export_id),
-                None => return Err(no_stream_headers()),
-            },
-            None => return Err(no_stream_headers()),
-        };
-        if data.sequence <= 0 {
-            // sequence 0 is the message of the open call
-            return Err(Status::invalid_argument(format!(
-                "next request must have a positive sequence, received {}",
-                data.sequence
-            )));
-        }
-        let session = current_session(&request)?;
-        let stream = session.get_export(export_id)?;
-        if is_terminal(stream.state()) {
-            // The stream has ended, most often because the client gave up its open call
-            // and this call was on its way. A half close has nothing to deliver; a message
-            // has, and the client is told that it was not.
-            if data.half_close {
-                return Ok(Response::new(BrowserNextResponse {}));
-            }
-            return Err(Status::cancelled(format!(
-                "stream ended before this message arrived; sequence {} was not delivered",
-                data.sequence
-            )));
-        }
-        let message = request.into_inner();
-        let reply = Reply::new();
-        let (on_error, on_success) = (reply.completer(), reply.completer());
-        session
-            .non_export()?
-            .require([stream])
-            .on_error(move |status| on_error(Err(status)))
-            .submit(move |inputs| {
-                // Java casts and fails with a ClassCastException
-                let stream = inputs[0]
-                    .downcast_ref::<Arc<BrowserStream<AutoCompleteRequest>>>()
-                    .ok_or_else(|| {
-                        ExportError::Internal(
-                            "the stream ticket does not name a browser stream".to_string(),
-                        )
-                    })?;
-                stream
-                    .on_message(message, &data)
-                    .map_err(ExportError::Status)?;
-                on_success(Ok(BrowserNextResponse {}));
-                Ok(ExportValue::unit())
-            })?;
-        reply.wait().await
+        browser::next(request).await
     }
 }
