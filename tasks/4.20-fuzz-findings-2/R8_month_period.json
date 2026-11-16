@@ -1,0 +1,16 @@
+{
+ "format": 1,
+ "name": "R8_month_period",
+ "description": "A period of months added to a timestamp where no row with a timestamp is evaluated: a table without rows, and a formula that adds it to nulls only.",
+ "inputs": [
+  {"name": "empty", "columns": [{"name": "T", "type": "timestamp"}], "rows": []},
+  {"name": "t", "columns": [{"name": "T", "type": "timestamp"}], "rows": [[1700000000000000000], [1700000001000000000], [null], [1700000002000000000]]}
+ ],
+ "operations": [
+  {"name": "filtered", "op": "where", "source": "empty", "filters": ["T + 'P1m' > T"]},
+  {"name": "updated", "op": "update", "source": "empty", "formulas": ["X = T - 'P1y'"]},
+  {"name": "nulls_only", "op": "update", "source": "t", "formulas": ["X = isNull(T) ? T + 'P1m' : T"]},
+  {"name": "every_row", "op": "update", "source": "t", "formulas": ["X = T + 'P1m'"]}
+ ],
+ "results": [{"table": "filtered"}, {"table": "updated"}, {"table": "nulls_only"}, {"table": "every_row"}]
+}

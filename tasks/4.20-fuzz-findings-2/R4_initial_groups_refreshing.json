@@ -1,0 +1,15 @@
+{
+ "format": 1,
+ "name": "R4_initial_groups_refreshing",
+ "description": "agg_by of an append-only table with initial groups it has no rows for, with and without preserve_empty.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "int32"}], "rows": [["b", 1], ["a", 2], ["b", 3]], "ticking": {"key_columns": []}},
+  {"name": "keys", "columns": [{"name": "K", "type": "string"}], "rows": [["a"], ["c"]]}
+ ],
+ "operations": [
+  {"name": "seeded", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "keys", "aggs": [{"agg": "sum", "columns": ["Sum = V"]}]},
+  {"name": "kept", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "keys", "preserve_empty": true, "aggs": [{"agg": "sum", "columns": ["Sum = V"]}]}
+ ],
+ "results": [{"table": "seeded"}, {"table": "kept"}],
+ "steps": [{"actions": [{"action": "add", "table": "t", "rows": [["c", 5]]}]}]
+}

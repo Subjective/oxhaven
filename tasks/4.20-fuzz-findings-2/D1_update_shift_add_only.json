@@ -1,0 +1,18 @@
+{
+ "format": 1,
+ "name": "D1_update_shift_add_only",
+ "description": "update and lazy_update of an append-only table with a column array read one row back.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "V", "type": "int32"}], "rows": [[1], [0], [3], [-2], [5]], "ticking": {"key_columns": []}}
+ ],
+ "operations": [
+  {"name": "updated", "op": "update", "source": "t", "formulas": ["X = V_[i-1]"]},
+  {"name": "lazy", "op": "lazy_update", "source": "t", "formulas": ["X = V_[i-1]"]},
+  {"name": "same_row", "op": "update", "source": "t", "formulas": ["X = V_[i]"]},
+  {"name": "forward", "op": "update", "source": "t", "formulas": ["X = V_[i+1]"]},
+  {"name": "viewed", "op": "view", "source": "t", "formulas": ["X = V_[i-1]"]},
+  {"name": "plain", "op": "update", "source": "t", "formulas": ["X = V + 1"]}
+ ],
+ "results": [{"table": "updated"}, {"table": "lazy"}, {"table": "same_row"}, {"table": "forward"}, {"table": "viewed"}, {"table": "plain"}],
+ "steps": [{"actions": [{"action": "add", "table": "t", "rows": [[7]]}]}]
+}

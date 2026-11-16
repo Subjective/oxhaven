@@ -1,0 +1,13 @@
+{
+ "format": 1,
+ "name": "R7_keyed_transpose_column_types",
+ "description": "keyed_transpose with columns named after the values of a float column and of a timestamp column.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "D", "type": "float32"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int32"}], "rows": [["b", 0.5, 1700000000000000000, 1], ["a", 1.5, 1700000000000000000, 2], ["b", null, null, 3], ["a", "NaN", 1700000001000000000, 4]]}
+ ],
+ "operations": [
+  {"name": "by_float", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["D"], "aggs": [{"agg": "sum", "columns": ["Sum = V"]}]},
+  {"name": "by_time", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["T"], "aggs": [{"agg": "sum", "columns": ["Sum = V"]}]}
+ ],
+ "results": [{"table": "by_float"}, {"table": "by_time"}]
+}

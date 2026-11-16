@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "name": "J2_select_shift_after_where",
+ "description": "A select of a filtered static table with a fixed-distance read of a source column.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "V", "type": "int32"}], "rows": [[1], [0], [3], [-2], [5]]}
+ ],
+ "operations": [
+  {"name": "f", "op": "where", "source": "t", "filters": ["V > 0"]},
+  {"name": "selected", "op": "select", "source": "f", "formulas": ["X = V_[i-1]"]},
+  {"name": "updated", "op": "update", "source": "f", "formulas": ["X = V_[i-1]"]}
+ ],
+ "results": [{"table": "selected"}, {"table": "updated"}]
+}
