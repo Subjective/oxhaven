@@ -129,7 +129,7 @@ fn link(
         }
         let mut key = key;
         loop {
-            let parent_key = match hierarchy.parent(&key) {
+            let parent_key = match hierarchy.parent(&key)? {
                 Parent::None => {
                     root = Some(linked);
                     break;
@@ -478,12 +478,26 @@ pub(super) fn snapshot(
             let length = segment.rows.size() as usize;
             parts.push(match column {
                 DEPTH_COLUMN => Arc::new(Int32Array::from(vec![segment.depth as i32; length])),
-                EXPANDED_COLUMN => Arc::new(match segment.expandable {
-                    Expandable::None => BooleanArray::new_null(length),
-                    Expandable::All => (0..length)
-                        .map(|row| Some(segment.last_expanded && row + 1 == length))
-                        .collect(),
-                }),
+                EXPANDED_COLUMN => {
+                    let expanded = |row: usize| segment.last_expanded && row + 1 == length;
+                    Arc::new(match segment.expandable {
+                        Expandable::None => BooleanArray::new_null(length),
+                        Expandable::All => (0..length).map(|row| Some(expanded(row))).collect(),
+                        Expandable::ByRow => {
+                            let stored =
+                                hierarchy.expandable_rows(segment.table.as_ref(), &segment.rows)?;
+                            (0..length)
+                                .map(|row| {
+                                    let place = match &segment.places {
+                                        Some(places) => places[row] as usize,
+                                        None => row,
+                                    };
+                                    stored[place].then(|| expanded(row))
+                                })
+                                .collect::<BooleanArray>()
+                        }
+                    })
+                }
                 _ => {
                     let stored = hierarchy.fill(
                         segment.depth,

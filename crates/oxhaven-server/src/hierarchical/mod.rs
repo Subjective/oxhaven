@@ -17,7 +17,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use arrow::datatypes::{Field, Schema};
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::agg::{AggSpec, Aggregation};
-use oxhaven_engine::ops::filter::CheckedFilters;
+use oxhaven_engine::ops::filter::{CheckedFilters, Condition};
 use oxhaven_engine::ops::hierarchical::{
     rollup, HierarchicalError, Hierarchy, RollupTable, View, DEPTH_COLUMN, EXPANDED_COLUMN,
 };
@@ -60,6 +60,15 @@ impl HierarchicalTable {
     pub fn source(&self) -> Arc<dyn Table> {
         match self {
             HierarchicalTable::Rollup(rollup) => rollup.source().clone(),
+        }
+    }
+
+    /// The columns a client may sort by, or `None` when it may sort by any.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.BaseGridAttributes#getSortableColumns`
+    pub fn sortable_columns(&self) -> Option<&[String]> {
+        match self {
+            HierarchicalTable::Rollup(rollup) => rollup.sortable_columns(),
         }
     }
 }
@@ -182,8 +191,8 @@ fn translate_sorts(
 
 /// `table` with the filters and sorts of `request`: the filters first.
 ///
-/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup, without
-/// its format views and update views
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply`, without its format
+/// views and update views
 pub fn apply(
     context: &OpContext,
     table: &Hierarchical,
@@ -196,10 +205,24 @@ pub fn apply(
     {
         return Err(Status::invalid_argument("No operations specified").into());
     }
-    let HierarchicalTable::Rollup(rollup) = table.as_ref();
     // Java reads the conditions, then the sorts, before it applies anything.
     let conditions = conditions(&request.filters).map_err(ExportError::Internal)?;
-    let sorts = translate_sorts(&request.sorts, rollup.sortable_columns())?;
+    let sorts = translate_sorts(&request.sorts, table.sortable_columns())?;
+    match table.as_ref() {
+        HierarchicalTable::Rollup(rollup) => {
+            apply_to_rollup(context, rollup, request, &conditions, &sorts)
+        }
+    }
+}
+
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup
+fn apply_to_rollup(
+    context: &OpContext,
+    rollup: &Arc<RollupTable>,
+    request: &HierarchicalTableApplyRequest,
+    conditions: &[Condition],
+    sorts: &[SortColumn],
+) -> Result<Hierarchical, ExportError> {
     if !request.update_views.is_empty() {
         return Err(not_ported(
             "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView",
@@ -219,8 +242,7 @@ pub fn apply(
     guarded(&[&source], || {
         let mut result = rollup.clone();
         if !conditions.is_empty() {
-            let filters =
-                CheckedFilters::of_conditions(&conditions, source.definition(), compiler)?;
+            let filters = CheckedFilters::of_conditions(conditions, source.definition(), compiler)?;
             result
                 .check_filters(&filters)
                 .map_err(Status::invalid_argument)?;
@@ -229,8 +251,8 @@ pub fn apply(
             }
         }
         if !sorts.is_empty() {
-            result.check_sorts(&sorts)?;
-            result = Arc::new(result.with_sorts(&sorts));
+            result.check_sorts(sorts)?;
+            result = Arc::new(result.with_sorts(sorts));
         }
         Ok(Arc::new(HierarchicalTable::Rollup(result)))
     })
@@ -291,7 +313,13 @@ const PREFIX: &str = "deephaven:";
 ///
 /// Behavior: `io.deephaven.extensions.barrage.util.HierarchicalTableSchemaUtil#makeSchemaPayload`
 pub fn snapshot_schema(table: &HierarchicalTable) -> Schema {
-    let HierarchicalTable::Rollup(rollup) = table;
+    match table {
+        HierarchicalTable::Rollup(rollup) => rollup_schema(rollup),
+    }
+}
+
+/// Behavior: `HierarchicalTableSchemaUtil#makeSchemaPayload` for a rollup
+fn rollup_schema(rollup: &RollupTable) -> Schema {
     let definition = rollup.columns();
     // the name of each result column's input, and its description
     let mut inputs = HashMap::new();

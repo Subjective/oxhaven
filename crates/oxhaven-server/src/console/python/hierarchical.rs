@@ -32,8 +32,9 @@ pub(super) struct HierarchicalHandle {
 
 impl HierarchicalHandle {
     fn rollup(&self) -> &Arc<RollupTable> {
-        let HierarchicalTable::Rollup(rollup) = self.table.as_ref();
-        rollup
+        match self.table.as_ref() {
+            HierarchicalTable::Rollup(rollup) => rollup,
+        }
     }
 }
 
@@ -155,9 +156,13 @@ impl RecorderHandle {
                 }
             })
             .collect();
-        let HierarchicalTable::Rollup(rollup) = self.table.as_ref();
-        py.detach(|| guarded(&[], || Ok(rollup.check_sorts(&sorts)?)))
-            .map_err(failure)?;
+        let table = &self.table;
+        py.detach(|| {
+            guarded(&[], || match table.as_ref() {
+                HierarchicalTable::Rollup(rollup) => Ok(rollup.check_sorts(&sorts)?),
+            })
+        })
+        .map_err(failure)?;
         Ok(RecorderHandle {
             table: self.table.clone(),
             sorts: merged_sorts(&sorts, &self.sorts),

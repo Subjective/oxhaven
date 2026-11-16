@@ -193,6 +193,10 @@ pub enum Parent {
 pub enum Expandable {
     All,
     None,
+    /// Some can and some cannot: [`Hierarchy::expandable_rows`] says which.
+    ///
+    /// Behavior: HierarchicalTableImpl.LevelExpandable#Undetermined
+    ByRow,
 }
 
 /// Nodes and their child tables: what the walk of a snapshot needs to know of a
@@ -220,7 +224,8 @@ pub trait Hierarchy: Send + Sync {
     /// cannot be expanded. A node that was there and is not there now may be known.
     fn locate(&self, key: &NodeKey) -> Result<Option<Located>, HierarchicalError>;
 
-    fn parent(&self, key: &NodeKey) -> Parent;
+    /// The key of the parent of the node of `key`, which [`Hierarchy::locate`] found.
+    fn parent(&self, key: &NodeKey) -> Result<Parent, HierarchicalError>;
 
     fn root(&self) -> NodeId;
 
@@ -241,6 +246,19 @@ pub trait Hierarchy: Send + Sync {
 
     /// Whether the rows at `depth` (the rows of the root table are at 1) can be expanded.
     fn rows_expandable(&self, depth: u32) -> Expandable;
+
+    /// For a level that is [`Expandable::ByRow`]: whether each of `rows` of `table`, the
+    /// child table of a node, can be expanded, in the order of their keys.
+    ///
+    /// Behavior: HierarchicalTableImpl#nodeIdExpandable of the node that
+    /// #makeChildNodeIdLookup finds for a row
+    fn expandable_rows(
+        &self,
+        _table: &dyn Table,
+        rows: &RowSet,
+    ) -> Result<Vec<bool>, HierarchicalError> {
+        Ok(vec![true; rows.size() as usize])
+    }
 
     /// The values of column `column` of [`Hierarchy::columns`], which is neither the
     /// depth nor the expanded column, for `rows` of `table`, the child table of a node
