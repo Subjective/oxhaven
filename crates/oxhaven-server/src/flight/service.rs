@@ -13,7 +13,7 @@ use oxhaven_proto::flight::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
 use super::encode::schema_message;
@@ -32,6 +32,66 @@ fn not_ported<T>(java_method: &str) -> Result<T, Status> {
     Err(Status::unimplemented(format!(
         "not ported yet: io.deephaven.server.arrow.FlightServiceGrpcImpl#{java_method}"
     )))
+}
+
+/// Serves one upload: takes `messages` until they end, and answers on the returned
+/// stream. `finished` is called once nothing more is taken.
+///
+/// Behavior: `io.deephaven.server.arrow.ArrowFlightUtil.DoPutObserver`
+pub(super) fn put_stream(
+    session: Arc<Session>,
+    router: Arc<TicketRouter>,
+    mut messages: impl Stream<Item = Result<FlightData, Status>> + Send + Unpin + 'static,
+    finished: impl FnOnce() + Send + 'static,
+) -> Result<BoxStream<PutResult>, Status> {
+    let (responses, receiver) = mpsc::unbounded_channel();
+
+    // The end of the session ends the call, and whatever arrives afterwards is ignored.
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let on_close = session.add_on_close({
+        let abandoned = abandoned.clone();
+        let responses = responses.clone();
+        move || {
+            abandoned.store(true, Ordering::SeqCst);
+            let _ = responses.send(Err(Status::unauthenticated("Session expired")));
+        }
+    })?;
+
+    let mut put = Put {
+        session: session.clone(),
+        router,
+        descriptor: None,
+        builder: None,
+        upload: TableUpload::default(),
+        responses,
+    };
+    tokio::spawn(async move {
+        loop {
+            let outcome = match messages.next().await {
+                Some(Ok(message)) => {
+                    if abandoned.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    put.message(message)
+                }
+                None => break,
+                // the client cancelled, or the connection broke
+                Some(Err(status)) => Err(status.into()),
+            };
+            if let Err(error) = outcome {
+                put.fail(error);
+                session.remove_on_close(on_close);
+                finished();
+                return;
+            }
+        }
+        session.remove_on_close(on_close);
+        if !abandoned.load(Ordering::SeqCst) {
+            put.complete();
+        }
+        finished();
+    });
+    Ok(Box::pin(UnboundedReceiverStream::new(receiver)))
 }
 
 fn boxed<T: Send + 'static>(
@@ -397,53 +457,8 @@ impl FlightService for FlightGrpc {
         request: Request<Streaming<FlightData>>,
     ) -> Result<Response<Self::DoPutStream>, Status> {
         let session = current_session(&request)?;
-        let mut messages = request.into_inner();
-        let (responses, receiver) = mpsc::unbounded_channel();
-
-        // The end of the session ends the call, and whatever arrives afterwards is ignored.
-        let abandoned = Arc::new(AtomicBool::new(false));
-        let on_close = session.add_on_close({
-            let abandoned = abandoned.clone();
-            let responses = responses.clone();
-            move || {
-                abandoned.store(true, Ordering::SeqCst);
-                let _ = responses.send(Err(Status::unauthenticated("Session expired")));
-            }
-        })?;
-
-        let mut put = Put {
-            session: session.clone(),
-            router: self.router.clone(),
-            descriptor: None,
-            builder: None,
-            upload: TableUpload::default(),
-            responses,
-        };
-        tokio::spawn(async move {
-            loop {
-                let outcome = match messages.message().await {
-                    Ok(Some(message)) => {
-                        if abandoned.load(Ordering::SeqCst) {
-                            continue;
-                        }
-                        put.message(message)
-                    }
-                    Ok(None) => break,
-                    // the client cancelled, or the connection broke
-                    Err(status) => Err(status.into()),
-                };
-                if let Err(error) = outcome {
-                    put.fail(error);
-                    session.remove_on_close(on_close);
-                    return;
-                }
-            }
-            session.remove_on_close(on_close);
-            if !abandoned.load(Ordering::SeqCst) {
-                put.complete();
-            }
-        });
-        Ok(boxed(receiver))
+        let responses = put_stream(session, self.router.clone(), request.into_inner(), || {})?;
+        Ok(Response::new(responses))
     }
 
     /// Barrage: subscriptions to tables and snapshots of them; see [`crate::barrage`].

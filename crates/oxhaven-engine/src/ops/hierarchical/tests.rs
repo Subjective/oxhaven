@@ -90,7 +90,11 @@ const EXPAND_ALL: i8 = 3;
 const CONTRACT: i8 = 4;
 
 fn view_of(rows: &[(i32, &str, &str, i8)]) -> Vec<String> {
-    let view = View::new(trades_rollup(), Some(keys(rows)), Some("Action".to_string()));
+    let view = View::new(
+        trades_rollup(),
+        Some(keys(rows)),
+        Some("Action".to_string()),
+    );
     text(&view.snapshot(None, 0, 100).unwrap())
 }
 
@@ -221,9 +225,13 @@ fn the_last_row_of_a_key_counts_and_unknown_keys_do_not() {
 #[test]
 fn a_bad_key_table_is_refused() {
     let refused = |rows: &[(i32, &str, &str, i8)]| {
-        View::new(trades_rollup(), Some(keys(rows)), Some("Action".to_string()))
-            .snapshot(None, 0, 10)
-            .unwrap_err()
+        View::new(
+            trades_rollup(),
+            Some(keys(rows)),
+            Some("Action".to_string()),
+        )
+        .snapshot(None, 0, 10)
+        .unwrap_err()
     };
     assert_eq!(
         refused(&[(4, "AAPL", "N", EXPAND)]),
@@ -271,9 +279,7 @@ fn a_viewport_is_a_range_of_the_whole_walk() {
 fn a_rollup_without_keys_is_the_grand_total() {
     let rollup: Arc<dyn Hierarchy> =
         Arc::new(rollup(&trades(), &aggregations(), false, &[], None).unwrap());
-    let snapshot = View::new(rollup, None, None)
-        .snapshot(None, 0, 10)
-        .unwrap();
+    let snapshot = View::new(rollup, None, None).snapshot(None, 0, 10).unwrap();
     assert_eq!(text(&snapshot), ["1|-|210|6"]);
 }
 
@@ -310,7 +316,9 @@ fn java_refuses_some_aggregations() {
 }
 
 #[test]
-#[should_panic(expected = "unported: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup")]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup"
+)]
 fn constituents_are_not_ported() {
     let _ = rollup(&trades(), &aggregations(), true, &["Sym"], None);
 }

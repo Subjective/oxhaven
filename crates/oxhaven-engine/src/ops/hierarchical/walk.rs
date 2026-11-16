@@ -288,7 +288,9 @@ impl Walk<'_> {
             let mut next = children.iter().peekable();
             for (position, row) in rows.iter().enumerate() {
                 let position = position as u64;
-                let directive = next.next_if(|(at, _)| *at == position).map(|&(_, child)| child);
+                let directive = next
+                    .next_if(|(at, _)| *at == position)
+                    .map(|&(_, child)| child);
                 if directive.is_some_and(|child| self.arena[child].action == Some(Action::Contract))
                 {
                     continue;
@@ -379,7 +381,9 @@ pub(super) fn snapshot(
                         .map(|row| Some(segment.last_expanded && row + 1 == length))
                         .collect(),
                 }),
-                _ => hierarchy.fill(segment.depth, segment.table.as_ref(), &segment.rows, column)?,
+                _ => {
+                    hierarchy.fill(segment.depth, segment.table.as_ref(), &segment.rows, column)?
+                }
             });
         }
         data.push(if parts.is_empty() {
@@ -391,7 +395,11 @@ pub(super) fn snapshot(
     }
     Ok(Snapshot {
         size: walk.visited,
-        rows: walk.segments.iter().map(|segment| segment.rows.size()).sum(),
+        rows: walk
+            .segments
+            .iter()
+            .map(|segment| segment.rows.size())
+            .sum(),
         columns: data,
     })
 }
