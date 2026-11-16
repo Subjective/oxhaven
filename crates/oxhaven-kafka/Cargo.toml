@@ -15,6 +15,9 @@ oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-engine = { path = "../oxhaven-engine" }
 # `DateTimeUtils#parseInstant` of the text in a JSON `Instant` column.
 oxhaven-expr = { path = "../oxhaven-expr" }
+# Protobuf descriptors, and `.proto` text read into them, for a Protobuf spec.
+prost-reflect.workspace = true
+protox.workspace = true
 # librdkafka, compiled from the sources `rdkafka-sys` carries, with its own snappy and lz4
 # and Zstandard from `zstd-sys`. No TLS, SASL, curl or zlib: docs/KAFKA.md, "The client
 # library", has the licences and why each feature is on or off.

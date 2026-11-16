@@ -216,6 +216,115 @@ impl Registry {
     }
 }
 
+/// A Protobuf schema as the registry holds it: its text, and the text of each schema it
+/// imports, by the name it imports it as.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct ProtobufText {
+    pub(crate) text: String,
+    pub(crate) references: Vec<(String, String)>,
+}
+
+impl Registry {
+    /// The Protobuf schema of `subject` at `version`, the latest for none, with the
+    /// schemas it references.
+    ///
+    /// Behavior: io.deephaven.kafka.ProtobufImpl.ProtobufConsumeImpl#descriptor;
+    /// CachedSchemaRegistryClient#getLatestSchemaMetadata, #getSchemaMetadata and
+    /// #getSchemaBySubjectAndId; ProtobufSchemaProvider#parseSchemaOrElseThrow, which
+    /// fetches each reference with `getSchemaMetadata(subject, version, true)` (probed)
+    pub(crate) fn protobuf_schema(
+        &self,
+        subject: &str,
+        version: Option<i32>,
+    ) -> Result<ProtobufText, KafkaError> {
+        let unchecked = |CallFailure(text)| {
+            KafkaError::Invalid(format!("{UNCHECKED}: {text} (caused by {text})"))
+        };
+        let path = match version {
+            None => format!("/subjects/{}/versions/latest", encode(subject)),
+            Some(number) => format!(
+                "/subjects/{}/versions/{number}?deleted=false",
+                encode(subject)
+            ),
+        };
+        let metadata = self.get(&path).map_err(unchecked)?;
+        // Behavior: ProtobufConsumeImpl#descriptor checks the type of the metadata before
+        // it fetches the schema (probe avro_subject); a missing type is Avro's.
+        let kind = metadata
+            .get("schemaType")
+            .and_then(Node::as_str)
+            .unwrap_or("AVRO");
+        if kind != "PROTOBUF" {
+            return Err(KafkaError::Invalid(format!(
+                "java.lang.IllegalStateException: Expected schema type PROTOBUF but was {kind}"
+            )));
+        }
+        let id = metadata.get("id").and_then(Node::exact_long).unwrap_or(0);
+        let body = self
+            .get(&format!(
+                "/schemas/ids/{id}?fetchMaxId=false&subject={}",
+                encode(subject)
+            ))
+            .map_err(unchecked)?;
+        let text = body
+            .get("schema")
+            .and_then(Node::as_str)
+            .map(str::to_owned)
+            .ok_or_else(|| {
+                unchecked(CallFailure(format!("{REST}: no schema; error code: 50005")))
+            })?;
+        let mut references = Vec::new();
+        self.protobuf_references(&body, &mut references, 0)
+            .map_err(unchecked)?;
+        Ok(ProtobufText { text, references })
+    }
+
+    /// Adds the schemas `body` references, and theirs, to `out`, each once by name.
+    fn protobuf_references(
+        &self,
+        body: &Node,
+        out: &mut Vec<(String, String)>,
+        depth: usize,
+    ) -> Result<(), CallFailure> {
+        let Some(Node::Array(references)) = body.get("references") else {
+            return Ok(());
+        };
+        if depth > 32 {
+            return Err(CallFailure(
+                "not ported yet: io.confluent.kafka.schemaregistry.protobuf.\
+                 ProtobufSchemaProvider#resolveReferences: references nested more than 32 deep"
+                    .to_owned(),
+            ));
+        }
+        for reference in references {
+            let name = reference.get("name").and_then(Node::as_str).unwrap_or("");
+            let subject = reference
+                .get("subject")
+                .and_then(Node::as_str)
+                .unwrap_or("");
+            let version = reference
+                .get("version")
+                .and_then(Node::exact_long)
+                .unwrap_or(0);
+            if out.iter().any(|(known, _)| known == name) {
+                continue;
+            }
+            let found = self.get(&format!(
+                "/subjects/{}/versions/{version}?deleted=true",
+                encode(subject)
+            ))?;
+            let text = found
+                .get("schema")
+                .and_then(Node::as_str)
+                .unwrap_or("")
+                .to_owned();
+            out.push((name.to_owned(), text));
+            self.protobuf_references(&found, out, depth + 1)?;
+        }
+        Ok(())
+    }
+}
+
 impl Registry {
     /// Registers `schema` (Avro's `Schema#toString` of it) under `subject` and returns
     /// its id, asking the registry once per subject and schema, as the serializer of a
