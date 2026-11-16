@@ -257,8 +257,159 @@ mod tests {
     //! What a script sees of a partitioned table is in the script scenarios
     //! `partitioned_*`, recorded from Java; these are the parts no scenario reaches.
 
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc};
+    use std::time::Duration;
+
+    use oxhaven_contracts::graph::UpdateGraph;
+    use oxhaven_contracts::table::Table;
+
     use super::super::tests::Python;
     use crate::partitioned::partitioned_of;
+
+    /// Runs cycles until `done` says so of the session, for at most ten seconds.
+    fn cycles_until(python: &Python, done: &str) {
+        for _ in 0..2000 {
+            python.server.state.graph.run_cycle();
+            let changes = python.console.evaluate(&format!("assert {done}"));
+            if changes.error.is_none() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        panic!("never: {done}");
+    }
+
+    #[tokio::test]
+    async fn a_cycle_calls_the_transform_function_for_a_new_constituent() {
+        let python = Python::start().await;
+        python.run(
+            "import threading\n\
+             from deephaven import time_table\n\
+             source = time_table(1_000_000).update('K = ii')\n\
+             pt = source.partition_by('K')\n\
+             threads = set()\n\
+             def last(table):\n\
+             \x20   threads.add(threading.get_ident())\n\
+             \x20   return table.tail(1)\n\
+             made = pt.transform(last)\n\
+             merged = made.merge()\n\
+             command = threading.get_ident()\n\
+             at_first = merged.size\n\
+             threads.clear()\n",
+        );
+        cycles_until(&python, "merged.size >= at_first + 3");
+        // every row is a key of its own, and each was given to the function in a cycle
+        python.run(
+            "assert threads and command not in threads, threads\n\
+             assert merged.size == source.size == pt.table.size == made.table.size\n\
+             assert not made.table.is_failed and not merged.is_failed\n",
+        );
+    }
+
+    #[tokio::test]
+    async fn a_function_that_fails_in_a_cycle_fails_the_transform_and_nothing_else() {
+        let python = Python::start().await;
+        python.run(
+            "from deephaven import time_table\n\
+             source = time_table(1_000_000).update('K = ii')\n\
+             pt = source.partition_by('K')\n\
+             allowed = True\n\
+             def fragile(table):\n\
+             \x20   if not allowed:\n\
+             \x20       raise ValueError('not now')\n\
+             \x20   return table.tail(1)\n\
+             broken = pt.transform(fragile)\n\
+             broken_rows = broken.merge()\n\
+             fine = pt.transform(lambda table: table.tail(1))\n\
+             fine_rows = fine.merge()\n\
+             at_first = fine_rows.size\n\
+             allowed = False\n",
+        );
+        cycles_until(&python, "fine_rows.size >= at_first + 2");
+        python.run(
+            "assert broken.table.is_failed and broken_rows.is_failed\n\
+             assert not fine.table.is_failed and not fine_rows.is_failed\n\
+             assert not pt.table.is_failed\n\
+             allowed = True\n\
+             again = pt.transform(fragile).merge()\n\
+             at_first = again.size\n",
+        );
+        // the session and the next cycles go on, and formulas have their scope
+        cycles_until(&python, "again.size >= at_first + 2");
+        python.run("assert not again.is_failed\nassert source.where('K >= 0').size > 0\n");
+    }
+
+    /// The lock rule of `docs/PYTHON_UDF.md` for a transform function: cycles that call
+    /// it, commands that transform, and a Python thread that does, all make progress.
+    #[tokio::test]
+    async fn a_cycle_calls_transform_functions_while_commands_run() {
+        let python = Python::start().await;
+        python.run(
+            "import threading\n\
+             from deephaven import time_table\n\
+             source = time_table(2_000_000).update('K = ii % 300')\n\
+             pt = source.partition_by('K')\n\
+             made = pt.transform(lambda table: table.tail(1))\n\
+             merged = made.merge()\n\
+             running = True\n\
+             rounds = 0\n\
+             def _work():\n\
+             \x20   global rounds\n\
+             \x20   while running:\n\
+             \x20       pt.transform(lambda table: table.head(1)).merge()\n\
+             \x20       pt.partitioned_transform(made, lambda a, b: a.tail(2)).merge()\n\
+             \x20       rounds += 1\n\
+             _thread = threading.Thread(target=_work)\n\
+             _thread.start()\n",
+        );
+        let stop = Arc::new(AtomicBool::new(false));
+        let (done, finished) = mpsc::channel();
+        let cycling = std::thread::spawn({
+            let graph = python.server.state.graph.clone();
+            let (stop, done) = (stop.clone(), done.clone());
+            move || {
+                let mut cycles = 0;
+                while !stop.load(Ordering::Relaxed) {
+                    graph.run_cycle();
+                    cycles += 1;
+                }
+                done.send(("cycles", cycles)).unwrap();
+            }
+        });
+        let commands = std::thread::spawn({
+            let console = python.console.clone();
+            move || {
+                for round in 0..30 {
+                    let changes = console.evaluate(
+                        "heads = pt.transform(lambda table: table.head(1))\n\
+                         pairs = heads.partitioned_transform(made, lambda a, b: b)\n\
+                         assert pairs.merge().size <= 300\n",
+                    );
+                    assert_eq!(changes.error, None, "round {round}");
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                done.send(("commands", 30)).unwrap();
+            }
+        });
+
+        // a deadlock is a party that never reports
+        let wait = Duration::from_secs(120);
+        let first = finished.recv_timeout(wait).expect("the commands finish");
+        assert_eq!(first, ("commands", 30));
+        stop.store(true, Ordering::Relaxed);
+        let (who, cycles) = finished.recv_timeout(wait).expect("the cycles finish");
+        assert_eq!(who, "cycles");
+        assert!(cycles >= 5, "{cycles} cycles");
+        commands.join().unwrap();
+        cycling.join().unwrap();
+        python.run(
+            "running = False\n_thread.join(60)\nassert not _thread.is_alive()\n\
+             assert rounds > 0\nassert not merged.is_failed and merged.size > 0\n",
+        );
+        let merged: Arc<dyn Table> = python.table("merged");
+        assert!(!merged.is_failed());
+    }
 
     #[tokio::test]
     async fn a_partitioned_table_variable_is_listed_and_opened_as_one() {
