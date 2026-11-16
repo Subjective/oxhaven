@@ -894,3 +894,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   `LocalTime`, and an `Expr` node for object and array creation. For the owner: Java's
   `java.lang` statics on null sentinels (reproduced), `false & null` is null, `(Double)`
   casts, `compareTo(long, double)` (refused), the gate counts array results as uncompared.
+- Pull request 107 merged (5.7).
