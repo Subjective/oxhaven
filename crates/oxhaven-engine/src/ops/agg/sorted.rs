@@ -99,28 +99,50 @@ impl SortedFirstLast {
 
     /// Whether the row `row_key` with `key` is better than the current best.
     ///
+    /// A `Period` sort column, which the planner allows only alone and on a static
+    /// parent, fails when two periods that are not null are compared.
+    ///
     /// Behavior: DoubleAddOnlySortedFirstOrLastChunkedOperator#addChunk (`leq`/`lt` for
-    /// first, `geq`/`gt` for last, depending on which row key is smaller)
-    fn better(&self, row_key: RowKey, key: &SortKey, best: &(RowKey, SortKey)) -> bool {
+    /// first, `geq`/`gt` for last, depending on which row key is smaller), and
+    /// ObjectAddOnlySortedFirstOrLastChunkedOperator#addChunk, whose
+    /// io.deephaven.util.compare.ObjectComparisons#compare casts a value to `Comparable`
+    fn better(
+        &self,
+        row_key: RowKey,
+        key: &SortKey,
+        best: &(RowKey, SortKey),
+    ) -> Result<bool, TableFailure> {
         if best.0 == NULL_ROW_KEY {
-            return true;
+            return Ok(true);
+        }
+        if key
+            .iter()
+            .zip(&best.1)
+            .any(|(a, b)| a.is_period() && b.is_period())
+        {
+            return Err(TableFailure {
+                message: "java.lang.ClassCastException: class java.time.Period cannot be cast \
+                          to class java.lang.Comparable"
+                    .into(),
+            });
         }
         let order = compare_keys(key, &best.1);
-        if self.first {
+        Ok(if self.first {
             order == Ordering::Less || (order == Ordering::Equal && row_key < best.0)
         } else {
             order == Ordering::Greater || (order == Ordering::Equal && row_key > best.0)
-        }
+        })
     }
 
-    /// The best row of `rows`, with its key.
+    /// The best row of `rows`, with its key, from the rows in order as a static parent's
+    /// operator sees them.
     fn best_of(&self, rows: &RowSet) -> Result<(RowKey, SortKey), TableFailure> {
         let mut best: (RowKey, SortKey) = (NULL_ROW_KEY, Vec::new());
         let mut start = 0;
         while start < rows.size() {
             let chunk = rows.sub_set_by_position_range(start, start + CHUNK_SIZE);
             for (row_key, key) in chunk.iter().zip(self.keys(&chunk)?) {
-                if self.better(row_key, &key, &best) {
+                if self.better(row_key, &key, &best)? {
                     best = (row_key, key);
                 }
             }
