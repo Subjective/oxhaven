@@ -292,6 +292,30 @@ without `deephaven-core` and `jpy`, against Java 42.9 with the same plugin.
   `get_configuration` do so inside `try` and fall back to the stricter setting. Nothing of
   the package was run.
 
+### After task 5.8
+
+The formulas of the plugin that were refused (`tasks/5.8-plot-formulas.md`), run as above
+against Java 42.9, with the tables a figure refers to fetched and compared too.
+
+- Of the 50 calls that make a figure on Java, 48 are sent as Java sends them, the JSON,
+  the references and the contents of the tables (42 before). The six that joined them are
+  `histogram`, `histogram_by`, `histogram_y`, `histogram_func`, `density_heatmap` and the
+  ticking histogram: the formula language makes a
+  `io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual` and calls its `index`,
+  `binMin` and `binMax`. The two left are those with `calendar=`
+  (`not ported: io.deephaven.time.calendar.Calendars#calendar`).
+- Of the example data, every static data set but `marketing` has the rows Java gives it,
+  cell for cell: `iris`, `stocks` (36,000 rows), `tips`, `gapminder`, `wind`, `election`,
+  `jobs`, `fish_market` and `outages`, each with `ticking=False`. The ticking forms of all
+  but `gapminder` and `marketing` are made and refresh; their rows were not compared, they
+  depend on the clock. `flights(ticking=False)` fails on Java too.
+  What they needed: an `Instant` of the query scope (`iris`, `stocks`, `fish_market`,
+  `outages`), `new Random(seed).nextInt(bound)` and an item of a Python list (`iris` when
+  it ticks), an item of a Python dict (`stocks`).
+- Still refused, by owner's ruling on `jpy`: `marketing`
+  (`ColumnsToRowsTransform#columnsToRows`) and `gapminder` when it ticks
+  (`java.lang.String[]: jpy.array`).
+
 ## Not started
 
 - What the trials above list as failing.

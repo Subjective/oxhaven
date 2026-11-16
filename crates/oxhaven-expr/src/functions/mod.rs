@@ -26,6 +26,8 @@ pub(crate) mod color;
 mod color_table;
 pub(crate) mod eval;
 mod names;
+pub(crate) mod random;
+pub(crate) mod range;
 pub(crate) mod statics;
 pub(crate) mod vectors;
 pub(crate) mod volatile;
@@ -504,6 +506,11 @@ pub(crate) enum Kernel {
     /// A function of colours and styles, which computes with the values Java reserves
     /// for null.
     Color(color::ColorFn),
+    /// The constructor or a method of `DiscretizedRangeEqual`; a method's first argument
+    /// is the range.
+    Range(range::RangeFn),
+    /// `new Random(seed).nextInt(bound)` of `java.util.Random`, of the seed and the bound.
+    RandomNextInt,
 }
 
 impl Kernel {

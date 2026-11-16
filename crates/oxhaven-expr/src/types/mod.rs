@@ -13,6 +13,8 @@ mod color;
 mod methods;
 
 use crate::external::{ExternalArgument, ExternalFunctions};
+use crate::functions::random;
+use crate::functions::range::{self, RangeFn};
 use crate::functions::{self, vectors, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
@@ -1492,6 +1494,16 @@ impl Checker<'_> {
         arguments: &[Expr],
     ) -> Result<Typed, FormulaError> {
         let length = method == crate::parse::LENGTH_FIELD;
+        if let Expr::Call {
+            function,
+            arguments: seed,
+        } = receiver
+        {
+            let created = function.strip_prefix(crate::parse::NEW);
+            if created.is_some_and(random::is_class) {
+                return self.random_call(seed, method, arguments);
+            }
+        }
         if method == "toString" && arguments.is_empty() {
             // Behavior: `java.math.BigDecimal#toString`, `java.math.BigInteger#toString`,
             // `java.time.LocalDate#toString`, `java.time.LocalTime#toString`,
@@ -1514,6 +1526,11 @@ impl Checker<'_> {
             }
         }
         let receiver = self.check(receiver)?;
+        if receiver.column_type == range::column_type() {
+            if let Some(function) = RangeFn::method(method) {
+                return self.range_call(function, Some(receiver), arguments);
+            }
+        }
         if is_list(&receiver) {
             return self.vector_method(receiver, method, arguments);
         }
@@ -1731,8 +1748,163 @@ impl Checker<'_> {
             ("Boolean" | "Character" | "Double" | "Float" | "Integer" | "Long" | "String", _) => {
                 self.static_call(class, functions::statics::CONSTRUCTOR, arguments)
             }
+            _ if created == range::CLASS => self.range_call(RangeFn::New, None, arguments),
+            // no column type holds the object: see `functions::random`
+            _ if random::is_class(created) => Err(unsupported(format!(
+                "a {class} that is not asked at once for nextInt(bound): \
+                 not ported: {class}#Random",
+                class = random::CLASS
+            ))),
             _ => Err(unsupported(format!("constructor new {created}()"))),
         }
+    }
+
+    /// `new Random(seed).method(arguments)`. Of the constructors Java takes the one of a
+    /// `long`, for a seed that widens to it, and of the methods `nextInt(int)` is
+    /// computed, for a bound that widens to `int`; each is converted as a cast converts
+    /// it, so a null `int` seed is the null `long`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)`, `#visit(MethodCallExpr)`
+    /// and `#convertParameters`. Java 42.9 was run for each form.
+    fn random_call(
+        &mut self,
+        seed: &[Expr],
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        use ColumnType as C;
+        let class = random::CLASS;
+        let mut one =
+            |arguments: &[Expr], long: bool| -> Result<Result<Typed, String>, FormulaError> {
+                let mut found = Vec::with_capacity(arguments.len());
+                let mut checked = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    if is_null_literal(argument) {
+                        found.push("null".to_string());
+                    } else {
+                        let argument = self.check(argument)?;
+                        found.push(java_name(&argument.column_type));
+                        checked.push(argument);
+                    }
+                }
+                if let (1, [argument]) = (arguments.len(), checked.as_slice()) {
+                    let from = &argument.column_type;
+                    if matches!(from, C::Byte | C::Short | C::Char | C::Int)
+                        || (long && *from == C::Long)
+                    {
+                        return Ok(Ok(checked.remove(0)));
+                    }
+                }
+                Ok(Err(found.join(", ")))
+            };
+        if seed.is_empty() {
+            // the seed is the time and a counter
+            return Err(unsupported(format!(
+                "a {class} without a seed: not ported: {class}#Random()"
+            )));
+        }
+        let seed = one(seed, true)?.map_err(|found| {
+            type_error(format!(
+                "Cannot find constructor for {class}({found}) in class {class}"
+            ))
+        })?;
+        if method != "nextInt" || arguments.is_empty() {
+            return Err(unsupported(format!(
+                "method {method} of a {class}: not ported: {class}#{method}"
+            )));
+        }
+        let bound = match one(arguments, false)? {
+            Ok(bound) => bound,
+            Err(found) if arguments.len() == 2 => {
+                return Err(unsupported(format!(
+                    "method nextInt({found}) of a {class}: not ported: {class}#nextInt(int, int)"
+                )))
+            }
+            Err(found) => {
+                return Err(type_error(format!(
+                    "Cannot find method nextInt({found}) in class {class}"
+                )))
+            }
+        };
+        if self.refused_to_clients.is_none() {
+            self.refused_to_clients = Some(random::REFUSAL.to_string());
+        }
+        Ok(typed(
+            C::Int,
+            Node::Call {
+                kernel: Kernel::RandomNextInt,
+                arguments: vec![convert(seed, &C::Long), convert(bound, &C::Int)],
+            },
+        ))
+    }
+
+    /// The constructor of `DiscretizedRangeEqual`, or a method of it called on `receiver`.
+    /// The class has one constructor and one method of each name, which takes the
+    /// arguments that widen to its parameters; each is converted as a cast converts it,
+    /// so a null stays the null of the parameter's type.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)`, `#visit(MethodCallExpr)`,
+    /// `#dhqlIsAssignableFrom` and `#convertParameters`. Java 42.9 was run for each form.
+    fn range_call(
+        &mut self,
+        function: RangeFn,
+        receiver: Option<Typed>,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        use ColumnType as C;
+        let parameters = function.parameters();
+        let mut checked = Vec::with_capacity(arguments.len() + 1);
+        let mut found = Vec::with_capacity(arguments.len());
+        let mut fits = arguments.len() == parameters.len();
+        for (at, argument) in arguments.iter().enumerate() {
+            if is_null_literal(argument) {
+                found.push("null".to_string());
+                fits = false;
+                continue;
+            }
+            let argument = self.check(argument)?;
+            found.push(java_name(&argument.column_type));
+            let from = &argument.column_type;
+            fits &= match parameters.get(at) {
+                Some(C::Int) => matches!(from, C::Byte | C::Short | C::Char | C::Int),
+                Some(C::Long) => matches!(from, C::Byte | C::Short | C::Char | C::Int | C::Long),
+                Some(C::Double) => Numeric::of(from).is_some(),
+                _ => false,
+            };
+            checked.push(argument);
+        }
+        if !fits {
+            let found = found.join(", ");
+            return Err(type_error(if function == RangeFn::New {
+                format!(
+                    "Cannot find constructor for {class}({found}) in class {class}",
+                    class = range::CLASS
+                )
+            } else {
+                format!(
+                    "Cannot find method {}({found}) in class {}",
+                    function.name(),
+                    range::CLASS
+                )
+            }));
+        }
+        if self.refused_to_clients.is_none() {
+            self.refused_to_clients = Some(function.refusal());
+        }
+        let mut converted: Vec<Typed> = receiver.into_iter().collect();
+        converted.extend(
+            checked
+                .into_iter()
+                .zip(parameters)
+                .map(|(argument, parameter)| convert(argument, parameter)),
+        );
+        Ok(typed(
+            function.result_type(),
+            Node::Call {
+                kernel: Kernel::Range(function),
+                arguments: converted,
+            },
+        ))
     }
 
     /// One element of `new name[] { ... }`, converted to the element type as javac
