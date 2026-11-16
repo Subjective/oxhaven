@@ -45,7 +45,6 @@ RESTRICTIONS: dict[str, str] = {
           "two zones meet in a group)",
     "R7": "time_filter: no range comparison with null of a DayOfWeek, Duration, Period or "
           "ZoneId column (the reference computes it as a formula)",
-    "R5": "time_filter: no comparison of a Period column with a period literal",
     "R6": "time_aj: no as-of join on a column of these types",
 }
 
@@ -228,8 +227,7 @@ class _Times(_Second):
         kind = source.type_of(column)
         literal = lambda: "null" if self.chance(0.12) else rng.choice(_LITERALS[kind])  # noqa: E731
         shape = rng.choice(["match", "match", "in", "range", "range", "null"])
-        if shape == "null" or (kind == PERIOD and shape != "range"):
-            # R5: a Period is compared with null alone.
+        if shape == "null":
             return rng.choice([f"{column} == null", f"{column} != null", f"isNull({column})",
                                f"{column} in null", f"{column} not in null"])
         if shape == "match":
