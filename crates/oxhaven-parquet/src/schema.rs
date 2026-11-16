@@ -14,6 +14,11 @@ pub(crate) struct FileColumn {
     pub name: String,
     /// The index of the column among the fields of the file's schema.
     pub root: usize,
+    /// The index of the column among the leaves of the file's schema.
+    pub leaf: usize,
+    /// Whether the column is the one leaf of a group that is not a list, a struct with one
+    /// field.
+    pub nested: bool,
     pub column_type: ColumnType,
     /// How an unsigned 64-bit column becomes a `long`.
     pub unsigned_long: Option<UnsignedLongTarget>,
@@ -86,7 +91,7 @@ fn is_plain_identifier(name: &str) -> bool {
 ///
 /// Behavior: `org.apache.parquet.schema.LogicalTypeAnnotation#fromOriginalType`, through
 /// which parquet-mr gives Java one annotation for both
-fn annotation(column: &ColumnDescriptor) -> Option<LogicalType> {
+pub(crate) fn annotation(column: &ColumnDescriptor) -> Option<LogicalType> {
     if let Some(logical) = column.logical_type_ref() {
         return Some(logical.clone());
     }
@@ -166,7 +171,8 @@ fn value_type(
                     "java.lang.String, decoded from bytes by UTF8StringAsByteArrayCodec",
                     name,
                 )),
-                None => Err(no_column_type("byte[]", name)),
+                // a `byte[]`, which `columns` knows by the array of bytes that is no list
+                None => Ok(ColumnType::array(ColumnType::Byte)),
             },
         };
     };
@@ -185,23 +191,19 @@ fn value_type(
         LogicalType::Uuid => Err(refused("UUIDLogicalType")),
         LogicalType::Decimal(decimal) => {
             // Java writes a `BigInteger` as a decimal of precision 1 and scale 0
-            let big_integer = decimal.precision == 1 && decimal.scale == 0;
-            Err(no_column_type(
-                if big_integer {
-                    "java.math.BigInteger"
-                } else {
-                    "java.math.BigDecimal"
-                },
-                name,
-            ))
+            if decimal.precision == 1 && decimal.scale == 0 {
+                Ok(ColumnType::BigInteger)
+            } else {
+                Ok(ColumnType::BigDecimal)
+            }
         }
-        LogicalType::Date => Err(no_column_type("java.time.LocalDate", name)),
-        LogicalType::Time(_) => Err(no_column_type("java.time.LocalTime", name)),
+        LogicalType::Date => Ok(ColumnType::LocalDate),
+        LogicalType::Time(_) => Ok(ColumnType::LocalTime),
         LogicalType::Timestamp(timestamp) => {
             if timestamp.is_adjusted_to_u_t_c {
                 Ok(ColumnType::Instant)
             } else {
-                Err(no_column_type("java.time.LocalDateTime", name))
+                Ok(ColumnType::LocalDateTime)
             }
         }
         LogicalType::Integer(integer) => match (integer.is_signed, integer.bit_width) {
@@ -215,7 +217,7 @@ fn value_type(
             (false, 32) => Ok(ColumnType::Long),
             (false, 64) => match unsigned_long {
                 Some(_) => Ok(ColumnType::Long),
-                None => Err(no_column_type("java.math.BigInteger", name)),
+                None => Ok(ColumnType::BigInteger),
             },
             (signed, width) => Err(refused(&format!(
                 "IntLogicalType, isSigned={signed}, bitWidth={width}"
@@ -285,6 +287,23 @@ pub(crate) fn columns(
         let unsigned_long = options.unsigned_long_of(&name);
         let values = value_type(column, &name, info, unsigned_long, options.legacy)?;
         let is_list = column.max_rep_level() > 0;
+        // Java has these as objects, and a list of them as an array of objects
+        let object = match &values {
+            ColumnType::BigDecimal => Some("java.math.BigDecimal"),
+            ColumnType::BigInteger => Some("java.math.BigInteger"),
+            ColumnType::LocalDate => Some("java.time.LocalDate"),
+            ColumnType::LocalTime => Some("java.time.LocalTime"),
+            ColumnType::LocalDateTime => Some("java.time.LocalDateTime"),
+            ColumnType::Array(_) => Some("byte[]"),
+            _ => None,
+        };
+        if let Some(java_type) = object.filter(|_| is_list) {
+            return Err(not_ported(
+                "io.deephaven.parquet.table.pagestore.topage.ToArrayPage#create",
+                format_args!("column {name}, a list of {java_type}"),
+            ));
+        }
+        let nested = !is_list && path.len() > 1;
         let column_type = match (info.special.as_deref(), is_list) {
             (Some("Vector"), true) => ColumnType::vector(values),
             (Some("Vector"), false) => {
@@ -294,21 +313,14 @@ pub(crate) fn columns(
                 ))
             }
             (_, true) => ColumnType::array(values),
-            (_, false) if path.len() > 1 => {
-                // Java reads the one leaf of the struct as the column
-                return Err(not_ported(
-                    READ_SCHEMA,
-                    format_args!(
-                        "column {name}, a struct with the one field {}",
-                        path[1..].join("/")
-                    ),
-                ));
-            }
+            // of a struct with one field, Java reads the field
             (_, false) => values,
         };
         columns.push(FileColumn {
             name,
             root,
+            leaf,
+            nested,
             column_type,
             unsigned_long,
         });
@@ -376,21 +388,70 @@ mod tests {
         // the descriptors really have no logical type, so the converted type was used
         assert!(schema(old).column(0).logical_type_ref().is_none());
 
-        for (declared, java_type) in [
-            ("int32 V (DATE)", "java.time.LocalDate"),
-            ("int32 V (TIME_MILLIS)", "java.time.LocalTime"),
-            ("int64 V (UINT_64)", "java.math.BigInteger"),
-            ("int32 V (DECIMAL(9,2))", "java.math.BigDecimal"),
-            (
-                "fixed_len_byte_array(1) V (DECIMAL(1,0))",
-                "java.math.BigInteger",
-            ),
+        for (declared, column_type) in [
+            ("int32 V (DATE)", LocalDate),
+            ("int32 V (TIME_MILLIS)", LocalTime),
+            ("int64 V (TIME_MICROS)", LocalTime),
+            ("int64 V (UINT_64)", BigInteger),
+            ("int32 V (DECIMAL(9,2))", BigDecimal),
+            ("int32 V (DECIMAL(1,0))", BigInteger),
+            ("fixed_len_byte_array(1) V (DECIMAL(1,0))", BigInteger),
+            ("fixed_len_byte_array(1) V (DECIMAL(1,1))", BigDecimal),
+            ("fixed_len_byte_array(1) V (DECIMAL(2,0))", BigDecimal),
         ] {
-            let refused = types(&format!("message m {{ optional {declared}; }}"));
-            let Err(ReadError::NotPorted { what, .. }) = refused else {
-                panic!("{declared} was not refused as not ported: {refused:?}");
+            let read = types(&format!("message m {{ optional {declared}; }}"));
+            assert_eq!(read, Ok(vec![("V".to_string(), column_type)]), "{declared}");
+        }
+    }
+
+    #[test]
+    fn the_types_java_holds_as_objects_are_read_one_to_a_row_only() {
+        use ColumnType::*;
+        let plain = "message m {
+            optional binary Bytes;
+            optional fixed_len_byte_array(3) Fixed;
+            optional int64 Local (TIMESTAMP(MICROS,false));
+            optional int64 Stamp (TIMESTAMP(MICROS,true));
+            optional int64 Nanos (TIME(NANOS,true));
+            optional group Pair { optional int32 only; }
+        }";
+        let expected = [
+            ("Bytes", ColumnType::array(Byte)),
+            ("Fixed", ColumnType::array(Byte)),
+            ("Local", LocalDateTime),
+            ("Stamp", Instant),
+            ("Nanos", LocalTime),
+            ("Pair", Int),
+        ];
+        let expected: Vec<_> = expected
+            .into_iter()
+            .map(|(n, t)| (n.to_string(), t))
+            .collect();
+        assert_eq!(types(plain).unwrap(), expected);
+        let read = columns(&schema(plain), None, &ReadOptions::default()).unwrap();
+        let nested: Vec<bool> = read.iter().map(|column| column.nested).collect();
+        assert_eq!(nested, [false, false, false, false, false, true]);
+        assert_eq!(read[5].leaf, 5);
+
+        for (element, java_type) in [
+            ("binary element", "byte[]"),
+            ("int32 element (DATE)", "java.time.LocalDate"),
+            ("int64 element (TIME(NANOS,true))", "java.time.LocalTime"),
+            (
+                "int64 element (TIMESTAMP(NANOS,false))",
+                "java.time.LocalDateTime",
+            ),
+            ("int64 element (INTEGER(64,false))", "java.math.BigInteger"),
+            ("int64 element (DECIMAL(18,2))", "java.math.BigDecimal"),
+        ] {
+            let list = format!(
+                "message m {{ optional group V (LIST) {{ repeated group list {{ optional {element}; }} }} }}"
+            );
+            let Err(ReadError::NotPorted { java, what }) = types(&list) else {
+                panic!("a list of {java_type} was read");
             };
-            assert_eq!(what, format!("column V of type {java_type}"));
+            assert!(java.ends_with("ToArrayPage#create"), "{java}");
+            assert_eq!(what, format!("column V, a list of {java_type}"));
         }
     }
 

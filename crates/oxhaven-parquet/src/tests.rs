@@ -399,28 +399,281 @@ fn a_directory_of_files_without_rows_is_a_table_without_rows() {
     assert!(cells(&table, "X").is_empty());
 }
 
+/// The cells of a column as Java's `toString` of each, or `Arrays.toString` for a
+/// `byte[]`; `null` for a null.
+fn java_texts(table: &QueryTable, name: &str) -> Vec<String> {
+    use arrow::datatypes::{Date32Type, Int8Type, Time64NanosecondType};
+    use oxhaven_column::java_values as java;
+    let index = table.definition().index_of(name).unwrap();
+    let values = table.column(index).chunk(&table.row_set()).unwrap();
+    let column_type = &table.definition().columns()[index].column_type;
+    assert_eq!(values.data_type(), &column_type.arrow_type(), "{name}");
+    let text = |row: usize| match column_type {
+        ColumnType::BigInteger => java::big_integer_text(values.as_binary::<i32>().value(row)),
+        ColumnType::BigDecimal => {
+            let cell = values.as_binary::<i32>().value(row);
+            let (scale, unscaled) = java::big_decimal_parts(cell).unwrap();
+            // a cell holds its integer in the fewest bytes
+            assert_eq!(java::minimal(unscaled), unscaled, "{name}");
+            java::big_decimal_text(scale, unscaled)
+        }
+        ColumnType::LocalDate => {
+            java::local_date_text(values.as_primitive::<Date32Type>().value(row).into())
+        }
+        ColumnType::LocalTime => {
+            java::local_time_text(values.as_primitive::<Time64NanosecondType>().value(row))
+        }
+        ColumnType::LocalDateTime => {
+            java::local_date_time_text(values.as_primitive::<TimestampNanosecondType>().value(row))
+        }
+        ColumnType::Array(_) => {
+            let bytes = values.as_list::<i32>().value(row);
+            let bytes = bytes.as_primitive::<Int8Type>().iter();
+            // a null element is the byte Java reserves for it
+            let bytes: Vec<String> = bytes.map(|b| b.unwrap_or(i8::MIN).to_string()).collect();
+            format!("[{}]", bytes.join(", "))
+        }
+        other => panic!("{name} is a column of {other:?}"),
+    };
+    (0..values.len())
+        .map(|row| {
+            if values.is_null(row) {
+                "null".to_string()
+            } else {
+                text(row)
+            }
+        })
+        .collect()
+}
+
 #[test]
-fn types_without_a_column_type_are_refused_by_their_java_type() {
-    let files = [
-        ("no_decimal.parquet", "java.math.BigDecimal"),
-        ("no_date.parquet", "java.time.LocalDate"),
-        ("no_time.parquet", "java.time.LocalTime"),
-        ("no_local_timestamp.parquet", "java.time.LocalDateTime"),
-        ("no_uint64.parquet", "java.math.BigInteger"),
-        ("no_binary.parquet", "byte[]"),
-        ("no_struct.parquet", "a struct with the one field a"),
+fn the_types_java_holds_as_objects_are_read_with_the_values_java_reads() {
+    use ColumnType::*;
+    let table = read_default("more_types.parquet").unwrap();
+    let expected = [
+        ("Dec", BigDecimal),
+        ("Wide", BigDecimal),
+        ("Whole", BigDecimal),
+        ("Date", LocalDate),
+        ("TimeMs", LocalTime),
+        ("TimeUs", LocalTime),
+        ("TimeNs", LocalTime),
+        ("LocalMs", LocalDateTime),
+        ("LocalUs", LocalDateTime),
+        ("LocalNs", LocalDateTime),
+        ("U64", BigInteger),
+        ("Bin", ColumnType::array(Byte)),
+        ("Fixed", ColumnType::array(Byte)),
     ];
-    for (name, java_type) in files {
-        let (java, what) = not_ported(read_default(name));
-        assert!(
-            java.ends_with("ParquetSchemaReader#readParquetSchema"),
-            "{name}"
-        );
-        assert!(
-            what.starts_with("column V") && what.ends_with(java_type),
-            "{what}"
-        );
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
+    assert_eq!(columns(&table), expected);
+    // two row groups, of four rows and of two
+    assert_eq!(*table.row_set(), RowSet::flat(6));
+    let texts = |name| java_texts(&table, name);
+    // -0.01 and -1 are stored as bytes that are all ones, which Java reads as null
+    assert_eq!(
+        texts("Dec"),
+        ["1.50", "-1.50", "0.00", "null", "null", "12345.67"]
+    );
+    assert_eq!(
+        texts("Wide"),
+        [
+            "1.0000000000",
+            "-12345678901234567890.0123456789",
+            "0E-10",
+            "null",
+            "1E-10",
+            "9999999999999999999999999999.9999999999"
+        ]
+    );
+    assert_eq!(texts("Whole"), ["15", "-15", "0", "null", "null", "255"]);
+    assert_eq!(
+        texts("Date"),
+        [
+            "2024-01-02",
+            "1969-12-31",
+            "null",
+            "1970-01-01",
+            "-0001-12-31",
+            "+10000-01-01"
+        ]
+    );
+    assert_eq!(
+        texts("TimeMs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999",
+            "01:02:00.500",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("TimeUs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999999",
+            "00:00:00.000001",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("TimeNs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999999999",
+            "00:00:00.000000001",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("LocalMs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.500",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("LocalUs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.000001",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("LocalNs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999999999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.000000001",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("U64"),
+        [
+            "0",
+            "1",
+            "null",
+            "9223372036854775808",
+            "18446744073709551615",
+            "9223372036854775807"
+        ]
+    );
+    // an empty byte string is an empty array, not a null
+    assert_eq!(
+        texts("Bin"),
+        [
+            "[97, 98]",
+            "[]",
+            "null",
+            "[-128, 0, -1]",
+            "[-61, -87]",
+            "[120]"
+        ]
+    );
+    assert_eq!(
+        texts("Fixed"),
+        [
+            "[97, 98]",
+            "[-128, 127]",
+            "null",
+            "[99, 100]",
+            "[0, 0]",
+            "[122, 122]"
+        ]
+    );
+    // the byte -128 is the null element of a list of bytes, as in every such list
+    let bin = table.column(11).chunk(&RowSet::from_keys([3])).unwrap();
+    let bytes = bin.as_list::<i32>().value(0);
+    assert_eq!((bytes.len(), bytes.null_count()), (3, 1));
+    assert!(bytes.is_null(0));
+
+    // the two-row files of the scenario `parquet_read_more_types`
+    for (name, text) in [
+        ("no_decimal.parquet", "1.50"),
+        ("no_date.parquet", "2024-01-02"),
+        ("no_time.parquet", "01:02:03"),
+        ("no_local_timestamp.parquet", "1970-01-01T00:00"),
+        ("no_uint64.parquet", "1"),
+        ("no_binary.parquet", "[97, 98]"),
+    ] {
+        let table = read_default(name).unwrap();
+        assert_eq!(java_texts(&table, "V"), [text, "null"], "{name}");
     }
+}
+
+#[test]
+fn a_decimal_stored_as_an_integer_keeps_every_value() {
+    let table = read_default("more_decimals_int.parquet").unwrap();
+    let both = [ColumnType::BigDecimal, ColumnType::BigDecimal];
+    assert_eq!(
+        columns(&table).into_iter().map(|c| c.1).collect::<Vec<_>>(),
+        both
+    );
+    // -0.01 is not a null here: only bytes can be all ones
+    assert_eq!(
+        java_texts(&table, "D32"),
+        ["1.50", "-1.50", "0.00", "null", "-0.01", "-9999999.99"]
+    );
+    assert_eq!(
+        java_texts(&table, "D64"),
+        [
+            "1.500",
+            "-1.500",
+            "0.000",
+            "null",
+            "-0.001",
+            "-999999999999999.999"
+        ]
+    );
+}
+
+#[test]
+fn the_one_field_of_a_struct_is_read_unless_two_levels_can_leave_it_out() {
+    let table = read_default("more_structs.parquet").unwrap();
+    let ints = ["Outer", "Leaf", "Both"].map(|name| (name.to_string(), ColumnType::Int));
+    assert_eq!(columns(&table), ints);
+    assert_eq!(cells(&table, "Outer"), ["1", "null", "3"]);
+    assert_eq!(cells(&table, "Leaf"), ["1", "null", "3"]);
+    assert_eq!(cells(&table, "Both"), ["1", "2", "3"]);
+
+    // Java makes the table of a struct that can be null with a field that can be null,
+    // and fails when the column is read
+    let table = read_default("no_struct.parquet").unwrap();
+    assert_eq!(columns(&table), [("V".to_string(), ColumnType::Int)]);
+    assert_eq!(*table.row_set(), RowSet::flat(2));
+    let failure = table.column(0).chunk(&table.row_set()).unwrap_err();
+    assert!(
+        failure.message.ends_with(
+            "column V: Failed to read parquet page because nested optional levels are not \
+             supported"
+        ),
+        "{}",
+        failure.message
+    );
+}
+
+#[test]
+fn bytes_without_a_logical_type_are_text_only_in_a_legacy_file() {
     let legacy = ReadOptions {
         legacy: true,
         ..ReadOptions::default()
