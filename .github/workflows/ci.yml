@@ -133,6 +133,19 @@ jobs:
           path: ${{ runner.temp }}/oracle-replay
           if-no-files-found: warn
 
+  kafka-broker:
+    # The Kafka client against a broker: the tests of crates/oxhaven-kafka/tests/broker.rs,
+    # which the rust job builds and does not run. The script starts apache/kafka from
+    # Docker Hub on the runner's own Docker, on 127.0.0.1, and removes it. No secret, and
+    # nothing but the runner connects to the broker. See docs/KAFKA.md, "Tests and the
+    # broker".
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      - run: crates/oxhaven-kafka/tests/broker.sh
+
   rules:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
