@@ -24,7 +24,7 @@ use crate::ops::join::JoinMatch;
 use crate::table::{QueryTable, TableSpec};
 use crate::update::modified_pre_shift;
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::schema::{ColumnType, TableClass};
 use oxhaven_contracts::shift::RowSetShiftData;
 use oxhaven_contracts::table::{Table, TableFailure};
 use oxhaven_contracts::unported;
@@ -106,6 +106,9 @@ enum KeyClass {
     Float,
     Double,
     Text,
+    /// A table, compared by identity (`Object#equals` of a table is that), so by its
+    /// handle. The class the column's definition names must be the same on both sides.
+    Table(TableClass),
 }
 
 /// Behavior: io.deephaven.engine.table.impl.sources.ReinterpretUtils#maybeConvertToPrimitive,
@@ -122,6 +125,7 @@ fn key_class(column_type: &ColumnType) -> KeyClass {
         ColumnType::Float => KeyClass::Float,
         ColumnType::Double => KeyClass::Double,
         ColumnType::String => KeyClass::Text,
+        ColumnType::Table(class) => KeyClass::Table(*class),
         other => unported!(
             "io.deephaven.engine.table.impl.select.DynamicWhereFilter#beginOperation",
             "a key column of type {other:?}"

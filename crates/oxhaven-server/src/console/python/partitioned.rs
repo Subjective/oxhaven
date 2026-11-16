@@ -635,4 +635,67 @@ assert "Natural Join found duplicate right key for a" in text, text
 "#,
         );
     }
+
+    /// What Java 42.9 answered for the same script
+    /// (`tasks/7.6.4-columns-of-tables.md`, "Probes").
+    #[tokio::test]
+    async fn get_constituent_converts_key_values_as_java_does() {
+        let python = Python::start().await;
+        python.run(
+            r#"
+from deephaven import new_table
+from deephaven.column import string_col, int_col, long_col, double_col, float_col, bool_col, char_col, byte_col
+
+def refusal(f):
+    try:
+        f()
+    except Exception as e:
+        return str(e)
+    raise AssertionError("not refused")
+
+src = new_table([
+    int_col("I", [1, 2, 3]), long_col("L", [1, 2, 3000000000]), double_col("D", [float("nan"), 2.5, -0.0]),
+    float_col("F", [16777216.0, 2.5, 3.0]), string_col("S", ["a", "b", None]), bool_col("B", [True, False, None]),
+    char_col("C", [97, 98, 99]), byte_col("Y", [-1, 0, 1]), int_col("V", [10, 20, 30])])
+
+def get(col, value):
+    c = src.partition_by(col).get_constituent(value)
+    if c is None:
+        return None
+    assert c.size == 1
+    return [v for v in (10, 20, 30) if c.where(f"V = {v}").size][0]
+
+for col, value, expected in [
+    ("I", 1, 10), ("I", 1.9, 10), ("I", 2.5, 20), ("I", -0.5, None), ("I", 4294967297, 10),
+    ("I", float("nan"), None), ("I", 1e10, None),
+    ("L", 3000000000.7, 30), ("L", 1e300, None), ("L", -1, None),
+    ("D", 2, None), ("D", 2.5, 20), ("D", float("nan"), None), ("D", 0.0, 30),
+    ("F", 16777217, 10), ("F", 2.5, 20), ("F", 1e300, None),
+    ("S", "a", 10), ("S", 1, None), ("S", True, None), ("S", [None], 30),
+    ("B", True, 10), ("B", 1, None), ("B", "true", None), ("B", [None], 30),
+    ("C", [None], None), ("Y", 255, 10), ("Y", 255.0, 10), ("Y", 256.0, 20), ("Y", -129, None),
+]:
+    assert get(col, value) == expected, (col, value, get(col, value))
+
+text = refusal(lambda: get("I", "1"))
+assert "Error while initializing where([I in [1]]): an exception occurred while performing the initial filter\ncaused by java.lang.ClassCastException: class java.lang.String cannot be cast to class java.lang.Number (java.lang.String and java.lang.Number are in module java.base of loader 'bootstrap')" in text, text
+text = refusal(lambda: get("C", 97))
+assert "class java.lang.Byte cannot be cast to class java.lang.Character" in text, text
+text = refusal(lambda: get("C", 32768))
+assert "class java.lang.Integer cannot be cast to class java.lang.Character" in text, text
+text = refusal(lambda: get("I", True))
+assert "where([I in [true]])" in text and "class java.lang.Boolean cannot be cast" in text, text
+text = refusal(lambda: src.partition_by(["I", "C"]).get_constituent([1, 1e300]))
+assert "where([I in [1], C in [1.0E300]])" in text and "class java.lang.Double cannot be cast to class java.lang.Character" in text, text
+# a filter that leaves no row skips the ones after it, and their values are not cast
+assert src.partition_by(["S", "I"]).get_constituent(["zz", "1"]) is None
+assert src.partition_by(["I", "C"]).get_constituent([1, None]) is None
+assert src.where("V > 100").partition_by("I").get_constituent("1") is None
+text = refusal(lambda: src.partition_by("I").get_constituent([[1]]))
+assert "cannot convert a Python 'list' to a Java 'java.lang.Object'" in text, text
+text = refusal(lambda: src.partition_by("I").get_constituent(None))
+assert "Key count mismatch: expected one key column value for each key column name in [I], instead received []" in text, text
+"#,
+        );
+    }
 }

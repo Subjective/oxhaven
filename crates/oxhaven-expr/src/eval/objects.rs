@@ -7,7 +7,7 @@ use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, Int8Array, StringArray,
 };
 use arrow::datatypes::{DataType, Float32Type, Float64Type, Int32Type};
-use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::schema::{ColumnType, TableClass};
 use oxhaven_contracts::table::TableFailure;
 use std::sync::Arc;
 
@@ -32,6 +32,9 @@ pub(crate) fn is_primitive(column_type: &ColumnType) -> bool {
 pub(crate) fn class_of(column_type: &ColumnType) -> Option<ColumnType> {
     match column_type {
         ColumnType::Object(class) => class.as_deref().cloned(),
+        // A cell of a column of tables is a table whatever class the column names, and
+        // tables are equal when they are the same table: their handles are equal.
+        ColumnType::Table(_) => Some(ColumnType::Table(TableClass::Table)),
         other => Some(other.clone()),
     }
 }
