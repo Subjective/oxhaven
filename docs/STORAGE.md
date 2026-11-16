@@ -599,7 +599,7 @@ oracle/bin/harness replay-scripts --url $URL --scripts parquet_write_
 | `parquet_write_types` | clean | Every column type with nulls, vectors, arrays, no rows: read back, and the footer as pyarrow reads it (schema, `deephaven` entry, row groups, codec, dictionary) |
 | `parquet_write_options` | clean | Codec names, row groups, names in the file, dictionary limits, a definition, `batch_write`, a sorted table, a replaced file, `delete`, a table that changes |
 | `parquet_write_errors` | clean | Thirty-eight writes that fail in Java, and what they leave on disk |
-| `parquet_write_unported` | differs | The refusals of the table above that Java does (`lzo`, `indexed`, `nested`, `narrowed`), and the listing of a partitioned write, whose files Java names with random UUIDs |
+| `parquet_write_unported` | differs | The refusals of the table above that Java does (`lzo`, `indexed`, `nested`, `narrowed`); its other steps match: a codec by its class, metadata files, a `file:` destination, a partitioned write under a base name without a UUID |
 
 A scenario reads the footers with `pyarrow`, which the oracle's environment and the
 reference's both have. Each server reads back its own files; that Java reads the files
