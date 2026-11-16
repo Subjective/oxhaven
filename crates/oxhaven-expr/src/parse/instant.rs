@@ -178,9 +178,28 @@ pub(crate) fn zoned_seconds(
 /// Reads the content of a time literal.
 ///
 /// Behavior: `io.deephaven.time.TimeLiteralReplacedExpression#convertExpression`, which
-/// tries an instant, then a period, a duration, a date, a time of day and a zone.
+/// tries an instant, then a period, a duration, a date, a time of day and a zone. The
+/// instant is `DateTimeUtils#parseInstantQuiet`, which also reads a whole number since
+/// the epoch ([`instant_of_text`]) and is null, so no instant, for the smallest `long`.
+/// Seen on Java 42.9: `'9309340999'` is the instant 1680-06-12T00:28:45.290448384Z.
 fn parse(content: &str) -> Result<TimeValue, FormulaError> {
-    match parse_instant(content) {
+    let digits = content.strip_prefix('-').unwrap_or(content);
+    let instant = if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit())
+    {
+        instant_of_text(content).and_then(|nanos| {
+            if nanos == i64::MIN {
+                Err(FormulaError::Syntax(format!(
+                    "Cannot parse literal as a datetime, date, time, duration, period, or \
+                     timezone: {content}"
+                )))
+            } else {
+                Ok(nanos)
+            }
+        })
+    } else {
+        parse_instant(content)
+    };
+    match instant {
         Ok(nanos) => Ok(TimeValue::Instant(nanos)),
         Err(error) => {
             if period_days(content).is_some() {
@@ -1606,6 +1625,13 @@ mod tests {
             ("-9223372036854775808", i64::MIN),
         ] {
             assert_eq!(instant_of_text(text), Ok(nanos), "{text}");
+            // A time literal is read as `parseInstantQuiet` reads it, which is null for
+            // the smallest long.
+            match parse(text) {
+                Ok(TimeValue::Instant(read)) => assert_eq!(read, nanos, "'{text}'"),
+                Err(FormulaError::Syntax(_)) if nanos == i64::MIN => {}
+                other => panic!("'{text}' gave {other:?}"),
+            }
         }
     }
 

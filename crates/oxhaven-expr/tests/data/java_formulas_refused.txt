@@ -20,7 +20,6 @@ java-rejects	update	'2262-04-11T23:47:16.854775808 UTC'	time literal '2262-04-11
 java-accepts	update	'1677-09-21T00:12:43.145224192 UTC'	time literal '1677-09-21T00:12:43.145224192 UTC' outside the range of a 64-bit nanosecond timestamp
 java-rejects	update	'9999-01-01 UTC'	time literal '9999-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
 java-accepts	update	'0001-01-01 UTC'	time literal '0001-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
-java-accepts	update	'1700000000'	time literal '1700000000'
 java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
 java-accepts	update	`'PT1H'`	time literal inside a string literal
 java-rejects	update	`'x y'`	time literal inside a string literal
