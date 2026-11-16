@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a ring table. : RuntimeError: java.lang.IllegalArgumentException: Capacity must be positive",
+      "operation": "failed to create a ring table."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a ring table. : RuntimeError: java.lang.IllegalArgumentException: Trying to initialize io.deephaven.engine.table.impl.sources.ring.AddsToRingsListener against a static table, but init=NONE; no data will be filled in this case.",
+      "operation": "failed to create a ring table."
+    }
+  ]
+}

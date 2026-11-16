@@ -21,7 +21,7 @@ use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::select::ColumnPair;
 use oxhaven_engine::ops::transpose::{NewColumnBehavior, TransposeError};
 use oxhaven_engine::ops::{distinct, filter, merge, select, sort, transpose};
-use oxhaven_engine::table::{attribute_map, AttributeValue};
+use oxhaven_engine::table::{self, attribute_map, AttributeValue};
 use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -58,6 +58,7 @@ const OPERATIONS: &[Operation] = &[
     ("range_join", range_join),
     ("rename_columns", rename_columns),
     ("restrict_sort_to", restrict_sort_to),
+    ("ring_table", ring_table),
     ("slice_pct", slice_pct),
     ("tail_pct", tail_pct),
     ("where_in", where_in),
@@ -116,6 +117,14 @@ fn pairs(args: &Value, name: &str) -> Result<Vec<ColumnPair>, ExportError> {
     let texts = strings(args, name)?;
     let pairs = texts.iter().map(|text| ColumnPair::parse(text));
     Ok(pairs.collect::<Result<Vec<_>, _>>()?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.sources.ring.RingTableTools#of(Table, int, boolean)`
+fn ring_table(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let initialize = args.get("initialize").and_then(Value::as_bool);
+    let initialize = initialize.ok_or_else(|| bad_argument("initialize", "a boolean"))?;
+    let capacity = integer(args, "capacity")?;
+    Ok(table::ring_table(&sources[0], capacity, initialize)?)
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.QueryTable#headPct`

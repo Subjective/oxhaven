@@ -3,13 +3,14 @@
 use super::{
     arrange_columns, failure, mark, tracked_source, Marks, QueryTable, RootSource, TableSpec,
 };
-use arrow::array::ArrayRef;
+use arrow::array::{Array, ArrayRef, Float32Array, Float64Array};
+use arrow::datatypes::{Float32Type, Float64Type};
 use arrow::record_batch::RecordBatch;
 use arrow::row::{RowConverter, SortField};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
-use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, InputTable, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
@@ -45,9 +46,12 @@ pub fn append_only_input_table(
 ///
 /// An error if a key column is not in the definition.
 ///
+/// Whether two floating point keys are one key depends on how many key columns there are:
+/// Java compares the values of one key column as boxed objects and those of two or three
+/// as a typed tuple (`Writer::key_bytes`).
+///
 /// # Panics
-/// With `unported!` for a `Float` or `Double` key column, because when two floating point
-/// keys are equal has not been ported, and for no key columns at all.
+/// With `unported!` for a vector or array key column, and for no key columns at all.
 ///
 /// Behavior: io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#make
 pub fn keyed_input_table(
@@ -76,16 +80,6 @@ pub fn keyed_input_table(
         );
     }
     for &index in &keys {
-        if matches!(
-            definition.columns()[index].column_type,
-            ColumnType::Float | ColumnType::Double
-        ) {
-            unported!(
-                "io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource",
-                "floating point key column {}",
-                definition.columns()[index].name
-            );
-        }
         // Java keys such a column by the vector or array as an object.
         if definition.columns()[index]
             .column_type
@@ -330,15 +324,33 @@ impl Writer {
             .map_err(|e| failure(format!("Invalid Key Table Definition: {e}")))
     }
 
-    /// One byte string per row of `key_values`, equal exactly when the keys are equal.
+    /// One byte string per row of `key_values`, equal exactly when Java takes the keys for
+    /// one key.
+    ///
+    /// Java looks a key up in a hash map of objects. The key of one key column is the boxed
+    /// value, and of four or more an array of boxed values, so two floating point values
+    /// are one key when `Double#equals` says so: every NaN is one key, and `0.0` and `-0.0`
+    /// are two. The key of two or three key columns is a typed tuple, which compares with
+    /// `DoubleComparisons#eq`: every NaN is one key, and `0.0` and `-0.0` are one key too.
+    /// A null is a key of its own in every case.
+    ///
+    /// Behavior: KeyedArrayBackedInputTable#makeKeySource,
+    /// io.deephaven.engine.table.impl.tuplesource.TupleSourceFactory#makeTupleSource,
+    /// java.lang.Double#equals, io.deephaven.util.compare.DoubleComparisons#eq, and the
+    /// same of `Float`
     fn key_bytes(&self, key_values: &[ArrayRef]) -> Result<Vec<Box<[u8]>>, TableFailure> {
+        let zeros_are_one = matches!(key_values.len(), 2 | 3);
+        let key_values: Vec<ArrayRef> = key_values
+            .iter()
+            .map(|values| one_bit_pattern_per_key(values, zeros_are_one))
+            .collect();
         let fields = key_values
             .iter()
             .map(|values| SortField::new(values.data_type().clone()))
             .collect();
         let converter = RowConverter::new(fields).map_err(|e| failure(e.to_string()))?;
         let rows = converter
-            .convert_columns(key_values)
+            .convert_columns(&key_values)
             .map_err(|e| failure(e.to_string()))?;
         Ok(rows.iter().map(|row| row.as_ref().into()).collect())
     }
@@ -426,6 +438,29 @@ impl Writer {
             column.remove(&deleted);
         }
         Ok(())
+    }
+}
+
+/// The floating point values of `values` with one bit pattern for every NaN and, with
+/// `zeros_are_one`, for both zeros, so that values which are one key have the same bytes.
+/// Values of other types are returned as they are.
+fn one_bit_pattern_per_key(values: &ArrayRef, zeros_are_one: bool) -> ArrayRef {
+    if let Some(doubles) = values.as_any().downcast_ref::<Float64Array>() {
+        let key = |value: f64| match value {
+            value if value.is_nan() => f64::NAN,
+            value if zeros_are_one && value == 0.0 => 0.0,
+            value => value,
+        };
+        Arc::new(doubles.unary::<_, Float64Type>(key))
+    } else if let Some(floats) = values.as_any().downcast_ref::<Float32Array>() {
+        let key = |value: f32| match value {
+            value if value.is_nan() => f32::NAN,
+            value if zeros_are_one && value == 0.0 => 0.0,
+            value => value,
+        };
+        Arc::new(floats.unary::<_, Float32Type>(key))
+    } else {
+        values.clone()
     }
 }
 

@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "ok"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: All source tables must be refreshing: [emptyTable(1)]"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "Either refresh_interval_ms or source_tables must be provided! : Either refresh_interval_ms or source_tables must be provided!",
+      "operation": "Either refresh_interval_ms or source_tables must be provided!"
+    }
+  ]
+}
