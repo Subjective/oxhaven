@@ -4,11 +4,12 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, TimestampNanosecondArray,
+    Int8Array, Int8Builder, ListBuilder, StringArray, TimestampNanosecondArray, UInt16Array,
 };
-use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
+use arrow::datatypes::Field;
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 
-use crate::json::Document;
+use crate::json::{self, Node, Pointer};
 use crate::{not_ported, property, KafkaError, Record, Spec};
 
 /// The columns every table has unless a property names them away, in Java's order, each
@@ -77,8 +78,10 @@ enum Cells {
     Common(Common),
     /// The whole key or value, read by the Kafka deserializer of the column's type.
     Simple(Side),
-    /// One field of the key's or value's JSON object.
-    Json(Side, String),
+    /// The nodes the pointers find in the key's or value's JSON. Java fills the column
+    /// once per pointer, so a column with none or with several fails the table when
+    /// records arrive.
+    Json(Side, Vec<Pointer>),
 }
 
 /// The definition of a consumed topic's table and the source of each column.
@@ -125,7 +128,7 @@ fn simple_column(
             "float" => ColumnType::Float,
             "double" => ColumnType::Double,
             "String" | "string" => ColumnType::String,
-            "byte[]" => return unsupported("byte[]"),
+            "byte[]" => ColumnType::array(ColumnType::Byte),
             other => {
                 return Err(invalid(format!(
                     "java.lang.IllegalArgumentException: Property {type_property} value {other} \
@@ -141,12 +144,10 @@ fn simple_column(
             Some("LongDeserializer") => ColumnType::Long,
             Some("FloatDeserializer") => ColumnType::Float,
             Some("DoubleDeserializer") => ColumnType::Double,
-            Some(
-                other @ ("ByteArrayDeserializer"
-                | "UUIDDeserializer"
-                | "ByteBufferDeserializer"
-                | "BytesDeserializer"),
-            ) => return unsupported(&format!("the one {other} reads")),
+            Some("ByteArrayDeserializer") => ColumnType::array(ColumnType::Byte),
+            Some(other @ ("UUIDDeserializer" | "ByteBufferDeserializer" | "BytesDeserializer")) => {
+                return unsupported(&format!("the one {other} reads"))
+            }
             _ => {
                 return Err(invalid(format!(
                     "java.lang.IllegalArgumentException: Deserializer type {class} for \
@@ -169,22 +170,116 @@ fn simple_column(
         | ColumnType::Float
         | ColumnType::Double
         | ColumnType::String => Ok(ColumnDefinition::new(name, column_type)),
+        ColumnType::Array(ref element) if **element == ColumnType::Byte => {
+            Ok(ColumnDefinition::new(name, column_type))
+        }
         other => unsupported(&format!("{other:?}")),
     }
 }
 
-/// The field a JSON pointer of one step names.
+/// Java's simple name of the class of a column of `column_type`.
+fn simple_name(column_type: &ColumnType) -> Option<String> {
+    Some(match column_type {
+        ColumnType::Boolean => "Boolean".into(),
+        ColumnType::Byte => "byte".into(),
+        ColumnType::Char => "char".into(),
+        ColumnType::Short => "short".into(),
+        ColumnType::Int => "int".into(),
+        ColumnType::Long => "long".into(),
+        ColumnType::Float => "float".into(),
+        ColumnType::Double => "double".into(),
+        ColumnType::String => "String".into(),
+        ColumnType::Instant => "Instant".into(),
+        ColumnType::Array(element) => format!("{}[]", simple_name(element)?),
+        ColumnType::Vector(element) => match **element {
+            ColumnType::Byte => "ByteVector".into(),
+            ColumnType::Char => "CharVector".into(),
+            ColumnType::Short => "ShortVector".into(),
+            ColumnType::Int => "IntVector".into(),
+            ColumnType::Long => "LongVector".into(),
+            ColumnType::Float => "FloatVector".into(),
+            ColumnType::Double => "DoubleVector".into(),
+            _ => "ObjectVector".into(),
+        },
+        ColumnType::Table(TableClass::Table) => "Table".into(),
+        ColumnType::Table(TableClass::QueryTable) => "QueryTable".into(),
+        ColumnType::BigDecimal => "BigDecimal".into(),
+        ColumnType::BigInteger => "BigInteger".into(),
+        ColumnType::LocalDate => "LocalDate".into(),
+        ColumnType::LocalTime => "LocalTime".into(),
+        ColumnType::LocalDateTime => "LocalDateTime".into(),
+        ColumnType::Duration => "Duration".into(),
+        ColumnType::Period => "Period".into(),
+        ColumnType::ZoneId => "ZoneId".into(),
+        ColumnType::ZonedDateTime => "ZonedDateTime".into(),
+        _ => return None,
+    })
+}
+
+/// The pointers each column is filled from, in the order of `columns`.
 ///
-/// Behavior: com.fasterxml.jackson.core.JsonPointer#compile, for one segment
-fn pointer_field(pointer: &str) -> Result<String, KafkaError> {
-    let segment = &pointer[1..];
-    if segment.contains('/') {
-        return Err(not_ported(
-            "com.fasterxml.jackson.databind.JsonNode#at(JsonPointer)",
-            &format!("the JSON pointer {pointer}, which names a nested field"),
+/// Java makes a map from pointer to column: the mapping's fields, each made a pointer
+/// unless it is one, then a pointer to the field of its own name for each column the
+/// mapping does not name, which replaces a mapped pointer that is the same. Each entry of
+/// the map fills its column once, so a column ends with no pointer, one, or several.
+///
+/// Behavior: io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers and #getIngestData,
+/// io.deephaven.kafka.ingest.MultiFieldChunkAdapter#MultiFieldChunkAdapter
+fn json_pointers(
+    columns: &[(String, ColumnType)],
+    mapping: Option<&[(String, String)]>,
+) -> Result<Vec<Vec<Pointer>>, KafkaError> {
+    let mut map: Vec<(String, String)> = Vec::new();
+    for (field, column) in mapping.unwrap_or_default() {
+        let pointer = if field.starts_with('/') {
+            field.clone()
+        } else {
+            Pointer::field(field)
+        };
+        match map.iter().find(|(known, _)| *known == pointer) {
+            None => map.push((pointer, column.clone())),
+            Some((_, known)) if known == column => {}
+            Some((_, known)) => {
+                // Java keeps the later of the two in the iteration order of a `HashMap`
+                // built from the Python `dict`.
+                return Err(not_ported(
+                    "io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers",
+                    &format!(
+                        "two fields of the mapping that are both the JSON pointer {pointer}, \
+                         for the columns {known} and {column}"
+                    ),
+                ));
+            }
+        }
+    }
+    if map
+        .iter()
+        .any(|(_, column)| !columns.iter().any(|(name, _)| name == column))
+    {
+        return Err(invalid(
+            "java.lang.IllegalArgumentException: Column not found in Deephaven table: -1"
+                .to_owned(),
         ));
     }
-    Ok(segment.replace("~1", "/").replace("~0", "~"))
+    let covered: Vec<String> = map.iter().map(|(_, column)| column.clone()).collect();
+    for (name, _) in columns {
+        if !covered.contains(name) {
+            let pointer = Pointer::field(name);
+            match map.iter_mut().find(|(known, _)| *known == pointer) {
+                Some(entry) => entry.1 = name.clone(),
+                None => map.push((pointer, name.clone())),
+            }
+        }
+    }
+    Ok(columns
+        .iter()
+        .map(|(name, _)| {
+            let pointers = map.iter().filter(|(_, column)| column == name);
+            pointers
+                .map(|(pointer, _)| Pointer::compile(pointer))
+                .collect()
+        })
+        .collect())
 }
 
 /// Behavior: io.deephaven.kafka.JsonImpl.JsonConsume#getIngestData,
@@ -196,55 +291,37 @@ fn json_columns(
     definitions: &mut Vec<ColumnDefinition>,
     cells: &mut Vec<Cells>,
 ) -> Result<(), KafkaError> {
-    for (name, column_type) in columns {
-        let refused = |copier: &str| {
-            Err(not_ported(
-                &format!("io.deephaven.kafka.ingest.{copier}"),
-                &format!("the JSON column {name} of type {column_type:?}"),
-            ))
-        };
-        match column_type {
+    let pointers = json_pointers(columns, mapping)?;
+    for ((name, column_type), pointers) in columns.iter().zip(pointers) {
+        let supported = matches!(
+            column_type,
             ColumnType::Boolean
-            | ColumnType::Byte
-            | ColumnType::Short
-            | ColumnType::Int
-            | ColumnType::Long
-            | ColumnType::Float
-            | ColumnType::Double
-            | ColumnType::String => {}
-            ColumnType::Char => return refused("JsonNodeCharFieldCopier"),
-            ColumnType::Instant => return refused("JsonNodeInstantFieldCopier"),
-            _ => return refused("JsonNodeChunkAdapter#makeFieldCopier"),
+                | ColumnType::Byte
+                | ColumnType::Char
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
+                | ColumnType::String
+                | ColumnType::Instant
+        );
+        // Java checks the type when it makes a column's copier, so not for a column
+        // without a pointer.
+        if !supported && !pointers.is_empty() {
+            return Err(match simple_name(column_type) {
+                Some(simple) => invalid(format!(
+                    "io.deephaven.UncheckedDeephavenException: Type {simple} not supported \
+                     for JSON"
+                )),
+                None => not_ported(
+                    "io.deephaven.kafka.ingest.JsonNodeChunkAdapter#makeFieldCopier",
+                    &format!("the JSON column {name} of type {column_type:?}"),
+                ),
+            });
         }
-        let mut fields = Vec::new();
-        for (field, column) in mapping.unwrap_or_default() {
-            if column == name {
-                // Behavior: JsonImpl.JsonConsume#mapNonPointers
-                fields.push(match field.strip_prefix('/') {
-                    Some(_) => pointer_field(field)?,
-                    None => field.clone(),
-                });
-            }
-        }
-        let field = match fields.len() {
-            0 => name.clone(),
-            1 => fields.remove(0),
-            _ => {
-                return Err(not_ported(
-                    "io.deephaven.kafka.ingest.MultiFieldChunkAdapter",
-                    &format!("several fields mapped to the column {name}"),
-                ))
-            }
-        };
         definitions.push(ColumnDefinition::new(name.clone(), column_type.clone()));
-        cells.push(Cells::Json(side, field));
-    }
-    for (field, column) in mapping.unwrap_or_default() {
-        if !columns.iter().any(|(name, _)| name == column) {
-            return Err(invalid(format!(
-                "the JSON field {field} is mapped to the column {column}, which is not defined"
-            )));
-        }
+        cells.push(Cells::Json(side, pointers));
     }
     Ok(())
 }
@@ -345,7 +422,7 @@ impl Plan {
     ///
     /// Behavior: io.deephaven.kafka.ingest.KafkaStreamPublisher#consumeRecords
     pub fn decode(&self, records: &[Record], received: i64) -> Result<Vec<ArrayRef>, KafkaError> {
-        let documents = |side: Side| -> Result<Vec<Document>, KafkaError> {
+        let documents = |side: Side| -> Result<Vec<Node>, KafkaError> {
             let used = |cells: &Cells| matches!(cells, Cells::Json(s, _) if *s == side);
             if !self.cells.iter().any(used) {
                 return Ok(Vec::new());
@@ -355,7 +432,7 @@ impl Plan {
                 None => Err(KafkaError::Record(
                     "java.lang.IllegalArgumentException: argument \"content\" is null".to_owned(),
                 )),
-                Some(bytes) => Document::parse(&utf8(bytes)?),
+                Some(bytes) => json::parse(&utf8(bytes)?),
             };
             records.iter().map(parse).collect()
         };
@@ -363,19 +440,42 @@ impl Plan {
         let value_documents = documents(Side::Value)?;
 
         let mut columns = Vec::with_capacity(self.cells.len());
+        // Java's chunk of each column has a row per record and pointer; they must agree.
+        let mut sizes = Vec::with_capacity(self.cells.len());
         for (cells, column) in self.cells.iter().zip(self.definition.columns()) {
             let column_type = &column.column_type;
-            columns.push(match cells {
-                Cells::Common(common) => common_column(*common, records, received)?,
-                Cells::Simple(side) => simple_cells(&self.topic, *side, column_type, records)?,
-                Cells::Json(side, field) => {
+            match cells {
+                Cells::Common(common) => columns.push(common_column(*common, records, received)?),
+                Cells::Simple(side) => {
+                    columns.push(simple_cells(&self.topic, *side, column_type, records)?)
+                }
+                Cells::Json(side, pointers) => {
                     let documents = match side {
                         Side::Key => &key_documents,
                         Side::Value => &value_documents,
                     };
-                    json_cells(column_type, field, documents)?
+                    let mut filled = pointers
+                        .iter()
+                        .map(|pointer| json_cells(column_type, pointer, documents))
+                        .collect::<Result<Vec<_>, _>>()?;
+                    columns.push(match filled.len() {
+                        1 => filled.remove(0),
+                        // Fails below when there are records.
+                        _ => arrow::array::new_empty_array(&column_type.arrow_type()),
+                    });
+                    sizes.push(records.len() * pointers.len());
+                    continue;
                 }
-            });
+            }
+            sizes.push(records.len());
+        }
+        if !records.is_empty() && sizes.iter().any(|size| *size != records.len()) {
+            // Behavior: io.deephaven.kafka.ingest.KafkaStreamPublisher#checkChunkSizes
+            let sizes: Vec<String> = sizes.iter().map(usize::to_string).collect();
+            return Err(KafkaError::Record(format!(
+                "java.lang.IllegalStateException: Publisher chunks have size mismatch: {}",
+                sizes.join(", ")
+            )));
         }
         Ok(columns)
     }
@@ -468,63 +568,77 @@ fn simple_cells(
         ColumnType::Long => numbers!(Int64Array, i64, i64::MIN),
         ColumnType::Float => numbers!(Float32Array, f32, -f32::MAX),
         ColumnType::Double => numbers!(Float64Array, f64, -f64::MAX),
+        // Behavior: org.apache.kafka.common.serialization.ByteArrayDeserializer#deserialize,
+        // which gives the bytes as they are, an empty array for none
+        ColumnType::Array(_) => {
+            let field = Field::new("", ColumnType::Byte.arrow_type(), true);
+            let mut cells = ListBuilder::new(Int8Builder::new()).with_field(Arc::new(field));
+            for record in records {
+                match side.bytes(record) {
+                    Some(bytes) => {
+                        cells.values().extend(bytes.iter().map(|b| Some(*b as i8)));
+                        cells.append(true);
+                    }
+                    None => cells.append(false),
+                }
+            }
+            Arc::new(cells.finish())
+        }
         other => unreachable!("Plan::new admits no simple column of type {other:?}"),
     })
 }
 
+/// The cells of a JSON column of `column_type`: the node `pointer` finds in each record,
+/// converted. A value equal to Java's null of the type is a null cell.
+///
 /// Behavior: the `copyField` of `io.deephaven.kafka.ingest`'s `JsonNodeBooleanFieldCopier`,
-/// `JsonNodeByteFieldCopier`, `JsonNodeShortFieldCopier`, `JsonNodeIntFieldCopier`,
-/// `JsonNodeLongFieldCopier`, `JsonNodeFloatFieldCopier`, `JsonNodeDoubleFieldCopier` and
-/// `JsonNodeStringFieldCopier`
+/// `JsonNodeByteFieldCopier`, `JsonNodeCharFieldCopier`, `JsonNodeShortFieldCopier`,
+/// `JsonNodeIntFieldCopier`, `JsonNodeLongFieldCopier`, `JsonNodeFloatFieldCopier`,
+/// `JsonNodeDoubleFieldCopier`, `JsonNodeStringFieldCopier` and
+/// `JsonNodeInstantFieldCopier`
 fn json_cells(
     column_type: &ColumnType,
-    field: &str,
-    documents: &[Document],
+    pointer: &Pointer,
+    documents: &[Node],
 ) -> Result<ArrayRef, KafkaError> {
-    let nodes = documents.iter().map(|document| document.field(field));
-    macro_rules! integers {
-        ($array:ty, $native:ty, $method:literal) => {{
-            let cells: Vec<Option<$native>> = nodes
-                .map(|node| {
-                    // The cast keeps the low bits, and the type's null value is a null.
-                    let value = node?.integral($method)?.map(|value| value as $native);
-                    Ok(value.filter(|value| *value != <$native>::MIN))
-                })
-                .collect::<Result<_, KafkaError>>()?;
+    let nodes = documents.iter().map(|document| pointer.at(document));
+    macro_rules! cells {
+        ($array:ty, $convert:expr) => {{
+            let cells = nodes
+                .map($convert)
+                .collect::<Result<Vec<_>, KafkaError>>()?;
             Arc::new(<$array>::from(cells)) as ArrayRef
         }};
     }
+    // The cast keeps the low bits, and the type's null value is a null.
     Ok(match column_type {
-        ColumnType::Boolean => {
-            let cells: Vec<Option<bool>> = nodes
-                .map(|node| node?.boolean(field))
-                .collect::<Result<_, KafkaError>>()?;
-            Arc::new(BooleanArray::from(cells))
-        }
-        ColumnType::Byte => integers!(Int8Array, i8, "asInt"),
-        ColumnType::Short => integers!(Int16Array, i16, "asInt"),
-        ColumnType::Int => integers!(Int32Array, i32, "asInt"),
-        ColumnType::Long => integers!(Int64Array, i64, "asLong"),
-        ColumnType::Float => {
-            let cells: Vec<Option<f32>> = nodes
-                .map(|node| {
-                    let value = node?.double()?.map(|value| value as f32);
-                    Ok(value.filter(|value| *value != -f32::MAX))
-                })
-                .collect::<Result<_, KafkaError>>()?;
-            Arc::new(Float32Array::from(cells))
-        }
-        ColumnType::Double => {
-            let cells: Vec<Option<f64>> = nodes
-                .map(|node| Ok(node?.double()?.filter(|value| *value != -f64::MAX)))
-                .collect::<Result<_, KafkaError>>()?;
-            Arc::new(Float64Array::from(cells))
-        }
-        ColumnType::String => {
-            let cells: Vec<Option<String>> = nodes
-                .map(|node| node?.text())
-                .collect::<Result<_, KafkaError>>()?;
-            Arc::new(StringArray::from(cells))
+        ColumnType::Boolean => cells!(BooleanArray, |node: &Node| node.boolean(pointer)),
+        ColumnType::Byte => cells!(Int8Array, |node: &Node| {
+            Ok(node.as_int().map(|v| v as i8).filter(|v| *v != i8::MIN))
+        }),
+        ColumnType::Short => cells!(Int16Array, |node: &Node| {
+            Ok(node.as_int().map(|v| v as i16).filter(|v| *v != i16::MIN))
+        }),
+        ColumnType::Int => cells!(Int32Array, |node: &Node| {
+            Ok(node.as_int().filter(|v| *v != i32::MIN))
+        }),
+        ColumnType::Long => cells!(Int64Array, |node: &Node| {
+            Ok(node.as_long().filter(|v| *v != i64::MIN))
+        }),
+        ColumnType::Float => cells!(Float32Array, |node: &Node| {
+            Ok(node
+                .as_double()
+                .map(|v| v as f32)
+                .filter(|v| *v != -f32::MAX))
+        }),
+        ColumnType::Double => cells!(Float64Array, |node: &Node| {
+            Ok(node.as_double().filter(|v| *v != -f64::MAX))
+        }),
+        ColumnType::Char => cells!(UInt16Array, |node: &Node| Ok(node.char())),
+        ColumnType::String => cells!(StringArray, |node: &Node| node.text()),
+        ColumnType::Instant => {
+            let cells = nodes.map(Node::instant).collect::<Result<Vec<_>, _>>()?;
+            instants(cells)
         }
         other => unreachable!("Plan::new admits no JSON column of type {other:?}"),
     })

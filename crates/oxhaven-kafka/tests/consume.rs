@@ -383,13 +383,24 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
         "java.lang.IllegalArgumentException: can't ignore both key and value: keySpec and \
          valueSpec can't both be ignore specs"
     );
-    assert_eq!(
-        refused(&Spec::Ignore, &json(ColumnType::Instant), &[]),
-        "not ported yet: io.deephaven.kafka.ingest.JsonNodeInstantFieldCopier: the JSON column \
-         C of type Instant"
-    );
-    assert!(refused(&Spec::Ignore, &json(ColumnType::Char), &[])
-        .starts_with("not ported yet: io.deephaven.kafka.ingest.JsonNodeCharFieldCopier"));
+    for (column_type, simple_name) in [
+        (ColumnType::array(ColumnType::Byte), "byte[]"),
+        (ColumnType::array(ColumnType::Int), "int[]"),
+        (ColumnType::array(ColumnType::String), "String[]"),
+        (ColumnType::BigDecimal, "BigDecimal"),
+        (ColumnType::BigInteger, "BigInteger"),
+        (ColumnType::LocalDate, "LocalDate"),
+        (ColumnType::Duration, "Duration"),
+        (ColumnType::ZonedDateTime, "ZonedDateTime"),
+    ] {
+        assert_eq!(
+            refused(&Spec::Ignore, &json(column_type), &[]),
+            format!(
+                "io.deephaven.UncheckedDeephavenException: Type {simple_name} not supported for \
+                 JSON"
+            )
+        );
+    }
     assert!(
         refused(&Spec::Ignore, &simple("V", ColumnType::Boolean), &[])
             .starts_with("not ported yet: io.deephaven.kafka.SimpleImpl.SerDeserVisitor")
@@ -397,7 +408,10 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
     assert!(refused(
         &Spec::Ignore,
         &from_properties,
-        &[("deephaven.value.column.type", "byte[]")]
+        &[(
+            "value.deserializer",
+            "org.apache.kafka.common.serialization.UUIDDeserializer"
+        )]
     )
     .starts_with("not ported yet: io.deephaven.kafka.SimpleImpl.SerDeserVisitor"));
     assert_eq!(
@@ -411,12 +425,23 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
     );
     assert!(refused(&Spec::Ignore, &from_properties, &[])
         .contains("Unable to find the type for column 'KafkaValue' (value_spec)"));
-    let nested = Spec::Json {
-        columns: vec![("C".to_owned(), ColumnType::Int)],
-        mapping: Some(vec![("/a/b".to_owned(), "C".to_owned())]),
+    let mapped = |pairs: &[(&str, &str)]| Spec::Json {
+        columns: vec![
+            ("X".to_owned(), ColumnType::Int),
+            ("Y".to_owned(), ColumnType::Int),
+        ],
+        mapping: Some(config(pairs)),
     };
-    assert!(refused(&Spec::Ignore, &nested, &[])
-        .starts_with("not ported yet: com.fasterxml.jackson.databind.JsonNode#at(JsonPointer)"));
+    assert_eq!(
+        refused(&Spec::Ignore, &mapped(&[("a", "Z")]), &[]),
+        "java.lang.IllegalArgumentException: Column not found in Deephaven table: -1"
+    );
+    // Which of two fields that are one pointer Java keeps depends on a hash order.
+    assert!(
+        refused(&Spec::Ignore, &mapped(&[("a", "X"), ("/a", "Y")]), &[])
+            .starts_with("not ported yet: io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers")
+    );
+    assert!(Plan::new("t", &[], &Spec::Ignore, &mapped(&[("a", "X"), ("/a", "X")])).is_ok());
     let duplicate = Spec::Json {
         columns: vec![("KafkaOffset".to_owned(), ColumnType::Int)],
         mapping: None,
@@ -451,5 +476,176 @@ fn the_polling_thread_ends_when_the_table_is_dropped() {
             }
         };
         assert!(ended, "the thread of a {table_type:?} table still polls");
+    }
+}
+
+/// Behavior: io.deephaven.kafka.ingest.JsonNodeUtil, through the copiers of each type
+#[test]
+fn json_columns_of_every_type_read_nested_fields_and_arrays() {
+    let value = Spec::Json {
+        columns: vec![
+            ("C".to_owned(), ColumnType::Char),
+            ("T".to_owned(), ColumnType::Instant),
+            ("Deep".to_owned(), ColumnType::Int),
+            ("Item".to_owned(), ColumnType::String),
+            ("Obj".to_owned(), ColumnType::String),
+            ("B".to_owned(), ColumnType::Byte),
+            ("F".to_owned(), ColumnType::Float),
+        ],
+        mapping: Some(config(&[
+            ("/a/b/c", "Deep"),
+            ("/arr/1", "Item"),
+            ("/a", "Obj"),
+            ("/0", "B"),
+        ])),
+    };
+    let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
+    let topic = Topic::new(plan, TableType::Append);
+    topic.cycle(Ok(vec![
+        record(
+            0,
+            None,
+            Some(
+                br#"{"C": "xy", "T": 1700000000, "a": {"b": {"c": "12.9"}, "z": 1e3}, "arr": [1, {"k": "\u0001"}], "F": "1.5f"}"#,
+            ),
+        ),
+        record(1, None, Some(br#"[300, 2]"#)),
+        record(2, None, Some(br#"{"C": 65535, "T": "2024-01-02T03:04:05Z", "0": "-1"}"#)),
+    ]));
+    let chars = topic.column("C");
+    let chars: Vec<Option<u16>> = chars
+        .as_primitive::<arrow::datatypes::UInt16Type>()
+        .iter()
+        .collect();
+    assert_eq!(chars, [Some(u16::from(b'x')), None, None]);
+    let times = topic.column("T");
+    let times: Vec<Option<i64>> = times
+        .as_primitive::<TimestampNanosecondType>()
+        .iter()
+        .collect();
+    assert_eq!(
+        times,
+        [
+            Some(1_700_000_000_000_000_000),
+            None,
+            Some(1_704_164_645_000_000_000)
+        ]
+    );
+    let deep = topic.column("Deep");
+    let deep: Vec<Option<i32>> = deep.as_primitive::<Int32Type>().iter().collect();
+    assert_eq!(deep, [Some(12), None, None]);
+    assert_eq!(
+        topic.strings("Item"),
+        [Some(r#"{"k":"\u0001"}"#.to_owned()), None, None]
+    );
+    assert_eq!(
+        topic.strings("Obj"),
+        [
+            Some(r#"{"b":{"c":"12.9"},"z":1E+3}"#.to_owned()),
+            None,
+            None
+        ]
+    );
+    let bytes = topic.column("B");
+    let bytes: Vec<Option<i8>> = bytes
+        .as_primitive::<arrow::datatypes::Int8Type>()
+        .iter()
+        .collect();
+    // 300 keeps its low eight bits; "-1" is text read as an int.
+    assert_eq!(bytes, [None, Some(44), Some(-1)]);
+    let floats = topic.column("F");
+    let floats: Vec<Option<f32>> = floats
+        .as_primitive::<arrow::datatypes::Float32Type>()
+        .iter()
+        .collect();
+    assert_eq!(floats, [Some(1.5), None, None]);
+}
+
+/// Behavior: io.deephaven.kafka.ingest.MultiFieldChunkAdapter#handleChunk, which fills a
+/// column once per field mapped to it, and KafkaStreamPublisher#checkChunkSizes
+#[test]
+fn a_column_filled_twice_or_never_fails_the_table_when_records_arrive() {
+    for (mapping, sizes) in [
+        (&[("a", "X"), ("b", "X")][..], "1, 1, 1, 2, 1"),
+        // The pointer of Y's own name takes the place of the mapped one, so X has none.
+        (&[("/Y", "X")][..], "1, 1, 1, 0, 1"),
+    ] {
+        let value = Spec::Json {
+            columns: vec![
+                ("X".to_owned(), ColumnType::Int),
+                ("Y".to_owned(), ColumnType::Int),
+            ],
+            mapping: Some(config(mapping)),
+        };
+        let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
+        let topic = Topic::new(plan, TableType::Blink);
+        topic.cycle(Ok(Vec::new()));
+        assert!(!topic.table.is_failed());
+        topic.failing_cycle(Ok(vec![record(
+            0,
+            None,
+            Some(br#"{"a": 1, "b": 2, "Y": 3}"#),
+        )]));
+        assert_eq!(
+            failure_of(&topic),
+            format!(
+                "java.lang.IllegalStateException: Publisher chunks have size mismatch: {sizes}"
+            )
+        );
+    }
+    // Two fields that are one pointer to one column are one entry.
+    let value = Spec::Json {
+        columns: vec![("X".to_owned(), ColumnType::Int)],
+        mapping: Some(config(&[("a", "X"), ("/a", "X")])),
+    };
+    let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
+    let topic = Topic::new(plan, TableType::Append);
+    topic.cycle(Ok(vec![record(0, None, Some(br#"{"a": 5}"#))]));
+    let xs = topic.column("X");
+    let xs: Vec<Option<i32>> = xs.as_primitive::<Int32Type>().iter().collect();
+    assert_eq!(xs, [Some(5)]);
+}
+
+/// Behavior: org.apache.kafka.common.serialization.ByteArrayDeserializer
+#[test]
+fn a_simple_byte_array_column_holds_the_bytes() {
+    let value = simple("V", ColumnType::array(ColumnType::Byte));
+    let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
+    let topic = Topic::new(plan, TableType::Append);
+    topic.cycle(Ok(vec![
+        record(0, None, Some(b"ab")),
+        record(1, None, Some(b"")),
+        record(2, None, None),
+        record(3, None, Some(&[0xc3, 0xa9])),
+    ]));
+    let column = topic.column("V");
+    let lists = column.as_list::<i32>();
+    let cells: Vec<Option<Vec<i8>>> = lists
+        .iter()
+        .map(|cell| {
+            cell.map(|cell| {
+                let values = cell.as_primitive::<arrow::datatypes::Int8Type>();
+                values.values().to_vec()
+            })
+        })
+        .collect();
+    assert_eq!(
+        cells,
+        [Some(vec![97, 98]), Some(vec![]), None, Some(vec![-61, -87])]
+    );
+    for properties in [
+        [("deephaven.value.column.type", "byte[]")],
+        [(
+            "value.deserializer",
+            "org.apache.kafka.common.serialization.ByteArrayDeserializer",
+        )],
+    ] {
+        let spec = Spec::Simple {
+            column: None,
+            data_type: None,
+        };
+        let plan = Plan::new("test", &config(&properties), &Spec::Ignore, &spec).unwrap();
+        let column = plan.definition().columns().last().unwrap();
+        assert_eq!(column.column_type, ColumnType::array(ColumnType::Byte));
     }
 }

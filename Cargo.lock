@@ -1325,10 +1325,9 @@ dependencies = [
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-engine",
+ "oxhaven-expr",
  "oxhaven-testkit",
  "rdkafka",
- "serde",
- "serde_json",
 ]
 
 [[package]]
