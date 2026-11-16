@@ -53,7 +53,7 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after tasks 7.4.1 and 7.4.4
+## What exists after tasks 7.4.1, 7.4.3 and 7.4.4
 
 `deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` with:
 
@@ -62,11 +62,13 @@ and `ring(n)` is `RingTableTools.of` of it.
   `ALL_PARTITIONS_SEEK_TO_END`, a mapping to offsets, `SEEK_TO_BEGINNING` or
   `SEEK_TO_END`, or left out (`ALL_PARTITIONS_DONT_SEEK`): "Offsets and consumer groups";
 - `simple_spec` and `KeyValueSpec.FROM_PROPERTIES` for `String`, `short`, `int`, `long`,
-  `float` and `double` (Kafka's own deserializers: big-endian, of exactly the type's size),
+  `float` and `double` (Kafka's own deserializers: big-endian, of exactly the type's size)
+  and `byte[]` (the bytes as they are),
   with the name and type taken from the argument, `deephaven.{key,value}.column.name`,
   `deephaven.{key,value}.column.type` or `{key,value}.deserializer`, in Java's order;
-- `json_spec` with columns of type `bool_`, `byte`, `short`, `int32`, `long`, `float32`,
-  `double` and `string`, and a `mapping` of top-level fields;
+- `json_spec` with columns of type `bool_`, `byte`, `char`, `short`, `int32`, `long`,
+  `float32`, `double`, `string` and `Instant`, and a `mapping` of fields and JSON pointers
+  into nested objects and arrays, with every coercion of Java's (below);
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
 - the consumer properties of "Consumer properties";
 - plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
@@ -77,32 +79,72 @@ has the list.
 
 ### How a JSON field becomes a cell
 
-Java parses each record with Jackson, set to read a number with a fraction or exponent as
-an exact `BigDecimal`, and converts a field with the node's `asInt`, `asLong`, `asDouble`
-or `asText`. These coerce, and the port keeps that (`src/json.rs`):
+Since task 7.4.3 (`tasks/7.4.3-kafka-json.md`). Java parses each record with Jackson into
+a tree, set to read a number with a fraction or exponent as an exact `BigDecimal`, finds
+each column's node with a JSON pointer, and converts it with the node's `asInt`,
+`asLong`, `asDouble`, `asText` or `toString`. These coerce, and the port keeps that
+(`src/json.rs`, which reads the record into the same tree):
 
-| Column | Field is a number | `true` / `false` | text | object or array | `null` or missing |
-| --- | --- | --- | --- | --- | --- |
-| `int`, `short`, `byte`, `long` | the integer, cut to the low bits of the type; with a fraction or exponent: **refused** | 1 / 0 | **refused** | 0 | null |
-| `double`, `float` | the nearest double, then cast for `float` | 1.0 / 0.0 | **refused** | 0.0 | null |
-| `String` | its text: an integer in plain digits, another number as `BigDecimal#toString` writes it (`1.50`, `1E+3`) | `true` / `false` | itself | **refused** | null |
-| `Boolean` | by its text, as below | itself | trimmed: `TRUE`, `True`, `true`, `T`, `t`, `1` are true; `FALSE`, `False`, `false`, `F`, `f` are false; empty is null; anything else fails the table | **refused** | null |
+| Column | Integer | Number with a fraction or exponent | `true` / `false` | Text | Object or array | `null` or missing |
+| --- | --- | --- | --- | --- | --- | --- |
+| `int`, `short`, `byte`, `long` | cut to the low bits of the type (`byte` and `short` through `int`) | truncated toward zero, then cut (`BigDecimal#intValue`, `#longValue`): `2.9` is 2, `1e19` in an `int` is -1981284352 | 1 / 0 | `NumberInput#parseAsInt`, `#parseAsLong`: trimmed, an optional sign and digits are read as the type and are 0 when out of range; any other text goes through `Double#parseDouble` and is cast (`"12.9"` is 12, `"1e3"` 1000, `"Infinity"` the largest value); text neither reads is 0 | 0 | null |
+| `double`, `float` | the nearest double, then cast for `float` | the nearest double (`1e400` is infinity) | 1.0 / 0.0 | `Double#parseDouble` of the trimmed text, with `NaN`, `Infinity`, hexadecimal numbers and an `f` or `d` suffix; 0.0 where it fails | 0.0 | null |
+| `char` | the low sixteen bits | the low sixteen bits of `intValue` | `t` / `f` | its first UTF-16 unit; empty is null | null | null |
+| `String` | its digits (`-0` is `0`) | `BigDecimal#toString`: `1.50`, `1E+3`, `0.00000` | `true` / `false` | itself | its compact JSON, as Jackson writes it | null |
+| `Boolean` | by its text, as for text | by its text (`1e0` is `1`, so true) | itself | trimmed: `TRUE`, `True`, `true`, `T`, `t`, `1` are true; `FALSE`, `False`, `false`, `F`, `f` are false; empty is null; anything else fails the table | its compact JSON, which fails the table | null |
+| `Instant` | an `int` or `long` counts seconds, milliseconds, microseconds or nanoseconds by its size (`epochAutoToInstant`, whose multiplication wraps); a larger integer is read as text | its text, as for text (`12.5e1` is `125`) | its text, so it fails | `DateTimeUtils#parseInstant`: up to nineteen digits by size as above, else a date and time with a zone; anything else fails the table | empty text, so it fails | null |
 
-A value equal to Java's null of the column's type (`Integer.MIN_VALUE` for an `int`) is a
-null cell. A record that is not an object (a number, text, `null`, nothing at all) is a
-row of nulls. Jackson reads one value and ignores what follows it. A record without a
-value (a tombstone) fails the table, as Jackson refuses a null string.
+A value equal to Java's null of the column's type (`Integer.MIN_VALUE` for an `int`,
+`￿` for a `char`, `Long.MIN_VALUE` nanoseconds for an `Instant`) is a null cell. An
+`Instant` from second `Long.MAX_VALUE / 10^9` on fails the table
+(`DateTimeOverflowException`), as Java's `DateTimeUtils#epochNanos` does.
 
-"Refused" here means the table fails with a message that names the Jackson method, because
-a record is not known until it arrives. Java gives a value in each of these cases, seen
-in the probes (`2.9` in an `int` column is 2, `"12"` is 12, an object in a `String`
-column is its compact JSON); they are task 7.4.3.
+**Pointers.** A column is filled from the node that a JSON pointer finds: `/` and the
+field's name, with `~` written `~0` and `/` written `~1`, unless the `mapping` gives a
+field for it. A field of the mapping that starts with `/` is a pointer as it is and may go
+deeper (`/a/b/0`): a segment is an object's field by name (also when the name is a
+number) or an array's element by index (digits without a leading zero, at most
+`Integer.MAX_VALUE`). `~` before anything but `0` or `1` is kept as written, as Jackson
+keeps it. A pointer that finds nothing, or goes through a number or text, gives a null
+cell. A record that is not an object (an array, a number, text, `null`, nothing at all)
+is read the same way: `/0` of an array is its first element, and a field name finds
+nothing. Jackson reads one value and ignores what follows it.
+
+**The mapping and the columns.** Java turns the mapping into a map from pointer to column
+and then adds the pointer of each column the mapping does not name; a pointer already in
+the map is then given to that column. Each entry fills its column once per record, so a
+column that two fields are mapped to, or that loses its only pointer that way, makes
+Java's chunks of different sizes, and the table fails at the first record with
+`IllegalStateException: Publisher chunks have size mismatch: 1, 1, 1, 2, 1` (probed;
+reproduced, with the sizes). A mapping to a column that is not defined fails the call
+(`Column not found in Deephaven table: -1`). A column type other than those above fails
+the call with Java's `Type <name> not supported for JSON` (`byte[]`, `int[]`,
+`BigDecimal`, `LocalDate`, `Duration`, `ZonedDateTime`, ...; probed).
+
+**What Jackson refuses.** Invalid JSON fails the table with `Failed to parse JSON string.`
+Jackson's limits are kept: nesting deeper than 1000 objects and arrays, a number of more
+than 1000 digits (counting those of the fraction and exponent), and a decimal whose scale
+does not fit an `int` (`1e-2147483648`; Java's `BigDecimal` text). White space between
+tokens is space, tab, line feed and carriage return only. A record without a value (a
+tombstone) fails the table, as Jackson refuses a null string.
+
+**Compact JSON** is Jackson's: no spaces, the fields in the order they first appeared (a
+repeated field keeps its place and takes the last value), `"` and `\` escaped, the
+control characters below U+0020 as `\b`, `\t`, `\n`, `\f`, `\r` or `\u00XX` in upper
+case, every other character as it is, numbers as in a `String` column.
+
+**A simple `byte[]` column** (`simple_spec(name, dtypes.byte_array)`,
+`deephaven.value.column.type=byte[]` or `ByteArrayDeserializer`) holds the bytes of the
+key or value as they are; an empty value is an empty array, a tombstone null. The server
+does not send such a column to a client yet (Java sends Arrow `Binary`, see
+`ColumnType::Array` in the contracts); operations on the server can use it.
 
 ### Failures
 
 A record that cannot become a row fails the table, with Java's exception text: invalid
-JSON (`Failed to parse JSON string.`), a Boolean field Java does not recognize, a number
-of the wrong size for a simple column (`RecordDeserializationException: Error
+JSON (`Failed to parse JSON string.`), a Boolean field Java does not recognize, an
+`Instant` Java cannot read or store, a column filled twice or never, a number of the
+wrong size for a simple column (`RecordDeserializationException: Error
 deserializing VALUE for partition <topic>-<n> at offset <o>...`).
 
 A broker that goes away does not fail the table: librdkafka reconnects and goes on, as
@@ -391,7 +433,7 @@ broker under the open tables of both.
   levels; a topic that did not exist when the table was made (no rows, also after
   records arrived); every table after the broker restarted and more records arrived;
   the list of topics and its order; which of the 25 calls raise.
-- Different, by design for now: the three refused conversions; a gzip topic (Java reads
+- Different, by design for now: a gzip topic (Java reads
   it, Oxhaven fails the table by name); `auto.offset.reset=by_duration:PT1H` (Java
   accepts, Oxhaven refuses by name); `security.protocol` (Java fails for want of a TLS
   broker or a JAAS entry, Oxhaven refuses by name).
@@ -461,19 +503,24 @@ broker under the open tables of both.
 | `security.protocol` other than `PLAINTEXT` | `org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder` |
 | A record batch compressed with gzip (fails the table) | `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator` |
 | `auto.offset.reset=by_duration:<duration>` | `org.apache.kafka.clients.consumer.internals.AutoOffsetResetStrategy#timestamp` |
-| A simple column of `byte[]`, `UUID`, `ByteBuffer`, `Bytes` or any other type | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
+| A simple column of `UUID`, `ByteBuffer`, `Bytes` or any other type not listed above | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
 | Bytes that are not UTF-8 in a `String` column | `org.apache.kafka.common.serialization.StringDeserializer#deserialize` |
-| A JSON column of `char`, `Instant`, or another type | `io.deephaven.kafka.ingest.JsonNodeCharFieldCopier`, `JsonNodeInstantFieldCopier`, `JsonNodeChunkAdapter#makeFieldCopier` |
-| A JSON pointer to a nested field | `com.fasterxml.jackson.databind.JsonNode#at(JsonPointer)` |
-| Two fields mapped to one column | `io.deephaven.kafka.ingest.MultiFieldChunkAdapter` |
-| A JSON record that is an array | `com.fasterxml.jackson.databind.node.ArrayNode#_at` |
-| A number with a fraction or exponent in an integer column | `com.fasterxml.jackson.databind.node.DecimalNode#asInt`, `#asLong` |
-| Text in a numeric column | `com.fasterxml.jackson.databind.node.TextNode#asInt`, `#asLong`, `#asDouble` |
-| An object or array in a `String` or `Boolean` column | `com.fasterxml.jackson.databind.node.ContainerNode#toString` |
-| An integer outside 128 bits | `com.fasterxml.jackson.databind.node.BigIntegerNode` |
+| A JSON column of `JObject`, which Java fills with Jackson's nodes (refused by `json_spec`, as the engine has no such column type) | `io.deephaven.engine.table.ColumnDefinition#fromGenericType` (Java: `io.deephaven.kafka.ingest.JsonNodeJsonNodeFieldCopier`) |
+| Two fields of a JSON mapping that are one pointer (`a` and `/a`) for two columns: which one Java keeps depends on the order of a `HashMap` | `io.deephaven.kafka.JsonImpl.JsonConsume#mapNonPointers` |
+| JSON text with a UTF-16 surrogate without its pair (`"\ud83d"`) where it would become a `String` cell, compact JSON or an `Instant`'s text (fails the table); Java keeps the lone surrogate, which a Rust string cannot hold | `java.lang.String` |
+| Text in an `Instant` column in a spelling the expression crate's `parseInstant` does not read yet (fails the table) | `io.deephaven.time.DateTimeUtils#parseInstant` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
 | `avro_spec`, `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#avroSpec`, `#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
+
+No longer refused since task 7.4.3: JSON columns of `char` and `Instant`, nested
+pointers and records that are arrays, fractions and text in numeric columns, objects and
+arrays in `String` and `Boolean` columns, integers of any size, several fields mapped to
+one column (now failing the table as in Java), a simple `byte[]` column.
+
+`KafkaTools.Consume#rawSpec` takes a Java `Deserializer` class, which no Python API of the
+reference reaches (`deephaven.stream.kafka.consumer` has no `raw_spec`); there is nothing
+to port it to here until Avro or Protobuf bring their own deserializers (7.4.7, 7.4.8).
 
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2
@@ -492,7 +539,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | --- | --- | --- | --- |
 | 7.4.1 | This design and the first slice | done here | |
 | 7.4.2 | Engine: public `stream_table` with a publisher, public `blink_to_append_only`, a callback when a table is released; `deephaven.stream.table_publisher`, `blink_to_append_only`; move this crate onto them | done (`tasks/7.4.2-stream-adapter.md`) | 7.4.1 |
-| 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | M | 7.4.1 |
+| 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | done (`tasks/7.4.3-kafka-json.md`); raw spec not reachable from Python | 7.4.1 |
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
 | 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
 | 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
