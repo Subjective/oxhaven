@@ -965,3 +965,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   package has no `Table.format_columns` yet, so table formats come first. Lesson: the replay
   gate needs the server built against the same Python as the venv (3.12 or later); two runs
   failed on that before the agent found it. Add to the brief.
+- Pull request 113 merged (7.8.3).
