@@ -275,6 +275,7 @@ handlers! {
     flatten { Flatten => Handler }
     head_by { HeadBy => HeadBy, TailBy => TailBy }
     head_tail { Head => Head, Tail => Tail }
+    ide { RunChartDownsample => RunChartDownsample }
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
@@ -295,3 +296,6 @@ handlers! {
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }
+
+/// `SeekRow` is not a table operation: it answers with a position.
+pub(super) use ide::seek_row;

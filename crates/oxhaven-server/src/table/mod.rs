@@ -511,12 +511,45 @@ macro_rules! table_service {
                 reply.wait().await
             }
 
-            /// Not part of the table service shell.
+            /// Behavior: `TableServiceGrpcImpl#seekRow`
             async fn seek_row(
                 &self,
-                _request: Request<SeekRowRequest>,
+                request: Request<SeekRowRequest>,
             ) -> Result<Response<SeekRowResponse>, Status> {
-                Err(Status::unimplemented("TableService SeekRow is not implemented"))
+                let session = current_session(&request)?;
+                let request = request.into_inner();
+                let ticket = request.source_id.clone().unwrap_or_default();
+                if ticket.ticket.is_empty() {
+                    return Err(Status::failed_precondition("No consoleId supplied"));
+                }
+                let export = self.router.resolve(Some(&session), &ticket.ticket, "sourceId")?;
+
+                let reply = Reply::new();
+                let fail = reply.completer();
+                let succeed = reply.completer();
+                session
+                    .non_export()?
+                    .require([export])
+                    .on_error(move |status| fail(Err(status)))
+                    .on_success(move |value| {
+                        succeed(
+                            value
+                                .downcast_ref::<SeekRowResponse>()
+                                .cloned()
+                                .ok_or_else(|| Status::internal("no row position")),
+                        )
+                    })
+                    .submit(move |values| {
+                        // Java casts and fails with a ClassCastException
+                        let Some(table) = values.first().and_then(ExportValue::as_table) else {
+                            return Err(ExportError::Internal(
+                                "the source of SeekRow is not a table".to_string(),
+                            ));
+                        };
+                        let result_row = ops::seek_row(table, &request)?;
+                        Ok(ExportValue::object(SeekRowResponse { result_row }))
+                    })?;
+                reply.wait().await
             }
         }
     };
