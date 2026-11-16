@@ -3,6 +3,8 @@
 
 use std::time::{Duration, Instant};
 
+use oxhaven_contracts::graph::UpdateGraph;
+
 use super::super::tests::Python;
 
 const SETUP: &str = "\
@@ -20,10 +22,12 @@ def raised(f):
     raise AssertionError('no error')
 ";
 
-/// Runs `code`, an assertion, until it holds: update cycles run between commands.
+/// Runs an update cycle, then `code`, an assertion, until it holds. The test server's graph
+/// runs a cycle only when asked.
 fn eventually(python: &Python, code: &str) {
     let deadline = Instant::now() + Duration::from_secs(20);
     loop {
+        python.server.state.graph.run_cycle();
         let error = python.console.evaluate(code).error;
         match error {
             None => return,
