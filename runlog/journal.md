@@ -1034,3 +1034,11 @@ Pull request 121 (Parquet metadata directories) merged on green. Decision on my 
 ## 2026-11-16T09:23Z
 
 The summary of items for the owner came back from Opus in 11 minutes and 79k tokens: 15 decisions with recommendations and reference tables. I corrected three statements that were out of date (seed 308 is left alone, the Object design is already started, pull request 121 merged) and sent it to the owner.
+
+## 2026-11-16T10:17Z
+
+Task 7.4.3 (Kafka JSON) reported from Opus: built and compared with Java on 146 tables, but three local gates did not finish because the disk filled twice (two other build directories held 9 GB). Opened as pull request 122 with that stated; CI runs the same gates and decides. It also found an overflow panic in the expression crate when digit text is read as an instant, to be fixed separately. Lesson: with this disk, two building agents at once is the safe number, three is the limit.
+
+## 2026-11-16T10:20Z
+
+Task 5.10 reported from Opus: Object, DayOfWeek and boolean[] columns; the formula gate fell from 48 to 24 differing cases. It ended at 358k tokens with piece 4 (sorting the time types) not started; verdict too large. Opened as pull request 123. Formula gate over the day: 294, 123, 48, 24.
