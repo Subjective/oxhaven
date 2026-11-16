@@ -3169,8 +3169,14 @@ fn makes_range(expr: &Expr) -> bool {
 
 /// Whether a value of `column_type` is an object this checker computes with only as one:
 /// the cells of an `Object` column and a `java.time.DayOfWeek`.
+///
+/// A cell of a column of tables is one too: a formula can compare it with `==` and `!=`,
+/// test it with `isNull` and pass it on; it is refused as text and in a method call.
 fn is_object(column_type: &ColumnType) -> bool {
-    matches!(column_type, ColumnType::Object(_) | ColumnType::DayOfWeek)
+    matches!(
+        column_type,
+        ColumnType::Object(_) | ColumnType::DayOfWeek | ColumnType::Table(_)
+    )
 }
 
 /// Whether a value of `column_type` can be a cell of an `Object` column: a class whose
@@ -3265,6 +3271,15 @@ fn object_operator(op: BinaryOp, left: Typed, right: Typed) -> Result<Typed, For
             } else {
                 typed(ColumnType::Boolean, Node::Not(Box::new(equals)))
             })
+        }
+        // The text of a table is its description, which this crate does not know.
+        BinaryOp::Add
+            if matches!(left.column_type, ColumnType::Table(_))
+                || matches!(right.column_type, ColumnType::Table(_)) =>
+        {
+            Err(unsupported(
+                "a table as text: io.deephaven.engine.table.impl.BaseTable#toString".to_string(),
+            ))
         }
         BinaryOp::Add
             if left.column_type == ColumnType::String
