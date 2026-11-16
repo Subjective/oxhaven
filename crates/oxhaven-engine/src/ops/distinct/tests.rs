@@ -643,3 +643,38 @@ fn random_updates_match_the_model() {
     }
     assert!(updates > at_least_for(1000, 0..60), "{updates} updates");
 }
+
+/// Behavior: java.time.ZonedDateTime#equals and java.time.Period#equals: one instant in
+/// two zones is two keys, and so are `P1Y` and `P12M`; nulls are one key.
+#[test]
+fn zoned_date_times_and_periods_are_keys_by_every_field() {
+    let zoned = crate::ops::zoned::tests::zoned(&[
+        Some((5, "UTC")),
+        Some((5, "Asia/Tokyo")),
+        Some((5, "UTC")),
+        None,
+        None,
+    ]);
+    let arrow::datatypes::DataType::Struct(fields) = ColumnType::Period.arrow_type() else {
+        unreachable!()
+    };
+    let int = |values: [i32; 5]| -> ArrayRef {
+        Arc::new(arrow::array::Int32Array::from(values.to_vec()))
+    };
+    let period: ArrayRef = Arc::new(arrow::array::StructArray::new(
+        fields,
+        vec![
+            int([1, 0, 1, 0, 7]),
+            int([0, 12, 0, 0, 7]),
+            int([0, 0, 0, 0, 7]),
+        ],
+        Some(vec![true, true, true, false, false].into()),
+    ));
+    let source = static_table(&[
+        ("Z", ColumnType::ZonedDateTime, zoned),
+        ("P", ColumnType::Period, period),
+    ]);
+    assert_eq!(distinct(&source, &["Z"]).row_set().size(), 3);
+    assert_eq!(distinct(&source, &["P"]).row_set().size(), 3);
+    assert_eq!(distinct(&source, &["Z", "P"]).row_set().size(), 3);
+}

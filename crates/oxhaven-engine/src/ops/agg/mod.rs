@@ -670,6 +670,33 @@ fn make_operator(
              java.lang.Comparable"
         );
     }
+    // Seen on Java 42.9: a `Period` is not a `Comparable`, and these aggregations fail with
+    // a `ClassCastException` once they compare two periods that are not null.
+    let periods = |column_type: &ColumnType| {
+        matches!(
+            column_type.list_element().unwrap_or(column_type),
+            ColumnType::Period
+        )
+    };
+    if periods(input_type)
+        && matches!(
+            spec,
+            AggSpec::Min
+                | AggSpec::Max
+                | AggSpec::Median { .. }
+                | AggSpec::Percentile { .. }
+                | AggSpec::CountDistinct { .. }
+                | AggSpec::Unique { .. }
+                | AggSpec::Distinct { .. }
+        )
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor",
+            "an ordering of a column of type {input_type:?}, which Java fails once it \
+             compares two periods: java.lang.ClassCastException: class java.time.Period \
+             cannot be cast to class java.lang.Comparable"
+        );
+    }
     match spec {
         AggSpec::Min | AggSpec::Max => typed_result("makeMinOrMaxOperator"),
         AggSpec::Median { .. } | AggSpec::Percentile { .. } => {
@@ -857,6 +884,22 @@ fn make_operator(
             let mut reads = Vec::with_capacity(columns.len() + 1);
             for name in columns {
                 let index = column(name)?;
+                let sort_type = &definition.columns()[index].column_type;
+                // A static parent's operator compares each row with the best so far, so
+                // Java fails only when it compares two periods that are not null
+                // (`SortedFirstLast` does the same). Other parents keep a sorted array,
+                // and more columns a tuple.
+                if periods(sort_type)
+                    && (kind != ParentKind::Static
+                        || columns.len() > 1
+                        || *sort_type != ColumnType::Period)
+                {
+                    unported!(
+                        "io.deephaven.engine.table.impl.by.SortedFirstOrLastChunkedOperator",
+                        "sorted first or last by a column of type {sort_type:?}, of a \
+                         refreshing parent or with other sort columns"
+                    );
+                }
                 sort.push(SortColumn {
                     source: parent.column(index),
                     column_type: definition.columns()[index].column_type.clone(),
