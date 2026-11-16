@@ -397,7 +397,13 @@ fn a_default_import_may_be_called_through_its_class() {
     table.assert("io.deephaven.time.DateTimeUtils.epochNanos(TS)", nanos);
     table.assert(
         "io.deephaven.function.Numeric.min(D, 0.25)",
-        doubles([Some(-0.5), Some(0.0), Some(0.25), Some(0.25), Some(f64::NAN)]),
+        doubles([
+            Some(-0.5),
+            Some(0.0),
+            Some(0.25),
+            Some(0.25),
+            Some(f64::NAN),
+        ]),
     );
     table.assert(
         "io.deephaven.function.Numeric.abs(I)",
@@ -440,4 +446,232 @@ fn a_column_comes_before_a_class_of_its_name() {
         FormulaError::Type(_)
     ));
     table.assert("StrictMath.sqrt(X)", doubles([Some(2.0)]));
+}
+
+/// The arrays of `formula`, one text per row, after a check of the element type.
+fn arrays(table: &TestTable, formula: &str, element: ColumnType) -> Vec<String> {
+    let (column_type, values) = table
+        .evaluate(formula)
+        .unwrap_or_else(|e| panic!("{formula} failed: {e}"));
+    assert_eq!(
+        column_type,
+        ColumnType::Array(Box::new(element)),
+        "type of {formula}"
+    );
+    assert_eq!(
+        *values.data_type(),
+        column_type.arrow_type(),
+        "Arrow type of {formula}"
+    );
+    (0..values.len())
+        .map(|row| arrow::util::display::array_value_to_string(&values, row).unwrap())
+        .collect()
+}
+
+/// Java's array creation: javac widens an element to the element type as it stands, so a
+/// null `byte` in an `int[]` is -128, and an element that holds the null value of the
+/// element type is a null element.
+#[test]
+fn an_array_is_created_from_its_elements() {
+    use ColumnType as C;
+    let table = table();
+    for (formula, element, expected) in [
+        (
+            "new int[]{I, I+1}",
+            C::Int,
+            ["[-1, 0]", "[0, 1]", "[, ]", "[2, 3]", "[2147483647, ]"],
+        ),
+        (
+            "new int[]{B, S}",
+            C::Int,
+            [
+                "[-1, -100]",
+                "[0, 0]",
+                "[-128, -32768]",
+                "[2, 200]",
+                "[3, 300]",
+            ],
+        ),
+        (
+            "new int[]{C}",
+            C::Int,
+            ["[65]", "[66]", "[65535]", "[68]", "[69]"],
+        ),
+        (
+            "new long[]{I, L}",
+            C::Long,
+            [
+                "[-1, -3]",
+                "[0, 0]",
+                "[-2147483648, ]",
+                "[2, 6]",
+                "[2147483647, 9223372036854775807]",
+            ],
+        ),
+        (
+            "new double[]{I, D}",
+            C::Double,
+            [
+                "[-1.0, -0.5]",
+                "[0.0, 0.0]",
+                "[-2147483648.0, ]",
+                "[2.0, 1.0]",
+                "[2147483647.0, NaN]",
+            ],
+        ),
+        ("new double[]{NULL_INT}", C::Double, ["[-2147483648.0]"; 5]),
+        ("new int[]{NULL_INT}", C::Int, ["[]"; 5]),
+        (
+            "new short[]{1, S}",
+            C::Short,
+            ["[1, -100]", "[1, 0]", "[1, ]", "[1, 200]", "[1, 300]"],
+        ),
+        (
+            "new String[]{null, T}",
+            C::String,
+            ["[, x-0]", "[, x-1]", "[, ]", "[, x-3]", "[, ]"],
+        ),
+        ("new int[3]", C::Int, ["[0, 0, 0]"; 5]),
+        ("new double[2]", C::Double, ["[0.0, 0.0]"; 5]),
+        ("new String[2]", C::String, ["[, ]"; 5]),
+    ] {
+        assert_eq!(arrays(&table, formula, element), expected, "{formula}");
+    }
+    table.assert("new int[]{I}.length", ints([Some(1); 5]));
+    table.assert("new int[]{I, 5}[1]", ints([Some(5); 5]));
+    table.assert(
+        "sum(new int[]{I, 5})",
+        longs([Some(4), Some(5), Some(5), Some(7), Some(2147483652)]),
+    );
+    table.assert(
+        "new double[]{D}[0]",
+        doubles([Some(-0.5), Some(0.0), None, Some(1.0), Some(f64::NAN)]),
+    );
+}
+
+/// What javac refuses in an array creation, and the arrays whose type no column has.
+#[test]
+fn an_array_java_cannot_create_is_refused() {
+    let table = table();
+    for formula in [
+        "new int[]{L}",
+        "new float[]{D}",
+        "new String[]{I}",
+        "new long[]{TS}",
+        "new int[]{null}",
+        "new int[]{}",
+        "new byte[]{I}",
+        "new byte[]{128}",
+    ] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula} gave {:?}",
+            table.compile_error(formula)
+        );
+    }
+    for (formula, construct) in [
+        ("new boolean[]{true}", "array creation new boolean[]"),
+        ("new Boolean[]{Z}", "array creation new Boolean[]"),
+        ("new Integer[]{I}", "array creation new Integer[]"),
+        ("new Object[]{T}", "array creation new Object[]"),
+        ("new int[2][2]", "array creation new int[][], of arrays"),
+        (
+            "new int[I]",
+            "array creation new int[n] with a length that is not a literal from 1 to 1024",
+        ),
+    ] {
+        assert_eq!(
+            table.compile_error(formula),
+            FormulaError::Unsupported(construct.into()),
+            "{formula}"
+        );
+    }
+}
+
+/// `new Integer(x)` and its relatives: the constructor is chosen and its argument
+/// converted as for a static method, and the formula's value is the primitive.
+#[test]
+fn a_boxed_value_is_constructed_from_its_primitive_or_from_text() {
+    let table = table();
+    table.assert(
+        "new Integer(I)",
+        ints([Some(-1), Some(0), None, Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "new java.lang.Integer(B)",
+        ints([Some(-1), Some(0), None, Some(2), Some(3)]),
+    );
+    table.assert(
+        "new Integer(C)",
+        ints([Some(65), Some(66), None, Some(68), Some(69)]),
+    );
+    table.assert(
+        "new Long(I)",
+        longs([Some(-1), Some(0), None, Some(2), Some(2147483647)]),
+    );
+    table.assert(
+        "new Double(F)",
+        doubles([Some(-0.5), Some(0.0), None, Some(1.0), Some(f64::NAN)]),
+    );
+    table.assert(
+        "new Byte(B)",
+        bytes([Some(-1), Some(0), None, Some(2), Some(3)]),
+    );
+    table.assert(
+        "new Short(S)",
+        shorts([Some(-100), Some(0), None, Some(200), Some(300)]),
+    );
+    table.assert(
+        "new Character(C)",
+        chars([Some('A'), Some('B'), None, Some('D'), Some('E')]),
+    );
+    table.assert(
+        "new Integer(N)",
+        ints([Some(-7), Some(0), Some(7), Some(14), Some(21)]),
+    );
+    table.assert("new Boolean(T)", booleans([Some(false); 5]));
+    table.assert("new Boolean(true)", booleans([Some(true); 5]));
+    table.assert("new String(\"a\")", texts(["a"; 5]));
+    table.assert("new String()", texts([""; 5]));
+    table.assert(
+        "new Integer(I) + 1",
+        ints([Some(0), Some(1), None, Some(3), None]),
+    );
+    // The constructors read a null object.
+    for formula in ["new String(T)", "new Boolean(Z)"] {
+        let error = table.evaluate(formula).unwrap_err();
+        assert!(
+            error.message.contains("NullPointerException"),
+            "{formula} gave {error:?}"
+        );
+    }
+    for (formula, construct) in [
+        (
+            "new Integer(L)",
+            "constructor new Integer() with these arguments",
+        ),
+        (
+            "new Short(B)",
+            "constructor new Short() with these arguments",
+        ),
+        (
+            "new Float(D)",
+            "constructor new Float() with these arguments",
+        ),
+        (
+            "new String(new char[]{'a'})",
+            "constructor new String() with these arguments",
+        ),
+        ("new Object()", "constructor new Object()"),
+        (
+            "new java.util.ArrayList()",
+            "constructor new java.util.ArrayList()",
+        ),
+    ] {
+        assert_eq!(
+            table.compile_error(formula),
+            FormulaError::Unsupported(construct.into()),
+            "{formula}"
+        );
+    }
 }

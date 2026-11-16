@@ -132,6 +132,8 @@ pub(crate) enum StaticFn {
     Parse,
     /// `valueOf` of a boxed class given its own primitive, which the formula unboxes again.
     Identity,
+    /// `new String(String)`, which reads its argument and so throws for null.
+    NonNull,
     IsNaN,
     IsInfinite,
     IsFinite,
@@ -564,7 +566,60 @@ static METHODS: &[Method] = &[
     method("String", "valueOf", &[P::Float], P::Str, StaticFn::Text),
     method("String", "valueOf", &[P::Double], P::Str, StaticFn::Text),
     method("String", "valueOf", &[P::Object], P::Str, StaticFn::Text),
+    // The constructors, which a formula calls with `new`. `new Float(double)` is not
+    // here: it narrows the value Java reserves for a null `double` to `-Infinity`.
+    method(
+        "Integer",
+        CONSTRUCTOR,
+        &[P::Int],
+        P::Int,
+        StaticFn::Identity,
+    ),
+    method("Integer", CONSTRUCTOR, &[P::Str], P::Int, StaticFn::Parse),
+    method("Long", CONSTRUCTOR, &[P::Long], P::Long, StaticFn::Identity),
+    method("Long", CONSTRUCTOR, &[P::Str], P::Long, StaticFn::Parse),
+    method(
+        "Float",
+        CONSTRUCTOR,
+        &[P::Float],
+        P::Float,
+        StaticFn::Identity,
+    ),
+    method("Float", CONSTRUCTOR, &[P::Str], P::Float, StaticFn::Parse),
+    method(
+        "Double",
+        CONSTRUCTOR,
+        &[P::Double],
+        P::Double,
+        StaticFn::Identity,
+    ),
+    method("Double", CONSTRUCTOR, &[P::Str], P::Double, StaticFn::Parse),
+    method(
+        "Boolean",
+        CONSTRUCTOR,
+        &[P::Boolean],
+        P::Boolean,
+        StaticFn::Identity,
+    ),
+    method(
+        "Boolean",
+        CONSTRUCTOR,
+        &[P::Str],
+        P::Boolean,
+        StaticFn::Parse,
+    ),
+    method(
+        "Character",
+        CONSTRUCTOR,
+        &[P::Char],
+        P::Char,
+        StaticFn::Identity,
+    ),
+    method("String", CONSTRUCTOR, &[P::Str], P::Str, StaticFn::NonNull),
 ];
+
+/// The name the constructors have in [`METHODS`], which no formula can write.
+pub(crate) const CONSTRUCTOR: &str = "<init>";
 
 /// The class a formula names as `name`, as [`Method::class`] has it: a class of `java.lang`
 /// by its simple name, since the package is imported, or by its full name.
@@ -613,7 +668,11 @@ pub(crate) fn resolve(
     arguments: &[Option<ColumnType>],
 ) -> Result<&'static Method, FormulaError> {
     let unsupported = |what: String| {
-        FormulaError::Unsupported(format!("static method call {class}.{name}(){what}"))
+        FormulaError::Unsupported(if name == CONSTRUCTOR {
+            format!("constructor new {class}(){what}")
+        } else {
+            format!("static method call {class}.{name}(){what}")
+        })
     };
     let Some(class) = class_named(class) else {
         return Err(unsupported(String::new()));
@@ -1019,6 +1078,13 @@ pub(crate) fn evaluate(
         StaticFn::Binary => a.strings(|at| format!("{:b}", a.longs(0).value(at))),
         StaticFn::Parse => parse(&a)?,
         StaticFn::Identity => a.arrays[0].clone(),
+        StaticFn::NonNull if a.arrays[0].null_count() > 0 => {
+            return Err(failure(
+                "java.lang.NullPointerException: Cannot read field \"value\" because \
+                 \"original\" is null",
+            ))
+        }
+        StaticFn::NonNull => a.arrays[0].clone(),
         StaticFn::IsNaN => a.booleans(|at| a.floating(0, at).is_nan()),
         StaticFn::IsInfinite => a.booleans(|at| a.floating(0, at).is_infinite()),
         StaticFn::IsFinite => a.booleans(|at| a.floating(0, at).is_finite()),

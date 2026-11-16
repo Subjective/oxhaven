@@ -7,10 +7,11 @@
 use super::{Kernel, Math, Parsed, TimeOrder};
 use crate::eval::numeric::{self, JavaPrimitive};
 use arrow::array::{
-    Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int32Array, Int64Array, PrimitiveArray,
-    TimestampNanosecondArray,
+    Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int32Array, Int64Array, ListArray,
+    PrimitiveArray, TimestampNanosecondArray,
 };
-use arrow::datatypes::{DataType, Float64Type, Int64Type, TimestampNanosecondType};
+use arrow::buffer::OffsetBuffer;
+use arrow::datatypes::{DataType, Field, Float64Type, Int64Type, TimestampNanosecondType};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 use std::sync::Arc;
@@ -745,8 +746,39 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         | Kernel::InstantLowerBin
         | Kernel::InstantUpperBin => time(kernel, arguments),
         Kernel::Vector(function) => super::vectors::evaluate(function, arguments),
+        Kernel::ArrayOf => array_of(arguments),
         _ => in_number_type!(arguments[0], |T| numeric::<T>(kernel, arguments, None)),
     }
+}
+
+/// One array per row, of that row's value of each argument in order.
+///
+/// Behavior: Java's array creation with an initializer, which
+/// `QueryLanguageParser#visit(ArrayCreationExpr)` prints as it is. An element that holds
+/// the value Java reserves for null in the element type is a null element, as it is in any
+/// array a client is sent.
+fn array_of(arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
+    let rows = arguments[0].len();
+    let width = arguments.len();
+    if rows
+        .checked_mul(width)
+        .is_none_or(|elements| i32::try_from(elements).is_err())
+    {
+        return Err(failure("a column of arrays holds more than 2^31 elements"));
+    }
+    let arrays: Vec<&dyn Array> = arguments.iter().map(|array| array.as_ref()).collect();
+    let indices: Vec<(usize, usize)> = (0..rows)
+        .flat_map(|row| (0..width).map(move |argument| (argument, row)))
+        .collect();
+    let elements = arrow::compute::interleave(&arrays, &indices)
+        .map_err(|error| failure(error.to_string()))?;
+    let field = Arc::new(Field::new("", elements.data_type().clone(), true));
+    Ok(Arc::new(ListArray::new(
+        field,
+        OffsetBuffer::from_lengths(std::iter::repeat_n(width, rows)),
+        elements,
+        None,
+    )))
 }
 
 /// `java.lang.Math#pow`, which differs from C's `pow` in two cases: with a NaN exponent the

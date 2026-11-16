@@ -197,6 +197,7 @@ pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
         "long[]" => "list<int64>",
         "float[]" => "list<float32>",
         "double[]" => "list<float64>",
+        "java.lang.String[]" => "list<string>",
         _ => return None,
     })
 }

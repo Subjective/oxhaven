@@ -1,6 +1,3 @@
-docs-python/conceptual.arrays-vs-vectors.L26.9.0	java-accepts	object creation (new)
-docs-python/conceptual.arrays-vs-vectors.L26.9.1	java-accepts	setup: object creation (new)
-docs-python/conceptual.arrays-vs-vectors.L26.9.2	java-accepts	setup: object creation (new)
 docs-python/conceptual.column-types.L222.5.1	java-accepts	function timeZone()
 docs-python/conceptual.column-types.L222.5.2	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L222.5.3	java-accepts	setup: function timeZone()
@@ -12,22 +9,6 @@ docs-python/conceptual.column-types.L278.6.1	java-accepts	function timeZone()
 docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L395.6.1	java-accepts	object creation (new)
-docs-python/conceptual.column-types.L395.6.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L395.6.3	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L411.6.0	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L411.6.1	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L411.6.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L411.6.3	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L428.6.1	java-accepts	object creation (new)
-docs-python/conceptual.column-types.L428.6.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L428.6.3	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L447.6.0	java-accepts	object creation (new)
-docs-python/conceptual.column-types.L447.6.1	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L447.6.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L447.6.3	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L447.6.4	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L447.6.5	java-accepts	setup: object creation (new)
 docs-python/conceptual.column-types.L488.6.3	java-accepts	function parseDouble()
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
 docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	function epochDaysToLocalDate()
@@ -84,7 +65,7 @@ docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	se
 docs-python/getting-started.crash-course.query-strings.L300.15.0	java-accepts	method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
-docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	object creation (new)
+docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	constructor new java.net.URL()
 docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
 docs-python/getting-started.crash-course.time-calendars.L73.24.1	java-accepts	function epochMillis()
 docs-python/getting-started.crash-course.time-calendars.L73.24.2	java-accepts	setup: function epochMillis()
@@ -106,7 +87,7 @@ docs-python/getting-started.crash-course.time-calendars.L121.4.6	java-accepts	se
 docs-python/getting-started.crash-course.time-calendars.L121.4.7	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L121.4.8	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.docker-install.L304.8.0	java-fails	static method call org.example.MathFns.square()
-docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	object creation (new)
+docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	constructor new URL()
 docs-python/how-to-guides.casting.L122.9.0	java-fails	static method call MyClass.change_value()
 docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	function parseDuration()
 docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: function parseDuration()
@@ -115,11 +96,7 @@ docs-python/how-to-guides.date-time-literals.L106.9.0	java-accepts	time literal 
 docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	function parseDuration()
 docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	function parsePeriod()
 docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: where
-docs-python/how-to-guides.grouping-data.L120.4.1	java-accepts	setup: object creation (new)
-docs-python/how-to-guides.grouping-data.L147.4.1	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	static method call org.codehaus.plexus.util.StringUtils.abbreviate()
-docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	object creation (new)
-docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	function parseDuration()
 docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: function parseDuration()
 docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: function parseDuration()
@@ -133,7 +110,6 @@ docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call 
 docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
 docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	function absAvg()
-docs-python/how-to-guides.work-with-arrays.L280.9.0	java-accepts	object creation (new)
 docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
 docs-python/how-to-guides.work-with-strings.L113.9.2	java-accepts	setup: function parseFloat()
 docs-python/how-to-guides.work-with-strings.L113.9.3	java-accepts	setup: function parseFloat()
@@ -304,8 +280,6 @@ grid-function/java.14	java-fails	method call String.replace()
 grid-function/java-guarded.14	java-accepts	method call String.replace()
 grid-function/java.16	java-fails	method call String.hashCode()
 grid-function/java-guarded.16	java-accepts	method call String.hashCode()
-grid-function/java.28	java-accepts	object creation (new)
-grid-function/java.29	java-accepts	object creation (new)
 grid-literal/band.string.null	java-fails	null literal as an operand of &
 grid-literal/band.null.string	java-fails	null literal as an operand of &
 grid-literal/bor.string.null	java-fails	null literal as an operand of |
@@ -468,9 +442,6 @@ java-engine/QueryTableAggregationTest.L231.1.1	java-accepts	method call String.h
 java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: method call String.hashCode()
 java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
-java-engine/QueryTableRangeJoinTest.L185.0.0	java-accepts	object creation (new)
-java-engine/QueryTableRangeJoinTest.L185.0.1	java-accepts	setup: object creation (new)
-java-engine/QueryTableRangeJoinTest.L186.0.0	java-accepts	object creation (new)
 java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1000.0.1	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1059.0.1	java-accepts	setup: where
@@ -491,13 +462,6 @@ java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteg
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
 java-engine/TestWindowCheck.L308.0.0	java-fails	time literal '2022-07-01T00:00 NY'
 java-formula-column/L94.0	java-fails	time literal '2019-04-11T09:30 NY'
-java-formula-column/L137.0	java-accepts	object creation (new)
-java-formula-column/L138.0	java-accepts	object creation (new)
-java-formula-column/L139.0	java-accepts	object creation (new)
-java-formula-column/L140.0	java-accepts	object creation (new)
-java-formula-column/L141.0	java-accepts	object creation (new)
-java-formula-column/L142.0	java-accepts	object creation (new)
-java-formula-column/L143.0	java-accepts	object creation (new)
 java-formula-column/L329.0	java-fails	cast to Object
 java-formula-column/L226.e	java-fails	static method call java.util.Collections.singletonList()
 java-formula-column/L230.e	java-fails	static method call Arrays.asList()
@@ -505,9 +469,8 @@ java-formula-column/L234.e	java-accepts	field access .Normal
 java-formula-column/L238.e	java-fails	field access .class
 java-formula-column/L242.e	java-accepts	field access .JANUARY
 java-formula-column/L246.e	java-fails	static method call Calendar.getAvailableCalendarTypes()
-java-formula-column/L301.e	java-accepts	object creation (new)
-java-formula-column/L305.e	java-accepts	object creation (new)
-java-formula-column/L309.e	java-fails	object creation (new)
+java-formula-column/L305.e	java-accepts	constructor new String() with these arguments
+java-formula-column/L309.e	java-fails	constructor new HashSet()
 java-parser/L158.0	java-accepts	fixture column of type int32[]
 java-parser/L162.0	java-accepts	fixture column of type int32[]
 java-parser/L166.0	java-accepts	fixture column of type int32[]
@@ -700,8 +663,7 @@ py-server/test_parquet.L466.19.1	java-accepts	setup: static method call java.tim
 py-server/test_parquet.L466.19.2	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
 py-server/test_parquet.L466.19.3	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
 py-server/test_parquet.L520.19.0	java-accepts	static method call java.time.LocalTime.of()
-py-server/test_table.L1307.13.1	java-accepts	object creation (new)
-py-server/test_table.L1308.13.1	java-accepts	object creation (new)
+py-server/test_table.L1307.13.1	java-accepts	array creation new Object[]
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR
 py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()

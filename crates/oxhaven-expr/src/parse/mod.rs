@@ -23,6 +23,10 @@ pub(crate) use instant::{duration_nanos, period_days};
 
 pub(crate) const INDEX_METHOD: &str = "[]";
 
+/// What the name of the call that stands for an object or array creation starts with. A
+/// name with a space is none a formula can write.
+pub(crate) const NEW: &str = "new ";
+
 /// The method name given to `receiver.length`, the length of a Java array, which is
 /// parsed as a method call on `receiver` without arguments. No formula can spell it.
 pub(crate) const LENGTH_FIELD: &str = ".length";
@@ -501,12 +505,76 @@ impl Parser {
                     "i" => Expr::RowVariable(RowVariable::I),
                     "ii" => Expr::RowVariable(RowVariable::Ii),
                     "k" => Expr::RowVariable(RowVariable::K),
-                    "new" => return Err(unsupported("object creation (new)")),
+                    "new" => return self.creation(),
                     _ => Expr::Column(name),
                 })
             }
             _ => Err(self.unexpected()),
         }
+    }
+
+    /// What follows `new`: a class and its constructor's arguments, an array type and the
+    /// array's elements in braces, or an element type and the array's length.
+    ///
+    /// The tree has no node for either. Each becomes a call of a function no formula can
+    /// name, which the type checker knows: `new Integer`, `new int[]` and `new int[n]`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)` and
+    /// `#visit(ArrayCreationExpr)`.
+    fn creation(&mut self) -> Result<Expr, FormulaError> {
+        let mut name = String::new();
+        loop {
+            match self.advance() {
+                Some(Token::Identifier(part)) => name.push_str(&part),
+                _ => return Err(syntax("expected a type name after new")),
+            }
+            if !self.eat(".") {
+                break;
+            }
+            name.push('.');
+        }
+        if self.peek_symbol() == Some("(") {
+            return Ok(Expr::Call {
+                function: format!("{NEW}{name}"),
+                arguments: self.arguments()?,
+            });
+        }
+        let of_arrays =
+            |name: &str| unsupported(format!("array creation new {name}[][], of arrays"));
+        self.expect("[")?;
+        if !self.eat("]") {
+            let length = self.expression()?;
+            self.expect("]")?;
+            if self.peek_symbol() == Some("[") {
+                return Err(of_arrays(&name));
+            }
+            return Ok(Expr::Call {
+                function: format!("{NEW}{name}[n]"),
+                arguments: vec![length],
+            });
+        }
+        if self.peek_symbol() == Some("[") {
+            return Err(of_arrays(&name));
+        }
+        self.expect("{")?;
+        let mut elements = Vec::new();
+        if !self.eat("}") {
+            loop {
+                elements.push(self.expression()?);
+                if self.eat("}") {
+                    break;
+                }
+                self.expect(",")?;
+                // Java allows a comma after the last element.
+                if self.eat("}") {
+                    break;
+                }
+            }
+        }
+        Ok(Expr::Call {
+            function: format!("{NEW}{name}[]"),
+            arguments: elements,
+        })
     }
 
     /// Parses a parenthesized argument list.
@@ -1059,7 +1127,7 @@ mod tests {
             ("(Integer[]) A", "cast to Integer[]"),
             ("(Double).NaN", "field access .NaN"),
             ("(A + B).x", "field access .x"),
-            ("new String(`a`)", "object creation (new)"),
+            ("new int[2][2]", "array creation new int[][], of arrays"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];
         for (text, construct) in cases {

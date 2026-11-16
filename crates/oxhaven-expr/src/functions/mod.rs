@@ -376,6 +376,8 @@ pub(crate) enum Kernel {
     /// A static method of a class of `java.lang`, called through the class. The evaluator
     /// supplies the number of rows and makes null what holds the null value of its type.
     Static(&'static statics::Method),
+    /// `new T[] { a, b }`: an array of the arguments, which all have the element type.
+    ArrayOf,
 }
 
 impl Kernel {

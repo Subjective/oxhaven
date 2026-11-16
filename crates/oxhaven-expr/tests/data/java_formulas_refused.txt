@@ -80,7 +80,6 @@ java-accepts	update	`a😀b`.substring(2)	the result holds an unpaired UTF-16 su
 java-fails	update	B.booleanValue()	method call .booleanValue() on a value of type Boolean
 java-fails	update	T.toString()	method call .toString() on a value of type Instant
 java-fails	update	T.getNano()	method call .getNano() on a value of type Instant
-java-accepts	update	new String(`a`)	object creation (new)
 java-rejects	where	null	null literal outside ==, !=, ?:, a cast and string concatenation
 java-accepts	update	0x1p-1023	hexadecimal floating point literal 0x1p-1023
 java-accepts	update	0x1p-1074	hexadecimal floating point literal 0x1p-1074

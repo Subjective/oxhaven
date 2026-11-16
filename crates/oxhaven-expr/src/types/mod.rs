@@ -1452,6 +1452,135 @@ impl Checker<'_> {
         }
     }
 
+    /// `new` and what follows it, as [`crate::parse`] names it: `Integer` with the
+    /// constructor's arguments, `int[]` with the elements, or `int[n]` with the length.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)` chooses the constructor
+    /// as `#visit(MethodCallExpr)` chooses a static method, and converts the arguments
+    /// the same way; a formula's value of a boxed type is a column of the primitive type.
+    /// `#visit(ArrayCreationExpr)` prints the creation with each element as the parser
+    /// has it, and javac converts the elements by assignment: plain widening, which does
+    /// not know null, and an `int` literal to a narrower type that holds it. Java 42.9
+    /// was run for each form.
+    fn creation(&mut self, created: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if let Some(name) = created.strip_suffix("[]") {
+            let element = array_element(name)?;
+            if arguments.is_empty() {
+                return Err(type_error(format!(
+                    "new {name}[] {{}}: Java cannot tell the type of an array without elements"
+                )));
+            }
+            let elements = arguments
+                .iter()
+                .map(|argument| self.array_element(name, &element, argument))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(array_of(element, elements));
+        }
+        if let Some(name) = created.strip_suffix("[n]") {
+            let element = array_element(name)?;
+            // Java fills the array with zeros, or with nulls where the elements are
+            // objects.
+            let length = match arguments {
+                [Expr::Literal(Literal::Int(length))] if (1..=1024).contains(length) => *length,
+                _ => {
+                    return Err(unsupported(format!(
+                        "array creation new {name}[n] with a length that is not a literal \
+                         from 1 to 1024"
+                    )))
+                }
+            };
+            let filler = match element {
+                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
+                _ => convert(
+                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
+                    &element,
+                ),
+            };
+            return Ok(array_of(element, vec![filler; length as usize]));
+        }
+        let class = created.strip_prefix("java.lang.").unwrap_or(created);
+        match (class, arguments) {
+            ("String", []) => Ok(typed(
+                ColumnType::String,
+                Node::Literal(Literal::String(String::new())),
+            )),
+            // `new Byte(byte)` and `new Short(short)` take their own type only, and the
+            // formula's value is the argument.
+            ("Byte" | "Short", [argument]) if !is_null_literal(argument) => {
+                let argument = self.check(argument)?;
+                let own = if class == "Byte" {
+                    ColumnType::Byte
+                } else {
+                    ColumnType::Short
+                };
+                if argument.column_type == own {
+                    Ok(argument)
+                } else {
+                    Err(unsupported(format!(
+                        "constructor new {class}() with these arguments"
+                    )))
+                }
+            }
+            ("Boolean" | "Character" | "Double" | "Float" | "Integer" | "Long" | "String", _) => {
+                self.static_call(class, functions::statics::CONSTRUCTOR, arguments)
+            }
+            _ => Err(unsupported(format!("constructor new {created}()"))),
+        }
+    }
+
+    /// One element of `new name[] { ... }`, converted to the element type as javac
+    /// converts it.
+    fn array_element(
+        &mut self,
+        name: &str,
+        element: &ColumnType,
+        argument: &Expr,
+    ) -> Result<Typed, FormulaError> {
+        use ColumnType as C;
+        let of_objects = matches!(element, C::String | C::Instant);
+        if is_null_literal(argument) {
+            return if of_objects {
+                Ok(typed(element.clone(), Node::Null))
+            } else {
+                Err(type_error(format!(
+                    "incompatible types: null cannot be an element of {name}[]"
+                )))
+            };
+        }
+        let checked = self.check(argument)?;
+        let from = &checked.column_type;
+        if from == element {
+            return Ok(checked);
+        }
+        let widens = match element {
+            C::Short => *from == C::Byte,
+            C::Int => matches!(from, C::Byte | C::Short | C::Char),
+            C::Long => matches!(from, C::Byte | C::Short | C::Char | C::Int),
+            C::Float => matches!(from, C::Byte | C::Short | C::Char | C::Int | C::Long),
+            C::Double => matches!(
+                from,
+                C::Byte | C::Short | C::Char | C::Int | C::Long | C::Float
+            ),
+            _ => false,
+        };
+        if widens {
+            return Ok(typed(element.clone(), Node::Widen(Box::new(checked))));
+        }
+        let holds = |value: i32| match element {
+            C::Byte => i8::try_from(value).is_ok(),
+            C::Short => i16::try_from(value).is_ok(),
+            C::Char => u16::try_from(value).is_ok(),
+            _ => false,
+        };
+        match argument {
+            Expr::Literal(Literal::Int(value)) if holds(*value) => Ok(convert(checked, element)),
+            _ => Err(type_error(format!(
+                "incompatible types: {} cannot be an element of {name}[]",
+                java_name(from)
+            ))),
+        }
+    }
+
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:
     /// a static method of the default imports. [`functions::resolve`] chooses the overload.
     fn call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
@@ -1470,6 +1599,9 @@ impl Checker<'_> {
         arguments: &[Expr],
         externals: bool,
     ) -> Result<Typed, FormulaError> {
+        if let Some(created) = function.strip_prefix(crate::parse::NEW) {
+            return self.creation(created, arguments);
+        }
         if function == "isNull" {
             let [argument] = arguments else {
                 return Err(type_error(format!(
@@ -1564,6 +1696,34 @@ impl Checker<'_> {
             Resolved::Cast(to) => self.cast(&to, &arguments[0]),
         }
     }
+}
+
+/// The element type of the array `new name[]` creates. `boolean[]` and the arrays of boxed
+/// values and of other objects are types no column has.
+fn array_element(name: &str) -> Result<ColumnType, FormulaError> {
+    Ok(match name {
+        "byte" => ColumnType::Byte,
+        "char" => ColumnType::Char,
+        "short" => ColumnType::Short,
+        "int" => ColumnType::Int,
+        "long" => ColumnType::Long,
+        "float" => ColumnType::Float,
+        "double" => ColumnType::Double,
+        "String" | "java.lang.String" => ColumnType::String,
+        "Instant" | "java.time.Instant" => ColumnType::Instant,
+        other => return Err(unsupported(format!("array creation new {other}[]"))),
+    })
+}
+
+/// The array of `elements`, which have the type `element`.
+fn array_of(element: ColumnType, elements: Vec<Typed>) -> Typed {
+    typed(
+        ColumnType::Array(Box::new(element)),
+        Node::Call {
+            kernel: Kernel::ArrayOf,
+            arguments: elements,
+        },
+    )
 }
 
 /// `operand` converted to `to` as a cast converts it.
