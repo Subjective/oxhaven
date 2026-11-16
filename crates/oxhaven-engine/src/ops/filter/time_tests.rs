@@ -146,5 +146,8 @@ fn zoned_date_times_match_with_their_zone_and_range_by_compare_to() {
     // Row 4 is this instant in New York, whose local time is earlier than in UTC.
     assert_eq!(kept(&table, "Z < '2024-03-10T07:00:00 UTC'"), [2, 4, 5]);
     assert_eq!(kept(&table, "Z <= '2024-03-10T07:00:00 UTC'"), [2, 4, 5]);
+    // Row 5 is this instant in UTC, whose offset is less than Tokyo's although its zone id
+    // sorts after `Asia/Tokyo` (as `where_z_le` of the recorded `time_types` scenario).
+    assert_eq!(kept(&table, "Z < '2024-03-10T09:00:00 Asia/Tokyo'"), [2, 5]);
     assert_eq!(kept(&table, "Z >= null"), [0, 1, 2, 3, 4, 5]);
 }
