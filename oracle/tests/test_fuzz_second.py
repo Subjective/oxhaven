@@ -112,9 +112,9 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "4dbe2d4da16fdf2d"),
+    ("formulas2", "5a8c3347f5ea23dc"),
     ("partitions", "b939f8aa7befc1ff"),
-    ("all2", "8995ce61582b45f0"),
+    ("all2", "c4fdb60aee6f34f3"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the seeds of
@@ -262,6 +262,7 @@ def test_what_a_finding_restricts_is_not_drawn():
                 if kind == "lazy_update":
                     seen["R1"] += 1
                     rest = SHIFT.sub("", text)
+                    assert not re.search(r"\(\w+_\[", text), (doc["name"], op)
                     assert not ROW_VARIABLE.search(rest) and "_[" not in rest and (
                         "_." not in text), (doc["name"], op)
                 if kind == "select" and SHIFT.search(text):
@@ -295,7 +296,10 @@ def test_what_a_finding_restricts_is_not_drawn():
                     if found and found.group(2) not in ("null", "true", "false"):
                         assert not {types.get(found.group(1)), types.get(found.group(2))} & {
                             "bool", "timestamp"}, (doc["name"], op)
-    for name in ("J1", "J2", "R1", "R2", "R4", "R5", "R6", "R7"):
+                        if found.group(2) in types:
+                            seen["J4"] += 1
+                            assert op["source"] not in live, (doc["name"], op)
+    for name in ("J1", "J2", "J4", "R1", "R2", "R4", "R5", "R6", "R7"):
         assert seen[name] > 5, (name, seen[name])
 
 

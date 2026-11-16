@@ -65,10 +65,12 @@ RESTRICTIONS: dict[str, str] = {
     "J1": "stops_reference: no count where of update_by that compares a boolean or "
           "timestamp column with a column (the reference shuts down)",
     "J2": "second_formula: no fixed-distance read in a select of anything but an input table",
+    "J4": "stops_reference: no count where of update_by that compares two columns, on a "
+          "refreshing table (the reference fails it when the first row is read)",
     "D4": "filter: no zone the reference refuses in a comparison of a timestamp column "
           "with a literal",
     "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
-          "a fixed-distance read",
+          "a fixed-distance read outside a call",
     "R2": "filter: only UTC in a comparison of a timestamp column with a literal",
     "R3": "_NO_ZONES: no zone written as an offset",
     "R4": "build_agg: initial groups of a refreshing aggregation only with preserve_empty",
@@ -230,7 +232,7 @@ class _Second(_Wide):
             read = f"{a}_[{index}]"
             if kind in NUMERIC and self.chance(0.4):
                 return f"{a} - {read}", _promote(kind, kind)
-            if self.chance(0.15):
+            if self.chance(0.15) and not lazy:  # R1: a read inside a call is not rewritten
                 return f"isNull({read})", "bool"
             return read, kind
         if shape == "column_array":
@@ -560,7 +562,11 @@ class _Second(_Wide):
         if not found or found.group(2) in ("null", "true", "false"):
             return False
         kinds = dict(source.columns)
-        return any(kinds.get(found.group(n)) in ("bool", "timestamp") for n in (1, 2))
+        if any(kinds.get(found.group(n)) in ("bool", "timestamp") for n in (1, 2)):
+            return True
+        # J4: with any other two columns the reference fails when the first row is read
+        # ('"keys" is null'), which on a refreshing table without rows is in a later cycle.
+        return source.live and found.group(2) in kinds
 
     # ------------------------------------------------------------ statistics
 

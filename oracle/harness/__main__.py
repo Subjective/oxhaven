@@ -456,7 +456,7 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
         print("variants: recorded (what the fuzzer built when the seeds in the run log were "
               "found; --variants all draws every variant of each operation)")
     else:
-        print("variants: all")
+        print(f"variants: {args.variants}")
     if args.keep_going:
         return _fuzz_all(args, ops, target_a, target_b)
     triage = _Triage(args, target_a)
