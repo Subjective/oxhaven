@@ -318,7 +318,8 @@ pub(crate) struct Checked {
 /// Java makes the vector an `ObjectVector` (`io.deephaven.engine.table.vectors.ColumnVectors#of`)
 /// and the column one of `ObjectVector` without an element type, which a client receives
 /// as strings: seen on Java 42.9 for `update("R = Z_")` of a `Boolean` column, a list of
-/// `"true"` and `"false"`, and for one of an `Instant` column.
+/// `"true"` and `"false"`, for one of an `Instant` column, and for one of a column of
+/// vectors, a list of `"[1,3,6]"` and the like.
 fn refuse_object_column_array(root: &Typed) -> Result<(), FormulaError> {
     fn is_column_array(expr: &Typed) -> bool {
         match &expr.node {
@@ -332,7 +333,10 @@ fn refuse_object_column_array(root: &Typed) -> Result<(), FormulaError> {
     let object = matches!(
         &root.column_type,
         ColumnType::Vector(element)
-            if matches!(**element, ColumnType::Boolean | ColumnType::Instant)
+            if matches!(
+                **element,
+                ColumnType::Boolean | ColumnType::Instant | ColumnType::Vector(_)
+            )
     );
     if object && is_column_array(root) {
         return Err(unsupported(format!(
@@ -642,19 +646,31 @@ impl Checker<'_> {
             return Err(type_error(format!("cannot find column {name}")));
         };
         let element = self.definition.columns()[index].column_type.clone();
-        let known = matches!(
-            element,
-            ColumnType::Boolean
-                | ColumnType::Byte
-                | ColumnType::Char
-                | ColumnType::Short
-                | ColumnType::Int
-                | ColumnType::Long
-                | ColumnType::Float
-                | ColumnType::Double
-                | ColumnType::String
-                | ColumnType::Instant
-        );
+        let scalar = |column_type: &ColumnType| {
+            matches!(
+                column_type,
+                ColumnType::Boolean
+                    | ColumnType::Byte
+                    | ColumnType::Char
+                    | ColumnType::Short
+                    | ColumnType::Int
+                    | ColumnType::Long
+                    | ColumnType::Float
+                    | ColumnType::Double
+                    | ColumnType::String
+                    | ColumnType::Instant
+            )
+        };
+        // The column array of a vector column is an `ObjectVector` of its vectors. One of a
+        // column of `ObjectVector`s of `Boolean` or `Instant` has elements without an element
+        // type in Java, which a client receives as strings (seen on Java 42.9 for
+        // `update("X = T_[i]")` after a `group_by`), so it stays refused.
+        let known = match &element {
+            ColumnType::Vector(inner) => {
+                scalar(inner) && !matches!(**inner, ColumnType::Boolean | ColumnType::Instant)
+            }
+            other => scalar(other),
+        };
         if !known {
             return Err(unsupported(format!(
                 "column array {name}_ of a column of type {element:?}"

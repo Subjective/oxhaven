@@ -2,7 +2,7 @@
 
 Behavior: `deephaven.stream.kafka.consumer` (the names, the signatures and the checks made
 in Python); `io.deephaven.kafka.KafkaTools` for the rest. `docs/KAFKA.md` lists what is
-built: `consume` with simple and JSON specs. What is not raises `NotImplementedError` with
+built: `consume` with simple, JSON and Avro specs. What is not raises `NotImplementedError` with
 the name of the Java method, inside the `DHError` the reference raises.
 """
 
@@ -34,8 +34,9 @@ ALL_PARTITIONS_SEEK_TO_END = {-1: SEEK_TO_END}
 
 
 class KeyValueSpec:
-    """How the key or the value of a record becomes columns. Made by `simple_spec` and
-    `json_spec`, or one of `KeyValueSpec.IGNORE` and `KeyValueSpec.FROM_PROPERTIES`."""
+    """How the key or the value of a record becomes columns. Made by `simple_spec`,
+    `json_spec` and `avro_spec`, or one of `KeyValueSpec.IGNORE` and
+    `KeyValueSpec.FROM_PROPERTIES`."""
 
     def __init__(self, j_spec):
         # what `_oxhaven.kafka_consume` reads; the reference holds a Java object here
@@ -201,9 +202,29 @@ def avro_spec(
     mapping: Optional[dict[str, str]] = None,
     mapped_only: bool = False,
 ) -> KeyValueSpec:
-    """A spec for Avro records."""
+    """A spec for records in Avro, in Confluent's wire format. `schema` is the schema as
+    JSON text, or the subject of a schema registry whose `schema_version` is read, from
+    `schema.registry.url` in the config of `consume`. Each field becomes a column, nested
+    records flattened (`a.b`, named `a__b`); `mapping` names the columns of the fields it
+    lists, and with `mapped_only` only those fields become columns.
+
+    Behavior: `deephaven.stream.kafka.consumer.avro_spec`, which reads a schema given as
+    text at once (`KafkaTools#getAvroSchema`)
+    """
     try:
-        raise NotPorted("io.deephaven.kafka.KafkaTools.Consume#avroSpec")
+        spec = {"kind": "avro"}
+        if mapping:
+            pairs = [(str(f), None if c is None else str(c)) for f, c in mapping.items()]
+            spec["mapping"] = {"only" if mapped_only else "identity": pairs}
+        else:
+            spec["mapping"] = "direct"
+        if schema.strip().startswith("{"):
+            _engine.native.kafka_avro_schema(schema)
+            spec["schema"] = schema
+        else:
+            spec["subject"] = schema
+            spec["version"] = None if schema_version is None else str(schema_version)
+        return KeyValueSpec(spec)
     except Exception as e:
         raise DHError(e, "failed to create a Kafka key/value spec") from e
 

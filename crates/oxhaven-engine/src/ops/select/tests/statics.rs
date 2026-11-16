@@ -313,12 +313,45 @@ fn a_row_variable_beside_an_earlier_column_in_a_renumbered_select_is_unported() 
     let _ = select(&parent, &["X = A + 1", "Y = X + k"], &WithRowVariables);
 }
 
+/// A lazy formula is remembered by the row variables it uses and the columns it reads,
+/// as in Java, whose key is the arguments of `applyFormulaPerItem`.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.select.DhFormulaColumn#generateAppropriateGetMethod"
-)]
-fn a_lazy_formula_with_a_row_variable_is_unported() {
-    let _ = lazy_update(&flat(3), &["K = k"], &WithRowVariables);
+fn a_lazy_formula_with_a_row_variable_is_remembered_by_row_and_value() {
+    let result = lazy_update(&keyed(&[3, 7, 9]), &["K = k", "I = i + A"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "K"), ["3", "7", "9"]);
+    assert_eq!(values(&*result, "I"), ["10", "21", "32"]);
+
+    let parent: Arc<dyn Table> = ReferenceTable::new_static(
+        sym_a_b(),
+        RowSet::from_keys([2, 4, 6, 8, 10]),
+        vec![
+            strings(["a", "b", "a", "b", "c"]),
+            longs([1, 2, 1, 2, 1]),
+            longs([5, 5, 5, 5, 5]),
+        ],
+    );
+    let counting = Counting::new();
+    let formulas = [
+        "X = A + B + ii",
+        "Y = A + k * 0",
+        "S = A_.size() + A",
+        "P = A_[i * 1]",
+    ];
+    let result = lazy_update(&parent, &formulas, &counting).unwrap();
+    // A result for each row, whatever the values: the position or the key is in the key.
+    assert_eq!(values(&*result, "X"), ["6", "8", "8", "10", "10"]);
+    assert_eq!(counting.take(), 5);
+    assert_eq!(values(&*result, "Y"), ["1", "2", "1", "2", "1"]);
+    assert_eq!(counting.take(), 5);
+    // A column array is no part of the key: one result for each value of `A`.
+    assert_eq!(values(&*result, "S"), ["6", "7", "6", "7", "6"]);
+    assert_eq!(counting.take(), 2);
+    assert_eq!(values(&*result, "P"), ["1", "2", "1", "2", "1"]);
+    assert_eq!(counting.take(), 5);
+    for name in ["X", "Y", "S", "P"] {
+        values(&*result, name);
+    }
+    assert_eq!(counting.take(), 0);
 }
 
 #[test]
