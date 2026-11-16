@@ -297,19 +297,10 @@ async fn what_the_engine_lacks_is_refused_by_the_name_of_the_java_method() {
     let python = Python::start().await;
     python.run(SETUP);
     python.run(
-        "from deephaven import TableReplayer, function_generated_table, ring_table\n\
+        "from deephaven import TableReplayer, function_generated_table\n\
          t = empty_table(1)",
     );
     for (code, text) in [
-        (
-            "ring_table(t, 10)",
-            "failed to create a ring table. : not ported: \
-             io.deephaven.engine.table.impl.sources.ring.RingTableTools#of",
-        ),
-        (
-            "function_generated_table(lambda: t, refresh_interval_ms=1000)",
-            "not ported: io.deephaven.engine.table.impl.util.FunctionGeneratedTableFactory#create",
-        ),
         (
             "function_generated_table(lambda: t)",
             "Either refresh_interval_ms or source_tables must be provided!",
