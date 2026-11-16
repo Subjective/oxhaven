@@ -1,10 +1,23 @@
 //! Time literals: single-quoted text that Java replaces before it parses the formula.
 //!
-//! Only literals that denote an instant in UTC are read. Java accepts many more spellings
-//! (other time zones, epoch numbers, durations, periods, local dates and times, time zone
-//! names); those are reported as unsupported, by their text.
+//! Instants in UTC, in a time zone Java has an alias for or in a region of the IANA
+//! database, durations and periods are read. Java accepts more spellings (offsets from UTC,
+//! epoch numbers, local dates and times, time zone names); those are reported as
+//! unsupported, by their text.
 
+use chrono::{LocalResult, NaiveDate, Offset, TimeZone};
 use oxhaven_contracts::expr::FormulaError;
+
+/// What a time literal denotes.
+#[derive(Clone, PartialEq, Debug)]
+pub(crate) enum TimeValue {
+    /// Nanoseconds since the epoch.
+    Instant(i64),
+    /// A `java.time.Duration`, which Java makes with `DateTimeUtils#parseDuration`.
+    Duration,
+    /// A `java.time.Period`, which Java makes with `DateTimeUtils#parsePeriod`.
+    Period,
+}
 
 /// A single-quoted span of the formula that Java treats as a time literal.
 pub(crate) struct TimeLiteral {
@@ -12,8 +25,8 @@ pub(crate) struct TimeLiteral {
     pub(crate) start: usize,
     /// Byte offset just past the closing quote.
     pub(crate) end: usize,
-    /// Nanoseconds since the epoch, or why the literal is not accepted.
-    pub(crate) value: Result<i64, FormulaError>,
+    /// What the literal is, or why it is not accepted.
+    pub(crate) value: Result<TimeValue, FormulaError>,
 }
 
 /// Finds the time literals of a formula.
@@ -43,20 +56,248 @@ pub(crate) fn time_literals(text: &str) -> Vec<TimeLiteral> {
 
 const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
+/// A time zone of a time literal.
+enum Zone {
+    Utc,
+    Region(chrono_tz::Tz),
+}
+
+/// The zone a time literal names after its space, when this server knows that Java knows it.
+///
+/// Behavior: `io.deephaven.time.TimeZoneAliases#zoneId`, which is `ZoneId.of(name, aliases)`
+/// with the aliases of `default_time_zone_aliases.csv`. Java 42.9 rejects `EST`, `NY` and
+/// `et`. Only the aliases, `UTC`, `GMT` and names with a `/` are looked up here, case
+/// sensitively as in Java; an offset such as `+01:00` or `UTC+1`, which Java reads, is left
+/// unsupported.
+fn zone(name: &str) -> Option<Zone> {
+    let region = match name {
+        "UTC" => return Some(Zone::Utc),
+        "ET" => "America/New_York",
+        "CT" => "America/Chicago",
+        "MT" => "America/Denver",
+        "PT" => "America/Los_Angeles",
+        "HK" => "Asia/Hong_Kong",
+        "JP" => "Asia/Tokyo",
+        "LON" => "Europe/London",
+        "GMT" => "GMT",
+        other if other.contains('/') => other,
+        _ => return None,
+    };
+    region.parse().ok().map(Zone::Region)
+}
+
+/// The seconds since the epoch of a local date and time in `zone`.
+///
+/// Behavior: `java.time.LocalDateTime#atZone`: a time that occurs twice, when clocks are
+/// set back, is the earlier of the two, and a time that the clocks skip is moved later by
+/// the length of the gap.
+fn zoned_seconds(
+    zone: &chrono_tz::Tz,
+    date: (i64, i64, i64),
+    time: (i64, i64, i64),
+) -> Option<i64> {
+    let (year, month, day) = date;
+    let (hour, minute, second) = time;
+    let local = NaiveDate::from_ymd_opt(year as i32, month as u32, day as u32)?.and_hms_opt(
+        hour as u32,
+        minute as u32,
+        second as u32,
+    )?;
+    Some(match zone.from_local_datetime(&local) {
+        LocalResult::Single(only) => only.timestamp(),
+        LocalResult::Ambiguous(earlier, _) => earlier.timestamp(),
+        LocalResult::None => {
+            // The offset in force before the gap, read a day ahead of it.
+            let before = local.checked_sub_signed(chrono::Duration::days(1))?;
+            let offset = zone.offset_from_utc_datetime(&before).fix();
+            local.and_utc().timestamp() - i64::from(offset.local_minus_utc())
+        }
+    })
+}
+
+/// Reads the content of a time literal.
+///
+/// Behavior: `io.deephaven.time.TimeLiteralReplacedExpression#convertExpression`, which
+/// tries an instant, then a period, then a duration, and then the kinds this server does
+/// not read.
+fn parse(content: &str) -> Result<TimeValue, FormulaError> {
+    match parse_instant(content) {
+        Ok(nanos) => Ok(TimeValue::Instant(nanos)),
+        Err(error) => {
+            if period_days(content).is_some() {
+                Ok(TimeValue::Period)
+            } else if duration_nanos(content).is_some() {
+                Ok(TimeValue::Duration)
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+/// The text after an optional sign and the `P` every period and duration starts with, and
+/// whether the sign is `-`.
+fn after_p(content: &str) -> Option<(bool, &str)> {
+    let (negative, rest) = match content.as_bytes().first()? {
+        b'-' => (true, &content[1..]),
+        b'+' => (false, &content[1..]),
+        _ => (false, content),
+    };
+    let rest = rest.strip_prefix(['P', 'p'])?;
+    Some((negative, rest))
+}
+
+/// Takes `[-+]?digits` followed by the letter `unit`, in either case, off the front of
+/// `text`; `None` when `text` does not start so.
+fn component(text: &str, unit: u8) -> Option<(i64, &str)> {
+    let bytes = text.as_bytes();
+    let signed = usize::from(matches!(bytes.first(), Some(b'-' | b'+')));
+    let digits = bytes[signed..]
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
+        .count();
+    let end = signed + digits;
+    if digits == 0 || !bytes.get(end)?.eq_ignore_ascii_case(&unit) {
+        return None;
+    }
+    Some((text[..end].parse().ok()?, &text[end + 1..]))
+}
+
+/// The days of a period that has no years and no months, or `Some(None)` for a period that
+/// has them; `None` when the text is not a period.
+///
+/// Behavior: `java.time.Period#parse`: `[-+]?P[nY][nM][nW][nD]` in either case, each `n`
+/// with its own sign, at least one of them present. A week is seven days.
+pub(crate) fn period_days(content: &str) -> Option<Option<i32>> {
+    let (negative, mut rest) = after_p(content)?;
+    let mut found = [None; 4];
+    for (slot, unit) in found.iter_mut().zip(*b"YMWD") {
+        if let Some((value, after)) = component(rest, unit) {
+            *slot = Some(value);
+            rest = after;
+        }
+    }
+    if !rest.is_empty() || found.iter().all(Option::is_none) {
+        return None;
+    }
+    let [years, months, weeks, days] = found.map(|value| value.unwrap_or(0));
+    let sign = if negative { -1 } else { 1 };
+    let total = weeks
+        .checked_mul(7)
+        .and_then(|from_weeks| from_weeks.checked_add(days))
+        .and_then(|days| days.checked_mul(sign))
+        .and_then(|days| i32::try_from(days).ok());
+    Some(match total {
+        Some(days) if years == 0 && months == 0 => Some(days),
+        _ => None,
+    })
+}
+
+/// The nanoseconds of a duration, or `Some(None)` for one a `long` of nanoseconds cannot
+/// hold or that is written as `PThh:mm[:ss]`; `None` when the text is not a duration.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseDuration`, which is
+/// `java.time.Duration#parse` for `[-+]?P[nD][T[nH][nM][n[.f]S]]` in either case: each `n`
+/// has its own sign, at least one is present, one follows a `T`, and the fraction of up to
+/// nine digits has the sign of its seconds.
+pub(crate) fn duration_nanos(content: &str) -> Option<Option<i64>> {
+    let (negative, rest) = after_p(content)?;
+    if let Some(clock) = rest.strip_prefix(['T', 't']) {
+        // `PT1:30:00`, Deephaven's own spelling.
+        let clock = clock.strip_prefix('-').unwrap_or(clock);
+        let plausible = clock.contains(':')
+            && clock.starts_with(|c: char| c.is_ascii_digit())
+            && clock
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == ':' || c == '.');
+        if plausible {
+            return Some(None);
+        }
+    }
+    let mut total: Option<i128> = Some(0);
+    let mut add = |nanos: Option<i128>| total = total.zip(nanos).map(|(a, b)| a + b);
+    let mut any = false;
+    let mut rest = rest;
+    if let Some((days, after)) = component(rest, b'D') {
+        add(Some(i128::from(days) * 86_400 * NANOS_PER_SECOND));
+        any = true;
+        rest = after;
+    }
+    if !rest.is_empty() {
+        rest = rest.strip_prefix(['T', 't'])?;
+        if rest.is_empty() {
+            return None;
+        }
+        for (unit, seconds) in [(b'H', 3_600), (b'M', 60)] {
+            if let Some((value, after)) = component(rest, unit) {
+                add(Some(i128::from(value) * seconds * NANOS_PER_SECOND));
+                any = true;
+                rest = after;
+            }
+        }
+        if !rest.is_empty() {
+            // Seconds, with a fraction after `.` or `,`.
+            let end = rest.len() - 1;
+            if !rest.as_bytes()[end].eq_ignore_ascii_case(&b'S') {
+                return None;
+            }
+            let (whole, fraction) = match rest[..end].split_once(['.', ',']) {
+                Some((whole, fraction)) => (whole, fraction),
+                None => (&rest[..end], ""),
+            };
+            let digits = whole.trim_start_matches(['-', '+']);
+            let signs = whole.len() - digits.len();
+            if signs > 1
+                || digits.is_empty()
+                || !digits.bytes().all(|b| b.is_ascii_digit())
+                || fraction.len() > 9
+                || !fraction.bytes().all(|b| b.is_ascii_digit())
+            {
+                return None;
+            }
+            let seconds: Option<i128> = whole.parse::<i64>().ok().map(i128::from);
+            let mut nanos = 0_i128;
+            for place in 0..9 {
+                let digit = fraction
+                    .as_bytes()
+                    .get(place)
+                    .map_or(0, |d| i128::from(d - b'0'));
+                nanos = nanos * 10 + digit;
+            }
+            if whole.starts_with('-') {
+                nanos = -nanos;
+            }
+            add(seconds.map(|seconds| seconds * NANOS_PER_SECOND + nanos));
+            any = true;
+        }
+    }
+    if !any {
+        return None;
+    }
+    let total = total.map(|total| if negative { -total } else { total });
+    // The smallest long is the value Java reserves for null.
+    Some(
+        total
+            .and_then(|total| i64::try_from(total).ok())
+            .filter(|nanos| *nanos != i64::MIN),
+    )
+}
+
 /// Reads the content of a time literal as an instant.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#parseZonedDateTime`, for
-/// these spellings only: `yyyy-MM-ddTHH:mm[:ss[.f]] UTC`, the same with `Z` directly after
-/// the time in place of ` UTC` (`java.time.ZonedDateTime#parse`), and `yyyy-MM-dd UTC` or
-/// `yyyy-MM-ddT UTC`, which is midnight. Fields have exactly the widths shown and `f` is one
-/// to nine digits. `Z` after a space is not a time zone to
-/// `io.deephaven.time.TimeZoneAliases#zoneId`, so Java rejects it.
+/// these spellings only: `yyyy-MM-ddTHH:mm[:ss[.f]] ZONE` with a zone [`zone`] knows, the
+/// same with `Z` directly after the time in place of the zone
+/// (`java.time.ZonedDateTime#parse`), and `yyyy-MM-dd ZONE` or `yyyy-MM-ddT ZONE`, which is
+/// midnight. Fields have exactly the widths shown and `f` is one to nine digits. `Z` after
+/// a space is not a time zone to `io.deephaven.time.TimeZoneAliases#zoneId`, so Java
+/// rejects it.
 ///
 /// An instant that Java cannot store in a column is unsupported: Java can still compare
 /// with it. `DateTimeUtils#epochNanos` refuses every instant from epoch second
 /// `Long.MAX_VALUE / 1_000_000_000` on, which is the last 0.85 seconds a long of
 /// nanoseconds could hold.
-fn parse(content: &str) -> Result<i64, FormulaError> {
+fn parse_instant(content: &str) -> Result<i64, FormulaError> {
     let unsupported = || FormulaError::Unsupported(format!("time literal '{content}'"));
     let invalid = || {
         FormulaError::Syntax(format!(
@@ -90,13 +331,21 @@ fn parse(content: &str) -> Result<i64, FormulaError> {
     if rest.ends_with(" Z") {
         return Err(invalid());
     }
-    let (hour, minute, second, nanos) = if matches!(rest, " UTC" | "T UTC") {
+    // Java takes the zone from the first space on.
+    let (clock, zone) = match rest.split_once(' ') {
+        Some((clock, name)) => match zone(name) {
+            Some(zone) => (clock, zone),
+            None => return Err(unsupported()),
+        },
+        None => match rest.strip_suffix('Z') {
+            Some(clock) if clock.len() > 1 => (clock, Zone::Utc),
+            _ => return Err(unsupported()),
+        },
+    };
+    let (hour, minute, second, nanos) = if matches!(clock, "" | "T") {
         (0, 0, 0, 0)
     } else {
-        let Some(time) = rest
-            .strip_prefix('T')
-            .and_then(|time| time.strip_suffix(" UTC").or_else(|| time.strip_suffix('Z')))
-        else {
+        let Some(time) = clock.strip_prefix('T') else {
             return Err(unsupported());
         };
         let time = time.as_bytes();
@@ -155,7 +404,17 @@ fn parse(content: &str) -> Result<i64, FormulaError> {
         return Err(unsupported());
     }
 
-    let seconds = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second;
+    let seconds = match &zone {
+        Zone::Utc => {
+            days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second
+        }
+        Zone::Region(region) => {
+            match zoned_seconds(region, (year, month, day), (hour, minute, second)) {
+                Some(seconds) => seconds,
+                None => return Err(unsupported()),
+            }
+        }
+    };
     let total = i128::from(seconds) * NANOS_PER_SECOND + i128::from(nanos);
     // The smallest long is the value Java reserves for a null instant.
     match i64::try_from(total) {
@@ -216,7 +475,7 @@ mod tests {
     use super::*;
 
     fn value(content: &str) -> Result<i64, FormulaError> {
-        parse(content)
+        parse_instant(content)
     }
 
     /// Expected values are `java.time.Instant` epoch seconds times 10^9 plus nanoseconds;
@@ -257,11 +516,91 @@ mod tests {
         }
     }
 
+    /// Expected values are what Java 42.9 returned for the literal in a formula.
+    #[test]
+    fn instants_in_a_time_zone_are_read_as_java_reads_them() {
+        let cases = [
+            ("2024-01-01T00:00:00 ET", 1_704_085_200_000_000_000),
+            ("2024-01-01 ET", 1_704_085_200_000_000_000),
+            ("2024-01-01T ET", 1_704_085_200_000_000_000),
+            (
+                "2024-01-01T00:00 America/Chicago",
+                1_704_088_800_000_000_000,
+            ),
+            ("2024-01-01T00:00:00 GMT", 1_704_067_200_000_000_000),
+            ("2024-01-01T00:00:00 JP", 1_704_034_800_000_000_000),
+            (
+                "2024-01-01T00:00:00 Europe/London",
+                1_704_067_200_000_000_000,
+            ),
+            ("2015-01-01T00:00:00 ET", 1_420_088_400_000_000_000),
+            // The hour the clocks skip is moved later by the hour.
+            ("2024-03-10T02:30:00 ET", 1_710_055_800_000_000_000),
+            (
+                "2024-03-10T01:59:59.999999999 ET",
+                1_710_053_999_999_999_999,
+            ),
+            // The hour that occurs twice is its first occurrence.
+            ("2024-11-03T01:30:00 ET", 1_730_611_800_000_000_000),
+        ];
+        for (content, expected) in cases {
+            assert_eq!(value(content), Ok(expected), "{content}");
+        }
+    }
+
+    #[test]
+    fn periods_and_durations_are_told_apart_as_java_tells_them() {
+        for (content, expected) in [
+            ("P1d", TimeValue::Period),
+            ("P1D", TimeValue::Period),
+            ("P2W", TimeValue::Period),
+            ("P1Y", TimeValue::Period),
+            ("P1M", TimeValue::Period),
+            ("-P1D", TimeValue::Period),
+            ("PT1m", TimeValue::Duration),
+            ("PT1H", TimeValue::Duration),
+            ("P1DT1H", TimeValue::Duration),
+            ("PT1.5S", TimeValue::Duration),
+            ("pt1H30m", TimeValue::Duration),
+            ("PT1:30:00", TimeValue::Duration),
+        ] {
+            assert_eq!(parse(content), Ok(expected), "{content}");
+        }
+        assert_eq!(period_days("P2W3D"), Some(Some(17)));
+        assert_eq!(period_days("-P1D"), Some(Some(-1)));
+        assert_eq!(period_days("P1M"), Some(None));
+        assert_eq!(period_days("P1Y2D"), Some(None));
+        assert_eq!(period_days("P"), None);
+        assert_eq!(period_days("PT1H"), None);
+        assert_eq!(duration_nanos("PT1m"), Some(Some(60_000_000_000)));
+        assert_eq!(duration_nanos("P1DT1H"), Some(Some(90_000_000_000_000)));
+        assert_eq!(duration_nanos("PT-1.5S"), Some(Some(-1_500_000_000)));
+        assert_eq!(duration_nanos("-PT1H"), Some(Some(-3_600_000_000_000)));
+        assert_eq!(duration_nanos("PT0.000000001S"), Some(Some(1)));
+        assert_eq!(duration_nanos("PT1:30:00"), Some(None));
+        assert_eq!(duration_nanos("P99999999999D"), Some(None));
+        for content in [
+            "PT",
+            "P",
+            "P1DT",
+            "PT1",
+            "PT1X",
+            "PT1.0000000001S",
+            "PT1H2D",
+        ] {
+            assert_eq!(duration_nanos(content), None, "{content}");
+        }
+    }
+
     #[test]
     fn other_time_literals_are_named() {
         for content in [
             "2023-11-14T22:13:20 NY",
-            "2023-11-14T22:13:20 America/New_York",
+            "2023-11-14T22:13:20 EST",
+            "2023-11-14T22:13:20 et",
+            "2023-11-14T22:13:20 America/Nowhere",
+            "2023-11-14T22:13:20 +01:00",
+            "2023-11-14T22:13:20 UTC+1",
             "2023-11-14T22:13:20+01:00",
             "2023-11-14",
             "2023-11-14T22:13:20",
@@ -271,8 +610,6 @@ mod tests {
             "2023-11-14T22:13:20.1234567890 UTC",
             "2023-11-14t22:13:20 UTC",
             "1700000000",
-            "PT1H",
-            "P1D",
             "12:30",
             "UTC",
             // Java's resolver adjusts these instead of rejecting them.

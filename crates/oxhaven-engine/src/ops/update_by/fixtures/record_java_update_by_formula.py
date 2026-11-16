@@ -294,6 +294,10 @@ def static_cases():
     case([multi("1R = sum(I)", 2, 0)])
     case([multi("R = sum(I)", 2, 0), multi("R = sum(L)", 2, 0)])
     case([multi("R = sum(I)", 2, 0), {"op": "cum_sum", "columns": ["R = I"]}])
+    # An operator on the vectors of a window gives an array of what it gives each element.
+    for formula in ("R = sum(I * 2)", "R = sum(I + L2)", "R = sum(D * F)"):
+        for by in ((), ("K",)):
+            case([multi(formula, 3, 1)], by)
     return cases
 
 
@@ -376,9 +380,6 @@ UNPORTED = [
     each("q[5]", ["R = I"], 3, 1),
     each("q.subVector(0, 1)", ["R = I"], 3, 1),
     each("q.get(1)", ["R = S"], 3, 1),
-    multi("R = sum(I * 2)", 3, 1),
-    multi("R = sum(I + L2)", 3, 1),
-    multi("R = sum(D * F)", 3, 1),
     multi("R = S.get(0).length()", 3, 1),
     multi("R = I[0] + D.get(1)", 3, 1),
 ]
