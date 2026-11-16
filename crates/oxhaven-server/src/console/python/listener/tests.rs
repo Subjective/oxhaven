@@ -701,3 +701,128 @@ worker.start()
     python.run("assert rounds >= 3, rounds\nassert added == list(range(30)), added");
     assert!(!python.table("made").is_failed());
 }
+
+/// What Java 42.9 answered for a partitioned table and liveness scopes: a scope takes one,
+/// and none releases it (`tasks/7.10.1-js-plugins.md`).
+#[tokio::test]
+async fn a_liveness_scope_takes_a_partitioned_table_and_never_releases_it() {
+    let python = Python::start().await;
+    python.run(SETUP);
+    python.run(
+        r#"
+src = input_table({'K': dtypes.int32, 'V': dtypes.int32}, key_cols='K')
+src.add(kv([1, 2, 3], [10, 20, 30]))
+fixed = empty_table(6).update(['K = i % 3', 'V = i'])
+def usable(pt):
+    return (pt.table.size, len(pt.constituent_tables), pt.merge().size, pt.keys().size)
+for table, rows in ((fixed, 6), (src, 3)):
+    pt = table.partition_by('K')
+    # managed and released, twice: Java manages it again without complaint
+    for _ in range(2):
+        scope = LivenessScope()
+        scope.manage(pt)
+        scope.release()
+    scope = LivenessScope()
+    scope.manage(pt)
+    scope.unmanage(pt)
+    LivenessScope().unmanage(pt)
+    with liveness_scope() as inner:
+        preserved = table.partition_by('K')
+        inner.preserve(preserved)
+    with liveness_scope():
+        scoped = table.partition_by('K')
+    outer = LivenessScope()
+    with liveness_scope():
+        handed = table.partition_by('K')
+        outer.manage(handed)
+    outer.release()
+    for each in (pt, preserved, scoped, handed):
+        assert usable(each) == (3, 3, rows, 3), usable(each)
+assert raised(lambda: LivenessScope().manage(5)) == (
+    'DHError', "Provided referent isn't a LivenessReferent or a JObjectWrapper around one")
+"#,
+    );
+}
+
+/// `deephaven.server.executors` as Java 42.9 answered: two names, one thread behind both,
+/// the tasks in the order they were submitted, and a failure of a task seen by no one.
+#[tokio::test]
+async fn a_task_is_run_by_the_one_thread_of_both_executors() {
+    let python = Python::start().await;
+    python.run(SETUP);
+    python.run(
+        r#"
+from deephaven.server import executors
+assert executors.executor_names() == ['serial', 'concurrent']
+has = executors.has_executor
+assert (has('serial'), has('concurrent'), has('fast'), has(5)) == (True, True, False, False)
+assert raised(lambda: executors.submit_task('fast', lambda: None)) == ('KeyError', "'fast'")
+assert raised(lambda: executors.submit_task(None, lambda: None)) == ('KeyError', 'None')
+main = threading.current_thread()
+seen, running, done = [], [], threading.Event()
+def task(i):
+    def run():
+        running.append(i)
+        if i == 0:
+            time.sleep(0.2)
+        seen.append((i, len(running), threading.current_thread() is main))
+        running.pop()
+        if i == 2:
+            raise ValueError('seen by no one')
+        if i == 5:
+            done.set()
+    return run
+for i in range(6):
+    if i == 3:
+        # what is no function is taken, and fails unseen
+        assert executors.submit_task('serial', 5) is None
+        assert executors.submit_task('concurrent', lambda x: None) is None
+    assert executors.submit_task('serial' if i % 2 else 'concurrent', task(i)) is None
+assert done.wait(20)
+# one at a time, in the order of submission, on a thread of its own
+assert seen == [(i, 1, False) for i in range(6)], seen
+assert raised(lambda: executors._register_named_java_executor('serial', None)) == (
+    'DHError', 'Executor with name serial already registered')
+kind, text = raised(lambda: executors._register_named_java_executor('other', None))
+assert kind == 'NotPorted' and 'PythonDeephavenSession#registerJavaExecutor' in text, text
+assert executors.executor_names() == ['serial', 'concurrent']
+
+# a listener hands its work to a task, as a plugin's does, and the task reads the table
+src = input_table({'K': dtypes.int32, 'V': dtypes.int32}, key_cols='K')
+sizes, told = [], threading.Event()
+def later():
+    sizes.append(src.where('K > 0').size)
+    told.set()
+handle = listen(src, lambda update, is_replay: executors.submit_task('concurrent', later))
+src.add(kv([1, 2], [10, 20]))
+assert told.wait(20) and sizes == [2], sizes
+handle.stop()
+"#,
+    );
+}
+
+/// The business calendars are refused by the Java method each function stands for.
+#[tokio::test]
+async fn a_business_calendar_is_refused_by_the_name_of_its_java_method() {
+    let python = Python::start().await;
+    python.run(SETUP);
+    python.run(
+        r#"
+from deephaven import calendar as cal
+calendars = 'not ported: io.deephaven.time.calendar.Calendars#'
+for call, message, method in (
+    (cal.calendar, 'failed to get the default calendar.', 'calendar'),
+    (lambda: cal.calendar('USNYSE'), 'failed to get the default calendar.', 'calendar'),
+    (cal.calendar_name, 'failed to get the default calendar name.', 'calendarName'),
+    (cal.calendar_names, 'failed to obtain the available calendar names.', 'calendarNames'),
+    (lambda: cal.set_calendar('X'), "failed to set the default calendar name to 'X'", 'setCalendar'),
+    (lambda: cal.remove_calendar('X'), "failed to remove calendar 'X'", 'removeCalendar'),
+    (lambda: cal.add_calendar('/x.calendar'), "failed to add calendar from file '/x.calendar'", 'addCalendarFromFile'),
+    (lambda: cal.add_calendar(object()), 'failed to add calendar', 'addCalendar'),
+):
+    kind, text = raised(call)
+    assert kind == 'DHError' and text.startswith(message) and text.endswith(calendars + method), text
+assert raised(lambda: cal.add_calendar(None)) == ('DHError', 'cal must be specified')
+"#,
+    );
+}

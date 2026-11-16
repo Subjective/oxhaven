@@ -213,6 +213,26 @@ path, with links followed, to be inside the storage directory.
 Nothing else of the storage service is covered. The recorded cases are `DIFFERENCES` in
 `crates/oxhaven-server/src/storage/root_tests.rs`.
 
+### A9. Symbolic links that lead out of a JS plugin's directory
+
+Approved by the owner on 2026-11-16.
+
+Java copies a JS plugin's directory when the plugin is registered and serves the copy without
+login (`server/jetty-11/src/main/java/io/deephaven/server/jetty11/JsPluginsZipFilesystem.java:
+JsPluginsZipFilesystem#add`). The copy follows symbolic links, so a link in the directory to
+any file the server can read, outside the directory or in another plugin, is served.
+
+Rule: Oxhaven copies a link only when its real location is inside the plugin's directory.
+
+- A link that leads out of the directory is not copied: a request for it is answered 404 and
+  a warning is logged when the plugin is registered, where Java serves the target.
+- A plugin whose `main` is such a link is still listed in the manifest, and its main file is
+  404.
+
+Nothing else of the JS plugin routes is covered. The recorded case is
+`a_link_of_a_js_plugin_is_followed_only_inside_its_directory` in
+`crates/oxhaven-server/src/web/tests.rs`.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same

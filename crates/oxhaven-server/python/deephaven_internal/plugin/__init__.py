@@ -29,4 +29,4 @@ def initialize_all_and_register_into() -> None:
         if entry_point.value.partition(":")[0].strip() == "deephaven.pandasplugin":
             continue
         entry_point.load().register_into(callback)
-    _oxhaven.log("INFO", f"Registered plugins: objectType={callback.object_types},js=0\n")
+    _oxhaven.log("INFO", f"Registered plugins: objectType={callback.object_types},js={callback.js_plugins}\n")

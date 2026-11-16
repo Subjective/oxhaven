@@ -1656,6 +1656,14 @@ class PartitionedTable:
         """Whether the underlying table is refreshing."""
         return self.table.is_refreshing
 
+    def _liveness_release(self) -> bool:
+        """A liveness scope may be given a partitioned table (`manage`, `preserve`,
+        `unmanage`) and never releases it: the answer is that something else holds it.
+        On Java 42.9 a partitioned table, static or refreshing, was usable after every
+        scope that had managed it was released, also one that was made in the scope
+        (`deephaven.liveness_scope`)."""
+        return False
+
     @property
     def key_columns(self) -> List[str]:
         """The names of the key columns."""
