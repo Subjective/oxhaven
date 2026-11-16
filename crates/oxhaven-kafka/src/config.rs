@@ -175,9 +175,28 @@ impl ClientSettings {
             }
         }
         let group = property(config, "group.id").map(str::to_owned);
+        if group
+            .as_deref()
+            .is_some_and(|group| group.trim().is_empty())
+        {
+            // Behavior: org.apache.kafka.clients.consumer.internals.ConsumerUtils, where
+            // the group of a consumer is read
+            return Err(KafkaError::Invalid(
+                "org.apache.kafka.common.errors.InvalidGroupIdException: The configured \
+                 group.id should not be an empty string or whitespace."
+                    .to_owned(),
+            ));
+        }
+        if let Some(level) = property(config, "isolation.level") {
+            if level != "read_committed" && level != "read_uncommitted" {
+                let why = "String must be one of: read_committed, read_uncommitted";
+                return Err(config_exception("isolation.level", level, why));
+            }
+        }
         let reset = match property(config, "auto.offset.reset") {
             None => Reset::Latest,
-            Some(text) => match text.to_ascii_lowercase().as_str() {
+            // As Java, in lower case only.
+            Some(text) => match text {
                 "earliest" => Reset::Earliest,
                 "latest" => Reset::Latest,
                 "none" => Reset::None,
@@ -193,8 +212,11 @@ impl ClientSettings {
                     return Err(config_exception(
                         "auto.offset.reset",
                         text,
-                        "Invalid value. The value must be either 'earliest', 'latest', \
-                         'none' or of the format 'by_duration:<PnDTnHnMn.nS.>'.",
+                        &format!(
+                            "Invalid value `{text}` for configuration auto.offset.reset. \
+                             The value must be either 'earliest', 'latest', 'none' or of \
+                             the format 'by_duration:<PnDTnHnMn.nS.>'."
+                        ),
                     ))
                 }
             },
@@ -311,7 +333,7 @@ mod tests {
             config.extend(pairs(more));
             ClientSettings::new(&config).unwrap()
         };
-        let settings = grouped(&[("auto.offset.reset", "NONE")]);
+        let settings = grouped(&[("auto.offset.reset", "none")]);
         assert_eq!(settings.group.as_deref(), Some("g"));
         assert_eq!(settings.reset, Reset::None);
         assert_eq!(settings.client.get("group.id"), Some("g"));
@@ -338,8 +360,13 @@ mod tests {
         assert!(text(&[]).contains("Missing required configuration \"bootstrap.servers\""));
         assert!(text(&[BROKER, ("enable.auto.commit", "true")])
             .contains("enable.auto.commit cannot be set to true when default group id"));
-        assert!(text(&[BROKER, ("auto.offset.reset", "sometimes")])
-            .contains("Invalid value sometimes for configuration auto.offset.reset"));
+        for reset in ["sometimes", "EARLIEST"] {
+            let expected = format!("Invalid value {reset} for configuration auto.offset.reset");
+            assert!(text(&[BROKER, ("auto.offset.reset", reset)]).contains(&expected));
+        }
+        assert!(text(&[BROKER, ("group.id", " ")]).contains("InvalidGroupIdException"));
+        assert!(text(&[BROKER, ("isolation.level", "READ_COMMITTED")])
+            .contains("String must be one of: read_committed, read_uncommitted"));
         assert!(text(&[BROKER, ("max.poll.records", "0")]).contains("Value must be at least 1"));
         assert!(text(&[BROKER, ("enable.auto.commit", "yes")])
             .contains("Expected value to be either true or false"));

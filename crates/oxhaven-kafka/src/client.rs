@@ -6,7 +6,7 @@
 //! group named in `group.id` is only where positions are committed to and read from.
 //! `docs/KAFKA.md`, "The client library", says how it is built and what is left off.
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use bytes::Bytes;
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -38,42 +38,31 @@ fn broker_error(what: &str, error: impl std::fmt::Display) -> KafkaError {
     KafkaError::Broker(format!("{what}: {error}"))
 }
 
-/// The partitions of `topic`, in order. A topic the broker does not have has none.
+/// The partitions of `topic`, in order. A topic the broker does not have has none, also
+/// when this very question makes the broker create it: the table then never has rows, as
+/// in Java (seen in the probes of `docs/KAFKA.md`).
 ///
-/// Behavior: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor, which asks
-/// again while a topic it has just made the broker create has no leader yet
+/// Behavior: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor
 fn partitions_of(
     consumer: &BaseConsumer,
     servers: &str,
     topic: &str,
     timeout: Duration,
 ) -> Result<Vec<i32>, KafkaError> {
-    let deadline = Instant::now() + timeout;
-    loop {
-        let left = deadline.saturating_duration_since(Instant::now());
-        let metadata = consumer
-            .fetch_metadata(Some(topic), left)
-            .map_err(|error| {
-                broker_error(
-                    &format!("no broker of bootstrap.servers={servers:?} answers"),
-                    error,
-                )
-            })?;
-        let Some(found) = metadata.topics().iter().find(|found| found.name() == topic) else {
-            return Ok(Vec::new());
-        };
-        let no_leader_yet = matches!(
-            found.error().map(RDKafkaErrorCode::from),
-            Some(RDKafkaErrorCode::LeaderNotAvailable)
-        );
-        if no_leader_yet && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(100));
-            continue;
-        }
-        let mut partitions: Vec<i32> = found.partitions().iter().map(|p| p.id()).collect();
-        partitions.sort_unstable();
-        return Ok(partitions);
-    }
+    let metadata = consumer
+        .fetch_metadata(Some(topic), timeout)
+        .map_err(|error| {
+            broker_error(
+                &format!("no broker of bootstrap.servers={servers:?} answers"),
+                error,
+            )
+        })?;
+    let found = metadata.topics().iter().find(|found| found.name() == topic);
+    let mut partitions: Vec<i32> = found
+        .map(|found| found.partitions().iter().map(|p| p.id()).collect())
+        .unwrap_or_default();
+    partitions.sort_unstable();
+    Ok(partitions)
 }
 
 impl ClientSource {
