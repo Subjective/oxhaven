@@ -106,6 +106,7 @@ as `deephaven:isPartitioning` is in the contracts since that slice.
 | `layout.rs` | From a path and a layout to the list of files |
 | `schema.rs` | From a Parquet schema and the `deephaven` footer entry to a table definition |
 | `location.rs` | `ParquetLocation`: a file as a `TableLocation` |
+| `partition.rs` | The values of partitioning columns that `_common_metadata` gives the types of |
 | `write.rs` | `write`, `WriteOptions`, `delete`: tables as files ("Writing Parquet") |
 
 **Which files.** As `ParquetTools#readTable`: a path that ends in `.parquet` is one file; a
@@ -252,6 +253,7 @@ written by Java's own `deephaven.parquet.write`, some by pyarrow.
 | `parquet_read_codecs` | differs | Snappy and Zstandard, read; Brotli, refused |
 | `parquet_read_more_types` | clean | Decimals, dates, times, local timestamps, unsigned 64-bit integers, bytes, a struct with one field |
 | `parquet_read_partitioned` | clean | Partition directories, `_metadata`, a directory that is followed |
+| `parquet_read_common_metadata` | clean | Partitioned writes with metadata files read back through them, by inference and by layout; one metadata file of the two; files not listed and listed files that are gone; directories of pyarrow read by position, with the partitioning columns last, and refused |
 | `parquet_read_names` | clean | Names Java makes legal |
 
 The harness has no comparison for a `char` column (`unsupported_type`), so the scenarios
@@ -339,12 +341,42 @@ of a partitioning column (`view`, `update_view`, `update`, `lazy_update`,
 ### Metadata files
 
 `_metadata` names the files of the table and has its columns; the files are the ones it
-names, in the order it first names them. The footers of the files themselves are read
-for their row groups, where Java reads what the metadata file says of them, so a file
-that the metadata file lists a part of is refused. Partitioning columns that only
-`_common_metadata` knows are refused (`ParquetMetadataFileLayout#create`): that is the
-layout `write_partitioned` makes with `generate_metadata_files`, which is not ported
-either.
+names, in the order it first names them, and a file it names that is not there has no
+rows (`ParquetTableLocationFactory#makeLocation`). Files it does not name are not read.
+The footers of the files themselves are read for their row groups, where Java reads what
+the metadata file says of them, so a file that the metadata file lists a part of is
+refused.
+
+Since task 7.1c (`tasks/7.1c-parquet-common-metadata.md`), a `_common_metadata` file
+beside it gives the columns, in its order (`ParquetMetadataFileLayout`): a column that
+`_metadata` has too must be the same in both, and a column only `_common_metadata` has is
+a partitioning column. That is the layout `write_partitioned` makes with
+`generate_metadata_files`, which puts the partitioning columns first; another writer may
+put them anywhere, and they stay where it put them.
+
+- A partitioning column keeps its type where Java parses values of it
+  (`PartitionParser#lookup`), and is a `String` otherwise: a `LocalDateTime`, a `byte[]`,
+  an array or a vector.
+- The values come from the path `_metadata` gives each file. Where its first directory
+  has an `=`, each directory is `key=value`, the key being a name in the file, which the
+  column instructions and the legal names map as they map a column's; where it has none,
+  each directory is the value of the next partitioning column. There must be as many
+  directories as partitioning columns, a key must name one of them and only once, and an
+  empty value is null, also for the last file.
+- A value is parsed as Java parses it (`oxhaven-parquet::partition`): `Boolean#parseBoolean`
+  (anything but `true` in any case is `false`), `Integer#parseInt` and its relatives,
+  `Float#parseFloat` and `Double#parseDouble` (spaces around, `NaN`, `Infinity`, `f` and
+  `d`), `new BigInteger` and `new BigDecimal`, one UTF-16 unit for a `char`, and the
+  formatters of `DateTimeUtils#parseLocalDate` and `#parseLocalTime` with their smart
+  resolver: `2023-02-30` is `2023-02-28` and `24:00` is midnight. A value equal to the
+  Java null of its type is null.
+- Refused as not ported: an `Instant` value (`DateTimeUtils#parseInstant`), a
+  hexadecimal floating point value, and a number with characters outside ASCII, which
+  Java reads where they are digits of another script (`Character#digit`).
+
+`_common_metadata` without `_metadata` is not a metadata layout: the directory is read by
+its partition directories, and the layout `METADATA_PARTITIONED` or a path to
+`_common_metadata` fails because `_metadata` is not there, as in Java.
 
 ### A directory that is followed
 
@@ -369,12 +401,18 @@ of its own and hands the result to the cycle.
   directories than an earlier one is refused as not ported
   (`URIStreamKeyValuePartitionLayout#getPartitions`); Java refuses the deeper file when
   it meets the shallower one first.
-- A file a `_metadata` file names that is not there is an error when the table is made;
-  in Java when its rows are read.
 - A partition value that turns up later with another type than its column fails the
   table when it is found; Java fails when the value is read.
 - `new String(bytes)` of bytes that are not UTF-8 is refused; Java replaces them.
 - A `TIME` in microseconds too large for nanoseconds is an error; Java lets it wrap.
+- A path in `_metadata` with a `.` or `..` directory or that starts at the root is
+  refused (`ParquetUtils#resolve`), as the writer refuses one; Java resolves it as a
+  URI.
+- A key of a path in `_metadata` that names no partitioning column is an error that
+  names the `NullPointerException` Java fails with (`ParquetMetadataFileLayout`). Java
+  fails so on its own write when an instruction gives a partitioning column another name
+  in the file, and so does this crate.
+- A partition value of a `LocalDate` outside the dates a `Date32` holds is an error.
 
 ## Risks
 
@@ -532,10 +570,8 @@ write only.
   without sorting columns.
 
 Java reads a directory written here through these files to the table it reads from its
-own. This crate does not yet read a directory whose partitioning columns only
-`_common_metadata` knows (`ParquetMetadataFileLayout#create`, in the reader), so what
-`write_partitioned` writes with metadata files is read here file by file, or after the
-two files are removed.
+own, and since task 7.1c so does this crate ("Metadata files" of the second slice,
+above).
 
 ### Out, each refused with `NotPorted`
 

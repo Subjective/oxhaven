@@ -21,6 +21,7 @@ and through `deephaven.parquet.read` in a console.
 | `evolve/`, `mismatch/` | pyarrow | Directories whose files do not have the same columns, or the same type for a column |
 | `hidden/` | pyarrow | Hidden files and directories, and a file that is not Parquet |
 | `kv/`, `meta/` | pyarrow | Partition directories `K=1` and `K=2`; a directory with a `_metadata` file |
+| `common/` | pyarrow | Directories with `_metadata` and a `_common_metadata` whose partitioning columns the files do not have: two keys after the files' column with a null, values by position, a value of each type, a key Deephaven renames, and five that Java refuses |
 
 To make them again, with the environment of `oracle/README.md` and a Java reference
 running:
