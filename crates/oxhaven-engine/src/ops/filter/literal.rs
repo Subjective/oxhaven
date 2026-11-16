@@ -655,12 +655,16 @@ mod tests {
         assert_eq!(with("2023-11-14T23:13:21 +01:00"), Ok(base + 1_000_000_000));
         assert_eq!(with("2023-11-14 ET"), Ok(base - 62_000_000_000_000));
         assert_eq!(with("2023-11-14T22:13:20 UTC"), Ok(base));
+        assert_eq!(with("2023-11-14T23:13:20+01:00"), Ok(base));
+        assert_eq!(with("2023-11-14T17:13:20 SystemV/EST5"), Ok(base));
+        assert_eq!(with("2023-11-14t22:13:20z"), Ok(base));
         assert_eq!(with("1700000000"), Ok(base));
         for text in [
             "2023-11-14T22:13:21",
             "2023-11-14T22:13:21 NY",
             "2023-11-14T22:13:21 EST",
             "2023-11-14T22:13:21 et",
+            "2023-11-14T22:13:21 Europe/Nowhere",
             "2023-11-14",
             "PT1s",
             "12:30",
@@ -678,7 +682,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "unported: io.deephaven.time.DateTimeUtils#parseZonedDateTime")]
     fn a_spelling_the_compiler_does_not_read_is_unported() {
-        let _ = parse_instant_with("2023-11-14T22:13:20+01:00", &oxhaven_expr::Compiler);
+        let _ = parse_instant_with("+12023-11-14T22:13:20 UTC", &oxhaven_expr::Compiler);
     }
 
     #[test]
