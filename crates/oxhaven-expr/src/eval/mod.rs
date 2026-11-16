@@ -138,10 +138,7 @@ impl Formula for CompiledFormula {
                     .ok_or_else(|| failure(format!("the table has no column {name}")))?;
                 // A boxed primitive in an `Object` column may hold the value Java reserves
                 // for null as a value.
-                let boxed = matches!(
-                    definition.columns()[index].column_type,
-                    ColumnType::Object(_)
-                );
+                let boxed = holds_objects(&definition.columns()[index].column_type);
                 let source = table.column(index);
                 let values = if use_prev {
                     source.prev_chunk(rows)?
@@ -299,6 +296,15 @@ fn elementwise(
         elements,
         None,
     )))
+}
+
+/// Whether the cells of a column of `column_type`, or their elements, are the cells of an
+/// `Object` column, where a boxed primitive may hold the value Java reserves for null.
+fn holds_objects(column_type: &ColumnType) -> bool {
+    match column_type.list_element() {
+        Some(element) => holds_objects(element),
+        None => matches!(column_type, ColumnType::Object(_)),
+    }
 }
 
 /// Makes null every cell that holds the value Java reserves for null in the column's type.

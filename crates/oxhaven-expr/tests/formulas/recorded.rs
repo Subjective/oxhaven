@@ -244,6 +244,28 @@ pub(super) fn object_outcome(
     values: &ArrayRef,
     recorded: Option<&[Value]>,
 ) -> Option<Result<(), String>> {
+    if java_type == "java.lang.Object[]" {
+        let ColumnType::Array(element) = column_type else {
+            return Some(Err(format!(
+                "Java returns {java_type}; Oxhaven returns {column_type:?}"
+            )));
+        };
+        let lists = values.as_list::<i32>();
+        let mut differences = Vec::new();
+        for (row, cell) in recorded.unwrap_or_default().iter().enumerate() {
+            let inner = cell.as_array().map(Vec::as_slice);
+            let ours = lists.value(row);
+            let outcome = object_outcome("java.lang.Object", element, &ours, inner);
+            if let Some(Err(difference)) = outcome {
+                differences.push(format!("row {row}: {difference}"));
+            }
+        }
+        return Some(if differences.is_empty() {
+            Ok(())
+        } else {
+            Err(differences.join("; "))
+        });
+    }
     let type_agrees = match java_type {
         "java.lang.Object" => matches!(column_type, ColumnType::Object(_)),
         "java.time.DayOfWeek" => *column_type == ColumnType::DayOfWeek,

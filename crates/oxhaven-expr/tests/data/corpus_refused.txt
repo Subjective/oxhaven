@@ -523,7 +523,6 @@ java-parser/L3103.0	java-fails	fixture column of type int32[]
 py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
 py-server/test_filters.L137.13.0-r2	java-accepts	?: whose branches are a int and a String, which makes a java.lang.Object column of two classes
 py-server/test_function_generated_table.L31.19.0	java-fails	static method call io.deephaven.base.clock.Clock.system()
-py-server/test_table.L1307.13.1	java-accepts	array creation new Object[]
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR
 py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()

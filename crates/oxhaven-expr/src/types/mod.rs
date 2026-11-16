@@ -1989,6 +1989,9 @@ impl Checker<'_> {
     /// not know null, and an `int` literal to a narrower type that holds it. Java 42.9
     /// was run for each form.
     fn creation(&mut self, created: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if let Some(name @ ("Object" | "java.lang.Object")) = created.strip_suffix("[]") {
+            return self.object_array(name, arguments);
+        }
         if let Some(name) = created.strip_suffix("[]") {
             let element = array_element(name)?;
             if arguments.is_empty() {
@@ -2260,6 +2263,53 @@ impl Checker<'_> {
                 java_name(from)
             ))),
         }
+    }
+
+    /// `new Object[]{...}`: an array whose elements are objects of one class, a primitive
+    /// boxed as the value it holds. Elements of two classes are refused, as an `Object`
+    /// column of two classes is.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ArrayCreationExpr)`, which leaves the
+    /// initializer to javac
+    fn object_array(&mut self, name: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if arguments.is_empty() {
+            return Err(type_error(format!(
+                "new {name}[] {{}}: Java cannot tell the type of an array without elements"
+            )));
+        }
+        let checked = arguments
+            .iter()
+            .map(|argument| self.check(argument))
+            .collect::<Result<Vec<_>, _>>()?;
+        let mut class: Option<ColumnType> = None;
+        for element in &checked {
+            let Some(own) = crate::eval::class_of(&element.column_type) else {
+                continue;
+            };
+            match &class {
+                Some(first) if *first != own => {
+                    return Err(unsupported(format!(
+                        "new {name}[] of a {} and a {}, an array of objects of two classes",
+                        java_name(first),
+                        java_name(&own)
+                    )))
+                }
+                _ => class = Some(own),
+            }
+        }
+        let element = ColumnType::object(class);
+        let elements = checked
+            .into_iter()
+            .map(|value| match (&value.column_type, &value.node) {
+                (column_type, _) if *column_type == element => Ok(value),
+                (ColumnType::Object(None), Node::Null) => Ok(typed(element.clone(), Node::Null)),
+                (ColumnType::Object(_), _) => Err(unsupported(format!(
+                    "new {name}[] with an element of nulls that is not the null literal"
+                ))),
+                _ => boxed(value),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(array_of(element, elements))
     }
 
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:

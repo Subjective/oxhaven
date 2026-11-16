@@ -174,3 +174,29 @@ fn a_day_of_week_is_its_number_and_prints_as_its_name() {
         FormulaError::Unsupported(_)
     ));
 }
+
+/// Seen on Java 42.9: `new Object[]{`abc`, `def`}` is a `java.lang.Object[]` of the two
+/// strings; a primitive element is boxed as the value it holds.
+#[test]
+fn an_object_array_holds_its_elements_boxed() {
+    let table = table();
+    let (column_type, values) = result(&table, "new Object[]{I, 7}");
+    assert_eq!(
+        column_type,
+        ColumnType::array(ColumnType::object(Some(ColumnType::Int)))
+    );
+    let row = values.as_list::<i32>().value(1);
+    assert_eq!(
+        row.as_primitive::<arrow::datatypes::Int32Type>(),
+        &Int32Array::from(vec![i32::MIN, 7])
+    );
+    let (column_type, _) = result(&table, "new Object[]{`abc`, null}");
+    assert_eq!(
+        column_type,
+        ColumnType::array(ColumnType::object(Some(ColumnType::String)))
+    );
+    assert!(matches!(
+        table.compile_error("new Object[]{I, S}"),
+        FormulaError::Unsupported(_)
+    ));
+}

@@ -218,8 +218,24 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
 ///
 /// Behavior: `BarrageUtil#columnDefinitionsToFields` (the `deephaven:componentType` entry);
 /// every element type here is one `BarrageUtil#isTypeNativelySupported` accepts
+///
+/// An array of a class Java does not send natively, `Object[]` or `DayOfWeek[]`, has
+/// none: `BarrageUtil#isTypeNativelySupported` refuses its class.
 pub fn java_component_type_name(column_type: &ColumnType) -> Option<Cow<'static, str>> {
-    column_type.list_element().map(java_type_name)
+    fn native(column_type: &ColumnType) -> bool {
+        match column_type {
+            ColumnType::Array(element) => native(element),
+            ColumnType::Object(_) | ColumnType::DayOfWeek => false,
+            _ => true,
+        }
+    }
+    match column_type {
+        ColumnType::Array(_) if !native(column_type) => None,
+        // A vector is sent natively whatever its elements; those Java does not send
+        // natively are declared as strings.
+        ColumnType::Vector(element) if !native(element) => Some(Cow::Borrowed("java.lang.String")),
+        _ => column_type.list_element().map(java_type_name),
+    }
 }
 
 /// The column type of a field whose `deephaven:type` is `name` and whose
@@ -619,6 +635,10 @@ mod tests {
             ("N", ColumnType::object(None)),
             ("W", ColumnType::DayOfWeek),
             ("A", ColumnType::array(ColumnType::PrimitiveBoolean)),
+            (
+                "OA",
+                ColumnType::array(ColumnType::object(Some(ColumnType::String))),
+            ),
         ]);
         let schema = arrow_schema(&definition, &SchemaContext::default());
         let seen: Vec<_> = schema
@@ -658,6 +678,12 @@ mod tests {
                         ("deephaven:componentType", "boolean"),
                         ("deephaven:type", "boolean[]")
                     ])
+                ),
+                // Recorded for `new Object[]{`abc`, `def`}`: no component type, as
+                // `BarrageUtil#isTypeNativelySupported` refuses `Object`.
+                (
+                    DataType::List(Arc::new(Field::new("", DataType::Utf8, true))),
+                    metadata(&[("deephaven:type", "java.lang.Object[]")])
                 ),
             ]
         );
