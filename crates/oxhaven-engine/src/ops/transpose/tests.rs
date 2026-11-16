@@ -325,9 +325,8 @@ fn floats_and_instants_name_columns() {
         (names(&*result), rows(&*result))
     };
     let rows_of_three = ["0|0|4|2", "1|3|1|5"].map(String::from).to_vec();
-    let floats = arrow::array::Float32Array::from_iter_values(
-        (0..6).map(|i| [0.5, 1.5, f32::NAN][i % 3]),
-    );
+    let floats =
+        arrow::array::Float32Array::from_iter_values((0..6).map(|i| [0.5, 1.5, f32::NAN][i % 3]));
     assert_eq!(
         by(ColumnType::Float, Arc::new(floats)),
         (
@@ -345,10 +344,7 @@ fn floats_and_instants_name_columns() {
         })
         .collect();
     assert_eq!(
-        by(
-            ColumnType::Instant,
-            Arc::new(instants.with_timezone("UTC"))
-        ),
+        by(ColumnType::Instant, Arc::new(instants.with_timezone("UTC"))),
         (
             "R, column_20231114T221320Z, column_20231114T221320500Z, column_null".to_string(),
             rows_of_three

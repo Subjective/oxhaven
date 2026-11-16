@@ -402,10 +402,8 @@ impl Aggregator {
             return Ok(());
         }
         for result in &keys.results {
-            let nulls = arrow::array::new_null_array(
-                &result.column_type().arrow_type(),
-                absent.len(),
-            );
+            let nulls =
+                arrow::array::new_null_array(&result.column_type().arrow_type(), absent.len());
             result.fill_by_keys(&absent, &nulls)?;
         }
         Ok(())

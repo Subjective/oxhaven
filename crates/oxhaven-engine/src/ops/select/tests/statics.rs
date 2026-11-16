@@ -317,12 +317,7 @@ fn a_row_variable_beside_an_earlier_column_in_a_renumbered_select_is_unported() 
 /// as in Java, whose key is the arguments of `applyFormulaPerItem`.
 #[test]
 fn a_lazy_formula_with_a_row_variable_is_remembered_by_row_and_value() {
-    let result = lazy_update(
-        &keyed(&[3, 7, 9]),
-        &["K = k", "I = i + A"],
-        &Compiler,
-    )
-    .unwrap();
+    let result = lazy_update(&keyed(&[3, 7, 9]), &["K = k", "I = i + A"], &Compiler).unwrap();
     assert_eq!(values(&*result, "K"), ["3", "7", "9"]);
     assert_eq!(values(&*result, "I"), ["10", "21", "32"]);
 
@@ -336,7 +331,12 @@ fn a_lazy_formula_with_a_row_variable_is_remembered_by_row_and_value() {
         ],
     );
     let counting = Counting::new();
-    let formulas = ["X = A + B + ii", "Y = A + k * 0", "S = A_.size() + A", "P = A_[i * 1]"];
+    let formulas = [
+        "X = A + B + ii",
+        "Y = A + k * 0",
+        "S = A_.size() + A",
+        "P = A_[i * 1]",
+    ];
     let result = lazy_update(&parent, &formulas, &counting).unwrap();
     // A result for each row, whatever the values: the position or the key is in the key.
     assert_eq!(values(&*result, "X"), ["6", "8", "8", "10", "10"]);
