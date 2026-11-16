@@ -1,0 +1,554 @@
+{
+  "format": 2,
+  "scenario": "partitioned_proxy_ticking",
+  "scenario_sha256": "85c2c33ff356f6a1c1fa302534d5eb9a153a910e1eec5704737d60ef318eb0df",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rows",
+      "file": "step000.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "filtered",
+      "file": "step000.filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "updated",
+      "file": "step000.updated.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "updated_local",
+      "file": "step000.updated_local.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "key_filtered",
+      "file": "step000.key_filtered.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "heads",
+      "file": "step000.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "sorted_rows",
+      "file": "step000.sorted_rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "with_static",
+      "file": "step000.with_static.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "with_ticking",
+      "file": "step000.with_ticking.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "static_with_ticking",
+      "file": "step000.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "pairs_common",
+      "file": "step000.pairs_common.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "by_value_unchecked",
+      "file": "step000.by_value_unchecked.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "rows",
+      "file": "step001.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "filtered",
+      "file": "step001.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "updated",
+      "file": "step001.updated.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "updated_local",
+      "file": "step001.updated_local.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "key_filtered",
+      "file": "step001.key_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "heads",
+      "file": "step001.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "sorted_rows",
+      "file": "step001.sorted_rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "counted",
+      "file": "step001.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "with_static",
+      "file": "step001.with_static.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "with_ticking",
+      "file": "step001.with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "static_with_ticking",
+      "file": "step001.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "pairs_common",
+      "file": "step001.pairs_common.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "by_value_unchecked",
+      "file": "step001.by_value_unchecked.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "rows",
+      "file": "step002.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "filtered",
+      "file": "step002.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "updated",
+      "file": "step002.updated.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "updated_local",
+      "file": "step002.updated_local.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "key_filtered",
+      "file": "step002.key_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "heads",
+      "file": "step002.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "sorted_rows",
+      "file": "step002.sorted_rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "counted",
+      "file": "step002.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "with_static",
+      "file": "step002.with_static.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "with_ticking",
+      "file": "step002.with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "static_with_ticking",
+      "file": "step002.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "pairs_common",
+      "file": "step002.pairs_common.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "by_value_unchecked",
+      "file": "step002.by_value_unchecked.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "rows",
+      "file": "step003.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "filtered",
+      "file": "step003.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "updated",
+      "file": "step003.updated.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "updated_local",
+      "file": "step003.updated_local.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "key_filtered",
+      "file": "step003.key_filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "heads",
+      "file": "step003.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "sorted_rows",
+      "file": "step003.sorted_rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "counted",
+      "file": "step003.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "with_static",
+      "file": "step003.with_static.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "with_ticking",
+      "file": "step003.with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "static_with_ticking",
+      "file": "step003.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "pairs_common",
+      "file": "step003.pairs_common.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "by_value_unchecked",
+      "file": "step003.by_value_unchecked.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "rows",
+      "file": "step004.rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "filtered",
+      "file": "step004.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "updated",
+      "file": "step004.updated.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "updated_local",
+      "file": "step004.updated_local.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "key_filtered",
+      "file": "step004.key_filtered.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "heads",
+      "file": "step004.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "sorted_rows",
+      "file": "step004.sorted_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "counted",
+      "file": "step004.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "with_static",
+      "file": "step004.with_static.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "with_ticking",
+      "file": "step004.with_ticking.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "static_with_ticking",
+      "file": "step004.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "pairs_common",
+      "file": "step004.pairs_common.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "by_value_unchecked",
+      "file": "step004.by_value_unchecked.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "rows",
+      "file": "step005.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "filtered",
+      "file": "step005.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "updated",
+      "file": "step005.updated.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "updated_local",
+      "file": "step005.updated_local.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "key_filtered",
+      "file": "step005.key_filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "heads",
+      "file": "step005.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "sorted_rows",
+      "file": "step005.sorted_rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "counted",
+      "file": "step005.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "with_static",
+      "file": "step005.with_static.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "with_ticking",
+      "file": "step005.with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "static_with_ticking",
+      "file": "step005.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "pairs_common",
+      "file": "step005.pairs_common.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "by_value_unchecked",
+      "file": "step005.by_value_unchecked.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "rows",
+      "file": "step006.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "filtered",
+      "file": "step006.filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "updated",
+      "file": "step006.updated.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "updated_local",
+      "file": "step006.updated_local.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "key_filtered",
+      "file": "step006.key_filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "heads",
+      "file": "step006.heads.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "sorted_rows",
+      "file": "step006.sorted_rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "counted",
+      "file": "step006.counted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "with_static",
+      "file": "step006.with_static.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "with_ticking",
+      "file": "step006.with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "static_with_ticking",
+      "file": "step006.static_with_ticking.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "pairs_common",
+      "file": "step006.pairs_common.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "by_value_unchecked",
+      "file": "step006.by_value_unchecked.arrow",
+      "rows": 6
+    }
+  ]
+}

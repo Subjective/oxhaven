@@ -1,0 +1,116 @@
+{
+  "format": 2,
+  "scenario": "partitioned_proxy_filters_selects",
+  "scenario_sha256": "84399ed320285768807398442210fdb6fb36e88cdaf0890bc9b9264b6109573d",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "filtered",
+      "file": "step000.filtered.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "filtered_local",
+      "file": "step000.filtered_local.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "key_filtered",
+      "file": "step000.key_filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "key_and_value",
+      "file": "step000.key_and_value.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "one_string",
+      "file": "step000.one_string.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "no_filter",
+      "file": "step000.no_filter.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "in_table",
+      "file": "step000.in_table.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "not_in_table",
+      "file": "step000.not_in_table.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "in_keys",
+      "file": "step000.in_keys.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "in_keys_underlying",
+      "file": "step000.in_keys_underlying.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "not_in_keys",
+      "file": "step000.not_in_keys.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "viewed",
+      "file": "step000.viewed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "update_viewed",
+      "file": "step000.update_viewed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "updated",
+      "file": "step000.updated.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "selected",
+      "file": "step000.selected.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "distinct",
+      "file": "step000.distinct.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "distinct_all",
+      "file": "step000.distinct_all.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "key_assigned",
+      "file": "step000.key_assigned.arrow",
+      "rows": 4
+    }
+  ]
+}
