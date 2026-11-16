@@ -289,9 +289,10 @@ a tree.
 
 ## Producing
 
-Task 7.5.1. `deephaven.stream.kafka.producer.produce(table, kafka_config, topic,
-key_spec, value_spec, last_by_key_columns, publish_initial, partition)` over
-`oxhaven_kafka::produce`, with `simple_spec`, `json_spec` and `KeyValueSpec.IGNORE`.
+Tasks 7.5.1 and 7.5.2. `deephaven.stream.kafka.producer.produce(table, kafka_config, topic,
+key_spec, value_spec, last_by_key_columns, publish_initial, partition, topic_col,
+partition_col, timestamp_col)` over `oxhaven_kafka::produce`, with `simple_spec`,
+`json_spec`, `avro_spec` and `KeyValueSpec.IGNORE`.
 `produce_to` takes any `RecordSink` in place of librdkafka's producer, so that the tests
 can script what is sent. Each behaviour was probed on the reference with a real broker
 first; the probes and their comparison are under "Differences from Java seen in the
@@ -326,13 +327,27 @@ with its texts:
 
 - both specs `IGNORE`;
 - `publish_initial=False` on a static table;
-- no topic (`None` or `''`; `partition=0` is ignored too, since the Python tests it as a
-  boolean);
+- no topic (`None` or `''`) and no `topic_col`; `partition=0` is ignored too, since the
+  Python tests it as a boolean;
+- `topic_col`, `partition_col` and `timestamp_col`: a column the table lacks fails with
+  Java's `NoSuchColumnException` text, and a column of another type than `String`, `int`
+  and `Instant` with its `ClassCastException: Cannot convert [L] of type long to type int`;
 - a column the table lacks (Java's NullPointerException text);
 - `include_columns` names the table lacks.
 
-`topic_col`, `partition_col` and `timestamp_col` are refused by name; they belong to task
-7.5.2.
+**The record columns** (task 7.5.2, `PublishToKafka`). Each record's topic, partition and
+timestamp come from its row's `topic_col`, `partition_col` and `timestamp_col`, read with
+the key and the value (the previous values for a removed row). A null cell takes `topic`,
+`partition` or none. A timestamp is the `Instant` in milliseconds, truncated as
+`TimeUnit#toMillis` truncates; without one the record gets the time it is sent. A record
+with no topic fails with `Topic cannot be null.`, and a negative timestamp or partition
+fails as `ProducerRecord` fails. A topic that Kafka does not take as a name (`''`,
+`a{b}`) fails the send with `InvalidTopicException: Invalid topics: [name]`. As in Java,
+the producer waits for a record's topic before it serializes the record, so a topic is
+created by a broker that creates topics even when the record then fails, and a record to
+a topic that fails is never registered or written. A timestamp of 0 ms (an `Instant`
+less than a millisecond from the epoch, on either side) is refused by name: librdkafka
+takes 0 as "now", where Java sends 0.
 
 ### How a row becomes a record
 
@@ -370,6 +385,52 @@ column type fails the call with Java's `Serializer not found for column X, type
   - text with Jackson's escapes.
 - Other column types fail by name; see "Refused, by Java method". Java writes their
   `toString`, which for an array is an identity hash.
+
+**Avro specs** (task 7.5.2; `KafkaTools.Produce#avroSpec`, `AvroImpl.AvroProduce`,
+`GenericRecordKeyOrValueSerializer`, Confluent's `KafkaAvroSerializer`) write one record
+per row in Confluent's wire format: a zero byte, the schema's id in four big-endian
+bytes, then Avro's binary encoding. Records were compared byte for byte with Java's.
+
+- The schema is fetched from `schema.registry.url` by subject and `schema_version`, as
+  the consumer fetches one. It is read as Confluent reads a schema it fetched: names are
+  checked and defaults are not, so an `int` field with the default `1.5` is accepted. A
+  schema that is not a record fails with Java's `Not a record` text.
+- Each record registers the schema under `<topic>-key` or `<topic>-value` with a POST of
+  `{"schemaType":"AVRO","schema":...}` (`auto.register.schemas`), once per subject and
+  publication, and is prefixed with the id the registry gives. The schema is sent as Java
+  writes it (`Schema#toString`: its keys in Java's order, a namespace only where it
+  changes, short names within one), so the registry sees the same text from both.
+- Fields are paired with the table's columns by name, or by `field_to_col_mapping`;
+  `include_only_columns` and `exclude_columns` filter the columns. Java pairs them by
+  position after it filters, which shifts the pairs or fails with
+  `ArrayIndexOutOfBoundsException`; that is reproduced (owner's item 18).
+- A value is written as Avro's `GenericDatumWriter` writes the boxed cell:
+  - a number into any of `int`, `long`, `float` and `double`, converted as Java's
+    `Number#intValue` and friends convert, whatever the field's logical type;
+  - a union's branch is chosen by the value's class (null, boolean, string, int, long,
+    float, double); a `byte`, `short` or `char` column in a union fails with `Unknown
+    datum type java.lang.Byte: 7`, and a value of no branch with `Not in union`;
+  - the `null` type writes nothing;
+  - a null cell (Java's null sentinels too) in a field without null, a value of the
+    wrong class, and any value of an enum, fail with Java's texts, among them the
+    JVM's helpful NullPointerException and ClassCastException messages;
+  - all under `SerializationException: Error serializing Avro message`.
+- An `Instant` column needs a field of logical type `timestamp-millis` (floored, as
+  `toEpochMilli` floors) or `timestamp-micros` (truncated); without one it fails with
+  Java's `has no logical type.` or `has unrecognized logical type`.
+- `timestamp_field` is given the time the record is made, one value per chunk of 2048
+  rows; it must be a field of type `long` with one of those two logical types, or the
+  call fails with Java's texts. A `timestamp-nanos` field is refused by name: Java's
+  message prints the identity of an object.
+- `publish_schema` makes the schema from the columns and registers it under the subject
+  `schema`, then under the topic's subject. Each field is `[<type>, "null"]`: `int`,
+  `long`, `float`, `double`, `string`; `byte`, `char` and `short` are an `int` with
+  `dhType`; an `Instant` a `long` of `timestamp-micros`; a `Boolean` a `bytes` with
+  `dhType` `java.lang.Boolean`, which then fails at the first record with `Not in
+  union`, as in Java (owner's item 19). A dotted `schema` is a name in a namespace,
+  which wins over `schema_namespace`; only the last part is checked. A `schema_version`
+  other than `None` or `latest` fails in `avro_spec` with Java's text.
+  `column_properties` matter only to `BigDecimal` columns, which are refused.
 
 ### Producer properties
 
@@ -564,10 +625,11 @@ documented contents and off this machine, which has the same tools.
 | Tables from a scripted `RecordSource`, with the consistency checker | `tests/consume.rs` | nothing | every pull request |
 | Avro: columns, mappings, records in another writer's schema, the wire format's failures, the registry's requests and errors | unit tests in `src/avro.rs`, `src/registry.rs`; `tests/avro.rs`, with a registry the test serves | nothing | every pull request |
 | Publishing to a scripted `RecordSink`: the records of each kind of change, `last_by`, blink tables, JSON and its failures, the checks | `tests/produce.rs` | nothing | every pull request |
-| Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
+| Publishing Avro and the record columns to a scripted `RecordSink`, with a registry the test serves: the wire format, the registered schemas and their requests, published schemas, the writer's failures, removed rows, a topic without metadata | `tests/produce_avro.rs`; Java's `Schema#toString` in `src/avro_text.rs` | nothing | every pull request |
+| Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts, an Avro round trip through a registry the test serves, records whose topic, partition and timestamp come from columns | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
 | The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
 | The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image) | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
-| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4 and 7.4.7; a recorded corpus is task 7.4.6 |
+| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is task 7.4.6 |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
 (`dockerd` with its own socket and data root, no bridge and no iptables rules, the
@@ -647,6 +709,22 @@ broker under the open tables of both.
   (Jackson's text in Java). Not probed: a real Confluent registry; Java's deserializer
   first asks the registry for `/associations/...` of the topic, gets a 404 from a registry
   without associations and goes on, which Oxhaven does not ask.
+- Task 7.5.2, producing Avro and the record columns: Java on 10948, Oxhaven on 10949,
+  one broker and a stub registry that logs each request with its body, 484 cases in four
+  rounds (`tasks/7.5.2-kafka-produce-avro.md`), among them every column type against
+  every Avro field type (420; its 30 `char` cases failed in the probe's own table on both
+  servers, so `char` was probed apart). Same: every record, byte for byte (partition, key, value,
+  and the timestamp where it comes from a column), every registry request and body, and
+  every error text, except as follows. Different by design: the timestamp
+  field and the records' own timestamps, which are the time of making or sending; the
+  ids a registry gives, which the stub hands out in the order of requests. Refused here:
+  a `timestamp-nanos` timestamp field and a timestamp of 0 ms. Different in text only
+  (`PARITY.md` A5): a registry schema whose names Java's parser refuses (Java wraps the
+  same `SchemaParseException` in Guava's `UncheckedExecutionException` and Confluent's
+  `Invalid schema {...}`, which prints a GUID); a send failure, whose cause Oxhaven
+  writes after a colon (as since 7.5.1) where Java chains it. Not reproduced: Java's
+  serializer first asks the registry for `/associations/resources/<cluster>/<topic>`
+  and goes on after a 404; Oxhaven does not ask.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -733,6 +811,30 @@ broker under the open tables of both.
 17. **Avro needs `schema.registry.url` even for a schema given as text**, because Java
     makes the registry's client first. Reproduced; a spec that never needs the registry
     could do without it.
+18. **Producing Avro, columns paired by position.** `GenericRecordKeyOrValueSerializer`
+    pairs the schema's fields with the filtered columns by position, not by name. With
+    `exclude_columns` or `include_only_columns` a field is filled from another column (a
+    `Boolean` into an `Instant` field fails with `field B for column T has no logical
+    type.`), or the call fails with `ArrayIndexOutOfBoundsException`. Reproduced. It
+    looks like a defect in the reference: reproduce, or pair by name?
+19. **Producing Avro, a published schema with a `Boolean` column** declares the field as
+    `bytes` and then cannot write a Boolean into it: every such publication fails at its
+    first record, after registering the schema. Reproduced.
+20. **Producing Avro, the registry's other properties.** `auto.register.schemas`,
+    `use.latest.version`, `normalize.schemas` and `latest.compatibility.strict` are
+    accepted at their defaults and refused by name otherwise; the subject name strategies
+    and credentials are refused as for the consumer.
+21. **A `NumberFormatException` for a null schema version.** On the produce side Java
+    calls `Integer#parseInt(null)`; its text (`Cannot parse null string`) is reproduced.
+    The consumer's `avro_spec(..., schema_version=None)` fails earlier in Java, on an
+    ambiguous overload (`ambiguous Java method call, too many matching method overloads
+    found`), where Oxhaven's consumer gives the same `NumberFormatException`. The consumer
+    is not changed by this task.
+22. **Consuming Avro, schemas from the registry.** Confluent reads a schema it fetched
+    without checking defaults (`AvroSchema#getParser`, `validateAsNew` false); the
+    producer here now does the same. The consumer still checks defaults of a registry
+    schema, as it did since 7.4.7, so a registry schema with a bad default fails at
+    `consume` here and not in Java. Not probed on the consume side.
 
 ## Refused, by Java method
 
@@ -767,8 +869,14 @@ broker under the open tables of both.
 | Producing: a `*.serializer.encoding` other than the six charsets above | `java.nio.charset.Charset#forName` |
 | Producing: a JSON `char` that is half of a surrogate pair, under a charset other than UTF-8 | `java.lang.String#getBytes` |
 | Producing: JSON columns of `Duration`, `Period`, `LocalDateTime`, `ZonedDateTime`, arrays, vectors and other objects | `java.util.Objects#toString` |
-| `produce` with `topic_col`, `partition_col` or `timestamp_col` (task 7.5.2) | `io.deephaven.kafka.KafkaPublishOptions#topicColumn`, `#partitionColumn`, `#timestampColumn` |
-| `producer.avro_spec` (task 7.5.2) | `io.deephaven.kafka.KafkaTools.Produce#avroSpec` |
+| Producing: a record timestamp of 0 ms from `timestamp_col`, which librdkafka takes as the time of sending | `org.apache.kafka.clients.producer.ProducerRecord#timestamp` |
+| Producing Avro: a `BigDecimal` column | `io.deephaven.kafka.publish.GenericRecordKeyOrValueSerializer#makeBigDecimalFieldProcessor` |
+| Producing Avro: a column of another type than the primitives, `String`, `Boolean` and `Instant` | `io.deephaven.kafka.publish.GenericRecordKeyOrValueSerializer#makeObjectFieldProcessor` |
+| Producing Avro: a published schema with a `BigDecimal` column or a column of another type than those | `io.deephaven.kafka.AvroImpl#addFieldForColDef` |
+| Producing Avro: a `timestamp_field` of a logical type other than `timestamp-millis` and `timestamp-micros` (Java's text prints an object's identity) | `io.deephaven.kafka.publish.GenericRecordKeyOrValueSerializer#checkTimestampFieldAndGetUnit` |
+| Producing Avro: `auto.register.schemas`, `use.latest.version`, `normalize.schemas`, `latest.compatibility.strict` other than their defaults | `io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig` |
+| Producing Avro: a registry that does not register the schema (answers the POST with an error) | `io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl` |
+| Producing: a `topic_col`, `partition_col` or `timestamp_col` of a type the engine names without a Java class here | `io.deephaven.engine.table.TableDefinition#checkHasColumn` |
 
 No longer refused since task 7.4.3: JSON columns of `char` and `Instant`, nested
 pointers and records that are arrays, fractions and text in numeric columns, objects and
@@ -780,7 +888,14 @@ hash order), a simple `byte[]` column.
 reference reaches (`deephaven.stream.kafka.consumer` has no `raw_spec`); there is nothing
 to port it to here until Avro or Protobuf bring their own deserializers (7.4.7, 7.4.8).
 
+`KafkaTools.Produce#rawSpec` takes a Java `Serializer` class, and
+`deephaven.stream.kafka.producer` has no `raw_spec` either: no Python API of the reference
+reaches it, so there is nothing to port.
+
 No longer refused since task 7.4.7: `avro_spec`, for the key and the value.
+
+No longer refused since task 7.5.2: `producer.avro_spec` for the key and the value, and
+`produce` with `topic_col`, `partition_col` and `timestamp_col`.
 
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2
@@ -807,5 +922,5 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | M | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
-| 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | M | 7.5.1, 7.4.7 |
+| 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | done (`tasks/7.5.2-kafka-produce-avro.md`); raw spec not reachable from Python | 7.5.1, 7.4.7 |
 | 7.5.3 | `deephaven.stream.kafka.cdc` | M | 7.4.7 |

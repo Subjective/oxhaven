@@ -16,7 +16,9 @@
 //! only rows if it is a blink table, after the rows it has if it is append-only.
 
 mod avro;
+mod avro_produce;
 mod avro_spec;
+mod avro_text;
 pub mod client;
 mod config;
 pub mod json;
@@ -35,6 +37,7 @@ use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 
+pub use avro_produce::AvroProduceSpec;
 pub use avro_spec::{AvroMapping, AvroSchema};
 pub use client::topics;
 pub use plan::Plan;

@@ -178,9 +178,28 @@ pub(crate) fn zoned_seconds(
 /// Reads the content of a time literal.
 ///
 /// Behavior: `io.deephaven.time.TimeLiteralReplacedExpression#convertExpression`, which
-/// tries an instant, then a period, a duration, a date, a time of day and a zone.
+/// tries an instant, then a period, a duration, a date, a time of day and a zone. The
+/// instant is `DateTimeUtils#parseInstantQuiet`, which also reads a whole number since
+/// the epoch ([`instant_of_text`]) and is null, so no instant, for the smallest `long`.
+/// Seen on Java 42.9: `'9309340999'` is the instant 1680-06-12T00:28:45.290448384Z.
 fn parse(content: &str) -> Result<TimeValue, FormulaError> {
-    match parse_instant(content) {
+    let digits = content.strip_prefix('-').unwrap_or(content);
+    let instant = if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit())
+    {
+        instant_of_text(content).and_then(|nanos| {
+            if nanos == i64::MIN {
+                Err(FormulaError::Syntax(format!(
+                    "Cannot parse literal as a datetime, date, time, duration, period, or \
+                     timezone: {content}"
+                )))
+            } else {
+                Ok(nanos)
+            }
+        })
+    } else {
+        parse_instant(content)
+    };
+    match instant {
         Ok(nanos) => Ok(TimeValue::Instant(nanos)),
         Err(error) => {
             if period_days(content).is_some() {
@@ -905,6 +924,9 @@ fn iso(year: i64, rest: &str) -> Option<Local> {
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#epochAutoToEpochNanos`.
 /// A spelling [`parse_instant`] leaves unsupported is unsupported here when it starts as
 /// a date does, with four digits and a `-`, or with a sign; Java reads no other text.
+/// Java multiplies the number by its unit without a check, so a number of seconds or
+/// milliseconds too large for a `long` of nanoseconds wraps around: seen on Java 42.9,
+/// `9309340999` is the instant -9137403074709551616 ns, in 1680.
 pub(crate) fn instant_of_text(text: &str) -> Result<i64, FormulaError> {
     let digits = text.strip_prefix('-').unwrap_or(text);
     if !(1..=19).contains(&digits.len()) || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -928,11 +950,11 @@ pub(crate) fn instant_of_text(text: &str) -> Result<i64, FormulaError> {
     Ok(if magnitude > 1000 * THRESHOLD {
         offset
     } else if magnitude > THRESHOLD {
-        offset * 1_000
+        offset.wrapping_mul(1_000)
     } else if magnitude > THRESHOLD / 1000 {
-        offset * 1_000_000
+        offset.wrapping_mul(1_000_000)
     } else {
-        offset * 1_000_000_000
+        offset.wrapping_mul(1_000_000_000)
     })
 }
 
@@ -1590,6 +1612,88 @@ mod tests {
         assert_eq!(spans("'\\''"), vec![]);
         // One supplementary character is two chars to Java.
         assert_eq!(spans("'\u{1F600}'"), vec![(0, 6)]);
+    }
+
+    /// Expected values seen on Java 42.9, as `epochNanos(parseInstant(...))`.
+    #[test]
+    fn whole_numbers_too_large_for_their_unit_wrap_as_java_multiplies() {
+        for (text, nanos) in [
+            ("9309340999", -9_137_403_074_709_551_616),
+            ("-9309340999", 9_137_403_074_709_551_616),
+            ("9309340999999", -9_137_403_073_710_551_616),
+            ("9309340", 9_309_340_000_000_000),
+            ("-9223372036854775808", i64::MIN),
+        ] {
+            assert_eq!(instant_of_text(text), Ok(nanos), "{text}");
+            // A time literal is read as `parseInstantQuiet` reads it, which is null for
+            // the smallest long.
+            match parse(text) {
+                Ok(TimeValue::Instant(read)) => assert_eq!(read, nanos, "'{text}'"),
+                Err(FormulaError::Syntax(_)) if nanos == i64::MIN => {}
+                other => panic!("'{text}' gave {other:?}"),
+            }
+        }
+    }
+
+    /// Every parser of time text answers, without an arithmetic overflow, for numbers at
+    /// and past the limits of each type in each place a number can stand.
+    #[test]
+    fn no_parser_overflows_on_large_numbers() {
+        let mut numbers: Vec<String> = Vec::new();
+        for digits in 1..=40 {
+            numbers.push("9".repeat(digits));
+            numbers.push(format!("1{}", "0".repeat(digits - 1)));
+        }
+        // The largest numbers `epochAutoToEpochNanos` reads as seconds, milliseconds and
+        // microseconds, and the limits of the types the parsers hold numbers in.
+        let units = [9_309_341_000, 9_309_341_000_000, 9_309_341_000_000_000];
+        for limit in units
+            .into_iter()
+            .chain([i64::MAX as i128, i32::MAX as i128, u64::MAX as i128])
+        {
+            for delta in [-1, 0, 1] {
+                numbers.push((limit + delta).to_string());
+            }
+        }
+        let shapes = [
+            "{}",
+            "-{}",
+            "+{}",
+            "P{}D",
+            "P-{}D",
+            "P{}Y{}M{}W{}D",
+            "-P{}W-{}D",
+            "PT{}H{}M{}S",
+            "P{}DT{}H-{}M{}.{}S",
+            "PT-{}.{}S",
+            "PT{}:{}:{}",
+            "{}-{}-{}",
+            "+{}-{}-{}",
+            "-{}-{}-{}",
+            "{}:{}:{}.{}",
+            "{}:{}",
+            "2023-{}-{}T{}:{}:{} UTC",
+            "2023-11-14T{}:{}:{}.{}Z",
+            "2023-11-14T22:13:20+{}",
+            "2023-11-14T22:13:20 UTC+{}",
+            "2023-11-14T22:13:20 GMT-{}",
+            "2023-11-14T22:13:20[UTC+{}]",
+        ];
+        for number in &numbers {
+            for shape in shapes {
+                let text = shape.replace("{}", number);
+                let _ = instant_of_text(&text);
+                let _ = parse(&text);
+                let _ = zoned_of_text(&text);
+                let _ = local_date_days(&text);
+                let _ = local_time_nanos(&text);
+                let _ = period_parts(&text);
+                let _ = period_days(&text);
+                let _ = duration_nanos(&text);
+                let _ = zone_offset(&text);
+                let _ = time_literals(&format!("'{text}'"));
+            }
+        }
     }
 
     #[test]

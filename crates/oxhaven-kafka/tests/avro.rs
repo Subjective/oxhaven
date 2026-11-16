@@ -406,7 +406,9 @@ fn a_subject_is_fetched_by_version_with_the_requests_java_makes() {
     assert_eq!(
         refused(Some("3")),
         "io.deephaven.UncheckedDeephavenException: io.confluent.kafka.schemaregistry.client.\
-         rest.exceptions.RestClientException: Version 3 not found.; error code: 40402"
+         rest.exceptions.RestClientException: Version 3 not found.; error code: 40402 \
+         (caused by io.confluent.kafka.schemaregistry.client.rest.exceptions.\
+         RestClientException: Version 3 not found.; error code: 40402)"
     );
     assert_eq!(
         refused(Some("abc")),

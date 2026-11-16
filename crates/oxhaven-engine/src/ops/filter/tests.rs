@@ -411,7 +411,6 @@ fn filters_that_do_not_fit_the_table_are_errors() {
         "",
         "I in `x`",
         "I in 1.5",
-        "I > `x`",
         "I includes `x`",
         "I > 1 &&\n I < 3",
         "I in 2147483648",
@@ -419,6 +418,13 @@ fn filters_that_do_not_fit_the_table_are_errors() {
         let error = refused(&t, &[text]);
         assert!(is_invalid(&error), "{text}: {error}");
     }
+    // An int ordered against a string compiles as Java's `compareTo(Comparable, Comparable)`
+    // and fails where the two meet, as Java's initial filter does.
+    let error = refused(&t, &["I > `x`"]);
+    assert!(
+        matches!(&error, FilterError::Failed(f) if f.message.contains("ClassCastException")),
+        "{error}"
+    );
     // One bad filter among good ones refuses the operation.
     assert!(is_invalid(&refused(&t, &["I > 1", "Nope > 1"])));
     // The error of a simple filter is reported, not that of the formula tried after it.

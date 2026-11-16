@@ -4,6 +4,7 @@
 //! that counts them and keeps the first failure, and a flush waits for all of them.
 //! `docs/KAFKA.md`, "Producing", has how its properties are translated.
 
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::thread::sleep;
@@ -50,21 +51,33 @@ impl ProducerContext for Deliveries {
 /// The record sink over librdkafka.
 pub struct ClientSink {
     producer: BaseProducer<Deliveries>,
-    topic: String,
     max_block: Duration,
-    /// The number of partitions of the topic, once its metadata has been seen.
-    partitions: Option<i32>,
-    /// Whether this publication found no metadata in time.
-    no_metadata: bool,
+    /// The number of partitions of each topic whose metadata has been seen.
+    partitions: HashMap<String, i32>,
+    /// The topics this publication found no metadata for in time.
+    no_metadata: HashSet<String>,
     sent: u64,
 }
 
+/// Whether Kafka takes `topic` as a topic's name.
+///
+/// Behavior: org.apache.kafka.common.internals.Topic#validate
+fn valid_topic(topic: &str) -> bool {
+    !topic.is_empty()
+        && topic != "."
+        && topic != ".."
+        && topic.len() <= 249
+        && topic
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+}
+
 impl ClientSink {
-    /// Makes the producer `config` describes, for `topic`. Nothing is asked of a broker
-    /// yet, as in Java.
+    /// Makes the producer `config` describes. Nothing is asked of a broker yet, as in
+    /// Java.
     ///
     /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#KafkaProducer
-    pub fn connect(config: &[(String, String)], topic: &str) -> Result<Self, KafkaError> {
+    pub fn connect(config: &[(String, String)]) -> Result<Self, KafkaError> {
         let settings = ProducerSettings::new(config)?;
         let producer = settings
             .client
@@ -72,10 +85,9 @@ impl ClientSink {
             .map_err(|error| KafkaError::Invalid(format!("the Kafka producer: {error}")))?;
         Ok(Self {
             producer,
-            topic: topic.to_owned(),
             max_block: settings.max_block,
-            partitions: None,
-            no_metadata: false,
+            partitions: HashMap::new(),
+            no_metadata: HashSet::new(),
             sent: 0,
         })
     }
@@ -85,13 +97,13 @@ impl ClientSink {
     /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#waitOnMetadata, whose
     /// `TimeoutException` the send's callback gets. Java waits again for each record it
     /// sends while the metadata is missing; this waits once per publication.
-    fn await_metadata(&mut self, partition: Option<i32>) -> Result<(), String> {
+    fn await_metadata(&mut self, topic: &str, partition: Option<i32>) -> Result<(), String> {
         let known = |partitions: Option<i32>| match (partitions, partition) {
             (Some(count), Some(partition)) => partition < count,
             (Some(_), None) => true,
             (None, _) => false,
         };
-        if known(self.partitions) {
+        if known(self.partitions.get(topic).copied()) {
             return Ok(());
         }
         let deadline = Instant::now() + self.max_block;
@@ -100,28 +112,31 @@ impl ClientSink {
             let metadata = self
                 .producer
                 .client()
-                .fetch_metadata(Some(&self.topic), left.max(Duration::from_millis(1)));
+                .fetch_metadata(Some(topic), left.max(Duration::from_millis(1)));
             if let Ok(metadata) = metadata {
-                let topic = metadata.topics().iter().find(|t| t.name() == self.topic);
-                let topic = topic.filter(|t| t.error().is_none() && !t.partitions().is_empty());
-                self.partitions = topic.map(|topic| topic.partitions().len() as i32);
+                let found = metadata.topics().iter().find(|t| t.name() == topic);
+                let found = found.filter(|t| t.error().is_none() && !t.partitions().is_empty());
+                if let Some(found) = found {
+                    self.partitions
+                        .insert(topic.to_owned(), found.partitions().len() as i32);
+                }
             }
-            if known(self.partitions) {
+            if known(self.partitions.get(topic).copied()) {
                 return Ok(());
             }
             if Instant::now() >= deadline {
                 let millis = self.max_block.as_millis();
-                return Err(match (self.partitions, partition) {
+                return Err(match (self.partitions.get(topic).copied(), partition) {
                     (Some(count), Some(partition)) => format!(
                         "org.apache.kafka.common.errors.TimeoutException: Partition \
                          {partition} of topic {} with partition count {count} is not present \
                          in metadata after {millis} ms.",
-                        self.topic
+                        topic
                     ),
                     _ => format!(
                         "org.apache.kafka.common.errors.TimeoutException: Topic {} not \
                          present in metadata after {millis} ms.",
-                        self.topic
+                        topic
                     ),
                 });
             }
@@ -130,29 +145,59 @@ impl ClientSink {
     }
 }
 
-impl RecordSink for ClientSink {
-    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#send(ProducerRecord,
-    /// Callback): what fails goes to the callback
-    fn send(&mut self, record: OutRecord) {
-        self.sent += 1;
-        if self.no_metadata {
+impl ClientSink {
+    /// Whether the metadata of `topic` and `partition` is known, waiting for it; when not,
+    /// the send has completed with its failure.
+    fn admit(&mut self, topic: &str, partition: Option<i32>) -> bool {
+        if !valid_topic(topic) {
+            // Behavior: the metadata request of KafkaProducer#waitOnMetadata, whose
+            // answer for such a name fails the send (probe c1)
+            let context = self.producer.context();
+            context.completed.fetch_add(1, Ordering::SeqCst);
+            context.fail(format!(
+                "org.apache.kafka.common.errors.InvalidTopicException: Invalid topics: [{topic}]"
+            ));
+            return false;
+        }
+        if self.no_metadata.contains(topic) {
             // Java waits for the metadata again for each record and fails it again; this
             // does not wait again within one publication.
             self.producer
                 .context()
                 .completed
                 .fetch_add(1, Ordering::SeqCst);
-            return;
+            return false;
         }
-        if let Err(failure) = self.await_metadata(record.partition) {
-            self.no_metadata = true;
+        if let Err(failure) = self.await_metadata(topic, partition) {
+            self.no_metadata.insert(topic.to_owned());
             let context = self.producer.context();
             context.completed.fetch_add(1, Ordering::SeqCst);
             context.fail(failure);
+            return false;
+        }
+        true
+    }
+}
+
+impl RecordSink for ClientSink {
+    fn ready(&mut self, topic: &str, partition: Option<i32>) -> bool {
+        let admitted = self.admit(topic, partition);
+        if !admitted {
+            self.sent += 1;
+        }
+        admitted
+    }
+
+    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#send(ProducerRecord,
+    /// Callback): what fails goes to the callback
+    fn send(&mut self, record: OutRecord) {
+        self.sent += 1;
+        if !self.admit(&record.topic, record.partition) {
             return;
         }
-        let mut message: BaseRecord<'_, [u8], [u8], ()> = BaseRecord::to(&self.topic);
+        let mut message: BaseRecord<'_, [u8], [u8], ()> = BaseRecord::to(&record.topic);
         message.partition = record.partition;
+        message.timestamp = record.timestamp;
         message.key = record.key.as_deref();
         message.payload = record.value.as_deref();
         loop {
@@ -184,7 +229,7 @@ impl RecordSink for ClientSink {
             .unwrap_or_else(|p| p.into_inner())
             .take();
         let sent = std::mem::take(&mut self.sent);
-        self.no_metadata = false;
+        self.no_metadata.clear();
         let publisher = "io.deephaven.kafka.publish.KafkaPublisherException";
         if let Err(error) = flushed {
             return Err(KafkaError::Broker(format!(

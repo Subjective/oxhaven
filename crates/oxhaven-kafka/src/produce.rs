@@ -8,17 +8,24 @@
 //! cycle, as Java's does. `docs/KAFKA.md`, "Producing", has the rest.
 
 use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use arrow::array::{Array, AsArray};
+use arrow::datatypes::{Int32Type, TimestampNanosecondType};
 
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::schema::TableDefinition;
+use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use oxhaven_engine::graph::{ParentListener, UpdateHandler};
 use oxhaven_engine::ops::agg::{aggregate, AggSpec, Aggregation, Pair};
 
-use crate::serialize::{Encoding, JsonSerializer, JsonShape, Serializer};
-use crate::{not_ported, KafkaError};
+use crate::avro_produce::{AvroProduceSpec, AvroSerializer};
+use crate::avro_text::Text;
+use crate::registry::Registry;
+use crate::serialize::{cells, Encoding, JsonSerializer, JsonShape, Serializer};
+use crate::{not_ported, property, KafkaError};
 
 /// Behavior: io.deephaven.kafka.publish.PublishToKafka#CHUNK_SIZE: rows are serialized
 /// and sent this many at a time, so a row that cannot be written stops a publication
@@ -35,6 +42,9 @@ pub enum ProduceSpec {
     Simple(String),
     /// A JSON object of columns. Behavior: `KafkaTools.Produce#jsonSpec`
     Json(JsonProduceSpec),
+    /// An Avro record of columns, in Confluent's wire format.
+    /// Behavior: `KafkaTools.Produce#avroSpec`
+    Avro(AvroProduceSpec),
 }
 
 /// The arguments of `KafkaTools.Produce#jsonSpec`.
@@ -54,15 +64,23 @@ pub struct JsonProduceSpec {
     pub timestamp_field: Option<String>,
 }
 
-/// The arguments of [`produce`]: Java's `KafkaPublishOptions` without the columns of
-/// topics, partitions and timestamps (task 7.5.2).
+/// The arguments of [`produce`]: Java's `KafkaPublishOptions`.
 #[derive(Clone, PartialEq, Debug)]
 pub struct ProduceOptions {
     /// The properties of the producer.
     pub config: Vec<(String, String)>,
+    /// The topic of a record whose topic column is null; empty for none.
     pub topic: String,
-    /// The partition of every record; Kafka's partitioner chooses without it.
+    /// The partition of a record whose partition column is null; Kafka's partitioner
+    /// chooses without it.
     pub partition: Option<i32>,
+    /// A `String` column with the topic of each record.
+    pub topic_column: Option<String>,
+    /// An `int` column with the partition of each record.
+    pub partition_column: Option<String>,
+    /// An `Instant` column with the timestamp of each record; the producer stamps the
+    /// time it sends a record whose cell is null.
+    pub timestamp_column: Option<String>,
     pub key: ProduceSpec,
     pub value: ProduceSpec,
     /// Publishes `last_by` of the table by the key's columns.
@@ -71,10 +89,13 @@ pub struct ProduceOptions {
     pub publish_initial: bool,
 }
 
-/// A record to send: the topic is the sink's.
+/// A record to send.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct OutRecord {
+    pub topic: String,
     pub partition: Option<i32>,
+    /// Milliseconds since the epoch; the producer's time when `None`.
+    pub timestamp: Option<i64>,
     pub key: Option<Vec<u8>>,
     pub value: Option<Vec<u8>>,
 }
@@ -83,6 +104,15 @@ pub struct OutRecord {
 /// by the next `flush`, which returns once every record sent before it was written or
 /// failed, as Java's `KafkaProducer#send` with a callback followed by `flush`.
 pub trait RecordSink: Send {
+    /// Whether a record to `topic` and `partition` can be sent, asked before its key and
+    /// value are serialized; when not, the sink has already counted the record and its
+    /// failure, and the record is not serialized.
+    ///
+    /// Behavior: org.apache.kafka.clients.producer.KafkaProducer#doSend waits for the
+    /// topic's metadata before it serializes (probes r_topics, a7)
+    fn ready(&mut self, _topic: &str, _partition: Option<i32>) -> bool {
+        true
+    }
     fn send(&mut self, record: OutRecord);
     fn flush(&mut self) -> Result<(), KafkaError>;
 }
@@ -133,10 +163,12 @@ impl JsonProduceSpec {
 /// `#getColumnNames`, for each spec in turn
 fn plan(
     spec: &ProduceSpec,
-    definition: &TableDefinition,
+    table: &dyn Table,
     config: &[(String, String)],
     is_key: bool,
+    registry: Option<&Arc<Registry>>,
 ) -> Result<Option<(Vec<String>, Planned)>, KafkaError> {
+    let definition = table.definition();
     match spec {
         ProduceSpec::Ignore => Ok(None),
         ProduceSpec::Simple(column) => {
@@ -148,13 +180,37 @@ fn plan(
             let encoding = Encoding::of(config, is_key)?;
             Ok(Some((json.columns(definition)?, Planned::Json(encoding))))
         }
+        ProduceSpec::Avro(avro) => {
+            let registry = registry.expect("a registry is made for an Avro spec");
+            let (columns, text) = avro.columns(definition, table.is_refreshing(), registry)?;
+            Ok(Some((columns, Planned::Avro(text))))
+        }
     }
 }
 
-/// A serializer, or what a JSON spec's needs once the table to publish is known.
+/// A serializer, or what a JSON or Avro spec's needs once the table to publish is known.
 enum Planned {
     Ready(Serializer),
     Json(Encoding),
+    Avro(Arc<Text>),
+}
+
+/// How one side of a record is written.
+enum Side {
+    Bytes(Serializer),
+    /// Avro records, prefixed with the id the registry gives their schema under the
+    /// subject of the record's topic and this suffix (`-key` or `-value`).
+    Avro {
+        serializer: AvroSerializer,
+        registry: Arc<Registry>,
+        suffix: &'static str,
+    },
+}
+
+/// One side of one row: its bytes, or an Avro record still to register and prefix.
+enum Cell {
+    Done(Option<Vec<u8>>),
+    Avro(Result<Vec<u8>, KafkaError>),
 }
 
 impl Planned {
@@ -165,9 +221,26 @@ impl Planned {
         columns: &[String],
         original: &TableDefinition,
         published: &TableDefinition,
-    ) -> Result<Serializer, KafkaError> {
+        registry: Option<&Arc<Registry>>,
+        is_key: bool,
+    ) -> Result<Side, KafkaError> {
         match (self, spec) {
-            (Planned::Ready(serializer), _) => Ok(serializer.over(original, published)),
+            (Planned::Avro(text), ProduceSpec::Avro(avro)) => Ok(Side::Avro {
+                serializer: AvroSerializer::new(
+                    text,
+                    published,
+                    columns,
+                    avro.timestamp_field.as_deref(),
+                )?,
+                registry: registry
+                    .expect("a registry is made for an Avro spec")
+                    .clone(),
+                suffix: if is_key { "-key" } else { "-value" },
+            }),
+            (Planned::Avro(_), _) => unreachable!("only an Avro spec reads a schema"),
+            (Planned::Ready(serializer), _) => {
+                Ok(Side::Bytes(serializer.over(original, published)))
+            }
             (Planned::Json(encoding), ProduceSpec::Json(json)) => {
                 let shape = JsonShape {
                     fields: columns
@@ -178,9 +251,9 @@ impl Planned {
                     output_nulls: json.output_nulls,
                     timestamp_field: json.timestamp_field.as_deref(),
                 };
-                Ok(Serializer::Json(JsonSerializer::new(
+                Ok(Side::Bytes(Serializer::Json(JsonSerializer::new(
                     published, &shape, encoding,
-                )?))
+                )?)))
             }
             (Planned::Json(_), _) => unreachable!("only a JSON spec waits for its table"),
         }
@@ -196,11 +269,16 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 /// The state of one publication: Java's `PublishToKafka` and its listener.
 struct Publisher {
     table: Arc<dyn Table>,
-    key: Option<(Serializer, Vec<usize>)>,
-    value: Option<(Serializer, Vec<usize>)>,
+    key: Option<(Side, Vec<usize>)>,
+    value: Option<(Side, Vec<usize>)>,
     partition: Option<i32>,
     blink: bool,
+    /// The default topic; empty for none.
     topic: String,
+    /// The columns of the topic, partition and timestamp of each record.
+    topic_column: Option<usize>,
+    partition_column: Option<usize>,
+    timestamp_column: Option<usize>,
     /// `None` once publishing stopped.
     sink: Mutex<Option<Box<dyn RecordSink>>>,
     failure: Mutex<Option<String>>,
@@ -228,32 +306,168 @@ impl Publisher {
             let end = (start + CHUNK_SIZE).min(rows.size());
             let chunk = rows.sub_set_by_position_range(start, end);
             start = end;
-            let side = |side: &Option<(Serializer, Vec<usize>)>| match side {
-                Some((serializer, _)) => serializer.serialize(&*self.table, &chunk, prev),
-                None => Ok(vec![None; chunk.size() as usize]),
+            let count = chunk.size() as usize;
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_or(0, |since| since.as_nanos() as i64);
+            let side = |side: &Option<(Side, Vec<usize>)>| -> Result<Vec<Cell>, KafkaError> {
+                Ok(match side {
+                    Some((Side::Bytes(serializer), _)) => serializer
+                        .serialize(&*self.table, &chunk, prev)?
+                        .into_iter()
+                        .map(Cell::Done)
+                        .collect(),
+                    Some((Side::Avro { serializer, .. }, _)) => serializer
+                        .serialize(&*self.table, &chunk, prev, now)?
+                        .into_iter()
+                        .map(Cell::Avro)
+                        .collect(),
+                    None => (0..count).map(|_| Cell::Done(None)).collect(),
+                })
             };
             let keys = side(&self.key)?;
             let values = if values {
                 side(&self.value)?
             } else {
-                vec![None; chunk.size() as usize]
+                (0..count).map(|_| Cell::Done(None)).collect()
             };
-            for (key, value) in keys.into_iter().zip(values) {
-                if let Some(partition) = self.partition.filter(|partition| *partition < 0) {
-                    // Behavior: org.apache.kafka.clients.producer.ProducerRecord#ProducerRecord
+            let topics: Vec<Option<String>> = match self.topic_column {
+                Some(column) => {
+                    let array = cells(&*self.table, column, &chunk, prev)?;
+                    let strings = array.as_string::<i32>();
+                    (0..count)
+                        .map(|i| strings.is_valid(i).then(|| strings.value(i).to_owned()))
+                        .collect()
+                }
+                None => vec![None; count],
+            };
+            let partitions: Vec<Option<i32>> = match self.partition_column {
+                Some(column) => {
+                    let array = cells(&*self.table, column, &chunk, prev)?;
+                    let ints = array.as_primitive::<Int32Type>();
+                    (0..count)
+                        .map(|i| {
+                            (ints.is_valid(i) && ints.value(i) != i32::MIN).then(|| ints.value(i))
+                        })
+                        .collect()
+                }
+                None => vec![None; count],
+            };
+            let timestamps: Vec<Option<i64>> = match self.timestamp_column {
+                Some(column) => {
+                    let array = cells(&*self.table, column, &chunk, prev)?;
+                    let nanos = array.as_primitive::<TimestampNanosecondType>();
+                    // Behavior: PublishToKafka#timestampMillis, `TimeUnit#toMillis`
+                    // (truncation)
+                    (0..count)
+                        .map(|i| {
+                            (nanos.is_valid(i) && nanos.value(i) != i64::MIN)
+                                .then(|| nanos.value(i) / 1_000_000)
+                        })
+                        .collect()
+                }
+                None => vec![None; count],
+            };
+            let rows = keys
+                .into_iter()
+                .zip(values)
+                .zip(topics)
+                .zip(partitions)
+                .zip(timestamps);
+            for ((((key, value), topic), partition), timestamp) in rows {
+                // Behavior: PublishToKafka#topic and #partition: a null cell takes the default.
+                let topic = topic.or_else(|| (!self.topic.is_empty()).then(|| self.topic.clone()));
+                let partition = partition.or(self.partition);
+                // Behavior: org.apache.kafka.clients.producer.ProducerRecord#ProducerRecord
+                let Some(topic) = topic else {
+                    return Err(KafkaError::Invalid(
+                        "java.lang.IllegalArgumentException: Topic cannot be null.".to_owned(),
+                    ));
+                };
+                if let Some(timestamp) = timestamp.filter(|t| *t < 0) {
+                    return Err(KafkaError::Invalid(format!(
+                        "java.lang.IllegalArgumentException: Invalid timestamp: {timestamp}. \
+                         Timestamp should always be non-negative or null."
+                    )));
+                }
+                if let Some(partition) = partition.filter(|partition| *partition < 0) {
                     return Err(KafkaError::Invalid(format!(
                         "java.lang.IllegalArgumentException: Invalid partition: {partition}. \
                          Partition number should always be non-negative or null."
                     )));
                 }
+                // Java sends the timestamp 0 (probe r_neg_ts: -1500 ns is 0 ms); librdkafka
+                // takes 0 as "now".
+                if timestamp == Some(0) {
+                    return Err(not_ported(
+                        "org.apache.kafka.clients.producer.ProducerRecord#timestamp",
+                        "a record timestamp of 0 ms, which the Kafka client of this server \
+                         takes as the time of sending",
+                    ));
+                }
+                if !sink.ready(&topic, partition) {
+                    continue;
+                }
+                // Behavior: KafkaProducer#doSend serializes the key, then the value.
+                let key = self.finish(&self.key, key, &topic)?;
+                let value = self.finish(&self.value, value, &topic)?;
                 sink.send(OutRecord {
-                    partition: self.partition,
+                    topic,
+                    partition,
+                    timestamp,
                     key,
                     value,
                 });
             }
         }
         Ok(())
+    }
+
+    /// The bytes of one side of a record to `topic`: an Avro record gets the header of
+    /// Confluent's wire format, with the id of its schema registered under the topic's
+    /// subject first.
+    ///
+    /// Behavior: io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl
+    /// (probes a1, a2, a3: the schema is registered before the record is written)
+    fn finish(
+        &self,
+        side: &Option<(Side, Vec<usize>)>,
+        cell: Cell,
+        topic: &str,
+    ) -> Result<Option<Vec<u8>>, KafkaError> {
+        let body = match cell {
+            Cell::Done(bytes) => return Ok(bytes),
+            Cell::Avro(body) => body,
+        };
+        let Some((
+            Side::Avro {
+                serializer,
+                registry,
+                suffix,
+            },
+            _,
+        )) = side
+        else {
+            unreachable!("an Avro cell comes from an Avro side");
+        };
+        let subject = format!("{topic}{suffix}");
+        let id = registry
+            .register(&subject, &serializer.registered)
+            .map_err(|failure| {
+                not_ported(
+                    "io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl",
+                    &format!(
+                        "a schema registry that does not register a schema: {}",
+                        failure.0
+                    ),
+                )
+            })?;
+        let body = body?;
+        let mut bytes = Vec::with_capacity(body.len() + 5);
+        bytes.push(0);
+        bytes.extend(id.to_be_bytes());
+        bytes.extend(body);
+        Ok(Some(bytes))
     }
 
     /// Runs `body`, which sends, then waits for what it sent. An error of the body wins
@@ -386,10 +600,78 @@ pub fn produce(table: Arc<dyn Table>, options: &ProduceOptions) -> Result<Public
     produce_to(table, options, &|| {
         Ok(Box::new(crate::producer::ClientSink::connect(
             &options.config,
-            &options.topic,
         )?))
     })
 }
+
+/// The Java class name of a column's type, as `TableDefinition#checkHasColumn` prints it.
+fn java_class(column_type: &ColumnType) -> Option<&'static str> {
+    Some(match column_type {
+        ColumnType::Boolean => "java.lang.Boolean",
+        ColumnType::Byte => "byte",
+        ColumnType::Char => "char",
+        ColumnType::Short => "short",
+        ColumnType::Int => "int",
+        ColumnType::Long => "long",
+        ColumnType::Float => "float",
+        ColumnType::Double => "double",
+        ColumnType::String => "java.lang.String",
+        ColumnType::Instant => "java.time.Instant",
+        ColumnType::LocalDate => "java.time.LocalDate",
+        ColumnType::LocalTime => "java.time.LocalTime",
+        ColumnType::BigDecimal => "java.math.BigDecimal",
+        ColumnType::BigInteger => "java.math.BigInteger",
+        _ => return None,
+    })
+}
+
+/// Checks that `definition` has a column `name` of the type `java` names.
+///
+/// Behavior: io.deephaven.engine.table.TableDefinition#checkHasColumn(String, Class)
+/// (probes c3 to c6)
+fn check_has_column(
+    definition: &TableDefinition,
+    name: &str,
+    java: &str,
+    accepts: impl Fn(&ColumnType) -> bool,
+) -> Result<usize, KafkaError> {
+    let Some(index) = definition.index_of(name) else {
+        let names: Vec<&str> = definition
+            .columns()
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
+        return Err(KafkaError::Invalid(format!(
+            "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names \
+             [{name}], available column names are [{}]",
+            names.join(", ")
+        )));
+    };
+    let column_type = &definition.columns()[index].column_type;
+    if accepts(column_type) {
+        return Ok(index);
+    }
+    match java_class(column_type) {
+        Some(class) => Err(KafkaError::Invalid(format!(
+            "java.lang.ClassCastException: Cannot convert [{name}] of type {class} to type {java}"
+        ))),
+        None => Err(not_ported(
+            "io.deephaven.engine.table.TableDefinition#checkHasColumn",
+            &format!("a column {name} of type {column_type:?} where a {java} is needed"),
+        )),
+    }
+}
+
+/// Properties of Confluent's serializer that change what it does; only their defaults
+/// are reproduced.
+///
+/// Behavior: io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
+const SERIALIZER_DEFAULTS: [(&str, &str); 4] = [
+    ("auto.register.schemas", "true"),
+    ("use.latest.version", "false"),
+    ("normalize.schemas", "false"),
+    ("latest.compatibility.strict", "true"),
+];
 
 /// [`produce`] to any [`RecordSink`]; `sink` makes it where Java makes its producer, after
 /// the specs are checked.
@@ -398,7 +680,8 @@ pub fn produce_to(
     options: &ProduceOptions,
     sink: &dyn Fn() -> Result<Box<dyn RecordSink>, KafkaError>,
 ) -> Result<Publication, KafkaError> {
-    // Behavior: KafkaPublishOptions#checkNotBothIgnore, #checkPublishInitial, #checkTopic
+    // Behavior: KafkaPublishOptions#checkNotBothIgnore, #checkPublishInitial,
+    // #checkTopic, #checkTopicColumn, #checkPartitionColumn, #checkTimestampColumn
     if options.key == ProduceSpec::Ignore && options.value == ProduceSpec::Ignore {
         return Err(KafkaError::Invalid(
             "java.lang.IllegalArgumentException: keySpec and valueSpec can't both be ignore \
@@ -413,11 +696,25 @@ pub fn produce_to(
                 .to_owned(),
         ));
     }
-    if options.topic.is_empty() {
+    if options.topic.is_empty() && options.topic_column.is_none() {
         return Err(KafkaError::Invalid(
             "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)"
                 .to_owned(),
         ));
+    }
+    let definition = table.definition().clone();
+    if let Some(column) = &options.topic_column {
+        check_has_column(&definition, column, "java.lang.CharSequence", |t| {
+            *t == ColumnType::String
+        })?;
+    }
+    if let Some(column) = &options.partition_column {
+        check_has_column(&definition, column, "int", |t| *t == ColumnType::Int)?;
+    }
+    if let Some(column) = &options.timestamp_column {
+        check_has_column(&definition, column, "java.time.Instant", |t| {
+            *t == ColumnType::Instant
+        })?;
     }
     match table.update_graph() {
         Some(graph) => locked(&*graph, || start(table, options, sink)),
@@ -431,9 +728,38 @@ fn start(
     options: &ProduceOptions,
     sink: &dyn Fn() -> Result<Box<dyn RecordSink>, KafkaError>,
 ) -> Result<Publication, KafkaError> {
+    let avro = |spec: &ProduceSpec| matches!(spec, ProduceSpec::Avro(_));
+    // Behavior: KafkaTools#schemaRegistryClient, made when a spec has a schema provider
+    let registry = if avro(&options.key) || avro(&options.value) {
+        for (name, default) in SERIALIZER_DEFAULTS {
+            if let Some(value) = property(&options.config, name) {
+                if !value.eq_ignore_ascii_case(default) {
+                    return Err(not_ported(
+                        "io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig",
+                        &format!("{name}={value}"),
+                    ));
+                }
+            }
+        }
+        Some(Arc::new(Registry::from_config(&options.config)?))
+    } else {
+        None
+    };
     let original = table.definition().clone();
-    let key = plan(&options.key, &original, &options.config, true)?;
-    let value = plan(&options.value, &original, &options.config, false)?;
+    let key = plan(
+        &options.key,
+        &*table,
+        &options.config,
+        true,
+        registry.as_ref(),
+    )?;
+    let value = plan(
+        &options.value,
+        &*table,
+        &options.config,
+        false,
+        registry.as_ref(),
+    )?;
     let last_by = options.last_by && options.key != ProduceSpec::Ignore;
     let published = match (&key, last_by) {
         (Some((key_columns, _)), true) => last_by_of(&table, key_columns)?,
@@ -444,16 +770,24 @@ fn start(
         let index = |name: &String| definition.index_of(name);
         columns.iter().filter_map(index).collect()
     };
-    let finish = |planned: Option<(Vec<String>, Planned)>, spec: &ProduceSpec| {
+    let finish = |planned: Option<(Vec<String>, Planned)>, spec: &ProduceSpec, is_key: bool| {
         planned
             .map(|(columns, planned)| {
-                let serializer = planned.serializer(spec, &columns, &original, &definition)?;
-                Ok((serializer, index_of(&columns)))
+                let side = planned.serializer(
+                    spec,
+                    &columns,
+                    &original,
+                    &definition,
+                    registry.as_ref(),
+                    is_key,
+                )?;
+                Ok((side, index_of(&columns)))
             })
             .transpose()
     };
-    let key = finish(key, &options.key)?;
-    let value = finish(value, &options.value)?;
+    let key = finish(key, &options.key, true)?;
+    let value = finish(value, &options.value, false)?;
+    let column = |name: &Option<String>| name.as_ref().and_then(|name| definition.index_of(name));
     let publisher = Arc::new(Publisher {
         blink: published.attributes().blink,
         table: published.clone(),
@@ -461,6 +795,9 @@ fn start(
         value,
         partition: options.partition,
         topic: options.topic.clone(),
+        topic_column: column(&options.topic_column),
+        partition_column: column(&options.partition_column),
+        timestamp_column: column(&options.timestamp_column),
         sink: Mutex::new(Some(sink()?)),
         failure: Mutex::new(None),
     });
