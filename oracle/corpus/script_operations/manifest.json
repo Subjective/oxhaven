@@ -1,0 +1,90 @@
+{
+  "format": 2,
+  "scenario": "script_operations",
+  "scenario_sha256": "b4697509c3a7a36ee1dc18109987d49cad915c9944d3726be179aac473d4dc29",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ring",
+      "file": "step000.ring.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "ring_larger",
+      "file": "step000.ring_larger.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "ring_not_initialized",
+      "failure": {
+        "code": "SCRIPT_FAILED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "ring_of_none",
+      "failure": {
+        "code": "SCRIPT_FAILED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "transposed",
+      "file": "step000.transposed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "transposed_two",
+      "file": "step000.transposed_two.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "transposed_seeded",
+      "file": "step000.transposed_seeded.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "transposed_seeded_by_columns_only",
+      "failure": {
+        "code": "SCRIPT_FAILED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "side_by_side",
+      "file": "step000.side_by_side.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "side_by_side_many_rows",
+      "failure": {
+        "code": "SCRIPT_FAILED"
+      }
+    },
+    {
+      "step": 0,
+      "table": "joined_by_script",
+      "file": "step000.joined_by_script.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "ranged_without_aggregation",
+      "file": "step000.ranged_without_aggregation.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "ranged_by_script",
+      "file": "step000.ranged_by_script.arrow",
+      "rows": 6
+    }
+  ]
+}

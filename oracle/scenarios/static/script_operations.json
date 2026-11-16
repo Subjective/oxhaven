@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "name": "script_operations",
+  "description": "The operations the table service has no request for, each made by a script in the server's Python console: a ring table, a keyed transpose, a multi join without match columns and with them, and a range join without aggregations; and the requests of the table service that are refused for the last two.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "string"}, {"name": "V", "type": "int32"}, {"name": "Lo", "type": "int32"}, {"name": "Hi", "type": "int32"}],
+      "rows": [["b", "x", 1, 0, 2], ["a", "y", 2, 1, 1], ["b", "y", 3, 2, 9], [null, "x", 4, 5, 3], ["c", "1-2.3/4", 5, null, 4], ["a", "x", 6, 3, null]]
+    },
+    {"name": "r", "columns": [{"name": "K", "type": "string"}, {"name": "P", "type": "int32"}, {"name": "W", "type": "float64"}],
+     "rows": [["a", 1, 0.5], ["b", 2, 1.5], ["b", 4, 2.5], ["c", 9, null]]},
+    {"name": "levels", "columns": [{"name": "L", "type": "string"}], "rows": [["never"], ["y"]]},
+    {"name": "cells", "columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "string"}],
+     "rows": [["z", "never"], ["a", "y"], ["a", "x"]]}
+  ],
+  "operations": [
+    {"name": "ring", "op": "ring_table", "source": "t", "capacity": 4},
+    {"name": "ring_larger", "op": "ring_table", "source": "t", "capacity": 20, "initialize": true},
+    {"name": "ring_not_initialized", "op": "ring_table", "source": "t", "capacity": 4, "initialize": false},
+    {"name": "ring_of_none", "op": "ring_table", "source": "t", "capacity": 0},
+    {"name": "transposed", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["L"],
+     "aggs": [{"agg": "count", "column": "N"}]},
+    {"name": "transposed_two", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["L"], "new_columns": "ignore",
+     "aggs": [{"agg": "sum", "columns": ["Sum = V"]}, {"agg": "last", "columns": ["Last = Lo"]}]},
+    {"name": "transposed_seeded", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["L"], "initial_groups": "cells",
+     "aggs": [{"agg": "max", "columns": ["Max = V"]}]},
+    {"name": "transposed_seeded_by_columns_only", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["L"], "initial_groups": "levels",
+     "aggs": [{"agg": "max", "columns": ["Max = V"]}]},
+    {"name": "total", "op": "agg_by", "source": "t", "by": [], "aggs": [{"agg": "sum", "columns": ["Total = V"]}]},
+    {"name": "widest", "op": "agg_by", "source": "r", "by": [], "aggs": [{"agg": "max", "columns": ["Widest = W"]}, {"agg": "count", "column": "N"}]},
+    {"name": "side_by_side", "op": "multi_join", "script": true,
+     "inputs": [{"table": "total", "on": []}, {"table": "widest", "on": [], "joins": ["Widest"]}]},
+    {"name": "side_by_side_many_rows", "op": "multi_join", "script": true,
+     "inputs": [{"table": "total", "on": []}, {"table": "r", "on": [], "joins": ["P"]}]},
+    {"name": "keyed_r", "op": "agg_by", "source": "r", "by": ["K"], "aggs": [{"agg": "sum", "columns": ["P"]}]},
+    {"name": "keyed_t", "op": "agg_by", "source": "t", "by": ["K"], "aggs": [{"agg": "sum", "columns": ["V"]}]},
+    {"name": "joined_by_script", "op": "multi_join", "script": true,
+     "inputs": [{"table": "keyed_t", "on": ["K"]}, {"table": "keyed_r", "on": ["K"], "joins": ["RP = P"]}]},
+    {"name": "ranged_without_aggregation", "op": "range_join", "left": "t", "right": "r", "script": true,
+     "on": ["K", "Lo <= P <= Hi"], "aggs": []},
+    {"name": "ranged_by_script", "op": "range_join", "left": "t", "right": "r", "script": true,
+     "on": ["K", "Lo <= P <= Hi"], "aggs": [{"agg": "group", "columns": ["Ps = P"]}]}
+  ],
+  "results": [
+    {"table": "ring"}, {"table": "ring_larger"}, {"table": "ring_not_initialized"}, {"table": "ring_of_none"},
+    {"table": "transposed"}, {"table": "transposed_two"}, {"table": "transposed_seeded"}, {"table": "transposed_seeded_by_columns_only"},
+    {"table": "side_by_side"}, {"table": "side_by_side_many_rows"}, {"table": "joined_by_script"},
+    {"table": "ranged_without_aggregation"}, {"table": "ranged_by_script"}
+  ]
+}

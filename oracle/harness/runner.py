@@ -7,6 +7,7 @@ No Java counterpart: this is the harness. It speaks to the server only through p
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Any, Callable
 
@@ -192,7 +193,9 @@ def _scripted(session: Session, sources: list[Table], expression: str) -> Table:
     except DHError as error:
         if failure_code(error) is not None:
             raise  # the console itself is not there, or the call failed: a status code
-        raise ScriptFailed(" ".join(str(error).split())[:400]) from error
+        # For the trace: the exceptions the console names, without the frames around them.
+        named = re.findall(r"[\w.]+(?:Error|Exception): [^\n]*", str(error))
+        raise ScriptFailed(" <- ".join(dict.fromkeys(named))[:600] or str(error)[:600]) from error
     return session.open_table("_fz_out")
 
 
