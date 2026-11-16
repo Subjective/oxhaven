@@ -12,7 +12,7 @@ from typing import Optional
 from . import _engine, dtypes
 from .column import ColumnType
 from .dherror import DHError
-from .table import Table, TableDefinition
+from .table import PartitionedTable, Table, TableDefinition
 
 
 class UnsignedLongTarget(Enum):
@@ -184,9 +184,10 @@ def _write_arguments(
     index_columns,
     row_group_info,
     special_instructions,
+    base_name=None,
 ) -> tuple:
-    """The arguments of a write after the tables and the paths, as the native function
-    takes them.
+    """The arguments of a write after the tables and where they go, as the native
+    functions take them.
 
     Behavior: `deephaven.parquet._build_parquet_instructions` with `for_read=False`
     """
@@ -209,7 +210,11 @@ def _write_arguments(
             definition_of = table_definition._handle
         else:
             definition = [
-                (column.name, dtypes._engine_type(column.data_type))
+                (
+                    column.name,
+                    dtypes._engine_type(column.data_type),
+                    column.column_type is ColumnType.PARTITIONING,
+                )
                 for column in table_definition.values()
             ]
     if row_group_info is not None:
@@ -230,6 +235,7 @@ def _write_arguments(
         bool(generate_metadata_files),
         [list(names) for names in index_columns or []],
         row_group_info,
+        base_name or None,
     )
 
 
@@ -268,7 +274,8 @@ def write(
     `path` must end in ".parquet"; directories that do not exist are created, and removed
     again if the write fails. `table_definition` gives the columns of the file where they
     are not the table's: a column the table does not have is written as nulls.
-    `compression_codec_name` defaults to "SNAPPY". `generate_metadata_files`,
+    `compression_codec_name` defaults to "SNAPPY". With `generate_metadata_files` the
+    directory of the file also gets a `_metadata` and a `_common_metadata` file.
     `index_columns`, `special_instructions`, a codec in `col_instructions` and "LZO" are
     not supported yet.
     """
@@ -285,7 +292,7 @@ def write(
             row_group_info,
             special_instructions,
         )
-        _engine.native.write_parquet([_handle(table)], [path], *arguments)
+        _engine.native.write_parquet([_handle(table)], [path], arguments)
     except Exception as e:
         raise DHError(e, "failed to write to parquet data.") from e
 
@@ -306,13 +313,19 @@ def write_partitioned(
     special_instructions=None,
 ) -> None:
     """Writes a table as a directory tree of Parquet files, one directory level named
-    "key=value" for each partitioning column.
+    "key=value" for each partitioning column, and the rows of each key in a file there,
+    without the key columns.
 
-    Not supported yet: this raises what the reference raises for a table without
-    partitioning columns, and refuses a table or a `table_definition` that has them.
+    `table` is a table whose definition, or `table_definition`, has partitioning columns,
+    or a partitioned table, whose key columns they then are. `base_name` names the files:
+    "{uuid}" in it is a random UUID, which is the default; "{i}" counts the files of one
+    key; "{partitions}" is the directory names joined by "_". A file that is there under
+    a name this write uses is replaced; every other file under `destination_dir` stays.
+    With `generate_metadata_files`, `destination_dir` also gets a `_metadata` and a
+    `_common_metadata` file. The other arguments are those of `write`.
     """
     try:
-        _write_arguments(
+        arguments = _write_arguments(
             table_definition,
             col_instructions,
             compression_codec_name,
@@ -323,21 +336,16 @@ def write_partitioned(
             index_columns,
             row_group_info,
             special_instructions,
+            base_name,
         )
-        if not isinstance(table, Table):
+        if isinstance(table, PartitionedTable):
+            source = (None, table.j_object)
+        elif isinstance(table, Table):
+            source = (table.j_object, None)
+        else:
+            # what the reference raises when it asks the argument for its Java object
             raise AttributeError(f"'{type(table).__name__}' object has no attribute 'j_object'")
-        definition = table.definition
-        if table_definition is not None:
-            definition = TableDefinition(table_definition)
-        if not any(c.column_type is ColumnType.PARTITIONING for c in definition.values()):
-            raise RuntimeError(
-                "java.lang.IllegalArgumentException: Table must have partitioning columns to "
-                "write partitioned data"
-            )
-        raise _not_ported(
-            "io.deephaven.parquet.table.ParquetTools#writeKeyValuePartitionedTable",
-            "a table written as directories named by its partitioning columns",
-        )
+        _engine.native.write_parquet_partitioned(*source, destination_dir, arguments)
     except Exception as e:
         raise DHError(e, "failed to write to parquet data.") from e
 
@@ -375,6 +383,6 @@ def batch_write(
             special_instructions,
         )
         handles = [_handle(table) for table in tables]
-        _engine.native.write_parquet(handles, list(paths), *arguments)
+        _engine.native.write_parquet(handles, list(paths), arguments)
     except Exception as e:
         raise DHError(e, "write multiple tables to parquet data failed.") from e

@@ -34,7 +34,9 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 pub use layout::Layout;
-pub use write::{delete, write, RowGroups, WriteColumn, WriteOptions};
+pub use write::{
+    delete, write, write_partitioned, PartitionedSource, RowGroups, WriteColumn, WriteOptions,
+};
 
 /// Why a table could not be read, or written.
 #[derive(Debug, Clone, PartialEq, Eq)]

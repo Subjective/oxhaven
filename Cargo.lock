@@ -1305,6 +1305,7 @@ dependencies = [
  "oxhaven-engine",
  "parquet",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]

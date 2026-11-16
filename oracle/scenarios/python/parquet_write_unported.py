@@ -57,5 +57,5 @@ write_partitioned(source(), root + "/partitioned", table_definition=[
     col_def("K", dtypes.int32, column_type=ColumnType.PARTITIONING),
     col_def("X", dtypes.int32),
     col_def("S", dtypes.string),
-])
+], base_name="{partitions}-{i}")  # the default name is a random UUID, which no run repeats
 partitioned = listing("partitioned")
