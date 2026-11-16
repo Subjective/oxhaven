@@ -233,6 +233,30 @@ Nothing else of the JS plugin routes is covered. The recorded case is
 `a_link_of_a_js_plugin_is_followed_only_inside_its_directory` in
 `crates/oxhaven-server/src/web/tests.rs`.
 
+### A10. A `jpy` module without Java
+
+Approved by the owner on 2026-11-16.
+
+Python packages written for Java's server reach Java classes through the `jpy` module, and some
+import it in a module body (`deephaven-plugin-plotly-express` does), so without a module of
+that name they fail to import and the server does not start with them installed. Oxhaven has
+no Java VM.
+
+Rule: Oxhaven's Python holds a `jpy` module with the public names of jpy 2.2.0 and no Java
+class behind any of them (`crates/oxhaven-server/python/jpy.py`).
+
+- `jpy.get_type` answers a class for any name that is not empty, where jpy refuses a class
+  Java does not have. The class can be held, compared and printed.
+- Every use of such a class (calling it, reading a member, `jpy.array`, `jpy.cast` of an
+  object, `jpy.convert`) raises `NotPorted` naming the Java class and member, where Java
+  carries the call out.
+- `jpy.has_jvm()` is false, `jpy.create_jvm` is refused, and `jpy.destroy_jvm()` does
+  nothing, where on Java it ends the server's VM.
+
+No Java class is implemented behind the module. The call-by-call table is in
+`docs/CONSOLE.md`, "The jpy module", and the recorded cases are in
+`crates/oxhaven-server/src/console/python/jpy_tests.rs`.
+
 ## Determinism
 
 Oxhaven must give the same answer as itself on every run, for the same inputs and the same
