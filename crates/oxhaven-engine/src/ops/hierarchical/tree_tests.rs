@@ -570,12 +570,12 @@ fn random_tree(seed: u64) -> u64 {
             issued += added as i32;
         }
         let modified = change.update.modified.size() as usize;
-        if change.modified_values.contains_key(&0) {
-            change.modified_values.insert(0, fresh(modified));
+        if let Some(values) = change.modified_values.get_mut(&0) {
+            *values = fresh(modified);
             issued += modified as i32;
         }
-        if change.modified_values.contains_key(&1) {
-            change.modified_values.insert(1, parents(modified, issued));
+        if let Some(values) = change.modified_values.get_mut(&1) {
+            *values = parents(modified, issued);
         }
         source.push(change);
         graph.run_cycle();
