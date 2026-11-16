@@ -155,11 +155,16 @@ impl WireSource {
     /// finds the partitions of `topic` that `wanted` accepts and positions each where
     /// `initial` says.
     ///
+    /// A topic the broker does not have has no partitions, and stays without: Java looks
+    /// once. With `create_topic` the broker is asked to create it, as a Java consumer asks
+    /// unless `allow.auto.create.topics` is false; the broker decides.
+    ///
     /// Behavior: io.deephaven.kafka.ingest.KafkaIngester (the constructor):
     /// `KafkaConsumer#partitionsFor`, `#assign`, `#seekToBeginning`, `#seekToEnd`, `#seek`
     pub fn connect(
         bootstrap: &str,
         topic: &str,
+        create_topic: bool,
         wanted: &dyn Fn(i32) -> bool,
         initial: &dyn Fn(i32) -> InitialOffset,
     ) -> Result<Self, KafkaError> {
@@ -190,7 +195,7 @@ impl WireSource {
             .with_topics(Some(vec![
                 MetadataRequestTopic::default().with_name(Some(name.clone()))
             ]))
-            .with_allow_auto_topic_creation(false);
+            .with_allow_auto_topic_creation(create_topic);
         let metadata: MetadataResponse =
             first.call(ApiKey::Metadata, METADATA_VERSION, &request)?;
         let brokers: BTreeMap<i32, String> = metadata
@@ -200,10 +205,9 @@ impl WireSource {
             .collect();
         let mut partitions = BTreeMap::new();
         for described in &metadata.topics {
-            // Behavior: KafkaConsumer#partitionsFor answers an unknown topic with no
-            // partitions (or creates it, if the broker allows that), so only other errors
-            // are errors.
-            if described.error_code != 0 && described.error_code != 3 {
+            // Behavior: KafkaConsumer#partitionsFor answers a topic the broker does not
+            // have, or is only now creating, with no partitions.
+            if ![0, 3, 5].contains(&described.error_code) {
                 return Err(KafkaError::Broker(format!(
                     "topic {topic}: {}",
                     error_name(described.error_code)

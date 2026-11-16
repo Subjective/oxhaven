@@ -230,7 +230,9 @@ pub fn consume(
         listed.is_none_or(|listed| listed.contains(&partition))
     };
     let initial = |partition: i32| options.offsets.of(partition);
-    let source = wire::WireSource::connect(bootstrap, &options.topic, &wanted, &initial)?;
+    // Behavior: org.apache.kafka.clients.consumer.ConsumerConfig#ALLOW_AUTO_CREATE_TOPICS_CONFIG
+    let create = property(&options.config, "allow.auto.create.topics") != Some("false");
+    let source = wire::WireSource::connect(bootstrap, &options.topic, create, &wanted, &initial)?;
     consume_from(
         graph,
         plan,
