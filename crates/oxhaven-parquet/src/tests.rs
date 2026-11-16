@@ -1039,10 +1039,214 @@ fn a_metadata_file_lists_the_files_of_a_table() {
     );
     let table = read(root.to_str().unwrap(), &ReadOptions::default()).unwrap();
     assert_eq!(cells(&table, "X"), ["1"]);
-    // and a file it names must be there
+    // and a file it names that is not there has no rows, as Java 42.9 read it (the probe of
+    // task 7.1c)
     std::fs::remove_file(root.join("a.parquet")).unwrap();
-    let missing = read(root.to_str().unwrap(), &ReadOptions::default());
-    assert!(matches!(missing, Err(ReadError::Io(text)) if text.contains("a.parquet")));
+    let missing = read(root.to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(columns(&missing), [("X".to_string(), ColumnType::Int)]);
+    assert!(missing.row_set().is_empty());
+}
+
+/// The names, types and partitioning flags of the columns of `table`.
+fn partitioning(table: &QueryTable) -> Vec<(String, ColumnType, bool)> {
+    let columns = table.definition().columns().iter();
+    let column = |c: &oxhaven_contracts::schema::ColumnDefinition| {
+        (c.name.clone(), c.column_type.clone(), c.partitioning)
+    };
+    columns.map(column).collect()
+}
+
+fn common(name: &str) -> String {
+    data(&format!("common/{name}"))
+}
+
+/// What Java 42.9 read from the directories of `tests/data/common` (the probe of task
+/// 7.1c).
+#[test]
+fn common_metadata_names_the_partitioning_columns() {
+    use ColumnType::*;
+    let hive = [
+        common("hive"),
+        common("hive/_metadata"),
+        common("hive/_common_metadata"),
+    ];
+    for path in hive {
+        for options in [
+            ReadOptions::default(),
+            with_layout(Layout::MetadataPartitioned),
+        ] {
+            let table = read(&path, &options).unwrap();
+            // the columns in the order of `_common_metadata`, the partitioning ones after
+            // the column of the files
+            assert_eq!(
+                partitioning(&table),
+                [
+                    ("X".to_string(), Int, false),
+                    ("A".to_string(), Int, true),
+                    ("B".to_string(), String, true)
+                ]
+            );
+            // the files in the order `_metadata` lists them; the last may have a null
+            assert_eq!(cells(&table, "X"), ["1", "2", "3", "4"]);
+            assert_eq!(cells(&table, "A"), ["1", "1", "0", "2"]);
+            assert_eq!(cells(&table, "B"), ["x", "x", "y", "null"]);
+            let expected = RowSet::from_ranges([
+                RowRange::new(0, 1),
+                RowRange::new(REGION, REGION),
+                RowRange::new(2 * REGION, 2 * REGION),
+            ]);
+            assert_eq!(*table.row_set(), expected);
+            assert!(table.attributes().add_only);
+        }
+    }
+    // the layout of the directories alone refuses the null of the last file
+    let by_directories = read(&common("hive"), &with_layout(Layout::KvPartitioned));
+    assert!(invalid(by_directories).starts_with("Last location key"));
+
+    // an instruction names a key as it names a column
+    let renamed = read(&common("hive"), &with_columns(vec![instruction("A", "Q")])).unwrap();
+    assert_eq!(cells(&renamed, "Q"), ["1", "1", "0", "2"]);
+    assert!(partitioning(&renamed)[1].2);
+    // and so does a legal name
+    let names = read(&common("names"), &ReadOptions::default()).unwrap();
+    assert_eq!(
+        partitioning(&names),
+        [
+            ("a_b".to_string(), Int, true),
+            ("X".to_string(), Int, false)
+        ]
+    );
+    assert_eq!(cells(&names, "a_b"), ["1"]);
+
+    // directories without `=` hold the values of the partitioning columns in order
+    let positional = read(&common("positional"), &ReadOptions::default()).unwrap();
+    assert_eq!(
+        partitioning(&positional),
+        [
+            ("S".to_string(), String, true),
+            ("N".to_string(), Int, true),
+            ("X".to_string(), Int, false)
+        ]
+    );
+    assert_eq!(cells(&positional, "S"), ["a", "b"]);
+    assert_eq!(cells(&positional, "N"), ["1", "2"]);
+
+    // each value is parsed as its type; a type Java has no parser for is a string
+    let types = read(&common("types"), &ReadOptions::default()).unwrap();
+    let expected = [
+        ("I", Long),
+        ("C", Char),
+        ("Z", Boolean),
+        ("F", Float),
+        ("D", BigDecimal),
+        ("G", LocalDate),
+        ("T", LocalTime),
+        ("L", String),
+        ("N", Short),
+    ];
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(name, column_type)| (name.to_string(), column_type, true))
+        .chain([("X".to_string(), Int, false)])
+        .collect();
+    assert_eq!(partitioning(&types), expected);
+    let text: Vec<std::string::String> = ["I", "C", "Z", "F", "G", "T", "L", "N"]
+        .into_iter()
+        .map(|name| cells(&types, name).remove(0))
+        .collect();
+    // `C` is the code of `c`, `G` days since 1970, `T` nanoseconds since midnight
+    assert_eq!(
+        text,
+        [
+            "7",
+            "99",
+            "true",
+            "0.5",
+            "2024-01-02",
+            "01:02:03.500",
+            "2024-01-02T03:04:05",
+            "null"
+        ]
+    );
+}
+
+#[test]
+fn common_metadata_partitions_java_refuses_are_refused() {
+    let read_at = |name: &str| read(&common(name), &ReadOptions::default());
+    let text = invalid(read_at("levels"));
+    assert!(
+        text.starts_with(
+            "Unexpected number of path elements in K=1/f.parquet for partitions [], found 1 \
+             elements, expected 2"
+        ),
+        "{text}"
+    );
+    let text = invalid(read_at("twice"));
+    assert!(
+        text.starts_with("Unexpected duplicate partition key K when parsing K=1/K=2/f.parquet"),
+        "{text}"
+    );
+    let text = invalid(read_at("unknown"));
+    assert!(text.contains("NullPointerException"), "{text}");
+    assert_eq!(
+        invalid(read_at("unparsed")),
+        "ForInt partition value parser for type java.lang.Integer failed for \"abc\""
+    );
+    let text = invalid(read_at("mismatch"));
+    assert!(text.starts_with("Schema mismatch between "), "{text}");
+}
+
+#[test]
+fn files_common_metadata_does_not_list_or_that_are_gone() {
+    let root = scratch("common-metadata-files");
+    let hive = std::path::Path::new(&common("hive")).to_path_buf();
+    for name in [
+        "_metadata",
+        "_common_metadata",
+        "A=1/B=x/f.parquet",
+        "A=0/B=y/f.parquet",
+        "A=2/B=/f.parquet",
+    ] {
+        let to = root.join(name);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(hive.join(name), to).unwrap();
+    }
+    let path = root.to_str().unwrap();
+    // files no metadata file lists are not read
+    std::fs::copy(
+        hive.join("A=1/B=x/f.parquet"),
+        root.join("A=0/B=y/g.parquet"),
+    )
+    .unwrap();
+    std::fs::create_dir_all(root.join("A=5/B=z")).unwrap();
+    std::fs::copy(
+        hive.join("A=1/B=x/f.parquet"),
+        root.join("A=5/B=z/f.parquet"),
+    )
+    .unwrap();
+    let table = read(path, &ReadOptions::default()).unwrap();
+    assert_eq!(cells(&table, "X"), ["1", "2", "3", "4"]);
+    // a listed file that is gone has no rows and no region
+    std::fs::remove_file(root.join("A=0/B=y/f.parquet")).unwrap();
+    let table = read(path, &ReadOptions::default()).unwrap();
+    assert_eq!(cells(&table, "X"), ["1", "2", "4"]);
+    assert_eq!(cells(&table, "A"), ["1", "1", "2"]);
+    let expected = RowSet::from_ranges([RowRange::new(0, 1), RowRange::new(REGION, REGION)]);
+    assert_eq!(*table.row_set(), expected);
+
+    // without `_metadata`, the directories are read by their layout, which needs the
+    // value of the last file's partitions
+    std::fs::remove_file(root.join("A=2/B=/f.parquet")).unwrap();
+    std::fs::remove_file(root.join("_metadata")).unwrap();
+    let table = read(path, &ReadOptions::default()).unwrap();
+    assert_eq!(cells(&table, "A"), ["0", "0", "1", "1", "5", "5"]);
+    let missing = read(path, &with_layout(Layout::MetadataPartitioned));
+    assert!(invalid(missing).ends_with("_metadata does not exist"));
+    let missing = read(
+        root.join("_common_metadata").to_str().unwrap(),
+        &ReadOptions::default(),
+    );
+    assert!(invalid(missing).ends_with("_metadata does not exist"));
 }
 
 #[test]

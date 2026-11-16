@@ -11,6 +11,7 @@
 
 mod layout;
 mod location;
+mod partition;
 mod schema;
 mod write;
 
@@ -225,42 +226,16 @@ pub(crate) fn read_table(
     options.check()?;
     let mut found = layout::find(path, options.layout, options.refreshing)?;
     let layout = found.layout;
-    let metadata = found.metadata.take();
-    let arranged = arrange(path, found.into())?;
-    // Behavior: `ParquetTools#infer`, which reads the columns from the last location, and
-    // the constructor of `ParquetMetadataFileLayout`, which reads them from the metadata file
-    let last = arranged.files.last().map(|(path, _)| path);
-    let columns_of = metadata.as_ref().map(|metadata| &metadata.path).or(last);
-    let columns_of = columns_of.ok_or_else(|| {
-        let text = "Unable to infer schema for a partitioned parquet table when there are no \
-                    initial parquet files";
-        ReadError::Invalid(text.to_string())
-    })?;
-    let mut file_columns = ParquetLocation::file_columns(columns_of, options)?;
-    if let Some(common) = metadata
-        .as_ref()
-        .and_then(|metadata| metadata.common.as_ref())
-    {
-        file_columns = common_columns(columns_of, file_columns, common, options)?;
-    }
-    if let Some((last, values)) = arranged.files.last() {
-        for ((key, _), value) in arranged.keys.iter().zip(values) {
-            if value.is_null(0) {
-                return Err(ReadError::Invalid(format!(
-                    "Last location key {} has null partition value at partition key {key}",
-                    last.display()
-                )));
-            }
+    let (definition, arranged, listed) = match found.metadata.take() {
+        Some(metadata) => {
+            let (definition, arranged, listed) = through_metadata(&metadata, found, options)?;
+            (definition, arranged, Some(listed))
         }
-    }
-    // the partitioning columns first; a column of the files with the name of one is not
-    // read
-    let partitioning = arranged.keys.iter();
-    let partitioning = partitioning.map(|(k, t)| ColumnDefinition::partitioning(k, t.clone()));
-    let is_key = |name: &str| arranged.keys.iter().any(|(key, _)| key == name);
-    let of_files = file_columns.into_iter().filter(|c| !is_key(&c.name));
-    let definition = TableDefinition::new(partitioning.chain(of_files).collect())
-        .map_err(|duplicate| ReadError::Invalid(duplicate.to_string()))?;
+        None => {
+            let (definition, arranged) = by_files(path, found, options)?;
+            (definition, arranged, None)
+        }
+    };
     if options.refreshing && layout == Layout::SingleFile {
         // Behavior: `ParquetTools#readTable(ParquetTableLocationKey, ParquetInstructions)`
         let text = "Unable to have a refreshing single parquet file";
@@ -270,7 +245,7 @@ pub(crate) fn read_table(
     let mut known = HashSet::new();
     for (index, (file, values)) in arranged.files.iter().enumerate() {
         let location = arranged.open(file, values, &definition, options)?;
-        let listed = metadata.as_ref().map(|metadata| metadata.row_groups[index]);
+        let listed = listed.as_ref().map(|listed| listed[index]);
         if let Some(listed) = listed.filter(|listed| *listed != location.row_groups()) {
             // Java reads the row groups the metadata file lists, by what it says of them
             return Err(not_ported(
@@ -306,43 +281,202 @@ pub(crate) fn read_table(
     following_table(graph, definition, locations, provider).map_err(invalid)
 }
 
-/// The columns of a table read through the metadata file `metadata`, whose columns are
-/// `leaf`, when the directory also has the file `common`: the columns of `common`, each of
-/// which must be a column of `metadata`. A column only `common` has is a partitioning
-/// column, which is not ported.
+/// The definition and the files of a table found without a metadata file: the files'
+/// partitions typed by the CSV reader and put first, then the columns of the last file.
 ///
-/// Behavior: the constructor of `io.deephaven.parquet.table.layout.ParquetMetadataFileLayout`
-fn common_columns(
-    metadata: &std::path::Path,
-    leaf: Vec<ColumnDefinition>,
-    common: &std::path::Path,
+/// Behavior: `io.deephaven.parquet.table.ParquetTools#infer`, which reads the columns from
+/// the last location
+fn by_files(
+    root: &str,
+    found: Files,
     options: &ReadOptions,
-) -> Result<Vec<ColumnDefinition>, ReadError> {
-    let full = ParquetLocation::file_columns(common, options)?;
-    for column in &full {
-        match leaf.iter().find(|leaf| leaf.name == column.name) {
-            None => {
-                return Err(not_ported(
-                    "io.deephaven.parquet.table.layout.ParquetMetadataFileLayout#create",
-                    format_args!(
-                        "the partitioning column {} of {}",
-                        column.name,
-                        common.display()
-                    ),
-                ))
-            }
-            Some(leaf) if leaf == column => {}
-            Some(_) => {
-                return Err(ReadError::Invalid(format!(
-                    "Schema mismatch between {} and {} for column {}",
-                    metadata.display(),
-                    common.display(),
-                    column.name
-                )))
-            }
+) -> Result<(TableDefinition, Arranged), ReadError> {
+    let arranged = arrange(root, found.into())?;
+    let Some((last, values)) = arranged.files.last() else {
+        let text = "Unable to infer schema for a partitioned parquet table when there are no \
+                    initial parquet files";
+        return Err(ReadError::Invalid(text.to_string()));
+    };
+    let file_columns = ParquetLocation::file_columns(last, options)?;
+    for ((key, _), value) in arranged.keys.iter().zip(values) {
+        if value.is_null(0) {
+            return Err(ReadError::Invalid(format!(
+                "Last location key {} has null partition value at partition key {key}",
+                last.display()
+            )));
         }
     }
-    Ok(full)
+    // the partitioning columns first; a column of the files with the name of one is not
+    // read
+    let partitioning = arranged.keys.iter();
+    let partitioning = partitioning.map(|(k, t)| ColumnDefinition::partitioning(k, t.clone()));
+    let is_key = |name: &str| arranged.keys.iter().any(|(key, _)| key == name);
+    let of_files = file_columns.into_iter().filter(|c| !is_key(&c.name));
+    let definition = TableDefinition::new(partitioning.chain(of_files).collect())
+        .map_err(|duplicate| ReadError::Invalid(duplicate.to_string()))?;
+    Ok((definition, arranged))
+}
+
+/// The definition and the files of a table read through the metadata file `metadata`,
+/// with how many row groups the metadata file lists of each file.
+///
+/// The columns are those of `_metadata`, or where the directory has a
+/// `_common_metadata` file, those of that file in its order: a column of it that
+/// `_metadata` does not have is a partitioning column, of its type where Java parses the
+/// values of the type and a `String` otherwise, and a column both have must be the same in
+/// both. The values of the partitioning columns are the directories in the path of each
+/// file: `key=value` for each column, the key a name in the file as instructions and
+/// legal names map it, or where the first directory has no `=`, a value for each
+/// partitioning column in order. A file the metadata file lists that is not there has no
+/// rows, as in Java.
+///
+/// Behavior: the constructor of `io.deephaven.parquet.table.layout.ParquetMetadataFileLayout`,
+/// `io.deephaven.parquet.table.location.ParquetTableLocationFactory#makeLocation` for a
+/// file that is not there
+fn through_metadata(
+    metadata: &layout::Metadata,
+    found: Files,
+    options: &ReadOptions,
+) -> Result<(TableDefinition, Arranged, Vec<usize>), ReadError> {
+    let leaf = ParquetLocation::named_file_columns(&metadata.path, options)?;
+    // the parquet name and the table's name of every column Java maps a name of
+    let mut names: Vec<(String, String)> = Vec::new();
+    let columns = match &metadata.common {
+        None => leaf.into_iter().map(|(_, column)| column).collect(),
+        Some(common) => {
+            // the names the columns of `_metadata` were given hold for `_common_metadata`
+            // too, as instructions
+            let mut common_options = options.clone();
+            for (parquet_name, column) in &leaf {
+                if *parquet_name != column.name && options.name_of(parquet_name).is_none() {
+                    common_options.columns.push(ColumnInstruction {
+                        parquet_name: parquet_name.clone(),
+                        name: Some(column.name.clone()),
+                        ..ColumnInstruction::default()
+                    });
+                }
+            }
+            let full = ParquetLocation::named_file_columns(common, &common_options)?;
+            let mut columns = Vec::with_capacity(full.len());
+            for (parquet_name, column) in full {
+                if parquet_name != column.name {
+                    names.push((parquet_name, column.name.clone()));
+                }
+                match leaf.iter().find(|(_, leaf)| leaf.name == column.name) {
+                    None => columns.push(ColumnDefinition::partitioning(
+                        &column.name,
+                        partition::partition_type(&column.column_type),
+                    )),
+                    Some((_, leaf)) if *leaf == column => columns.push(column),
+                    Some(_) => {
+                        return Err(ReadError::Invalid(format!(
+                            "Schema mismatch between {} and {} for column {}",
+                            metadata.path.display(),
+                            common.display(),
+                            column.name
+                        )))
+                    }
+                }
+            }
+            for instruction in &common_options.columns {
+                if let Some(name) = &instruction.name {
+                    names.push((instruction.parquet_name.clone(), name.clone()));
+                }
+            }
+            columns
+        }
+    };
+    let definition = TableDefinition::new(columns)
+        .map_err(|duplicate| ReadError::Invalid(duplicate.to_string()))?;
+    let keys: Vec<(String, ColumnType)> = definition
+        .columns()
+        .iter()
+        .filter(|column| column.partitioning)
+        .map(|column| (column.name.clone(), column.column_type.clone()))
+        .collect();
+    // Behavior: `ParquetInstructions#getColumnNameFromParquetColumnNameOrDefault`
+    let name_of_key = |key: &str| -> String {
+        let mapped = names.iter().find(|(parquet_name, _)| parquet_name == key);
+        mapped.map_or(key, |(_, name)| name.as_str()).to_string()
+    };
+    let mut files = Vec::with_capacity(found.files.len());
+    let mut listed = Vec::with_capacity(found.files.len());
+    let listings = metadata.relative.iter().zip(&metadata.row_groups);
+    for (file, (relative, row_groups)) in found.files.into_iter().zip(listings) {
+        let values = if keys.is_empty() {
+            Vec::new()
+        } else {
+            partition_values(relative, &keys, &name_of_key, &metadata.path)?
+        };
+        if !file.path.exists() {
+            continue;
+        }
+        files.push((file.path, values));
+        listed.push(*row_groups);
+    }
+    Ok((definition, Arranged { keys, files }, listed))
+}
+
+/// The value of each partitioning column `keys` for the file at `relative` from the
+/// directory of the metadata file `metadata`, in the order of `keys`.
+///
+/// Behavior: the constructor of `io.deephaven.parquet.table.layout.ParquetMetadataFileLayout`
+fn partition_values(
+    relative: &str,
+    keys: &[(String, ColumnType)],
+    name_of_key: &dyn Fn(&str) -> String,
+    metadata: &std::path::Path,
+) -> Result<Vec<ArrayRef>, ReadError> {
+    // Behavior: `java.nio.file.Paths#get`, which drops empty names
+    let mut parts: Vec<&str> = relative
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect();
+    parts.pop();
+    if parts.len() != keys.len() {
+        return Err(ReadError::Invalid(format!(
+            "Unexpected number of path elements in {relative} for partitions [], found {} \
+             elements, expected {} based on the partitioning columns {:?}",
+            parts.len(),
+            keys.len(),
+            keys.iter().map(|(name, _)| name).collect::<Vec<_>>()
+        )));
+    }
+    let hive_style = parts.first().is_some_and(|part| part.contains('='));
+    let mut values: Vec<Option<ArrayRef>> = vec![None; keys.len()];
+    for (level, part) in parts.iter().enumerate() {
+        let (key, text) = if hive_style {
+            let Some((key, text)) = part.split_once('=') else {
+                return Err(ReadError::Invalid(format!(
+                    "Unexpected path format found for hive-style partitioning from {relative} \
+                     for {}",
+                    metadata.display()
+                )));
+            };
+            (name_of_key(key), text)
+        } else {
+            (keys[level].0.clone(), *part)
+        };
+        let Some(index) = keys.iter().position(|(name, _)| *name == key) else {
+            // Java looks the key up among the partitioning columns and fails on the null
+            return Err(ReadError::Invalid(format!(
+                "{relative} names the partition {key}, which is no partitioning column of {}: \
+                 a NullPointerException in Java's ParquetMetadataFileLayout",
+                metadata.display()
+            )));
+        };
+        let value = partition::parse(&keys[index].1, text)?;
+        if values[index].is_some() {
+            return Err(ReadError::Invalid(format!(
+                "Unexpected duplicate partition key {key} when parsing {relative} for {}",
+                metadata.display()
+            )));
+        }
+        values[index] = Some(value);
+    }
+    // every partitioning column has a value: there are as many directories as columns, and
+    // none names a column twice
+    Ok(values.into_iter().flatten().collect())
 }
 
 /// The files of a table in the order of their rows, each with the values of its
