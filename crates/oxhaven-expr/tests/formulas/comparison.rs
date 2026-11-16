@@ -329,3 +329,56 @@ fn comparison_with_the_null_literal_is_is_null() {
     table.assert("isNull(I > 0)", flags([false, false]));
     table.assert("isNull(1)", flags([false, false]));
 }
+
+/// The null literal beside an operator other than `==` and `!=`, as Java 42.9 answered for
+/// these formulas: `QueryLanguageFunctionUtils#less(Comparable, Comparable)` and its
+/// relatives order null first, `#binaryAnd(Boolean, Boolean)` and its relatives are null
+/// when either side is, and `DateTimeUtils#minus(Instant, Instant)` of null is null.
+#[test]
+fn the_null_literal_is_an_operand_where_java_finds_one_method() {
+    let table = TestTable::new([
+        ("S", strings([Some("a"), None])),
+        ("B", booleans([Some(true), None])),
+        ("T", instants([Some(0), None])),
+    ]);
+    for column in ["S", "B", "T"] {
+        table.assert(&format!("{column} < null"), flags([false, false]));
+        table.assert(&format!("null < {column}"), flags([true, false]));
+        table.assert(&format!("{column} <= null"), flags([false, true]));
+        table.assert(&format!("null <= {column}"), flags([true, true]));
+        table.assert(&format!("{column} > null"), flags([true, false]));
+        table.assert(&format!("null > {column}"), flags([false, false]));
+        table.assert(&format!("{column} >= null"), flags([true, true]));
+        table.assert(&format!("null >= {column}"), flags([false, true]));
+    }
+    table.assert("\"a\" > null", flags([true, true]));
+    table.assert("null == null", flags([true, true]));
+    table.assert("null != null", flags([false, false]));
+    for formula in [
+        "B & null",
+        "null | B",
+        "B ^ null",
+        "false & null",
+        "true | null",
+        "null & null",
+        "null | null",
+    ] {
+        table.assert(formula, booleans([None, None]));
+    }
+    table.assert("null - T", longs([None, None]));
+    for formula in [
+        "null < null",
+        "null >= null",
+        "T - null",
+        "T + null",
+        "B + null",
+        "S - null",
+        "S * null",
+    ] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula} gave {:?}",
+            table.compile_error(formula)
+        );
+    }
+}
