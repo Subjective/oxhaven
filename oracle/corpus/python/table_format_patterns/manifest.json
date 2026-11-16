@@ -1,0 +1,56 @@
+{
+  "format": 2,
+  "scenario": "table_format_patterns",
+  "scenario_sha256": "05ceba548527f2617ca4aeb685e0d9ab0015ec15a5373813d38109567e29cd3b",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "patterns",
+      "file": "step000.patterns.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "mixed",
+      "file": "step000.mixed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "heat",
+      "file": "step000.heat.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "heat_text",
+      "file": "step000.heat_text.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "patterns",
+      "file": "step001.patterns.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "mixed",
+      "file": "step001.mixed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "heat",
+      "file": "step001.heat.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "heat_text",
+      "file": "step001.heat_text.arrow",
+      "rows": 8
+    }
+  ]
+}

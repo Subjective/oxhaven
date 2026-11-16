@@ -431,28 +431,23 @@ async fn apply_sorts_and_filters_a_tree_and_refuses_what_java_refuses() {
         "Unsupported or unknown sort direction: REVERSE",
     );
 
-    // Java answers these as if the request had neither
-    let not_read = "not ported: \
-                    io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply";
-    refused(
-        apply(HierarchicalTableApplyRequest {
-            update_views: vec![update_view("W = V + 1")],
-            ..request(10, unused())
-        })
-        .await,
-        Code::Unimplemented,
-        not_read,
-    );
-    refused(
-        apply(HierarchicalTableApplyRequest {
-            format_views: vec![update_view("W = V + 1")],
-            sorts: vec![ascending("V")],
-            ..request(10, unused())
-        })
-        .await,
-        Code::Unimplemented,
-        not_read,
-    );
+    // Java reads neither the update views nor the format views of a request for a tree:
+    // it answers these as if the request had neither, whatever they say
+    let views_only = unused();
+    apply(HierarchicalTableApplyRequest {
+        update_views: vec![update_view("W = Nope + 1")],
+        ..request(10, views_only)
+    })
+    .await
+    .unwrap();
+    assert_eq!(rows(server, views_only, true), rows(server, 10, true));
+    apply(HierarchicalTableApplyRequest {
+        format_views: vec![update_view("V = RED")],
+        sorts: vec![ascending("V")],
+        ..request(10, unused())
+    })
+    .await
+    .unwrap();
 
     // a tree of a table that restricts its sorts sorts by those columns
     let restricted = oxhaven_engine::ops::sort::restrict_sort_to(&nodes(), &["V", "Name"]).unwrap();

@@ -11,6 +11,9 @@
 #[cfg(test)]
 mod constituent_tests;
 mod keys;
+mod node_ops;
+#[cfg(test)]
+mod node_ops_tests;
 mod rollup;
 #[cfg(test)]
 mod tests;
@@ -21,6 +24,7 @@ mod tree_tests;
 mod walk;
 
 pub use keys::Part;
+pub use node_ops::{NodeColumn, NodeOperations};
 pub use rollup::{rollup, RollupTable};
 pub use tree::{promote_orphans, tree, TreeTable};
 pub use walk::Snapshot;
@@ -64,6 +68,8 @@ pub enum HierarchicalError {
     IllegalArgument(String),
     /// What Java reports as `UnsupportedOperationException`.
     Unsupported(String),
+    /// A formula of a node operation that does not compile.
+    Formula(String),
     Table(TableFailure),
 }
 
@@ -72,7 +78,8 @@ impl fmt::Display for HierarchicalError {
         match self {
             HierarchicalError::Aggregate(error) => error.fmt(f),
             HierarchicalError::IllegalArgument(message)
-            | HierarchicalError::Unsupported(message) => f.write_str(message),
+            | HierarchicalError::Unsupported(message)
+            | HierarchicalError::Formula(message) => f.write_str(message),
             HierarchicalError::Table(failure) => failure.fmt(f),
         }
     }

@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table, with the same node type",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.RuntimeException: Unknown columns: [Nope], available columns = [Avg, Sym, Qty]"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.IllegalArgumentException: Illegal format specification: Qty RED"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.RuntimeException: Unknown columns: [Qty__TABLE_STYLE_FORMAT], available columns = [Avg, Sym, Qty]"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Qty__TABLE_STYLE_FORMAT], available column names are [Sym, Qty, Avg]"
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Qty__TABLE_STYLE_FORMAT], available column names are [Sym, Qty, Avg]"
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.RuntimeException: Unknown columns: [P], available columns = [Avg, Sym, Qty]"
+    }
+  ]
+}

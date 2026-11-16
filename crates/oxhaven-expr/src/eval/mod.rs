@@ -531,6 +531,16 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             crate::functions::statics::evaluate(method, &arguments, batch.rows)
                 .map(without_null_values)
         }
+        Node::Call {
+            kernel: Kernel::Color(function),
+            arguments,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch))
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::functions::color::evaluate(*function, &arguments)
+        }
         Node::Call { kernel, arguments } => {
             let arguments = arguments
                 .iter()
