@@ -653,7 +653,7 @@ impl JsonSerializer {
             values: impl Iterator<Item = Option<T>>,
             write: impl Fn(T) -> Out,
         ) -> Vec<Option<Out>> {
-            values.map(|cell| Some(cell.map(&write)?)).collect()
+            values.map(|cell| cell.map(&write)).collect()
         }
         let encoding = self.encoding;
         let mut values = match field {
