@@ -5,10 +5,9 @@
 //! is one function in [`OPERATIONS`] that takes its arguments as a JSON object and the
 //! tables it reads, and calls the engine's Rust API. [`local_op`] runs it as
 //! `table::run_local` runs a handler: under the update graph's shared lock when a source is
-//! refreshing, and with an `unported!` panic turned into `UNIMPLEMENTED`. An operation whose
-//! engine operator does not exist yet is in the list all the same and refuses with the name
-//! of the Java method, so that the Python method raises `DHError` and is never left out or
-//! approximated.
+//! refreshing, and with an `unported!` panic turned into `UNIMPLEMENTED`. Some are a call of
+//! the table service's handler without its checks of the request, where Java's engine
+//! answers what its table service refuses.
 //!
 //! The rest reads a table: [`is_flat`], [`is_blink`], [`read_columns`] for the iterators
 //! and [`to_string`].
@@ -20,8 +19,10 @@ use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::select::ColumnPair;
-use oxhaven_engine::ops::{distinct, filter, merge, select, sort};
+use oxhaven_engine::ops::transpose::{NewColumnBehavior, TransposeError};
+use oxhaven_engine::ops::{distinct, filter, merge, select, sort, transpose};
 use oxhaven_engine::table::{attribute_map, AttributeValue};
+use oxhaven_proto::grpc::batch_table_request::operation::Op;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
@@ -29,9 +30,11 @@ use serde_json::Value;
 use tonic::Status;
 
 use super::data::cells;
-use super::{error_text, runtime, TableHandle};
+use super::{error_text, parse_operation, runtime, TableHandle};
 use crate::java_text::object_texts;
 use crate::session::ExportError;
+use crate::table::ops::adapt_aggregations;
+use crate::table::run_local_unchecked;
 use crate::table::support::{not_ported, OpContext};
 
 type Created = Result<Arc<dyn Table>, ExportError>;
@@ -48,9 +51,11 @@ const OPERATIONS: &[Operation] = &[
     ("head_pct", head_pct),
     ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
+    ("multi_join", multi_join),
     ("move_columns", move_columns),
     ("move_columns_down", move_columns_down),
     ("move_columns_up", move_columns_up),
+    ("range_join", range_join),
     ("rename_columns", rename_columns),
     ("restrict_sort_to", restrict_sort_to),
     ("slice_pct", slice_pct),
@@ -209,19 +214,69 @@ fn merge_sorted(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Crea
     Ok(merge::merge_sorted(sources, text(args, "order_by")?)?)
 }
 
-/// The refusal of an operation whose engine operator is not written: `UNIMPLEMENTED`
-/// naming the Java method and the call.
-fn no_operator(java: &str, call: String) -> Created {
-    Err(not_ported(java, call).into())
+/// The table service operation `name` with the request `request`, as the package writes
+/// it for `table_op`.
+fn operation(name: &str, request: &Value) -> Result<Op, ExportError> {
+    let json = serde_json::json!({ name: request }).to_string();
+    parse_operation(&json).map_err(|error| Status::invalid_argument(error).into())
+}
+
+/// A multi join of inputs without key columns, which the table service refuses and
+/// Java's engine answers with one row, or with a refusal of its own when only some of the
+/// inputs have none.
+///
+/// Behavior: `io.deephaven.engine.table.MultiJoinFactory#of`
+fn multi_join(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let request = args.get("request").unwrap_or(&Value::Null);
+    run_local_unchecked(context, operation("multi_join", request)?, sources)
+}
+
+/// A range join without aggregations, which the table service refuses and Java's engine
+/// answers with the columns of the left table, after every check of the tables.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#rangeJoin`
+fn range_join(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let request = args.get("request").unwrap_or(&Value::Null);
+    run_local_unchecked(context, operation("range_join", request)?, sources)
+}
+
+/// What Java's keyed transpose refuses is an exception out of the engine.
+impl From<TransposeError> for ExportError {
+    fn from(error: TransposeError) -> Self {
+        match error {
+            TransposeError::Aggregate(error) => error.into(),
+            TransposeError::Partitioned(error) => error.into(),
+            TransposeError::MultiJoin(error) => error.into(),
+            TransposeError::Table(failure) => failure.into(),
+            TransposeError::IllegalArgument(message) => ExportError::Internal(message),
+        }
+    }
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`
-fn keyed_transpose(_: &OpContext, args: &Value, _: &[Arc<dyn Table>]) -> Created {
+fn keyed_transpose(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
     let (rows, columns) = (strings(args, "row_by_cols")?, strings(args, "col_by_cols")?);
-    no_operator(
-        "io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose",
-        format!("keyedTranspose by {rows:?} and {columns:?}"),
-    )
+    let behavior = match text(args, "new_column_behavior")? {
+        "FAIL" => NewColumnBehavior::Fail,
+        "IGNORE" => NewColumnBehavior::Ignore,
+        _ => return Err(bad_argument("new_column_behavior", "FAIL or IGNORE")),
+    };
+    let aggregations = args.get("aggregations").unwrap_or(&Value::Null);
+    let request = serde_json::json!({ "aggregations": aggregations });
+    let Op::Aggregate(request) = operation("aggregate", &request)? else {
+        return Err(bad_argument("aggregations", "a list of aggregations"));
+    };
+    let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+    let columns: Vec<&str> = columns.iter().map(String::as_str).collect();
+    Ok(transpose::keyed_transpose(
+        &sources[0],
+        &adapt_aggregations(&request.aggregations)?,
+        &rows,
+        &columns,
+        sources.get(1),
+        behavior,
+        context.compiler.as_ref(),
+    )?)
 }
 
 /// The status of an `unported!` panic, which names what is missing.
@@ -651,6 +706,119 @@ assert (merged.is_flat, merged.is_refreshing, merged.attributes()) == (False, Fa
 assert rows(merge_sorted([y, x], "K")) == [(0, 0), (1, 0), (1, 10), (2, 100), (2, 20), (3, 200)]
 nothing = merge_sorted([], "K")
 assert (nothing.column_names, nothing.size) == ([], 0)
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn joins_the_table_service_refuses_answer_as_the_engine_of_java_answers() {
+        check(
+            r#"
+from deephaven import DHError, empty_table
+from deephaven.table import multi_join, MultiJoinInput
+def rows(t):
+    return [tuple(row.values()) for row in t.iter_dict()]
+a = empty_table(3).update(["K = i", "A = i * 10"])
+b = empty_table(2).update(["K = i + 1", "B = i * 100"])
+one = empty_table(1).update(["X = 7"])
+two = empty_table(1).update(["Y = `y`"])
+none = empty_table(0).update(["Z = 15"])
+# without key columns, one row of the row of each table, if any table has one
+m = multi_join([MultiJoinInput(one, []), MultiJoinInput(two, [])]).table
+assert (m.column_names, rows(m)) == (["X", "Y"], [(7, "y")])
+m = multi_join([one, two, none], on=[]).table
+assert (m.column_names, rows(m)) == (["X", "Y", "Z"], [(7, "y", -2147483648)])
+assert rows(multi_join([one, two], on="").table) == [(7, "y")]
+m = multi_join([MultiJoinInput(one, [], "Q = X"), MultiJoinInput(none, [], ["Z"])]).table
+assert (m.column_names, rows(m)) == (["Q", "Z"], [(7, -2147483648)])
+m = multi_join([none], on=[]).table
+assert (m.column_names, rows(m)) == (["Z"], [])
+
+left = empty_table(4).update(["K = i % 2", "Lo = i", "Hi = i + 2"])
+right = empty_table(6).update(["K = i % 2", "P = i", "R = `r` + i"])
+# without aggregations, the left table's columns
+for on in (["K", "Lo <= P <= Hi"], "Lo < P < Hi"):
+    j = left.range_join(right, on, [])
+    assert (j.column_names, rows(j)) == (["K", "Lo", "Hi"], rows(left))
+j = left.range_join(right.head(0), ["K", "<- Lo <= P <= Hi ->"], [])
+assert rows(j) == rows(left)
+
+refused = [
+    (lambda: multi_join([MultiJoinInput(a, []), MultiJoinInput(b, [])]),
+     "Column K defined in table 0 and table 1"),
+    (lambda: multi_join([MultiJoinInput(a, []), MultiJoinInput(b, "K")]),
+     "Key column mismatch for table 1, first table has key columns=[], this table has [K]"),
+    (lambda: multi_join([MultiJoinInput(a, "K"), MultiJoinInput(one, [])]),
+     "Key column mismatch for table 1, first table has key columns=[K], this table has []"),
+    (lambda: multi_join([a, one], on=[]), "Duplicate rows for table 0 on zero-key multiJoin."),
+    # every check of the tables is made without aggregations too
+    (lambda: left.range_join(right.reverse(), ["K", "Lo <= P <= Hi"], []),
+     "Encountered out of order data in right table at row key"),
+    (lambda: left.range_join(right, ["K", "Lo <= Nope <= Hi"], []),
+     "right range column Nope is missing"),
+    (lambda: left.range_join(right, ["Q", "Lo <= P <= Hi"], []),
+     'Invalid exact matches: left table has no column "Q", right table has no column "Q"'),
+    (lambda: left.range_join(right, ["K", "Lo <= P"], []),
+     "Input expression Lo <= P does not match expected pattern"),
+    (lambda: left.range_join(right, [], []),
+     "No match expressions found; must include at least a range match expression"),
+    (lambda: left.range_join(right, ["K=", "Lo <= P <= Hi"], []),
+     "Unable to parse match 'K=', expected form '<left>==<right>' or `<left>=<right>`"),
+]
+for call, text in refused:
+    try:
+        call()
+    except DHError as e:
+        assert text in str(e), str(e)
+    else:
+        raise AssertionError(text + " was answered")
+"#,
+        )
+        .await;
+    }
+
+    #[tokio::test]
+    async fn a_keyed_transpose_answers_as_java_answers() {
+        check(
+            r#"
+from deephaven import DHError, agg, empty_table
+from deephaven.table import keyed_transpose, NewColumnBehaviorType
+def rows(t):
+    return [tuple(row.values()) for row in t.iter_dict()]
+src = empty_table(8).update(["Id = i", "R = i % 2", "C = `c` + (i % 3)", "V = i"])
+t = keyed_transpose(src, agg.sum_("V"), "R", "C")
+assert (t.column_names, rows(t)) == (["R", "c0", "c1", "c2"], [(0, 6, 4, 2), (1, 3, 8, 5)])
+t = keyed_transpose(src.head(4), [agg.sum_("V"), agg.count_("N")], ["R"], ["C"],
+                    new_column_behavior=NewColumnBehaviorType.IGNORE)
+assert t.column_names == ["R", "V_c0", "N_c0", "V_c1", "N_c1", "V_c2", "N_c2"]
+null = -9223372036854775808
+assert rows(t) == [(0, 0, 1, null, null, 2, 1), (1, 3, 1, 1, 1, null, null)]
+# a column of the rows and of the columns; a value that is no column name
+t = keyed_transpose(src, agg.sum_("V"), "R", "R")
+assert (t.column_names, rows(t)) == (["R", "column_0", "column_1"], [(0, 12, null), (1, null, 16)])
+# initial groups give columns and rows that the table has no values for
+groups = empty_table(2).update(["R = 9", "C = `c` + (i * 2 + 1)"])
+t = keyed_transpose(src.head(4), agg.sum_("V"), "R", "C", initial_groups=groups)
+assert t.column_names == ["R", "c1", "c3", "c0", "c2"]
+assert rows(t) == [(9, null, null, null, null), (1, 1, null, 3, null), (0, null, null, 0, 2)]
+refused = [
+    (lambda: keyed_transpose(src, [], "R", "C"), "No aggregations defined"),
+    (lambda: keyed_transpose(src, agg.sum_("V"), [], "C"), "No rowByColumns defined"),
+    (lambda: keyed_transpose(src, agg.sum_("V"), "R", []), "No columnByColumns defined"),
+    (lambda: keyed_transpose(src.head(0), agg.sum_("V"), "R", "C"),
+     "The source table has no values for column by columns"),
+    (lambda: keyed_transpose(src.update("C = `-`"), agg.sum_("V"), "R", "C"),
+     "Can not legalize column name -"),
+]
+for call, text in refused:
+    try:
+        call()
+    except DHError as e:
+        assert str(e).startswith("keyed_transpose operation failed. : "), str(e)
+        assert text in str(e), str(e)
+    else:
+        raise AssertionError(text + " was answered")
 "#,
         )
         .await;

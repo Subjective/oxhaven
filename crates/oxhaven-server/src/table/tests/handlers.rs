@@ -1607,8 +1607,16 @@ async fn aggregate_refuses_what_java_refuses_and_names_what_is_not_ported() {
     if let Op::Aggregate(request) = &mut with_groups {
         request.initial_groups_id = by_ticket(1);
     }
-    let refused = call(&mut c, with_groups).await.unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
+    // initial groups that are the table's own keys in its own order change nothing
+    let seeded = call(&mut c, with_groups).await.unwrap();
+    let plain = call(&mut c, aggregated(25, vec![agg_count("Rows")], &["S"]))
+        .await
+        .unwrap();
+    assert_eq!(seeded.size, plain.size);
+    assert_eq!(
+        values(c.table(24).as_ref(), "Rows"),
+        values(c.table(25).as_ref(), "Rows")
+    );
 
     // and the server goes on
     let served = call(&mut c, aggregated(30, vec![agg_count("Rows")], &[]))

@@ -352,6 +352,23 @@ def _arrays(out: list[Draft]) -> None:
         "I2_.size()", "I2_.get(i)", "I2_.subVector(0, 2)", "len(I2_)", "sum(I2_)", "avg(D2_)",
         "min(I2_)", "max(D2_)", "first(I2_)", "last(I2_)", "count(I2_)", "countDistinct(I2_)",
         "I2_", "T2_[i - 1]", "T2_[i - 1] + T2", "Z2_[i - 1] && Z2", "C2_[i - 1] + 1",
+        # Which indexes are a fixed distance from the row, and what is around them.
+        "I1_[i + 2]", "L2_[ii - 3]", "I2_[i - 0]", "I2_[i] + I2_[i + 1]",
+        "I2_[i - 1] + D2_[i - 1]", "S2_[i - 1] + B2_[i - 1]", "F2_[i + 1] * 2",
+        "(I2_[i - 1] > 0) ? I2_[i + 1] : -I2_[i - 1]", "I2_[i - 1] > 0 ? I2 : I2_[i - 2]",
+        "(int) I2_[i - 1]", "-I2_[i - 1]", "I2_[(i - 1)]", "I2_[i - 1L]", "I2_[1 + i]",
+        "I2_[i + -1]", "I2_[i - 1 - 1]", "I2_[i * 2]", "I2_[k - 1]", "I2_.get(i - 1)",
+        "I2_.get(ii + 1)", "abs(I2_[i - 1])", "isNull(T2_[i + 1])",
+        "T2_[i + 1] == null ? `none` : T2_[i + 1]", "k + I2_[i - 1]",
+        # An index from a column, null and out of range included.
+        "I2_[I1]", "I2_[L1]", "I2_[B1]", "I2_[S1]", "I2_[D1]", "I2_[T1]", "I2_[C1]",
+        # Elements and the whole of other types.
+        "T2_[0]", "Z2_[0]", "Z2_[i - 1]", "Z2_[1] && I2 > 0", "!Z2_[i + 1]", "C2_[i + 1]",
+        "D2_[0] + D2", "L2_[i - 1] - L2", "T2_", "D2_", "Z2_", "T2_.size()",
+        "I2_.subVector(i, i + 2)", "I2_.size() - i", "sum(I2_) + I2", "I2_.isEmpty()",
+        # What does not compile.
+        "Nope_[i - 1]", "Nope_", "I2_[i - 1] + Nope", "I2_ + 1", "I2_[i - 1].size()",
+        "T2_[i - 1] * 2",
     )
     for number, formula in enumerate(extra):
         out.append(Draft(f"grid-array/extra.{number:02d}", "update", "pairs", formula))
@@ -438,6 +455,13 @@ def _where(out: list[Draft]) -> None:
         "I1 = 1", "I1 = I2", "I1 == 1 && I2 == 1", "I1 > 0, I2 > 0", "I1 >", "I1 > Nope",
         "I1 === 1", "I1 <> 1", "I1 > 0 and I2 > 0", "I1_[i - 1] < I1", "i > 40", "ii % 2 == 0",
         "k < 10", "i < 5 || i > 75",
+        # Column arrays in filters.
+        "I1_[i - 1] > 0", "I1_[i + 1] == I1", "isNull(I1_[i - 1])", "I1_[i - 1] = 1",
+        "I1_[i - 1] < I1 && I1_[i + 1] > I1", "I1_[i - 1] < I1 || I1_[i + 2] < I1",
+        "D1_[i - 2] > D1_[i - 1]", "T1_[i - 1] == T1", "I1_[0] > I1", "I1_[80] > I1",
+        "I1_.size() > i * 2", "sum(I1_) > I1", "I1_[i - I2] > 0", "Z1_[i - 1]", "Z1_[1]",
+        "Z1_[2] && I1 > 0", "!isNull(Z1_[i + 1]) && Z1_[i + 1]", "I1_[i - 1] in 1, 2",
+        "I1_[i - 1] + 1", "Nope_[i - 1] > 0", "I1_[i - 1] > Nope", "i > 3 && I1_[i - 3] > 0",
     )
     for number, formula in enumerate(extra):
         out.append(Draft(f"grid-where/extra.{number:03d}", "where", "pairs", formula))

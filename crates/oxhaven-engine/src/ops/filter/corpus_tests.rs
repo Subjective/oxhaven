@@ -681,7 +681,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 83);
+    assert_eq!(paths.len(), 85);
     let mut tally = Tally::default();
     for path in &paths {
         replay(&json(path), &mut tally);
@@ -696,6 +696,11 @@ fn scenarios_match_the_recorded_java_results() {
         .map(|(table, steps)| format!("{table} x{steps}"))
         .collect();
     let expected = [
+        "column_arrays.fails_null_boolean x1",
+        "column_arrays.kept x1",
+        "column_arrays.kept_boolean x1",
+        "column_arrays.kept_two x1",
+        "column_arrays.kept_whole x1",
         "column_statistics.big x1",
         "empty_table_ops.w x1",
         "error_formula.filter_not_boolean x1",
@@ -770,6 +775,9 @@ fn scenarios_match_the_recorded_java_results() {
         "pipeline.valid x1",
         "slice_positions.big x1",
         "snapshot_static.big x1",
+        "ticking_column_arrays.appended_kept x6",
+        "ticking_column_arrays.kept x6",
+        "ticking_column_arrays.kept_two x6",
         "ticking_empty_start.w x5",
         "ticking_filter_structured.a_or_null x9",
         "ticking_filter_structured.both x9",
@@ -819,6 +827,7 @@ fn scenarios_match_the_recorded_java_results() {
         "filter_structured.is_nan_int: is_nan, which the gRPC handler refuses",
         "lazy_update_update_view.uv_then_where: update_view",
         "ticking_blink_sort_head_tail.big: blink input",
+        "ticking_column_arrays.kept_chain: update",
         "ticking_lazy_update_update_view.uv_big: update_view",
         "ticking_time_table.first_day: time_table",
     ];

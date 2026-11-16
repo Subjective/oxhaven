@@ -27,7 +27,7 @@ fn columns(size: usize) -> Vec<ArrayRef> {
 
 /// A static table at the given row keys with `A` 10, 20, ... and `B` 1, 2, ..., that does
 /// not declare itself flat.
-fn keyed(keys: &[i64]) -> Arc<dyn Table> {
+pub(super) fn keyed(keys: &[i64]) -> Arc<dyn Table> {
     let rows = RowSet::from_keys(keys.iter().copied());
     let values = ReferenceTable::new_static(sym_a_b(), rows.clone(), columns(keys.len()));
     // The reference table makes a new source on every call; holding one of each lets the
@@ -37,7 +37,7 @@ fn keyed(keys: &[i64]) -> Arc<dyn Table> {
 }
 
 /// The same values in a flat in-memory table.
-fn flat(size: usize) -> Arc<dyn Table> {
+pub(super) fn flat(size: usize) -> Arc<dyn Table> {
     let fields: Vec<Field> = sym_a_b()
         .columns()
         .iter()
@@ -315,14 +315,6 @@ fn a_row_variable_beside_an_earlier_column_in_a_renumbered_select_is_unported() 
 
 #[test]
 #[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions"
-)]
-fn a_formula_that_reads_another_row_is_unported() {
-    let _ = update(&flat(3), &["P = A_[i - 1]"], &WithRowVariables);
-}
-
-#[test]
-#[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.select.DhFormulaColumn#generateAppropriateGetMethod"
 )]
 fn a_lazy_formula_with_a_row_variable_is_unported() {
@@ -472,7 +464,7 @@ fn requests_that_do_not_compile_are_errors() {
         SelectError::Formula { .. }
     ));
     // The compiler's refusal of what it does not support yet comes through as it is.
-    for unsupported in ["X = now()", "X = cbrt(A)", "X = A_"] {
+    for unsupported in ["X = now()", "X = cbrt(A)"] {
         match error(&[unsupported]) {
             SelectError::Formula { column, error } => {
                 assert_eq!(column, unsupported);

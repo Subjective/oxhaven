@@ -77,10 +77,12 @@ use std::sync::Arc;
 use tonic::Status;
 
 /// What the Python package checks when it builds an argument of an operation
-/// (`console/python/checks.rs`).
+/// (`console/python/checks.rs`), and what its local operations take from the handlers
+/// (`console/python/ops.rs`).
 #[cfg(feature = "python")]
 pub(crate) use self::{
-    time_table::parse_duration_nanos, update_by::check_operation as check_update_by_operation,
+    aggregate::adapt as adapt_aggregations, time_table::parse_duration_nanos,
+    update_by::check_operation as check_update_by_operation,
 };
 
 /// What handler files import.

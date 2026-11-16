@@ -24,6 +24,9 @@ VIRTUAL_ENV=$PWD/oracle/.venv target/debug/oxhaven-server \
 Then open <http://localhost:10000/ide/?psk=mykey>. `VIRTUAL_ENV` names the environment whose
 packages the console imports (numpy, pandas, pyarrow), `--storage-root` is the directory the
 IDE keeps notebooks and layouts in, and `oxhaven-server --help` lists the other options.
+`--app-dir <directory>` runs the Python scripts that the `.app` files of the directory name
+before the server accepts clients, as Java's application mode does (`docs/CONSOLE.md`,
+"Applications defined by scripts").
 
 What works in the IDE, as `oracle/ide/ide-test.js` tests it: the console, tables in the grid
 that tick, scroll, sort and filter, notebooks in the File Explorer (create, run, save,

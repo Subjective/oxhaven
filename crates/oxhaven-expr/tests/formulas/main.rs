@@ -6,6 +6,7 @@
 //! says otherwise.
 
 mod arithmetic;
+mod arrays;
 mod comparison;
 mod corpus;
 mod external;

@@ -461,7 +461,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 83);
+    assert_eq!(scenarios.len(), 85);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -479,6 +479,10 @@ fn results_match_the_ones_recorded_from_java() {
     assert_eq!(
         compared,
         [
+            "column_arrays.before x1",
+            "column_arrays.fails_no_column x1",
+            "column_arrays.fails_shifted_name x1",
+            "column_arrays.stored x1",
             "drop_columns.most x1",
             "drop_columns.one x1",
             "drop_columns.some x1",
@@ -524,6 +528,21 @@ fn results_match_the_ones_recorded_from_java() {
             "select_reorder_rename.sel x1",
             "select_reorder_rename.upd_replace x1",
             "select_reorder_rename.vw x1",
+            "ticking_column_arrays.after x6",
+            "ticking_column_arrays.appended_after x6",
+            "ticking_column_arrays.appended_before x6",
+            "ticking_column_arrays.before x6",
+            "ticking_column_arrays.fails_after_shift x6",
+            "ticking_column_arrays.fails_call x6",
+            "ticking_column_arrays.fails_fixed x6",
+            "ticking_column_arrays.fails_position x6",
+            "ticking_column_arrays.fails_whole x6",
+            "ticking_column_arrays.lazy x6",
+            "ticking_column_arrays.same_distance x6",
+            "ticking_column_arrays.stored x6",
+            "ticking_column_arrays.update_viewed x6",
+            "ticking_column_arrays.viewed x6",
+            "ticking_column_arrays.with_current x6",
             "ticking_empty_start.d x5",
             "ticking_empty_start.sel x5",
             "ticking_empty_start.u x5",
@@ -550,10 +569,19 @@ fn results_match_the_ones_recorded_from_java() {
     assert_eq!(
         outcome.not_run,
         [
+            "column_arrays.sparse_before: where",
+            "column_arrays.computed: where",
+            "column_arrays.whole: where",
+            "column_arrays.viewed: where",
+            "column_arrays.update_viewed: where",
+            "column_arrays.lazy: where",
+            "column_arrays.fails_index_type: unsupported formula P = X_[D]",
             "error_formula.rem_ok: where",
             "error_unknown_column.after_bad_sort: sort",
             "pipeline.priced: where",
             "pipeline.slim: natural_join",
+            "ticking_column_arrays.blink_before: blink input",
+            "ticking_column_arrays.blink_whole: blink input",
             "ticking_time_table.numbered: head",
         ],
         "not run"

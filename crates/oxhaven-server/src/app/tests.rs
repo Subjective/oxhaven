@@ -124,7 +124,10 @@ async fn fields_set_while_nobody_listens_are_listed_in_the_order_they_were_set()
     for name in ["zeta", "alpha", "mid"] {
         app.set_field(name, table(1)).unwrap();
     }
-    // replacing keeps the place, removing and setting again moves to the end
+    // While nobody listens, replacing a field moves it to the end, as removing it and
+    // setting it again does: Java's listener is told of a replacement in those two steps
+    // and applies each at once. Observed on Java 42.9 with a script application that sets
+    // a, b, c and a again: a client that connects later is told b, c, a.
     app.set_field("zeta", table(2)).unwrap();
     app.remove_field("alpha");
     app.set_field("alpha", table(3)).unwrap();
@@ -133,7 +136,18 @@ async fn fields_set_while_nobody_listens_are_listed_in_the_order_they_were_set()
     let initial = next(&mut updates).await;
     assert_eq!(
         described(&initial.created),
-        ["zeta: Table: ", "mid: Table: ", "alpha: Table: "]
+        ["mid: Table: ", "zeta: Table: ", "alpha: Table: "]
+    );
+
+    // with a client listening a replacement is one update, and the field keeps its place
+    app.set_field("mid", table(4)).unwrap();
+    let update = next(&mut updates).await;
+    assert_eq!(described(&update.updated), ["mid: Table: "]);
+    assert!(update.created.is_empty() && update.removed.is_empty());
+    let mut late = list_fields(&server, &bearer).await;
+    assert_eq!(
+        described(&next(&mut late).await.created),
+        ["mid: Table: ", "zeta: Table: ", "alpha: Table: "]
     );
 }
 
