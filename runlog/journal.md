@@ -946,3 +946,12 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   now that tree tables are on main.
 - Pull request 110 merged (7.10.2): the server starts with plotly-express installed.
 - Pull request 111 merged (7.2b).
+- Pull request 112 opened (7.4.1, Kafka design and first consume slice). The agent stopped
+  before adding librdkafka: even its smallest build compiles files under BSD-3-Clause and the
+  zlib licence, outside the approval. It built a small client over `kafka-protocol` (MIT OR
+  Apache-2.0) behind a trait instead. Asked the owner on a decision card whether to allow the
+  two licences for librdkafka. The agent ran a private Docker daemon for a broker and removed
+  it. For the owner besides: row order across partitions within a poll; consumer properties
+  accepted silently; non-UTF-8 text refused; `consume` with default offsets is refused.
+- Starting 7.4.2 with 7.4.3 (stream adapter in the engine, `table_publisher`, JSON
+  completely): neither depends on the licence answer.
