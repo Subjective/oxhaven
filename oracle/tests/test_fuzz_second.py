@@ -112,13 +112,16 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "5a8c3347f5ea23dc"),
-    ("partitions", "b939f8aa7befc1ff"),
-    ("all2", "4e2de0b640faa39e"),
+    ("formulas2", "5e77dee2784b36b0"),
+    ("partitions", "506155a6fb7783fb"),
+    ("all2", "d9643651e877f7f3"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
-    """Digests over the scenarios of seeds 0 to 99 as the generator was when the seeds of
-    `tasks/4.20-fuzz-findings-2.md` were recorded."""
+    """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.20
+    lifted the restrictions D4, R2 and R3: filters draw time literals in any zone, and
+    zones may be offsets. The seeds named in the findings of
+    `tasks/4.20-fuzz-findings-2.md` were recorded before that and mean other scenarios
+    now; each finding has its scenario file in `tasks/4.20-fuzz-findings-2/`."""
     assert _digest(100, fuzz.SECOND_FAMILIES[family], "second") == digest
 
 
@@ -258,7 +261,6 @@ def test_what_a_finding_restricts_is_not_drawn():
                 for column in re.findall(r"([A-Za-z_]\w*)_(?:\[|\.|\))", text):
                     seen["R6"] += 1
                     assert not types[column].startswith("list:"), (doc["name"], op)
-                assert "+01:00" not in text  # R3
                 if kind == "lazy_update":
                     seen["R1"] += 1
                     rest = SHIFT.sub("", text)
@@ -271,10 +273,6 @@ def test_what_a_finding_restricts_is_not_drawn():
         elif kind == "where":
             distances = set()
             for text in op["filters"]:
-                found = re.match(r"^\w+ (?:<|<=|>|>=|==|!=) ('.*')$", text)
-                if found and re.match(r"'\d{4}-", found.group(1)):
-                    seen["R2"] += 1
-                    assert found.group(1).endswith(" UTC'"), (doc["name"], op)  # and D4
                 distances |= set(re.findall(r"_\[(i[^\]]*)\]", text))
             if op["source"] in live and distances:
                 seen["R5"] += 1
@@ -305,7 +303,7 @@ def test_what_a_finding_restricts_is_not_drawn():
                     seen["J1"] += 1  # and J4
                     found = fuzz_second._COLUMN_COMPARISON.match(text)
                     assert not found or found.group(2) not in types, (doc["name"], op)
-    for name in ("J1", "J2", "J5", "J6", "R1", "R2", "R4", "R5", "R6", "R7"):
+    for name in ("J1", "J2", "J5", "J6", "R1", "R4", "R5", "R6", "R7"):
         assert seen[name] > 5, (name, seen[name])
 
 

@@ -1066,3 +1066,7 @@ Task 4.20 (fixes for the second fuzzer findings) reported: D1 to D4, R2 and R3 f
 ## 2026-11-16T11:22Z
 
 Pull request 124 (tree formats and filters) merged on green.
+
+## 2026-11-16T11:29Z
+
+Pull request 125 (fuzz fixes) merged on green.

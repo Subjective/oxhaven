@@ -868,6 +868,14 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
             .any(|shift| shift.amount > 0);
         attributes.append_only = !forward && is_append_only(&**parent);
         attributes.blink = parent.attributes().blink;
+        // Java then applies the columns after the shifted one with the operation asked for,
+        // also when there are none (`remainingCols` is an empty list, never null, once a
+        // shifted column was found). `update` and `lazyUpdate` of no columns still make a
+        // table, which is add-only because its append-only parent is
+        // (`BaseTable#isAddOnly`); `updateView` of no columns returns its parent.
+        attributes.add_only = attributes.append_only
+            && after.is_empty()
+            && matches!(flavor, Flavor::Update | Flavor::LazyUpdate);
     }
     let result = drop_columns_as(&computed, &dropped, Some(attributes))?;
 
