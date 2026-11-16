@@ -411,6 +411,31 @@ fn compressed_batches_are_read_except_gzip() {
 #[test]
 #[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
 fn the_topics_of_a_broker_are_listed_without_the_internal_ones() {
+    // Asking for a group's offsets makes the broker create its internal topic for them.
+    let consumer: BaseConsumer = ClientConfig::new()
+        .set("bootstrap.servers", broker())
+        .set("group.id", fresh("t"))
+        .create()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    loop {
+        let mut asked = TopicPartitionList::new();
+        asked.add_partition("oxhaven_one", 0);
+        let answered = consumer.committed_offsets(asked, Duration::from_secs(10));
+        let all = consumer
+            .fetch_metadata(None, Duration::from_secs(10))
+            .unwrap();
+        let internal = |topic: &rdkafka::metadata::MetadataTopic| topic.name().starts_with("__");
+        if answered.is_ok() && all.topics().iter().any(internal) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "the broker made no internal topic"
+        );
+        std::thread::sleep(Duration::from_millis(200));
+    }
+
     let config = vec![("bootstrap.servers".to_owned(), broker())];
     let topics = oxhaven_kafka::topics(&config).unwrap();
     for topic in ["oxhaven_one", "oxhaven_two"] {

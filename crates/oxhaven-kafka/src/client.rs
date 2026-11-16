@@ -6,7 +6,7 @@
 //! group named in `group.id` is only where positions are committed to and read from.
 //! `docs/KAFKA.md`, "The client library", says how it is built and what is left off.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -65,6 +65,46 @@ fn partitions_of(
     Ok(partitions)
 }
 
+/// The offsets the consumer's group has committed for `partitions` of `topic`.
+///
+/// A broker that has not found or loaded the group's coordinator yet says so, most often
+/// to the first consumer group it ever serves; Java asks again until the time is up.
+///
+/// Behavior: org.apache.kafka.clients.consumer.internals.ConsumerCoordinator
+/// #fetchCommittedOffsets, which retries what is a `RetriableException`
+fn committed_offsets(
+    consumer: &BaseConsumer,
+    topic: &str,
+    partitions: &[i32],
+    timeout: Duration,
+) -> Result<TopicPartitionList, KafkaError> {
+    use RDKafkaErrorCode as Code;
+    let deadline = Instant::now() + timeout;
+    loop {
+        let mut asked = TopicPartitionList::new();
+        for partition in partitions {
+            asked.add_partition(topic, *partition);
+        }
+        let left = deadline.saturating_duration_since(Instant::now());
+        let error = match consumer.committed_offsets(asked, left) {
+            Ok(committed) => return Ok(committed),
+            Err(error) => error,
+        };
+        let retriable = matches!(
+            error.rdkafka_error_code(),
+            Some(
+                Code::NotCoordinator
+                    | Code::CoordinatorNotAvailable
+                    | Code::CoordinatorLoadInProgress
+            )
+        );
+        if !retriable || Instant::now() >= deadline {
+            return Err(broker_error("cannot read the committed offsets", error));
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
 impl ClientSource {
     /// Finds the partitions of `topic` that `wanted` accepts and places the consumer in
     /// each where `initial` says.
@@ -95,12 +135,7 @@ impl ClientSource {
             .collect();
         let mut committed = TopicPartitionList::new();
         if settings.group.is_some() && !unsought.is_empty() {
-            for partition in &unsought {
-                committed.add_partition(topic, *partition);
-            }
-            committed = consumer
-                .committed_offsets(committed, timeout)
-                .map_err(|error| broker_error("cannot read the committed offsets", error))?;
+            committed = committed_offsets(&consumer, topic, &unsought, timeout)?;
         }
 
         let mut failure = None;
