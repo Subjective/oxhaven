@@ -1,0 +1,386 @@
+{
+  "format": 2,
+  "scenario": "partitioned_transform_pair",
+  "scenario_sha256": "d054b6e54978aebec63ce551383fa58f9eae2960886186dea65f2fcd41b12c22",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "paired",
+      "file": "step000.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "paired_underlying",
+      "file": "step000.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "paired_keys",
+      "file": "step000.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "by_position",
+      "file": "step000.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "itself",
+      "file": "step000.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "without_keys",
+      "file": "step000.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "again",
+      "file": "step000.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "paired",
+      "file": "step001.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "paired_underlying",
+      "file": "step001.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "paired_keys",
+      "file": "step001.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "by_position",
+      "file": "step001.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "itself",
+      "file": "step001.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "without_keys",
+      "file": "step001.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "again",
+      "file": "step001.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "paired",
+      "file": "step002.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "paired_underlying",
+      "file": "step002.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "paired_keys",
+      "file": "step002.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "by_position",
+      "file": "step002.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "itself",
+      "file": "step002.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "without_keys",
+      "file": "step002.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "again",
+      "file": "step002.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "paired",
+      "file": "step003.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "paired_underlying",
+      "file": "step003.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "paired_keys",
+      "file": "step003.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "by_position",
+      "file": "step003.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "itself",
+      "file": "step003.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "without_keys",
+      "file": "step003.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "again",
+      "file": "step003.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "paired",
+      "file": "step004.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "paired_underlying",
+      "file": "step004.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "paired_keys",
+      "file": "step004.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "by_position",
+      "file": "step004.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "itself",
+      "file": "step004.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "without_keys",
+      "file": "step004.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "again",
+      "file": "step004.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "paired",
+      "file": "step005.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "paired_underlying",
+      "file": "step005.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "paired_keys",
+      "file": "step005.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "by_position",
+      "file": "step005.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "itself",
+      "file": "step005.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "without_keys",
+      "file": "step005.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "again",
+      "file": "step005.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "paired",
+      "file": "step006.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "paired_underlying",
+      "file": "step006.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "paired_keys",
+      "file": "step006.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "by_position",
+      "file": "step006.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "itself",
+      "file": "step006.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "without_keys",
+      "file": "step006.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "again",
+      "file": "step006.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "paired",
+      "file": "step007.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "paired_underlying",
+      "file": "step007.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "paired_keys",
+      "file": "step007.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "by_position",
+      "file": "step007.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "itself",
+      "file": "step007.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "without_keys",
+      "file": "step007.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "again",
+      "file": "step007.again.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "paired",
+      "file": "step008.paired.arrow",
+      "rows": 6
+    },
+    {
+      "step": 8,
+      "table": "paired_underlying",
+      "file": "step008.paired_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "paired_keys",
+      "file": "step008.paired_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "by_position",
+      "file": "step008.by_position.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "itself",
+      "file": "step008.itself.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "without_keys",
+      "file": "step008.without_keys.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "again",
+      "file": "step008.again.arrow",
+      "rows": 2
+    }
+  ]
+}

@@ -8,7 +8,7 @@
 //! underlying table is added and disappears with it, and the slots after it move.
 
 use super::{failure, tables_of, PartitionedError, PartitionedTable};
-use crate::ops::merge::{append_shift_data, key_space_for, next_slot};
+use crate::ops::merge::{append_shift_data, key_space_for, next_slot, shared_attributes};
 use crate::table::{mark, reads_through, Marks, QueryTable, TableSpec};
 use arrow::array::{new_empty_array, Array, ArrayRef, AsArray};
 use arrow::datatypes::Int64Type;
@@ -655,6 +655,8 @@ pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, Pa
             previous: Arc::default(),
             changed_step: NEVER,
         };
+        let constituents: Vec<Arc<dyn Table>> =
+            parts.iter().map(|part| part.table.clone()).collect();
         lock(&union.state).parts = parts;
         let columns = definition
             .columns()
@@ -668,7 +670,12 @@ pub(super) fn merge(partitioned: &PartitionedTable) -> Result<Arc<dyn Table>, Pa
                 })
             })
             .collect();
-        let spec = TableSpec::new(definition.clone(), rows.build(), columns);
+        let mut spec = TableSpec::new(definition.clone(), rows.build(), columns);
+        if !partitioned.constituent_changes_permitted() {
+            // Behavior: PartitionedTableImpl#merge, which gives the result the attributes
+            // its constituents share when no constituent can come or go
+            spec = spec.with_attributes(shared_attributes(&constituents));
+        }
         let result = QueryTable::dependent(graph.clone(), spec, union.clone());
         let _ = union.result.set(Arc::downgrade(&result));
         Ok(result)

@@ -904,3 +904,13 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Owner approval (04:37 UTC, relayed): Kafka may be built on librdkafka through a Rust
   binding, BSD-2-Clause. Any other licence in its dependency tree goes back to him. Kafka
   starts when a build slot frees.
+- Pull request 108 opened (7.6.1). The proxy (7.6.2) was not started and is a separate large
+  task: 38 Python operations, and it needs the query scope carried into the cycle. The 7.6
+  notes were wrong that Java accepts `None` from a transform function; it refuses. For the
+  owner: a failed transform (Q11 again), call order when the result is made, a function
+  reading a refreshing table it did not name as a dependency.
+- Starting the minimal `jpy` module (ruled 04:24 UTC) and Kafka (licence approved 04:37 UTC)
+  in the two free slots.
+- Correction: one slot was free, not two. Started the `jpy` module; Kafka waits for the next
+  slot and for disk (librdkafka builds from C).
+- Pull request 108 merged (7.6.1).

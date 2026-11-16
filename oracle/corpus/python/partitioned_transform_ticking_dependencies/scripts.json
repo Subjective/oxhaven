@@ -1,0 +1,35 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : java.lang.IllegalStateException: Static partitioned tables cannot contain refreshing constituents. Did you mean to specify expectRefreshingResults=true for this transform?",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : java.lang.IllegalStateException: Static partitioned tables cannot contain refreshing constituents. Did you mean to specify expectRefreshingResults=true for this transform?",
+      "operation": "failed to transform the PartitionedTable."
+    }
+  ]
+}
