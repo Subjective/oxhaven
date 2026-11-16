@@ -292,7 +292,11 @@ fn a_static_select_shifts_the_columns_it_has_computed_with_new_row_keys() {
         (&["W = A + 1", "Y = W_[i - 1] + k"], true),
         (&["W = A + 1", "Y = W_[i - 1]", "Z = k"], true),
     ] {
-        assert_eq!(renumbered_select_is_unported(columns), refused, "{columns:?}");
+        assert_eq!(
+            renumbered_select_is_unported(columns),
+            refused,
+            "{columns:?}"
+        );
     }
 }
 
