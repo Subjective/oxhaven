@@ -29,6 +29,7 @@
 
 mod array_formula;
 pub(crate) mod arrays;
+pub mod format;
 mod materialize;
 mod plan;
 mod rename;
