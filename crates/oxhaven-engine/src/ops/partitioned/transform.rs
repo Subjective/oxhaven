@@ -137,9 +137,8 @@ impl Cells {
     }
 
     fn release_retired(&self) {
-        let retired = std::mem::take(
-            &mut *self.retired.lock().unwrap_or_else(PoisonError::into_inner),
-        );
+        let retired =
+            std::mem::take(&mut *self.retired.lock().unwrap_or_else(PoisonError::into_inner));
         for handle in retired {
             self.tables.release(handle);
         }
@@ -227,9 +226,7 @@ impl Operator {
         };
         if !rows.is_empty() {
             let made = cells.compute(&rows).map_err(in_cycle)?;
-            cells
-                .store(&rows, made, &self.expected)
-                .map_err(in_cycle)?;
+            cells.store(&rows, made, &self.expected).map_err(in_cycle)?;
         }
         let modified_columns = match &upstream.modified_columns {
             ModifiedColumnSet::All => ModifiedColumnSet::All,
@@ -415,11 +412,11 @@ fn transform_locked(
             QueryTable::derive_merged(std::slice::from_ref(source), waits, || {
                 Ok((
                     spec,
-                    move |result: &QueryTable, upstream: &[Option<Arc<TableUpdate>>]| match &upstream
-                        [0]
-                    {
-                        Some(update) => operator.on_update(result, update),
-                        None => Ok(TableUpdate::empty()),
+                    move |result: &QueryTable, upstream: &[Option<Arc<TableUpdate>>]| {
+                        match &upstream[0] {
+                            Some(update) => operator.on_update(result, update),
+                            None => Ok(TableUpdate::empty()),
+                        }
                     },
                 ))
             })?

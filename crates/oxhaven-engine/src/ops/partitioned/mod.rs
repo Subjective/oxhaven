@@ -8,9 +8,9 @@
 mod cells;
 mod merge;
 mod partition;
-mod transform;
 #[cfg(test)]
 mod tests;
+mod transform;
 #[cfg(test)]
 mod transform_tests;
 
