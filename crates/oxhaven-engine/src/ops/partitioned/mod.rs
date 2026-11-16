@@ -6,6 +6,8 @@
 //! facts Java keeps beside it.
 
 mod cells;
+#[cfg(test)]
+mod column_tests;
 mod factory;
 #[cfg(test)]
 mod factory_tests;
