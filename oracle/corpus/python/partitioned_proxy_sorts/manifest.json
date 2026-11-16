@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "partitioned_proxy_sorts",
+  "scenario_sha256": "fe9c38994f91fe0b5446147741b08d3b533b113c8cddcffb3034baefb7bee27a",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "heads",
+      "file": "step000.heads.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "tails",
+      "file": "step000.tails.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "reversed_rows",
+      "file": "step000.reversed_rows.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_rows",
+      "file": "step000.sorted_rows.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_two",
+      "file": "step000.sorted_two.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_directions",
+      "file": "step000.sorted_directions.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_descending",
+      "file": "step000.sorted_descending.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_descending_two",
+      "file": "step000.sorted_descending_two.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "snapshot",
+      "file": "step000.snapshot.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "one_character",
+      "file": "step000.one_character.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "sorted_partitions",
+      "file": "step000.sorted_partitions.arrow",
+      "rows": 8
+    }
+  ]
+}

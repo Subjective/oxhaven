@@ -189,6 +189,38 @@ def caller_scope():
     return scope
 
 
+def scope_snapshot():
+    """A copy of the variables that a formula of the table operation being called may
+    name, as they are now: what `caller_scope` answers, with the globals of the session
+    copied too. For an operation whose formulas are compiled again later with the
+    variables of now, as those of a `PartitionedTableProxy` are.
+    """
+    frame = sys._getframe(1)
+    while frame is not None and frame.f_code.co_filename.startswith("<oxhaven>/"):
+        frame = frame.f_back
+    if frame is None:
+        return dict(_session_globals) if _session_globals is not None else {}
+    scope = dict(frame.f_globals)
+    scope.update(frame.f_locals)
+    return scope
+
+
+def scope_snapshot():
+    """A copy of the variables that a formula of the table operation being called may
+    name, as they are now: what `caller_scope` answers, with the globals of the session
+    copied too. For an operation whose formulas are compiled again later with the
+    variables of now, as those of a `PartitionedTableProxy` are.
+    """
+    frame = sys._getframe(1)
+    while frame is not None and frame.f_code.co_filename.startswith("<oxhaven>/"):
+        frame = frame.f_back
+    if frame is None:
+        return dict(_session_globals) if _session_globals is not None else {}
+    scope = dict(frame.f_globals)
+    scope.update(frame.f_locals)
+    return scope
+
+
 def run(code, namespace):
     """Runs `code` as a module body in `namespace`. Returns None, or the text of the error
     as the interpreter would print it.

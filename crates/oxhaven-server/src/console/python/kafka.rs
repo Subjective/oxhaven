@@ -1,9 +1,9 @@
-//! `deephaven.stream.kafka.consumer` reaches the Kafka consumer here.
+//! `deephaven.stream.kafka` reaches the Kafka client here.
 //!
 //! Java has no gRPC call that consumes a topic, so this is not a table service operation:
 //! the Python module calls [`kafka_consume`] with the arguments of
 //! `deephaven.stream.kafka.consumer.consume`, and the work is `oxhaven_kafka::consume`
-//! (`docs/KAFKA.md`).
+//! (`docs/KAFKA.md`). [`kafka_topics`] is `deephaven.stream.kafka.topics`.
 
 use std::sync::Arc;
 
@@ -104,6 +104,13 @@ pub(super) fn kafka_consume(
     Ok(TableHandle { table })
 }
 
+/// The names of the topics of the broker `config` names.
+#[pyfunction]
+pub(super) fn kafka_topics(py: Python<'_>, config: Vec<(String, String)>) -> PyResult<Vec<String>> {
+    py.detach(|| oxhaven_kafka::topics(&config))
+        .map_err(exception)
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::tests::ONE_INTERPRETER;
@@ -117,7 +124,7 @@ mod tests {
         let console = server.state.console.clone().unwrap();
         const SETUP: &str = "from deephaven import dtypes\n\
             from deephaven.stream.kafka import consumer as kc\n\
-            CFG = {'bootstrap.servers': '127.0.0.1:1'}\n\
+            CFG = {'bootstrap.servers': '127.0.0.1:1', 'default.api.timeout.ms': '1500'}\n\
             BEGIN = kc.ALL_PARTITIONS_SEEK_TO_BEGINNING\n\
             V = kc.simple_spec('V', dtypes.int32)\n";
         let failure = |code: &str, message: &str| {
@@ -187,6 +194,33 @@ mod tests {
              org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder: \
              security.protocol=SSL"
         );
+        // Without `offsets` the call is no longer refused: it reaches for the broker too.
+        let unsought = failure(&format!("kc.consume(CFG, 't', {IGNORED_KEY})"), CONSUME);
+        assert!(unsought.starts_with("no broker of"), "{unsought}");
+        let listed = failure(
+            "from deephaven.stream.kafka import topics\ntopics(CFG)",
+            "failed to list Kafka topics",
+        );
+        assert!(
+            listed.starts_with("Failed to list Kafka Topics"),
+            "{listed}"
+        );
+        assert_eq!(
+            failure(
+                &format!("kc.consume({{**CFG, 'enable.auto.commit': 'true'}}, 't', {IGNORED_KEY})"),
+                CONSUME
+            ),
+            "org.apache.kafka.common.errors.InvalidConfigurationException: \
+             enable.auto.commit cannot be set to true when default group id (null) is used."
+        );
+        // The reference hands the properties to Java as they are, and only text fits.
+        for (value, refusal) in [
+            ("5", "no matching Java method overloads found"),
+            ("None", "java.lang.NullPointerException"),
+        ] {
+            let code = format!("kc.consume({{**CFG, 'max.poll.records': {value}}}, 't')");
+            assert_eq!(failure(&code, CONSUME), refusal);
+        }
         assert_eq!(
             failure("kc.consume_to_partitioned_table(CFG, 't')", CONSUME),
             "not ported: io.deephaven.kafka.KafkaTools#consumeToPartitionedTable"
@@ -206,10 +240,6 @@ mod tests {
             (
                 "kc.object_processor_spec(None)",
                 "io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec",
-            ),
-            (
-                "from deephaven.stream.kafka import topics\ntopics(CFG)",
-                "io.deephaven.kafka.KafkaTools#listTopics",
             ),
         ] {
             let error = console.evaluate(&format!("{SETUP}{call}")).error.unwrap();

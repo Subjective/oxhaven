@@ -33,7 +33,7 @@ use oxhaven_expr::{ExternalArgument, ExternalFunction, ExternalFunctions};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList, PyTuple};
 
-use crate::app::{Scope, ScopedCompiler};
+use crate::app::{item_function_parts, Scope, ScopedCompiler};
 use crate::schema::java_type_name;
 
 /// The Python half: signatures, conversions and the loop over the rows of a chunk.
@@ -115,6 +115,10 @@ impl ExternalFunctions for PythonFunctions {
         arguments: &[ExternalArgument<'_>],
     ) -> Option<Result<Arc<dyn ExternalFunction>, FormulaError>> {
         Python::attach(|py| {
+            if let Some((cast, variable)) = item_function_parts(name) {
+                let container = super::current_scope(py)?.get_item(variable).ok()??;
+                return Some(bind_item(py, cast, variable, &container, arguments));
+            }
             let function = super::current_scope(py)?.get_item(name).ok()??;
             if !function.is_callable() {
                 return None;
@@ -182,7 +186,7 @@ fn bind(
             })?;
             let run = outcome.get_item(2).map_err(failed)?.unbind();
             Ok(Arc::new(PythonCall {
-                name: name.to_string(),
+                what: format!("the Python function {name}"),
                 result,
                 run,
             }))
@@ -192,9 +196,78 @@ fn bind(
     }
 }
 
-/// A Python function bound to the argument types of one call in a formula.
+/// The item `(cast) variable[argument]` of `container`, a list or a dict, which is read
+/// from the object where a row is computed, as Java reads it: a list by Python's rules
+/// for an index, so that a negative one counts from the end and one outside the list
+/// fails, a dict with `get`, so that a key it has not is null. `None` is null, and
+/// another item is converted as jpy converts it for the cast (`_oxhaven_udf.item_reader`).
+///
+/// Behavior: `org.jpy.PyListWrapper#get(int)`, `org.jpy.PyDictWrapper#get(Object)`, and
+/// `QueryLanguageParser#visit(CastExpr)` for an `org.jpy.PyObject`, which calls
+/// `PyObject#getIntValue`, `#getLongValue`, `#getDoubleValue` or `#getStringValue`; a
+/// null `PyObject` is the null of the type. Java 42.9 was run for each form.
+fn bind_item(
+    py: Python<'_>,
+    cast: &str,
+    variable: &str,
+    container: &Bound<'_, PyAny>,
+    arguments: &[ExternalArgument<'_>],
+) -> Result<Arc<dyn ExternalFunction>, FormulaError> {
+    use ColumnType as C;
+    let list = container.is_instance_of::<PyList>();
+    let class = if list {
+        "org.jpy.PyListWrapper"
+    } else {
+        "org.jpy.PyDictWrapper"
+    };
+    let [argument] = arguments else {
+        return Err(unsupported(
+            format!(
+                "an item of {variable} read with {} arguments",
+                arguments.len()
+            ),
+            &format!("{class}#get"),
+        ));
+    };
+    match argument.column_type {
+        // `get(int)`, for what widens to an `int`
+        Some(C::Byte | C::Short | C::Char | C::Int) => {}
+        // `get(Object)`, for the value boxed
+        Some(C::Boolean | C::Long | C::Float | C::Double | C::String) if !list => {}
+        Some(other) if list => {
+            return Err(FormulaError::Type(format!(
+                "Cannot find method get({}) in class {class}",
+                java_type_name(other)
+            )))
+        }
+        _ => {
+            return Err(unsupported(
+                format!("an item of {variable} read with this key"),
+                &format!("{class}#get"),
+            ))
+        }
+    }
+    let result = result_type(match cast {
+        "String" => "java.lang.String",
+        other => other,
+    })
+    .expect("a cast that is computed");
+    let kind = if list { "list" } else { "dict" };
+    let run = helpers(py)
+        .and_then(|helpers| helpers.call_method1("item_reader", (container, kind, cast)))
+        .map_err(|error| FormulaError::Type(format!("the items of {variable}: {error}")))?;
+    Ok(Arc::new(PythonCall {
+        what: format!("({cast}) {variable}[]"),
+        result,
+        run: run.unbind(),
+    }))
+}
+
+/// A Python function bound to the argument types of one call in a formula, or the items
+/// of a Python list or dict.
 struct PythonCall {
-    name: String,
+    /// What it is, for the message of a failure.
+    what: String,
     result: ColumnType,
     /// `run(rows, columns)` of `_oxhaven_udf`: the cells of a chunk, as a list.
     run: Py<PyAny>,
@@ -227,7 +300,7 @@ impl ExternalFunction for PythonCall {
             // Java: "java.lang.RuntimeException: Error in Python interpreter:" and the
             // traceback, whose last line is this text
             parts.push(part.map_err(|error| TableFailure {
-                message: format!("Error in the Python function {}: {error}", self.name),
+                message: format!("Error in {}: {error}", self.what),
             })?);
             offset += length;
         }
@@ -310,7 +383,7 @@ fn cells_array(result: &ColumnType, cells: &Bound<'_, PyAny>) -> PyResult<ArrayR
 /// scope, and its callables as functions.
 pub(super) fn compiler(scope: Arc<Scope>) -> Arc<dyn FormulaCompiler> {
     let language = oxhaven_expr::Compiler::with_functions(Arc::new(PythonFunctions));
-    Arc::new(ScopedCompiler::new(Arc::new(language), scope))
+    Arc::new(ScopedCompiler::new(Arc::new(language), scope).reading_items())
 }
 
 #[cfg(test)]

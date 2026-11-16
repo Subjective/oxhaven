@@ -966,3 +966,27 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   gate needs the server built against the same Python as the venv (3.12 or later); two runs
   failed on that before the agent found it. Add to the brief.
 - Pull request 113 merged (7.8.3).
+- Pull request 114 opened (5.8): 48 of 50 plotly-express figures equal Java's; the two left
+  need business calendars. For the owner: a range column fetched by a client is a `double[]`
+  here and an object with an identity hash in Java; Java wraps an `Instant` variable of the
+  year 1600 to 2184; a Python global named like a language constant replaces the constant in
+  every formula of the session in Java. Lesson for gate runs: leftover console globals named
+  `e`, `t`, `f` change the formula gate counts, so gates run against a freshly started server.
+- Next in the free slot: table formats (`format_columns` and the like), then format and
+  update views of rollups and trees (7.8.2).
+- Owner decision (06:58 UTC, relayed): new agents for the well-defined tasks (formats and
+  views, Kafka follow-ups, formula column types, the review summary) run on Opus to stretch
+  usage limits; the row set swap and fuzzer triage stay on the default model. Agents already
+  running finish as they are; the `who` column of tasks.csv records the model from now on.
+- Pull request 114 merged (5.8).
+- Pull request 115 opened (7.4.4, Kafka on librdkafka). For the owner: gzip needs a zlib
+  outside librdkafka (`libz-sys`, zlib licence); TLS needs OpenSSL (Apache-2.0); SASL other
+  than PLAIN needs Cyrus SASL (BSD-style with an advertising clause); the off-feature
+  licences are from manifests, not a download, and need re-checking before any is enabled.
+  The new `kafka-broker` CI job pulls a broker image from Docker Hub and has not run on
+  GitHub yet; its first run is on this pull request. Disk fell to 1.3 GB twice during the C
+  build with four agents building.
+
+## 2026-11-16T07:46Z
+
+Pull request 115 (Kafka consumer on librdkafka) merged; the new kafka-broker job passed on its first run on GitHub. Task 7.6.2 (partitioned table proxy) reported: all 37 operations, five recorded scenarios clean, 14 items for the owner in its task file, among them a hang in Java when a proxy aggregation with a formula meets an update cycle. Merged as pull request 116. Launched 7.4.2 with 7.4.3 on Opus at 07:40, the first task under the model split. A tool check failed for some minutes, so this entry was written after the merges.

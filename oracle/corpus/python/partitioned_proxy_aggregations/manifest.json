@@ -1,0 +1,164 @@
+{
+  "format": 2,
+  "scenario": "partitioned_proxy_aggregations",
+  "scenario_sha256": "59fc15520a56fdd99d1a7a497a7bd703e54a2be65417b7492c37b4612764fbba",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "grouped",
+      "file": "step000.grouped.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "grouped_by",
+      "file": "step000.grouped_by.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "agg",
+      "file": "step000.agg.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_none",
+      "file": "step000.agg_none.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_formula",
+      "file": "step000.agg_formula.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "agg_all",
+      "file": "step000.agg_all.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "agg_all_none",
+      "file": "step000.agg_all_none.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "counted",
+      "file": "step000.counted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "counted_by",
+      "file": "step000.counted_by.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "first",
+      "file": "step000.first.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "last",
+      "file": "step000.last.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "minimum",
+      "file": "step000.minimum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "maximum",
+      "file": "step000.maximum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "total",
+      "file": "step000.total.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "absolute",
+      "file": "step000.absolute.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "average",
+      "file": "step000.average.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "median",
+      "file": "step000.median.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "deviation",
+      "file": "step000.deviation.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "variance",
+      "file": "step000.variance.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "weighted_sum",
+      "file": "step000.weighted_sum.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "weighted_sum_by",
+      "file": "step000.weighted_sum_by.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "weighted_average",
+      "file": "step000.weighted_average.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "weighted_average_by",
+      "file": "step000.weighted_average_by.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "running",
+      "file": "step000.running.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "running_by",
+      "file": "step000.running_by.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "running_key",
+      "file": "step000.running_key.arrow",
+      "rows": 12
+    }
+  ]
+}
