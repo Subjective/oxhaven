@@ -51,7 +51,7 @@ per primitive type and replaced by one generic implementation.
 | `proto/proto-backplane-grpc`, Barrage schema | `oxhaven-proto` | 0.6 |
 | `server/session`, `server/auth` | `oxhaven-server::session` | 2.1 |
 | `server/table/ops` | `oxhaven-server::table` | 2.2, then one handler per operator task |
-| `server/arrow` (Flight) | `oxhaven-server::flight` | 2.3 |
+| `server/arrow` (Flight; of `BrowserFlightServiceGrpcBinding` the `DoPut` pair) | `oxhaven-server::flight` | 2.3, 7.11 |
 | `server/barrage`, `extensions/barrage` | `oxhaven-server::barrage` | 2.4 |
 | `server/table/inputtables` | `oxhaven-server::inputtable` | 2.5 |
 | `server/config`, `server/browserstreaming` | `oxhaven-server::config`, `::transport` | 2.6 |
@@ -72,7 +72,8 @@ per primitive type and replaced by one generic implementation.
 | `extensions/csv`, the `deephaven-csv` library | `oxhaven-csv` | 7.3 |
 | `extensions/kafka` | Kafka provider | 7.4, 7.5 |
 | `extensions/iceberg`, `jdbc`, `flight-sql`, `protobuf`, `json`, `s3` | out of scope for now | |
-| `engine/sql`, `sql/`, `Plot`, Groovy, Java plugins | out of scope | |
+| `Plot`, `py/server/deephaven/plot`, `server/plugin/type` (`FigureWidgetTypePlugin`) | `deephaven.plot` of the Python package, `oxhaven-server::figure`; plots of tables only (`docs/FIGURES.md`) | 7.11 |
+| `engine/sql`, `sql/`, Groovy, Java plugins | out of scope | |
 
 ## Clients
 

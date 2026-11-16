@@ -197,7 +197,7 @@ before they touch the server. The registry's own lock is not held while a type i
 | --- | --- | --- |
 | A JS plugin | `io.deephaven.server.plugin.python.CallbackAdapter#registerJsPlugin` | left out with a warning in the server's log that names the method; the object types of its package are registered, and `/js-plugins/manifest.json` stays empty |
 | A reference to `None` | `io.deephaven.server.session.SessionState#newServerSideExport` of null, which makes an export that fails when a client uses it | the message that refers to it fails, with a `RuntimeError` that names the method |
-| The type names `Figure` and `HierarchicalTable` | Java's built-in types | taken, so no plugin can have them; nothing is of them yet |
+| The type name `HierarchicalTable` | Java's built-in type | taken, so no plugin can have it; nothing is of it yet. `Figure` is a type of the server since 7.11 (`docs/FIGURES.md`) |
 
 ## For the owner
 
@@ -213,17 +213,10 @@ Java behaviours that look like hazards, each reproduced as observed and not deci
   value it fails on.
 - After the server ended a browser's stream, the client's side stays an export.
 
-## What a figure needs (7.11)
+## The figure (7.11)
 
-- An `ObjectType` named `Figure`, registered in `registry()` after `PartitionedTable`, and
-  `figure` taken out of `JAVA_TYPES_NOT_PORTED_LOWERCASE`. Java's is fetch-only: `connect`
-  builds the descriptor and calls `send_once` with the tables the figure reads as references.
-- The value: an `ExportValue::Object` of the figure's Rust type, as the partitioned table is.
-  The Python wrapper goes through `PythonSession::wrap` and `export_of` like `Table` and
-  `PartitionedTable`, so that a figure in a variable, and one a plugin refers to, is the Rust
-  value.
-- Nothing in the service: the type name in `ListFields`, `FetchObject`, the stream and the
-  references of a message all follow from the registration.
+`Figure` is registered in `registry()` after `PartitionedTable`, fetch-only, as described
+here before it existed; `docs/FIGURES.md` is its design.
 
 ## Outside the task's paths
 
