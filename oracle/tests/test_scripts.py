@@ -90,6 +90,18 @@ def test_a_scenario_is_split_into_steps_and_keeps_its_line_numbers() -> None:
     assert not any(line.strip() for line in third)
 
 
+def test_views_name_a_hierarchical_table_its_key_table_and_its_action_column() -> None:
+    scenario = scripts.parse(
+        "example", "# oracle: views all = r, some = r k, acted = r k A\n# oracle: computed some.Sum\n")
+    assert scenario.results == ()
+    assert scenario.views == (
+        scripts.View("all", "r"),
+        scripts.View("some", "r", "k"),
+        scripts.View("acted", "r", "k", "A"),
+    )
+    assert scenario.computed == {"some": frozenset({"Sum"})}
+
+
 @pytest.mark.parametrize(
     ("text", "message"),
     [
@@ -100,6 +112,10 @@ def test_a_scenario_is_split_into_steps_and_keeps_its_line_numbers() -> None:
         ("# oracle: results t\n# oracle: computed u.Sum\n", "not results"),
         ("# oracle: results t\n# oracle: computed Sum\n", "<table>.<column>"),
         ("# oracle: results t\n# oracle: ordered t\n", "unknown directive"),
+        ("# oracle: views v\n", "a view is written"),
+        ("# oracle: views v = r k A more\n", "a view is written"),
+        ("# oracle: views v = r, v = r k\n", "listed twice"),
+        ("# oracle: results v\n# oracle: views v = r\n", "listed twice"),
         ("# oracle: results t\n# oracle: step 2\n", "unknown directive"),
         ("# oracle: results t\n# oracle:fails\n", "a directive is written"),
         ("# oracle: results t\n# oracle: fails\n# oracle: fails\nt = 1\n", "given twice"),
@@ -336,7 +352,8 @@ def test_every_script_scenario_is_recorded_as_declared(scenario) -> None:
     assert scripts.compare(scenario, recorded, recorded, exact=True) == []
     steps = len(scenario.sections)
     assert set(recorded.tables.keys()) == {
-        (step, result.table) for step in range(steps) for result in scenario.results}
+        (step, name) for step in range(steps)
+        for name in [*(r.table for r in scenario.results), *(v.name for v in scenario.views)]}
     for step, name in recorded.tables.keys():
         data = recorded.tables.get(step, name)
         if isinstance(data, Failure):

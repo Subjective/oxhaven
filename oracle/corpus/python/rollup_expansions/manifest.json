@@ -1,0 +1,134 @@
+{
+  "format": 2,
+  "scenario": "rollup_expansions",
+  "scenario_sha256": "623d12f3ce12c7345c2312fd9a70bef06a642d49dcc402317433b3b24b43e3e3",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "expand_one",
+      "file": "step000.expand_one.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "expand_leaf_parent",
+      "file": "step000.expand_leaf_parent.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "below_closed",
+      "file": "step000.below_closed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "all_root",
+      "file": "step000.all_root.arrow",
+      "rows": 22
+    },
+    {
+      "step": 0,
+      "table": "all_total",
+      "file": "step000.all_total.arrow",
+      "rows": 22
+    },
+    {
+      "step": 0,
+      "table": "all_from_s1",
+      "file": "step000.all_from_s1.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "contracted",
+      "file": "step000.contracted.arrow",
+      "rows": 14
+    },
+    {
+      "step": 0,
+      "table": "contracted_first",
+      "file": "step000.contracted_first.arrow",
+      "rows": 22
+    },
+    {
+      "step": 0,
+      "table": "expanded_under_all",
+      "file": "step000.expanded_under_all.arrow",
+      "rows": 18
+    },
+    {
+      "step": 0,
+      "table": "to_depth_0",
+      "file": "step000.to_depth_0.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "to_depth_1",
+      "file": "step000.to_depth_1.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "to_depth_2",
+      "file": "step000.to_depth_2.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "to_depth_9",
+      "file": "step000.to_depth_9.arrow",
+      "rows": 10
+    },
+    {
+      "step": 0,
+      "table": "absent",
+      "file": "step000.absent.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "twice",
+      "file": "step000.twice.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "child_then_parent",
+      "file": "step000.child_then_parent.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "parent_then_child",
+      "file": "step000.parent_then_child.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "no_rows",
+      "file": "step000.no_rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "no_action",
+      "file": "step000.no_action.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "wide",
+      "file": "step000.wide.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "total_closed",
+      "file": "step000.total_closed.arrow",
+      "rows": 1
+    }
+  ]
+}

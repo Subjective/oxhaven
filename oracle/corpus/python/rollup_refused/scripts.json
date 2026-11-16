@@ -1,0 +1,69 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.UnsupportedOperationException: AggMedian is not supported for rollup()",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.UnsupportedOperationException: AggPercentile is not supported for rollup()",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.UnsupportedOperationException: AggPartition is not supported for rollup()",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.UnsupportedOperationException: AggFormula is not supported for rollup()",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.IllegalArgumentException: Duplicate output columns found: J used 2 times",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: aggregation: not all group-by columns [K, Nope] are present in input table with columns [K, J, V]. Missing columns: [Nope]",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [K, J, V]",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table rollup operation failed. : RuntimeError: java.lang.IllegalArgumentException: Duplicate output columns found: K used 2 times",
+      "operation": "table rollup operation failed."
+    },
+    {
+      "step": 9,
+      "outcome": "ok"
+    }
+  ]
+}
