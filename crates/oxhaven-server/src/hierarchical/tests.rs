@@ -114,7 +114,7 @@ fn count(column: &str) -> AggregationMessage {
     }
 }
 
-fn rollup_request(source: i32, result: i32, by: &[&str]) -> RollupRequest {
+pub(super) fn rollup_request(source: i32, result: i32, by: &[&str]) -> RollupRequest {
     RollupRequest {
         result_rollup_table_id: Some(export_id_to_ticket(result)),
         source_table_id: Some(export_id_to_ticket(source)),
@@ -155,7 +155,7 @@ const ONE_OF: &str = "Note: this may also indicate that the server is older than
 
 /// A server whose session has the trades as export 1, their rollup by `Sym` and `Ex` as
 /// export 10 and key tables as exports 2 (expands AAPL) and 3 (has no depth column).
-async fn server() -> Server {
+pub(super) async fn server() -> Server {
     let server = Server::start().await;
     server.export(1, trades());
     server.export(2, expand("AAPL", true));
@@ -269,16 +269,6 @@ async fn rollup_answers_what_java_answers() {
             rollup_request(1, 10, &["Sym"]),
             Code::InvalidArgument,
             LOGGED.to_string(),
-        ),
-        // not ported; Java makes this rollup
-        (
-            RollupRequest {
-                include_constituents: true,
-                ..request()
-            },
-            Code::Unimplemented,
-            "not ported: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup"
-                .to_string(),
         ),
     ] {
         refused(rollup(request).await, code, &text);

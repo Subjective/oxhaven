@@ -130,7 +130,6 @@ fn the_rows_without_a_parent_are_under_the_root() {
     assert_eq!(text(&snapshot), ["1|false|1|-|a", "1|false|2|-|b"]);
     let names: Vec<&str> = tree
         .columns()
-        .columns()
         .iter()
         .map(|column| column.name.as_str())
         .collect();

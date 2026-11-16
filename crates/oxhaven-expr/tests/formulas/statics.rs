@@ -383,6 +383,51 @@ fn a_client_may_not_call_math_and_may_call_everything_else() {
     ));
 }
 
+/// The messages are those Java 42.9 logged for the same table operations of a client.
+///
+/// Behavior: `ParsingColumnExpressionValidator#validateInvocations`
+#[test]
+fn a_client_may_not_make_an_object_of_a_class() {
+    let table = table();
+    let range = "io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual";
+    for (formula, refusal) in [
+        (
+            "new Random(L).nextInt(3)".to_string(),
+            "instantiate class java.util.Random(long)".to_string(),
+        ),
+        (
+            "1 + new java.util.Random(I).nextInt(I)".to_string(),
+            "instantiate class java.util.Random(long)".to_string(),
+        ),
+        (
+            format!("new {range}(0, 10, 5)"),
+            format!("instantiate class {range}(double, double, int)"),
+        ),
+        (
+            format!("new {range}(0, 10, 5).index(D)"),
+            format!("instantiate class {range}(double, double, int)"),
+        ),
+    ] {
+        let request = RequestCompiler
+            .parse(&formula)
+            .and_then(|expr| RequestCompiler.compile(&expr, &table.definition))
+            .map(|_| ());
+        assert_eq!(
+            request,
+            Err(FormulaError::Type(format!(
+                "java.lang.IllegalStateException: User expressions are not permitted to {refusal}"
+            ))),
+            "{formula}"
+        );
+        // the console's own compiler takes each
+        let expr = Compiler.parse(&formula).unwrap();
+        assert!(
+            Compiler.compile(&expr, &table.definition).is_ok(),
+            "{formula}"
+        );
+    }
+}
+
 #[test]
 fn a_default_import_may_be_called_through_its_class() {
     let table = table();

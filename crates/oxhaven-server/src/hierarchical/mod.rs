@@ -5,6 +5,8 @@
 //! [`Hierarchical`], and a view of one as an object that holds a [`ViewOf`];
 //! [`hierarchical_of`] and [`view_of`] read them back. `docs/HIERARCHICAL.md` is the design.
 
+#[cfg(test)]
+mod constituent_tests;
 mod subscription;
 #[cfg(test)]
 mod tests;
@@ -328,7 +330,18 @@ fn apply_to_rollup(
         }
         if !sorts.is_empty() {
             result.check_sorts(sorts)?;
-            result = Arc::new(result.with_sorts(sorts));
+            let mut sorted = result.with_sorts(sorts);
+            // The rows of the source under a finest group are sorted as the levels are,
+            // each result by the column it aggregates.
+            // Behavior: `RollupTableImpl#translateAggregatedNodeOperationsForConstituentNodes`
+            if result.includes_constituents() {
+                let translated = result.constituent_sorts_of(sorts);
+                if !translated.is_empty() {
+                    result.check_constituent_sorts(&translated)?;
+                    sorted = sorted.with_constituent_sorts(&translated);
+                }
+            }
+            result = Arc::new(sorted);
         }
         Ok(Arc::new(HierarchicalTable::Rollup(result)))
     })
@@ -402,7 +415,7 @@ fn tree_schema(tree: &TreeTable) -> Schema {
         sortable: sortable.map(<[String]>::to_vec),
         ..SchemaContext::default()
     };
-    let plain = arrow_schema(tree.columns(), &context);
+    let plain = arrow_schema(tree.snapshot_definition(), &context);
     let fields: Vec<Field> = plain
         .fields()
         .iter()
@@ -450,7 +463,7 @@ fn tree_schema(tree: &TreeTable) -> Schema {
 
 /// Behavior: `HierarchicalTableSchemaUtil#makeSchemaPayload` for a rollup
 fn rollup_schema(rollup: &RollupTable) -> Schema {
-    let definition = rollup.columns();
+    let definition = rollup.aggregated_definition();
     // the name of each result column's input, and its description
     let mut inputs = HashMap::new();
     let mut descriptions = HashMap::new();
@@ -482,7 +495,7 @@ fn rollup_schema(rollup: &RollupTable) -> Schema {
         ..SchemaContext::default()
     };
     let plain = arrow_schema(definition, &context);
-    let fields: Vec<Field> = plain
+    let mut fields: Vec<Field> = plain
         .fields()
         .iter()
         .enumerate()
@@ -519,6 +532,24 @@ fn rollup_schema(rollup: &RollupTable) -> Schema {
             field.as_ref().clone().with_metadata(metadata)
         })
         .collect();
+    // The columns of the source, for the rows of it under the finest groups. Java
+    // describes them with the attributes of the rollup, so the restriction of its
+    // sorting is theirs too.
+    // Behavior: `HierarchicalTableSchemaUtil#getRollupConstituentNodeFields`
+    if let Some(constituents) = rollup.constituent_definition() {
+        let plain = arrow_schema(constituents, &context);
+        fields.extend(plain.fields().iter().map(|field| {
+            let mut metadata = field.metadata().clone();
+            let mut put = |key: &str| {
+                metadata.insert(format!("{PREFIX}{key}"), "true".to_string());
+            };
+            put("rollupTable.isConstituentNodeColumn");
+            if rollup.group_by().iter().any(|name| name == field.name()) {
+                put("rollupTable.isGroupByColumn");
+            }
+            field.as_ref().clone().with_metadata(metadata)
+        }));
+    }
     // Java cannot send the map of the descriptions and marks it as not sent.
     let mut metadata = HashMap::from([(
         format!("{PREFIX}unsent.attribute.ColumnDescriptions"),
