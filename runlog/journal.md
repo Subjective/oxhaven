@@ -862,3 +862,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Started 7.10.1 (JS plugins, plotly-express needs) with a fresh agent and docs/FIGURES.md
   as handover. File serving follows the storage ruling (nothing outside the plugin's
   directory); if Java differs, it comes back as a question, not as a PARITY.md entry.
+- Merged pull request 103 (7.11, figures) on six green checks.
