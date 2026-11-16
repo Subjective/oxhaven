@@ -71,9 +71,9 @@ fn types() -> [ColumnType; 9] {
 
 /// One array per column of `NAMES`. `T` is `X` microseconds after `T0`.
 fn arrays(rows: &[Row]) -> Vec<ArrayRef> {
-    fn of<A: arrow::array::Array + 'static, V>(rows: &[Row], value: impl Fn(&Row) -> V) -> ArrayRef
+    fn of<A, V>(rows: &[Row], value: impl Fn(&Row) -> V) -> ArrayRef
     where
-        A: FromIterator<V>,
+        A: arrow::array::Array + FromIterator<V> + 'static,
     {
         Arc::new(rows.iter().map(value).collect::<A>())
     }
