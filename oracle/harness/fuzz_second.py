@@ -78,7 +78,8 @@ RESTRICTIONS: dict[str, str] = {
           "sorted_first or sorted_last before any count only with preserve_empty (on an "
           "add-only table the reference's result fails when a group gets its first row)",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
-    "R6": "second_formula, filter: no column array of an array column",
+    "R6": "with_arrays: no column array of an array column of booleans or timestamps (the "
+          "reference sends its elements as strings) or of one a formula made (a Java array)",
 }
 _COLUMN_COMPARISON = re.compile(r"^([A-Za-z_]\w*) (?:<|<=|>|>=|==|!=) ([A-Za-z_]\w*)$")
 
@@ -188,9 +189,13 @@ class _Second(_Wide):
         return super().pick_table()
 
     @staticmethod
-    def scalars(table: _Table) -> list[str]:
-        """R6: the columns a column array is made of; none of an array column."""
-        return [c for c in table.usable() if not table.type_of(c).startswith(LIST)]
+    def with_arrays(table: _Table) -> list[str]:
+        """The columns a column array is made of: array columns too, but for those of
+        booleans and timestamps and those a formula made, which are Java arrays (R6)."""
+        return table.usable() + [name for name, kind in table.columns
+                                 if kind.startswith(LIST) and name not in table.computed
+                                 and kind[len(LIST):] not in ("bool", "timestamp")
+                                 and not re.fullmatch(r"X\d+", name)]
 
     # ------------------------------------------------------------ formulas and filters
 
@@ -201,7 +206,7 @@ class _Second(_Wide):
 
     def second_formula(self, table: _Table) -> tuple[str, str] | None:
         rng = self.rng
-        columns = self.scalars(table)
+        columns = self.with_arrays(table)
         numeric = table.usable(NUMERIC)
         stamps = table.usable(("timestamp",))
         arrays = [name for name, kind in table.columns
@@ -306,7 +311,7 @@ class _Second(_Wide):
         if self.chance(0.45):
             return super().filter(table)
         stamps = table.usable(("timestamp",))
-        columns = self.scalars(table)
+        columns = self.with_arrays(table)
         if stamps and self.chance(0.5):
             a = rng.choice(stamps)
             if self.chance(0.4):
@@ -322,7 +327,8 @@ class _Second(_Wide):
                 index = self.distance = self.distance or index
             if kind == "bool":
                 return f"{a}_[{index}] == {a}"
-            if self.chance(0.3):
+            # A comparison of arrays is an array of booleans, which is no filter.
+            if self.chance(0.3) or kind.startswith(LIST):
                 return f"isNull({a}_[{index}])"
             return f"{a}_[{index}] {rng.choice(['<', '<=', '>', '!=', '=='])} {a}"
         return rng.choice(["i % 2 == 0", "ii < 3", "i > 1", "k >= 2", "ii % 3 != 1", "i == ii"])

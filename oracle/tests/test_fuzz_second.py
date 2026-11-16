@@ -112,9 +112,9 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "f0129e849f0d3c3b"),
+    ("formulas2", "03d65bbea8a020de"),
     ("partitions", "3331fec9112a44b5"),
-    ("all2", "c14707b6c6b8aeee"),
+    ("all2", "da77bed390447691"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.23
@@ -259,8 +259,11 @@ def test_what_a_finding_restricts_is_not_drawn():
             for formula in op["formulas"]:
                 text = _expression(formula)
                 for column in re.findall(r"([A-Za-z_]\w*)_(?:\[|\.|\))", text):
-                    seen["R6"] += 1
-                    assert not types[column].startswith("list:"), (doc["name"], op)
+                    seen["R6"] += types[column].startswith("list:")
+                    assert types[column] not in ("list:bool", "list:timestamp"), (
+                        doc["name"], op)
+                    assert not (types[column].startswith("list:")
+                                and re.fullmatch(r"X\d+", column)), (doc["name"], op)
                 if re.search(r"'-?P\d+[ymYM]", text):
                     seen["calendar period"] += 1
                     assert op["source"] not in live, (doc["name"], op)
