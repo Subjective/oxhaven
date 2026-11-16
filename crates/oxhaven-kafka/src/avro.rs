@@ -234,7 +234,7 @@ fn resolve_refs(
 }
 
 /// Behavior: org.apache.avro.Schema.Name#validate with `NameValidator.UTF_VALIDATOR`
-fn validate_name(name: &str) -> Result<(), Failure> {
+pub(crate) fn validate_name(name: &str) -> Result<(), Failure> {
     let mut chars = name.chars();
     match chars.next() {
         None => Err(format!("{PARSE}: Empty name")),

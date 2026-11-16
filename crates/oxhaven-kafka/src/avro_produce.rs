@@ -51,7 +51,10 @@ const UNCHECKED: &str = "io.deephaven.UncheckedDeephavenException";
 
 impl AvroProduceSpec {
     fn excluded(&self, name: &str) -> bool {
-        let out = self.exclude.as_ref().is_some_and(|e| e.iter().any(|x| x == name));
+        let out = self
+            .exclude
+            .as_ref()
+            .is_some_and(|e| e.iter().any(|x| x == name));
         let not_in = self
             .include_only
             .as_ref()
@@ -75,9 +78,10 @@ impl AvroProduceSpec {
                 .map_err(|failure| KafkaError::Invalid(format!("{UNCHECKED}: {}", failure.0)))?;
             text
         } else {
-            registry.subject_schema_text(&self.subject, self.version.as_deref())?
+            let text = registry.subject_schema_text(&self.subject, self.version.as_deref())?;
+            avro::parse(&text).map_err(KafkaError::Invalid)?;
+            text
         };
-        avro::parse(&text).map_err(KafkaError::Invalid)?;
         let text = Arc::new(Text::read(&text).map_err(KafkaError::Invalid)?);
         let Some(fields) = record_fields(&text) else {
             // Behavior: org.apache.avro.Schema#getFields of a schema that is not a record
@@ -100,7 +104,11 @@ impl AvroProduceSpec {
                 continue;
             }
             let mapped = self.mapping.as_ref().and_then(|mapping| {
-                mapping.iter().rev().find(|(f, _)| *f == field.name).map(|(_, c)| c.clone())
+                mapping
+                    .iter()
+                    .rev()
+                    .find(|(f, _)| *f == field.name)
+                    .map(|(_, c)| c.clone())
             });
             let column = mapped.unwrap_or_else(|| field.name.clone());
             if !self.excluded(&column) {
@@ -120,9 +128,17 @@ impl AvroProduceSpec {
         definition: &TableDefinition,
         _refreshing: bool,
     ) -> Result<String, KafkaError> {
+        // Behavior: org.apache.avro.Schema.Name#Name: a dotted name carries its namespace,
+        // which wins over the one given; only the last part is checked (probes r_pub_dot,
+        // r_pub_dotns, r_pub_badns, r_pub_dash, r_pub_num)
+        let (name, space) = match self.subject.rfind('.') {
+            Some(dot) => (&self.subject[dot + 1..], Some(&self.subject[..dot])),
+            None => (self.subject.as_str(), self.namespace.as_deref()),
+        };
+        avro::validate_name(name).map_err(KafkaError::Invalid)?;
         let mut out = String::from("{\"type\":\"record\",\"name\":");
-        json::write_quoted(&self.subject, &mut out);
-        if let Some(space) = &self.namespace {
+        json::write_quoted(name, &mut out);
+        if let Some(space) = space.filter(|space| !space.is_empty()) {
             out.push_str(",\"namespace\":");
             json::write_quoted(space, &mut out);
         }
@@ -144,7 +160,9 @@ impl AvroProduceSpec {
                 ColumnType::Instant => {
                     r#"{"type":"long","logicalType":"timestamp-micros"}"#.to_owned()
                 }
-                ColumnType::Boolean => r#"{"type":"bytes","dhType":"java.lang.Boolean"}"#.to_owned(),
+                ColumnType::Boolean => {
+                    r#"{"type":"bytes","dhType":"java.lang.Boolean"}"#.to_owned()
+                }
                 ColumnType::BigDecimal => {
                     return Err(not_ported(
                         "io.deephaven.kafka.AvroImpl#addFieldForColDef",
@@ -157,7 +175,10 @@ impl AvroProduceSpec {
                 other => {
                     return Err(not_ported(
                         "io.deephaven.kafka.AvroImpl#addFieldForColDef",
-                        &format!("a column {} of type {other:?} in a schema made from the table", column.name),
+                        &format!(
+                            "a column {} of type {other:?} in a schema made from the table",
+                            column.name
+                        ),
                     ))
                 }
             };
@@ -197,7 +218,10 @@ enum Unit {
 #[derive(Clone, Debug)]
 enum Source {
     /// The cells boxed: `TypeUtils#box`, and the object of other columns.
-    Column { index: usize, column_type: ColumnType },
+    Column {
+        index: usize,
+        column_type: ColumnType,
+    },
     /// An `Instant` column as a number of units since the epoch.
     Instant { index: usize, unit: Unit },
     /// The time of the chunk, for `timestamp_field`.
@@ -242,7 +266,9 @@ impl Datum {
             Datum::Boolean(b) => b.to_string(),
             Datum::Byte(v) => v.to_string(),
             Datum::Short(v) => v.to_string(),
-            Datum::Char(unit) => char::from_u32(u32::from(*unit)).map_or("?".to_owned(), String::from),
+            Datum::Char(unit) => {
+                char::from_u32(u32::from(*unit)).map_or("?".to_owned(), String::from)
+            }
             Datum::Int(v) => v.to_string(),
             Datum::Long(v) => v.to_string(),
             Datum::Float(v) => float_text(*v),
@@ -323,12 +349,25 @@ impl Number {
 /// Why a value could not be written, before the field it is in is known.
 enum Fail {
     /// A null where the type has none: the type's description and the JVM's message.
-    Null { describe: String, helpful: &'static str },
+    Null {
+        describe: String,
+        helpful: &'static str,
+    },
     /// A value of the wrong class: the description and the class it was cast to.
-    Cast { datum: Datum, describe: String, target: &'static str },
-    NotEnum { datum: Datum, name: String },
+    Cast {
+        datum: Datum,
+        describe: String,
+        target: &'static str,
+    },
+    NotEnum {
+        datum: Datum,
+        name: String,
+    },
     Unknown(Datum),
-    NotInUnion { union: String, datum: Datum },
+    NotInUnion {
+        union: String,
+        datum: Datum,
+    },
 }
 
 const SERIALIZATION: &str =
@@ -344,7 +383,11 @@ impl Fail {
                 "java.lang.NullPointerException: null value for (non-nullable) {describe} at \
                  {at} (caused by java.lang.NullPointerException: {helpful})"
             ),
-            Fail::Cast { datum, describe, target } => {
+            Fail::Cast {
+                datum,
+                describe,
+                target,
+            } => {
                 let class = datum.class();
                 let modules = if target.starts_with("org.apache.avro") {
                     format!(
@@ -557,11 +600,17 @@ impl AvroSerializer {
         columns: &[String],
         timestamp_field: Option<&str>,
     ) -> Result<Self, KafkaError> {
-        let invalid = |text: String| KafkaError::Invalid(format!("java.lang.IllegalArgumentException: {text}"));
+        let invalid = |text: String| {
+            KafkaError::Invalid(format!("java.lang.IllegalArgumentException: {text}"))
+        };
         let (record, fields) = match text.resolve(&text.root) {
             Resolved::Named(named) => match &named.kind {
                 Kind::Record { fields, .. } => (named.name.clone(), fields.clone()),
-                _ => return Err(invalid("The schema is not a toplevel record definition.".to_owned())),
+                _ => {
+                    return Err(invalid(
+                        "The schema is not a toplevel record definition.".to_owned(),
+                    ))
+                }
             },
             Resolved::Plain(Ty::Union(_)) => {
                 return Err(KafkaError::Invalid(
@@ -571,26 +620,36 @@ impl AvroSerializer {
                 ))
             }
             Resolved::Plain(_) => {
-                return Err(invalid("The schema is not a toplevel record definition.".to_owned()))
+                return Err(invalid(
+                    "The schema is not a toplevel record definition.".to_owned(),
+                ))
             }
         };
         let timestamp_field = timestamp_field.filter(|name| !name.is_empty());
         let mut stamp = None;
         if let Some(name) = timestamp_field {
             let Some(field) = fields.iter().find(|f| f.name == name) else {
-                return Err(invalid(format!("Field of name timestampFieldName='{name}' not found.")));
+                return Err(invalid(format!(
+                    "Field of name timestampFieldName='{name}' not found."
+                )));
             };
             let unit = match &field.ty {
                 Ty::Primitive { name: word, .. } if word == "long" => {
                     match logical_type(&text, &field.ty).as_deref() {
                         Some("timestamp-micros") => Unit::Micros,
                         Some("timestamp-millis") => Unit::Millis,
-                        other => {
+                        None => {
                             return Err(KafkaError::Invalid(format!(
                                 "java.lang.IllegalStateException: Field of name \
-                                 timestampFieldName='{name}' has wrong logical type {}",
-                                other.map_or("null".to_owned(), |o| format!("LogicalType{{name={o}}}"))
+                                 timestampFieldName='{name}' has wrong logical type null"
                             )))
+                        }
+                        // Java prints the logical type's identity (probe r_ts_nanos).
+                        Some(other) => {
+                            return Err(not_ported(
+                                "io.deephaven.kafka.publish.GenericRecordKeyOrValueSerializer#checkTimestampFieldAndGetUnit",
+                                &format!("a timestamp field {name} of logical type {other}, which the reference refuses by the identity of an object"),
+                            ))
                         }
                     }
                 }
@@ -621,7 +680,11 @@ impl AvroSerializer {
             };
             next += 1;
             let Some(index) = definition.index_of(column) else {
-                let names: Vec<&str> = definition.columns().iter().map(|c| c.name.as_str()).collect();
+                let names: Vec<&str> = definition
+                    .columns()
+                    .iter()
+                    .map(|c| c.name.as_str())
+                    .collect();
                 return Err(KafkaError::Invalid(format!(
                     "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names \
                      [{column}], available column names are [{}]",
@@ -703,9 +766,10 @@ impl AvroSerializer {
                     };
                     vec![Datum::Long(value); count]
                 }
-                Source::Column { index, column_type } => {
-                    datums(&*crate::serialize::cells(table, *index, rows, prev)?, column_type)
-                }
+                Source::Column { index, column_type } => datums(
+                    &*crate::serialize::cells(table, *index, rows, prev)?,
+                    column_type,
+                ),
                 Source::Instant { index, unit } => {
                     let array = crate::serialize::cells(table, *index, rows, prev)?;
                     array
@@ -775,13 +839,41 @@ fn datums(array: &dyn Array, column_type: &ColumnType) -> Vec<Datum> {
             .collect()
     }
     match column_type {
-        ColumnType::Byte => each(array.as_primitive::<Int8Type>().iter(), i8::MIN, Datum::Byte),
-        ColumnType::Short => each(array.as_primitive::<Int16Type>().iter(), i16::MIN, Datum::Short),
-        ColumnType::Char => each(array.as_primitive::<UInt16Type>().iter(), u16::MAX, Datum::Char),
-        ColumnType::Int => each(array.as_primitive::<Int32Type>().iter(), i32::MIN, Datum::Int),
-        ColumnType::Long => each(array.as_primitive::<Int64Type>().iter(), i64::MIN, Datum::Long),
-        ColumnType::Float => each(array.as_primitive::<Float32Type>().iter(), -f32::MAX, Datum::Float),
-        ColumnType::Double => each(array.as_primitive::<Float64Type>().iter(), -f64::MAX, Datum::Double),
+        ColumnType::Byte => each(
+            array.as_primitive::<Int8Type>().iter(),
+            i8::MIN,
+            Datum::Byte,
+        ),
+        ColumnType::Short => each(
+            array.as_primitive::<Int16Type>().iter(),
+            i16::MIN,
+            Datum::Short,
+        ),
+        ColumnType::Char => each(
+            array.as_primitive::<UInt16Type>().iter(),
+            u16::MAX,
+            Datum::Char,
+        ),
+        ColumnType::Int => each(
+            array.as_primitive::<Int32Type>().iter(),
+            i32::MIN,
+            Datum::Int,
+        ),
+        ColumnType::Long => each(
+            array.as_primitive::<Int64Type>().iter(),
+            i64::MIN,
+            Datum::Long,
+        ),
+        ColumnType::Float => each(
+            array.as_primitive::<Float32Type>().iter(),
+            -f32::MAX,
+            Datum::Float,
+        ),
+        ColumnType::Double => each(
+            array.as_primitive::<Float64Type>().iter(),
+            -f64::MAX,
+            Datum::Double,
+        ),
         ColumnType::Boolean => array
             .as_boolean()
             .iter()
