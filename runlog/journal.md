@@ -960,3 +960,8 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   go back to him with their licences when they are needed.
 - Pull request 112 merged (7.4.1). Started 7.4.4: the consumer on librdkafka, with TLS and
   SASL left off until their licences are put to the owner.
+- Pull request 113 opened (7.8.3, rollup constituents). The web IDE's rollup panel now works
+  with its default settings. 7.8.2 (format and update views) was not started: the Python
+  package has no `Table.format_columns` yet, so table formats come first. Lesson: the replay
+  gate needs the server built against the same Python as the venv (3.12 or later); two runs
+  failed on that before the agent found it. Add to the brief.
