@@ -45,6 +45,8 @@ await_broker
 
 kafka kafka-topics.sh --create --topic oxhaven_one --partitions 1 >/dev/null
 kafka kafka-topics.sh --create --topic oxhaven_two --partitions 2 >/dev/null
+# Written by the tests that produce: their records' partitions are checked.
+kafka kafka-topics.sh --create --topic oxhaven_produce_two --partitions 2 >/dev/null
 keyed=(--property parse.key=true --property "key.separator=|")
 kafka kafka-console-producer.sh --topic oxhaven_one "${keyed[@]}" <<'RECORDS'
 k1|{"N": 1, "S": "a"}
