@@ -1093,7 +1093,9 @@ class Table:
         include_constituents: bool = False,
     ) -> "RollupTable":
         """A rollup table: this table aggregated by the `by` columns, and by one column
-        less on each level above, up to the one row of the whole table.
+        less on each level above, up to the one row of the whole table. With
+        `include_constituents` the rows of this table are shown under the groups of the
+        last level.
 
         Behavior: `io.deephaven.engine.table.impl.QueryTable#rollup`
         """

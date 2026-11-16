@@ -3,7 +3,8 @@
 How Oxhaven holds a rollup and a tree, answers a client that looks at part of one, and
 what a tree reuses. Written by task 7.8 (`tasks/7.8-rollup.md`), which also built the first slice;
 the follow-on tasks, 7.8.1 to 7.8.5, are sized in that file, and `tasks/7.9-tree.md` says
-what this means for a tree.
+what this means for a tree. Constituents are task 7.8.3
+(`tasks/7.8.3-rollup-constituents.md`).
 
 What Java does was read in `RollupTableImpl`, `HierarchicalTableImpl`,
 `AggregationProcessor` (the two rollup converters), `HierarchicalTableServiceGrpcImpl`,
@@ -82,12 +83,55 @@ Three things follow from how Java makes the coarser levels, and are kept:
 
 ## Constituents
 
-With `include_constituents` the rows of the finest groups can be expanded into the source
-rows of the group, with the source's columns: one more level whose children are the
-partition of the source by all keys, and one more set of columns in the snapshot schema,
-null for aggregated rows as the aggregated columns are null for constituent rows. The
-`Hierarchy` trait has what this needs (a node's columns depend on its level). Not in the
-first slice (7.8.3).
+With `include_constituents` the rows of the finest groups can be expanded into the rows of
+the source that are in the group. Read from `RollupTableImpl` and
+`AggregationProcessor#forRollupBase`, and observed on Java 42.9 with the script scenarios
+`oracle/scenarios/python/rollup_constituents*.py`, the same `Apply` calls made to both
+servers, and the IDE route `rollup`, whose panel includes constituents by default.
+
+- **One more level.** The children of a row of the last level are the rows of the source
+  with its keys, in the order of the source: the source partitioned by all the group-by
+  columns (`partition_by`), found by key with a `KeyIndex` as the children of the other
+  levels are. Java adds this partition to the aggregations of the last level. Without
+  group-by columns the last level is the grand total and its children are the source
+  itself.
+- **Depths.** With `n` group-by columns a row of the source is at depth `n + 2`, cannot be
+  expanded (`__EXPANDED__` is null), and a finest group, at depth `n + 1`, can. A key
+  table names a finest group with depth `n + 1` and every key value; a deeper key is
+  refused as before (`Invalid depth`). Expanding everything, or to a depth, goes down to
+  the rows of the source.
+- **Default expansions.** The root and the grand total, also without group-by columns:
+  such a rollup shows the rows of the source at once
+  (`RollupTableImpl#getDefaultExpansionNodeKeys`).
+- **Columns.** A snapshot has the structural columns, the columns of the aggregated nodes,
+  then every column of the source, group-by columns included: two columns have one name
+  wherever a result or a group-by column is named like a column of the source, which with
+  group-by columns is always. A row of the source is null in the aggregated columns and a
+  row of a level null in the source's (`RollupTableImpl#makeOrFillChunkSourceArray`).
+  `Hierarchy::columns` is therefore a list of columns and not a `TableDefinition`, which
+  holds no name twice. The fields of the source's columns have
+  `rollupTable.isConstituentNodeColumn`, and `rollupTable.isGroupByColumn` where they are
+  group-by columns; they are not expand-by columns and have no description. Java describes
+  them with the rollup's attributes, so a restriction of the source's sorting marks them
+  as it marks the aggregated ones.
+- **Sorts.** The rows of the source under a group have sorts of their own, a second list
+  kept with the rollup (`RollupTable::with_constituent_sorts`). The Python recorder for
+  `NodeType.CONSTITUENT` records them, checked against the columns of the source; a
+  recorder for `NodeType.AGGREGATED` sorts the levels alone. `Apply` sorts both: the
+  request's sorts are the levels', and each is translated for the rows of the source
+  (`RollupTableImpl#translateAggregatedNodeOperationsForConstituentNodes`): a result
+  becomes the column it aggregates, a group-by column is left out, since the rows under
+  one group are equal by it, a result without an input (a count) is left out, and an
+  absolute value stays one where the input is a number. A sort by a column the source
+  alone has is refused by `Apply` as a column the levels do not have.
+- **Filters.** As without constituents: the rows of the source under a group are those
+  the filters accept. A filter of group-by columns keeps or drops whole groups, so the
+  partition of the filtered table is what Java shows, which filters the last level and
+  keeps its partition.
+- **Ticking.** The partition follows the source; a snapshot reads it under the lock as it
+  reads the levels. An expanded finest group that has no rows now is left out, or fails
+  the snapshot of a rollup whose levels are sorted, as any expanded node does ("Sorted
+  nodes").
 
 ## Node keys and the key table
 
@@ -234,8 +278,9 @@ does; a variable that holds one is listed as a `HierarchicalTable`.
 whose `sort` and `sort_descending` record sorts, checked when they are recorded (the
 error is Java's `RuntimeError`, not a `DHError`); `with_node_operations(recorders)`
 applies them, later recorders after earlier ones; `with_filters(filters)` filters, with
-the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` is refused as Java refuses
-it for a rollup without constituents. `with_node_operations` does not check that a
+the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` records sorts of the rows of
+the source, checked against the source's columns; it is refused for a rollup without
+constituents, and so is applying one to such a rollup, as in Java. `with_node_operations` does not check that a
 recorder was made by this rollup; neither does Java. The recorder's `format_column`,
 `format_row_where`, `format_column_where` and `update_view`, and
 `RollupTable.with_update_view`, are refused by name (7.8.2).
@@ -327,7 +372,6 @@ Each names the Java method in its error.
 | `Apply`: format and update views; the recorder's `format_column`, `format_row_where`, `format_column_where`, `update_view` | `RollupNodeOperationsRecorder#formatColumns`, `#formatRowWhere`, `#formatColumnWhere`, `#updateView` | 7.8.2 |
 | A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | needs a ruling |
 | A sort by a column of vectors or arrays (the result of `Distinct`), the absolute value of a `char` column | `SortOperation#SortOperation`, `QueryLanguageParser#visit(MethodCallExpr)`: the refusals of the engine's sort | none yet |
-| `include_constituents` | `RollupTableImpl#makeRollup` (constituents) | 7.8.3 |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
 | `SortedFirst`, `SortedLast` by a column that is not their own result, with group-by columns | `AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator` | 7.8.4 |
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
@@ -390,8 +434,11 @@ No change.
 (with and without `--features python`), the script scenarios `rollup_*` in the replay
 gate, and `node oracle/ide/ide-test.js --routes rollup` on Java and on Oxhaven. The route
 makes its rollup in the IDE's Rollup Rows panel, which sends `first` of every column that
-is not grouped by, and a new `Rollup` for every column added.
+is not grouped by, a new `Rollup` for every column added, and `include_constituents`
+unless its option is unchecked; the route leaves it checked and expands a finest group.
 
 The script scenarios compare views: the directive `# oracle: views <name> = <rollup>
 [<key table> [<action column>]]` (`oracle/README.md`) reads the first rows of a view of
-a rollup with the key table's expansions on both servers, after every step.
+a rollup with the key table's expansions on both servers, after every step. Where a view
+has two columns of one name, the harness names the later one `<name>#2`
+(`harness/views.py`).

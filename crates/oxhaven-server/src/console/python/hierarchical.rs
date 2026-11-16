@@ -79,6 +79,7 @@ impl HierarchicalHandle {
         self.tree()?;
         Ok(RecorderHandle {
             table: self.table.clone(),
+            constituents: false,
             sorts: Vec::new(),
         })
     }
@@ -88,16 +89,22 @@ impl HierarchicalHandle {
     ///
     /// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeNodeOperationsRecorder`
     fn recorder(&self, node_type: &str) -> PyResult<RecorderHandle> {
-        self.rollup()?;
-        match node_type {
-            "Aggregated" => Ok(RecorderHandle {
-                table: self.table.clone(),
-                sorts: Vec::new(),
-            }),
-            // a rollup here has no constituents yet (task 7.8.3)
-            "Constituent" => Err(illegal("Rollup does not have constituent nodes")),
-            other => Err(illegal(&format!("Unrecognized node type: {other}"))),
-        }
+        let rollup = self.rollup()?;
+        let constituents = match node_type {
+            "Aggregated" => false,
+            "Constituent" => {
+                rollup
+                    .assert_includes_constituents()
+                    .map_err(|error| illegal(&error.to_string()))?;
+                true
+            }
+            other => return Err(illegal(&format!("Unrecognized node type: {other}"))),
+        };
+        Ok(RecorderHandle {
+            table: self.table.clone(),
+            constituents,
+            sorts: Vec::new(),
+        })
     }
 
     /// This table with what `recorders` recorded applied to its nodes, each after the
@@ -115,17 +122,29 @@ impl HierarchicalHandle {
         }
         let recorded = recorders
             .iter()
-            .map(|recorder| &recorder.sorts)
-            .filter(|sorts| !sorts.is_empty());
+            .filter(|recorder| !recorder.sorts.is_empty());
         let table = Arc::new(match slf.get().table.as_ref() {
             HierarchicalTable::Rollup(rollup) => {
-                HierarchicalTable::Rollup(recorded.fold(rollup.clone(), |rollup, sorts| {
-                    Arc::new(rollup.with_sorts(sorts))
+                let mut result = rollup.clone();
+                for recorder in recorded {
+                    result = Arc::new(if recorder.constituents {
+                        // a recorder made of a rollup that has constituents, applied to
+                        // one that has none
+                        result
+                            .assert_includes_constituents()
+                            .map_err(|error| illegal(&error.to_string()))?;
+                        result.with_constituent_sorts(&recorder.sorts)
+                    } else {
+                        result.with_sorts(&recorder.sorts)
+                    });
+                }
+                HierarchicalTable::Rollup(result)
+            }
+            HierarchicalTable::Tree(tree) => {
+                HierarchicalTable::Tree(recorded.fold(tree.clone(), |tree, recorder| {
+                    Arc::new(tree.with_sorts(&recorder.sorts))
                 }))
             }
-            HierarchicalTable::Tree(tree) => HierarchicalTable::Tree(
-                recorded.fold(tree.clone(), |tree, sorts| Arc::new(tree.with_sorts(sorts))),
-            ),
         });
         Py::new(slf.py(), HierarchicalHandle { table })
     }
@@ -170,6 +189,8 @@ impl HierarchicalHandle {
 pub(super) struct RecorderHandle {
     /// The rollup the recorder was made of, whose columns its sorts are checked against.
     table: Hierarchical,
+    /// Whether it records for the constituent nodes of a rollup: the rows of the source.
+    constituents: bool,
     sorts: Vec<SortColumn>,
 }
 
@@ -204,6 +225,9 @@ impl RecorderHandle {
         let table = &self.table;
         py.detach(|| {
             guarded(&[], || match table.as_ref() {
+                HierarchicalTable::Rollup(rollup) if self.constituents => {
+                    Ok(rollup.check_constituent_sorts(&sorts)?)
+                }
                 HierarchicalTable::Rollup(rollup) => Ok(rollup.check_sorts(&sorts)?),
                 HierarchicalTable::Tree(tree) => Ok(tree.check_sorts(&sorts)?),
             })
@@ -211,6 +235,7 @@ impl RecorderHandle {
         .map_err(failure)?;
         Ok(RecorderHandle {
             table: self.table.clone(),
+            constituents: self.constituents,
             sorts: merged_sorts(&sorts, &self.sorts),
         })
     }
@@ -341,7 +366,11 @@ mod tests {
              refused(lambda: r.with_filters('i > 2'), 'RollupTableImpl#withFilter')\n\
              assert r.with_filters('K > 0').by == r.by\n\
              assert r.with_node_operations([recorder.sort_descending('V')]).by == r.by\n\
-             refused(lambda: source.rollup(aggs=[agg.sum_('V')], by='K', include_constituents=True), 'RollupTableImpl#makeRollup')\n\
+             refused(lambda: r.node_operation_recorder(NodeType.CONSTITUENT), 'Rollup does not have constituent nodes')\n\
+             c = source.rollup(aggs=[agg.sum_('V')], by='K', include_constituents=True)\n\
+             by_v = c.node_operation_recorder(NodeType.CONSTITUENT).sort_descending('V')\n\
+             assert c.with_node_operations([by_v]).include_constituents\n\
+             refused(lambda: r.with_node_operations([by_v]), 'Rollup does not have constituent nodes')\n\
              refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n",
         );
     }

@@ -338,6 +338,12 @@ impl TreeTable {
         &self.sorts
     }
 
+    /// The columns of a snapshot: the depth, whether the row is expanded, then the
+    /// columns of the source.
+    pub fn snapshot_definition(&self) -> &TableDefinition {
+        &self.columns
+    }
+
     /// The columns a client may sort by, or `None` when it may sort by any.
     ///
     /// Behavior: io.deephaven.engine.table.impl.BaseGridAttributes#getSortableColumns
@@ -451,8 +457,8 @@ impl Hierarchy for TreeTable {
         &self.source
     }
 
-    fn columns(&self) -> &TableDefinition {
-        &self.columns
+    fn columns(&self) -> &[ColumnDefinition] {
+        self.columns.columns()
     }
 
     /// Behavior: TreeTableImpl#getDefaultExpansionNodeKeys
