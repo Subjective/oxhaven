@@ -54,6 +54,19 @@ impl PartitionedHandle {
         self.partitioned.constituent_column().to_string()
     }
 
+    /// The key columns that every constituent has too, with the value of its row of the
+    /// underlying table in every row.
+    ///
+    /// Behavior: `PartitionedTableImpl#getConsistentKeyColumnNames`
+    fn consistent_key_columns(&self) -> Vec<String> {
+        self.partitioned.consistent_key_columns().to_vec()
+    }
+
+    /// Whether `other` has the same underlying table.
+    fn is_same(&self, other: &PartitionedHandle) -> bool {
+        Arc::ptr_eq(self.partitioned.table(), other.partitioned.table())
+    }
+
     /// Behavior: `PartitionedTable#constituentChangesPermitted`
     fn constituent_changes_permitted(&self) -> bool {
         self.partitioned.constituent_changes_permitted()
@@ -92,12 +105,19 @@ impl PartitionedHandle {
     }
 
     /// This partitioned table with `table`, a filter or a sort of its underlying table,
-    /// as its underlying table.
+    /// as its underlying table. A sort (`sorted`) was observed to leave the result
+    /// without consistent key columns, as the constructor call of `#sort` reads: a
+    /// proxy of it applies a filter of the key columns to every constituent.
     ///
     /// Behavior: the result of `PartitionedTableImpl#filter` and `#sort`
-    fn with_table(&self, table: &TableHandle) -> PyResult<PartitionedHandle> {
+    #[pyo3(signature = (table, sorted=false))]
+    fn with_table(&self, table: &TableHandle, sorted: bool) -> PyResult<PartitionedHandle> {
         let replaced = self.partitioned.with_table(table.table.clone());
         replaced
+            .map(|partitioned| match sorted {
+                true => partitioned.with_consistent_key_columns(&[]),
+                false => partitioned,
+            })
             .map(|partitioned| handle(Arc::new(partitioned)))
             .map_err(|error| failure(error.into()))
     }
