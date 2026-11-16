@@ -371,6 +371,7 @@ pub(crate) fn check(
         positions: false,
         keys: false,
         refused_to_clients: None,
+        size_only: false,
     };
     let root = checker.check(expr)?;
     refuse_object_column_array(&root)?;
@@ -498,6 +499,10 @@ struct Checker<'a> {
     positions: bool,
     keys: bool,
     refused_to_clients: Option<String>,
+    /// Set while the receiver of a call that reads only sizes and nulls is checked; the
+    /// column array it names may then be one whose elements Java holds without a type
+    /// (see [`Checker::column_array`]). Taken by the first column array checked.
+    size_only: bool,
 }
 
 impl Checker<'_> {
@@ -527,7 +532,25 @@ impl Checker<'_> {
             Expr::Call {
                 function,
                 arguments,
+            } if matches!(function.as_str(), "len" | "isNull")
+                && matches!(arguments.as_slice(), [argument] if self.untyped_vectors(argument)) =>
+            {
+                self.with_size_only(|checker| checker.call(function, arguments))
+            }
+            Expr::Call {
+                function,
+                arguments,
             } => self.call(function, arguments),
+            Expr::MethodCall {
+                receiver,
+                method,
+                arguments,
+            } if matches!(method.as_str(), "size" | "isEmpty")
+                && arguments.is_empty()
+                && self.untyped_vectors(receiver) =>
+            {
+                self.with_size_only(|checker| checker.method_call(receiver, method, arguments))
+            }
             Expr::Ternary {
                 condition,
                 if_true,
@@ -558,6 +581,41 @@ impl Checker<'_> {
                 )
             }
         }
+    }
+
+    /// Whether `expr` is the column array of a column of vectors of `Boolean` or `Instant`,
+    /// or an element of it: `T_` or `T_[i]`.
+    fn untyped_vectors(&self, expr: &Expr) -> bool {
+        let column = match expr {
+            Expr::ColumnVector(column) | Expr::ColumnArrayAccess { column, .. } => column.as_str(),
+            // `T_` as the receiver of a method, unless a column has that name.
+            Expr::Column(name) if self.definition.index_of(name).is_none() => {
+                match name.strip_suffix('_') {
+                    Some(column) => column,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        };
+        self.definition.index_of(column).is_some_and(|index| {
+            matches!(
+                &self.definition.columns()[index].column_type,
+                ColumnType::Vector(inner)
+                    if matches!(**inner, ColumnType::Boolean | ColumnType::Instant)
+            )
+        })
+    }
+
+    /// `check` with [`Checker::size_only`] set, and cleared afterwards whether or not a
+    /// column array took it.
+    fn with_size_only(
+        &mut self,
+        check: impl FnOnce(&mut Self) -> Result<Typed, FormulaError>,
+    ) -> Result<Typed, FormulaError> {
+        self.size_only = true;
+        let checked = check(self);
+        self.size_only = false;
+        checked
     }
 
     fn column(&mut self, name: &str) -> Result<Typed, FormulaError> {
@@ -673,10 +731,16 @@ impl Checker<'_> {
         // The column array of a vector column is an `ObjectVector` of its vectors. One of a
         // column of `ObjectVector`s of `Boolean` or `Instant` has elements without an element
         // type in Java, which a client receives as strings (seen on Java 42.9 for
-        // `update("X = T_[i]")` after a `group_by`), so it stays refused.
+        // `update("X = T_[i]")` after a `group_by`), so it stays refused, but for the
+        // calls that read only sizes and nulls: seen on Java 42.9, `T_.size()`,
+        // `T_[i].size()`, `T_[i].isEmpty()`, `len(T_[i])`,
+        // `isNull(T_[i + 1])` and `T_[i + 1] == null` are computed, and `T_[i][0]` is a
+        // `java.lang.Object` sent as text.
+        let size_only = std::mem::take(&mut self.size_only);
         let known = match &element {
             ColumnType::Vector(inner) => {
-                scalar(inner) && !matches!(**inner, ColumnType::Boolean | ColumnType::Instant)
+                scalar(inner)
+                    && (size_only || !matches!(**inner, ColumnType::Boolean | ColumnType::Instant))
             }
             other => scalar(other),
         };
@@ -1592,7 +1656,11 @@ impl Checker<'_> {
             }
             (Expr::Literal(Literal::Null), operand) | (operand, _) => operand,
         };
-        let operand = self.check(operand)?;
+        let operand = if self.untyped_vectors(operand) {
+            self.with_size_only(|checker| checker.check(operand))?
+        } else {
+            self.check(operand)?
+        };
         let is_null = typed(ColumnType::Boolean, Node::IsNull(Box::new(operand)));
         Ok(match op {
             BinaryOp::Equal => is_null,
