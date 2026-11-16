@@ -551,22 +551,37 @@ impl Parser {
                 arguments: self.arguments()?,
             });
         }
-        let of_arrays =
-            |name: &str| unsupported(format!("array creation new {name}[][], of arrays"));
         self.expect("[")?;
         if !self.eat("]") {
-            let length = self.expression()?;
+            // `new int[a][b][]`: lengths, then dimensions without one. The call is named
+            // `new int[n][n][]` and takes the lengths.
+            let mut lengths = vec![self.expression()?];
             self.expect("]")?;
-            if self.peek_symbol() == Some("[") {
-                return Err(of_arrays(&name));
+            let mut open = 0;
+            while self.eat("[") {
+                if self.eat("]") {
+                    open += 1;
+                    continue;
+                }
+                if open > 0 {
+                    return Err(syntax("an array dimension with a length after one without"));
+                }
+                lengths.push(self.expression()?);
+                self.expect("]")?;
             }
             return Ok(Expr::Call {
-                function: format!("{NEW}{name}[n]"),
-                arguments: vec![length],
+                function: format!(
+                    "{NEW}{name}{}{}",
+                    "[n]".repeat(lengths.len()),
+                    "[]".repeat(open)
+                ),
+                arguments: lengths,
             });
         }
         if self.peek_symbol() == Some("[") {
-            return Err(of_arrays(&name));
+            return Err(unsupported(format!(
+                "array creation new {name}[][] {{...}}, of arrays"
+            )));
         }
         self.expect("{")?;
         let mut elements = Vec::new();
@@ -1131,6 +1146,23 @@ mod tests {
         );
     }
 
+    /// Behavior: `QueryLanguageParser#visit(ArrayCreationExpr)`: the dimensions with a
+    /// length come first, then those without.
+    #[test]
+    fn arrays_of_arrays_take_a_length_per_dimension() {
+        assert_eq!(
+            parse_expression("new int[2][I][]"),
+            Ok(Expr::Call {
+                function: "new int[n][n][]".into(),
+                arguments: vec![int(2), column("I")],
+            })
+        );
+        assert!(matches!(
+            parse_expression("new int[2][][3]"),
+            Err(FormulaError::Syntax(_))
+        ));
+    }
+
     #[test]
     fn constructs_outside_the_subset_are_named() {
         let cases = [
@@ -1139,7 +1171,10 @@ mod tests {
             ("(Integer[]) A", "cast to Integer[]"),
             ("(Double).NaN", "field access .NaN"),
             ("(A + B).x", "field access .x"),
-            ("new int[2][2]", "array creation new int[][], of arrays"),
+            (
+                "new int[][] {{1}}",
+                "array creation new int[][] {...}, of arrays",
+            ),
             (
                 "A == '+12024-01-01T10:00 UTC'",
                 "time literal '+12024-01-01T10:00 UTC'",

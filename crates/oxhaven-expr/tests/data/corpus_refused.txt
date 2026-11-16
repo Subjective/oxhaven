@@ -64,7 +64,6 @@ java-formula-column/L230.e	java-fails	static method call Arrays.asList()
 java-formula-column/L234.e	java-accepts	field access .Normal
 java-formula-column/L238.e	java-fails	field access .class
 java-formula-column/L246.e	java-fails	static method call Calendar.getAvailableCalendarTypes()
-java-formula-column/L305.e	java-accepts	constructor new String() with these arguments
 java-formula-column/L309.e	java-fails	constructor new HashSet()
 java-parser/L158.0	java-accepts	fixture column of type int32[]
 java-parser/L162.0	java-accepts	fixture column of type int32[]

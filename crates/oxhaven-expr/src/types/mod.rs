@@ -2037,6 +2037,11 @@ impl Checker<'_> {
     /// not know null, and an `int` literal to a narrower type that holds it. Java 42.9
     /// was run for each form.
     fn creation(&mut self, created: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if let Some(at) = created.find("[n]") {
+            let (name, dimensions) = created.split_at(at);
+            let open = dimensions.matches("[]").count();
+            return self.sized_array(name, open, arguments);
+        }
         if let Some(name @ ("Object" | "java.lang.Object")) = created.strip_suffix("[]") {
             return self.object_array(name, arguments);
         }
@@ -2052,28 +2057,6 @@ impl Checker<'_> {
                 .map(|argument| self.array_element(name, &element, argument))
                 .collect::<Result<Vec<_>, _>>()?;
             return Ok(array_of(element, elements));
-        }
-        if let Some(name) = created.strip_suffix("[n]") {
-            let element = array_element(name)?;
-            // Java fills the array with zeros, or with nulls where the elements are
-            // objects.
-            let length = match arguments {
-                [Expr::Literal(Literal::Int(length))] if (1..=1024).contains(length) => *length,
-                _ => {
-                    return Err(unsupported(format!(
-                        "array creation new {name}[n] with a length that is not a literal \
-                         from 1 to 1024"
-                    )))
-                }
-            };
-            let filler = match element {
-                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
-                _ => convert(
-                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
-                    &element,
-                ),
-            };
-            return Ok(array_of(element, vec![filler; length as usize]));
         }
         let class = created.strip_prefix("java.lang.").unwrap_or(created);
         match (class, arguments) {
@@ -2110,6 +2093,119 @@ impl Checker<'_> {
             ))),
             _ => Err(unsupported(format!("constructor new {created}()"))),
         }
+    }
+
+    /// `new name[a][b]...[]...`: an array of `lengths.len()` dimensions with a length each
+    /// and `open` more without, of the element `name`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ArrayCreationExpr)`, which prints the creation
+    /// for javac: the innermost arrays are filled with zeros, or with nulls where the
+    /// elements are objects, and a dimension without a length holds null arrays. Seen on
+    /// Java 42.9: `new int[4][2]` is four `int[]` of two zeros, `new long[2][]` two null
+    /// `long[]`, `new String[2][3]` two `String[]` of three nulls, `new int[2][][]` two
+    /// null `int[][]`. Here the lengths are literals and the arrays hold at most 1024
+    /// elements in all.
+    fn sized_array(
+        &mut self,
+        name: &str,
+        open: usize,
+        lengths: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        let element = array_element(name)?;
+        let spelled = format!(
+            "new {name}{}{}",
+            "[n]".repeat(lengths.len()),
+            "[]".repeat(open)
+        );
+        let refused = || {
+            unsupported(format!(
+                "array creation {spelled} with lengths that are not literals from 1 to 1024 \
+                 or more than 1024 elements in all"
+            ))
+        };
+        let mut sizes = Vec::with_capacity(lengths.len());
+        for length in lengths {
+            match length {
+                Expr::Literal(Literal::Int(length)) if (1..=1024).contains(length) => {
+                    sizes.push(*length as usize)
+                }
+                _ => return Err(refused()),
+            }
+        }
+        if sizes.iter().product::<usize>() > 1024 {
+            return Err(refused());
+        }
+        let mut filler = if open > 0 {
+            let mut inner = element;
+            for _ in 0..open {
+                inner = ColumnType::array(inner);
+            }
+            typed(inner, Node::Null)
+        } else {
+            match element {
+                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
+                _ => convert(
+                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
+                    &element,
+                ),
+            }
+        };
+        for size in sizes.into_iter().rev() {
+            filler = array_of(filler.column_type.clone(), vec![filler; size]);
+        }
+        Ok(filler)
+    }
+
+    /// `new String(array)` and `new String(array, offset, count)` of a `byte[]`, `char[]`
+    /// or `int[]`; `None` for other arguments, which [`Self::creation`] answers.
+    ///
+    /// Behavior: `java.lang.String#String(byte[])`, `#String(char[])`,
+    /// `#String(byte[], int, int)`, `#String(char[], int, int)` and
+    /// `#String(int[], int, int)`, chosen as `QueryLanguageParser#visit(ObjectCreationExpr)`
+    /// chooses a constructor: the offset and the count widen to `int`. Seen on Java 42.9:
+    /// a `short` and a `byte` are taken, a `long` does not compile.
+    fn new_string(&mut self, arguments: &[Expr]) -> Result<Option<Typed>, FormulaError> {
+        use functions::StringSource;
+        if !matches!(arguments.len(), 1 | 3) || arguments.iter().any(is_null_literal) {
+            return Ok(None);
+        }
+        let array = self.check(&arguments[0])?;
+        let source = match &array.column_type {
+            ColumnType::Array(element) => match element.as_ref() {
+                ColumnType::Byte => StringSource::Bytes,
+                ColumnType::Char => StringSource::Chars,
+                ColumnType::Int => StringSource::CodePoints,
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let mut checked = vec![array];
+        for argument in &arguments[1..] {
+            let argument = self.check(argument)?;
+            if !matches!(
+                argument.column_type,
+                ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int
+            ) {
+                return Err(type_error(format!(
+                    "Cannot find constructor for java.lang.String with a {} offset or count",
+                    java_name(&argument.column_type)
+                )));
+            }
+            checked.push(convert(argument, &ColumnType::Int));
+        }
+        let text = match (source, checked.len()) {
+            (StringSource::Bytes, 1) => Node::NewString(Box::new(checked.remove(0))),
+            (StringSource::CodePoints, 1) => {
+                return Err(type_error(
+                    "Cannot find constructor for java.lang.String(int[])",
+                ))
+            }
+            _ => Node::Call {
+                kernel: Kernel::NewString(source),
+                arguments: checked,
+            },
+        };
+        Ok(Some(typed(ColumnType::String, text)))
     }
 
     /// `new Random(seed).method(arguments)`. Of the constructors Java takes the one of a
@@ -2379,16 +2475,9 @@ impl Checker<'_> {
         externals: bool,
     ) -> Result<Typed, FormulaError> {
         if let Some(created) = function.strip_prefix(crate::parse::NEW) {
-            // Behavior: `java.lang.String#String(byte[])`.
-            if let (true, [argument]) = (function == crate::parse::NEW_STRING, arguments) {
-                if !is_null_literal(argument) {
-                    let argument = self.check(argument)?;
-                    if argument.column_type == ColumnType::array(ColumnType::Byte) {
-                        return Ok(typed(
-                            ColumnType::String,
-                            Node::NewString(Box::new(argument)),
-                        ));
-                    }
+            if function == crate::parse::NEW_STRING {
+                if let Some(text) = self.new_string(arguments)? {
+                    return Ok(text);
                 }
             }
             return self.creation(created, arguments);
@@ -2575,6 +2664,26 @@ fn array_element(name: &str) -> Result<ColumnType, FormulaError> {
         "double" => ColumnType::Double,
         "String" | "java.lang.String" => ColumnType::String,
         "Instant" | "java.time.Instant" => ColumnType::Instant,
+        // Java makes a `java.lang.Integer[]` of nulls (seen on Java 42.9), which no
+        // column type is: `Array(Int)` is `int[]`.
+        other
+            if matches!(
+                other.strip_prefix("java.lang.").unwrap_or(other),
+                "Boolean"
+                    | "Byte"
+                    | "Character"
+                    | "Short"
+                    | "Integer"
+                    | "Long"
+                    | "Float"
+                    | "Double"
+            ) =>
+        {
+            return Err(unsupported(format!(
+                "array creation new {other}[]: no column type is an array of a boxed java.lang \
+                 class"
+            )))
+        }
         other => return Err(unsupported(format!("array creation new {other}[]"))),
     })
 }

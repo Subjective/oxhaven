@@ -23,7 +23,7 @@ use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::sync::Arc;
-pub(crate) use text::java_strings;
+pub(crate) use text::{java_strings, new_string_of};
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
