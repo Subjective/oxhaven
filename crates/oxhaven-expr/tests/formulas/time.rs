@@ -452,6 +452,18 @@ fn a_field_is_read_in_the_zone_of_each_row_and_of_a_date_or_time() {
             strings([Some("America/New_York"), Some("UTC"), None, Some("UTC")]),
         ),
     ]);
+    // Behavior: `DateTimeUtils#toLocalDateTime(Instant, ZoneId)`: 08:00 in New York.
+    let local = TimestampNanosecondArray::from(vec![
+        Some(1_710_057_600_000_000_000),
+        None,
+        None,
+        Some(0),
+    ])
+    .with_data_type(ColumnType::LocalDateTime.arrow_type());
+    table.assert(
+        "toLocalDateTime(T, timeZone(Name))",
+        (ColumnType::LocalDateTime, Arc::new(local)),
+    );
     let int = |values: [Option<i32>; 4]| ints(values);
     table.assert(
         "hourOfDay(T, timeZone(Name), true)",
