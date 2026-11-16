@@ -227,6 +227,20 @@ impl PartitionedTable {
         Ok(replaced.with_consistent_key_columns(&self.consistent_key_columns))
     }
 
+    /// This partitioned table as one whose constituents may come and go when its
+    /// underlying table refreshes, whose merge then takes no attribute from them.
+    ///
+    /// Behavior: PartitionedTableServiceGrpcImpl#getConstituents, which makes the
+    /// partitioned table of the rows a key table asks for with
+    /// `constituentChangesPermitted` true, whatever the partitioned table itself has, and
+    /// PartitionedTableImpl's constructor, which keeps that only for a refreshing table.
+    /// Seen on Java 42.9: the merge for a static key table has the constituents'
+    /// add-only and append-only, and the merge for a refreshing one has neither.
+    pub fn with_constituent_changes_permitted(mut self) -> PartitionedTable {
+        self.constituent_changes_permitted = self.table.is_refreshing();
+        self
+    }
+
     fn column(&self) -> Arc<dyn ColumnSource> {
         let index = self
             .table

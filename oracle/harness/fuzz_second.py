@@ -70,12 +70,8 @@ RESTRICTIONS: dict[str, str] = {
     "J5": "build_agg: no distinct of a timestamp column with preserve_empty on a refreshing "
           "table (the reference cannot write a group that lost its rows)",
     "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
-    "D4": "filter: no zone the reference refuses in a comparison of a timestamp column "
-          "with a literal",
     "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
           "a fixed-distance read outside a call",
-    "R2": "filter: only UTC in a comparison of a timestamp column with a literal",
-    "R3": "_NO_ZONES: no zone written as an offset",
     "R4": "build_agg: initial groups of a refreshing aggregation only with preserve_empty",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
     "R6": "second_formula, filter: no column array of an array column",
@@ -88,8 +84,8 @@ _INTEGERS = tuple(INT_BITS)
 # Zones the reference knows (`TimeZoneAliases`, default_time_zone_aliases.csv) and a few it
 # does not, which it refuses.
 _ZONES = ("UTC", "GMT", "ET", "CT", "MT", "PT", "HK", "JP", "LON", "America/New_York",
-          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney")
-_NO_ZONES = ("NY", "EST", "et")  # R3: and no "+01:00"
+          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney", "+01:00", "UTC-5")
+_NO_ZONES = ("NY", "EST", "et")
 # Instants around `fuzz.T0` (2023-11-14T22:13:20Z), and two that a clock change of the
 # eastern United States skips or repeats.
 _LOCAL_TIMES = ("2023-11-14T22:13:20", "2023-11-14T22:13:21", "2023-11-14T17:13:22",
@@ -305,10 +301,9 @@ class _Second(_Wide):
             a = rng.choice(stamps)
             if self.chance(0.4):
                 return f"{a} + '{rng.choice(_DURATIONS)}' > {self.instant()}"
-            # R2, D4: the comparison of a column with a literal is a filter of its own, which
-            # reads the literal with another parser than a formula does.
-            return (f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} "
-                    f"'{rng.choice(_LOCAL_TIMES)} UTC'")
+            # The comparison of a column with a literal is a filter of its own, which reads
+            # the literal with another parser than a formula does.
+            return f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} {self.instant()}"
         if columns and self.chance(0.5):
             a = rng.choice(columns)
             kind = table.type_of(a)

@@ -249,7 +249,24 @@ impl Run {
             !(self.weighted_averages && self.kinds[2]),
             "weighted averages are compared only without modifications"
         );
-        let aggregations = every_aggregation(self.weighted_averages, self.by);
+        let mut aggregations = every_aggregation(self.weighted_averages, self.by);
+        if self.by.is_empty() && self.preserve_empty {
+            // Java's `distinct` of the one group that is kept without rows depends on the
+            // history: an empty vector for a table that never had a value to lose, and a
+            // null once a removal took the last one (tasks/4.20-fuzz-findings-2.md, D3),
+            // which the static copy cannot tell apart;
+            // `a_distinct_without_keys_is_empty_until_a_removal_takes_its_last_value`
+            // pins both.
+            aggregations.retain(|aggregation| {
+                !matches!(
+                    aggregation,
+                    Aggregation::Columns {
+                        spec: AggSpec::Distinct { .. },
+                        ..
+                    }
+                )
+            });
+        }
         let result = aggregate(&parent, &aggregations, self.preserve_empty, self.by)
             .expect("an aggregation");
 

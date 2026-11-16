@@ -1141,8 +1141,8 @@ mod tests {
             ("(A + B).x", "field access .x"),
             ("new int[2][2]", "array creation new int[][], of arrays"),
             (
-                "A == '2024-01-01T10:00 +01:00'",
-                "time literal '2024-01-01T10:00 +01:00'",
+                "A == '2024-01-01T10:00+01:00'",
+                "time literal '2024-01-01T10:00+01:00'",
             ),
         ];
         for (text, construct) in cases {

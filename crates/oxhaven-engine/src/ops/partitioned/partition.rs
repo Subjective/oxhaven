@@ -89,7 +89,8 @@ impl Partition {
     /// the columns, which are `dropColumns(keys)` of the parent unless included; and
     /// io.deephaven.engine.table.impl.BaseTable.CopyAttributeOperation#PartitionBy for
     /// the attributes: add-only and append-only are copied (and blink, which is refused
-    /// before this is made).
+    /// before this is made), also from a static parent that has them, as the result of
+    /// `where` or `head` has.
     pub fn new(
         parent: &Arc<dyn Table>,
         keys: &[usize],
@@ -108,10 +109,8 @@ impl Partition {
         .expect("a subset of a definition has unique names");
         let refreshing = parent.is_refreshing();
         let mut attributes = TableAttributes::default();
-        if refreshing {
-            attributes.add_only = parent.attributes().add_only;
-            attributes.append_only = parent.attributes().append_only;
-        }
+        attributes.add_only = parent.attributes().add_only;
+        attributes.append_only = parent.attributes().append_only;
         Partition {
             definition,
             columns: parent_columns
