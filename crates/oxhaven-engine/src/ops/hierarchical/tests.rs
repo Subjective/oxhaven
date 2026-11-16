@@ -4,11 +4,14 @@
 use super::*;
 use crate::graph::SteppedUpdateGraph;
 use crate::ops::agg::{AggSpec, Aggregation, Pair};
+use crate::ops::filter::CheckedFilters;
+use crate::ops::sort::SortColumn;
 use arrow::array::{Array, Int32Array, Int8Array};
 use arrow::util::display::array_value_to_string;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_expr::Compiler;
 use oxhaven_testkit::{
     at_least_for, definition, ints, strings, test_seeds, RandomUpdates, ReferenceTable,
     ScriptedTable,
@@ -548,4 +551,489 @@ fn a_key_table_has_every_group_by_column_of_the_rollup() {
         view.snapshot(None, 0, 10),
         Err(HierarchicalError::IllegalArgument(_))
     ));
+}
+
+// Sorts and filters of a rollup (task 7.8.1). The orders of the scripted cases are what
+// Java 42.9 answers for the same rollup with the same sorts and filters applied
+// (`oracle/scenarios/python/rollup_sorted.py`, `rollup_filtered.py`).
+
+fn trades_table() -> RollupTable {
+    rollup(&trades(), &aggregations(), false, &["Sym", "Ex"], None).unwrap()
+}
+
+fn everything(rollup: RollupTable) -> View {
+    View::new(
+        Arc::new(rollup),
+        Some(keys(&[(0, "", "", EXPAND_ALL)])),
+        Some("Action".to_string()),
+    )
+}
+
+fn all_rows(rollup: RollupTable) -> Vec<String> {
+    text(&everything(rollup).snapshot(None, 0, 100).unwrap())
+}
+
+#[test]
+fn a_sort_orders_the_rows_of_every_node() {
+    let sorted = trades_table().with_sorts(&[SortColumn::descending("Qty")]);
+    let rows = [
+        "1|true|-|-|210|6",
+        "2|true|MSFT|-|80|2",
+        "3|-|MSFT|Q|50|1",
+        "3|-|MSFT|N|30|1",
+        "2|true|AAPL|-|70|3",
+        "3|-|AAPL|N|50|2",
+        "3|-|AAPL|Q|20|1",
+        "2|true|GOOG|-|60|1",
+        "3|-|GOOG|Q|60|1",
+    ];
+    let view = everything(sorted);
+    assert_eq!(text(&view.snapshot(None, 0, 100).unwrap()), rows);
+    // a viewport that begins inside one sorted node and ends inside another
+    let window = view.snapshot(None, 3, 3).unwrap();
+    assert_eq!(window.size, 9);
+    assert_eq!(text(&window), rows[3..6]);
+    // only some columns, in another order than the hierarchy has them
+    let some = view.snapshot(Some(&[5, 1, 0, 2]), 1, 2).unwrap();
+    assert_eq!(text(&some), ["2|true|2|MSFT", "1|-|3|MSFT"]);
+}
+
+#[test]
+fn a_node_expanded_by_key_is_found_where_the_sort_puts_it() {
+    let sorted = trades_table().with_sorts(&[SortColumn::ascending("Sym")]);
+    let view = View::new(
+        Arc::new(sorted),
+        Some(keys(&[(2, "MSFT", "", EXPAND), (2, "AAPL", "", EXPAND)])),
+        Some("Action".to_string()),
+    );
+    assert_eq!(
+        text(&view.snapshot(None, 0, 100).unwrap()),
+        [
+            "1|true|-|-|210|6",
+            "2|true|AAPL|-|70|3",
+            "3|-|AAPL|N|50|2",
+            "3|-|AAPL|Q|20|1",
+            "2|false|GOOG|-|60|1",
+            "2|true|MSFT|-|80|2",
+            "3|-|MSFT|N|30|1",
+            "3|-|MSFT|Q|50|1",
+        ]
+    );
+}
+
+/// A level has nulls in the group-by columns below its own, so a sort by one leaves its
+/// rows as they are.
+#[test]
+fn a_sort_by_a_group_by_column_orders_the_levels_that_have_it() {
+    let sorted = trades_table().with_sorts(&[SortColumn::descending("Ex")]);
+    assert_eq!(
+        all_rows(sorted),
+        [
+            "1|true|-|-|210|6",
+            "2|true|AAPL|-|70|3",
+            "3|-|AAPL|Q|20|1",
+            "3|-|AAPL|N|50|2",
+            "2|true|MSFT|-|80|2",
+            "3|-|MSFT|Q|50|1",
+            "3|-|MSFT|N|30|1",
+            "2|true|GOOG|-|60|1",
+            "3|-|GOOG|Q|60|1",
+        ]
+    );
+}
+
+#[test]
+fn later_sorts_come_first_and_a_column_sorts_once() {
+    let once = trades_table().with_sorts(&[
+        SortColumn::ascending("Rows"),
+        SortColumn::descending("Rows"),
+    ]);
+    assert_eq!(once.sorts(), [SortColumn::ascending("Rows")]);
+    let twice = once.with_sorts(&[SortColumn::descending("Sym")]);
+    assert_eq!(
+        twice.sorts(),
+        [SortColumn::descending("Sym"), SortColumn::ascending("Rows")]
+    );
+    let again = twice.with_sorts(&[
+        SortColumn::descending("Rows"),
+        SortColumn::ascending("Rows").absolute(),
+    ]);
+    assert_eq!(
+        again.sorts(),
+        [
+            SortColumn::descending("Rows"),
+            SortColumn::ascending("Rows").absolute(),
+            SortColumn::descending("Sym"),
+        ]
+    );
+    // Rows descending, then Sym descending
+    assert_eq!(
+        text(
+            &View::new(Arc::new(again), None, None)
+                .snapshot(None, 0, 100)
+                .unwrap()
+        ),
+        [
+            "1|true|-|-|210|6",
+            "2|false|AAPL|-|70|3",
+            "2|false|MSFT|-|80|2",
+            "2|false|GOOG|-|60|1",
+        ]
+    );
+}
+
+#[test]
+fn sorts_are_checked_against_the_columns_of_the_nodes() {
+    let rollup = trades_table();
+    assert_eq!(
+        rollup.check_sorts(&[SortColumn::ascending("Qty"), SortColumn::ascending("Nope")]),
+        Err(HierarchicalError::IllegalArgument(
+            "Unknown column names [Nope], available column names are [Sym, Ex, Qty, Rows]".into()
+        ))
+    );
+    assert!(matches!(
+        rollup.check_sorts(&[SortColumn::ascending("Sym").absolute()]),
+        Err(HierarchicalError::IllegalArgument(_))
+    ));
+    assert_eq!(
+        rollup.check_sorts(&[
+            SortColumn::descending("Qty").absolute(),
+            SortColumn::ascending("Ex")
+        ]),
+        Ok(())
+    );
+    // sorts that were not checked fail the snapshot, not the rollup
+    let unchecked = rollup.with_sorts(&[SortColumn::ascending("Nope")]);
+    assert!(View::new(Arc::new(unchecked), None, None)
+        .snapshot(None, 0, 10)
+        .is_err());
+}
+
+fn filtered(rollup: &RollupTable, filters: &[&str]) -> Result<RollupTable, HierarchicalError> {
+    let checked = CheckedFilters::parse(filters, rollup.source().definition(), &Compiler)
+        .map_err(|error| HierarchicalError::IllegalArgument(error.to_string()))?;
+    rollup.with_filters(&checked, &Compiler)
+}
+
+#[test]
+fn a_filter_of_group_by_columns_keeps_whole_groups() {
+    let rollup = trades_table();
+    let kept = filtered(&rollup, &["Ex != `N`"]).unwrap();
+    // the source is still the whole table
+    assert_eq!(kept.source().row_set().size(), 6);
+    assert_eq!(
+        all_rows(kept),
+        [
+            "1|true|-|-|130|3",
+            "2|true|AAPL|-|20|1",
+            "3|-|AAPL|Q|20|1",
+            "2|true|MSFT|-|50|1",
+            "3|-|MSFT|Q|50|1",
+            "2|true|GOOG|-|60|1",
+            "3|-|GOOG|Q|60|1",
+        ]
+    );
+    // a filter of a filtered rollup filters what the first one left, and sorts stay
+    let sorted = filtered(&rollup, &["Ex != `N`"])
+        .unwrap()
+        .with_sorts(&[SortColumn::descending("Qty")]);
+    let fewer = filtered(&sorted, &["Sym != `GOOG`"]).unwrap();
+    assert_eq!(fewer.sorts(), [SortColumn::descending("Qty")]);
+    assert_eq!(
+        all_rows(fewer),
+        [
+            "1|true|-|-|70|2",
+            "2|true|MSFT|-|50|1",
+            "3|-|MSFT|Q|50|1",
+            "2|true|AAPL|-|20|1",
+            "3|-|AAPL|Q|20|1",
+        ]
+    );
+    // a key that the filter left out names no node
+    let view = View::new(
+        Arc::new(filtered(&rollup, &["Sym == `GOOG`"]).unwrap()),
+        Some(keys(&[(2, "AAPL", "", EXPAND), (2, "GOOG", "", EXPAND)])),
+        Some("Action".to_string()),
+    );
+    assert_eq!(
+        text(&view.snapshot(None, 0, 100).unwrap()),
+        ["1|true|-|-|60|1", "2|true|GOOG|-|60|1", "3|-|GOOG|Q|60|1"]
+    );
+}
+
+/// A table like [`trades`] with a column that no aggregation reads and that is no
+/// group-by column.
+fn trades_with_venue() -> Arc<dyn Table> {
+    ReferenceTable::new_static(
+        definition(&[
+            ("Sym", ColumnType::String),
+            ("Ex", ColumnType::String),
+            ("Qty", ColumnType::Int),
+            ("Lot", ColumnType::Int),
+        ]),
+        RowSet::flat(6),
+        vec![
+            strings(["AAPL", "AAPL", "MSFT", "AAPL", "MSFT", "GOOG"]),
+            strings(["N", "Q", "N", "N", "Q", "Q"]),
+            ints([10, 20, 30, 40, 50, 60]),
+            ints([1, 2, 3, 4, 5, 6]),
+        ],
+    )
+}
+
+#[test]
+fn a_filter_of_another_column_filters_the_source() {
+    let rollup = rollup(
+        &trades_with_venue(),
+        &aggregations(),
+        false,
+        &["Sym", "Ex"],
+        None,
+    )
+    .unwrap();
+    let kept = filtered(&rollup, &["Lot > 2", "Sym != `GOOG`"]).unwrap();
+    // the filtered table is the source now
+    assert_eq!(kept.source().row_set().size(), 3);
+    assert_eq!(
+        all_rows(kept),
+        [
+            "1|true|-|-|120|3",
+            "2|true|MSFT|-|80|2",
+            "3|-|MSFT|N|30|1",
+            "3|-|MSFT|Q|50|1",
+            "2|true|AAPL|-|40|1",
+            "3|-|AAPL|N|40|1",
+        ]
+    );
+    // nothing left: Java shows no row, not a grand total of nothing
+    let none = filtered(&rollup, &["Sym == `none`"]).unwrap();
+    assert_eq!(all_rows(none), Vec::<String>::new());
+}
+
+#[test]
+fn a_filter_reads_no_aggregated_column_and_no_other_row() {
+    let rollup = rollup(
+        &trades_with_venue(),
+        &aggregations(),
+        false,
+        &["Sym", "Ex"],
+        None,
+    )
+    .unwrap();
+    let refused = |filter: &str| match filtered(&rollup, &[filter]) {
+        Err(HierarchicalError::IllegalArgument(message)) => message,
+        Err(other) => panic!("{filter}: {other}"),
+        Ok(_) => panic!("{filter} was accepted"),
+    };
+    assert_eq!(
+        refused("Qty > 15"),
+        "Invalid filter found: Qty > 15 may only use non-aggregation columns, which are \
+         [Sym, Ex, Lot], but has used [Qty]"
+    );
+    assert_eq!(
+        refused("Sym_[i - 1] == `AAPL`"),
+        "Invalid filter found: Sym_[i - 1] == `AAPL` may not use column arrays"
+    );
+    // a result of the rollup is no column of the source
+    refused("Rows > 1");
+    refused("Nope > 1");
+}
+
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withFilter"
+)]
+fn a_filter_by_row_position_is_not_ported() {
+    let _ = filtered(&trades_table(), &["i > 2"]);
+}
+
+/// The rows of a walk as a tree, sorted again node by node, with rows that compare equal
+/// left in their order: what a sorted rollup must show when `shown` is what the unsorted
+/// one shows.
+fn sorted_again(
+    shown: &[String],
+    compare: &dyn Fn(&[&str], &[&str]) -> std::cmp::Ordering,
+) -> Vec<String> {
+    fn depth(row: &str) -> usize {
+        row.split('|').next().unwrap().parse().unwrap()
+    }
+    // each row with the rows below it
+    fn subtrees(rows: &[String], at: usize) -> Vec<&[String]> {
+        let mut out = Vec::new();
+        let mut start = 0;
+        while start < rows.len() {
+            let mut end = start + 1;
+            while end < rows.len() && depth(&rows[end]) > at {
+                end += 1;
+            }
+            out.push(&rows[start..end]);
+            start = end;
+        }
+        out
+    }
+    fn sort(
+        rows: &[String],
+        at: usize,
+        compare: &dyn Fn(&[&str], &[&str]) -> std::cmp::Ordering,
+        out: &mut Vec<String>,
+    ) {
+        let mut nodes = subtrees(rows, at);
+        nodes.sort_by(|a, b| {
+            let (a, b): (Vec<&str>, Vec<&str>) =
+                (a[0].split('|').collect(), b[0].split('|').collect());
+            compare(&a, &b)
+        });
+        for node in nodes {
+            out.push(node[0].clone());
+            sort(&node[1..], at + 1, compare, out);
+        }
+    }
+    let mut out = Vec::new();
+    sort(shown, 1, compare, &mut out);
+    out
+}
+
+/// Random changes of the source of a rollup that is sorted and of rollups that are
+/// filtered: after every cycle the sorted one shows the rows of the unsorted one, each
+/// node's sorted again, and a filtered one the groups of the rows its filter accepts.
+fn random_sorted_and_filtered(seed: u64) -> u64 {
+    let graph = SteppedUpdateGraph::new();
+    let mut random = RandomUpdates::new(seed);
+    let columns = [
+        ("K", ColumnType::String),
+        ("G", ColumnType::Int),
+        ("V", ColumnType::Int),
+        ("F", ColumnType::Int),
+    ];
+    let source = ScriptedTable::new(
+        graph.clone(),
+        definition(&columns),
+        RowSet::flat(20),
+        columns
+            .iter()
+            .map(|(_, column_type)| random.values(column_type, 20))
+            .collect(),
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let aggregations = [
+        Aggregation::columns(AggSpec::Sum, [Pair::of("V")]),
+        Aggregation::count("N"),
+    ];
+    let plain = rollup(&parent, &aggregations, false, &["K", "G"], None).unwrap();
+    // by the count, most first, then by the sum, and by the second key where it is one
+    let sorts = [
+        SortColumn::descending("N"),
+        SortColumn::ascending("V"),
+        SortColumn::descending("G"),
+    ];
+    let sorted = plain.with_sorts(&sorts);
+    let by_key = filtered(&plain, &["G > -3"]).unwrap();
+    let by_other = filtered(&plain, &["F >= 0", "K != `c`"])
+        .unwrap()
+        .with_sorts(&sorts);
+    let all = ReferenceTable::new_static(
+        definition(&[
+            ("__DEPTH__", ColumnType::Int),
+            ("K", ColumnType::String),
+            ("G", ColumnType::Int),
+            ("Action", ColumnType::Byte),
+        ]),
+        RowSet::flat(1),
+        vec![
+            ints([0]),
+            strings([""]),
+            ints([0]),
+            Arc::new(Int8Array::from(vec![EXPAND_ALL])),
+        ],
+    );
+    let view = |rollup: RollupTable| {
+        View::new(
+            Arc::new(rollup),
+            Some(all.clone()),
+            Some("Action".to_string()),
+        )
+    };
+    let (plain, sorted, by_key, by_other) =
+        (view(plain), view(sorted), view(by_key), view(by_other));
+    let number = |cell: &str| cell.parse::<i64>().ok();
+    let compare = |a: &[&str], b: &[&str]| {
+        let key = |row: &[&str]| {
+            // a level below the second key has it; the others have a null, which sorts
+            // nothing
+            let g = if row[0] == "3" { number(row[3]) } else { None };
+            (number(row[5]), number(row[4]), g)
+        };
+        let (a, b) = (key(a), key(b));
+        // null is the least value: `None < Some`
+        b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(b.2.cmp(&a.2))
+    };
+    let canonical = |shown: &[String]| {
+        let mut rows: Vec<String> = shown
+            .iter()
+            .map(|row| {
+                let cells: Vec<&str> = row.split('|').collect();
+                format!(
+                    "{}|{}|{}|{}|{}",
+                    cells[0], cells[2], cells[3], cells[4], cells[5]
+                )
+            })
+            .collect();
+        rows.sort();
+        rows
+    };
+    let accepted = |filters: &[&str]| {
+        let checked = CheckedFilters::parse(filters, parent.definition(), &Compiler).unwrap();
+        let rows = checked.apply(&parent, &Compiler).unwrap();
+        let mut expected = expected_rows(&*rows);
+        expected.sort();
+        expected
+    };
+    let mut rows_seen = 0;
+    for cycle in 0..30 {
+        source.push(random.next_change(&*parent, 14));
+        graph.run_cycle();
+        let unsorted = text(&plain.snapshot(None, 0, 100_000).unwrap());
+        let whole = sorted.snapshot(None, 0, 100_000).unwrap();
+        let shown = text(&whole);
+        assert_eq!(
+            shown,
+            sorted_again(&unsorted, &compare),
+            "seed {seed}, cycle {cycle}"
+        );
+        let first = (seed + cycle) % 7;
+        let window = sorted.snapshot(None, first, 6).unwrap();
+        assert_eq!(window.size, whole.size);
+        let expected: Vec<String> = shown.iter().skip(first as usize).take(6).cloned().collect();
+        assert_eq!(text(&window), expected, "seed {seed}, cycle {cycle}");
+
+        let kept = text(&by_key.snapshot(None, 0, 100_000).unwrap());
+        assert_eq!(
+            canonical(&kept),
+            accepted(&["G > -3"]),
+            "seed {seed}, cycle {cycle}"
+        );
+        let kept = text(&by_other.snapshot(None, 0, 100_000).unwrap());
+        assert_eq!(
+            canonical(&kept),
+            accepted(&["F >= 0", "K != `c`"]),
+            "seed {seed}, cycle {cycle}"
+        );
+        // and its nodes are in the order of the sorts
+        assert_eq!(
+            kept,
+            sorted_again(&kept, &compare),
+            "seed {seed}, cycle {cycle}"
+        );
+        rows_seen += whole.rows + kept.len() as u64;
+    }
+    rows_seen
+}
+
+#[test]
+fn random_changes_keep_sorted_and_filtered_rollups_right() {
+    let mut rows = 0;
+    for seed in test_seeds(0..40) {
+        rows += random_sorted_and_filtered(seed);
+    }
+    assert!(rows >= at_least_for(8000, 0..40), "only {rows} rows");
 }

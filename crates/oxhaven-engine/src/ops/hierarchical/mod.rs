@@ -207,6 +207,18 @@ pub trait Hierarchy: Send + Sync {
     /// The table of the child rows of `node`, or `None` if it has none.
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError>;
 
+    /// The rows of `table`, the child table of a node whose rows are at `depth`, in the
+    /// order they are shown, or `None` when that is the order of the table.
+    ///
+    /// Behavior: HierarchicalTableImpl#applyNodeSorts
+    fn order(
+        &self,
+        _depth: u32,
+        _table: &dyn Table,
+    ) -> Result<Option<Vec<RowKey>>, HierarchicalError> {
+        Ok(None)
+    }
+
     /// Whether the rows at `depth` (the rows of the root table are at 1) can be expanded.
     fn rows_expandable(&self, depth: u32) -> Expandable;
 

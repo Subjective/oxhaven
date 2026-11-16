@@ -6,7 +6,7 @@ use super::{
     failure, Action, Expandable, HierarchicalError, Hierarchy, NodeId, NodeKey, Parent,
     DEPTH_COLUMN, EXPANDED_COLUMN,
 };
-use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, Int32Array};
+use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, Int32Array, UInt32Array};
 use arrow::datatypes::Int8Type;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -177,10 +177,80 @@ fn link(
     Ok((arena, root))
 }
 
+/// The rows of a node's table in the order they are shown.
+enum Shown {
+    /// In the order of the table.
+    AsStored(Arc<RowSet>),
+    /// In the order the hierarchy sorts them.
+    Sorted(Vec<RowKey>),
+}
+
+impl Shown {
+    fn size(&self) -> u64 {
+        match self {
+            Shown::AsStored(rows) => rows.size(),
+            Shown::Sorted(rows) => rows.len() as u64,
+        }
+    }
+
+    fn iter(&self) -> Box<dyn Iterator<Item = RowKey> + '_> {
+        match self {
+            Shown::AsStored(rows) => Box::new(rows.iter()),
+            Shown::Sorted(rows) => Box::new(rows.iter().copied()),
+        }
+    }
+
+    /// The position of each of `rows` that is shown.
+    fn positions(&self, rows: &[RowKey]) -> Vec<Option<u64>> {
+        match self {
+            Shown::AsStored(shown) => rows.iter().map(|&row| shown.find(row)).collect(),
+            Shown::Sorted(shown) => {
+                let wanted: HashMap<RowKey, usize> = rows
+                    .iter()
+                    .enumerate()
+                    .map(|(at, &row)| (row, at))
+                    .collect();
+                let mut positions = vec![None; rows.len()];
+                if !wanted.is_empty() {
+                    for (position, row) in shown.iter().enumerate() {
+                        if let Some(&at) = wanted.get(row) {
+                            positions[at] = Some(position as u64);
+                        }
+                    }
+                }
+                positions
+            }
+        }
+    }
+
+    /// Positions `start..end`: the rows as a row set, and for rows that are not shown in
+    /// the order of their keys, where in that row set each shown row is.
+    fn range(&self, start: u64, end: u64) -> (RowSet, Option<Vec<u32>>) {
+        match self {
+            Shown::AsStored(rows) => (rows.sub_set_by_position_range(start, end), None),
+            Shown::Sorted(rows) => {
+                let shown = &rows[start as usize..end as usize];
+                let mut by_key: Vec<u32> = (0..shown.len() as u32).collect();
+                by_key.sort_unstable_by_key(|&at| shown[at as usize]);
+                let mut places = vec![0; shown.len()];
+                for (place, &at) in by_key.iter().enumerate() {
+                    places[at as usize] = place as u32;
+                }
+                let stored = by_key.iter().map(|&at| shown[at as usize]);
+                (RowSet::from_keys(stored), Some(places))
+            }
+        }
+    }
+}
+
 /// A run of rows of one node's table inside the viewport.
 struct Segment {
     table: Arc<dyn Table>,
+    /// The rows, which are read in the order of their keys.
     rows: RowSet,
+    /// Where in `rows` each row of the run is, when the run is not in the order of its
+    /// keys.
+    places: Option<Vec<u32>>,
     depth: u32,
     expandable: Expandable,
     /// Whether the last row of `rows` is followed by its children.
@@ -208,7 +278,7 @@ impl Walk<'_> {
     fn run(
         &mut self,
         table: &Arc<dyn Table>,
-        rows: &RowSet,
+        rows: &Shown,
         start: u64,
         end: u64,
         expandable: Expandable,
@@ -225,9 +295,11 @@ impl Walk<'_> {
         if low >= high {
             return;
         }
+        let (rows, places) = rows.range(start + (low - from), start + (high - from));
         self.segments.push(Segment {
             table: table.clone(),
-            rows: rows.sub_set_by_position_range(start + (low - from), start + (high - from)),
+            rows,
+            places,
             depth: self.depth,
             expandable,
             last_expanded: last_expanded && high == to,
@@ -244,12 +316,15 @@ impl Walk<'_> {
         let Some(table) = self.hierarchy.children(node)? else {
             return Ok(());
         };
-        let rows = table.row_set();
-        if rows.is_empty() {
+        if table.row_set().is_empty() {
             return Ok(());
         }
         let outer = self.expanding;
         self.depth += 1;
+        let rows = match self.hierarchy.order(self.depth, table.as_ref())? {
+            Some(sorted) => Shown::Sorted(sorted),
+            None => Shown::AsStored(table.row_set()),
+        };
         let expandable = self.hierarchy.rows_expandable(self.depth);
         let can_expand = expandable != Expandable::None;
         // Behavior: SnapshotStateImpl#updateExpansionTypeAndValidateAction
@@ -270,12 +345,21 @@ impl Walk<'_> {
         // NodeTableState#filterKeyAndSortChildDirectives
         let mut children: Vec<(u64, usize)> = Vec::new();
         if can_expand {
-            for &child in child_directives {
-                let directive = &self.arena[child];
-                let acts = self.expanding > 0
-                    || !matches!(directive.action, None | Some(Action::Contract));
-                let position = directive.row_in_parent.and_then(|row| rows.find(row));
-                if let (true, Some(position)) = (acts, position) {
+            let acting: Vec<(usize, RowKey)> = child_directives
+                .iter()
+                .filter_map(|&child| {
+                    let directive = &self.arena[child];
+                    let acts = self.expanding > 0
+                        || !matches!(directive.action, None | Some(Action::Contract));
+                    directive
+                        .row_in_parent
+                        .filter(|_| acts)
+                        .map(|row| (child, row))
+                })
+                .collect();
+            let keys: Vec<RowKey> = acting.iter().map(|&(_, row)| row).collect();
+            for (&(child, _), position) in acting.iter().zip(rows.positions(&keys)) {
+                if let Some(position) = position {
                     children.push((position, child));
                 }
             }
@@ -382,7 +466,19 @@ pub(super) fn snapshot(
                         .collect(),
                 }),
                 _ => {
-                    hierarchy.fill(segment.depth, segment.table.as_ref(), &segment.rows, column)?
+                    let stored = hierarchy.fill(
+                        segment.depth,
+                        segment.table.as_ref(),
+                        &segment.rows,
+                        column,
+                    )?;
+                    match &segment.places {
+                        None => stored,
+                        Some(places) => {
+                            arrow::compute::take(&stored, &UInt32Array::from(places.clone()), None)
+                                .map_err(|error| failure(error.to_string()))?
+                        }
+                    }
                 }
             });
         }
