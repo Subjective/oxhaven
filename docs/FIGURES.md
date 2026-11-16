@@ -258,8 +258,42 @@ scope takes a partitioned table. The trial was repeated with the same two server
   (`hooks/_transform.py`, `object_types/ElementType.py`). It does not import `jpy`; it reads
   `j_type` of the `dtypes` (`_internal/utils.py`). Nothing of it was run.
 
+### After task 7.10.2
+
+The binary holds a `jpy` module whose every use of a Java class is refused by the class's
+name (`docs/CONSOLE.md`, "The jpy module"; the owner's ruling of 2026-11-16). The stand-in
+of the trial above is gone, and what follows was run with the plugin as `pip` installs it,
+without `deephaven-core` and `jpy`, against Java 42.9 with the same plugin.
+
+- **The server starts with `deephaven-plugin-plotly-express` 0.22.0 installed.** The
+  plugin's object type and its JS plugin are registered,
+  `/js-plugins/manifest.json` is byte for byte Java's
+  (`{"plugins":[{"name":"@deephaven/js-plugin-plotly-express","version":"0.22.0","main":"dist/bundle/index.js"}]}`)
+  and so is `dist/bundle/index.js`.
+- The 50 calls that make a figure on Java, each asked over `MessageStream`: 42 are sent as
+  Java sends them, the JSON and the references, `dx.line` among them. The eight others, as
+  before: four histograms, a ticking histogram and `density_heatmap` (a formula of the
+  plugin makes a `DiscretizedRangeEqual`), and two with `calendar=`
+  (`Calendars#calendar`). None of the eight reaches `jpy`: the calendar is refused before
+  the plugin calls `DateTimeUtils.timeZone`.
+- What the plugin does with `jpy` now ends in a refusal that names the class:
+  - `dx.data.marketing()`: `not ported: io.deephaven.engine.table.impl.util.ColumnsToRowsTransform#columnsToRows`;
+  - `dx.data.gapminder()` when it ticks: `not ported: java.lang.String[]: jpy.array`
+    (`gapminder(ticking=False)` does not make the arrays and works);
+  - a figure with `calendar=`, once calendars exist:
+    `not ported: io.deephaven.time.DateTimeUtils#timeZone`.
+- Of the example data, `tips`, `gapminder(ticking=False)`, `wind`, `election` and `jobs`
+  work; `iris`, `stocks`, `fish_market` and `outages` fail on a formula that names a Python
+  `Instant` of the query scope, `marketing` as above. `flights` fails on Java too.
+- `deephaven.ui` 0.43.2 does not import `jpy`. Its import stops at
+  `from deephaven.table import Table, RollupTable, TreeTable` (`types/types.py:25`); with a
+  class of that name put into `deephaven.table` by the probe, `import deephaven.ui`
+  succeeds. `deephaven.configuration` is not needed for that: both places that import
+  `get_configuration` do so inside `try` and fall back to the stricter setting. Nothing of
+  the package was run.
+
 ## Not started
 
-- A `jpy` module, or another answer to a package that imports it: for the owner.
-- What the trial above lists as failing.
+- What the trials above list as failing.
+- `deephaven.configuration`: Java's property system behind a mapping.
 - `OpenDoExchange` and `OpenHandshake` of `BrowserFlightService`.

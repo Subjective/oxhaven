@@ -179,7 +179,7 @@
   "parquet_write_errors": {"state": "clean"},
   "parquet_write_options": {"state": "clean"},
   "parquet_write_types": {"state": "clean"},
-  "parquet_write_unported": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "by_class", "by_uri", "indexed", "lzo", "metadata", "narrowed", "nested", "partitioned"], "why": "writes that are refused by the Java method they need (docs/STORAGE.md, Writing Parquet): LZO, a codec by its class, _metadata files, index files, a file:// destination, a column of vectors of vectors, a column narrowed by the definition, partitioned writes"},
+  "parquet_write_unported": {"state": "differs", "kinds": ["failure_unexpected:NOT_FOUND", "script_failure_unexpected:deephaven.dherror.DHError"], "tables": ["(script)", "indexed", "lzo", "narrowed", "nested"], "why": "writes that are refused by the Java method they need (docs/STORAGE.md, Writing Parquet): LZO, index files, a column of vectors of vectors, a column narrowed by the definition"},
   "partitioned_agg": {"state": "clean"},
   "partitioned_static": {"state": "clean"},
   "partitioned_ticking": {"state": "clean"},
