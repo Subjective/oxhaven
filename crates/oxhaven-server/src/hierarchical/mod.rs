@@ -17,17 +17,20 @@ use std::sync::{Arc, Mutex, PoisonError};
 use arrow::datatypes::{Field, Schema};
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::agg::{AggSpec, Aggregation};
+use oxhaven_engine::ops::filter::CheckedFilters;
 use oxhaven_engine::ops::hierarchical::{
     rollup, HierarchicalError, Hierarchy, RollupTable, View, DEPTH_COLUMN, EXPANDED_COLUMN,
 };
+use oxhaven_engine::ops::sort::SortColumn;
 use oxhaven_proto::grpc::hierarchical_table_service_server::HierarchicalTableService;
 use oxhaven_proto::grpc::hierarchical_table_view_request::Target;
+use oxhaven_proto::grpc::sort_descriptor::SortDirection;
 use oxhaven_proto::grpc::table_reference::Ref;
 use oxhaven_proto::grpc::{
     ExportedTableCreationResponse, HierarchicalTableApplyRequest, HierarchicalTableApplyResponse,
     HierarchicalTableDescriptor, HierarchicalTableSourceExportRequest,
     HierarchicalTableViewRequest, HierarchicalTableViewResponse, RollupRequest, RollupResponse,
-    TableReference, Ticket, TreeRequest, TreeResponse,
+    SortDescriptor, TableReference, Ticket, TreeRequest, TreeResponse,
 };
 use prost::Message;
 use tonic::{Request, Response, Status};
@@ -35,7 +38,7 @@ use tonic::{Request, Response, Status};
 use crate::partitioned::guarded;
 use crate::schema::{arrow_schema, schema_ipc_bytes, SchemaContext};
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
-use crate::table::ops::{adapt_aggregations, validate_aggregation};
+use crate::table::ops::{adapt_aggregations, conditions, validate_aggregation};
 use crate::table::support::{missing_field, not_ported, OpContext};
 use crate::table::table_creation_response;
 
@@ -127,6 +130,112 @@ pub fn make_rollup(
     })
 }
 
+/// The sorts of an `Apply` request for the engine. A sort by an absolute value is, in
+/// Java, a sort by a column named `__ABS__<name>`.
+///
+/// Behavior: `io.deephaven.server.hierarchicaltable.HierarchicalTableGrpcHelper#translateAndValidateSorts`
+fn translate_sorts(
+    sorts: &[SortDescriptor],
+    sortable: Option<&[String]>,
+) -> Result<Vec<SortColumn>, Status> {
+    let mut translated = Vec::with_capacity(sorts.len());
+    for sort in sorts {
+        let column = match SortDirection::try_from(sort.direction) {
+            Ok(SortDirection::Ascending) => SortColumn::ascending(&sort.column_name),
+            Ok(SortDirection::Descending) => SortColumn::descending(&sort.column_name),
+            other => {
+                let name = match other {
+                    Ok(direction) => direction.as_str_name(),
+                    Err(_) => "UNRECOGNIZED",
+                };
+                return Err(Status::invalid_argument(format!(
+                    "Unsupported or unknown sort direction: {name}"
+                )));
+            }
+        };
+        translated.push(if sort.is_absolute {
+            column.absolute()
+        } else {
+            column
+        });
+    }
+    if let Some(sortable) = sortable {
+        // Java reads the names from one string in which they are joined by commas, so
+        // no name is one name, the empty one, and its list of names is never empty:
+        // `Sorting is not supported on this hierarchical table` is not reached.
+        let refused: Vec<&str> = translated
+            .iter()
+            .map(|sort| sort.column.as_str())
+            .filter(|name| !sortable.iter().any(|allowed| allowed == name))
+            .collect();
+        if !refused.is_empty() {
+            return Err(Status::invalid_argument(format!(
+                "Sorting attempted on restricted column(s): [{}], available column(s) for \
+                 sorting are: [{}]",
+                refused.join(", "),
+                sortable.join(", ")
+            )));
+        }
+    }
+    Ok(translated)
+}
+
+/// `table` with the filters and sorts of `request`: the filters first.
+///
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup, without
+/// its format views and update views
+pub fn apply(
+    context: &OpContext,
+    table: &Hierarchical,
+    request: &HierarchicalTableApplyRequest,
+) -> Result<Hierarchical, ExportError> {
+    if request.filters.is_empty()
+        && request.sorts.is_empty()
+        && request.format_views.is_empty()
+        && request.update_views.is_empty()
+    {
+        return Err(Status::invalid_argument("No operations specified").into());
+    }
+    let HierarchicalTable::Rollup(rollup) = table.as_ref();
+    // Java reads the conditions, then the sorts, before it applies anything.
+    let conditions = conditions(&request.filters).map_err(ExportError::Internal)?;
+    let sorts = translate_sorts(&request.sorts, rollup.sortable_columns())?;
+    if !request.update_views.is_empty() {
+        return Err(not_ported(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView",
+            "update views of a rollup",
+        )
+        .into());
+    }
+    if !request.format_views.is_empty() {
+        return Err(not_ported(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumns",
+            "format views of a rollup",
+        )
+        .into());
+    }
+    let compiler = context.compiler.as_ref();
+    let source = rollup.source().clone();
+    guarded(&[&source], || {
+        let mut result = rollup.clone();
+        if !conditions.is_empty() {
+            let filters =
+                CheckedFilters::of_conditions(&conditions, source.definition(), compiler)?;
+            result
+                .check_filters(&filters)
+                .map_err(Status::invalid_argument)?;
+            if !filters.is_empty() {
+                result = Arc::new(result.with_filters(&filters, compiler)?);
+            }
+        }
+        if !sorts.is_empty() {
+            result.check_sorts(&sorts)?;
+            result = Arc::new(result.with_sorts(&sorts));
+        }
+        Ok(Arc::new(HierarchicalTable::Rollup(result)))
+    })
+}
+
 /// What Java says of an aggregation's result columns.
 ///
 /// Behavior: `io.deephaven.api.agg.util.AggregationDescriptions` and the `description` of
@@ -207,7 +316,12 @@ pub fn snapshot_schema(table: &HierarchicalTable) -> Schema {
             _ => {}
         }
     }
-    let plain = arrow_schema(definition, &SchemaContext::default());
+    // Java asks the restriction of the rollup's sorting for every field, so that the
+    // structural columns are sortable only without one.
+    let sortable = rollup.sortable_columns();
+    let mut context = SchemaContext::default();
+    context.sortable = sortable.map(<[String]>::to_vec);
+    let plain = arrow_schema(definition, &context);
     let fields: Vec<Field> = plain
         .fields()
         .iter()
@@ -246,10 +360,20 @@ pub fn snapshot_schema(table: &HierarchicalTable) -> Schema {
         })
         .collect();
     // Java cannot send the map of the descriptions and marks it as not sent.
-    let metadata = HashMap::from([(
+    let mut metadata = HashMap::from([(
         format!("{PREFIX}unsent.attribute.ColumnDescriptions"),
         String::new(),
     )]);
+    if let Some(sortable) = sortable {
+        metadata.insert(
+            format!("{PREFIX}attribute.SortableColumns"),
+            sortable.join(","),
+        );
+        metadata.insert(
+            format!("{PREFIX}attribute_type.SortableColumns"),
+            "java.lang.String".to_string(),
+        );
+    }
     Schema::new_with_metadata(fields, metadata)
 }
 
@@ -366,8 +490,7 @@ impl HierarchicalTableService for HierarchicalTableGrpc {
         ))
     }
 
-    /// Behavior: `HierarchicalTableServiceGrpcImpl#apply`, of which only the checks before
-    /// the first operation are ported
+    /// Behavior: `HierarchicalTableServiceGrpcImpl#apply`
     async fn apply(
         &self,
         request: Request<HierarchicalTableApplyRequest>,
@@ -393,25 +516,16 @@ impl HierarchicalTableService for HierarchicalTableGrpc {
             .router
             .resolve(Some(&session), &input_id, "inputHierarchicalTableId")?;
         let reply = Reply::new();
-        let fail = reply.completer();
+        let (fail, succeed) = (reply.completer(), reply.completer());
+        let context = self.context.clone();
         session
             .new_export_for_ticket(&result_id, "resultHierarchicalTableId")?
             .require([input])
             .on_error(move |status| fail(Err(status)))
+            .on_success(move |_| succeed(Ok(HierarchicalTableApplyResponse {})))
             .submit(move |inputs| {
-                hierarchical_input(&inputs[0])?;
-                if request.filters.is_empty()
-                    && request.sorts.is_empty()
-                    && request.format_views.is_empty()
-                    && request.update_views.is_empty()
-                {
-                    return Err(Status::invalid_argument("No operations specified").into());
-                }
-                Err(not_ported(
-                    "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
-                    "filters, sorts, format views and update views of a hierarchical table",
-                )
-                .into())
+                let input = hierarchical_input(&inputs[0])?;
+                Ok(export_value(apply(&context, input, &request)?))
             })?;
         reply.wait().await
     }
