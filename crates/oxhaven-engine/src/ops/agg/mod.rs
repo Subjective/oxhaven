@@ -1506,6 +1506,27 @@ fn aggregate_inner(
 
     let kind = ParentKind::of(&**parent);
     let keyed = !key_columns.is_empty();
+    // Behavior: AggregationContext#getStateChangeRecorder takes the first operator that
+    // records when a group gets its first row or loses its last. The first and last
+    // operators of an add-only or blink table are recorders that record nothing
+    // (NoopStateChangeRecorder: "We can never empty or reincarnate states"), which is
+    // wrong for an initial group without rows; a count before them records.
+    let never_records_states = matches!(kind, ParentKind::AddOnly | ParentKind::Blink)
+        && aggregations
+            .iter()
+            .find_map(|aggregation| match aggregation {
+                Aggregation::Count { .. } => Some(false),
+                Aggregation::Columns {
+                    spec:
+                        AggSpec::First
+                        | AggSpec::Last
+                        | AggSpec::SortedFirst { .. }
+                        | AggSpec::SortedLast { .. },
+                    pairs,
+                } if !pairs.is_empty() => Some(true),
+                _ => None,
+            })
+            .unwrap_or(false);
     let mut layout = Layout {
         keys: (0..key_columns.len()).map(Some).collect(),
         ops: Vec::new(),
@@ -1661,15 +1682,19 @@ fn aggregate_inner(
             aggregator.seed(initial, columns)?;
         }
         let rows = aggregator.initial()?;
-        if kind != ParentKind::Static && !preserve_empty && aggregator.has_empty_group() {
-            // Observed: when such a group gets its first row, Java's result shows a null
-            // in its key columns, for as long as the result lives. Java copies the keys of
-            // a refreshing parent's groups to the result for the groups that have rows at
-            // the start and for those created later, and these are neither.
+        if kind != ParentKind::Static
+            && !preserve_empty
+            && never_records_states
+            && aggregator.has_empty_group()
+        {
+            // Observed: Java accepts the request, and the result fails in the cycle that
+            // brings such a group its first row ("RowSet update error detected": the row
+            // is reported modified and never added). There is no result to match.
             unported!(
-                "io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#copyKeyColumns",
-                "initial groups that the refreshing table has no rows for, without \
-                 preserveEmpty: Java shows such a group with null keys once it has rows"
+                "io.deephaven.engine.table.impl.by.BaseAddOnlyFirstOrLastChunkedOperator",
+                "initial groups that the add-only table has no rows for, without \
+                 preserveEmpty, with first, last, sortedFirst or sortedLast before any \
+                 count: Java's result fails when such a group gets its first row"
             );
         }
         let flat = flat(&rows);
