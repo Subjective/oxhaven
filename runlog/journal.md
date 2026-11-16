@@ -1022,3 +1022,7 @@ Task 5.9 reported from Opus: four java.time column types in the contracts and th
 ## 2026-11-16T09:09Z
 
 Pull request 120 (four java.time column types, formula gate 123 to 48) merged on green.
+
+## 2026-11-16T09:11Z
+
+Task 7.1c (Parquet directories read through their metadata files) reported from Opus at 94k tokens: done, one scenario, replay gate clean after merging main. Opened as pull request 121. Launched the summary of items for the owner on Opus; it reads only, so it does not take a build slot.
