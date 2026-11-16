@@ -690,6 +690,9 @@ impl Checker<'_> {
         if self.is_column_scope(scope) {
             return Err(refused());
         }
+        if let Some((column_type, literal)) = color::color_util_field(scope, field) {
+            return Ok(constant(column_type, literal));
+        }
         if functions::is_library_constant(scope, field) {
             return match functions::constant(field) {
                 Some((column_type, literal)) => Ok(constant(column_type, literal)),

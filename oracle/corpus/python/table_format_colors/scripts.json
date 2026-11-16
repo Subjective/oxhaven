@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot resolve field name.",
+      "operation": "table update operation failed."
+    }
+  ]
+}

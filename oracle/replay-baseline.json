@@ -216,6 +216,7 @@
   "table_error": {"state": "clean"},
   "table_first_steps": {"state": "clean"},
   "table_format": {"state": "clean"},
+  "table_format_colors": {"state": "clean"},
   "table_format_patterns": {"state": "clean"},
   "table_head_tail": {"state": "clean"},
   "table_select": {"state": "clean"},
