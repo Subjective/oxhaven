@@ -174,6 +174,23 @@ impl ParquetLocation {
             .collect())
     }
 
+    /// [`Self::file_columns`], each with the name of its field in the file.
+    pub(crate) fn named_file_columns(
+        path: &Path,
+        options: &ReadOptions,
+    ) -> Result<Vec<(String, ColumnDefinition)>, ReadError> {
+        let (metadata, columns) = Self::load(path, options)?;
+        let fields = metadata.parquet_schema().root_schema().get_fields();
+        let columns = columns.into_iter().map(|column| {
+            let field = fields[column.root].name().to_string();
+            (
+                field,
+                ColumnDefinition::new(column.name, column.column_type),
+            )
+        });
+        Ok(columns.collect())
+    }
+
     /// The number of row groups of the file.
     pub(crate) fn row_groups(&self) -> usize {
         self.group_rows.len() - 1
