@@ -502,6 +502,8 @@ pub(crate) enum Kernel {
     /// `hourOfDay(Instant, ZoneId, boolean)`, `dayOfYear(Instant, ZoneId)` and their
     /// relatives, for a zone the formula names.
     Zoned(ZonedField, crate::parse::instant::Zone),
+    /// The same field in the zone of a `ZoneId` column, the second argument.
+    ZonedByColumn(ZonedField),
     /// `compareTo` of two numbers.
     CompareTo,
     /// A function of colours and styles, which computes with the values Java reserves

@@ -15,7 +15,8 @@ use arrow::array::{
 };
 use arrow::buffer::NullBuffer;
 use arrow::datatypes::{
-    DataType, Date32Type, Int32Type, Int64Type, Time64NanosecondType, TimestampNanosecondType,
+    DataType, Date32Type, DurationNanosecondType, Int32Type, Int64Type, Time64NanosecondType,
+    TimestampNanosecondType,
 };
 use oxhaven_contracts::expr::FormulaError;
 use oxhaven_contracts::schema::ColumnType;
@@ -30,18 +31,34 @@ fn failure(message: impl Into<String>) -> TableFailure {
 
 const NANOS_PER_DAY: i64 = 86_400_000_000_000;
 
+/// A function, its parameter types and its result type.
+pub(crate) type Resolved = (TimeFn, Vec<ColumnType>, ColumnType);
+
 /// A function that makes or converts a value of one of these types.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum TimeFn {
     /// `parseLocalDate(String)`, or `parseLocalDateQuiet`, which is null where it throws.
-    ParseLocalDate { quiet: bool },
-    ParseLocalTime { quiet: bool },
-    ParseDuration { quiet: bool },
-    ParsePeriod { quiet: bool },
+    ParseLocalDate {
+        quiet: bool,
+    },
+    ParseLocalTime {
+        quiet: bool,
+    },
+    ParseDuration {
+        quiet: bool,
+    },
+    ParsePeriod {
+        quiet: bool,
+    },
     /// `parseTimeZone(String)` and `parseTimeZoneQuiet`; `timeZone(String)` is the quiet
     /// one for null and throws for other text.
-    ParseTimeZone { quiet: bool, null_is_null: bool },
-    ParseZonedDateTime { quiet: bool },
+    ParseTimeZone {
+        quiet: bool,
+        null_is_null: bool,
+    },
+    ParseZonedDateTime {
+        quiet: bool,
+    },
     /// `epochDaysToLocalDate(long)` and `epochDaysAsIntToLocalDate(int)`: null for null.
     EpochDaysToLocalDate,
     /// `LocalDate.ofEpochDay(long)`, which throws for every value outside its range, the
@@ -61,6 +78,38 @@ pub(crate) enum TimeFn {
     ZonedToInstant,
     /// `toInstant(LocalDate, LocalTime, ZoneId)`: null when any is null.
     LocalToInstant,
+    /// `plus(Instant, Duration)` and `minus(Instant, Duration)`: null when either is null.
+    InstantAndDuration {
+        subtract: bool,
+    },
+    /// `plus(Instant, Period)` and `minus(Instant, Period)`: null when either is null.
+    InstantAndPeriod {
+        subtract: bool,
+    },
+    /// `plus(LocalDate, Period)` and `minus(LocalDate, Period)`: null when either is null.
+    LocalDateAndPeriod {
+        subtract: bool,
+    },
+    /// `plus(Duration, Duration)` and `minus(Duration, Duration)`: null when either is null.
+    DurationSum {
+        subtract: bool,
+    },
+    /// `plus(Period, Period)` and `minus(Period, Period)`: null when either is null.
+    PeriodSum {
+        subtract: bool,
+    },
+    /// `multiply(Duration, long)` and `divide(Duration, long)` of a duration and a `long`,
+    /// null when either is null; `multiply(Period, int)` of a period and an `int`, which
+    /// arrives here as a `long`.
+    DurationTimes,
+    DurationDivided,
+    PeriodTimes,
+    /// `year(LocalDate)`, `monthOfYear`, `dayOfMonth`, `dayOfYear`, `dayOfWeekValue` and
+    /// `yearOfCentury` of a date: null for null.
+    DateField(super::ZonedField),
+    /// `hourOfDay(LocalTime)`, `minuteOfDay`, `secondOfDay`, `millisOfDay` and
+    /// `nanosOfDay` of a time of day: null for null.
+    TimeField(super::ZonedField),
 }
 
 impl TimeFn {
@@ -72,7 +121,7 @@ impl TimeFn {
     pub(crate) fn resolve(
         name: &str,
         types: &[ColumnType],
-    ) -> Option<Result<(TimeFn, Vec<ColumnType>, ColumnType), FormulaError>> {
+    ) -> Option<Result<Resolved, FormulaError>> {
         use ColumnType as T;
         let quiet = name.ends_with("Quiet");
         let (function, result) = match name {
@@ -121,12 +170,8 @@ impl TimeFn {
                 given.join(", ")
             )))
         };
-        let integral = |t: &ColumnType| {
-            matches!(
-                t,
-                T::Byte | T::Short | T::Char | T::Int | T::Long
-            )
-        };
+        let integral =
+            |t: &ColumnType| matches!(t, T::Byte | T::Short | T::Char | T::Int | T::Long);
         let parameters = match (function, types) {
             (
                 TimeFn::ParseLocalDate { .. }
@@ -149,7 +194,10 @@ impl TimeFn {
                     vec![T::Long]
                 }
             }
-            (TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToZonedDateTime, [T::Instant, T::ZoneId]) => {
+            (
+                TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToZonedDateTime,
+                [T::Instant, T::ZoneId],
+            ) => {
                 vec![T::Instant, T::ZoneId]
             }
             (TimeFn::ZonedToInstant, [T::ZonedDateTime]) => vec![T::ZonedDateTime],
@@ -181,7 +229,7 @@ impl TimeFn {
         class: &str,
         method: &str,
         types: &[ColumnType],
-    ) -> Option<Result<(TimeFn, Vec<ColumnType>, ColumnType), FormulaError>> {
+    ) -> Option<Result<Resolved, FormulaError>> {
         use ColumnType as T;
         let class = class.strip_prefix("java.time.").unwrap_or(class);
         let int = |t: &ColumnType| matches!(t, T::Byte | T::Short | T::Char | T::Int);
@@ -236,7 +284,10 @@ fn offset_seconds(zone: Zone, seconds: i64) -> Result<i64, TableFailure> {
                 .ok_or_else(|| failure("an instant outside the range of the time zone rules"))?
                 .naive_utc();
             Ok(i64::from(
-                region.offset_from_utc_datetime(&utc).fix().local_minus_utc(),
+                region
+                    .offset_from_utc_datetime(&utc)
+                    .fix()
+                    .local_minus_utc(),
             ))
         }
     }
@@ -280,10 +331,13 @@ pub(crate) fn zoned_date_times(values: Vec<Option<(i64, &str)>>) -> ArrayRef {
     };
     let nulls = NullBuffer::from_iter(values.iter().map(Option::is_some));
     let instants = TimestampNanosecondArray::from_iter_values(
-        values.iter().map(|value| value.map_or(0, |(nanos, _)| nanos)),
+        values
+            .iter()
+            .map(|value| value.map_or(0, |(nanos, _)| nanos)),
     )
     .with_data_type(ColumnType::Instant.arrow_type());
-    let ids = StringArray::from_iter_values(values.iter().map(|value| value.map_or("", |(_, id)| id)));
+    let ids =
+        StringArray::from_iter_values(values.iter().map(|value| value.map_or("", |(_, id)| id)));
     Arc::new(StructArray::new(
         fields,
         vec![Arc::new(instants), Arc::new(ids)],
@@ -299,7 +353,9 @@ fn periods(values: Vec<Option<[i32; 3]>>) -> ArrayRef {
     let nulls = NullBuffer::from_iter(values.iter().map(Option::is_some));
     let part = |at: usize| -> ArrayRef {
         Arc::new(Int32Array::from_iter_values(
-            values.iter().map(|value| value.map_or(0, |parts| parts[at])),
+            values
+                .iter()
+                .map(|value| value.map_or(0, |parts| parts[at])),
         ))
     };
     Arc::new(StructArray::new(
@@ -391,13 +447,17 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
             Ok(local_times(nanos))
         }
         TimeFn::ParseDuration { quiet } => {
-            let nanos = parse_each(first, quiet, false, "duration", |text| {
-                match duration_nanos(text) {
+            let nanos = parse_each(
+                first,
+                quiet,
+                false,
+                "duration",
+                |text| match duration_nanos(text) {
                     None => Ok(None),
                     Some(Some(nanos)) => Ok(Some(nanos)),
                     Some(None) => Err(not_read(text, "parseDuration")),
-                }
-            })?;
+                },
+            )?;
             Ok(Arc::new(DurationNanosecondArray::from(nanos)))
         }
         TimeFn::ParsePeriod { quiet } => {
@@ -419,12 +479,17 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
             Ok(Arc::new(StringArray::from(ids)))
         }
         TimeFn::ParseZonedDateTime { quiet } => {
-            let values = parse_each(first, quiet, false, "zoned date time", |text| {
-                match zoned_of_text(text) {
-                    Ok(value) => Ok(Some(value)),
-                    Err(_) => Err(not_read(text, "parseZonedDateTime")),
-                }
-            })?;
+            let values =
+                parse_each(
+                    first,
+                    quiet,
+                    false,
+                    "zoned date time",
+                    |text| match zoned_of_text(text) {
+                        Ok(value) => Ok(Some(value)),
+                        Err(_) => Err(not_read(text, "parseZonedDateTime")),
+                    },
+                )?;
             Ok(zoned_date_times(values))
         }
         TimeFn::EpochDaysToLocalDate => {
@@ -463,7 +528,12 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 .iter()
                 .map(|field| field.as_primitive::<Int32Type>())
                 .collect();
-            let names = ["HourOfDay", "MinuteOfHour", "SecondOfMinute", "NanoOfSecond"];
+            let names = [
+                "HourOfDay",
+                "MinuteOfHour",
+                "SecondOfMinute",
+                "NanoOfSecond",
+            ];
             let ends = [23, 59, 59, 999_999_999];
             let nanos = (0..first.len())
                 .map(|row| {
@@ -528,8 +598,9 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
         TimeFn::ZonedToInstant => {
             let parts = first.as_struct();
             let instants = parts.column(0).as_primitive::<TimestampNanosecondType>();
-            let values = TimestampNanosecondArray::new(instants.values().clone(), parts.nulls().cloned())
-                .with_data_type(ColumnType::Instant.arrow_type());
+            let values =
+                TimestampNanosecondArray::new(instants.values().clone(), parts.nulls().cloned())
+                    .with_data_type(ColumnType::Instant.arrow_type());
             Ok(Arc::new(values))
         }
         TimeFn::LocalToInstant => {
@@ -549,12 +620,13 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                     let time = times.value(row);
                     let clock_seconds = time.div_euclid(1_000_000_000);
                     let fraction = time.rem_euclid(1_000_000_000);
-                    let (hour, minute, second) =
-                        (clock_seconds / 3600, clock_seconds / 60 % 60, clock_seconds % 60);
+                    let (hour, minute, second) = (
+                        clock_seconds / 3600,
+                        clock_seconds / 60 % 60,
+                        clock_seconds % 60,
+                    );
                     let seconds = match zone {
-                        Zone::Utc => {
-                            days_from_civil(year, month, day) * 86_400 + clock_seconds
-                        }
+                        Zone::Utc => days_from_civil(year, month, day) * 86_400 + clock_seconds,
                         Zone::Region(region) => {
                             zoned_seconds(&region, (year, month, day), (hour, minute, second))
                                 .ok_or_else(|| {
@@ -576,7 +648,262 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 values.with_data_type(ColumnType::Instant.arrow_type()),
             ))
         }
+        TimeFn::InstantAndDuration { subtract } => {
+            let stamps = first.as_primitive::<TimestampNanosecondType>();
+            let amounts = arguments[1].as_primitive::<DurationNanosecondType>();
+            super::eval::instants((0..stamps.len()).map(|row| {
+                if stamps.is_null(row) || amounts.is_null(row) {
+                    return Ok(None);
+                }
+                let amount = i128::from(amounts.value(row));
+                let amount = if subtract { -amount } else { amount };
+                super::eval::store_instant(i128::from(stamps.value(row)) + amount).map(Some)
+            }))
+        }
+        TimeFn::InstantAndPeriod { subtract } => {
+            let stamps = first.as_primitive::<TimestampNanosecondType>();
+            let amounts = period_values(arguments[1].as_ref());
+            super::eval::instants((0..stamps.len()).map(|row| {
+                let (false, Some([years, months, days])) = (stamps.is_null(row), amounts[row])
+                else {
+                    return Ok(None);
+                };
+                // `Period#addTo` and `#subtractFrom`: whole years, or else the total in
+                // months, then days; an `Instant` takes no unit longer than a day.
+                if months == 0 && years != 0 {
+                    return Err(unsupported_unit("Years"));
+                }
+                if i64::from(years) * 12 + i64::from(months) != 0 {
+                    return Err(unsupported_unit("Months"));
+                }
+                let days = i128::from(days) * i128::from(NANOS_PER_DAY);
+                let days = if subtract { -days } else { days };
+                super::eval::store_instant(i128::from(stamps.value(row)) + days).map(Some)
+            }))
+        }
+        TimeFn::LocalDateAndPeriod { subtract } => {
+            let dates = first.as_primitive::<Date32Type>();
+            let amounts = period_values(arguments[1].as_ref());
+            let values = (0..dates.len())
+                .map(|row| match (dates.is_null(row), amounts[row]) {
+                    (false, Some(period)) => {
+                        date_plus_period(i64::from(dates.value(row)), period, subtract).map(Some)
+                    }
+                    _ => Ok(None),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            local_dates(values)
+        }
+        TimeFn::DurationSum { subtract } => {
+            let left = first.as_primitive::<DurationNanosecondType>();
+            let right = arguments[1].as_primitive::<DurationNanosecondType>();
+            let values = (0..left.len())
+                .map(|row| {
+                    if left.is_null(row) || right.is_null(row) {
+                        return Ok(None);
+                    }
+                    let (a, b) = (left.value(row), right.value(row));
+                    let sum = if subtract {
+                        a.checked_sub(b)
+                    } else {
+                        a.checked_add(b)
+                    };
+                    sum.map(Some).ok_or_else(longer_than_a_long)
+                })
+                .collect::<Result<DurationNanosecondArray, _>>()?;
+            Ok(Arc::new(values))
+        }
+        TimeFn::PeriodSum { subtract } => {
+            let left = period_values(first);
+            let right = period_values(arguments[1].as_ref());
+            let values = left
+                .into_iter()
+                .zip(right)
+                .map(|pair| {
+                    let (Some(a), Some(b)) = pair else {
+                        return Ok(None);
+                    };
+                    let mut parts = [0; 3];
+                    for at in 0..3 {
+                        let part = if subtract {
+                            a[at].checked_sub(b[at])
+                        } else {
+                            a[at].checked_add(b[at])
+                        };
+                        parts[at] = part.ok_or_else(int_overflow)?;
+                    }
+                    Ok(Some(parts))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(periods(values))
+        }
+        TimeFn::DurationTimes | TimeFn::DurationDivided => {
+            let amounts = first.as_primitive::<DurationNanosecondType>();
+            let scalars = arguments[1].as_primitive::<Int64Type>();
+            let values = (0..amounts.len())
+                .map(|row| {
+                    if amounts.is_null(row) || scalars.is_null(row) {
+                        return Ok(None);
+                    }
+                    let (amount, scalar) = (amounts.value(row), scalars.value(row));
+                    let result = if function == TimeFn::DurationTimes {
+                        amount.checked_mul(scalar)
+                    } else if scalar == 0 {
+                        return Err(failure(
+                            "io.deephaven.time.DateTimeUtils$DateTimeOverflowException: \
+                             Operation failed due to overflow (java.lang.ArithmeticException: \
+                             Cannot divide by zero)",
+                        ));
+                    } else {
+                        amount.checked_div(scalar)
+                    };
+                    result.map(Some).ok_or_else(longer_than_a_long)
+                })
+                .collect::<Result<DurationNanosecondArray, _>>()?;
+            Ok(Arc::new(values))
+        }
+        TimeFn::DateField(_) | TimeFn::TimeField(_) => Ok(date_or_time_field(function, first)),
+        TimeFn::PeriodTimes => {
+            let amounts = period_values(first);
+            let scalars = arguments[1].as_primitive::<Int64Type>();
+            let values = amounts
+                .into_iter()
+                .enumerate()
+                .map(|(row, amount)| {
+                    let (Some(amount), false) = (amount, scalars.is_null(row)) else {
+                        return Ok(None);
+                    };
+                    let scalar = i32::try_from(scalars.value(row)).map_err(|_| int_overflow())?;
+                    let mut parts = [0; 3];
+                    for at in 0..3 {
+                        parts[at] = amount[at].checked_mul(scalar).ok_or_else(int_overflow)?;
+                    }
+                    Ok(Some(parts))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(periods(values))
+        }
     }
+}
+
+/// Behavior: `DateTimeUtils#year(LocalDate)` and its relatives, `LocalDate#getYear`,
+/// `#getMonthValue`, `#getDayOfMonth`, `#getDayOfYear` and `#getDayOfWeek`, with Monday 1;
+/// `yearOfCentury` is the year `%` 100, negative for a negative year. Of a `LocalTime`,
+/// `#toNanoOfDay` in each unit, rounded down.
+fn date_or_time_field(function: TimeFn, values: &dyn Array) -> ArrayRef {
+    use super::ZonedField as F;
+    let field = match function {
+        TimeFn::DateField(field) | TimeFn::TimeField(field) => field,
+        _ => unreachable!("a field of a date or a time of day"),
+    };
+    let cells: Vec<Option<i64>> = match function {
+        TimeFn::DateField(_) => values
+            .as_primitive::<Date32Type>()
+            .iter()
+            .map(|days| {
+                let days = i64::from(days?);
+                let (year, month, day) = crate::parse::instant::civil_from_days(days);
+                Some(match field {
+                    F::Year => year,
+                    F::YearOfCentury => year % 100,
+                    F::MonthOfYear => month,
+                    F::DayOfMonth => day,
+                    F::DayOfYear => days - days_from_civil(year, 1, 1) + 1,
+                    // The first day of 1970 was a Thursday.
+                    _ => (days + 3).rem_euclid(7) + 1,
+                })
+            })
+            .collect(),
+        _ => values
+            .as_primitive::<Time64NanosecondType>()
+            .iter()
+            .map(|nanos| {
+                let nanos = nanos?;
+                Some(match field {
+                    F::NanosOfDay => nanos,
+                    F::MillisOfDay => nanos / 1_000_000,
+                    F::SecondOfDay => nanos / 1_000_000_000,
+                    F::MinuteOfDay => nanos / 60_000_000_000,
+                    _ => nanos / 3_600_000_000_000,
+                })
+            })
+            .collect(),
+    };
+    if field.result_type() == ColumnType::Long {
+        Arc::new(arrow::array::Int64Array::from(cells))
+    } else {
+        Arc::new(Int32Array::from_iter(
+            cells.into_iter().map(|cell| cell.map(|value| value as i32)),
+        ))
+    }
+}
+
+/// The years, months and days of each cell of a `Period` column.
+fn period_values(column: &dyn Array) -> Vec<Option<[i32; 3]>> {
+    let parts = column.as_struct();
+    let field = |at: usize| parts.column(at).as_primitive::<Int32Type>();
+    let (years, months, days) = (field(0), field(1), field(2));
+    (0..parts.len())
+        .map(|row| {
+            (!parts.is_null(row)).then(|| [years.value(row), months.value(row), days.value(row)])
+        })
+        .collect()
+}
+
+fn overflow(cause: &str) -> TableFailure {
+    failure(format!(
+        "io.deephaven.time.DateTimeUtils$DateTimeOverflowException: Operation failed due to \
+         overflow ({cause})"
+    ))
+}
+
+fn unsupported_unit(unit: &str) -> TableFailure {
+    overflow(&format!(
+        "java.time.temporal.UnsupportedTemporalTypeException: Unsupported unit: {unit}"
+    ))
+}
+
+fn int_overflow() -> TableFailure {
+    overflow("java.lang.ArithmeticException: integer overflow")
+}
+
+/// Java holds a duration of more nanoseconds than a `long` does; this server does not.
+fn longer_than_a_long() -> TableFailure {
+    failure("a duration longer than a long of nanoseconds, which this server does not hold")
+}
+
+/// The epoch day of `days` plus, or minus, a period.
+///
+/// Behavior: `java.time.Period#addTo` and `#subtractFrom` of a `LocalDate`: whole years
+/// by `LocalDate#plusYears` when the period has no months, otherwise its total in months by
+/// `#plusMonths`, each of which moves the day back to the last of a shorter month; then
+/// the days by `#plusDays`. A year outside -999,999,999 to 999,999,999 throws.
+fn date_plus_period(days: i64, period: [i32; 3], subtract: bool) -> Result<i64, TableFailure> {
+    const YEARS: std::ops::RangeInclusive<i64> = -999_999_999..=999_999_999;
+    let sign = if subtract { -1 } else { 1 };
+    let [years, months, extra] = period.map(|part| i64::from(part) * sign);
+    let (mut year, mut month, mut day) = crate::parse::instant::civil_from_days(days);
+    // Whole years move the date as many twelves of months do.
+    let total = years * 12 + months;
+    if total != 0 {
+        let count = year * 12 + (month - 1) + total;
+        year = count.div_euclid(12);
+        month = count.rem_euclid(12) + 1;
+        if !YEARS.contains(&year) {
+            return Err(overflow(&format!(
+                "java.time.DateTimeException: Invalid value for Year (valid values -999999999 \
+                 - 999999999): {year}"
+            )));
+        }
+        day = day.min(crate::parse::instant::days_in_month(year, month));
+    }
+    let result = days_from_civil(year, month, day) + extra;
+    if i32::try_from(result).is_err() {
+        return Err(failure(
+            "a date outside the range of a 32-bit day count, which this server does not hold",
+        ));
+    }
+    Ok(result)
 }
 
 /// Whether a value of this type is one of these objects.

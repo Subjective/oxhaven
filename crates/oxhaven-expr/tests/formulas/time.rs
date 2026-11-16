@@ -416,12 +416,11 @@ fn a_date_and_time_have_their_fields_in_a_zone() {
     for (formula, construct) in [
         (
             "secondOfDay(TS, null, true)",
-            "function secondOfDay() with a time zone that is not a literal",
+            "null literal as an argument of secondOfDay()",
         ),
         ("dayOfYear(TS, 'NY')", "time literal 'NY'"),
         ("dayOfYear(TS, timeZone(`NY`))", "time zone 'NY'"),
         ("dayOfYear(TS)", "function dayOfYear()"),
-        ("'ET'", "function parseTimeZone()"),
     ] {
         assert_eq!(
             table.compile_error(formula),
@@ -429,4 +428,63 @@ fn a_date_and_time_have_their_fields_in_a_zone() {
             "{formula}"
         );
     }
+}
+
+/// Behavior: `DateTimeUtils#hourOfDay(Instant, ZoneId, boolean)` and its relatives, which
+/// are those of `toZonedDateTime(instant, timeZone)` and null when either is null;
+/// `#year(LocalDate)`, `#dayOfWeekValue(LocalDate)`, `#yearOfCentury(LocalDate)`
+/// (`year % 100`), `#minuteOfDay(LocalTime)` and `#nanosOfDay(LocalTime)`.
+#[test]
+fn a_field_is_read_in_the_zone_of_each_row_and_of_a_date_or_time() {
+    let table = TestTable::new([
+        (
+            "T",
+            // 2024-03-10T12:00Z, the day New York moved its clocks on.
+            instants([Some(1_710_072_000_000_000_000), None, Some(0), Some(0)]),
+        ),
+        (
+            "Name",
+            strings([Some("America/New_York"), Some("UTC"), None, Some("UTC")]),
+        ),
+    ]);
+    let int = |values: [Option<i32>; 4]| ints(values);
+    table.assert(
+        "hourOfDay(T, timeZone(Name), true)",
+        int([Some(8), None, None, Some(0)]),
+    );
+    table.assert(
+        "hourOfDay(T, timeZone(Name), false)",
+        int([Some(7), None, None, Some(0)]),
+    );
+    let zoned = "toZonedDateTime(T, timeZone(Name))";
+    table.assert(
+        &format!("hourOfDay({zoned}, true)"),
+        int([Some(8), None, None, Some(0)]),
+    );
+    table.assert(
+        &format!("year({zoned})"),
+        int([Some(2024), None, None, Some(1970)]),
+    );
+    let date = "toLocalDate(T, timeZone(Name))";
+    table.assert(
+        &format!("dayOfWeekValue({date})"),
+        int([Some(7), None, None, Some(4)]),
+    );
+    table.assert(
+        &format!("dayOfYear({date})"),
+        int([Some(70), None, None, Some(1)]),
+    );
+    table.assert(
+        "yearOfCentury(parseLocalDate(`-0005-01-01`))",
+        int([Some(-5); 4]),
+    );
+    let time = "toLocalTime(T, timeZone(Name))";
+    table.assert(
+        &format!("minuteOfDay({time})"),
+        int([Some(480), None, None, Some(0)]),
+    );
+    table.assert(
+        &format!("nanosOfDay({time})"),
+        longs([Some(8 * 3_600_000_000_000), None, None, Some(0)]),
+    );
 }

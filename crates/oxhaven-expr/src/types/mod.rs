@@ -908,9 +908,11 @@ impl Checker<'_> {
     /// The duration or period that `expr` is, when it is one.
     ///
     /// A time literal that is a duration or a period reaches the checker as the call Java
-    /// makes of it, `parseDuration("PT1m")` or `parsePeriod("P1d")`. No column holds
-    /// either type, so one is known here only where a formula computes with it: multiplied
-    /// or divided by a whole number, and added to or subtracted from an `Instant`.
+    /// makes of it, `parseDuration("PT1m")` or `parsePeriod("P1d")`. Such a literal, and
+    /// a product or quotient of one, is held here as a `long` of nanoseconds where a
+    /// formula adds it to or subtracts it from an `Instant`, or bins an instant by it;
+    /// everywhere else, and for a period of years or months, it is a `Duration` or
+    /// `Period` value, which `time_object_operator` computes with.
     ///
     /// Behavior: `DateTimeUtils#multiply(Duration, long)`, `#multiply(long, Duration)`,
     /// `#multiply(Period, int)`, `#multiply(int, Period)` and `#divide(Duration, long)`,
@@ -940,8 +942,10 @@ impl Checker<'_> {
                         nanos: typed(ColumnType::Long, Node::Literal(Literal::Long(nanos))),
                         period,
                     })),
-                    // Java adds the years and months of a period to an `Instant` with an
-                    // exception, and holds durations longer than a `long` of nanoseconds.
+                    // A period of years or months is a `Period` value, which an
+                    // `Instant` fails to take as Java does.
+                    Some(None) if period => Ok(None),
+                    // Java holds durations longer than a `long` of nanoseconds.
                     Some(None) => Err(unsupported(format!(
                         "{} '{text}', which is not a whole number of nanoseconds that a long holds",
                         class(period)
@@ -977,28 +981,7 @@ impl Checker<'_> {
                     )));
                 }
                 let scalar = self.check(scalar)?;
-                let parameter = if amount.period {
-                    ColumnType::Int
-                } else {
-                    ColumnType::Long
-                };
-                let narrow = matches!(
-                    scalar.column_type,
-                    ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int
-                );
-                let taken = narrow || (!amount.period && scalar.column_type == ColumnType::Long);
-                if !taken || (amount.period && *op == BinaryOp::Divide) {
-                    return Err(type_error(format!(
-                        "Cannot find method {method}(java.time.{}, {})",
-                        class(amount.period),
-                        java_name(&scalar.column_type)
-                    )));
-                }
-                let scalar = if scalar.column_type == parameter {
-                    scalar
-                } else {
-                    typed(parameter, Node::Widen(Box::new(scalar)))
-                };
+                let scalar = amount_scalar(amount.period, *op, scalar)?;
                 let kernel = if *op == BinaryOp::Multiply {
                     Kernel::DurationMultiply
                 } else {
@@ -1009,7 +992,7 @@ impl Checker<'_> {
                         ColumnType::Long,
                         Node::Call {
                             kernel,
-                            arguments: vec![amount.nanos, convert(scalar, &ColumnType::Long)],
+                            arguments: vec![amount.nanos, scalar],
                         },
                     ),
                     period: amount.period,
@@ -1023,15 +1006,18 @@ impl Checker<'_> {
     /// boolean)`, `dayOfYear(Instant, ZoneId)` and their relatives; `None` for another
     /// number of arguments.
     ///
-    /// A `ZoneId` is no column's type, so the zone is known here only where the formula
-    /// names it: a time literal (`'ET'`), or `timeZone` or `parseTimeZone` of a string
-    /// literal, which are `TimeZoneAliases#zoneId` of the name.
+    /// Where the formula names the zone, as `timeZone` or `parseTimeZone` of a string
+    /// literal (`TimeZoneAliases#zoneId` of the name), the zone is fixed; any other
+    /// `ZoneId` value is read in each row, and a null zone makes the field null.
     fn zoned(
         &mut self,
         function: &str,
         field: functions::ZonedField,
         arguments: &[Expr],
     ) -> Result<Option<Typed>, FormulaError> {
+        if let Some(result) = self.field_of_value(function, field, arguments)? {
+            return Ok(Some(result));
+        }
         let (instant, zone, flag) = match (arguments, field.of_day()) {
             ([instant, zone], false) => (instant, zone, None),
             ([instant, zone, flag], true) => (instant, zone, Some(flag)),
@@ -1047,13 +1033,30 @@ impl Checker<'_> {
             },
             _ => None,
         };
-        let Some(name) = name else {
-            return Err(unsupported(format!(
-                "function {function}() with a time zone that is not a literal"
-            )));
+        // The zone a formula names is fixed; any other is a `ZoneId` value of each row.
+        let (fixed, by_row) = match name {
+            Some(name) => (
+                Some(
+                    crate::parse::instant::zone(name)
+                        .ok_or_else(|| unsupported(format!("time zone '{name}'")))?,
+                ),
+                None,
+            ),
+            None if !is_null_literal(zone) => {
+                let zone = self.check(zone)?;
+                if zone.column_type != ColumnType::ZoneId {
+                    return Err(type_error(format!(
+                        "Cannot find method {function}() of these arguments"
+                    )));
+                }
+                (None, Some(zone))
+            }
+            None => {
+                return Err(unsupported(format!(
+                    "null literal as an argument of {function}()"
+                )))
+            }
         };
-        let zone = crate::parse::instant::zone(name)
-            .ok_or_else(|| unsupported(format!("time zone '{name}'")))?;
         if is_null_literal(instant) || flag.is_some_and(is_null_literal) {
             return Err(unsupported(format!(
                 "null literal as an argument of {function}()"
@@ -1067,6 +1070,14 @@ impl Checker<'_> {
             )));
         }
         let mut checked = vec![instant];
+        let kernel = match (fixed, by_row) {
+            (Some(zone), _) => Kernel::Zoned(field, zone),
+            (None, Some(zone)) => {
+                checked.push(zone);
+                Kernel::ZonedByColumn(field)
+            }
+            (None, None) => unreachable!("one of the two is set above"),
+        };
         if let Some(flag) = flag {
             let flag = self.check(flag)?;
             if flag.column_type != ColumnType::Boolean {
@@ -1079,7 +1090,72 @@ impl Checker<'_> {
         Ok(Some(typed(
             field.result_type(),
             Node::Call {
-                kernel: Kernel::Zoned(field, zone),
+                kernel,
+                arguments: checked,
+            },
+        )))
+    }
+
+    /// The same field of a `ZonedDateTime` (with the flag of a field of the day), a
+    /// `LocalDate` or a `LocalTime`; `None` for other arguments.
+    ///
+    /// Behavior: `DateTimeUtils#hourOfDay(ZonedDateTime, boolean)`, `#year(ZonedDateTime)`
+    /// and their relatives, null for null; `#year(LocalDate)`, `#monthOfYear(LocalDate)`,
+    /// `#dayOfMonth(LocalDate)`, `#dayOfYear(LocalDate)`, `#dayOfWeekValue(LocalDate)` and
+    /// `#yearOfCentury(LocalDate)`; `#hourOfDay(LocalTime)`, `#minuteOfDay(LocalTime)`,
+    /// `#secondOfDay(LocalTime)`, `#millisOfDay(LocalTime)` and `#nanosOfDay(LocalTime)`.
+    fn field_of_value(
+        &mut self,
+        function: &str,
+        field: functions::ZonedField,
+        arguments: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        use functions::ZonedField as F;
+        let of_day = field.of_day();
+        let (value, flag) = match (arguments, of_day) {
+            ([value], _) => (value, None),
+            ([value, flag], true) => (value, Some(flag)),
+            _ => return Ok(None),
+        };
+        if is_null_literal(value) || flag.is_some_and(is_null_literal) {
+            return Ok(None);
+        }
+        let value = self.check(value)?;
+        let kernel = match (&value.column_type, flag) {
+            (ColumnType::ZonedDateTime, Some(_)) => Kernel::ZonedByColumn(field),
+            (ColumnType::ZonedDateTime, None) if !of_day => Kernel::ZonedByColumn(field),
+            (ColumnType::LocalTime, None) if of_day => {
+                Kernel::JavaTime(java_time::TimeFn::TimeField(field))
+            }
+            (ColumnType::LocalDate, None)
+                if matches!(
+                    field,
+                    F::Year
+                        | F::YearOfCentury
+                        | F::MonthOfYear
+                        | F::DayOfMonth
+                        | F::DayOfYear
+                        | F::DayOfWeekValue
+                ) =>
+            {
+                Kernel::JavaTime(java_time::TimeFn::DateField(field))
+            }
+            _ => return Ok(None),
+        };
+        let mut checked = vec![value];
+        if let Some(flag) = flag {
+            let flag = self.check(flag)?;
+            if flag.column_type != ColumnType::Boolean {
+                return Err(type_error(format!(
+                    "Cannot find method {function}() of these arguments"
+                )));
+            }
+            checked.push(flag);
+        }
+        Ok(Some(typed(
+            field.result_type(),
+            Node::Call {
+                kernel,
                 arguments: checked,
             },
         )))
@@ -1154,6 +1230,9 @@ impl Checker<'_> {
             (None, Some(amount)) if sum => (Some(amount), left),
             (Some(amount), None) if sum && !is_null_literal(right) => {
                 let other = self.check(right)?;
+                if java_time::is_time_object(&other.column_type) {
+                    return Ok(None);
+                }
                 if other.column_type != ColumnType::String || op != BinaryOp::Add {
                     return Err(type_error(format!(
                         "Cannot find method {}(java.time.{}, {})",
@@ -1164,7 +1243,10 @@ impl Checker<'_> {
                 }
                 (None, left)
             }
-            _ => (None, left),
+            // A null beside a duration or period.
+            _ if is_null_literal(left) || is_null_literal(right) => (None, left),
+            // Any other operator, or two durations or periods: `time_object_operator`.
+            _ => return Ok(None),
         }) else {
             return Err(unsupported(
                 "a duration or period that is not added to or subtracted from an Instant",
@@ -1193,6 +1275,8 @@ impl Checker<'_> {
             Some(text) if text.column_type == ColumnType::String && op == BinaryOp::Add => Err(
                 unsupported(format!("concatenation of a String and a {class}")),
             ),
+            // A duration or period column beside it: `time_object_operator`.
+            Some(other) if java_time::is_time_object(&other.column_type) => Ok(None),
             Some(other) => Err(type_error(format!(
                 "Cannot find method {method}({}, java.time.{class})",
                 java_name(&other.column_type)
@@ -1617,11 +1701,12 @@ impl Checker<'_> {
         }
         // Behavior: `java.time.Instant#atZone(ZoneId)`, which throws for a null instant or
         // zone.
-        if let (ColumnType::Instant, "atZone", [zone]) =
-            (&receiver.column_type, method, arguments)
+        if let (ColumnType::Instant, "atZone", [zone]) = (&receiver.column_type, method, arguments)
         {
             if is_null_literal(zone) {
-                return Err(unsupported("null literal as an argument of Instant.atZone()"));
+                return Err(unsupported(
+                    "null literal as an argument of Instant.atZone()",
+                ));
             }
             let zone = self.check(zone)?;
             if zone.column_type != ColumnType::ZoneId {
@@ -1637,6 +1722,40 @@ impl Checker<'_> {
                     arguments: vec![receiver, zone],
                 },
             ));
+        }
+        // Behavior: `java.time.Duration#multipliedBy(long)`, which the default
+        // `ColumnExpressionValidator` lets no client call (dh-defaults.prop lists the methods
+        // of `Instant`, `LocalDate`, `LocalTime` and `ZonedDateTime`, not `Duration`). Seen
+        // on Java 42.9: "User expressions are not permitted to use method
+        // multipliedBy(long) on class java.time.Duration".
+        if let (ColumnType::Duration, "multipliedBy", [scalar]) =
+            (&receiver.column_type, method, arguments)
+        {
+            if !is_null_literal(scalar) {
+                let scalar = self.check(scalar)?;
+                if matches!(
+                    scalar.column_type,
+                    ColumnType::Byte
+                        | ColumnType::Short
+                        | ColumnType::Char
+                        | ColumnType::Int
+                        | ColumnType::Long
+                ) {
+                    if self.refused_to_clients.is_none() {
+                        self.refused_to_clients = Some(
+                            "User expressions are not permitted to use method \
+                             multipliedBy(long) on class java.time.Duration"
+                                .to_string(),
+                        );
+                    }
+                    let scalar = amount_scalar(false, BinaryOp::Multiply, scalar)?;
+                    return Ok(time_call(
+                        java_time::TimeFn::DurationTimes,
+                        vec![receiver, scalar],
+                        ColumnType::Duration,
+                    ));
+                }
+            }
         }
         if receiver.column_type != ColumnType::String {
             return Err(unsupported(format!(
@@ -2321,7 +2440,9 @@ fn operands_error(op: BinaryOp, left: &Typed, right: &Typed) -> FormulaError {
 /// Java 42.9: `'2020-01-02' == '2020-01-02'` is true, `'2020-01-02' < '2020-01-03'` is
 /// true, and `` `a` + '2020-01-02' `` is `a2020-01-02`. Here: concatenation of a date,
 /// a time of day and a zone, comparison of two dates, two times of day or two durations,
-/// and `==` and `!=` of two zones; every other operator with these values is refused.
+/// `==` and `!=` of two zones, the sums and differences of `time_arithmetic`, and a
+/// duration or period multiplied (a duration also divided) by a whole number; every other
+/// operator with these values is refused.
 fn time_object_operator(
     op: BinaryOp,
     family: Family,
@@ -2335,6 +2456,48 @@ fn time_object_operator(
         )
     };
     let same = left.column_type == right.column_type;
+    if let Family::Arithmetic(_) = family {
+        if let Some(found) = time_arithmetic(op, &left, &right)? {
+            let (function, result) = found;
+            return Ok(time_call(function, vec![left, right], result));
+        }
+        if matches!(op, BinaryOp::Multiply | BinaryOp::Divide) {
+            let (amount, scalar, swap) = if java_time::is_time_object(&left.column_type) {
+                (left, right, false)
+            } else {
+                (right, left, true)
+            };
+            let period = amount.column_type == ColumnType::Period;
+            // There is no `divide(long, Duration)`.
+            if (!swap || op == BinaryOp::Multiply)
+                && matches!(
+                    amount.column_type,
+                    ColumnType::Duration | ColumnType::Period
+                )
+                && Numeric::of(&scalar.column_type).is_some()
+            {
+                let scalar = amount_scalar(period, op, scalar)?;
+                let function = match (period, op) {
+                    (true, _) => java_time::TimeFn::PeriodTimes,
+                    (false, BinaryOp::Multiply) => java_time::TimeFn::DurationTimes,
+                    _ => java_time::TimeFn::DurationDivided,
+                };
+                let result = amount.column_type.clone();
+                return Ok(time_call(function, vec![amount, scalar], result));
+            }
+            let (left, right) = if swap {
+                (scalar, amount)
+            } else {
+                (amount, scalar)
+            };
+            return Err(unsupported(format!(
+                "operator {} on values of type {} and {}",
+                symbol(op),
+                java_name(&left.column_type),
+                java_name(&right.column_type)
+            )));
+        }
+    }
     match family {
         Family::Arithmetic(ArithmeticOp::Add)
             if (left.column_type == ColumnType::String && printable(&right.column_type))
@@ -2379,6 +2542,93 @@ fn time_object_operator(
             java_name(&right.column_type)
         ))),
     }
+}
+
+/// `left + right` or `left - right` of an instant, a date, a duration or a period and a
+/// duration or period: the function and its result type. `None` for any other pair.
+///
+/// Behavior: the `plus` and `minus` overloads of `DateTimeUtils` of `(Instant, Duration)`,
+/// `(Instant, Period)`, `(LocalDate, Period)`, `(Duration, Duration)` and
+/// `(Period, Period)`, which `QueryLanguageParser#visit(BinaryExpr)` reaches by the
+/// operator's name. None takes the duration or period first beside an instant or a date,
+/// and Java 42.9 failed `parseDuration(`PT1H`) + '2020-01-01T00:00:00Z'` to match.
+fn time_arithmetic(
+    op: BinaryOp,
+    left: &Typed,
+    right: &Typed,
+) -> Result<Option<(java_time::TimeFn, ColumnType)>, FormulaError> {
+    use java_time::TimeFn as F;
+    use ColumnType as T;
+    let subtract = match op {
+        BinaryOp::Add => false,
+        BinaryOp::Subtract => true,
+        _ => return Ok(None),
+    };
+    let found = match (&left.column_type, &right.column_type) {
+        (T::Instant, T::Duration) => (F::InstantAndDuration { subtract }, T::Instant),
+        (T::Instant, T::Period) => (F::InstantAndPeriod { subtract }, T::Instant),
+        (T::LocalDate, T::Period) => (F::LocalDateAndPeriod { subtract }, T::LocalDate),
+        (T::Duration, T::Duration) => (F::DurationSum { subtract }, T::Duration),
+        (T::Period, T::Period) => (F::PeriodSum { subtract }, T::Period),
+        (T::Duration | T::Period, T::Instant | T::LocalDate) => {
+            return Err(type_error(format!(
+                "Cannot find method {}({}, {})",
+                if subtract { "minus" } else { "plus" },
+                java_name(&left.column_type),
+                java_name(&right.column_type)
+            )))
+        }
+        _ => return Ok(None),
+    };
+    Ok(Some(found))
+}
+
+fn time_call(function: java_time::TimeFn, arguments: Vec<Typed>, result: ColumnType) -> Typed {
+    typed(
+        result,
+        Node::Call {
+            kernel: Kernel::JavaTime(function),
+            arguments,
+        },
+    )
+}
+
+/// The number a duration or period is multiplied or divided by, as the `long` the kernels
+/// read.
+///
+/// Behavior: `DateTimeUtils#multiply(Duration, long)`, `#multiply(Period, int)` and
+/// `#divide(Duration, long)`: Java widens a narrower integer to the parameter, the value
+/// that stands for null with it, and has no overload of a `float`, a `double`, a `long`
+/// beside a period, or a period divided.
+fn amount_scalar(period: bool, op: BinaryOp, scalar: Typed) -> Result<Typed, FormulaError> {
+    let class = if period { "Period" } else { "Duration" };
+    let method = if op == BinaryOp::Multiply {
+        "multiply"
+    } else {
+        "divide"
+    };
+    let parameter = if period {
+        ColumnType::Int
+    } else {
+        ColumnType::Long
+    };
+    let narrow = matches!(
+        scalar.column_type,
+        ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int
+    );
+    let taken = narrow || (!period && scalar.column_type == ColumnType::Long);
+    if !taken || (period && op == BinaryOp::Divide) {
+        return Err(type_error(format!(
+            "Cannot find method {method}(java.time.{class}, {})",
+            java_name(&scalar.column_type)
+        )));
+    }
+    let scalar = if scalar.column_type == parameter {
+        scalar
+    } else {
+        typed(parameter, Node::Widen(Box::new(scalar)))
+    };
+    Ok(convert(scalar, &ColumnType::Long))
 }
 
 fn concat(left: Typed, right: Typed) -> Typed {

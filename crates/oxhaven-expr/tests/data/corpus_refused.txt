@@ -1,46 +1,7 @@
-docs-python/conceptual.column-types.L222.5.1	java-accepts	function timeZone()
-docs-python/conceptual.column-types.L222.5.2	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L222.5.3	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L239.6.1	java-accepts	function timeZone()
-docs-python/conceptual.column-types.L239.6.2	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L239.6.3	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L239.6.4	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L278.6.1	java-accepts	function timeZone()
-docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
-docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	function epochDaysToLocalDate()
-docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	setup: function epochDaysToLocalDate()
-docs-python/conceptual.time-in-deephaven.L135.4.1	java-accepts	function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L135.4.2	java-accepts	setup: function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L135.4.3	java-accepts	setup: function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L135.4.4	java-accepts	setup: function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L135.4.5	java-accepts	setup: function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L162.4.0	java-accepts	function parseDuration()
-docs-python/conceptual.time-in-deephaven.L162.4.1	java-accepts	setup: function parseDuration()
-docs-python/conceptual.time-in-deephaven.L177.5.0	java-accepts	function parseDuration()
-docs-python/conceptual.time-in-deephaven.L181.5.0	java-accepts	function parseDuration()
-docs-python/conceptual.time-in-deephaven.L197.5.0	java-accepts	function parseTimeZone()
-docs-python/conceptual.time-in-deephaven.L197.5.1	java-accepts	setup: function parseTimeZone()
-docs-python/conceptual.time-in-deephaven.L203.5.0	java-accepts	time literal '2022-03-28'
-docs-python/conceptual.time-in-deephaven.L203.5.1	java-accepts	setup: time literal '2022-03-28'
-docs-python/conceptual.time-in-deephaven.L209.5.0	java-accepts	time literal '10:15:30.46'
-docs-python/conceptual.time-in-deephaven.L209.5.1	java-accepts	setup: time literal '10:15:30.46'
-docs-python/conceptual.time-in-deephaven.L226.5.0	java-accepts	function parseZonedDateTime()
-docs-python/conceptual.time-in-deephaven.L226.5.1	java-accepts	setup: function parseZonedDateTime()
-docs-python/conceptual.time-in-deephaven.L236.5.0	java-accepts	function parseDuration()
-docs-python/conceptual.time-in-deephaven.L236.5.1	java-accepts	setup: function parseDuration()
-docs-python/conceptual.time-in-deephaven.L243.5.0	java-accepts	function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L243.5.1	java-accepts	setup: function parsePeriod()
-docs-python/conceptual.time-in-deephaven.L256.4.1	java-fails	function parseDuration()
+docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	method call .getDayOfWeek() on a value of type LocalDate
 docs-python/conceptual.time-in-deephaven.L627.4.0	java-fails	time literal '2017-04-29T10:30:00 IST'
-docs-python/getting-started.crash-course.py-integrations.L16.4.0	java-fails	function parseDuration()
-docs-python/getting-started.crash-course.query-strings.L29.11.6	java-accepts	time literal '2020-01-01'
-docs-python/getting-started.crash-course.query-strings.L29.11.7	java-accepts	setup: time literal '2020-01-01'
-docs-python/getting-started.crash-course.query-strings.L29.11.8	java-accepts	setup: time literal '2020-01-01'
-docs-python/getting-started.crash-course.query-strings.L29.11.9	java-accepts	setup: time literal '2020-01-01'
-docs-python/getting-started.crash-course.query-strings.L29.11.10	java-accepts	setup: time literal '2020-01-01'
+docs-python/getting-started.crash-course.query-strings.L29.11.10	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.0	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.1	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.2	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
@@ -50,36 +11,15 @@ docs-python/getting-started.crash-course.query-strings.L77.14.5	java-accepts	set
 docs-python/getting-started.crash-course.query-strings.L77.14.6	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.7	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.8	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	function parseTimeZone()
-docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.query-strings.L249.23.1	java-accepts	function parseLocalDate()
-docs-python/getting-started.crash-course.query-strings.L249.23.2	java-accepts	setup: function parseLocalDate()
-docs-python/getting-started.crash-course.query-strings.L249.23.3	java-accepts	setup: function parseLocalDate()
-docs-python/getting-started.crash-course.query-strings.L249.23.4	java-accepts	setup: function parseLocalDate()
-docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	setup: function parseLocalDate()
-docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	method call .atZone() on a value of type Instant
-docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .atZone() on a value of type Instant
+docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	function dayOfWeek()
+docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: function dayOfWeek()
+docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: function dayOfWeek()
+docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: function dayOfWeek()
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	constructor new java.net.URL()
 docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
-docs-python/getting-started.crash-course.time-calendars.L121.4.1	java-accepts	function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.2	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.3	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.4	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.5	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.6	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.7	java-accepts	setup: function parseTimeZone()
-docs-python/getting-started.crash-course.time-calendars.L121.4.8	java-accepts	setup: function parseTimeZone()
 docs-python/getting-started.docker-install.L304.8.0	java-fails	static method call org.example.MathFns.square()
 docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	constructor new URL()
 docs-python/how-to-guides.casting.L122.9.0	java-fails	static method call MyClass.change_value()
-docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	function parseDuration()
-docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: function parseDuration()
-docs-python/how-to-guides.date-time-literals.L85.9.0	java-accepts	time literal '2025-04-01'
-docs-python/how-to-guides.date-time-literals.L106.9.0	java-accepts	time literal '14:30:00.12345'
-docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	function parseDuration()
-docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	function parsePeriod()
 docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: where
 docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	static method call org.codehaus.plexus.util.StringUtils.abbreviate()
 docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: where
@@ -88,23 +28,11 @@ docs-python/how-to-guides.python-classes.L45.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L66.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call MyClass.change_value()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.1	java-accepts	time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.2	java-accepts	setup: time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.3	java-accepts	setup: time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.4	java-accepts	setup: time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.5	java-accepts	setup: time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.6	java-accepts	setup: time literal '2000-06-30'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L75.16.0	java-fails	function parseDuration()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	function parseLocalDate()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	method call String.split()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L223.5.0	java-accepts	static method call LocalDate.of()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L241.5.0	java-accepts	function parseLocalDate()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L293.5.0	java-accepts	function parseLocalTime()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function today()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.0	java-accepts	function parseTimeZone()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.1	java-accepts	setup: function parseTimeZone()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.2	java-accepts	setup: function parseTimeZone()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	setup: function parseTimeZone()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	time literal 'WST'
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.3	java-accepts	static method call String.format()
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.4	java-accepts	setup: static method call String.format()
 docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	static method call LocalDate.of()
@@ -616,11 +544,6 @@ py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
 py-server/test_filters.L137.13.0	java-accepts	cast to java.lang.Object
 py-server/test_filters.L137.13.0-r2	java-accepts	setup: cast to java.lang.Object
 py-server/test_function_generated_table.L31.19.0	java-fails	static method call io.deephaven.base.clock.Clock.system()
-py-server/test_parquet.L466.19.0	java-accepts	static method call java.time.LocalDate.ofEpochDay()
-py-server/test_parquet.L466.19.1	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
-py-server/test_parquet.L466.19.2	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
-py-server/test_parquet.L466.19.3	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
-py-server/test_parquet.L520.19.0	java-accepts	static method call java.time.LocalTime.of()
 py-server/test_table.L1307.13.1	java-accepts	array creation new Object[]
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR

@@ -347,23 +347,85 @@ fn what_java_refuses_for_a_duration_or_period_is_refused() {
             table.compile_error(formula)
         );
     }
-    // Java makes a column of durations, and fails reading a period of a month or a year
-    // added to an `Instant`.
-    for formula in ["'PT1h' * 2", "'PT1h'", "'P1d'", "T + 'P1m'", "T + 'P1Y'"] {
-        assert!(
-            matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
-            "{formula}: {:?}",
-            table.compile_error(formula)
-        );
-    }
-    // Java fails when it reads the rows.
-    for formula in [
-        "T + 'PT1h' / X",
-        "T + 'P1d' * 2147483647",
-        "T + 'PT2562047H' * 2",
+    // Java fails when it reads the rows: an `Instant` takes no month or year.
+    for (formula, message) in [
+        ("T + 'PT1h' / X", "divide by zero"),
+        ("T + 'P1d' * 2147483647", ""),
+        ("T + 'PT2562047H' * 2", ""),
+        ("T + 'P1m'", "Unsupported unit: Months"),
+        ("T - 'P1Y'", "Unsupported unit: Years"),
     ] {
-        assert!(table.evaluate(formula).is_err(), "{formula}");
+        let Err(failure) = table.evaluate(formula) else {
+            panic!("{formula} did not fail");
+        };
+        assert!(failure.message.contains(message), "{formula}: {failure}");
     }
+}
+
+fn durations<const N: usize>(values: [Option<i64>; N]) -> Column {
+    (
+        ColumnType::Duration,
+        Arc::new(arrow::array::DurationNanosecondArray::from(values.to_vec())),
+    )
+}
+
+fn dates<const N: usize>(values: [Option<i32>; N]) -> Column {
+    (
+        ColumnType::LocalDate,
+        Arc::new(arrow::array::Date32Array::from(values.to_vec())),
+    )
+}
+
+/// Behavior: `DateTimeUtils#plus` and `#minus` of `(Duration, Duration)`, `(Period,
+/// Period)`, `(Instant, Duration)`, `(Instant, Period)` and `(LocalDate, Period)`, and
+/// `#multiply(Duration, long)` and `#multiply(Period, int)`, of values that are no
+/// literal. Seen on Java 42.9: `parseDuration(`PT1H`) * 2` is a duration of two hours,
+/// and the instant plus `parsePeriod(`P1D`) * I` moves by `I` days.
+#[test]
+fn durations_and_periods_are_values_of_their_own() {
+    let table = times();
+    let hour = 3_600_000_000_000_i64;
+    table.assert("'PT1h' * 2", durations([Some(2 * hour); 3]));
+    table.assert("2 * 'PT1h'", durations([Some(2 * hour); 3]));
+    table.assert("'PT1h' + 'PT1m'", durations([Some(hour + hour / 60); 3]));
+    // Java widens the null `int` to the `long` -2147483648.
+    let second = 1_000_000_000_i64;
+    table.assert(
+        "'PT1s' * N",
+        durations([Some(0), Some(-2_147_483_648 * second), Some(2 * second)]),
+    );
+    table.assert(
+        "parseDuration(`PT1h`) * L / 2",
+        durations([Some(0), None, Some(hour)]),
+    );
+    table.assert(
+        "T + parsePeriod(`P1D`) * N",
+        instants([
+            Some(1_710_052_200_000_000_000),
+            None,
+            Some(1_710_059_400_000_000_000 + 48 * hour),
+        ]),
+    );
+    table.assert(
+        "T - parseDuration(`PT1h`) * X",
+        instants([
+            Some(1_710_052_200_000_000_000),
+            Some(1_710_052_200_000_000_000),
+            Some(1_710_052_200_000_000_000),
+        ]),
+    );
+    let period = |years: i32, months: i32, days: i32| format!("{{{years}, {months}, {days}}}");
+    let actual = table.evaluate("'P1Y2M3D' * X - 'P1M'").expect("computes");
+    assert_eq!(actual.0, ColumnType::Period);
+    assert_eq!(
+        render(&actual.1),
+        [period(0, -1, 0), period(1, 1, 3), period(2, 3, 6)]
+    );
+    // The day moves back to the last of a shorter month; 19,753 is 2024-01-31.
+    let table = TestTable::new([("D", dates([Some(19_753), None, Some(19_753)]))]);
+    table.assert("D + 'P1m'", dates([Some(19_782), None, Some(19_782)]));
+    table.assert("D - 'P1m'", dates([Some(19_722), None, Some(19_722)]));
+    table.assert("D + 'P1y1d'", dates([Some(20_120), None, Some(20_120)]));
 }
 
 /// Behavior: `DateTimeUtils#now` and `io.deephaven.function.Random`. The values have

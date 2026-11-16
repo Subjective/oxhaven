@@ -215,7 +215,8 @@ pub(crate) fn local_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> 
         None => (text, None),
     };
     let fields: Vec<&str> = clock.split(':').collect();
-    let short = |field: &&str| (1..=2).contains(&field.len()) && field.bytes().all(|b| b.is_ascii_digit());
+    let short =
+        |field: &&str| (1..=2).contains(&field.len()) && field.bytes().all(|b| b.is_ascii_digit());
     if !(2..=3).contains(&fields.len()) || !fields.iter().all(short) {
         return None;
     }
@@ -235,7 +236,10 @@ pub(crate) fn local_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> 
     };
     let mut nanos = 0;
     for place in 0..9 {
-        let digit = fraction.as_bytes().get(place).map_or(0, |d| i64::from(d - b'0'));
+        let digit = fraction
+            .as_bytes()
+            .get(place)
+            .map_or(0, |d| i64::from(d - b'0'));
         nanos = nanos * 10 + digit;
     }
     if hour > 24 || minute > 59 || second > 59 {
@@ -251,9 +255,9 @@ pub(crate) fn local_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> 
             )))
         });
     }
-    Some(Ok(
-        ((hour * 60 + minute) * 60 + second) * NANOS_PER_SECOND as i64 + nanos,
-    ))
+    Some(Ok(((hour * 60 + minute) * 60 + second)
+        * NANOS_PER_SECOND as i64
+        + nanos))
 }
 
 /// The years, months and days of a period; `Some(None)` for one whose numbers no Java
@@ -648,7 +652,7 @@ fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
-fn days_in_month(year: i64, month: i64) -> i64 {
+pub(crate) fn days_in_month(year: i64, month: i64) -> i64 {
     match month {
         4 | 6 | 9 | 11 => 30,
         2 if is_leap_year(year) => 29,
