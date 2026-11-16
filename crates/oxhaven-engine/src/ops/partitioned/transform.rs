@@ -381,7 +381,14 @@ fn transform_locked(
     let definition = TableDefinition::new(definitions)
         .map_err(|duplicate| PartitionedError::IllegalArgument(duplicate.to_string()))?;
     let mut spec = TableSpec::new(definition, (*rows).clone(), sources);
-    if source.is_flat() {
+    // Behavior: io.deephaven.engine.table.impl.QueryTable#selectOrUpdate, where a result
+    // that is not refreshing is flat when its row set is, and a refreshing one when its
+    // parent is (#propagateFlatness)
+    let flat = match graph {
+        None => *rows == RowSet::flat(rows.size()),
+        Some(_) => source.is_flat(),
+    };
+    if flat {
         spec = spec.flat();
     }
 

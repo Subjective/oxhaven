@@ -350,7 +350,7 @@ fn check_compatible(expected: &TableDefinition, other: &TableDefinition) -> Resu
 /// last constituent when nothing before it can change.
 ///
 /// Behavior: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#computeSharedAttributes
-fn shared_attributes(tables: &[Arc<dyn Table>]) -> TableAttributes {
+pub(crate) fn shared_attributes(tables: &[Arc<dyn Table>]) -> TableAttributes {
     let mut attributes = TableAttributes::default();
     let Some((last, before)) = tables.split_last() else {
         return attributes;

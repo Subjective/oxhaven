@@ -7,7 +7,7 @@ use super::*;
 use crate::graph::SteppedUpdateGraph;
 use crate::ops::merge::merge;
 use crate::ops::select::drop_columns;
-use crate::ops::sort::{reverse, tail};
+use crate::ops::sort::{head, reverse, tail};
 use arrow::datatypes::Int32Type;
 use oxhaven_contracts::schema::TableClass;
 use oxhaven_testkit::{
@@ -188,6 +188,24 @@ fn a_static_partition_holds_refreshing_tables_only_with_a_dependency() {
     checks.iter().for_each(|check| check.assert_consistent());
     assert_eq!(merged.row_set().size(), 7 + 6);
     assert_eq!(transformed.table().row_set().size(), 3);
+
+    // Observed: the merge of a refreshing partitioned table whose constituents cannot
+    // change has the attributes they share, here the append-only of a `head` of a table
+    // that is not refreshing.
+    let first_rows: Transformer = Arc::new(|tables: &[Arc<dyn Table>]| {
+        Ok(Some(
+            head(&tables[0], 1).map_err(|error| failure(error.to_string()))?,
+        ))
+    });
+    let heads = partitioned
+        .transform(first_rows, std::slice::from_ref(&ticking))
+        .unwrap();
+    assert!(heads.table().is_refreshing());
+    let merged = heads.merge().unwrap();
+    assert!(merged.is_refreshing());
+    assert!(merged.attributes().append_only);
+    assert!(!merged.attributes().add_only);
+    assert_eq!(rows(&*merged), ["0|0.0", "1|1.5", "2|3.0"]);
 }
 
 #[test]
@@ -467,6 +485,11 @@ fn a_pair_of_static_partitions_and_the_keys_java_refuses() {
     assert_eq!(pairs.key_columns(), ["K"]);
     assert_eq!(keys(&pairs), ["0", "2"]);
     assert_eq!(rows(&*pairs.merge().unwrap()), ["0|9.0", "2|7.5"]);
+    // Observed: the underlying table is flat when all its rows are pairs, and not when
+    // a row of the first found no constituent.
+    assert!(!pairs.table().is_flat());
+    let with_itself = left.partitioned_transform(&left, first.clone(), &[]).unwrap();
+    assert!(with_itself.table().is_flat());
 
     // Observed: "Incompatible partitioned table input for partitioned transform; key
     // column sets don't contain the same names or the same number of columns: first has
