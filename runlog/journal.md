@@ -1116,3 +1116,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T17:06Z: task 7.4.8 came back complete in 73 minutes and 319k tokens (again past the 180k line); opened pull request 134. It uses protox, already in the lockfile as a build dependency, now also at run time in the Kafka crate; licence MIT or Apache-2.0. Owner items 23 to 25 in docs/KAFKA.md, and a shared one: DHError text without a cause differs from the reference.
 
 - 2026-11-16T17:09Z: pull request 134 failed the python-console jobs on a lint (a for loop over one element in a test that only compiles with the Python feature). The agent had run the linter without that feature. Fixed by me in one commit and checked with the same lint command CI uses. Briefs from now on name both lint commands.
+
+- 2026-11-16T17:18Z: merged pull request 134 (Kafka Protobuf) on seven green checks after the lint fix. Started the last two Kafka tasks, 7.4.6 and 7.5.3, as one agent with a firm hand-over point between them.
