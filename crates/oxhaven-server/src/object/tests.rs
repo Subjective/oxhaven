@@ -498,9 +498,8 @@ fn a_type_is_registered_under_a_name_java_would_take() {
     for name in ["var", "record", "non-sealed"] {
         assert_eq!(register(name), Ok(()));
     }
-    // a name is taken whatever its case; so is that of the type Java has built in and
-    // this server has not
-    for name in ["my.type", "MY.TYPE", "Figure"] {
+    // a name is taken whatever its case
+    for name in ["my.type", "MY.TYPE"] {
         assert_eq!(
             register(name),
             Err(format!(
@@ -518,13 +517,12 @@ fn a_type_is_registered_under_a_name_java_would_take() {
             "non-sealed"
         ]
     );
-    // the server's own registry has the partitioned table and the hierarchical table
-    // before anything else
+    // the server's own registry has the types Java has built in before anything else
     assert_eq!(
-        registry().names()[..2],
-        ["PartitionedTable", "HierarchicalTable"]
+        registry().names()[..3],
+        ["PartitionedTable", "HierarchicalTable", "Figure"]
     );
-    for name in ["partitionedtable", "hierarchicaltable"] {
+    for name in ["partitionedtable", "hierarchicaltable", "FIGURE"] {
         assert_eq!(
             registry().register(Arc::new(Named(name, true))),
             Err(format!(
