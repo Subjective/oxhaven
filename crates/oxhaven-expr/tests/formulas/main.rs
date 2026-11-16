@@ -11,6 +11,7 @@ mod comparison;
 mod corpus;
 mod external;
 mod formula;
+mod gaps;
 mod logic;
 mod objects;
 mod recorded;

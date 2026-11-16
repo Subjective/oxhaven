@@ -51,9 +51,9 @@ use crate::session::ticket_to_export_id;
 // Decoding, as a client does
 // ---------------------------------------------------------------------------------------
 
-type Cell = Option<String>;
+pub(crate) type Cell = Option<String>;
 
-fn cells(array: &ArrayRef) -> Vec<Cell> {
+pub(crate) fn cells(array: &ArrayRef) -> Vec<Cell> {
     // instants as their nanoseconds
     let array = match array.data_type() {
         DataType::Timestamp(_, _) => arrow::compute::cast(array, &DataType::Int64).unwrap(),
@@ -68,14 +68,14 @@ fn cells(array: &ArrayRef) -> Vec<Cell> {
         .collect()
 }
 
-fn schema_of(message: &FlightData) -> Option<Schema> {
+pub(crate) fn schema_of(message: &FlightData) -> Option<Schema> {
     let parsed = arrow::ipc::root_as_message(&message.data_header).ok()?;
     arrow::ipc::convert::try_fb_to_schema(parsed.header_as_schema()?).ok()
 }
 
 /// The columns of a record batch message. Barrage columns need not have the same length,
 /// so this is not a `RecordBatch`.
-fn columns_of(message: &FlightData, schema: &Schema) -> Vec<ArrayRef> {
+pub(crate) fn columns_of(message: &FlightData, schema: &Schema) -> Vec<ArrayRef> {
     let parsed = arrow::ipc::root_as_message(&message.data_header).unwrap();
     let batch = parsed.header_as_record_batch().expect("a record batch");
     let nodes = batch.nodes().unwrap();
@@ -153,7 +153,7 @@ struct Update {
     modified: Vec<Vec<Cell>>,
 }
 
-fn metadata_of(message: &FlightData) -> Option<Vec<u8>> {
+pub(crate) fn metadata_of(message: &FlightData) -> Option<Vec<u8>> {
     let wrapper = flatbuffers::root::<BarrageMessageWrapper>(&message.app_metadata).ok()?;
     assert_eq!(wrapper.magic(), MAGIC);
     assert_eq!(
@@ -805,14 +805,14 @@ fn is_viewport_request(request: &FlightData) -> bool {
 const QUIET: Duration = Duration::from_millis(600);
 
 /// A `DoExchange` call to a test server.
-struct Call {
+pub(crate) struct Call {
     requests: Option<mpsc::UnboundedSender<FlightData>>,
     responses: Streaming<FlightData>,
-    ended: Option<String>,
+    pub(crate) ended: Option<String>,
 }
 
 impl Call {
-    async fn open(server: &Server) -> Self {
+    pub(crate) async fn open(server: &Server) -> Self {
         let (requests, receiver) = mpsc::unbounded_channel::<FlightData>();
         let request = server.authorized(tokio_stream::wrappers::UnboundedReceiverStream::new(
             receiver,
@@ -830,12 +830,12 @@ impl Call {
         }
     }
 
-    fn send(&self, message: FlightData) {
+    pub(crate) fn send(&self, message: FlightData) {
         self.requests.as_ref().unwrap().send(message).unwrap();
     }
 
     /// What the server sends until it has been quiet for a while or ends the call.
-    async fn collect(&mut self) -> Vec<FlightData> {
+    pub(crate) async fn collect(&mut self) -> Vec<FlightData> {
         let mut messages = Vec::new();
         while self.ended.is_none() {
             match tokio::time::timeout(QUIET, self.responses.message()).await {
@@ -855,7 +855,7 @@ impl Call {
     }
 
     /// Closes the client's side.
-    async fn close(&mut self) -> Vec<FlightData> {
+    pub(crate) async fn close(&mut self) -> Vec<FlightData> {
         self.requests = None;
         self.collect().await
     }
@@ -1263,7 +1263,11 @@ fn signed(bytes: &[u8]) -> Vec<i8> {
     bytes.iter().map(|byte| *byte as i8).collect()
 }
 
-fn wrapped(msg_type: BarrageMessageType, payload: Option<&[u8]>, magic: u32) -> FlightData {
+pub(crate) fn wrapped(
+    msg_type: BarrageMessageType,
+    payload: Option<&[u8]>,
+    magic: u32,
+) -> FlightData {
     let mut builder = FlatBufferBuilder::new();
     let msg_payload = payload.map(|payload| builder.create_vector(&signed(payload)));
     let wrapper = BarrageMessageWrapper::create(
@@ -1281,7 +1285,7 @@ fn wrapped(msg_type: BarrageMessageType, payload: Option<&[u8]>, magic: u32) -> 
     }
 }
 
-fn subscription(ticket: Option<&[u8]>, viewport: Option<&RowSet>) -> FlightData {
+pub(crate) fn subscription(ticket: Option<&[u8]>, viewport: Option<&RowSet>) -> FlightData {
     let mut builder = FlatBufferBuilder::new();
     let ticket = ticket.map(|ticket| builder.create_vector(&signed(ticket)));
     let viewport = viewport.map(|rows| builder.create_vector(&signed(&encode_row_set(rows))));
@@ -1301,7 +1305,7 @@ fn subscription(ticket: Option<&[u8]>, viewport: Option<&RowSet>) -> FlightData 
     )
 }
 
-fn snapshot_request(ticket: &[u8]) -> FlightData {
+pub(crate) fn snapshot_request(ticket: &[u8]) -> FlightData {
     let mut builder = FlatBufferBuilder::new();
     let ticket = Some(builder.create_vector(&signed(ticket)));
     let request = BarrageSnapshotRequest::create(

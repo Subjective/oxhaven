@@ -6,6 +6,8 @@
 //! | [`in_memory_table`], [`uploaded_table`], [`empty_table`] | Static tables |
 //! | [`append_only_input_table`], [`keyed_input_table`], [`blink_input_table`] | Tables written through `Table::input_table` |
 //! | [`time_table`] | A row per period of an injected [`TimeSource`] |
+//! | [`ring_table`] | The rows added to a table last |
+//! | [`generated_from_sources`], [`generated_on_interval`] | The rows a function returns, made anew when a table changes or an interval has passed |
 //! | [`attribute_map`] | The attributes of a table, by the names Java gives them |
 //!
 //! # How to write an operator
@@ -80,9 +82,11 @@
 //! - Two or more refreshing parents need [`QueryTable::derive_merged`], never two results.
 
 mod copied;
+mod generated;
 mod in_memory;
 mod input;
 mod query_table;
+mod ring;
 mod storage;
 mod time;
 
@@ -95,9 +99,11 @@ pub use copied::{attribute_map, sortable_columns, AttributeValue};
 pub(crate) use copied::{
     copy_of, java_hash_order, mark, marks, memoized, CopyType, Marks, IDENTITY_REDIRECTION,
 };
+pub use generated::{generated_from_sources, generated_on_interval, TableGenerator};
 pub use in_memory::{empty_table, in_memory_table, uploaded_table};
 pub use input::{append_only_input_table, blink_input_table, keyed_input_table};
 pub use query_table::{MergedOperator, QueryTable, RootSource, TableSpec, UnaryOperator};
+pub use ring::ring_table;
 pub(crate) use storage::{forget_reads_through, register_reads_through, shared_reads_through};
 pub use storage::{holds_values, reads_through};
 pub use time::{time_table, TimeSource, TimeTableOptions, WallClock};

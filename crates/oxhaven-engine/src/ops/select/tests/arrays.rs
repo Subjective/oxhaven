@@ -219,6 +219,87 @@ fn a_shifted_column_of_a_static_select_that_gets_new_row_keys_is_unported() {
     let _ = select(&keyed(&[3, 7, 9]), &["P = A_[i - 1]"], &Compiler);
 }
 
+/// Whether `select` of `columns` on a table with row keys 3, 7 and 9 is refused as that.
+fn renumbered_select_is_unported(columns: &[&str]) -> bool {
+    let columns: Vec<String> = columns.iter().map(|text| text.to_string()).collect();
+    let outcome = std::panic::catch_unwind(move || {
+        let _ = select(&keyed(&[3, 7, 9]), &columns, &Compiler);
+    });
+    match outcome {
+        Ok(()) => false,
+        Err(panic) => {
+            let message = panic
+                .downcast_ref::<String>()
+                .cloned()
+                .unwrap_or_else(|| "a panic that is not text".to_string());
+            assert!(
+                message.contains("AnalyzerContext#getPublishedColumnSources"),
+                "{message}"
+            );
+            true
+        }
+    }
+}
+
+/// The columns that Java computes with new row keys can be shifted: the wrong values
+/// begin with a read of the parent. The values are those of Java 42.9 for
+/// `empty_table(6).update(["X = i * 10", "U = i"]).where("X != 20")`, whose `X` is the `A`
+/// here times ten.
+#[test]
+fn a_static_select_shifts_the_columns_it_has_computed_with_new_row_keys() {
+    let parent = keyed(&[3, 7, 9]);
+    assert_eq!(values(&*parent, "A"), ["10", "20", "30"]);
+
+    let result = select(&parent, &["W = A + 1", "Y = W_[i - 1]"], &Compiler).unwrap();
+    assert_eq!(names(&*result), ["W", "Y"]);
+    assert_eq!(values(&*result, "W"), ["11", "21", "31"]);
+    assert_eq!(values(&*result, "Y"), ["null", "11", "21"]);
+    assert_eq!(keys(&*result), [0, 1, 2]);
+
+    let columns = [
+        "W = A + 1",
+        "Y = W_[i - 1] + W_[i + 1]",
+        "Z = Y_[i + 1]",
+        "I = W + i",
+        "A = W * 2",
+        "B = A + 1",
+        "S = sum(W_) + sum(B_)",
+        "W = W_[i - 2]",
+    ];
+    let result = select(&parent, &columns, &Compiler).unwrap();
+    assert_eq!(names(&*result), ["W", "Y", "Z", "I", "A", "B", "S"]);
+    assert_eq!(values(&*result, "S"), ["192"; 3]);
+    assert_eq!(values(&*result, "Y"), ["null", "42", "null"]);
+    assert_eq!(values(&*result, "Z"), ["42", "null", "null"]);
+    assert_eq!(values(&*result, "I"), ["11", "22", "33"]);
+    assert_eq!(values(&*result, "A"), ["22", "42", "62"]);
+    assert_eq!(values(&*result, "B"), ["23", "43", "63"]);
+    assert_eq!(values(&*result, "W"), ["null", "null", "11"]);
+    assert_eq!(keys(&*result), [0, 1, 2]);
+
+    for (columns, refused) in [
+        (&["W = A + 1", "Y = W_[i - 1]"][..], false),
+        (&["A = A + 1", "Y = A_[i - 1]"], false),
+        (&["W = A + 1", "Y = W_[i - 1] + ii"], false),
+        // A column of the parent, read with the new row keys in Java.
+        (&["W = A + 1", "Y = A_[i - 1]"], true),
+        (&["W = A + 1", "Y = W_[i - 1] + A"], true),
+        (&["W = A + 1", "Y = W_[i - 1]", "A"], true),
+        (&["W = A + 1", "Y = W_[i - 1]", "Z = A * 2"], true),
+        (&["W = A + 1", "Y = W_[i - 1]", "Z = A_[i - 1]"], true),
+        (&["W = A + 1", "Y = W_[i - 1]", "Z = sum(A_)"], true),
+        // The new row key in Java.
+        (&["W = A + 1", "Y = W_[i - 1] + k"], true),
+        (&["W = A + 1", "Y = W_[i - 1]", "Z = k"], true),
+    ] {
+        assert_eq!(
+            renumbered_select_is_unported(columns),
+            refused,
+            "{columns:?}"
+        );
+    }
+}
+
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns"

@@ -188,6 +188,15 @@ pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
         "io.deephaven.vector.LongVector" => "list<int64>",
         "io.deephaven.vector.FloatVector" => "list<float32>",
         "io.deephaven.vector.DoubleVector" => "list<float64>",
+        // The arrays an operator on a vector or array returns, and a cast names.
+        "boolean[]" => "list<bool>",
+        "byte[]" => "list<int8>",
+        "short[]" => "list<int16>",
+        "char[]" => "list<uint16>",
+        "int[]" => "list<int32>",
+        "long[]" => "list<int64>",
+        "float[]" => "list<float32>",
+        "double[]" => "list<float64>",
         _ => return None,
     })
 }
@@ -383,7 +392,12 @@ fn compare(table: &TestTable, case: &Value) -> Outcome {
             "Java returns {java_type}; Oxhaven returns {column_type:?}"
         ));
     }
-    if super::tagged::same_values(formula, &expected.1, &values) {
+    // The clock and the random numbers have no value to compare, as in the oracle's
+    // harness (`oracle/harness/formulas/tags.py`, `nondeterministic`).
+    let changes = ["now(", "nowSystem(", "random"]
+        .iter()
+        .any(|call| formula.contains(call));
+    if changes || super::tagged::same_values(formula, &expected.1, &values) {
         Outcome::Agrees
     } else {
         let (actual, expected) = (render(&values), render(&expected.1));

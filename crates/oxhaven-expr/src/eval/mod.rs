@@ -5,6 +5,7 @@ mod compare;
 pub(crate) mod numeric;
 mod text;
 
+use crate::functions::Kernel;
 use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
 use arrow::array::{
     new_null_array, Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int32Array,
@@ -197,6 +198,94 @@ impl Formula for CompiledFormula {
             },
         )
     }
+}
+
+/// Applies `body` to the elements of `left` and `right`: see [`Node::Elementwise`].
+///
+/// Behavior: `QueryLanguageFunctionUtils#plusArray` and its relatives. A value beside an
+/// array is paired with each element. Two arrays must have the same length ("Attempt to
+/// ... two arrays ... of different length"), and an array that is null fails where Java
+/// reads its length.
+fn elementwise(
+    body: &Typed,
+    left: &Typed,
+    right: &Typed,
+    batch: &Batch,
+    result: &ColumnType,
+) -> Result<ArrayRef, TableFailure> {
+    let sides = [
+        (left, evaluate(left, batch)?),
+        (right, evaluate(right, batch)?),
+    ];
+    // The number of elements in each row, from the first side that is a list.
+    let mut lengths: Option<Vec<usize>> = None;
+    for (side, values) in &sides {
+        if side.column_type.list_element().is_none() {
+            continue;
+        }
+        let list = values.as_list::<i32>();
+        if list.null_count() > 0 {
+            return Err(failure(
+                "java.lang.NullPointerException: an operator was given a vector or array that \
+                 is null",
+            ));
+        }
+        let own: Vec<usize> = list
+            .offsets()
+            .windows(2)
+            .map(|pair| (pair[1] - pair[0]) as usize)
+            .collect();
+        match &lengths {
+            None => lengths = Some(own),
+            Some(first) => {
+                if let Some((a, b)) = first.iter().zip(&own).find(|(a, b)| a != b) {
+                    return Err(failure(format!(
+                        "Attempt to apply an operator to two arrays of different length \
+                         (a.length={a}, b.length={b})"
+                    )));
+                }
+            }
+        }
+    }
+    let lengths = lengths.expect("the type checker found a list on one side");
+    let total: usize = lengths.iter().sum();
+    arrays::too_many_elements(total, 1)?;
+    let columns = sides
+        .iter()
+        .map(|(side, values)| {
+            if side.column_type.list_element().is_some() {
+                let list = values.as_list::<i32>();
+                let first = list.value_offsets()[0] as usize;
+                Ok(list.values().slice(first, total))
+            } else {
+                let rows = lengths
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(row, length)| std::iter::repeat_n(row as u32, *length));
+                let rows = arrow::array::UInt32Array::from_iter_values(rows);
+                arrow::compute::take(values.as_ref(), &rows, None).map_err(arrow_failure)
+            }
+        })
+        .collect::<Result<Vec<_>, TableFailure>>()?;
+    let elements = evaluate(
+        body,
+        &Batch {
+            columns,
+            positions: None,
+            keys: None,
+            arrays: Vec::new(),
+            rows: total,
+        },
+    )?;
+    let DataType::List(field) = result.arrow_type() else {
+        unreachable!("the type checker gave the operator an array type")
+    };
+    Ok(Arc::new(ListArray::new(
+        field,
+        arrow::buffer::OffsetBuffer::from_lengths(lengths),
+        elements,
+        None,
+    )))
 }
 
 /// Makes null every cell that holds the value Java reserves for null in the column's type.
@@ -416,6 +505,20 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             let right = evaluate(right, batch)?;
             text::concat(left.as_ref(), right.as_ref()).map(erase)
         }
+        Node::Call {
+            kernel: Kernel::Now,
+            ..
+        } => Ok(crate::functions::volatile::now(batch.rows)),
+        Node::Call {
+            kernel: Kernel::Random(function),
+            arguments,
+        } => {
+            let arguments = arguments
+                .iter()
+                .map(|argument| evaluate(argument, batch).map(|values| with_null_values(&values)))
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::functions::volatile::random(*function, &arguments, batch.rows)
+        }
         Node::Call { kernel, arguments } => {
             let arguments = arguments
                 .iter()
@@ -465,6 +568,9 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
         Node::NewString(bytes) => {
             let bytes = evaluate(bytes, batch)?;
             text::new_string(bytes.as_ref()).map(erase)
+        }
+        Node::Elementwise { body, left, right } => {
+            elementwise(body, left, right, batch, &expr.column_type)
         }
         // `io.deephaven.function.Basic#isNull`.
         Node::IsNull(operand) => {

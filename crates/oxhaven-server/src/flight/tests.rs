@@ -1447,3 +1447,88 @@ mod locking {
         }
     }
 }
+
+/// The web client uploads a table as an `OpenDoPut` call with the first message and a
+/// `NextDoPut` call for each later one, the last of which ends the client's side.
+#[tokio::test]
+async fn a_browser_upload_is_the_upload_of_its_messages_in_order() {
+    use oxhaven_proto::browser_flight::browser_flight_service_client::BrowserFlightServiceClient;
+
+    let server = Server::start().await;
+    let case = "put_three_batches";
+    let messages = fixture_messages(&format!("{case}.put"));
+    let batches = messages.len() - 1;
+    let id = export_of(&fixture_info(case));
+    let java_schema = fixture_schema(case);
+    let client = || BrowserFlightServiceClient::new(server.channel.clone());
+    // the export that names the stream
+    let stream = 900;
+    let call = |message: FlightData, sequence: usize, half_close: bool| {
+        let mut request = server.authorized(message);
+        let metadata = request.metadata_mut();
+        metadata.insert(
+            "x-deephaven-stream-ticket",
+            stream.to_string().parse().unwrap(),
+        );
+        metadata.insert(
+            "x-deephaven-stream-sequence",
+            sequence.to_string().parse().unwrap(),
+        );
+        if half_close {
+            metadata.insert("x-deephaven-stream-halfclose", "1".parse().unwrap());
+        }
+        request
+    };
+
+    let mut messages = messages.into_iter().enumerate();
+    let (_, first) = messages.next().unwrap();
+    let mut results = client()
+        .open_do_put(call(first, 0, false))
+        .await
+        .unwrap()
+        .into_inner();
+    // the later messages out of order: the stream waits for the one that is next
+    let mut later: Vec<(usize, FlightData)> = messages.collect();
+    later.swap(0, 1);
+    for (sequence, message) in later {
+        client()
+            .next_do_put(call(message, sequence, false))
+            .await
+            .unwrap();
+    }
+    client()
+        .next_do_put(call(FlightData::default(), batches + 1, true))
+        .await
+        .unwrap();
+    let mut acknowledged = 0;
+    while let Some(result) = results.message().await.unwrap() {
+        assert!(result.app_metadata.is_empty());
+        acknowledged += 1;
+    }
+    assert_eq!(acknowledged, batches);
+    assert_eq!(server.get_schema(id).await.unwrap(), java_schema);
+    let sent = server.do_get(id).await.unwrap();
+    assert_do_get_matches(case, &sent, &java_schema);
+
+    // a call without the headers of a stream, and the streams that are not ported
+    let status = client()
+        .open_do_put(server.authorized(FlightData::default()))
+        .await
+        .unwrap_err();
+    assert_eq!(status.code(), tonic::Code::InvalidArgument);
+    assert_eq!(
+        status.message(),
+        "no x-deephaven-stream headers, cannot handle open request"
+    );
+    let status = client()
+        .open_do_exchange(call(FlightData::default(), 0, false))
+        .await
+        .unwrap_err();
+    assert_eq!(status.code(), tonic::Code::Unimplemented);
+    assert!(
+        status.message().starts_with(
+            "not ported: io.deephaven.server.arrow.BrowserFlightServiceGrpcBinding#bindService"
+        ),
+        "{status:?}"
+    );
+}

@@ -151,7 +151,10 @@ In a virtual environment the interpreter starts as that environment's `python` w
 reads `pyvenv.cfg`, takes the standard library from the base installation and the packages
 from the environment, and with `include-system-site-packages = false`, the default, does not
 see the base installation's packages. The `deephaven` package is always the server's own
-(the embedded importer comes first), whatever the environment has installed.
+(the embedded importer comes first), whatever the environment has installed. A module of
+`deephaven` that the server does not have and a distribution of the environment does, as the
+plugins `deephaven.plot.express` and `deephaven.ui` install theirs, is taken from the
+environment.
 
 **The environment must be one of the linked Python's minor version.** Packages with native
 code are built for one minor version, and an environment of another keeps them in a
@@ -469,9 +472,13 @@ cycle.
 | | Java | Here |
 | --- | --- | --- |
 | `input_table` with `init_table` | the factory fills the table | made empty by the table service's `CreateInputTable`, then the rows are the first change, before the table is handed out |
-| A keyed input table with a `float` or `double` key column | made | refused: `KeyedArrayBackedInputTable#make` is not ported for such a key |
 | A value that is not a string for a string column of a `DynamicTableWriter` | stored unchecked, reads as its `toString` | an `int` or `bool` is written as that text; anything else is refused by the name of the Java method |
-| `ring_table`, `function_generated_table`, `TableReplayer` | exist | refused by the name of the Java method: the engine has none of the three |
+| `TableReplayer` | exists | refused by the name of the Java method: the engine has none |
+| The text of a `ring_table` error after `failed to create a ring table.` | the Java exception and its stack | the Java exception's class and message |
+| A function generated table whose function returns a table without one of the columns | the column keeps the values of the generation before, and null in new rows | the table fails, by the name `FunctionGeneratedTableFactory#copyTable` |
+| A function generated table whose function returns another reference type for a column (`String`, then `BigDecimal`) | the values are stored in the column, which keeps its declared type | the table fails, by the name `FunctionGeneratedTableFactory#copyTable` |
+| A function generated table that has failed | cannot be fetched; operations on it fail | serves the rows it had; operations on it fail |
+| `function_generated_table` with source tables, called on a thread the command then joins | the command never returns: the thread waits for the lock the command holds | the table is made: the thread takes the shared lock beside the command's |
 | Callbacks of the asynchronous forms | called on a thread of Java's common pool, in no defined order | called on the writer thread, in the order of the calls |
 
 ## Listeners, locks, liveness scopes and execution contexts

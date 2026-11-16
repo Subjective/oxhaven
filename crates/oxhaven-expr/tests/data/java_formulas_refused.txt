@@ -4,7 +4,6 @@ java-fails	update	(long) T	cast of Instant to long
 java-accepts	update	(Integer) I	cast to Integer
 java-accepts	update	(Object) I	cast to Object
 java-accepts	update	(Double) D	cast to Double
-java-rejects	update	(int[]) I	cast to int[]
 java-fails	update	(char) S	cast of String to char
 java-accepts	update	BN ? null : null	null in both branches of ?:
 java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
@@ -49,16 +48,14 @@ java-accepts	update	'2023-11-14T22:13:20. UTC'	time literal '2023-11-14T22:13:20
 java-accepts	update	'2023-11-14t22:13:20 UTC'	time literal '2023-11-14t22:13:20 UTC'
 java-rejects	update	'2023-11-14T22:13:20 utc'	time literal '2023-11-14T22:13:20 utc'
 java-accepts	update	'1700000000'	time literal '1700000000'
-java-accepts	update	'PT1H'	time literal 'PT1H'
-java-accepts	update	'P1D'	time literal 'P1D'
+java-accepts	update	'PT1H'	function parseDuration()
+java-accepts	update	'P1D'	function parsePeriod()
 java-accepts	update	'12:30'	time literal '12:30'
 java-accepts	update	'UTC'	time literal 'UTC'
 java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
 java-accepts	update	`'PT1H'`	time literal inside a string literal
 java-rejects	update	`'x y'`	time literal inside a string literal
 java-rejects	update	'\'' + SN + 'a'	time literal ' + SN + '
-java-accepts	update	T + 'PT1H'	time literal 'PT1H'
-java-accepts	update	T - 'PT1H'	time literal 'PT1H'
 java-accepts	update	SN.startsWith(`a`, 1)	method call String.startsWith() with 2 arguments
 java-accepts	update	SN.indexOf(C)	method call String.indexOf() with an argument of type char
 java-accepts	update	SN.indexOf(I)	method call String.indexOf() with an argument of type int

@@ -48,3 +48,4 @@ uuid.workspace = true
 
 [dev-dependencies]
 oxhaven-testkit = { path = "../oxhaven-testkit" }
+tonic-prost.workspace = true

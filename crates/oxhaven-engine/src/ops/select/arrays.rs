@@ -44,7 +44,9 @@ use crate::table::{
 };
 use crate::update::ModifiedColumnTransformer;
 use arrow::array::{new_null_array, ArrayRef};
-use oxhaven_contracts::expr::{ColumnAssignment, Expr, Formula, FormulaCompiler, FormulaError};
+use oxhaven_contracts::expr::{
+    ColumnAssignment, Expr, Formula, FormulaCompiler, FormulaError, RowVariable,
+};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -697,14 +699,78 @@ fn run<S: AsRef<str>>(
     }
 }
 
+/// Whether `columns`, the shifted column of a static `select` and the columns after it, read
+/// nothing of the parent: no column but those that the formulas of `before` and of
+/// `columns` themselves define, and no row key.
+///
+/// Java computes the columns before the shifted one into storage with new row keys, and
+/// then reads the parent's columns by those keys as well. Seen on Java 42.9 with
+/// `t = empty_table(6).update(["X = i * 10", "U = i"]).where("X != 20")`:
+/// `t.select(["W = X + 1", "Y = W_[i-1]", "Z = W * 2"])` is right, and so are a later
+/// column that reads `i`, one that shifts `W` or `Y` again, and one that redefines `X`
+/// before it is read; `Y = W_[i-1] + X`, a later `Z = X * 2`, `Z = X_[i-1]` and
+/// `sum(X_)` have the values of other rows, and `k` is the new row key.
+fn reads_nothing_of_the_parent(
+    parent: &TableDefinition,
+    before: &[&str],
+    columns: &[&str],
+    compiler: &dyn FormulaCompiler,
+) -> Result<bool, SelectError> {
+    let parse = |text: &str| {
+        compiler
+            .parse_assignment(text)
+            .map_err(|error| SelectError::Formula {
+                column: text.trim().to_string(),
+                error,
+            })
+    };
+    let mut defined = Vec::with_capacity(before.len() + columns.len());
+    for text in before {
+        defined.push(parse(text)?.name);
+    }
+    for text in columns {
+        let assignment = parse(text)?;
+        // `W_` is a name like any other until it is compiled: the whole of the column `W`,
+        // unless the table has a column of that name.
+        let is_defined = |name: &String| {
+            defined.contains(name)
+                || name.strip_suffix('_').is_some_and(|column| {
+                    defined.iter().any(|defined| defined == column)
+                        && parent.index_of(name).is_none()
+                })
+        };
+        let mut nothing = true;
+        super::plan::visit(&assignment.expr, &mut |expr| match expr {
+            Expr::Column(name)
+            | Expr::ColumnVector(name)
+            | Expr::ColumnArrayAccess { column: name, .. } => nothing &= is_defined(name),
+            Expr::RowVariable(RowVariable::K) => nothing = false,
+            _ => {}
+        });
+        if !nothing {
+            return Ok(false);
+        }
+        defined.push(assignment.name);
+    }
+    Ok(true)
+}
+
 /// The result of a formula operation whose column list has a column that reads another
 /// column at a fixed distance. The columns before it are computed first, with the parent's
 /// columns kept; then the shifted columns are added, the formula is computed over them,
 /// and they are dropped; then the operation is applied to what is left of the list, which
 /// may have such a column again.
 ///
+/// A static `select` that gives its result new row keys keeps none of the parent's columns
+/// with the columns before the shifted one: what follows is computed over those columns
+/// alone, with the new row keys, and reads nothing else.
+///
 /// The result is append-only when the parent is and no distance is positive, a blink
 /// table when the parent is, and never add-only.
+///
+/// With `unported!` for a static `select` that gets new row keys and whose shifted column,
+/// or a column after it, reads a column of the parent or `k`: Java reads the parent's
+/// columns by the new row keys there.
 ///
 /// Behavior: the first pass of
 /// io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer#createContext,
@@ -718,6 +784,7 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
     shifted: ShiftedColumn,
 ) -> Result<Arc<dyn Table>, SelectError> {
     let texts: Vec<&str> = columns.iter().map(AsRef::as_ref).collect();
+    let mut renumbered = false;
     if flavor == Flavor::Select && !parent.is_refreshing() && !parent.is_flat() {
         // Behavior: io.deephaven.engine.table.impl.QueryTable#selectInternal
         if super::materialize::sparse_storage_wasteful(&parent.row_set()) {
@@ -725,12 +792,17 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
             return super::select(&flat, &texts, compiler);
         }
         if shifted.renumbers {
-            unported!(
-                "io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources",
-                "select with a column array at a fixed distance on a static table whose \
-                 result gets new row keys: {}",
-                shifted.name
-            );
+            let (before, rest) = texts.split_at(shifted.index);
+            if !reads_nothing_of_the_parent(parent.definition(), before, rest, compiler)? {
+                unported!(
+                    "io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources",
+                    "select on a static table whose result gets new row keys, with a \
+                     column array at a fixed distance and, in that column or after it, a \
+                     column of the table or k: {}",
+                    shifted.name
+                );
+            }
+            renumbered = true;
         }
     }
     let (before, text, after) = (
@@ -739,8 +811,9 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
         &texts[shifted.index + 1..],
     );
 
-    // The columns before it, with the parent's.
+    // The columns before it: with the parent's, or alone when they get new row keys.
     let keeping = match flavor {
+        Flavor::Select if renumbered => Flavor::Select,
         Flavor::Select => Flavor::Update,
         Flavor::View => Flavor::UpdateView,
         other => other,

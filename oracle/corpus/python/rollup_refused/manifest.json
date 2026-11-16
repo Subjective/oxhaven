@@ -1,0 +1,347 @@
+{
+  "format": 2,
+  "scenario": "rollup_refused",
+  "scenario_sha256": "adb91d405f6bf8b8a3cceb1da34bda643976366d1bf5609c4ece19b9b54bf8d9",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 1,
+      "table": "whole",
+      "file": "step001.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 2,
+      "table": "whole",
+      "file": "step002.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 3,
+      "table": "whole",
+      "file": "step003.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 4,
+      "table": "whole",
+      "file": "step004.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 5,
+      "table": "whole",
+      "file": "step005.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 5,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 6,
+      "table": "whole",
+      "file": "step006.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 6,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 7,
+      "table": "whole",
+      "file": "step007.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 8,
+      "table": "whole",
+      "file": "step008.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 8,
+      "table": "bare",
+      "failure": {
+        "code": "NOT_FOUND"
+      }
+    },
+    {
+      "step": 9,
+      "table": "whole",
+      "file": "step009.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 9,
+      "table": "no_depth",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 9,
+      "table": "bad_action",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 9,
+      "table": "bare",
+      "file": "step009.bare.arrow",
+      "rows": 3
+    }
+  ]
+}

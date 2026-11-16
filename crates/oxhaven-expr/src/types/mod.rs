@@ -254,6 +254,14 @@ pub(crate) enum Node {
     ObjectText(Box<Typed>),
     /// `new String(bytes)` of a `byte[]`.
     NewString(Box<Typed>),
+    /// An operator applied to the elements of a vector or array and a value, or to the
+    /// elements of two of them, pairwise. `body` is the operator on one pair: its
+    /// `Node::Column(0)` is the left element and its `Node::Column(1)` the right one.
+    Elementwise {
+        body: Box<Typed>,
+        left: Box<Typed>,
+        right: Box<Typed>,
+    },
     /// `int` arguments are of type `Int`.
     StringMethod {
         method: StringMethod,
@@ -419,6 +427,14 @@ fn family(op: BinaryOp) -> Family {
         BinaryOp::BitOr => Family::Bitwise(BitwiseOp::Or),
         BinaryOp::BitXor => Family::Bitwise(BitwiseOp::Xor),
     }
+}
+
+/// A `java.time.Duration` or `java.time.Period` inside a formula.
+struct Amount {
+    /// Its length in nanoseconds, a `Long`; null where the duration or period is null.
+    nanos: Typed,
+    /// Whether it is a period, of days only.
+    period: bool,
 }
 
 struct Checker<'a> {
@@ -670,6 +686,15 @@ impl Checker<'_> {
             return self.logical(op, left, right);
         }
 
+        if matches!(
+            op,
+            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide
+        ) {
+            if let Some(result) = self.with_time_amount(op, left, right)? {
+                return Ok(result);
+            }
+        }
+
         let null_left = is_null_literal(left);
         let null_right = is_null_literal(right);
         if null_left || null_right {
@@ -710,10 +735,7 @@ impl Checker<'_> {
         // Java turns an operator with a vector or array operand into `eqArray`,
         // `lessArray` and their relatives, which compare element by element.
         if is_list(&left) || is_list(&right) {
-            return Err(unsupported(format!(
-                "operator {} on a vector or array",
-                symbol(op)
-            )));
+            return self.elementwise(op, left, right);
         }
         match family {
             Family::Arithmetic(arithmetic) => self.arithmetic(op, arithmetic, left, right),
@@ -721,6 +743,245 @@ impl Checker<'_> {
             Family::Compare(compare) => comparison(compare, left, right),
             Family::Logical(_) => unreachable!("handled above"),
         }
+    }
+
+    /// The duration or period that `expr` is, when it is one.
+    ///
+    /// A time literal that is a duration or a period reaches the checker as the call Java
+    /// makes of it, `parseDuration("PT1m")` or `parsePeriod("P1d")`. No column holds
+    /// either type, so one is known here only where a formula computes with it: multiplied
+    /// or divided by a whole number, and added to or subtracted from an `Instant`.
+    ///
+    /// Behavior: `DateTimeUtils#multiply(Duration, long)`, `#multiply(long, Duration)`,
+    /// `#multiply(Period, int)`, `#multiply(int, Period)` and `#divide(Duration, long)`,
+    /// which `QueryLanguageParser#visit(BinaryExpr)` reaches by the operator's name. Java
+    /// widens the number to the parameter, so a null `int` beside a duration is the number
+    /// -2147483648.
+    fn amount(&mut self, expr: &Expr) -> Result<Option<Amount>, FormulaError> {
+        let class = |period: bool| if period { "Period" } else { "Duration" };
+        match expr {
+            Expr::Call {
+                function,
+                arguments,
+            } if function == "parseDuration" || function == "parsePeriod" => {
+                let [Expr::Literal(Literal::String(text))] = arguments.as_slice() else {
+                    return Ok(None);
+                };
+                let period = function == "parsePeriod";
+                let nanos = if period {
+                    crate::parse::period_days(text).map(|days| {
+                        days.and_then(|days| i64::from(days).checked_mul(86_400_000_000_000))
+                    })
+                } else {
+                    crate::parse::duration_nanos(text)
+                };
+                match nanos {
+                    Some(Some(nanos)) => Ok(Some(Amount {
+                        nanos: typed(ColumnType::Long, Node::Literal(Literal::Long(nanos))),
+                        period,
+                    })),
+                    // Java adds the years and months of a period to an `Instant` with an
+                    // exception, and holds durations longer than a `long` of nanoseconds.
+                    Some(None) => Err(unsupported(format!(
+                        "{} '{text}', which is not a whole number of nanoseconds that a long holds",
+                        class(period)
+                    ))),
+                    None => Ok(None),
+                }
+            }
+            Expr::Binary {
+                op: op @ (BinaryOp::Multiply | BinaryOp::Divide),
+                left,
+                right,
+            } => {
+                let (amount, scalar) = match (self.amount(left)?, self.amount(right)?) {
+                    (None, None) => return Ok(None),
+                    (Some(amount), None) => (amount, right),
+                    (None, Some(amount)) if *op == BinaryOp::Multiply => (amount, left),
+                    _ => {
+                        return Err(type_error(format!(
+                            "cannot apply {} to these durations or periods",
+                            symbol(*op)
+                        )))
+                    }
+                };
+                let method = if *op == BinaryOp::Multiply {
+                    "multiply"
+                } else {
+                    "divide"
+                };
+                if is_null_literal(scalar) {
+                    return Err(type_error(format!(
+                        "Cannot find method {method}(java.time.{}, null)",
+                        class(amount.period)
+                    )));
+                }
+                let scalar = self.check(scalar)?;
+                let parameter = if amount.period {
+                    ColumnType::Int
+                } else {
+                    ColumnType::Long
+                };
+                let narrow = matches!(
+                    scalar.column_type,
+                    ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int
+                );
+                let taken = narrow || (!amount.period && scalar.column_type == ColumnType::Long);
+                if !taken || (amount.period && *op == BinaryOp::Divide) {
+                    return Err(type_error(format!(
+                        "Cannot find method {method}(java.time.{}, {})",
+                        class(amount.period),
+                        java_name(&scalar.column_type)
+                    )));
+                }
+                let scalar = if scalar.column_type == parameter {
+                    scalar
+                } else {
+                    typed(parameter, Node::Widen(Box::new(scalar)))
+                };
+                let kernel = if *op == BinaryOp::Multiply {
+                    Kernel::DurationMultiply
+                } else {
+                    Kernel::DurationDivide
+                };
+                Ok(Some(Amount {
+                    nanos: typed(
+                        ColumnType::Long,
+                        Node::Call {
+                            kernel,
+                            arguments: vec![amount.nanos, convert(scalar, &ColumnType::Long)],
+                        },
+                    ),
+                    period: amount.period,
+                }))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// `left op right` when one side is a duration or a period; `None` when neither is.
+    ///
+    /// Behavior: `DateTimeUtils#plus(Instant, Duration)`, `#plus(Instant, Period)` and the
+    /// two `minus`: null when either is null, otherwise `Instant#plus`, for which a day of
+    /// a period is 86,400 seconds. There is no `plus(Duration, Instant)`.
+    fn with_time_amount(
+        &mut self,
+        op: BinaryOp,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<Option<Typed>, FormulaError> {
+        let sum = matches!(op, BinaryOp::Add | BinaryOp::Subtract);
+        let (Some(amount), other) = (match (self.amount(left)?, self.amount(right)?) {
+            (None, None) => return Ok(None),
+            (None, Some(amount)) if sum => (Some(amount), left),
+            (Some(amount), None) if sum && !is_null_literal(right) => {
+                let other = self.check(right)?;
+                if other.column_type != ColumnType::String || op != BinaryOp::Add {
+                    return Err(type_error(format!(
+                        "Cannot find method {}(java.time.{}, {})",
+                        if op == BinaryOp::Add { "plus" } else { "minus" },
+                        if amount.period { "Period" } else { "Duration" },
+                        java_name(&other.column_type)
+                    )));
+                }
+                (None, left)
+            }
+            _ => (None, left),
+        }) else {
+            return Err(unsupported(
+                "a duration or period that is not added to or subtracted from an Instant",
+            ));
+        };
+        let class = if amount.period { "Period" } else { "Duration" };
+        let (method, kernel) = if op == BinaryOp::Add {
+            ("plus", Kernel::InstantPlus)
+        } else {
+            ("minus", Kernel::InstantMinus)
+        };
+        let other = if is_null_literal(other) {
+            None
+        } else {
+            Some(self.check(other)?)
+        };
+        match other {
+            Some(instant) if instant.column_type == ColumnType::Instant => Ok(Some(typed(
+                ColumnType::Instant,
+                Node::Call {
+                    kernel,
+                    arguments: vec![instant, amount.nanos],
+                },
+            ))),
+            // Java concatenates the text of the duration or period.
+            Some(text) if text.column_type == ColumnType::String && op == BinaryOp::Add => Err(
+                unsupported(format!("concatenation of a String and a {class}")),
+            ),
+            Some(other) => Err(type_error(format!(
+                "Cannot find method {method}({}, java.time.{class})",
+                java_name(&other.column_type)
+            ))),
+            None => Err(unsupported(format!("{method}(null, java.time.{class})"))),
+        }
+    }
+
+    /// An operator with a vector or an array on either side.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` names the method after the operator
+    /// with `Array` appended (`plusArray`, `eqArray`, `lessArray`), and
+    /// `#convertParameters` passes a vector as the array of its elements. The methods of
+    /// `QueryLanguageFunctionUtils` apply the operator of one value to each element, or to
+    /// each pair of elements, and return an array of what that operator returns. They
+    /// exist for the primitive numeric types in every combination, for `==` on `boolean`
+    /// and on objects, and for the orderings on `Comparable`. `!=` becomes `!(eqArray(..))`,
+    /// which fails the parser's assertion that `!` has a `boolean` operand. The arithmetic
+    /// is computed here; the comparisons are not.
+    fn elementwise(
+        &mut self,
+        op: BinaryOp,
+        left: Typed,
+        right: Typed,
+    ) -> Result<Typed, FormulaError> {
+        if op == BinaryOp::NotEqual {
+            return Err(type_error(
+                "!= on a vector or array: asserted ret.equals(boolean.class), instead ret is \
+                 boolean[]",
+            ));
+        }
+        let element = |side: &Typed| {
+            side.column_type
+                .list_element()
+                .unwrap_or(&side.column_type)
+                .clone()
+        };
+        let (left_element, right_element) = (element(&left), element(&right));
+        let number = |element: &ColumnType| Numeric::of(element).is_some();
+        let arithmetic = match family(op) {
+            Family::Arithmetic(arithmetic) if number(&left_element) && number(&right_element) => {
+                arithmetic
+            }
+            // `eqArray`, `lessArray` and their relatives return a `boolean[]`. An array of
+            // `Boolean` elements is Java's `java.lang.Boolean[]` here, a client would be
+            // told that class, and no function here takes one, so the comparison has no
+            // use that could be computed. `binaryAndArray` and its relatives exist for
+            // some types only, and `+` with a `String` prints the array's identity.
+            _ => {
+                return Err(unsupported(format!(
+                    "operator {} on {} and {}",
+                    symbol(op),
+                    java_name(&left.column_type),
+                    java_name(&right.column_type)
+                )))
+            }
+        };
+        let one = |element: ColumnType, slot: usize| typed(element, Node::Column(slot));
+        let body = self.arithmetic(op, arithmetic, one(left_element, 0), one(right_element, 1))?;
+        Ok(typed(
+            ColumnType::Array(Box::new(body.column_type.clone())),
+            Node::Elementwise {
+                body: Box::new(body),
+                left: Box::new(left),
+                right: Box::new(right),
+            },
+        ))
     }
 
     fn arithmetic(
@@ -1194,10 +1455,18 @@ fn convert(operand: Typed, to: &ColumnType) -> Typed {
 
 /// The call `call` of `arguments`, each converted to its parameter's type.
 fn library_call(call: functions::Call, arguments: Vec<Typed>) -> Typed {
+    // Java widens the argument of a random function as it stands, null or not.
+    let widened = matches!(call.kernel, Kernel::Random(_));
     let mut arguments: Vec<Typed> = arguments
         .into_iter()
         .zip(&call.parameters)
-        .map(|(argument, parameter)| convert(argument, parameter))
+        .map(|(argument, parameter)| {
+            if widened && argument.column_type != *parameter {
+                typed(parameter.clone(), Node::Widen(Box::new(argument)))
+            } else {
+                convert(argument, parameter)
+            }
+        })
         .collect();
     if call.exchanged {
         arguments.reverse();

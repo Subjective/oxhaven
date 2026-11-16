@@ -98,7 +98,7 @@ impl KeyTable {
 
 /// `array` with every NaN made the same NaN and `-0.0` made `0.0`, so that equal keys
 /// encode equally. Arrays of other types are returned as they are.
-fn canonical_floats(array: &ArrayRef) -> ArrayRef {
+pub(crate) fn canonical_floats(array: &ArrayRef) -> ArrayRef {
     match array.data_type() {
         DataType::Float64 => {
             let result: Float64Array = array.as_primitive::<Float64Type>().unary(|v| {

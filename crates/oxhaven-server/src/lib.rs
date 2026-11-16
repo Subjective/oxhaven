@@ -4,7 +4,9 @@ pub mod app;
 pub mod barrage;
 pub mod config;
 pub mod console;
+pub mod figure;
 pub mod flight;
+pub mod hierarchical;
 pub mod inputtable;
 pub mod java_text;
 pub mod object;
@@ -30,9 +32,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use oxhaven_engine::table::WallClock;
+use oxhaven_proto::browser_flight::browser_flight_service_server::BrowserFlightServiceServer;
 use oxhaven_proto::flight::flight_service_server::FlightServiceServer;
 use oxhaven_proto::grpc::application_service_server::ApplicationServiceServer;
 use oxhaven_proto::grpc::config_service_server::ConfigServiceServer;
+use oxhaven_proto::grpc::hierarchical_table_service_server::HierarchicalTableServiceServer;
 use oxhaven_proto::grpc::input_table_service_server::InputTableServiceServer;
 use oxhaven_proto::grpc::object_service_server::ObjectServiceServer;
 use oxhaven_proto::grpc::partitioned_table_service_server::PartitionedTableServiceServer;
@@ -159,6 +163,10 @@ impl ServerState {
             FlightServiceServer::new(FlightGrpc::new(self.sessions.clone(), self.tickets.clone()))
                 .max_decoding_message_size(MAX_INBOUND_MESSAGE_SIZE),
         )
+        .add_service(
+            BrowserFlightServiceServer::new(flight::BrowserFlightGrpc::new(self.tickets.clone()))
+                .max_decoding_message_size(MAX_INBOUND_MESSAGE_SIZE),
+        )
         .add_service(InputTableServiceServer::new(InputTableGrpc::new(
             self.tickets.clone(),
         )))
@@ -187,6 +195,9 @@ impl ServerState {
         )
         .add_service(PartitionedTableServiceServer::new(
             partitioned::PartitionedTableGrpc::new(self.tickets.clone()),
+        ))
+        .add_service(HierarchicalTableServiceServer::new(
+            hierarchical::HierarchicalTableGrpc::new(self.tickets.clone(), self.op_context()),
         ))
         .add_service(ObjectServiceServer::new(object::ObjectGrpc::new(
             self.tickets.clone(),

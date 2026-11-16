@@ -827,3 +827,39 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Started 7.1b (Parquet read: more types, names, partitioned layouts). It may make an
   additive contracts change for the new column types and the partitioning flag, decided
   under the standing permission and labelled oracle-change for later review.
+- Pull request 100: `rules` failed with an empty label list although the label was set.
+  The run for the "opened" event started after the run for the "labeled" event and
+  cancelled it, carrying the labels as they were at opening. Not a fault of the change;
+  merging main into the branch starts a run that sees the label. If this repeats, the
+  `rules` job should read the labels from the API instead of the event payload (a change
+  to the workflow, for the owner to approve since it is the gate).
+- Merged pull request 100 (4.19, table sources) on six green checks after the label race.
+- Pull request 101 opened (7.8, rollup first slice); it conflicts with main after 100, so
+  its author was resumed to merge main, and continues with 7.8.1 afterwards. Design
+  decision taken by the architect agent and recorded in docs/HIERARCHICAL.md: every level
+  of a rollup aggregates the source rather than the level below (simple and correct; cost
+  n+1 aggregations per change; re-aggregation is 7.8.5 after a measurement). For the
+  owner: SortedFirst/SortedLast in a rollup with group-by columns (Java fails or sorts
+  results, not rows); key table row order changes the expansion result in Java
+  (reproduced).
+- Pull request 102 opened (5.6, formula gaps). Its gate still exits 1 on seven cases: the
+  Boolean column array (a Java defect) and six array comparisons that need a `boolean[]`
+  column type in the contracts. Static `Math` calls are a task of their own: Java accepts
+  them in a console script and refuses them over gRPC, and treats null values as numbers.
+- The rollup agent ended at its context limit after 10,590 s and 339k tokens of its own
+  window. A resumed agent carries its whole history, so reuse has a ceiling: after one
+  large task plus one follow-up message, start fresh and hand over notes instead.
+- Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
+- Merged pull request 102 (5.6, formula gaps) on six green checks. Started 5.7 (formula functions and static calls) with a fresh agent and the 5.6 notes as handover.
+- Pull request 103 opened (7.11, figures). Two agents built the browser DoPut pair at the
+  same time (rollup and figures both needed it); main's copy won in the merge. The cost
+  was one agent's hour on duplicate work: when two running tasks can need the same
+  missing piece, name it in both briefs and give it to one. For the owner: the embedded
+  importer now also looks on `sys.path` for modules of the `deephaven` package it does not
+  hold (needed for plugin distributions; it would also pick up the reference wheel's
+  modules if that wheel is installed); `jpy` use inside third-party plugins has no
+  principled answer yet.
+- Started 7.10.1 (JS plugins, plotly-express needs) with a fresh agent and docs/FIGURES.md
+  as handover. File serving follows the storage ruling (nothing outside the plugin's
+  directory); if Java differs, it comes back as a question, not as a PARITY.md entry.
+- Merged pull request 103 (7.11, figures) on six green checks.

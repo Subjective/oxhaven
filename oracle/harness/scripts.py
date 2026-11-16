@@ -8,6 +8,9 @@ A script scenario is one Python file, `scenarios/python/<name>.py`. The file is 
 and comment lines that start with `# oracle:` say what to do with it:
 
     # oracle: results t, by_key        the variables to compare; each must hold a table
+    # oracle: views v = r, w = r k A   views to compare, of the hierarchical table in `r`:
+                                       with its default expansions, and with those of the
+                                       key table in `k`, whose action column is `A`
     # oracle: computed by_key.Sum      float columns under the tolerance of PARITY.md A1
     # oracle: fails                    the script of this step must fail on the reference
     # oracle: step                     what follows is the script of the next step
@@ -16,8 +19,8 @@ The text before the first `# oracle: step` is the script of step 0; each `step` 
 script of the next one, which may be empty: a step that only waits. After the script of a
 step the runner waits until the server has finished an update cycle (`runner._Barrier`, the
 rule of every ticking scenario), then reads every result variable through its `s/<name>`
-ticket. A variable that cannot be read is a failure with the gRPC status code, as in a table
-scenario.
+ticket, and every view through a subscription to it (`views.py`). A variable or a view that
+cannot be read is a failure with the gRPC status code, as in a table scenario.
 
 Every script of a scenario runs in the one Python session the server has, where the variables
 of earlier scenarios would still be there. So the runner removes, after a scenario, every
@@ -36,6 +39,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pyarrow as pa
 from pydeephaven import Session
 from pydeephaven._table_ops import FetchTableOp
 from pydeephaven.table import Table
@@ -43,6 +47,7 @@ from pydeephaven.ticket import ScopeTicket
 
 from . import results as res
 from . import rules
+from . import views as hierarchical
 from .connect import open_session
 from .results import Failure, ResultSet, ScriptError
 from .runner import RunError, _Barrier, _describe, _snapshot, failure_code
@@ -84,11 +89,24 @@ class Result:
 
 
 @dataclass(frozen=True)
+class View:
+    """A view to compare under `name`: the hierarchical table in the variable `table`, with
+    the expansions of the key table in the variable `keys` (`None`: the default ones), whose
+    actions are in the column `action` (`None`: every row expands)."""
+
+    name: str
+    table: str
+    keys: str | None = None
+    action: str | None = None
+
+
+@dataclass(frozen=True)
 class ScriptScenario:
     name: str
     text: str
     sections: tuple[Section, ...]
     results: tuple[Result, ...]
+    views: tuple[View, ...]
     # Result variable -> its columns under the A1 tolerance.
     computed: dict[str, frozenset[str]]
 
@@ -106,6 +124,7 @@ def parse(name: str, text: str) -> ScriptScenario:
     if not _NAME.match(name):
         raise fail("the file name must be a Python identifier")
     results: list[str] = []
+    views: list[View] = []
     computed: dict[str, set[str]] = {}
     sections: list[Section] = []
     lines: list[str] = []
@@ -128,6 +147,17 @@ def parse(name: str, text: str) -> ScriptScenario:
                 if item in results:
                     raise fail(f"line {number}: result {item!r} is listed twice")
                 results.append(item)
+        elif word == "views" and items:
+            for item in items:
+                view, equals, source = (part.strip() for part in item.partition("="))
+                words = source.split()
+                if not equals or not 1 <= len(words) <= 3 or \
+                        not all(_NAME.match(w) for w in [view, *words]) or view.startswith(_OWN):
+                    raise fail(f"line {number}: a view is written <name> = <hierarchical table> "
+                               "[<key table> [<action column>]]")
+                if view in results or any(other.name == view for other in views):
+                    raise fail(f"line {number}: result {view!r} is listed twice")
+                views.append(View(view, *words))
         elif word == "computed" and items:
             for item in items:
                 found = _COLUMN.match(item)
@@ -145,17 +175,22 @@ def parse(name: str, text: str) -> ScriptScenario:
             lines, fails = [""] * number, False
         else:
             raise fail(f"line {number}: unknown directive {line[len(DIRECTIVE):].strip()!r}; "
-                       "the directives are results, computed, fails and step")
+                       "the directives are results, views, computed, fails and step")
     sections.append(Section("\n".join(lines) + "\n", fails))
-    if not results:
-        raise fail(f"no `{DIRECTIVE} results` line: nothing would be compared")
-    unknown = sorted(set(computed) - set(results))
+    if not results and not views:
+        raise fail(f"no `{DIRECTIVE} results` or `{DIRECTIVE} views` line: nothing would be "
+                   "compared")
+    twice = sorted(set(results) & {view.name for view in views})
+    if twice:
+        raise fail(f"{twice} are both results and views")
+    unknown = sorted(set(computed) - set(results) - {view.name for view in views})
     if unknown:
         raise fail(f"computed columns of {unknown}, which are not results")
     for section in sections:
         if section.fails and not _has_code(section.script):
             raise fail("a step without a script cannot fail")
     return ScriptScenario(name, text, tuple(sections), tuple(Result(r) for r in results),
+                          tuple(views),
                           {table: frozenset(columns) for table, columns in computed.items()})
 
 
@@ -245,6 +280,17 @@ def _open(session: Session, name: str) -> Table | Failure:
         return Failure(code)
 
 
+def _view(session: Session, view: View) -> pa.Table | Failure:
+    """The first snapshot of `view`; a refusal is its `Failure`."""
+    try:
+        return hierarchical.read_view(session, view.table, view.keys, view.action)
+    except Exception as error:  # noqa: BLE001 - classified just below
+        code = failure_code(error)
+        if code is None:
+            raise
+        return Failure(code)
+
+
 def _execute(session: Session, script: str) -> ScriptError | None:
     answer = session.console_service.run_script(script)
     return parse_error(answer.error_message) if answer.error_message else None
@@ -270,6 +316,8 @@ def run_scenario(scenario: ScriptScenario, url: str) -> Run:
                 tables = {result.table: _open(session, result.table)
                           for result in scenario.results}
                 _snapshot(session, scenario, tables, step, out.tables)
+                for view in scenario.views:
+                    out.tables.put(step, view.name, _view(session, view))
         finally:
             failed = _execute(session, _FORGET)
         if failed is not None:
