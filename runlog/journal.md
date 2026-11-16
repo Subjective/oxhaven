@@ -1086,3 +1086,7 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T13:00Z: started task 7.4.7 (Kafka Avro specs and schema registry) with a licence check as step 0 and an instruction to stop if any new crate is outside the approved licences. After the 4.22 run, large tasks now carry an explicit hand-over threshold in the brief.
 
 - 2026-11-16T13:06Z: merged pull request 127 (time column types in sort, filters, keys and aggregations) on seven green checks, run with the oracle-change label in place.
+
+- 2026-11-16T14:07Z: task 7.4.7 came back complete in 66 minutes and 270k tokens; opened pull request 128. The agent passed the licence check on the apache-avro crate but wrote its own Avro reader and a plain HTTP registry client, because the crate resolves schemas more leniently than Java and its error texts differ. Accepted on judgment: no new dependencies, at the cost of about 3,700 lines to maintain. Owner items: Java loses decimal values after the first null in a batch and this is reproduced (KAFKA.md item 15); columns Java clients cannot read are refused (16); registry URL required even for a text schema (17). A busy mount from the agent docker daemon remains at /home/user/kavro-docker.
+
+- 2026-11-16T14:13Z: merged pull request 128 (Kafka Avro consume and schema registry) on seven green checks. This unblocks 7.4.8 (Protobuf), 7.5.2 (Avro on the produce side) and 7.5.3 (cdc); none started while two agents are building.

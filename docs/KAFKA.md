@@ -53,7 +53,7 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after tasks 7.4.1, 7.4.3 and 7.4.4
+## What exists after tasks 7.4.1, 7.4.3, 7.4.4 and 7.4.7
 
 `deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` with:
 
@@ -69,6 +69,10 @@ and `ring(n)` is `RingTableTools.of` of it.
 - `json_spec` with columns of type `bool_`, `byte`, `char`, `short`, `int32`, `long`,
   `float32`, `double`, `string` and `Instant`, and a `mapping` of fields and JSON pointers
   into nested objects and arrays, with every coercion of Java's (below);
+- `avro_spec` for keys and values, with the schema given as JSON text or as a subject
+  and version of a Confluent schema registry (`schema.registry.url`, over plain HTTP),
+  `mapping` and `mapped_only`, records in Confluent's wire format, and writer schemas
+  that differ from the spec's (below);
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
 - the consumer properties of "Consumer properties";
 - plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
@@ -147,6 +151,53 @@ case, every other character as it is, numbers as in a `String` column.
 key or value as they are; an empty value is an empty array, a tombstone null. The server
 does not send such a column to a client yet (Java sends Arrow `Binary`, see
 `ColumnType::Array` in the contracts); operations on the server can use it.
+
+### How an Avro field becomes a column
+
+Since task 7.4.7 (`tasks/7.4.7-kafka-avro.md`). Avro is read by code of this crate
+(`avro.rs`), not by a library: the Rust crate's schema resolution is lenient where Java's
+fails (a long read as an int, a map read as a record), and Java's texts are needed for
+every failure. `registry.rs` is the schema registry client, HTTP/1.1 over `std::net`.
+
+**The spec.** `avro_spec(schema)` reads a schema that starts with `{` at once, with Avro
+1.12's checks and texts (`SchemaParseException: No name in schema: ...`); any other text
+is the subject of a registry, read at `consume` at `schema_version` (`latest`, or a
+number as `Integer#parseInt` reads it). `consume` needs `schema.registry.url` whenever a
+spec is Avro, also for a schema given as text, as Java does. It fetches the key's schema,
+then the value's, before it defines a column: `GET /subjects/<subject>/versions/latest`
+or `.../versions/<n>?deleted=false`, then `GET /schemas/ids/<id>?fetchMaxId=false&subject=`.
+Several URLs, separated by commas, are tried in turn.
+
+**Columns.** Each field of the top-level record is a column, in order, with a record
+flattened into its fields (`a.b`). With no `mapping` (or an empty one) the name is the
+path with `__` for `.`; with a `mapping`, the fields it names take its names, a field
+mapped to `None` is left out, and every other field keeps its path as it is (`a.b`);
+with `mapped_only`, only the fields it names, where a nested field needs its parent
+named too. Types: `boolean` Boolean, `int` int, `long` long or `Instant` (with
+`timestamp-millis` or `timestamp-micros`; any other logical type stays long), `float`,
+`double`, `string` and enums String, `bytes` with a valid `decimal` BigDecimal, a union of
+null and one type that type, and arrays of int, long, timestamps, float, double, string
+and enums as `int[]`, `long[]`, `Instant[]`, `float[]`, `double[]` and `String[]`. A
+top-level union and a top-level type other than a record fail as in Java.
+
+**Records.** A record's key or value is magic byte 0, a four-byte schema id, and the
+value in the writer's schema, which is fetched by id (`GET /schemas/ids/<id>?fetchMaxId=
+false&subject=<topic>-value`) and cached. The value is read into the spec's schema with
+Avro's resolution: promotions (int to long, float or double; long to float or double;
+float to double; string and bytes either way), fields the writer lacks from their
+defaults, fields the reader lacks skipped, enum symbols by name or the reader's default,
+a writer's union by its branch. Trailing bytes are ignored. A tombstone is a row of null
+cells. Java's quirks are kept: a value equal to Java's null of the column (`Integer.
+MIN_VALUE`, `Long.MIN_VALUE`, `-Float.MAX_VALUE`, `-Double.MAX_VALUE`) is a null cell; a
+timestamp is multiplied to nanoseconds with a product that wraps; after the first null
+of a BigDecimal column in a batch, the rest of that batch's cells in the column are null
+(Java's copier returns at the null); invalid UTF-8 is replaced as `new String(bytes,
+UTF_8)` replaces it. A record that cannot be read fails the table with Java's text, for
+example `RecordDeserializationException: Error deserializing VALUE for partition t-0 at
+offset 4. ... (caused by org.apache.kafka.common.errors.SerializationException: Error
+deserializing Avro message for id SchemaId{...}: org.apache.avro.AvroTypeException:
+Field "a" content mismatch: Found long, expecting int)`; the part in parentheses is
+Java's cause.
 
 ### Failures
 
@@ -511,11 +562,12 @@ documented contents and off this machine, which has the same tools.
 | --- | --- | --- | --- |
 | JSON conversion, refusals, the translation of properties, Java's hash order, which errors end a consumption | unit tests in `src/` | nothing | `cargo test --workspace`: every pull request |
 | Tables from a scripted `RecordSource`, with the consistency checker | `tests/consume.rs` | nothing | every pull request |
+| Avro: columns, mappings, records in another writer's schema, the wire format's failures, the registry's requests and errors | unit tests in `src/avro.rs`, `src/registry.rs`; `tests/avro.rs`, with a registry the test serves | nothing | every pull request |
 | Publishing to a scripted `RecordSink`: the records of each kind of change, `last_by`, blink tables, JSON and its failures, the checks | `tests/produce.rs` | nothing | every pull request |
 | Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
 | The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
-| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
-| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1 and 7.4.4; a recorded corpus is task 7.4.6 |
+| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image) | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
+| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4 and 7.4.7; a recorded corpus is task 7.4.6 |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
 (`dockerd` with its own socket and data root, no bridge and no iptables rules, the
@@ -587,6 +639,14 @@ broker under the open tables of both.
   text that is a date or a date and time without a zone (`2024-01-02`,
   `2024-01-02T03:04:05`) fails the table in both, here by naming
   `DateTimeUtils#parseInstant` as not ported, in Java with `Cannot parse instant`.
+- Task 7.4.7, Avro: Java on 10968, Oxhaven on 10969, one broker and a stub registry,
+  145 cases in six rounds (`tasks/7.4.7-kafka-avro.md`). Same in 130: the schemas, rows
+  and failures of tables, and the errors of calls. Different, by design for now, in 14:
+  the columns refused below, an `https://` registry (Java: `SSLException` against a
+  plain server) and an `ftp://` one. Different in text only (`PARITY.md` A5): a schema that is not JSON
+  (Jackson's text in Java). Not probed: a real Confluent registry; Java's deserializer
+  first asks the registry for `/associations/...` of the topic, gets a 404 from a registry
+  without associations and goes on, which Oxhaven does not ask.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -658,6 +718,22 @@ broker under the open tables of both.
     garbage collection does in Java. CPython drops it at once; Java collects it whenever
     it next collects.
 
+15. **Avro, BigDecimal columns after a null.** Java's copier returns at the first null of
+    a batch, so the rest of the batch stays null in that column: values are lost without
+    an error, and which ones depends on how records fall into batches. It is reproduced,
+    batch by batch (a poll here, a chunk there, so the batches themselves may differ).
+    Reproduce, or fill every value?
+16. **Avro, columns Java's clients cannot read.** `bytes` and `fixed` (ByteVector filled
+    with ByteBuffer or GenericFixed) and arrays of booleans (Boolean[] filled with
+    Object[]) give tables that fail a client's fetch in Java; here they are refused at
+    `consume`. Unions, maps, the null type and arrays of records are Java objects with no
+    column type here, also refused. An array of enums is declared String[] and fails the
+    table at its first non-empty array; an array of a nullable timestamp fails at
+    `consume`: both reproduced.
+17. **Avro needs `schema.registry.url` even for a schema given as text**, because Java
+    makes the registry's client first. Reproduced; a spec that never needs the registry
+    could do without it.
+
 ## Refused, by Java method
 
 | What | Named in the refusal |
@@ -672,7 +748,16 @@ broker under the open tables of both.
 | JSON text with a UTF-16 surrogate without its pair (`"\ud83d"`) where it would become a `String` cell, compact JSON or an `Instant`'s text (fails the table); Java keeps the lone surrogate, which a Rust string cannot hold | `java.lang.String` |
 | Text in an `Instant` column in a spelling the expression crate's `parseInstant` does not read yet (fails the table) | `io.deephaven.time.DateTimeUtils#parseInstant` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
-| `avro_spec`, `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#avroSpec`, `#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
+| `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
+| Avro: a field of `bytes` without a valid decimal, or of `fixed` | `io.deephaven.kafka.ingest.GenericRecordObjectFieldCopier` |
+| Avro: a decimal in a `fixed` (Java fails the table at its first value) | `io.deephaven.kafka.ingest.GenericRecordBigDecimalFieldCopier#copyField` |
+| Avro: a union other than of null and one type, a map, the `null` type | `io.deephaven.kafka.ingest.GenericRecordObjectFieldCopier` |
+| Avro: an array of booleans, records, arrays, maps, bytes or fixed | `io.deephaven.kafka.ingest.GenericRecordArrayFieldCopier` |
+| Avro: an `https://` registry | `io.confluent.kafka.schemaregistry.client.rest.RestService#setSslSocketFactory` |
+| Avro: a registry URL of another scheme (`ftp://`; Java fails with a ClassCastException or an unknown protocol) | `java.net.URL#openConnection` |
+| Avro: registry credentials (`basic.auth.*`, `bearer.auth.*`), `key.subject.name.strategy` and `value.subject.name.strategy`, `specific.avro.reader` and `avro.use.logical.type.converters` other than `false` | the class or property Java reads, named in the refusal |
+| Avro: a registry schema with references, or of a type other than `AVRO` | `io.confluent.kafka.schemaregistry.avro.AvroSchemaProvider#parseSchemaOrElseThrow` |
+| Avro: a record with magic byte 1 (a schema GUID) | `io.confluent.kafka.serializers.schema.id.SchemaId` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
 | Producing: an update whose modified columns are `ModifiedColumnSet.ALL` (Java's listener throws a NullPointerException and stops; here the publication fails at the same point) | `io.deephaven.engine.table.ModifiedColumnSet#containsAny` |
 | Producing: `compression.type=gzip` | `org.apache.kafka.common.compress.GzipCompression` |
@@ -694,6 +779,8 @@ hash order), a simple `byte[]` column.
 `KafkaTools.Consume#rawSpec` takes a Java `Deserializer` class, which no Python API of the
 reference reaches (`deephaven.stream.kafka.consumer` has no `raw_spec`); there is nothing
 to port it to here until Avro or Protobuf bring their own deserializers (7.4.7, 7.4.8).
+
+No longer refused since task 7.4.7: `avro_spec`, for the key and the value.
 
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2
@@ -717,7 +804,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
 | 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
 | 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
-| 7.4.7 | Avro specs and the schema registry client (a licence check of the Avro crate first) | L | 7.4.3 |
+| 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | M | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | M | 7.5.1, 7.4.7 |
