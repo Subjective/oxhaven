@@ -112,13 +112,16 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "5a8c3347f5ea23dc"),
-    ("partitions", "b939f8aa7befc1ff"),
-    ("all2", "4e2de0b640faa39e"),
+    ("formulas2", "5e77dee2784b36b0"),
+    ("partitions", "506155a6fb7783fb"),
+    ("all2", "d9643651e877f7f3"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
-    """Digests over the scenarios of seeds 0 to 99 as the generator was when the seeds of
-    `tasks/4.20-fuzz-findings-2.md` were recorded."""
+    """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.20
+    lifted the restrictions D4, R2 and R3: filters draw time literals in any zone, and
+    zones may be offsets. The seeds named in the findings of
+    `tasks/4.20-fuzz-findings-2.md` were recorded before that and mean other scenarios
+    now; each finding has its scenario file in `tasks/4.20-fuzz-findings-2/`."""
     assert _digest(100, fuzz.SECOND_FAMILIES[family], "second") == digest
 
 
