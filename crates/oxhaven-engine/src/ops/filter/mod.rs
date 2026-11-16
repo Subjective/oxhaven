@@ -370,6 +370,7 @@ fn where_resolved(
             .map(|index| parent.column(index))
             .collect();
         let spec = TableSpec::new(definition, rows, columns)
+            .keeping_partitioning()
             .with_attributes(where_attributes(&**parent))
             .with_input_table_of(&**parent);
         Ok((spec, move |result: &QueryTable, upstream: &TableUpdate| {

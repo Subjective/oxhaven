@@ -77,9 +77,10 @@ def read(
 ) -> Table:
     """Reads a table from a Parquet file or from a directory of Parquet files.
 
-    Without `file_layout` the layout is decided by the path. `table_definition`,
-    `special_instructions`, `is_refreshing` on a directory and directories named
-    "key=value" are not supported yet.
+    Without `file_layout` the layout is decided by the path. Directories named "key=value"
+    become partitioning columns, and with `is_refreshing` the table gains the rows of the
+    files that appear in its directory. `table_definition` and `special_instructions` are
+    not supported yet.
     """
     try:
         columns = []
@@ -307,9 +308,8 @@ def write_partitioned(
     """Writes a table as a directory tree of Parquet files, one directory level named
     "key=value" for each partitioning column.
 
-    Not supported yet: a table of the engine has no partitioning columns, so this raises
-    what the reference raises for such a table, and refuses a `table_definition` that
-    names partitioning columns.
+    Not supported yet: this raises what the reference raises for a table without
+    partitioning columns, and refuses a table or a `table_definition` that has them.
     """
     try:
         _write_arguments(

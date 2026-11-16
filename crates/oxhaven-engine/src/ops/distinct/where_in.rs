@@ -473,6 +473,7 @@ pub(super) fn dynamic_where(
             attributes.append_only = false;
         }
         let spec = TableSpec::new(definition, rows, columns)
+            .keeping_partitioning()
             .with_attributes(attributes)
             .with_input_table_of(&**left);
         Ok((

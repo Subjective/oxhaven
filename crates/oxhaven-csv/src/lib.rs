@@ -25,6 +25,7 @@ use std::fmt;
 use std::sync::Arc;
 
 pub use infer::Parser;
+pub use names::is_reserved;
 pub use write::write;
 
 /// Why a file could not be read or written.

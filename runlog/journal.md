@@ -872,3 +872,10 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   worktree's environment read-only. The brief should say how to get the replay
   environment (`oracle/requirements-replay.txt`) rather than leave it to chance.
 - Started 0.16 (second parity pass). The row set swap (7.7b) stays deferred: it changes a contract with about 35 call sites and would conflict with every engine branch in flight.
+- Pull request 105 opened (7.8.1). The fresh agent with handover notes did the task in 63
+  minutes: a written handover from the previous author replaced its context well. For the
+  owner: Java fails a sorted rollup view when an expanded node's group is gone
+  (reproduced); a filter by row position is accepted by Java and refused here.
+- Started 7.9 (tree tables). 7.8.2 and 7.8.3 wait for it: all three change the same walk.
+- Pull request 104 merged (7.1b): script scenarios are 75 of 78 clean on main. Pull request
+  105 merges cleanly with it and was updated to the new main.

@@ -170,6 +170,8 @@ fn same_in_every_row(expr: &Typed) -> bool {
             Node::Negate(operand)
             | Node::Not(operand)
             | Node::IsNull(operand)
+            | Node::ObjectText(operand)
+            | Node::NewString(operand)
             | Node::Cast(operand)
             | Node::Widen(operand) => all(&[operand]),
             Node::Arithmetic { left, right, .. }

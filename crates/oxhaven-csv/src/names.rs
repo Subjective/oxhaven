@@ -63,8 +63,11 @@ const JAVA_KEYWORDS: &[&str] = &[
 /// The variables the query language keeps for itself.
 const QUERY_RESERVED: &[&str] = &["in", "not", "i", "ii", "k"];
 
+/// Whether `name` is a word no column can be named by: a keyword or literal of Java, or
+/// a variable the query language keeps for itself.
+///
 /// Behavior: `io.deephaven.api.util.NameValidator#isReserved`
-fn is_reserved(name: &str) -> bool {
+pub fn is_reserved(name: &str) -> bool {
     QUERY_RESERVED.contains(&name) || JAVA_KEYWORDS.contains(&name)
 }
 
