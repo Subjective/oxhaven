@@ -281,8 +281,9 @@ def test_what_a_finding_restricts_is_not_drawn():
                 "initial_groups" in op or op.get("preserve_empty")):
             types = dict(predicted[op["source"]])
             if "initial_groups" in op:
-                seen["R4"] += 1
-                assert op["preserve_empty"] is True, (doc["name"], op)
+                if fuzz_second._Second.never_records(op["aggs"]):
+                    seen["J7"] += 1
+                    assert op["preserve_empty"] is True, (doc["name"], op)
                 seen["J6"] += 1
                 assert not {"first", "last"} <= {agg["agg"] for agg in op["aggs"]}, (
                     doc["name"], op)
@@ -303,12 +304,13 @@ def test_what_a_finding_restricts_is_not_drawn():
                     seen["J1"] += 1  # and J4
                     found = fuzz_second._COLUMN_COMPARISON.match(text)
                     assert not found or found.group(2) not in types, (doc["name"], op)
-    for name in ("J1", "J2", "J5", "J6", "R1", "R4", "R5", "R6", "R7"):
+    for name in ("J1", "J2", "J5", "J6", "J7", "R1", "R5", "R6", "R7"):
         assert seen[name] > 5, (name, seen[name])
 
 
 def test_every_restriction_names_a_finding_that_is_written_up():
-    text = (ORACLE.parent / "tasks" / "4.20-fuzz-findings-2.md").read_text()
+    text = "\n".join((ORACLE.parent / "tasks" / name).read_text()
+                     for name in ("4.20-fuzz-findings-2.md", "4.23-fuzz-refusals.md"))
     for finding in fuzz_second.RESTRICTIONS:
         assert re.search(rf"^### {finding}\. ", text, re.MULTILINE), finding
     known = json.loads((ORACLE / "fuzz-known-findings.json").read_text())["findings"]

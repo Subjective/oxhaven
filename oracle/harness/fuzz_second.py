@@ -36,8 +36,9 @@ limits). For the operations of this module those are:
 - a `multi_join` without match columns of a refreshing table that can come to hold more
   than one row.
 
-Restrictions that exist only because of a finding of `tasks/4.20-fuzz-findings-2.md` are
-marked with the finding's number where they are made (`RESTRICTIONS` lists them).
+Restrictions that exist only because of a finding of `tasks/4.20-fuzz-findings-2.md` or
+`tasks/4.23-fuzz-refusals.md` are marked with the finding's number where they are made
+(`RESTRICTIONS` lists them).
 
 Not generated, each for a stated reason:
 
@@ -60,7 +61,8 @@ from typing import Any
 from .fuzz import FLOATS, INT_BITS, NUMERIC, _Table, _promote
 from .fuzz_wide import LIST, _Wide, _list
 
-# Findings of tasks/4.20-fuzz-findings-2.md that the generator steps around, and where.
+# Findings of tasks/4.20-fuzz-findings-2.md and tasks/4.23-fuzz-refusals.md that the generator
+# steps around, and where.
 RESTRICTIONS: dict[str, str] = {
     "J1": "stops_reference: no count where of update_by that compares two columns (with a "
           "boolean or timestamp column among those it reads, the reference shuts down)",
@@ -72,7 +74,9 @@ RESTRICTIONS: dict[str, str] = {
     "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
     "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
           "a fixed-distance read outside a call",
-    "R4": "build_agg: initial groups of a refreshing aggregation only with preserve_empty",
+    "J7": "build_agg: initial groups of a refreshing aggregation with first, last, "
+          "sorted_first or sorted_last before any count only with preserve_empty (on an "
+          "add-only table the reference's result fails when a group gets its first row)",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
     "R6": "second_formula, filter: no column array of an array column",
     "R7": "build_keyed_transpose: no float32 or timestamp column to name columns after",
@@ -349,8 +353,8 @@ class _Second(_Wide):
         kinds = {agg["agg"] for agg in op["aggs"]}
         if live and {"first", "last"} <= kinds:
             op.pop("initial_groups", None)  # J6
-        if "initial_groups" in op and live:
-            op["preserve_empty"] = True  # R4
+        if "initial_groups" in op and live and self.never_records(op["aggs"]):
+            op["preserve_empty"] = True  # J7
         if live and op.get("preserve_empty") and any(
                 agg["agg"] == "distinct" and source.type_of(
                     pair.split("=")[-1].strip()) == "timestamp"
@@ -358,6 +362,17 @@ class _Second(_Wide):
             op.pop("initial_groups", None)  # J5
             op["preserve_empty"] = False
         return True
+
+    @staticmethod
+    def never_records(aggs: list[dict[str, Any]]) -> bool:
+        """J7: whether the first of the aggregations that tells the reference when a group
+        appears is a first or last, which on an add-only table tells it nothing."""
+        for agg in aggs:
+            if agg["agg"] == "count":
+                return False
+            if agg["agg"] in ("first", "last", "sorted_first", "sorted_last"):
+                return True
+        return False
 
     # ------------------------------------------------------------ partitioned tables
 
