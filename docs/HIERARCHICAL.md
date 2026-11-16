@@ -2,7 +2,7 @@
 
 How Oxhaven holds a rollup, answers a client that looks at part of it, and what a tree
 will reuse. Written by task 7.8 (`tasks/7.8-rollup.md`), which also built the first slice;
-the follow-on tasks, 7.8.1 to 7.8.6, are sized in that file, and `tasks/7.9-tree.md` says
+the follow-on tasks, 7.8.1 to 7.8.5, are sized in that file, and `tasks/7.9-tree.md` says
 what this means for a tree.
 
 What Java does was read in `RollupTableImpl`, `HierarchicalTableImpl`,
@@ -10,7 +10,8 @@ What Java does was read in `RollupTableImpl`, `HierarchicalTableImpl`,
 `HierarchicalTableViewSubscription` and `HierarchicalTableSchemaUtil`, and observed on Java
 42.9: the IDE's calls with the tracing of `oracle/ide`
 (`oracle/ide/traces/http-console-rollup.txt`), the views with the script scenarios
-`oracle/scenarios/python/rollup_*.py`.
+`oracle/scenarios/python/rollup_*.py`, the statuses with the same calls made to both
+servers.
 
 ## Decision
 
@@ -61,6 +62,24 @@ and `AggFormula`, which are refused as not ported: a group's vectors and the for
 The columns of a level are the group-by columns, then the aggregation results. A level
 shows null in the group-by columns it does not group by, in the column's type.
 
+Three things follow from how Java makes the coarser levels, and are kept:
+
+- A result named like a group-by column, and a group-by column named twice, are refused
+  with `Duplicate output columns found: <name> used <n> times`: the coarser level has the
+  null column of the group-by column and the result under one name.
+- A rollup without aggregations is made, and its levels have the group-by columns alone.
+  `ops::agg` has no aggregation without aggregations, so the levels count their rows in a
+  column that is dropped.
+- `SortedFirst` and `SortedLast` sort a coarser level by the columns of the level below
+  it, not by the source's. With group-by columns Java therefore fails with a
+  `NoSuchColumnException` unless every sort column is a result of the same aggregation
+  under its own name, and then sorts the results. Sorting the source is the same when the
+  sort columns are such results, and that case is made here; with a sort column that is
+  not, the rollup is refused as not ported
+  (`AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator`)
+  until it is ruled whether Java's failure is to be reproduced (7.8.4). Without group-by
+  columns there is one level and nothing to sort again.
+
 ## Constituents
 
 With `include_constituents` the rows of the finest groups can be expanded into the source
@@ -74,8 +93,10 @@ first slice (7.8.3).
 
 Java's node key is the depth and the key values: depth 0 is the root (its one child is
 the grand total row), depth 1 the grand total (key width 0), depth `d` a row of level
-`d - 1` with `d - 1` key values. A key table has an int column `__DEPTH__` and the
-group-by columns; a row's values beyond its width are ignored. An optional byte column
+`d - 1` with `d - 1` key values. A key table has an int column `__DEPTH__` and every
+group-by column, in the type the rollup has it (`RollupTableImpl#makeNodeKeySource`; a
+table without one of them is refused when the view is first read, not when it is made);
+a row's values beyond its width are ignored. An optional byte column
 names the action: 1 expand, 3 expand with all descendants, 4 contract, `0x70 + n - 1`
 expand `n` levels. Without a key table, and before its rows, the root and the grand
 total are expanded (`RollupTableImpl#getDefaultExpansionNodeKeys`).
@@ -88,7 +109,7 @@ as linkage; a key whose node does not exist now is dropped
 
 ## The snapshot
 
-`ops::hierarchical::snapshot` is `HierarchicalTableImpl#snapshot`:
+`View::snapshot` (`ops/hierarchical/walk.rs`) is `HierarchicalTableImpl#snapshot`:
 
 - Walk from the root. At a node, the rows are the node's child table in its order. The
   child directives that expand, sorted by their row in that table, cut the rows into
@@ -133,7 +154,8 @@ values when a cycle is running, and retries. The result is the same.
   the source in front of every level, which is the same rows. A sort is applied to each
   node's child table when it is first walked and kept with the view; sorts of aggregated
   nodes are translated for constituent nodes. Formats and update views add columns to a
-  node's table. Refused in the first slice (7.8.1, 7.8.2).
+  node's table. Refused in the first slice (7.8.1, 7.8.2); the checks before the first
+  operation are Java's (the fields, the input, `No operations specified`).
 - `Tree`: task 7.9.
 
 **The object type.** `ListFields` and the console name the type `HierarchicalTable`.
@@ -146,17 +168,26 @@ schema (`__DEPTH__` int, `__EXPANDED__` Boolean, then the node columns, each wit
 view: columns, a viewport, `min_update_interval_ms`. The viewport must be one range and
 not reversed. The server sends the schema, then a snapshot message whenever the viewport
 or columns change, and, at most once per interval, when the source or the key table
-changed: `is_snapshot`, `added_rows` = `0..size`, `removed_rows` = the rows the last
-message included, `table_size` = size, the effective viewport and columns, and the
-column data of the rows of the viewport that exist. There are no deltas. A
-`BarrageSnapshotRequest` on a view is refused, as in Java.
+changed: `is_snapshot`, `table_size` = the rows of the whole walk, the effective viewport
+and columns, and the column data of the rows of the viewport that exist. The requested
+columns must include `__DEPTH__` and `__EXPANDED__`. There are no deltas. A
+`BarrageSnapshotRequest` on a view is refused, as in Java. `ViewSubscription` is the
+port of `HierarchicalTableViewSubscription`: one snapshot at a time, the next one
+scheduled at the interval after the last.
+
+**Uploads from a browser.** The web client uploads the key table with
+`BrowserFlightService/OpenDoPut` and `NextDoPut`, whatever its transport, so the first
+slice has these two calls (`flight/browser.rs`, on the browser streams the console
+already had). `OpenHandshake`, `NextHandshake`, `OpenDoExchange` and `NextDoExchange`
+are refused as not ported; the web client makes those calls on the Flight service.
 
 ## Python
 
 `Table.rollup(aggs, by, include_constituents)` and `deephaven.table.RollupTable` with
-`aggs`, `by`, `include_constituents`. `node_operation_recorder`, `with_node_operations`
-and `with_filters` follow `Apply`. `RollupTable` wraps a handle, as `PartitionedTable`
-does.
+`aggs`, `by`, `include_constituents`. `node_operation_recorder`, `with_node_operations`,
+`with_filters` and `with_update_view` follow `Apply` and are refused by name until then,
+as `Table.tree` is. `RollupTable` wraps a handle, as `PartitionedTable` does; a variable
+that holds one is listed as a `HierarchicalTable`.
 
 ## What a tree reuses
 
@@ -165,8 +196,9 @@ walk, `KeyIndex`, the view and its snapshot state, `View` and `ExportSource`, th
 type and descriptor (with the `treeTable.*` metadata), the subscription, the harness's
 `views` directive and the IDE route's helpers. A tree's `Hierarchy` has one node table
 per parent identifier (the source partitioned by the parent column), levels that are
-expandable row by row (`__EXPANDED__` is null for a row without children, which is the
-`Undetermined` case of the walk and is written for it), and a node key of one value.
+expandable row by row, and a node key of one value. `__EXPANDED__` is null for a row
+without children; `Hierarchy::rows_expandable` answers for a whole level today (`All` or
+`None`, which is all a rollup needs), and a tree adds the answer per row.
 
 ## Refused for now
 
@@ -179,9 +211,23 @@ Each names the Java method in its error.
 | `Apply`: format and update views | `RollupNodeOperationsRecorder#formatColumns`, `#updateView` | 7.8.2 |
 | `include_constituents` | `RollupTableImpl#makeRollup` (constituents) | 7.8.3 |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
+| `SortedFirst`, `SortedLast` by a column that is not their own result, with group-by columns | `AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator` | 7.8.4 |
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
-| `Tree` | `HierarchicalTableServiceGrpcImpl#tree` | 7.9 |
-| Python `node_operation_recorder`, `with_node_operations`, `with_filters` | as `Apply` | 7.8.1, 7.8.2 |
+| `Tree`, Python `Table.tree` | `HierarchicalTableServiceGrpcImpl#tree`, `QueryTable#tree` | 7.9 |
+| Python `node_operation_recorder`, `with_node_operations` | `RollupTableImpl#makeNodeOperationsRecorder`, `#withNodeOperations` | 7.8.1, 7.8.2 |
+| Python `with_filters`, `with_update_view` | `RollupTableImpl#withFilter`, `#withUpdateView` | 7.8.1, 7.8.2 |
+| The browser streams of `Handshake` and `DoExchange` | `BrowserFlightServiceGrpcBinding#bindService` | 2.6 |
+
+## Where Java does otherwise
+
+- Java reads a snapshot without the update graph's lock and retries; here it is read
+  under the shared lock. A client sees the same rows.
+- Java's coarser levels are aggregations of the level below; here of the source. Floating
+  point sums may differ in the last place (PARITY A1). Nothing else was seen to differ in
+  the recorded scenarios or in a probe of every aggregation both servers accept.
+- The order of the keys of a field's metadata in the snapshot schema differs; the keys
+  and values are the same.
+- `SortedFirst` and `SortedLast`: see "Which aggregations". This one needs a ruling.
 
 ## Contracts
 
@@ -192,3 +238,7 @@ No change.
 `cargo test -p oxhaven-engine hierarchical`, `cargo test -p oxhaven-server hierarchical`
 (with and without `--features python`), the script scenarios `rollup_*` in the replay
 gate, and `node oracle/ide/ide-test.js --routes rollup` on Java and on Oxhaven.
+
+The script scenarios compare views: the directive `# oracle: views <name> = <rollup>
+[<key table> [<action column>]]` (`oracle/README.md`) reads the first rows of a view of
+a rollup with the key table's expansions on both servers, after every step.

@@ -21,14 +21,7 @@ async function readPainted(page, columns) {
       .sort((a, b) => a - b)
       .map((y) => ({ y, cells: byY.get(y).sort((a, b) => a.x - b.x) }));
     if (rows.length && JSON.stringify(rows[0].cells.map((c) => c.text)) === JSON.stringify(columns)) {
-      const box = await page.evaluate((frames) => {
-        for (const canvas of document.querySelectorAll('canvas')) {
-          const r = canvas.getBoundingClientRect();
-          if (r.width > 0 && canvas.__ideTestFrames === frames) return { x: r.x, y: r.y, scale: canvas.width / r.width };
-        }
-        return undefined;
-      }, g.id);
-      return { rows: rows.slice(1), box };
+      return { rows: rows.slice(1) };
     }
   }
   return undefined;

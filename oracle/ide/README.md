@@ -53,6 +53,7 @@ Each route runs in a fresh browser profile. `--routes` selects them; the default
 | `iframe` | Opens `/iframe/table/?name=ide_static&psk=<key>`, then the same for `ide_ticking`. |
 | `jsapi` | Loads `/jsapi/dh-core.js` in a page of the server's origin, logs in with `CoreClient.login`, fetches both tables with `getObject`, sets a viewport and reads rows. |
 | `console` | Opens `/ide/?psk=<key>` and types the commands of `expected.json` for the console's language into the console. Needs a Python or Groovy console. |
+| `rollup` | Makes a rollup in the console with the command of `expected.json`, reads the rows its grid paints (the grand total and the first level), expands a node with a click on its marker, reads the rows again, and collapses it. Needs a Python console. |
 
 | `notebook` | In the File Explorer: makes a folder and a notebook, runs a selected line and the whole notebook, saves it, opens it again, changes it, renames it, drags it into the folder, deletes both. Needs a console and a server that stores files. |
 | `log` | Prints from the console and finds the line in the Log panel; opens a command from Command History in the console and runs it. |
