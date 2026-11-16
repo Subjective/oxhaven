@@ -82,7 +82,7 @@ use oxhaven_proto::grpc::batch_table_request::Operation;
 use prost_reflect::{DescriptorPool, DynamicMessage, MessageDescriptor};
 use pyo3::exceptions::{PyKeyboardInterrupt, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
+use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PyString};
 
 use super::completer::Completer;
 use super::logs::LogBuffer;
@@ -602,6 +602,14 @@ fn formula_value(value: &Bound<'_, PyAny>) -> FormulaValue {
     }
     if let Some(instant) = java_instant(value) {
         return instant;
+    }
+    // Behavior: `PythonScopeJpyImpl#convert`, which makes a `PyListWrapper` of what
+    // `PyObject#isList` is true for and a `PyDictWrapper` of what `#isDict` is
+    if value.is_instance_of::<PyList>() {
+        return FormulaValue::Items("a Python list".to_string());
+    }
+    if value.is_instance_of::<PyDict>() {
+        return FormulaValue::Items("a Python dict".to_string());
     }
     let type_name = value.get_type().name();
     FormulaValue::Other(match type_name {
