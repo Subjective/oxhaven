@@ -496,6 +496,10 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(require_query_scope, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::write_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(
+            parquet::write_parquet_partitioned,
+            &native
+        )?)?;
         native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
