@@ -106,6 +106,6 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 7.8-rollup,1,agent,2026-11-16T00:10Z,,,,running,,,,"Architect and first slice: design for hierarchical tables, rollup, service, Python; ports 10970/10971"
 6.18-script-applications,1,agent,2026-11-16T00:10Z,49,345020,111,merged,0,94,right-sized,"--app-dir and deephaven.appmode; about 37 application directories probed on Java; found the del defect and the replace-order mismatch"
 4.10-ide-table-ops,1,agent,2026-11-16T00:31Z,,,,running,,,,"Operations the IDE grid needs that main still lacks; ports 10974/10975"
-7.10-object-plugins,1,agent,2026-11-16T00:31Z,55,222303,174,pr-open,0,98,too-large,"Object type registry, object service, Python plugins; JS plugins and third-party plugin compatibility left over; replay gate not run locally"
+7.10-object-plugins,1,agent,2026-11-16T00:31Z,55,222303,174,merged,0,98,too-large,"Object type registry, object service, Python plugins; JS plugins and third-party plugin compatibility left over; replay gate not run locally"
 5.6-formula-gaps,1,agent,2026-11-16T00:52Z,,,,running,,,,"The 32 formula cases 5.5 left: zoned time literals, now(), array arithmetic; same agent resumed; ports 10964/10965"
 4.19-table-sources,1,agent,2026-11-16T01:27Z,,,,running,,,,"Ring tables, function-generated tables, floating point input keys; ports 10978/10979"

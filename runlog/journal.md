@@ -807,3 +807,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   session ends); a fetch-only message stream now ends after one message as Java's does,
   which changed an expectation from pull request 92.
 - Started 4.19 (ring tables, generated tables, floating point input keys).
+- Merged pull request 98 (7.10, object service and Python plugins) on six green checks. Figures (7.11) wait for a free build slot; the same agent will be resumed for them.
