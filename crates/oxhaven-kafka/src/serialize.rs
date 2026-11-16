@@ -174,7 +174,7 @@ fn qst_type_name(column_type: &ColumnType) -> Option<String> {
 
 /// What Kafka serializer writes a simple column.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Simple {
+pub(crate) enum Simple {
     Short,
     Int,
     Long,
