@@ -88,7 +88,7 @@ java-rejects	update	Math.abs(I)	static method call Math.abs()
 java-accepts	update	String.valueOf(I)	static method call String.valueOf()
 java-accepts	update	Integer.toString(I)	static method call Integer.toString()
 java-accepts	update	Math.PI	field access .PI
-java-accepts	update	new String(`a`)	object creation (new)
+java-accepts	update	new String(`a`)	new String() of a value of type String
 java-rejects	where	null	null literal outside ==, !=, ?:, a cast and string concatenation
 java-accepts	update	0x1p-1023	hexadecimal floating point literal 0x1p-1023
 java-accepts	update	0x1p-1074	hexadecimal floating point literal 0x1p-1074

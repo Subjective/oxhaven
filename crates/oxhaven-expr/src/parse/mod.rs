@@ -1053,7 +1053,8 @@ mod tests {
             ("(Double).NaN", "field access .NaN"),
             ("Double.NaN.x", "field access .x"),
             ("java.lang.Double.NaN", "field access .lang"),
-            ("new String(`a`)", "object creation (new)"),
+            ("new Object()", "object creation (new)"),
+            ("new String", "object creation (new)"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];
         for (text, construct) in cases {
