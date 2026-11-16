@@ -420,6 +420,7 @@ fn java_name(column_type: &ColumnType) -> String {
         ColumnType::ZoneId => "ZoneId".into(),
         ColumnType::ZonedDateTime => "ZonedDateTime".into(),
         ColumnType::DayOfWeek => "DayOfWeek".into(),
+        ColumnType::PrimitiveBoolean => "boolean".into(),
         ColumnType::Object(_) => "Object".into(),
         other => format!("{other:?}"),
     }
@@ -912,6 +913,15 @@ impl Checker<'_> {
             return self.null_operand(op, family, left, right);
         }
 
+        // A range is held as a `double[]` here (`range::column_type`), and Java compares
+        // two of them as objects, which is not ported.
+        if matches!(family, Family::Compare(_)) && (makes_range(left) || makes_range(right)) {
+            return Err(unsupported(format!(
+                "operator {} on a {}",
+                symbol(op),
+                range::CLASS
+            )));
+        }
         let left = self.check(left)?;
         let right = self.check(right)?;
         if is_object(&left.column_type) || is_object(&right.column_type) {
@@ -1346,14 +1356,35 @@ impl Checker<'_> {
         };
         let (left_element, right_element) = (element(&left), element(&right));
         let number = |element: &ColumnType| Numeric::of(element).is_some();
+        let vector = |side: &Typed| matches!(side.column_type, ColumnType::Vector(_));
         let arithmetic = match family(op) {
             Family::Arithmetic(arithmetic) if number(&left_element) && number(&right_element) => {
                 arithmetic
             }
-            // `eqArray`, `lessArray` and their relatives return a `boolean[]`. An array of
-            // `Boolean` elements is Java's `java.lang.Boolean[]` here, a client would be
-            // told that class, and no function here takes one, so the comparison has no
-            // use that could be computed. `binaryAndArray` and its relatives exist for
+            // Behavior: `QueryLanguageFunctionUtils#eqArray`, `#lessArray`,
+            // `#lessEqualsArray`, `#greaterArray`, `#greaterEqualsArray` of two arrays of
+            // numbers or of an array and a number: each pair of elements compared as
+            // `eq`, `less` and their relatives compare two numbers, into a `boolean[]`.
+            // They take Java arrays only, not vectors.
+            Family::Compare(compare)
+                if number(&left_element)
+                    && number(&right_element)
+                    && !vector(&left)
+                    && !vector(&right) =>
+            {
+                let one = |element: ColumnType, slot: usize| typed(element, Node::Column(slot));
+                let body = comparison(compare, one(left_element, 0), one(right_element, 1))?;
+                return Ok(typed(
+                    ColumnType::array(ColumnType::PrimitiveBoolean),
+                    Node::Elementwise {
+                        body: Box::new(body),
+                        left: Box::new(left),
+                        right: Box::new(right),
+                    },
+                ));
+            }
+            // `eqArray` and its relatives of other elements, of `Boolean[]`, of `Object[]`,
+            // and of vectors are not ported. `binaryAndArray` and its relatives exist for
             // some types only, and `+` with a `String` prints the array's identity.
             _ => {
                 return Err(unsupported(format!(
@@ -2803,6 +2834,14 @@ fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, Formula
             right: Box::new(right),
         },
     ))
+}
+
+/// Whether `expr` makes a `DiscretizedRangeEqual`.
+fn makes_range(expr: &Expr) -> bool {
+    matches!(expr, Expr::Call { function, .. }
+        if function
+            .strip_prefix(crate::parse::NEW)
+            .is_some_and(|class| class == range::CLASS || range::CLASS.ends_with(&format!(".{class}"))))
 }
 
 /// Whether a value of `column_type` is an object this checker computes with only as one:

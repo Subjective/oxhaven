@@ -203,6 +203,7 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         ColumnType::ZoneId => "java.time.ZoneId",
         ColumnType::ZonedDateTime => "java.time.ZonedDateTime",
         ColumnType::DayOfWeek => "java.time.DayOfWeek",
+        ColumnType::PrimitiveBoolean => "boolean",
         ColumnType::Object(_) => "java.lang.Object",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",

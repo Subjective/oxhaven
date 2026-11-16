@@ -175,18 +175,10 @@ fn what_java_refuses_for_an_array_operand_is_refused() {
             table.compile_error(formula)
         );
     }
-    // Computed by Java and not here: a comparison, whose `boolean[]` no column type here
-    // is; a bitwise operator on arrays; and the text of an array in a concatenation, which
-    // is its identity hash.
-    for formula in [
-        "A == 7",
-        "A < B",
-        "V >= 1",
-        "S == `a`",
-        "Z == true",
-        "A & 1",
-        "S + `x`",
-    ] {
+    // Computed by Java and not here: a comparison of a vector, which no `eqArray` takes,
+    // or of arrays of objects; a bitwise operator on arrays; and the text of an array in a
+    // concatenation, which is its identity hash.
+    for formula in ["V >= 1", "S == `a`", "Z == true", "A & 1", "S + `x`"] {
         assert!(
             matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
             "{formula}: {:?}",
@@ -475,4 +467,31 @@ fn the_clock_and_the_random_numbers_have_javas_types() {
             "{formula}"
         );
     }
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#eqArray(int[], int)`, `#lessArray(int[],
+/// double[])` and their relatives: each element compared as `eq` and `less` compare two
+/// numbers (null equal to null and less than any number, NaN unordered), into a
+/// `boolean[]`. Seen on Java 42.9: `new int[]{1, NULL_INT, 3} < 2` is `[true, true, false]`.
+#[test]
+fn a_comparison_of_arrays_is_a_boolean_array_of_the_elements_compared() {
+    let table = table();
+    let boolean_array = ColumnType::array(ColumnType::PrimitiveBoolean);
+    let (column_type, printed) = shown(&table, "A == 7");
+    assert_eq!(column_type, boolean_array);
+    assert_eq!(
+        printed,
+        [
+            "[false, false, true]",
+            "[false, false, true]",
+            "[false, false, true]"
+        ]
+    );
+    // The first row of A is 0, null, 7, of B 1.5, 0.0, null.
+    let (column_type, printed) = shown(&table, "A < B");
+    assert_eq!(column_type, boolean_array);
+    assert_eq!(printed[0], "[true, true, false]");
+    let (_, printed) = shown(&table, "1.0 >= A");
+    assert_eq!(printed[0], "[true, true, false]");
+    assert!(table.evaluate("A == C").is_err(), "arrays of two lengths");
 }
