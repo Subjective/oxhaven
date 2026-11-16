@@ -133,11 +133,9 @@ and go.
   with `PERMIT_MULTIPLE_KEYS`, the merge of the constituents of the keys that match, which
   follows the key table. Both are `where_in` on the underlying table, as in Java.
 - `ObjectService`: `FetchObject`, and `MessageStream` for a fetch-only type: the first
-  message of a stream is answered with the object, and the stream then stays open until
-  the client closes it. `OpenMessageStream` and `NextMessageStream`, the same stream for a
-  client that cannot keep one call open in both directions, are refused. The only type is
-  `PartitionedTable`. Task 7.10 owns the service and adds plugin types; what is here is in
-  `crates/oxhaven-server/src/object/`, with one built-in type.
+  message of a stream is answered with the object, and the stream then ends, as Java's
+  does. `PartitionedTable` is the built-in object type; the service, the registry of types
+  and the types of plugins are task 7.10's (`docs/OBJECTS.md`).
 - `Aggregate` with a partition aggregation makes the column of tables in an ordinary table.
 - The statuses and messages of the cases probed are Java's
   (`crates/oxhaven-server/src/partitioned/tests.rs`).

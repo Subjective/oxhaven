@@ -263,7 +263,7 @@ Stubbed or missing, each with its task:
 
 | What | Now | Task |
 | --- | --- | --- |
-| Values that are not tables (figures, partitioned tables, plugin objects) | resolve as objects; none has a type name yet, so none is listed (`console::session::type_name_if_displayable`) | 7.6 to 7.10 |
+| Values that are not tables | a partitioned table and an object of a plugin's type are listed with the type (`docs/OBJECTS.md`); a figure and a hierarchical table have no type yet, so they are not listed | 7.8, 7.11 |
 | Scope variables in formulas | numbers, strings and booleans; the rest is refused, see "The query scope" | no task yet |
 | The rest of the Python API | absent: `ImportError` or `AttributeError` | 6.4 to 6.12 |
 
