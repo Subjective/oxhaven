@@ -930,3 +930,19 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   leaves a stale lookup in Java (reproduced). Engine gap noted: `natural_join` does not copy
   `SortableColumns`. 7.8.2 and 7.8.3 (rollup views and constituents) can start once it is
   merged. Kafka starts now in the free slot.
+- Pull request 110 opened (7.10.2, the `jpy` module) with allowed difference A10, written
+  from the owner's ruling of 04:24 UTC. The label was set after the first run started, so
+  the `rules` job may need the branch updated once to see it. Left for plotly-express:
+  histograms (`new DiscretizedRangeEqual` in a formula) and business calendars. `deephaven.ui`
+  imports once `TreeTable` (pull request 109) is on main. For the owner: `jpy.destroy_jvm()`
+  from the console ends Java's server.
+- Pull request 109 merged (7.9, tree tables). Start times of 7.2b run 2, 7.4.1 and 5.8 in
+  tasks.csv corrected: they had been written from an estimate, not the clock.
+- Pull request 111 opened (7.2b, Parquet writes). The replay gate passes after the scenario's
+  partitioned step was re-recorded with a `base_name`; the baseline line got stricter. Gap
+  for a follow-up: a directory whose partitioning columns only `_common_metadata` knows
+  cannot be read, so partitioned output with metadata files is not read back as a directory.
+- Next in the free slot: rollup update and format views with constituents (7.8.2 and 7.8.3),
+  now that tree tables are on main.
+- Pull request 110 merged (7.10.2): the server starts with plotly-express installed.
+- Pull request 111 merged (7.2b).

@@ -1,0 +1,74 @@
+{
+  "format": 2,
+  "scenario": "tree_static",
+  "scenario_sha256": "6313e5d9c374948ec344278a48145a0bdc1bda500245d19325473c96a2b1018f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "family_default",
+      "file": "step000.family_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "family_all",
+      "file": "step000.family_all.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "promoted_default",
+      "file": "step000.promoted_default.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "promoted_all",
+      "file": "step000.promoted_all.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "loops_all",
+      "file": "step000.loops_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "loops_promoted_all",
+      "file": "step000.loops_promoted_all.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "nameless_default",
+      "file": "step000.nameless_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "words_default",
+      "file": "step000.words_default.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "words_all",
+      "file": "step000.words_all.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "same_all",
+      "file": "step000.same_all.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "nothing_all",
+      "file": "step000.nothing_all.arrow",
+      "rows": 0
+    }
+  ]
+}

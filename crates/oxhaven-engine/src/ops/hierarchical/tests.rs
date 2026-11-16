@@ -27,7 +27,7 @@ fn cell(column: &ArrayRef, row: usize) -> String {
 }
 
 /// The rows of a snapshot, each as the text of its cells joined by `|`, null as `-`.
-fn text(snapshot: &Snapshot) -> Vec<String> {
+pub(super) fn text(snapshot: &Snapshot) -> Vec<String> {
     (0..snapshot.rows as usize)
         .map(|row| {
             snapshot

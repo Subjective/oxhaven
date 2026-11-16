@@ -124,7 +124,11 @@ fn rollup_request(source: i32, result: i32, by: &[&str]) -> RollupRequest {
     }
 }
 
-fn view_request(table: i32, result: i32, keys: Option<i32>) -> HierarchicalTableViewRequest {
+pub(super) fn view_request(
+    table: i32,
+    result: i32,
+    keys: Option<i32>,
+) -> HierarchicalTableViewRequest {
     HierarchicalTableViewRequest {
         result_view_id: Some(export_id_to_ticket(result)),
         expansions: keys.map(|keys| HierarchicalTableViewKeyTableDescriptor {
@@ -135,7 +139,7 @@ fn view_request(table: i32, result: i32, keys: Option<i32>) -> HierarchicalTable
     }
 }
 
-fn refused<T: std::fmt::Debug>(answer: Result<T, Status>, code: Code, text: &str) {
+pub(super) fn refused<T: std::fmt::Debug>(answer: Result<T, Status>, code: Code, text: &str) {
     let status = answer.unwrap_err();
     assert_eq!(status.code(), code, "{status:?}");
     assert!(
@@ -145,7 +149,7 @@ fn refused<T: std::fmt::Debug>(answer: Result<T, Status>, code: Code, text: &str
     );
 }
 
-const LOGGED: &str = "Details Logged w/ID '";
+pub(super) const LOGGED: &str = "Details Logged w/ID '";
 const ONE_OF: &str = "Note: this may also indicate that the server is older than the client and \
                       doesn't know about this new oneof option.";
 
@@ -175,7 +179,9 @@ async fn rollup_answers_what_java_answers() {
     };
 
     let value = server.session().get_export(10).unwrap().value().unwrap();
-    let HierarchicalTable::Rollup(made) = hierarchical_of(&value).unwrap().as_ref();
+    let HierarchicalTable::Rollup(made) = hierarchical_of(&value).unwrap().as_ref() else {
+        panic!("a rollup");
+    };
     assert_eq!(made.group_by(), ["Sym", "Ex"]);
     // Java makes a rollup without aggregations and without group-by columns
     let bare = RollupRequest {
@@ -435,7 +441,7 @@ async fn view_and_export_source_answer_what_java_answers() {
 }
 
 #[tokio::test]
-async fn apply_reads_its_request_and_tree_is_refused_by_name() {
+async fn apply_reads_its_request() {
     let server = &server().await;
     let service = || HierarchicalTableServiceClient::new(server.channel.clone());
     let apply = |request: HierarchicalTableApplyRequest| async move {
@@ -486,24 +492,12 @@ async fn apply_reads_its_request_and_tree_is_refused_by_name() {
         Code::NotFound,
         "Could not resolve 'inputHierarchicalTableId: variable 'nope' not found",
     );
-    // what Java does and this server does not yet
-    let tree = service()
-        .tree(server.authorized(TreeRequest {
-            result_tree_table_id: Some(export_id_to_ticket(40)),
-            source_table_id: Some(export_id_to_ticket(1)),
-            identifier_column: "Sym".to_string(),
-            parent_identifier_column: "Ex".to_string(),
-            promote_orphans: false,
-        }))
-        .await;
-    refused(
-        tree,
-        Code::Unimplemented,
-        "not ported: io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#tree",
-    );
 }
 
-fn sort_by(column: &str, direction: proto::sort_descriptor::SortDirection) -> SortDescriptor {
+pub(super) fn sort_by(
+    column: &str,
+    direction: proto::sort_descriptor::SortDirection,
+) -> SortDescriptor {
     SortDescriptor {
         column_name: column.to_string(),
         is_absolute: false,
@@ -512,7 +506,7 @@ fn sort_by(column: &str, direction: proto::sort_descriptor::SortDirection) -> So
 }
 
 /// `column <operation> value`, as the IDE sends a filter.
-fn compared(
+pub(super) fn compared(
     column: &str,
     operation: proto::compare_condition::CompareOperation,
     value: proto::literal::Value,
@@ -537,7 +531,7 @@ fn compared(
     }
 }
 
-fn update_view(formula: &str) -> proto::UpdateViewRequest {
+pub(super) fn update_view(formula: &str) -> proto::UpdateViewRequest {
     proto::UpdateViewRequest {
         column_spec: Some(proto::Selectable {
             r#type: Some(proto::selectable::Type::Raw(formula.to_string())),
@@ -921,7 +915,7 @@ async fn a_rollup_of_a_table_with_restricted_sorts_sorts_by_those_columns() {
 }
 
 /// The metadata of a field without the prefix every key has.
-fn metadata(field: &Field) -> Vec<(&str, &str)> {
+pub(super) fn metadata(field: &Field) -> Vec<(&str, &str)> {
     let mut all: Vec<(&str, &str)> = field
         .metadata()
         .iter()
@@ -1043,7 +1037,12 @@ async fn a_rollup_is_opened_as_java_describes_it() {
 
 /// A subscription request for export `id`: `columns` as the bytes of a bit set, and a
 /// viewport.
-fn subscription(id: i32, columns: Option<&[u8]>, viewport: &RowSet, reverse: bool) -> FlightData {
+pub(super) fn subscription(
+    id: i32,
+    columns: Option<&[u8]>,
+    viewport: &RowSet,
+    reverse: bool,
+) -> FlightData {
     let signed = |bytes: &[u8]| bytes.iter().map(|byte| *byte as i8).collect::<Vec<i8>>();
     let mut builder = FlatBufferBuilder::new();
     let ticket = Some(builder.create_vector(&signed(&export_id_to_ticket(id).ticket)));
@@ -1069,13 +1068,13 @@ fn subscription(id: i32, columns: Option<&[u8]>, viewport: &RowSet, reverse: boo
 
 /// What a snapshot message says: the size of the view, the rows it has, and those rows.
 #[derive(Debug, PartialEq)]
-struct Sent {
-    size: i64,
-    viewport: Option<RowSet>,
-    rows: Vec<String>,
+pub(super) struct Sent {
+    pub(super) size: i64,
+    pub(super) viewport: Option<RowSet>,
+    pub(super) rows: Vec<String>,
 }
 
-fn sent(message: &FlightData, schema: &Schema) -> Sent {
+pub(super) fn sent(message: &FlightData, schema: &Schema) -> Sent {
     let bytes = metadata_of(message).expect("update metadata");
     let update = flatbuffers::root::<BarrageUpdateMetadata>(&bytes).unwrap();
     assert!(update.is_snapshot());
