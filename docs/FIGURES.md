@@ -10,7 +10,7 @@ is the design of task 7.11 and the record of what Java 42.9 was seen to do.
 It is built, for the plots whose data is a table. It needs no part of Java's `Plot` on the
 server: the model of a figure is a few hundred lines of Python, and the server only checks
 and serves the result. `deephaven.plot.express` is the other route and stays open: it
-needs object types (7.10) and a JS plugin, see [Not started](#not-started).
+needs object types (7.10) and a JS plugin, see [the trial](#the-plugin-route-a-trial).
 
 ## Parts
 
@@ -173,9 +173,44 @@ Java behaviours that look like defects; each is reproduced or refused as the tab
 - A second chart on a cell is kept beside the first, or fails with an index error.
 - The tables of a figure are numbered in an order that changes from run to run.
 
+## The plugin route: a trial
+
+`deephaven-plugin-plotly-express` 0.22.0 and `deephaven-plugin-ui` 0.43.2 were installed
+without their dependency on the reference's `deephaven-core`, in a scratch environment
+beside this server, and the same steps were run on Java 42.9 with the plugin. Nothing was
+fixed but the first point.
+
+- Both plugins install their package inside `deephaven` (`deephaven/plot/express`,
+  `deephaven/ui`). The package of this server is in the binary, so they were not found and
+  the server did not start. The importer now looks for a module the binary does not hold in
+  the directories of the package's name on `sys.path` (`_oxhaven_bootstrap.py`).
+- `deephaven.plot.express` then needs three modules this server does not have:
+  `deephaven.server.executors` (`submit_task`), `deephaven.calendar` (`calendar`) and `jpy`
+  (`io.deephaven.time.DateTimeUtils` when it is imported;
+  `io.deephaven.engine.table.impl.util.ColumnsToRowsTransform` and `jpy.array` in its
+  example data). With stand-ins for the three in the scratch environment:
+  - its object type `deephaven.plot.express.DeephavenFigure` is registered, and `dx.line`,
+    `dx.bar` and `dx.pie` of a table make figures that are variables of that type;
+  - a client that opens `dx.line` over `MessageStream` is sent what Java sends: the
+    figure as JSON, with the same mapping of columns to the trace, and one `Table`
+    reference;
+  - `dx.scatter(..., by=...)` fails: `LivenessScope.manage` of this package refuses a
+    partitioned table;
+  - `dx.histogram` fails: its formula makes a Java object
+    (`new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(...)`);
+  - no JS plugin is registered, so `/js-plugins/manifest.json` lists nothing (Java lists
+    `@deephaven/js-plugin-plotly-express`) and the web IDE has nothing to draw the object
+    with. The refusal is not in the log: the plugin registers through a wrapper of
+    `deephaven-plugin-utilities` that hides it.
+- `deephaven.ui` stops at its imports: `RollupTable` and `TreeTable` of `deephaven.table`,
+  `deephaven.configuration` (`get_configuration`) and `deephaven.server.executors`.
+
+Only the imports were listed for the whole of each plugin (by reading its source); the
+calls it makes on what it imports were tried for the five plots above and no further.
+
 ## Not started
 
 - JS plugins: `CallbackAdapter#registerJsPlugin`, `/js-plugins/manifest.json` and the files
   it lists (`docs/OBJECTS.md`, "Refused").
-- `deephaven-plugin-plotly-express` and `deephaven-plugin-ui`, which need them to draw.
+- What the trial above lists as missing.
 - `OpenDoExchange` and `OpenHandshake` of `BrowserFlightService`.
