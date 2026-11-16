@@ -83,6 +83,15 @@ impl SortedFirstLast {
         }
     }
 
+    /// The type the output column's cells are read and written as: a cell of a column of
+    /// tables is its handle, copied as a `long` (the result's source keeps the table).
+    fn cell_type(&self) -> ColumnType {
+        match self.output_type {
+            ColumnType::Table(_) => ColumnType::Long,
+            ref other => other.clone(),
+        }
+    }
+
     /// The sort keys of `rows`, current values.
     fn keys(&self, rows: &RowSet) -> Result<Vec<SortKey>, TableFailure> {
         let mut columns = Vec::with_capacity(self.sort.len());
@@ -197,7 +206,7 @@ impl AggOperator for SortedFirstLast {
             row_keys.push(self.best[slot].0);
         }
         let values = Values::decode(
-            &self.output_type,
+            &self.cell_type(),
             &self.output.chunk_by_keys(&row_keys, false)?,
         )?;
         Ok(slots
@@ -214,7 +223,7 @@ impl AggOperator for SortedFirstLast {
 
     fn results(&self, slots: &[usize]) -> ArrayRef {
         build(
-            &self.output_type,
+            &self.cell_type(),
             slots.iter().map(|&slot| &self.value[slot]),
         )
     }
