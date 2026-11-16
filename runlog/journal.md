@@ -978,3 +978,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   views, Kafka follow-ups, formula column types, the review summary) run on Opus to stretch
   usage limits; the row set swap and fuzzer triage stay on the default model. Agents already
   running finish as they are; the `who` column of tasks.csv records the model from now on.
+- Pull request 114 merged (5.8).
