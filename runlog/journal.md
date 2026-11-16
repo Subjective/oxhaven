@@ -871,3 +871,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   gate run failed because its server's Python had no pyarrow; it borrowed another
   worktree's environment read-only. The brief should say how to get the replay
   environment (`oracle/requirements-replay.txt`) rather than leave it to chance.
+- Started 0.16 (second parity pass). The row set swap (7.7b) stays deferred: it changes a contract with about 35 call sites and would conflict with every engine branch in flight.
