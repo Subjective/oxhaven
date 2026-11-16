@@ -160,6 +160,13 @@ LIST_EXACT = "list_exact"
 LIST_FLOAT = "list_float"
 
 
+def _is_temporal(arrow_type: pa.DataType) -> bool:
+    """Dates, times of day and durations: exact values that are compared as the integer
+    count the wire holds. Not the interval of months a `Period` is sent as: pyarrow cannot
+    read its cells."""
+    return pat.is_date(arrow_type) or pat.is_time(arrow_type) or pat.is_duration(arrow_type)
+
+
 def comparison_class(arrow_type: pa.DataType) -> str | None:
     """How cells of `arrow_type` are compared: EXACT, FLOAT, a list of either, or None when
     the rules do not know the type."""
@@ -175,6 +182,8 @@ def comparison_class(arrow_type: pa.DataType) -> str | None:
         or arrow_type == pa.uint16()
         or pat.is_string(arrow_type)
         or pat.is_timestamp(arrow_type)
+        # `LocalDate`, `LocalTime` and `Duration` on the wire
+        or _is_temporal(arrow_type)
     ):
         return EXACT
     return None
@@ -395,10 +404,10 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
 def _cells(column: pa.ChunkedArray) -> list[Any]:
     """The cells of a column as plain Python values; timestamps as their integer count,
     also inside arrays."""
-    if pat.is_timestamp(column.type):
+    if pat.is_timestamp(column.type) or _is_temporal(column.type):
         column = column.cast(pa.int64())
-    elif (pat.is_list(column.type) or pat.is_large_list(column.type)) and pat.is_timestamp(
-            column.type.value_type):
+    elif (pat.is_list(column.type) or pat.is_large_list(column.type)) and (
+            pat.is_timestamp(column.type.value_type) or _is_temporal(column.type.value_type)):
         column = column.cast(pa.list_(pa.int64()))
     return column.to_pylist()
 
