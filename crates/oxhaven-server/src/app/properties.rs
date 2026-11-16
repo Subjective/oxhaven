@@ -132,8 +132,8 @@ mod tests {
         (key.to_string(), value.to_string())
     }
 
-    /// Each expectation was read back from `java.util.Properties#load` on the reference's
-    /// JDK, through the `.app` files of the probe (`docs/APPLICATIONS.md`).
+    /// Each expectation in these tests is what `java.util.Properties#load` returned for the
+    /// same text on the JDK the reference runs on (OpenJDK 21).
     #[test]
     fn keys_and_values_are_split_as_java_splits_them() {
         assert_eq!(
@@ -147,8 +147,36 @@ mod tests {
         // blanks around the separator go, those at the end of the value stay
         assert_eq!(
             pairs("name = Second \\\n   continued\r\nfile_7 :\t sub/s.py \r"),
-            [pair("file_7", "sub/s.py "), pair("name", "Second continued")]
+            [
+                pair("file_7", "sub/s.py "),
+                pair("name", "Second continued")
+            ]
         );
+        // a continued line is not looked at for a comment, and an empty one ends it
+        assert_eq!(
+            pairs("a=1\\\n# not a comment\nb=2\\"),
+            [pair("a", "1# not a comment"), pair("b", "2")]
+        );
+        assert_eq!(pairs("a=1\\\n\n b=2"), [pair("a", "1"), pair("b", "2")]);
+        assert_eq!(
+            pairs("a\\\n  b = c\n\\ lead=x\nk\\u0041=v\n = novalue\n:x\n"),
+            [
+                pair("", "x"),
+                pair(" lead", "x"),
+                pair("ab", "c"),
+                pair("kA", "v")
+            ]
+        );
+        assert_eq!(
+            pairs("a=1\rb=2\r\n\rc=3\n\u{c} d \u{c}= \u{c}e\n"),
+            [
+                pair("a", "1"),
+                pair("b", "2"),
+                pair("c", "3"),
+                pair("d", "e")
+            ]
+        );
+        assert_eq!(pairs("t=a\\qb\\\\\\\n c"), [pair("t", "aqb\\c")]);
         // only the first separator counts, and a key may have no value
         assert_eq!(
             pairs("a=b=c\nd e f\nlonely\nx=1\nx=2"),
@@ -172,15 +200,14 @@ mod tests {
             ]
         );
         // an even number of backslashes at the end of a line does not continue it
-        assert_eq!(
-            pairs("a=1\\\\\nb=2"),
-            [pair("a", "1\\"), pair("b", "2")]
-        );
+        assert_eq!(pairs("a=1\\\\\nb=2"), [pair("a", "1\\"), pair("b", "2")]);
         assert_eq!(pairs("snow=\\uD83D\\uDE00"), [pair("snow", "\u{1F600}")]);
         assert_eq!(
             parse("name=\\u00zz").unwrap_err(),
             "java.lang.IllegalArgumentException: Malformed \\uxxxx encoding."
         );
-        assert!(parse("name=\\uD83Dx").unwrap_err().starts_with("not ported: java.util.Properties#load"));
+        assert!(parse("name=\\uD83Dx")
+            .unwrap_err()
+            .starts_with("not ported: java.util.Properties#load"));
     }
 }

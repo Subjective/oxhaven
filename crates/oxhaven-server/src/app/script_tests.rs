@@ -224,8 +224,10 @@ fn an_application_file_that_java_refuses_is_refused_with_its_text() {
 fn what_is_not_ported_is_refused_by_the_name_of_the_java_method() {
     let refused = |text: &str| parse(text).unwrap_err();
     // Java fails these too when the class does not exist, enabled or not
-    assert!(refused("type=static\nclass=com.example.App\nenabled=false\n")
-        .starts_with("not ported: io.deephaven.appmode.StaticClassApplication#parse"));
+    assert!(
+        refused("type=static\nclass=com.example.App\nenabled=false\n")
+            .starts_with("not ported: io.deephaven.appmode.StaticClassApplication#parse")
+    );
     assert!(refused("type=dynamic\nclass=com.example.App\n")
         .starts_with("not ported: io.deephaven.appmode.DynamicApplication#parse"));
     // Java runs these in the order of a hash table
@@ -270,7 +272,12 @@ fn application_files_are_found_in_the_order_of_their_names() {
         .collect();
     assert_eq!(
         ids,
-        ["05_second.app=a0", "10_first.app=a1", "Z.app=upper", "a.app=lower"]
+        [
+            "05_second.app=a0",
+            "10_first.app=a1",
+            "Z.app=upper",
+            "a.app=lower"
+        ]
     );
 
     // a directory that does not exist has no applications, and that is not an error
@@ -279,7 +286,11 @@ fn application_files_are_found_in_the_order_of_their_names() {
     assert!(find(&sandbox.dir().join("notes.txt")).is_err());
 
     // one file that cannot be read fails them all, and the error names it
-    fs::write(sandbox.dir().join("70_latin1.app"), b"type=script\nname=caf\xe9\n").unwrap();
+    fs::write(
+        sandbox.dir().join("70_latin1.app"),
+        b"type=script\nname=caf\xe9\n",
+    )
+    .unwrap();
     let error = find(&sandbox.dir()).unwrap_err();
     assert!(
         error.contains("70_latin1.app") && error.contains("MalformedInputException"),
@@ -301,7 +312,10 @@ fn started(
     console: Option<&Arc<Console>>,
 ) -> Result<Vec<String>, String> {
     let applications = load(dir, applications, console)?;
-    Ok(applications.iter().map(|app| app.id().to_string()).collect())
+    Ok(applications
+        .iter()
+        .map(|app| app.id().to_string())
+        .collect())
 }
 
 #[tokio::test]
@@ -320,7 +334,10 @@ async fn applications_start_in_order_and_their_scripts_run_in_order() {
         "05_second.app",
         "type=script\nscriptType=Python\nid=a0\nname=Second\nfile_7=sub/../s.py\n",
     );
-    sandbox.write("20_disabled.app", &format!("{SCRIPT}id=dis\nname=D\nenabled=false\nfile_0=never.py\n"));
+    sandbox.write(
+        "20_disabled.app",
+        &format!("{SCRIPT}id=dis\nname=D\nenabled=false\nfile_0=never.py\n"),
+    );
     sandbox.write("30_qst.app", "type=qst\n");
     // the text of a script is its file without the blanks around it
     sandbox.write("s.py", "\n\n   field zeta\nfield alpha\n\n");
@@ -356,8 +373,14 @@ async fn applications_start_in_order_and_their_scripts_run_in_order() {
 #[tokio::test]
 async fn a_script_that_fails_ends_the_start() {
     let sandbox = Sandbox::new();
-    sandbox.write("1.app", &format!("{SCRIPT}id=f1\nname=Fails\nfile_0=ok.py\nfile_1=boom.py\nfile_2=after.py\n"));
-    sandbox.write("2.app", &format!("{SCRIPT}id=f2\nname=After\nfile_0=after.py\n"));
+    sandbox.write(
+        "1.app",
+        &format!("{SCRIPT}id=f1\nname=Fails\nfile_0=ok.py\nfile_1=boom.py\nfile_2=after.py\n"),
+    );
+    sandbox.write(
+        "2.app",
+        &format!("{SCRIPT}id=f2\nname=After\nfile_0=after.py\n"),
+    );
     sandbox.write("ok.py", "field before");
     sandbox.write("boom.py", "fail ValueError: boom");
     sandbox.write("after.py", "field after");
@@ -417,9 +440,8 @@ async fn an_application_that_cannot_start_ends_the_start_with_javas_text() {
     );
     let unreadable = failure(&app("python", "dir.py"), Some("Python"));
     assert!(
-        unreadable.starts_with(
-            "io.deephaven.UncheckedDeephavenException: could not read script file "
-        ),
+        unreadable
+            .starts_with("io.deephaven.UncheckedDeephavenException: could not read script file "),
         "{unreadable}"
     );
     assert_eq!(
@@ -435,8 +457,14 @@ async fn an_application_that_cannot_start_ends_the_start_with_javas_text() {
 #[tokio::test]
 async fn two_applications_with_one_id_end_the_start() {
     let sandbox = Sandbox::new();
-    sandbox.write("1.app", &format!("{SCRIPT}id=same\nname=One\nfile_0=ok.py\n"));
-    sandbox.write("2.app", &format!("{SCRIPT}id=same\nname=Two\nfile_0=ok.py\n"));
+    sandbox.write(
+        "1.app",
+        &format!("{SCRIPT}id=same\nname=One\nfile_0=ok.py\n"),
+    );
+    sandbox.write(
+        "2.app",
+        &format!("{SCRIPT}id=same\nname=Two\nfile_0=ok.py\n"),
+    );
     sandbox.write("ok.py", "field before");
     let (applications, console, _session) = console("Python");
     let error = started(&sandbox.dir(), &applications, Some(&console)).unwrap_err();
@@ -454,9 +482,15 @@ async fn a_directory_without_applications_starts_nothing() {
     let sandbox = Sandbox::new();
     let (applications, console, session) = console("Python");
     for dir in [sandbox.dir(), sandbox.dir().join("missing")] {
-        assert_eq!(started(&dir, &applications, Some(&console)).unwrap(), [""; 0]);
+        assert_eq!(
+            started(&dir, &applications, Some(&console)).unwrap(),
+            [""; 0]
+        );
     }
     // and needs no console
-    assert_eq!(started(&sandbox.dir(), &applications, None).unwrap(), [""; 0]);
+    assert_eq!(
+        started(&sandbox.dir(), &applications, None).unwrap(),
+        [""; 0]
+    );
     assert!(session.ran.lock().unwrap().is_empty());
 }

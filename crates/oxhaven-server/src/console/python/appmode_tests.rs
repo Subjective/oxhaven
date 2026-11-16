@@ -281,7 +281,10 @@ async fn the_applications_of_a_directory_start_as_on_java() {
     // The states the scripts kept still set and remove fields, and clients are told.
     python.run("app['late'] = empty_table(1); _app0['zeta'] = empty_table(9)");
     let update = next(&mut updates).await;
-    assert_eq!(described(&update.created), ["a1|First|late|Table|a/a1/f/late|"]);
+    assert_eq!(
+        described(&update.created),
+        ["a1|First|late|Table|a/a1/f/late|"]
+    );
     assert_eq!(
         described(&update.updated),
         ["a0|Second continued|zeta|Table|a/a0/f/zeta|"]
@@ -293,7 +296,10 @@ async fn the_applications_of_a_directory_start_as_on_java() {
          except KeyError as e:\n    assert repr(e) == \"KeyError('late')\", e",
     );
     let update = next(&mut updates).await;
-    assert_eq!(described(&update.removed), ["a1|First|late|Table|a/a1/f/late|"]);
+    assert_eq!(
+        described(&update.removed),
+        ["a1|First|late|Table|a/a1/f/late|"]
+    );
     assert!(update.created.is_empty() && update.updated.is_empty());
 
     // a field that came and went within one message is not mentioned; one that was
@@ -308,7 +314,10 @@ async fn the_applications_of_a_directory_start_as_on_java() {
         described(&update.created),
         ["a0|Second continued|described|Table|a/a0/f/described|A description"]
     );
-    assert_eq!(described(&update.updated), ["a1|First|tick|Table|a/a1/f/tick|"]);
+    assert_eq!(
+        described(&update.updated),
+        ["a1|First|tick|Table|a/a1/f/tick|"]
+    );
     assert!(update.removed.is_empty());
 }
 
@@ -332,7 +341,11 @@ async fn a_field_a_script_replaces_is_listed_behind_the_others() {
     let initial = next(&mut python.list_fields(&bearer).await).await;
     assert_eq!(
         described(&initial.created),
-        ["r|R|b|Table|a/r/f/b|", "r|R|c|Table|a/r/f/c|", "r|R|a|Table|a/r/f/a|"]
+        [
+            "r|R|b|Table|a/r/f/b|",
+            "r|R|c|Table|a/r/f/c|",
+            "r|R|a|Table|a/r/f/a|"
+        ]
     );
 }
 

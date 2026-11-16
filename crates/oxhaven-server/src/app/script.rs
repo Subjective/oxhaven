@@ -98,7 +98,11 @@ impl fmt::Display for ApplicationConfig {
         match self {
             ApplicationConfig::Script(script) => {
                 let files: Vec<_> = script.files.iter().map(|file| file.display()).collect();
-                write!(f, "ScriptApplication{{id={}, name={}, files=[", script.id, script.name)?;
+                write!(
+                    f,
+                    "ScriptApplication{{id={}, name={}, files=[",
+                    script.id, script.name
+                )?;
                 for (index, file) in files.iter().enumerate() {
                     let separator = if index == 0 { "" } else { ", " };
                     write!(f, "{separator}{file}")?;
@@ -219,9 +223,8 @@ pub fn parse(text: &str) -> Result<ApplicationConfig, String> {
 /// Behavior: `io.deephaven.appmode.ApplicationConfigImpl#find`, `#isAppFile`, and
 /// `ApplicationInjector#run`, which takes a missing directory for an empty one
 pub fn find(dir: &Path) -> Result<Vec<(PathBuf, ApplicationConfig)>, String> {
-    let failed = |path: &Path, error: &dyn fmt::Display| {
-        format!("cannot read {}: {error}", path.display())
-    };
+    let failed =
+        |path: &Path, error: &dyn fmt::Display| format!("cannot read {}: {error}", path.display());
     let entries = match std::fs::read_dir(dir) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
