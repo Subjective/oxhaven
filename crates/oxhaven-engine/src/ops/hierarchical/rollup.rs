@@ -604,14 +604,14 @@ impl Hierarchy for RollupTable {
     }
 
     /// Behavior: RollupTableImpl#findParentNodeKey
-    fn parent(&self, key: &NodeKey) -> Parent {
-        match key {
+    fn parent(&self, key: &NodeKey) -> Result<Parent, HierarchicalError> {
+        Ok(match key {
             NodeKey::Root => Parent::None,
             NodeKey::Path(key) => Parent::Key(match key.split_last() {
                 None => NodeKey::Root,
                 Some((_, parent)) => NodeKey::Path(parent.to_vec()),
             }),
-        }
+        })
     }
 
     fn root(&self) -> NodeId {
