@@ -5,10 +5,17 @@
 //! Java writer gives it, so that Java and this crate read the same table from a file of
 //! either. `docs/STORAGE.md`, "Writing Parquet", has the design and what is refused.
 
+mod metadata;
+mod partitioned;
+
+pub use partitioned::{write_partitioned, PartitionedSource};
+
 use crate::{not_ported, ReadError as WriteError};
-use arrow::array::{new_null_array, Array, ArrayRef, AsArray, ListArray, RecordBatch};
+use arrow::array::{new_null_array, Array, ArrayRef, AsArray, BinaryArray, ListArray, RecordBatch};
 use arrow::datatypes::{DataType, Field, Float32Type, Float64Type, Schema};
 use arrow::row::{RowConverter, SortField};
+use metadata::MetadataFiles;
+use oxhaven_column::java_values::{big_decimal_parts, big_decimal_precision, minimal};
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
@@ -17,7 +24,7 @@ use parquet::arrow::arrow_writer::{ArrowWriter, ArrowWriterOptions};
 use parquet::basic::{
     Compression, LogicalType, Repetition, TimeUnit as ParquetTimeUnit, Type as PhysicalType,
 };
-use parquet::file::metadata::KeyValue;
+use parquet::file::metadata::{KeyValue, ParquetMetaData};
 use parquet::file::properties::{EnabledStatistics, WriterProperties};
 use parquet::schema::types::{ColumnPath, SchemaDescriptor, Type, TypePtr};
 use std::collections::HashSet;
@@ -105,8 +112,12 @@ pub struct WriteOptions {
     pub max_dictionary_size: Option<i32>,
     /// The size in bytes after which a data page is closed.
     pub target_page_size: Option<i32>,
-    /// Whether `_metadata` and `_common_metadata` files are written. Not ported.
+    /// Whether `_metadata` and `_common_metadata` files are written, in the directory of
+    /// the files or, for a partitioned write, in the directory given.
     pub generate_metadata_files: bool,
+    /// The name of the files of a partitioned write, without `.parquet`; `None` is
+    /// `{uuid}`. Other writes do not look at it.
+    pub base_name: Option<String>,
     /// The column sets to write data indexes for. Not ported: naming one is refused.
     pub index_columns: Vec<Vec<String>>,
     pub row_groups: RowGroups,
@@ -192,12 +203,12 @@ impl WriteOptions {
                 "Target page size should be >= {MIN_TARGET_PAGE_SIZE}"
             )));
         }
-        if self.generate_metadata_files {
-            return Err(not_ported(
-                "io.deephaven.parquet.table.ParquetMetadataFileWriterImpl#writeMetadataFiles",
-                "the _metadata and _common_metadata files",
-            ));
-        }
+        Ok(())
+    }
+
+    /// Refuses a write that names index columns: no table here has a data index, and the
+    /// files of one hold row sets as Java's `RowSetCodec` writes them.
+    fn refuse_indexes(&self) -> Result<(), WriteError> {
         if !self.index_columns.is_empty() {
             return Err(not_ported(
                 "io.deephaven.parquet.table.ParquetInstructions.Builder#addAllIndexColumns",
@@ -234,8 +245,8 @@ impl WriteOptions {
 ///
 /// Java asks Hadoop's codec factory, which knows a codec by the simple name of its class
 /// without regard to case, with or without the `Codec` at its end, and by its full class
-/// name. The simple names here are the ones the reference server answered with a file;
-/// every other name it refused.
+/// name. The names here are the ones the reference server answered with a file; every
+/// other name it refused.
 ///
 /// Behavior: `io.deephaven.parquet.compress.DeephavenCompressorAdapterFactory#getByName`,
 /// `org.apache.hadoop.io.compress.CompressionCodecFactory#getCodecByName`
@@ -250,10 +261,27 @@ fn compression(name: &str) -> Result<Compression, WriteError> {
         return Ok(Compression::LZ4_RAW);
     }
     if name.contains('.') {
-        return Err(not_ported(
-            BY_NAME,
-            format_args!("the compression codec named by its class, {name}"),
-        ));
+        // the classes the reference's codec factory holds, by their exact names; the
+        // class Parquet names for Zstandard and Hadoop's own Snappy are not among them
+        return Ok(match name {
+            "org.apache.hadoop.io.compress.GzipCodec" | "io.airlift.compress.gzip.JdkGzipCodec" => {
+                Compression::GZIP(Default::default())
+            }
+            "org.apache.parquet.hadoop.codec.SnappyCodec" => Compression::SNAPPY,
+            "org.apache.parquet.hadoop.codec.Lz4RawCodec" => Compression::LZ4_RAW,
+            "org.apache.hadoop.io.compress.Lz4Codec" | "io.airlift.compress.lz4.Lz4Codec" => {
+                Compression::LZ4
+            }
+            "io.airlift.compress.zstd.ZstdCodec" => Compression::ZSTD(Default::default()),
+            "io.airlift.compress.lzo.LzoCodec" => {
+                return Err(not_ported(BY_NAME, "pages compressed with LZO"))
+            }
+            _ => {
+                return Err(invalid(format!(
+                    "Failed to find CompressionCodec for codecName={name}"
+                )))
+            }
+        });
     }
     Ok(match lower.strip_suffix("codec").unwrap_or(&lower) {
         "snappy" => Compression::SNAPPY,
@@ -281,13 +309,47 @@ struct OutColumn {
     /// dictionary for.
     strings: bool,
     use_dictionary: bool,
+    /// The precision and the scale a `BigDecimal` column, or a column of lists of them, is
+    /// written with.
+    decimal: Option<(i32, i32)>,
 }
 
 /// The Parquet type of a value of `column_type`, which is not a list.
 ///
 /// Behavior: the `TypeInfo` implementations of `io.deephaven.parquet.table.TypeInfos`
-fn primitive(name: &str, column_type: &ColumnType) -> Result<Type, WriteError> {
+fn primitive(
+    name: &str,
+    column_type: &ColumnType,
+    decimal: Option<(i32, i32)>,
+) -> Result<Type, WriteError> {
     let (physical, logical) = match column_type {
+        ColumnType::BigDecimal => {
+            let (precision, scale) = decimal.unwrap_or(EMPTY_PRECISION_AND_SCALE);
+            // Behavior: `io.deephaven.parquet.base.BigDecimalParquetBytesCodec#verifyPrecisionAndScale`,
+            // which the codec of the column calls; a scale above the precision cannot
+            // come out of `precision_and_scale`
+            if precision <= 0 {
+                return Err(invalid(format!("precision (={precision}) should be > 0")));
+            }
+            if scale < 0 {
+                return Err(invalid(format!("scale (={scale}) should be >= 0")));
+            }
+            (
+                PhysicalType::BYTE_ARRAY,
+                Some(LogicalType::decimal(scale, precision)),
+            )
+        }
+        // a decimal a reader takes for a whole number; Java reads it back as a BigInteger
+        ColumnType::BigInteger => (PhysicalType::BYTE_ARRAY, Some(LogicalType::decimal(0, 1))),
+        ColumnType::LocalDate => (PhysicalType::INT32, Some(LogicalType::Date)),
+        ColumnType::LocalTime => (
+            PhysicalType::INT64,
+            Some(LogicalType::time(true, ParquetTimeUnit::NANOS)),
+        ),
+        ColumnType::LocalDateTime => (
+            PhysicalType::INT64,
+            Some(LogicalType::timestamp(false, ParquetTimeUnit::NANOS)),
+        ),
         ColumnType::Boolean => (PhysicalType::BOOLEAN, None),
         ColumnType::Byte => (PhysicalType::INT32, Some(LogicalType::integer(8, true))),
         ColumnType::Short => (PhysicalType::INT32, Some(LogicalType::integer(16, true))),
@@ -308,8 +370,14 @@ fn primitive(name: &str, column_type: &ColumnType) -> Result<Type, WriteError> {
             ))
         }
     };
-    Type::primitive_type_builder(name, physical)
-        .with_repetition(Repetition::OPTIONAL)
+    let mut builder =
+        Type::primitive_type_builder(name, physical).with_repetition(Repetition::OPTIONAL);
+    if let Some(LogicalType::Decimal(decimal)) = &logical {
+        builder = builder
+            .with_precision(decimal.precision)
+            .with_scale(decimal.scale);
+    }
+    builder
         .with_logical_type(logical)
         .build()
         .map_err(|error| invalid(format!("column {name}: {error}")))
@@ -322,7 +390,11 @@ fn primitive(name: &str, column_type: &ColumnType) -> Result<Type, WriteError> {
 fn schema_field(column: &OutColumn) -> Result<TypePtr, WriteError> {
     let name = &column.parquet_name;
     let Some(element) = column.column_type.list_element() else {
-        return Ok(Arc::new(primitive(name, &column.column_type)?));
+        return Ok(Arc::new(primitive(
+            name,
+            &column.column_type,
+            column.decimal,
+        )?));
     };
     if element.list_element().is_some() {
         // Java serializes each cell with a codec and writes the bytes
@@ -338,7 +410,11 @@ fn schema_field(column: &OutColumn) -> Result<TypePtr, WriteError> {
     let problem = |error| invalid(format!("column {name}: {error}"));
     let repeated = Type::group_type_builder("list")
         .with_repetition(Repetition::REPEATED)
-        .with_fields(vec![Arc::new(primitive("element", element)?)])
+        .with_fields(vec![Arc::new(primitive(
+            "element",
+            element,
+            column.decimal,
+        )?)])
         .build()
         .map_err(problem)?;
     let list = Type::group_type_builder(name)
@@ -361,15 +437,167 @@ fn arrow_type(column_type: &ColumnType) -> DataType {
     }
 }
 
-/// `values`, a chunk of a column of `column_type`, as the writer takes them: every value
-/// equal to the Java null of its type as a null, which is what it is in Java.
+/// Behavior: `io.deephaven.engine.util.BigDecimalUtils#EMPTY_TABLE_PRECISION_AND_SCALE`
+const EMPTY_PRECISION_AND_SCALE: (i32, i32) = (1, 1);
+
+/// The two's complement integer `unscaled` (most significant byte first) times ten to
+/// the `by`, in the fewest bytes.
+fn times_power_of_ten(unscaled: &[u8], by: u32) -> Vec<u8> {
+    fn negate(bytes: &mut [u8]) {
+        let mut carry = true;
+        for byte in bytes.iter_mut().rev() {
+            let (inverted, overflow) = (!*byte).overflowing_add(u8::from(carry));
+            *byte = inverted;
+            carry = overflow;
+        }
+    }
+    let negative = unscaled.first().is_some_and(|first| first & 0x80 != 0);
+    let mut magnitude = unscaled.to_vec();
+    if negative {
+        negate(&mut magnitude);
+    }
+    for _ in 0..by {
+        let mut carry = 0u32;
+        for byte in magnitude.iter_mut().rev() {
+            let product = u32::from(*byte) * 10 + carry;
+            *byte = product as u8;
+            carry = product >> 8;
+        }
+        if carry > 0 {
+            magnitude.insert(0, carry as u8);
+        }
+    }
+    // a byte in front for the sign, which `minimal` takes away again where it can
+    magnitude.insert(0, 0);
+    if negative {
+        negate(&mut magnitude);
+    }
+    minimal(&magnitude).to_vec()
+}
+
+/// The cells of a `BigDecimal` column, as `values` holds them.
+fn decimal_cells(values: &ArrayRef) -> Result<&BinaryArray, WriteError> {
+    values.as_binary_opt::<i32>().ok_or_else(|| {
+        invalid(format!(
+            "a column of BigDecimal is stored as {}",
+            values.data_type()
+        ))
+    })
+}
+
+/// The precision and the scale that hold every `BigDecimal` of the column `name` of
+/// every one of `tables`: the most digits before the point and the most after it. One
+/// type serves all the files of a write, so that they have one schema.
+///
+/// Behavior: `io.deephaven.engine.util.BigDecimalUtils#computePrecisionAndScale` over
+/// the merged tables (`ParquetTools#buildComputedCache`), then
+/// `io.deephaven.parquet.table.TypeInfos#parquetCompatible`
+fn precision_and_scale(
+    tables: &[Arc<dyn Table>],
+    name: &str,
+    column_type: &ColumnType,
+) -> Result<(i32, i32), WriteError> {
+    // Java starts both at -1, so a scale below -1 never counts
+    let (mut whole, mut scale) = (-1i64, -1i64);
+    for table in tables {
+        let Some(index) = table.definition().index_of(name) else {
+            continue;
+        };
+        if table.definition().columns()[index].column_type != *column_type {
+            // refused when the table is read for its file
+            continue;
+        }
+        let values = table.column(index).chunk(&table.row_set());
+        let values = values.map_err(|failure| {
+            invalid(format!(
+                "Failed to write column {name}: {}",
+                failure.message
+            ))
+        })?;
+        let cells = match values.as_list_opt::<i32>() {
+            Some(list) => {
+                let (first, last) = (list.value_offsets()[0], list.value_offsets()[list.len()]);
+                let length = (last - first) as usize;
+                list.values().slice(first as usize, length)
+            }
+            None => values,
+        };
+        for cell in decimal_cells(&cells)?.iter().flatten() {
+            let Some((cell_scale, unscaled)) = big_decimal_parts(cell) else {
+                return Err(invalid(format!(
+                    "column {name} holds a cell that is no BigDecimal"
+                )));
+            };
+            let precision = big_decimal_precision(unscaled) as i64;
+            whole = whole.max(precision - i64::from(cell_scale));
+            scale = scale.max(i64::from(cell_scale));
+        }
+    }
+    if whole == -1 && scale == -1 {
+        return Ok(EMPTY_PRECISION_AND_SCALE);
+    }
+    let precision = whole + scale;
+    let precision = if scale > precision { scale } else { precision };
+    let narrow = |value: i64| {
+        i32::try_from(value).map_err(|_| {
+            invalid(format!(
+                "column {name} needs a decimal type of {value} digits"
+            ))
+        })
+    };
+    Ok((narrow(precision)?, narrow(scale)?))
+}
+
+/// `values`, the cells of a column or of its lists, of the type `value_type`, as the
+/// writer takes them: every value equal to the Java null of its type as a null, which is
+/// what it is in Java, and a `BigDecimal` as its unscaled integer at the scale of the
+/// column.
 ///
 /// Behavior: the `TransferObject` implementations of
-/// `io.deephaven.parquet.table.transfer`, which leave out the nulls of each type
-fn to_file_type(values: ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, WriteError> {
-    let problem = |error: &dyn std::fmt::Display| invalid(error.to_string());
+/// `io.deephaven.parquet.table.transfer`, which leave out the nulls of each type, and
+/// `io.deephaven.parquet.base.BigDecimalParquetBytesCodec#encode`
+fn file_values(
+    values: &ArrayRef,
+    value_type: &ColumnType,
+    decimal: Option<(i32, i32)>,
+) -> Result<ArrayRef, WriteError> {
+    match value_type {
+        ColumnType::BigDecimal => {
+            let (_, scale) = decimal.unwrap_or(EMPTY_PRECISION_AND_SCALE);
+            let cells = decimal_cells(values)?;
+            let mut unscaled = Vec::with_capacity(cells.len());
+            for cell in cells {
+                let Some(cell) = cell else {
+                    unscaled.push(None);
+                    continue;
+                };
+                let Some((cell_scale, bytes)) = big_decimal_parts(cell) else {
+                    return Err(invalid("a cell that is no BigDecimal"));
+                };
+                // the scale of the column is the largest of its values', so no value
+                // loses digits and Java's rounding never applies
+                let by = i64::from(scale) - i64::from(cell_scale);
+                let by = u32::try_from(by)
+                    .map_err(|_| invalid(format!("scale (={cell_scale}) should be >= 0")))?;
+                unscaled.push(Some(times_power_of_ten(bytes, by)));
+            }
+            Ok(Arc::new(BinaryArray::from_iter(unscaled)))
+        }
+        // their nulls are nulls already, and no value stands for one
+        ColumnType::BigInteger
+        | ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::LocalDateTime => Ok(values.clone()),
+        _ => sentinels_to_nulls(values).map_err(|failure| invalid(failure.message)),
+    }
+}
+
+/// A chunk of `column` as the writer takes it: its values as [`file_values`] makes them,
+/// in their lists where the column has lists.
+fn to_file_type(values: ArrayRef, column: &OutColumn) -> Result<ArrayRef, WriteError> {
+    let column_type = &column.column_type;
     let Some(element) = column_type.list_element() else {
-        return sentinels_to_nulls(&values).map_err(|failure| problem(&failure.message));
+        return file_values(&values, column_type, column.decimal);
     };
     let Some(list) = values.as_list_opt::<i32>() else {
         return Err(invalid(format!(
@@ -377,8 +605,7 @@ fn to_file_type(values: ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, 
             values.data_type()
         )));
     };
-    let elements =
-        sentinels_to_nulls(list.values()).map_err(|failure| problem(&failure.message))?;
+    let elements = file_values(list.values(), element, column.decimal)?;
     let field = Arc::new(Field::new("element", element.arrow_type(), true));
     let list = ListArray::try_new(
         field,
@@ -386,7 +613,7 @@ fn to_file_type(values: ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, 
         elements,
         list.nulls().cloned(),
     );
-    Ok(Arc::new(list.map_err(|error| problem(&error))?))
+    Ok(Arc::new(list.map_err(|error| invalid(error.to_string()))?))
 }
 
 /// The columns of the files, from the definition to write and the instructions.
@@ -395,6 +622,7 @@ fn to_file_type(values: ArrayRef, column_type: &ColumnType) -> Result<ArrayRef, 
 fn out_columns(
     definition: &TableDefinition,
     options: &WriteOptions,
+    tables: &[Arc<dyn Table>],
 ) -> Result<Vec<OutColumn>, WriteError> {
     let mut columns: Vec<OutColumn> = Vec::with_capacity(definition.columns().len());
     for column in definition.columns() {
@@ -408,12 +636,21 @@ fn out_columns(
         }
         let values = column.column_type.list_element();
         let values = values.unwrap_or(&column.column_type);
+        let decimal = match values {
+            ColumnType::BigDecimal => Some(precision_and_scale(
+                tables,
+                &column.name,
+                &column.column_type,
+            )?),
+            _ => None,
+        };
         columns.push(OutColumn {
             name: column.name.clone(),
             parquet_name,
             column_type: column.column_type.clone(),
             strings: *values == ColumnType::String,
             use_dictionary: options.use_dictionary(&column.name),
+            decimal,
         });
     }
     Ok(columns)
@@ -704,7 +941,7 @@ fn plan(
                         column.name, failure.message
                     ))
                 })?;
-                to_file_type(values, &column.column_type)?
+                to_file_type(values, column)?
             }
             None => new_null_array(&stored, size),
         };
@@ -849,7 +1086,7 @@ impl Written {
 
     /// Writes the file of `plan` beside its destination, under the name of a file that
     /// is not finished.
-    fn write_shadow(&mut self, plan: &Plan) -> Result<(), WriteError> {
+    fn write_shadow(&mut self, plan: &Plan) -> Result<ParquetMetaData, WriteError> {
         let shadow = beside(&plan.destination, "NEW");
         let file = fs::File::create(&shadow).map_err(|error| io(&shadow, error))?;
         let problem = |error: parquet::errors::ParquetError| io(&plan.destination, error);
@@ -870,10 +1107,20 @@ impl Written {
             writer.write(group).map_err(problem)?;
             writer.flush().map_err(problem)?;
         }
-        let file = writer.into_inner().map_err(problem)?;
-        let file = file
-            .into_inner()
-            .map_err(|error| io(&shadow, error.error()))?;
+        let footer = writer.finish().map_err(problem)?;
+        let file = writer.inner_mut();
+        std::io::Write::flush(file).map_err(|error| io(&shadow, error))?;
+        let file = file.get_ref();
+        file.sync_all().map_err(|error| io(&shadow, error))?;
+        Ok(footer)
+    }
+
+    /// Writes `bytes` beside `destination`, under the name of a file that is not
+    /// finished.
+    fn write_shadow_bytes(&mut self, destination: &Path, bytes: &[u8]) -> Result<(), WriteError> {
+        let shadow = beside(destination, "NEW");
+        fs::write(&shadow, bytes).map_err(|error| io(&shadow, error))?;
+        let file = fs::File::open(&shadow).map_err(|error| io(&shadow, error))?;
         file.sync_all().map_err(|error| io(&shadow, error))
     }
 
@@ -939,24 +1186,84 @@ impl Written {
     }
 }
 
-/// The path of a destination, which must name a local file that ends in `.parquet`.
+/// The local path of `source`, a path or a `file:` URI. A relative path is relative to
+/// the working directory of the server.
+///
+/// A URI has its path decoded, `%20` to a space, and must be one Java makes a file of:
+/// with nothing between `file://` and the path, and with no character a URI may not
+/// have. Every other scheme names a store that is not ported.
+///
+/// Behavior: `io.deephaven.base.FileUtils#convertToURI(String, boolean)`, whose `file`
+/// URIs go through `java.io.File#File(URI)`, and
+/// `io.deephaven.util.channel.SeekableChannelsProviderLoader#load` for the scheme
+fn local_path(source: &str) -> Result<PathBuf, WriteError> {
+    if !crate::layout::has_scheme(source) {
+        return std::path::absolute(source).map_err(|error| io(Path::new(source), error));
+    }
+    let Some(rest) = source.strip_prefix("file:") else {
+        return Err(not_ported(
+            "io.deephaven.util.channel.SeekableChannelsProviderLoader#load",
+            format_args!("a destination with a URI scheme, {source}"),
+        ));
+    };
+    let path = match rest.strip_prefix("//") {
+        Some(after) => {
+            let (authority, path) = after.split_at(after.find('/').unwrap_or(after.len()));
+            if !authority.is_empty() {
+                return Err(invalid("URI has an authority component"));
+            }
+            path
+        }
+        None => rest,
+    };
+    if !path.starts_with('/') {
+        return Err(invalid("URI is not hierarchical"));
+    }
+    if path.contains('?') {
+        return Err(invalid("URI has a query component"));
+    }
+    if path.contains('#') {
+        return Err(invalid("URI has a fragment component"));
+    }
+    let malformed = || invalid(format!("Failed to convert to URI: '{source}'"));
+    let mut decoded = Vec::with_capacity(path.len());
+    let mut bytes = path.bytes();
+    while let Some(byte) = bytes.next() {
+        match byte {
+            b'%' => {
+                let hex = [bytes.next(), bytes.next()];
+                let [Some(high), Some(low)] = hex.map(|digit| (digit? as char).to_digit(16)) else {
+                    return Err(malformed());
+                };
+                decoded.push((high * 16 + low) as u8);
+            }
+            // what a URI path may hold as it is: letters, digits, these marks, and
+            // every character beyond ASCII
+            byte if byte.is_ascii_alphanumeric()
+                || b"_-!.~'()*,;:$&+=@/".contains(&byte)
+                || !byte.is_ascii() =>
+            {
+                decoded.push(byte)
+            }
+            _ => return Err(malformed()),
+        }
+    }
+    Ok(PathBuf::from(
+        String::from_utf8_lossy(&decoded).into_owned(),
+    ))
+}
+
+/// The path of a destination, which must end in `.parquet`.
 ///
 /// Behavior: the checks of `io.deephaven.parquet.table.ParquetTools#writeTables` on its
-/// destinations; a destination with a URI scheme goes to the store of that scheme in
-/// Java, which is not ported
+/// destinations
 fn destination(path: &str) -> Result<PathBuf, WriteError> {
     if !path.ends_with(EXTENSION) {
         return Err(invalid(format!(
             "Destination {path} does not end in {EXTENSION} extension"
         )));
     }
-    if crate::layout::has_scheme(path) {
-        return Err(not_ported(
-            "io.deephaven.util.channel.SeekableChannelsProviderLoader#load",
-            format_args!("a destination with a URI scheme, {path}"),
-        ));
-    }
-    std::path::absolute(path).map_err(|error| io(Path::new(path), error))
+    local_path(path)
 }
 
 /// Writes each of `tables` to the Parquet file at the path of `paths` with the same
@@ -978,6 +1285,7 @@ pub fn write(
     options: &WriteOptions,
 ) -> Result<(), WriteError> {
     options.check()?;
+    options.refuse_indexes()?;
     check_row_groups(&options.row_groups)?;
     let Some(first) = tables.first() else {
         return Err(invalid("No source tables provided for writing"));
@@ -1002,10 +1310,47 @@ pub fn write(
         .iter()
         .map(|path| destination(path))
         .collect::<Result<Vec<_>, _>>()?;
+    let metadata = match options.generate_metadata_files {
+        true => {
+            // the metadata files go where the files go, which must be one place
+            let directory = |destination: &PathBuf| {
+                let parent = destination.parent().unwrap_or(Path::new("/"));
+                parent.to_path_buf()
+            };
+            let root = directory(&destinations[0]);
+            if let Some(other) = destinations.iter().map(directory).find(|d| *d != root) {
+                return Err(invalid(format!(
+                    "All destination files must be in the same directory for generating \
+                     metadata files, found {} and {}",
+                    root.display(),
+                    other.display()
+                )));
+            }
+            Some(MetadataFiles {
+                root,
+                partitioning: Vec::new(),
+            })
+        }
+        false => None,
+    };
+    write_files(tables, definition, destinations, options, metadata)
+}
+
+/// Writes each of `tables` to the file of `destinations` with the same position, with
+/// the columns of `definition`, and the metadata files of `metadata` after them.
+///
+/// Behavior: `io.deephaven.parquet.table.ParquetTools#writeTablesImpl`
+fn write_files(
+    tables: &[Arc<dyn Table>],
+    definition: &TableDefinition,
+    destinations: Vec<PathBuf>,
+    options: &WriteOptions,
+    metadata: Option<MetadataFiles>,
+) -> Result<(), WriteError> {
     if definition.columns().is_empty() {
         return Err(invalid("Cannot write a parquet table with zero columns"));
     }
-    let columns = out_columns(definition, options)?;
+    let columns = out_columns(definition, options, tables)?;
     let codec = compression(options.compression.as_deref().unwrap_or("SNAPPY"))?;
     for column in &columns {
         // a type that cannot be written is refused before anything is read or made
@@ -1014,10 +1359,25 @@ pub fn write(
 
     let mut written = Written::default();
     let all = || {
+        let mut footers = Vec::with_capacity(destinations.len());
         for (table, destination) in tables.iter().zip(destinations) {
             written.prepare(&destination)?;
             let plan = plan(table.as_ref(), destination, &columns, codec, options)?;
-            written.write_shadow(&plan)?;
+            let footer = written.write_shadow(&plan)?;
+            footers.push((plan.destination, footer));
+        }
+        if let Some(metadata) = &metadata {
+            // the entry of the table: what the entries of its files share
+            let (all, common) = metadata::files(metadata, &footers, table_info(&columns, None))?;
+            let files = [
+                (metadata::METADATA_FILE, all),
+                (metadata::COMMON_METADATA_FILE, common),
+            ];
+            for (name, bytes) in files {
+                let destination = metadata.root.join(name);
+                written.prepare(&destination)?;
+                written.write_shadow_bytes(&destination, &bytes)?;
+            }
         }
         written.install()
     };
