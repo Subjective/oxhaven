@@ -1030,3 +1030,7 @@ Task 7.1c (Parquet directories read through their metadata files) reported from 
 ## 2026-11-16T09:18Z
 
 Pull request 121 (Parquet metadata directories) merged on green. Decision on my judgment, for the owner to review: the general Object column takes option 3 of the 5.9 notes, Object(Box<ColumnType>) with one static class per column, because it keeps values exact and is additive; a column mixing classes stays refused. Launched it as 5.10 on Opus with boolean[] and the object creation node.
+
+## 2026-11-16T09:23Z
+
+The summary of items for the owner came back from Opus in 11 minutes and 79k tokens: 15 decisions with recommendations and reference tables. I corrected three statements that were out of date (seed 308 is left alone, the Object design is already started, pull request 121 merged) and sent it to the owner.
