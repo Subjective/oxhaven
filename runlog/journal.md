@@ -1070,3 +1070,7 @@ Pull request 124 (tree formats and filters) merged on green.
 ## 2026-11-16T11:29Z
 
 Pull request 125 (fuzz fixes) merged on green.
+
+## 2026-11-16T11:46Z
+
+Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the merged tree and records match Java byte for byte. Opened as pull request 126. Resuming the same agent after the disk incident worked well: it had 103k tokens of context and finished at 254k.
