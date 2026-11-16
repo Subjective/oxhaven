@@ -944,3 +944,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   cannot be read, so partitioned output with metadata files is not read back as a directory.
 - Next in the free slot: rollup update and format views with constituents (7.8.2 and 7.8.3),
   now that tree tables are on main.
+- Pull request 110 merged (7.10.2): the server starts with plotly-express installed.
