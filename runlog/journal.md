@@ -1026,3 +1026,7 @@ Pull request 120 (four java.time column types, formula gate 123 to 48) merged on
 ## 2026-11-16T09:11Z
 
 Task 7.1c (Parquet directories read through their metadata files) reported from Opus at 94k tokens: done, one scenario, replay gate clean after merging main. Opened as pull request 121. Launched the summary of items for the owner on Opus; it reads only, so it does not take a build slot.
+
+## 2026-11-16T09:18Z
+
+Pull request 121 (Parquet metadata directories) merged on green. Decision on my judgment, for the owner to review: the general Object column takes option 3 of the 5.9 notes, Object(Box<ColumnType>) with one static class per column, because it keeps values exact and is additive; a column mixing classes stays refused. Launched it as 5.10 on Opus with boolean[] and the object creation node.
