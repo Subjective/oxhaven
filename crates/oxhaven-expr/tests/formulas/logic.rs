@@ -1,7 +1,7 @@
 //! `&& || !`, and what the type checker refuses.
 
 use super::*;
-use oxhaven_contracts::expr::{Expr, Literal, UnaryOp};
+use oxhaven_contracts::expr::{Expr, UnaryOp};
 
 #[test]
 fn and_or_and_not_follow_their_truth_tables() {
@@ -153,7 +153,6 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
         ),
         ("(Integer) I", "cast to Integer"),
         ("1.5F", "float literal with an uppercase F suffix 1.5F"),
-        ("I_", "column array I_"),
     ] {
         let result = Compiler
             .parse(formula)
@@ -188,17 +187,6 @@ fn expression_trees_outside_the_subset_do_not_compile() {
             arguments: vec![*column()],
         }),
         FormulaError::Unsupported("function cbrt()".into())
-    );
-    assert_eq!(
-        compile(Expr::ColumnVector("I".into())),
-        FormulaError::Unsupported("column array I_".into())
-    );
-    assert_eq!(
-        compile(Expr::ColumnArrayAccess {
-            column: "I".into(),
-            position: Box::new(Expr::Literal(Literal::Int(0))),
-        }),
-        FormulaError::Unsupported("column array access I_[...]".into())
     );
     // `QueryLanguageParser#visit(UnaryExpr)` throws for every operator but `!` and `-`.
     assert!(matches!(

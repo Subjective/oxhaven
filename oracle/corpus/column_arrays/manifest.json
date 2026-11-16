@@ -1,0 +1,108 @@
+{
+  "format": 2,
+  "scenario": "column_arrays",
+  "scenario_sha256": "45e03afa3988a1647fd564c1cc7c73dcb5757def7a04d94b96c6731529c405d4",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "before",
+      "file": "step000.before.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "sparse_before",
+      "file": "step000.sparse_before.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "computed",
+      "file": "step000.computed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "stored",
+      "file": "step000.stored.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "viewed",
+      "file": "step000.viewed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "update_viewed",
+      "file": "step000.update_viewed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "lazy",
+      "file": "step000.lazy.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "kept_two",
+      "file": "step000.kept_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "kept_whole",
+      "file": "step000.kept_whole.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "kept_boolean",
+      "file": "step000.kept_boolean.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "fails_null_boolean",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "fails_no_column",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "fails_index_type",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "fails_shifted_name",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

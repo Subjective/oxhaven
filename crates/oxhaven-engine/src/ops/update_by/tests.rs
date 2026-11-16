@@ -698,7 +698,10 @@ fn count_where_requests_java_refuses_are_errors() {
             vec![rolling_where("R", &["I > 0", "I + k > 3"], window())],
             "UpdateBy CountWhere operator does not support refreshing filters",
         ),
-        (vec![cum_where("R", &["I_.size() > 3"])], "I_"),
+        (
+            vec![cum_where("R", &["I_.size() > 3"])],
+            "Error creating condition filter in UpdateBy CountWhere Operator",
+        ),
         (
             vec![cum_where("R", &["I > 0"]), cum_where("R", &["I > 1"])],
             "resulting column names must be unique {R}",

@@ -157,7 +157,7 @@ fn list_column_of(element: &str, cells: &[Value]) -> Column {
 
 /// The column type of a recorded list column, which `column_of` reads as an array: Java's
 /// type name says whether it is a vector.
-fn list_type(java_type: &str, column_type: ColumnType) -> ColumnType {
+pub(super) fn list_type(java_type: &str, column_type: ColumnType) -> ColumnType {
     match column_type {
         ColumnType::Array(element) if java_type.starts_with("io.deephaven.vector.") => {
             ColumnType::Vector(element)
@@ -180,6 +180,14 @@ pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
         "double" => "float64",
         "java.lang.String" => "string",
         "java.time.Instant" => "timestamp",
+        // The type of a column array (`Col_`) of a primitive column.
+        "io.deephaven.vector.ByteVector" => "list<int8>",
+        "io.deephaven.vector.ShortVector" => "list<int16>",
+        "io.deephaven.vector.CharVector" => "list<uint16>",
+        "io.deephaven.vector.IntVector" => "list<int32>",
+        "io.deephaven.vector.LongVector" => "list<int64>",
+        "io.deephaven.vector.FloatVector" => "list<float32>",
+        "io.deephaven.vector.DoubleVector" => "list<float64>",
         _ => return None,
     })
 }
