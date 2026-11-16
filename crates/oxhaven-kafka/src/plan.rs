@@ -57,7 +57,7 @@ enum Side {
 }
 
 impl Side {
-    fn bytes<'a>(self, record: &'a Record) -> Option<&'a [u8]> {
+    fn bytes(self, record: &Record) -> Option<&[u8]> {
         match self {
             Side::Key => record.key.as_deref(),
             Side::Value => record.value.as_deref(),
