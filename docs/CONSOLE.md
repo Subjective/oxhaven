@@ -474,6 +474,57 @@ cycle.
 | `ring_table`, `function_generated_table`, `TableReplayer` | exist | refused by the name of the Java method: the engine has none of the three |
 | Callbacks of the asynchronous forms | called on a thread of Java's common pool, in no defined order | called on the writer thread, in the order of the calls |
 
+## Listeners, locks, liveness scopes and execution contexts
+
+Task 6.12; `crates/oxhaven-server/src/console/python/listener.rs` and the modules
+`table_listener`, `update_graph`, `liveness_scope` and `execution_context` of the package.
+
+A listener is a node of the update graph (`oxhaven_engine::graph::MergedListener`, for one
+table as for several). Its Python function is called by the update cycle, once per cycle
+in which a table it listens to changed, after its dependencies are done, and before the
+command that made the change has its `add` back. The lock rule is the one of
+`docs/PYTHON_UDF.md`: graph lock first, interpreter lock second. The cycle holds the graph
+lock and takes the interpreter lock for the call; `shared_lock`, `exclusive_lock`,
+`listen` with a replay and `await_update` release the interpreter lock before they wait
+for the graph lock. The module documentation of `listener.rs` lists the places and names
+the test that stops when one of them is taken out.
+
+A blocking input table edit on a thread inside its own `shared_lock` is refused with
+Java's text ("Attempted to make a blocking input table edit while holding the update
+graph's shared lock"): the thread keeps out the cycle it would wait for.
+
+In a listener's function, as in Java: neither lock is held, taking one is refused
+("Non-terminal notifications must not lock the update graph"), a blocking input table
+edit is refused, `await_update` fails, and table operations and `listen` work.
+
+The engine's graph lock got explicit holds for this (`SteppedUpdateGraph::acquire_shared`
+and the three beside it): a `with` block cannot be a closure. A thread that holds the
+exclusive side reads without taking the shared side, gives the hold up for the cycle of
+its own blocking write and for `await_update`, and has it again after.
+
+Observed on Java 42.9 with scripts through `pydeephaven`, and on this server with the
+same scripts:
+
+| | Java | Here |
+| --- | --- | --- |
+| The lock a command holds | exclusive | the engine's shared lock, shown to scripts as the exclusive one: `has_exclusive_lock` is true and `has_shared_lock` false in a command, both locks nest in it |
+| `shared_lock`, or an operation, on a thread while a command runs | waits for the command | does not wait: it shares the lock with the command. `exclusive_lock` waits, as in Java |
+| `auto_locking = False` | operations on a thread take no lock | no effect: the engine takes the lock for every operation |
+| Formula operations and `time_table` on a thread, or in a listener, with no `ExecutionContext` | refused: "No ExecutionContext registered" | run. `with ctx:` and `@ctx` are accepted and change nothing |
+| `make_user_exec_ctx(freeze_vars=[...])` | a context that sees only those variables, at their values of that moment | refused by the name of `ExecutionContext.Builder#captureQueryScopeVars` |
+| A table released with its liveness scope | operations fail with `LivenessStateException`; `size` and reads give the rows it had | every use raises `DHError` with a `LivenessStateException` text. A variable that holds it stays listed for clients until it is assigned again |
+| A table of a scope that something else holds | a client's export keeps it live; other holders not probed | an export, a table made from it or a listener keeps it live, and it is then the session's: no later scope releases it |
+| The update of a replay, read after the function returned | still reads the rows | reads `{}`, as every other update does on both |
+| `modified_prev()` in a cycle that also shifts rows | reads previous values at the keys after the shift, which are the previous values of other rows, or nulls where no row was: after `sort("K").flatten()` of rows 10, 20, 30, adding key 5 and changing key 20 gives `modified_prev` the row of key 30 | reads them at the keys before the shift: the row of key 20 as it was |
+| A handle that nothing refers to | the listener ends when Java collects it | ends when Python frees the handle, which is at once |
+| The thread of a listener call | one Python thread name for the update graph's thread | a new `Dummy-N` name per cycle |
+| Several listeners of one table | order not probed | called in no defined order |
+| The exception given to `on_error`, and the logged text of a failing `on_error` | text starts `java.lang.RuntimeException: Error in Python interpreter:` and ends with the JVM's stack | starts `Error in Python interpreter:` and holds the same traceback |
+
+Not observable here, so not built: the reference counts themselves (`LivenessScope`'s
+`j_scope`, `tryManage` on a dead referent), and anything of an `ExecutionContext` but its
+update graph.
+
 ## Completion
 
 Task 6.13. Java completes Python with the library `jedi`, which runs in the session's
@@ -530,6 +581,94 @@ Differences from Java:
 | The log line for a missing package | names the reference's `pip` extra and a JVM flag | names `jedi` and `docstring_parser` |
 | A session without the packages | the process warns once, and no session of it completes again | each session warns once |
 | The property `deephaven.console.autocomplete.disable` | switches completion off | no counterpart: this server has no such property |
+
+## Applications defined by scripts
+
+Task 6.18; `crates/oxhaven-server/src/app/script.rs`, whose module documentation has the
+file format, and `deephaven.appmode`. `oxhaven-server --app-dir <directory>` is Java's
+`-Ddeephaven.application.dir=<directory>`: each `.app` file of the directory names an
+application and the Python scripts that start it, the scripts run before the server
+accepts clients, and what they set with `get_app_state()` are the application's fields,
+listed by `ListFields` and named by tickets `a/<id>/f/<field>`.
+
+What Java does was read in `ApplicationInjector`, `ApplicationFactory`,
+`io.deephaven.appmode` and the reference's `appmode.py`, and observed on Java 42.9 with
+application directories made for the purpose. The same directories are the
+tests of `app::script_tests` (with a session that needs no interpreter) and
+`console::python::appmode_tests`.
+
+- **Order.** The `.app` files in the order of their names, the scripts of each in the order
+  of the numbers of their `file_<number>` keys (`file_10` after `file_2`). A file whose
+  name ends in `.APP`, a directory and a link to a file are not application files. An
+  application with `enabled` other than `true` (in any case) is skipped, and so is every
+  application of type `qst`.
+- **Paths.** An absolute path is used as it is and a relative one is appended to the
+  application directory, without normalizing: `../outside/x.py` and `/somewhere/x.py` both
+  ran on Java, and run here. Nothing confines a script to the directory.
+- **What a script sees.** The text of the file without the blanks at its start and its
+  end, run as a console command is: in the session's globals (`__name__` is `__main__`),
+  under the update graph's lock, logged as `Evaluating command: ...`. The globals of one
+  script are there for the next, of the same or another application, and for every
+  console afterwards. A table left in a global is a query scope variable and is listed as
+  one. `get_app_state()` is the application of the running script, on the thread that runs
+  it and until it ends; anywhere else it raises `DHError`. The object it returned keeps
+  working: a later command sets and removes fields with it, and listening clients are
+  told.
+- **Startup scripts yield to cycles** as console commands do (`yielding_to_cycles`): the
+  update graph runs before applications start in Java too, and a script that writes to
+  an input table and reads it back got its row there (observed), so it does here.
+- **Failures.** An `.app` file that cannot be read (no `type`, an unknown type, no `id`,
+  `name` or `scriptType`, no script, bytes that are not UTF-8, a bad `\u` escape), a
+  script file that does not exist, a script of a language the console is not, two
+  applications with one id, and a script that raises (`SyntaxError` and `SystemExit`
+  included) each keep the server from starting: Java's too, in every one of these cases.
+  The applications and scripts before it have run. A directory that does not exist or
+  holds no `.app` file is a warning.
+- **Fields.** A table is listed with the type `Table`, a partitioned table with
+  `PartitionedTable`, any other Python object with no type; `None` is refused. A field
+  name is `str()` of the key and must be printable ASCII. `ListFields` lists the fields in
+  the order they came to be, the scope's variables among those of the applications, each
+  variable after the script that left it. A field that a script replaces while no client
+  listens moves behind the others; with a client listening it is one `updated` and keeps
+  its place. The module has no way to give a description; the Java method does
+  (`app.j_app_state.setField(name, value, description)`), and that call works here.
+- **`del app[name]` removes the field and then raises `KeyError`**, whether there was a
+  field or not: the reference tests the result of Java's `removeField`, which returns
+  nothing. Reproduced, and reported for a ruling.
+
+`--demo-tables` stays. It is the same application (`ide_app`, `ide_static`, `ide_ticking`)
+built in Rust, for a server without the Python console: the default build has no
+interpreter to run an `.app` file with, and the replay of the recorded IDE calls
+(`crate::ide`) runs in that build. `oracle/ide/app.d` is that application as scripts; the
+Java reference (`start-java-ide.sh <port> app`) and this server load the same files:
+
+```bash
+OXHAVEN_IDE_APP_DIR=$PWD/oracle/ide/app.d VIRTUAL_ENV=$PWD/oracle/.venv \
+  target/debug/oxhaven-server --psk oxhaven --web-root ~/oxhaven-web --app-dir oracle/ide/app.d
+node oracle/ide/ide-test.js --url dh+psk://oxhaven@127.0.0.1:10000
+```
+
+(`OXHAVEN_IDE_APP_DIR` is how that application's script finds its module, on both
+servers.) The two flags together are refused: both make the application `ide_app`.
+
+Differences from Java:
+
+| Case | Java | This server |
+| --- | --- | --- |
+| Types `static` and `dynamic` | a Java class makes the application | refused by the name of the Java method; the server does not start (Java's does not either when the class is missing, enabled or not) |
+| `scriptType=groovy` | refused on a Python server: "Cannot instantiate Groovy application on a Python app session" | the same refusal |
+| Two scripts with the same number (`file_1`, `file_01`) | run in the order of a hash table (observed: `file_001`, `file_1`, `file_01`) | refused, naming `ApplicationUtil#findFilesFrom` |
+| A `\u` escape in an `.app` file that is half of a surrogate pair | kept | refused, naming `Properties#load` |
+| An `.app` file the server's user may not read | not an application file | an error |
+| `app.fields`, `j_app_state.listFields()` | in the order of a hash table | in the order of the names |
+| `app[name]` of a partitioned table | the jpy object of `PartitionedTableImpl`: the reference has no wrapper for that class | the package's `PartitionedTable` |
+| `j_app_state` | a jpy object with every method of `ApplicationState` | an object with `id`, `name`, `setField`, `getField`, `removeField`, `listFields`, `numFieldsExported` |
+| Two applications with one id | the scripts of the second run, then the server stops | the second is refused before its scripts run |
+| An application with the id `scope` | starts, and fails when it sets its first field | refused before its scripts run |
+| A server without a console | has a session of the type `NoLanguage`, and a Python application is refused on it | the same refusal, with that name |
+| The default directory `app.d` in the configuration directory | used when the property is not set | no counterpart: this server has no configuration directory |
+| `ApplicationState.Factory` applications (Java's `GcApplication`, which has no fields) | started first | none |
+| Error text | Java's exception with its stack | the exception's first line, after the path of the `.app` file |
 
 ## Differences from Java, per call
 

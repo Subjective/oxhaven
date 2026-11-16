@@ -16,11 +16,17 @@
 //! released while an engine operation runs. A command that writes to an input table and
 //! waits for the write gives the graph's lock up for that wait ([`input`]), as Java's does.
 //!
+//! A table listener written in Python runs in the update cycle, under the same order
+//! ([`listener`], which also has the graph lock as scripts hold it).
+//!
 //! Commands run on one thread, the interpreter's main thread, where a command whose
 //! client gave up on it can be stopped ([`interrupt`]). Everything else that touches the
 //! interpreter does so from the thread it is called on; completion (`completer`) does so
 //! while a command runs, without the graph's lock.
 
+mod appmode;
+#[cfg(test)]
+mod appmode_tests;
 mod checks;
 #[cfg(test)]
 mod column_tests;
@@ -32,6 +38,7 @@ mod data;
 pub mod env;
 mod input;
 pub mod interrupt;
+mod listener;
 mod ops;
 mod parquet;
 mod partitioned;
@@ -70,7 +77,7 @@ use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyString};
 use super::completer::Completer;
 use super::logs::LogBuffer;
 use super::session::{Changes, Console, ScriptSession, Stop, CHECK_SCOPE_CHANGES_INTERVAL};
-use crate::app::FormulaValue;
+use crate::app::{script, Application, FormulaValue};
 use crate::schema::{column_type_for_java_names, java_component_type_name, java_type_name};
 use crate::session::{ExportError, ExportValue};
 use crate::table::run_local;
@@ -129,6 +136,13 @@ impl TableHandle {
                 (column.name.clone(), type_name)
             })
             .collect()
+    }
+
+    /// How many holders the engine table has, this handle among them: a client's export,
+    /// a table derived from it and a listener of it are each one. A table with one holder
+    /// ends when this handle does.
+    fn holders(&self) -> usize {
+        Arc::strong_count(&self.table)
     }
 
     /// Whether `other` refers to the same table, not an equal one.
@@ -432,8 +446,10 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         ops::register(&native)?;
         data::register(&native)?;
         input::register(&native)?;
+        listener::register(&native)?;
         partitioned::register(&native)?;
         checks::register(&native)?;
+        appmode::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");
@@ -614,12 +630,14 @@ impl PythonSession {
         let mut snapshot = self.snapshot();
         locked(self.runtime.context.graph.as_ref(), || {
             yielding_to_cycles(|| {
-                Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
-                    |error| Changes {
-                        error: Some(format!("the Python session failed: {error}")),
-                        ..Default::default()
-                    },
-                )
+                listener::running_a_command(|| {
+                    Python::attach(|py| self.run(py, code, stop, &mut snapshot)).unwrap_or_else(
+                        |error| Changes {
+                            error: Some(format!("the Python session failed: {error}")),
+                            ..Default::default()
+                        },
+                    )
+                })
             })
         })
     }
@@ -666,7 +684,7 @@ impl PythonSession {
     ///
     /// Behavior: `PythonDeephavenSession#setVariable`, which wraps a Java object for
     /// Python; `deephaven._wrapper` then gives Python code its wrapper class
-    fn wrap<'py>(&self, py: Python<'py>, value: ExportValue) -> PyResult<Bound<'py, PyAny>> {
+    fn wrap<'py>(py: Python<'py>, value: ExportValue) -> PyResult<Bound<'py, PyAny>> {
         match &value {
             ExportValue::Table(table) => {
                 let handle = Py::new(
@@ -718,6 +736,17 @@ impl ScriptSession for PythonSession {
         interrupt::on_main_thread(move || session.evaluate_here(&code, &stop))
     }
 
+    /// The application is the script's on the interpreter's main thread, where the code
+    /// runs, and not on this one.
+    fn evaluate_script(&self, code: &str, application: &Application, stop: &Arc<Stop>) -> Changes {
+        tracing::info!("Evaluating command: {code}");
+        let (session, code, stop) = (self.share(), code.to_string(), stop.clone());
+        let application = application.clone();
+        interrupt::on_main_thread(move || {
+            script::under_context(&application, || session.evaluate_here(&code, &stop))
+        })
+    }
+
     /// Behavior: `AbstractScriptSession#observeScopeChanges`
     fn observe(&self) -> Changes {
         let mut snapshot = self.snapshot();
@@ -731,7 +760,7 @@ impl ScriptSession for PythonSession {
     fn put(&self, name: &str, value: ExportValue) -> Result<Changes, String> {
         let mut snapshot = self.snapshot();
         Python::attach(|py| {
-            let wrapped = self.wrap(py, value)?;
+            let wrapped = Self::wrap(py, value)?;
             self.globals.bind(py).set_item(name, wrapped)?;
             self.observed(py, &mut snapshot)
         })
@@ -812,6 +841,7 @@ pub fn start(state: &mut ServerState) -> Result<(), String> {
         compiler: udf::compiler(state.scope.clone()),
         ..state.op_context()
     };
+    listener::install(state.graph.clone());
     let session = PythonSession::new(context, state.logs.clone())?;
     let console = Console::new(Arc::new(session), state.applications.clone());
     state.scope.hold(console.clone());

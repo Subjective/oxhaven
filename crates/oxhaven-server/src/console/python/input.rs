@@ -148,13 +148,23 @@ fn write(queue: &Receiver<Job>, waiting: &AtomicUsize) {
 /// graph's shared lock inside `yielding_to_cycles`.
 ///
 /// Behavior: `BaseArrayBackedInputTable.ArrayBackedInputTableUpdater#checkBlockingEditSafety`,
-/// whose text for a thread that runs a cycle this is
+/// whose texts these are: for a thread that runs a cycle, and for one that took the shared
+/// lock with `deephaven.update_graph.shared_lock` (a command's own hold is given up for the
+/// wait, and so is an exclusive one)
 fn apply_in_order(graph: &dyn UpdateGraph, change: Change) -> Result<(), ExportError> {
     if graph.current_thread_processes_updates() {
         return Err(ExportError::Internal(
             "java.lang.UnsupportedOperationException: Attempted to make a blocking input table \
              edit from a listener or notification. This is unsupported, because it will block \
              the update graph from making progress and hang indefinitely."
+                .to_string(),
+        ));
+    }
+    if super::listener::holds_the_shared_lock_only() {
+        return Err(ExportError::Internal(
+            "java.lang.UnsupportedOperationException: Attempted to make a blocking input table \
+             edit while holding the update graph's shared lock. This is unsupported, because it \
+             will block the update graph from making progress and hang indefinitely."
                 .to_string(),
         ));
     }

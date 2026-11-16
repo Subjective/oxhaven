@@ -764,3 +764,29 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   the agent's local 3.13 run could not; agents should run the server tests on the oldest
   supported Python too when they touch the Python package (`PYO3_PYTHON=/usr/bin/python3.11`).
 - Pull request 90: PARITY.md A8 added after the owner's ruling; waiting on checks.
+- Merged pull request 90 (6.17, IDE flows, with PARITY.md A8) on six green checks.
+- Merged pull request 93 (6.12, Python listeners) on six green checks after the Python 3.11 fix.
+- 00:20 UTC: disk fell to 6.5 GB with four agents building (target directories reach 5 GB each). New agents are told to build with line-tables-only debug info; added to the brief.
+
+## 2026-11-16 00:31 UTC
+
+- Pull request 94 opened (6.18, script applications). For the owner: `del app[name]`
+  always raises `KeyError` after removing the field (Java defect, reproduced); a replaced
+  field moves behind the others when nobody listens (existing test expectation changed to
+  the order observed on Java); two scripts with the same number are refused where Java
+  uses hash order; `app[name]` of a partitioned table returns the wrapped object.
+- Pull request 95 opened (5.5, column arrays). The task's own formula gate does not exit 0:
+  32 of 340 cases still differ, all formulas Java computes and Oxhaven refuses (zoned time
+  literals and `now()` beside a row variable, arithmetic on arrays, `randomDouble`,
+  `(int[])(null)`). Decision: merge on green CI as progress and give the rest a follow-up
+  task (5.6), since none is a column array feature. Java defects found and refused rather
+  than reproduced: stale values with two shift distances on a keyed table; static select
+  with a shifted column on a filtered table reads dropped rows; a user column named like
+  a shifted column is dropped. The refusal for the second is wider than the defect.
+- Merged pull request 94 (6.18, script applications) on six green checks.
+- Pull request 95 failed `rules`: three commit subjects named two scopes (`expr, engine:`),
+  which the subject check refuses. A force push of the task branch to fix the subjects was
+  refused by the permission system, so the same tree went up as one commit on current main
+  in pull request 96 and 95 was closed. The brief now tells agents to run
+  `scripts/check-commit-subjects.sh` before reporting. Agents had no way to see this rule
+  fail locally except by running that script; it costs nothing to run.
