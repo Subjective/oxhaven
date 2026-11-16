@@ -90,7 +90,10 @@ pub trait RecordSink: Send {
 impl JsonProduceSpec {
     /// Behavior: io.deephaven.kafka.JsonImpl.JsonProduce#getColumnNames
     fn columns(&self, definition: &TableDefinition) -> Result<Vec<String>, KafkaError> {
-        let all = definition.columns().iter().map(|column| column.name.clone());
+        let all = definition
+            .columns()
+            .iter()
+            .map(|column| column.name.clone());
         match (&self.include, &self.exclude) {
             (Some(_), Some(_)) => Err(KafkaError::Invalid(
                 "java.lang.IllegalArgumentException: Can't have both excludeColumns and \
@@ -185,7 +188,9 @@ impl Planned {
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// The state of one publication: Java's `PublishToKafka` and its listener.
@@ -274,10 +279,7 @@ impl Publisher {
 /// the update's set as the argument, which throws a `NullPointerException` when the
 /// update's set is `ModifiedColumnSet.ALL`; the listener then fails and publishes nothing
 /// more. That is refused here, at the same point, by name.
-fn modified_any(
-    columns: &[usize],
-    modified: &ModifiedColumnSet,
-) -> Result<bool, KafkaError> {
+fn modified_any(columns: &[usize], modified: &ModifiedColumnSet) -> Result<bool, KafkaError> {
     match modified {
         ModifiedColumnSet::All => Err(not_ported(
             "io.deephaven.engine.table.ModifiedColumnSet#containsAny",
@@ -311,9 +313,7 @@ impl UpdateHandler for Publisher {
             }
             self.publish(sink, &update.removed, true, false, sent)?;
             let values_modified = match &self.value {
-                Some((_, value_columns)) => {
-                    modified_any(value_columns, &update.modified_columns)?
-                }
+                Some((_, value_columns)) => modified_any(value_columns, &update.modified_columns)?,
                 None => false,
             };
             if values_modified {
@@ -382,10 +382,7 @@ impl Publication {
 /// not be. Dropping the result stops publishing, as calling [`Publication::stop`] does.
 ///
 /// Behavior: io.deephaven.kafka.KafkaTools#produceFromTable(KafkaPublishOptions)
-pub fn produce(
-    table: Arc<dyn Table>,
-    options: &ProduceOptions,
-) -> Result<Publication, KafkaError> {
+pub fn produce(table: Arc<dyn Table>, options: &ProduceOptions) -> Result<Publication, KafkaError> {
     produce_to(table, options, &|| {
         Ok(Box::new(crate::producer::ClientSink::connect(
             &options.config,

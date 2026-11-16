@@ -18,8 +18,8 @@ use oxhaven_contracts::update::ModifiedColumnSet;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_engine::table::{stream_table, StreamCallbacks};
 use oxhaven_kafka::{
-    produce_to, JsonProduceSpec, KafkaError, OutRecord, ProduceOptions, ProduceSpec,
-    Publication, RecordSink,
+    produce_to, JsonProduceSpec, KafkaError, OutRecord, ProduceOptions, ProduceSpec, Publication,
+    RecordSink,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 
@@ -90,7 +90,11 @@ impl Sent {
 
     fn partitions(&self) -> Vec<Option<i32>> {
         let flushed = self.flushed.lock().unwrap();
-        flushed.iter().flatten().map(|record| record.partition).collect()
+        flushed
+            .iter()
+            .flatten()
+            .map(|record| record.partition)
+            .collect()
     }
 }
 
@@ -171,24 +175,61 @@ fn a_static_table_is_published_once_with_kafka_s_serializers() {
             ints(&[Some(1), None, Some(-2), Some(i32::MAX)]),
             Arc::new(Int16Array::from(vec![Some(1), None, Some(3), Some(4)])),
             Arc::new(Int64Array::from(vec![Some(1), None, Some(3), Some(-1)])),
-            Arc::new(Float64Array::from(vec![Some(1.5), None, Some(f64::NAN), Some(-0.0)])),
-            Arc::new(Float32Array::from(vec![Some(1.5), None, Some(f32::INFINITY), Some(0.1)])),
+            Arc::new(Float64Array::from(vec![
+                Some(1.5),
+                None,
+                Some(f64::NAN),
+                Some(-0.0),
+            ])),
+            Arc::new(Float32Array::from(vec![
+                Some(1.5),
+                None,
+                Some(f32::INFINITY),
+                Some(0.1),
+            ])),
         ],
     );
     let sent = Sent::default();
     let cases = [
-        ("S", "I", vec![(some("a"), some("0x00000001")), (None, None), (some("é"), some("0xfffffffe")), (some(""), some("0x7fffffff"))]),
-        ("H", "L", vec![(some("0x0001"), some("0x0000000000000001")), (None, None), (some("0x0003"), some("0x0000000000000003")), (some("0x0004"), some("0xffffffffffffffff"))]),
+        (
+            "S",
+            "I",
+            vec![
+                (some("a"), some("0x00000001")),
+                (None, None),
+                (some("é"), some("0xfffffffe")),
+                (some(""), some("0x7fffffff")),
+            ],
+        ),
+        (
+            "H",
+            "L",
+            vec![
+                (some("0x0001"), some("0x0000000000000001")),
+                (None, None),
+                (some("0x0003"), some("0x0000000000000003")),
+                (some("0x0004"), some("0xffffffffffffffff")),
+            ],
+        ),
     ];
     for (key, value, expected) in cases {
         let publication = sent.publish(table.clone(), &options(simple(key), simple(value)));
         let publication = publication.unwrap();
         assert_eq!(sent.take(), [expected]);
-        assert!(*sent.closed.lock().unwrap(), "the producer of a static table is closed");
+        assert!(
+            *sent.closed.lock().unwrap(),
+            "the producer of a static table is closed"
+        );
         publication.stop().unwrap();
-        assert!(publication.stop().unwrap_err().to_string().contains("LivenessScope"));
+        assert!(publication
+            .stop()
+            .unwrap_err()
+            .to_string()
+            .contains("LivenessScope"));
     }
-    let _ = sent.publish(table.clone(), &options(simple("D"), simple("F"))).unwrap();
+    let _ = sent
+        .publish(table.clone(), &options(simple("D"), simple("F")))
+        .unwrap();
     let raw: Vec<_> = sent.flushed.lock().unwrap().drain(..).flatten().collect();
     let keys: Vec<_> = raw.iter().map(|record| record.key.clone()).collect();
     let values: Vec<_> = raw.iter().map(|record| record.value.clone()).collect();
@@ -216,7 +257,12 @@ fn a_static_table_is_published_once_with_kafka_s_serializers() {
         .unwrap();
     assert_eq!(
         sent.take(),
-        [vec![(None, some("a")), (None, None), (None, some("é")), (None, some(""))]]
+        [vec![
+            (None, some("a")),
+            (None, None),
+            (None, some("é")),
+            (None, some(""))
+        ]]
     );
 
     // Rows go out in chunks of 2048 (`PublishToKafka.CHUNK_SIZE`), each row once, in order.
@@ -230,7 +276,10 @@ fn a_static_table_is_published_once_with_kafka_s_serializers() {
         .publish(many, &options(ProduceSpec::Ignore, simple("I")))
         .unwrap();
     let raw: Vec<_> = sent.flushed.lock().unwrap().drain(..).flatten().collect();
-    let values: Vec<_> = raw.iter().map(|record| record.value.clone().unwrap()).collect();
+    let values: Vec<_> = raw
+        .iter()
+        .map(|record| record.value.clone().unwrap())
+        .collect();
     let expected: Vec<_> = (0..count).map(|i| i.to_be_bytes().to_vec()).collect();
     assert_eq!(values, expected);
 }
@@ -268,7 +317,11 @@ fn json_is_written_as_jackson_writes_it() {
     let publish = |spec: JsonProduceSpec| {
         sent.publish(json_table(), &options(ProduceSpec::Ignore, json(spec)))
             .unwrap();
-        sent.take().concat().into_iter().map(|(_, value)| value.unwrap()).collect::<Vec<_>>()
+        sent.take()
+            .concat()
+            .into_iter()
+            .map(|(_, value)| value.unwrap())
+            .collect::<Vec<_>>()
     };
     assert_eq!(
         publish(JsonProduceSpec::default()),
@@ -422,7 +475,14 @@ fn a_cycle_publishes_removes_then_adds_and_modifies_in_row_order() {
     ticking.step(
         TableChange::new()
             .remove([0])
-            .add([5], vec![strings(&[Some("d")]), ints(&[Some(4)]), strings(&[Some("w")])])
+            .add(
+                [5],
+                vec![
+                    strings(&[Some("d")]),
+                    ints(&[Some(4)]),
+                    strings(&[Some("w")]),
+                ],
+            )
             .modify([2], [(1, ints(&[Some(30)]))]),
     );
     assert_eq!(
@@ -471,11 +531,17 @@ fn modified_keys_and_modified_columns_all_stop_the_publication() {
     ticking.step(TableChange::new().modify([0], [(2, strings(&[Some("x2")]))]));
     assert_eq!(sent.take(), Vec::<Vec<_>>::new());
     let failure = publication.failure().expect("the publication failed");
-    assert!(failure.contains("Key columns should never be modified"), "{failure}");
+    assert!(
+        failure.contains("Key columns should never be modified"),
+        "{failure}"
+    );
     ticking.step(TableChange::new().remove([1]));
     assert_eq!(sent.take(), Vec::<Vec<_>>::new());
 
-    for (key, published) in [(ProduceSpec::Ignore, vec![(None, None)]), (simple("K"), vec![])] {
+    for (key, published) in [
+        (ProduceSpec::Ignore, vec![(None, None)]),
+        (simple("K"), vec![]),
+    ] {
         let ticking = self::ticking();
         let sent = Sent::default();
         let publication = sent
@@ -492,7 +558,10 @@ fn modified_keys_and_modified_columns_all_stop_the_publication() {
         let flushed = sent.take();
         assert_eq!(flushed.concat(), published);
         let failure = publication.failure().expect("refused");
-        assert!(failure.contains("ModifiedColumnSet#containsAny"), "{failure}");
+        assert!(
+            failure.contains("ModifiedColumnSet#containsAny"),
+            "{failure}"
+        );
     }
 }
 
@@ -548,7 +617,10 @@ fn a_blink_table_publishes_its_adds_only() {
         .unwrap();
     assert_eq!(sent.take(), Vec::<Vec<_>>::new());
     publisher
-        .add(vec![strings(&[Some("a"), Some("b")]), ints(&[Some(1), Some(2)])])
+        .add(vec![
+            strings(&[Some("a"), Some("b")]),
+            ints(&[Some(1), Some(2)]),
+        ])
         .unwrap();
     graph.run_cycle();
     publisher
@@ -558,7 +630,10 @@ fn a_blink_table_publishes_its_adds_only() {
     assert_eq!(
         sent.take(),
         [
-            vec![(some("a"), some("0x00000001")), (some("b"), some("0x00000002"))],
+            vec![
+                (some("a"), some("0x00000001")),
+                (some("b"), some("0x00000002"))
+            ],
             vec![(some("c"), some("0x00000003"))],
         ]
     );
@@ -629,16 +704,17 @@ fn partitions_and_the_checks_of_the_options() {
         );
         sent.publish(table, &options).err().unwrap().to_string()
     };
-    assert!(refused(self::options(ProduceSpec::Ignore, ProduceSpec::Ignore))
-        .contains("keySpec and valueSpec can't both be ignore specs"));
+    assert!(
+        refused(self::options(ProduceSpec::Ignore, ProduceSpec::Ignore))
+            .contains("keySpec and valueSpec can't both be ignore specs")
+    );
     let mut later = self::options(ProduceSpec::Ignore, simple("V"));
     later.publish_initial = false;
     assert!(refused(later).contains("publishInitial==false && table.isRefreshing() == false"));
     let mut untitled = self::options(ProduceSpec::Ignore, simple("V"));
     untitled.topic = String::new();
     assert!(refused(untitled).contains("Must set topic or topicColumn (or both)"));
-    assert!(refused(self::options(simple("Nope"), simple("V")))
-        .contains("because \"cd\" is null"));
+    assert!(refused(self::options(simple("Nope"), simple("V"))).contains("because \"cd\" is null"));
 }
 
 #[test]

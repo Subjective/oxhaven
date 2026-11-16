@@ -82,7 +82,13 @@ impl Encoding {
     /// is `?` in ISO-8859-1 and US-ASCII
     pub fn encode(self, text: &str) -> Vec<u8> {
         let units = |big: bool| -> Vec<u8> {
-            let bytes = |unit: u16| if big { unit.to_be_bytes() } else { unit.to_le_bytes() };
+            let bytes = |unit: u16| {
+                if big {
+                    unit.to_be_bytes()
+                } else {
+                    unit.to_le_bytes()
+                }
+            };
             text.encode_utf16().flat_map(bytes).collect()
         };
         let narrow = |limit: u32| -> Vec<u8> {
@@ -437,7 +443,10 @@ fn child<'a>(
 /// Where a field's cells come from.
 #[derive(Clone, Debug)]
 enum Source {
-    Column { index: usize, field: Field },
+    Column {
+        index: usize,
+        field: Field,
+    },
     /// The time of the serialization in nanoseconds, as text.
     Timestamp,
 }
@@ -533,7 +542,8 @@ impl JsonSerializer {
                 )));
             };
             let field = json_field(column, &definition.columns()[index].column_type)?;
-            let (parents, name) = path(field_name)?.ok_or_else(|| unknown(index_out_of_bounds()))?;
+            let (parents, name) =
+                path(field_name)?.ok_or_else(|| unknown(index_out_of_bounds()))?;
             processors.push(Processor {
                 parents,
                 name,
@@ -541,8 +551,8 @@ impl JsonSerializer {
             });
         }
         if let Some(field_name) = shape.timestamp_field.filter(|name| !name.is_empty()) {
-            let (parents, name) = path(field_name)?
-                .ok_or_else(|| KafkaError::Invalid(index_out_of_bounds()))?;
+            let (parents, name) =
+                path(field_name)?.ok_or_else(|| KafkaError::Invalid(index_out_of_bounds()))?;
             processors.push(Processor {
                 parents,
                 name,
@@ -839,9 +849,15 @@ mod tests {
 
     #[test]
     fn instants_and_splits_are_java_s() {
-        assert_eq!(instant_text(1_704_164_645_123_000_000), "2024-01-02T03:04:05.123Z");
+        assert_eq!(
+            instant_text(1_704_164_645_123_000_000),
+            "2024-01-02T03:04:05.123Z"
+        );
         assert_eq!(instant_text(-999_999_999), "1969-12-31T23:59:59.000000001Z");
-        assert_eq!(instant_text(-315_619_199_999_999_000), "1960-01-01T00:00:00.000001Z");
+        assert_eq!(
+            instant_text(-315_619_199_999_999_000),
+            "1960-01-01T00:00:00.000001Z"
+        );
         let split = |text: &str, delimiter: &str| java_split(text, delimiter).unwrap();
         assert_eq!(split("_a__b_", "_"), ["", "a", "", "b"]);
         assert_eq!(split("a__b", "__"), ["a", "b"]);

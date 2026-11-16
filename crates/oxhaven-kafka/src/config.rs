@@ -414,9 +414,10 @@ impl ProducerSettings {
         };
         let max_block = match property(config, "max.block.ms") {
             None => 60_000,
-            Some(text) => text.trim().parse::<i64>().map_err(|_| {
-                config_exception("max.block.ms", text, "Not a number of type LONG")
-            })?,
+            Some(text) => text
+                .trim()
+                .parse::<i64>()
+                .map_err(|_| config_exception("max.block.ms", text, "Not a number of type LONG"))?,
         };
         // Behavior: ProducerConfig#postProcessAndValidateIdempotenceConfigs: on unless
         // asked otherwise, and quietly off where `acks`, `retries` or the number of
@@ -623,8 +624,14 @@ mod tests {
         assert_eq!(idempotent(&[("acks", "1")]), "false");
         assert_eq!(idempotent(&[("acks", "0")]), "false");
         assert_eq!(idempotent(&[("retries", "0")]), "false");
-        assert_eq!(idempotent(&[("max.in.flight.requests.per.connection", "5")]), "true");
-        assert_eq!(idempotent(&[("max.in.flight.requests.per.connection", "6")]), "false");
+        assert_eq!(
+            idempotent(&[("max.in.flight.requests.per.connection", "5")]),
+            "true"
+        );
+        assert_eq!(
+            idempotent(&[("max.in.flight.requests.per.connection", "6")]),
+            "false"
+        );
         assert_eq!(idempotent(&[("enable.idempotence", "false")]), "false");
         assert_eq!(idempotent(&[("enable.idempotence", "true")]), "true");
     }
@@ -640,8 +647,10 @@ mod tests {
         assert!(text(&[BROKER, ("compression.type", "brotli")])
             .contains("String must be one of: none, gzip, snappy, lz4, zstd"));
         assert!(text(&[BROKER, ("max.block.ms", "soon")]).contains("Not a number of type LONG"));
-        assert!(text(&[BROKER, ("acks", "0"), ("enable.idempotence", "true")])
-            .contains("Must set acks to all in order to use the idempotent producer"));
+        assert!(
+            text(&[BROKER, ("acks", "0"), ("enable.idempotence", "true")])
+                .contains("Must set acks to all in order to use the idempotent producer")
+        );
         for (name, value, java) in [
             ("compression.type", "gzip", "GzipCompression"),
             ("transactional.id", "tx", "KafkaProducer#initTransactions"),

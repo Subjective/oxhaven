@@ -138,7 +138,10 @@ impl RecordSink for ClientSink {
         if self.no_metadata {
             // Java waits for the metadata again for each record and fails it again; this
             // does not wait again within one publication.
-            self.producer.context().completed.fetch_add(1, Ordering::SeqCst);
+            self.producer
+                .context()
+                .completed
+                .fetch_add(1, Ordering::SeqCst);
             return;
         }
         if let Err(failure) = self.await_metadata(record.partition) {
@@ -175,7 +178,11 @@ impl RecordSink for ClientSink {
         let flushed = self.producer.flush(Timeout::Never);
         let context = self.producer.context();
         let completed = context.completed.swap(0, Ordering::SeqCst);
-        let failure = context.failure.lock().unwrap_or_else(|p| p.into_inner()).take();
+        let failure = context
+            .failure
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take();
         let sent = std::mem::take(&mut self.sent);
         self.no_metadata = false;
         let publisher = "io.deephaven.kafka.publish.KafkaPublisherException";
