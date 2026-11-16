@@ -2,7 +2,9 @@
 
 How Oxhaven consumes Kafka topics into tables and, later, publishes tables to topics.
 Written by task 7.4.1 (`tasks/7.4.1-kafka-first-slice.md`), which also built the first
-slice. It replaces the placeholders 7.4 and 7.5 with the sized tasks at the end.
+slice, and brought up to date by task 7.4.4 (`tasks/7.4.4-kafka-librdkafka.md`), which
+moved the consumer onto librdkafka. It replaces the placeholders 7.4 and 7.5 with the
+sized tasks at the end.
 
 ## Decision
 
@@ -12,17 +14,17 @@ slice. It replaces the placeholders 7.4 and 7.5 with the sized tasks at the end.
 2. **The Python modules are Oxhaven's own**, with the reference's names and signatures:
    `deephaven.stream.kafka.consumer` now, `producer` and `cdc` later. They call one native
    function per entry point (`_oxhaven.kafka_consume`), as `deephaven.csv` does.
-3. **The client is a small one of our own over the `kafka-protocol` crate**, which holds
-   the wire messages and the record batch format and nothing else. Everything it brings is
-   under MIT or Apache-2.0. librdkafka, which the owner allowed on 2026-11-16, is **not
-   added**: it cannot be built without code under licences that approval does not cover.
-   "The client library" has both lists; the owner decides whether to widen the approval.
+3. **The client is librdkafka**, through the `rdkafka` crate, compiled from the sources
+   `rdkafka-sys` carries, in its smallest form plus Zstandard. The owner allowed its
+   licences on 2026-11-16 (`PORTING.md`, "Dependencies"). TLS, SASL and gzip are not
+   built: each needs a library that ruling does not cover. "The client library" has the
+   table. The wire client of the first slice is removed.
 4. **A record source is a trait** (`RecordSource`: `poll` returns the records that
-   arrived). The table, the specs and the decoding are written against it, so tests script
-   one, and a librdkafka source can replace the wire one without touching the rest.
+   arrived). The table, the specs and the decoding are written against it: tests script
+   one, and `client::ClientSource` is the one over librdkafka.
 5. **It is part of the `python` feature of the server**, as CSV and Parquet are, not a
-   feature of its own: the crate is pure Rust and adds about half a minute to a build from
-   nothing. A default build of the server does not link it.
+   feature of its own. A default build of the server does not link it; a build of the
+   workspace compiles it, and with it librdkafka: "Build cost" has the numbers.
 
 ## What Java offers
 
@@ -51,14 +53,14 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after task 7.4.1
+## What exists after tasks 7.4.1 and 7.4.4
 
-`deephaven.stream.kafka.consumer.consume` with:
+`deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` with:
 
 - `TableType.blink()`, `append()` and `ring(n)`;
 - `partitions`, and `offsets` that are `ALL_PARTITIONS_SEEK_TO_BEGINNING`,
-  `ALL_PARTITIONS_SEEK_TO_END` or a mapping to offsets, `SEEK_TO_BEGINNING` or
-  `SEEK_TO_END`;
+  `ALL_PARTITIONS_SEEK_TO_END`, a mapping to offsets, `SEEK_TO_BEGINNING` or
+  `SEEK_TO_END`, or left out (`ALL_PARTITIONS_DONT_SEEK`): "Offsets and consumer groups";
 - `simple_spec` and `KeyValueSpec.FROM_PROPERTIES` for `String`, `short`, `int`, `long`,
   `float` and `double` (Kafka's own deserializers: big-endian, of exactly the type's size),
   with the name and type taken from the argument, `deephaven.{key,value}.column.name`,
@@ -66,7 +68,9 @@ and `ring(n)` is `RingTableTools.of` of it.
 - `json_spec` with columns of type `bool_`, `byte`, `short`, `int32`, `long`, `float32`,
   `double` and `string`, and a `mapping` of top-level fields;
 - `KeyValueSpec.IGNORE`, and the six common columns with their properties;
-- plaintext brokers, uncompressed record batches.
+- the consumer properties of "Consumer properties";
+- plaintext brokers; record batches that are uncompressed or compressed with snappy, lz4
+  or zstd; transactional topics at either `isolation.level`; a broker that restarts.
 
 Everything else is refused with the name of what Java does; "Refused, by Java method"
 has the list.
@@ -99,10 +103,87 @@ column is its compact JSON); they are task 7.4.3.
 A record that cannot become a row fails the table, with Java's exception text: invalid
 JSON (`Failed to parse JSON string.`), a Boolean field Java does not recognize, a number
 of the wrong size for a simple column (`RecordDeserializationException: Error
-deserializing VALUE for partition <topic>-<n> at offset <o>...`). So does a broker that
-stops answering. A topic the broker does not have gives a table that never gets rows, in
-Java too; like Java's consumer, the request asks the broker to create it unless
-`allow.auto.create.topics` is `false`.
+deserializing VALUE for partition <topic>-<n> at offset <o>...`).
+
+A broker that goes away does not fail the table: librdkafka reconnects and goes on, as
+Java's consumer does. What ends the consumption is what `KafkaConsumer#poll` throws in
+Java: no position and no policy (`auto.offset.reset=none`), a missing authorization, a
+corrupt batch. `client::ends_consumption` has the list of librdkafka's error codes that
+are taken as such; every other code it reports is one it retries.
+
+A topic the broker does not have gives a table that never gets rows, also once the topic
+exists and has records; in Java too (probed). Like Java's consumer, the request asks the
+broker to create the topic unless `allow.auto.create.topics` is `false`.
+
+### Offsets and consumer groups
+
+Java's ingester assigns partitions by hand; `group.id` only names where positions are
+committed to and read from. The same here (`client::ClientSource::connect`):
+
+- A partition whose offset is `DONT_SEEK` starts at the offset the group of `group.id`
+  committed for it; without one, or without a group, where `auto.offset.reset` says:
+  `latest` (the default), `earliest`, or `none`, which fails the table with Java's
+  `NoOffsetForPartitionException: Undefined offset with no reset policy for partitions:
+  [...]`.
+- With a group and `enable.auto.commit` not `false`, the position of every assigned
+  partition is committed every `auto.commit.interval.ms` (five seconds) and when the
+  consumer closes: the offset after the last record a poll returned, and for a partition
+  that has delivered nothing the offset it started at (the end of the topic after
+  `SEEK_TO_END`, for one). The commit does not wait for the row to be in the table, in
+  Java neither.
+- Without a group nothing is committed. `enable.auto.commit=true` without a group is
+  Java's `InvalidConfigurationException`.
+
+How it is done over librdkafka, which differs from Java's client in three ways:
+
+1. librdkafka assigns partitions only to a consumer that has a group. Without `group.id`
+   the consumer is given the group `oxhaven-no-group`, commits are off, and no offset is
+   asked of it. No such group appeared on the broker in the probes.
+2. The start of each partition is worked out before the assignment (the committed offset,
+   or the first or last offset of the partition) and the partition is assigned at that
+   number, so that it can be recorded for the first commit.
+3. librdkafka commits what the application stores; the source stores the start of each
+   partition, then the offset after the last record of each poll
+   (`enable.auto.offset.store` is off).
+
+### Consumer properties
+
+Java hands every property to `KafkaConsumer`, which acts on the names it knows and logs
+the others. librdkafka refuses a name it does not know and has its own names and defaults,
+so the properties are translated (`src/config.rs`):
+
+| Property | What happens |
+| --- | --- |
+| `bootstrap.servers`, `client.id`, `client.rack`, `group.instance.id`, `auto.commit.interval.ms`, `fetch.min.bytes`, `fetch.max.bytes`, `max.partition.fetch.bytes`, `check.crcs`, `isolation.level`, `allow.auto.create.topics`, `metadata.max.age.ms`, `reconnect.backoff.ms`, `reconnect.backoff.max.ms`, `retry.backoff.ms`, `retry.backoff.max.ms`, `connections.max.idle.ms`, `socket.connection.setup.timeout.ms` | passed to librdkafka under the same name |
+| `fetch.max.wait.ms`, `request.timeout.ms`, `receive.buffer.bytes`, `send.buffer.bytes` | passed as `fetch.wait.max.ms`, `socket.timeout.ms`, `socket.receive.buffer.bytes`, `socket.send.buffer.bytes` (-1 becomes 0, librdkafka's "system default") |
+| `group.id`, `enable.auto.commit`, `auto.offset.reset` | read here: "Offsets and consumer groups". Checked as Java checks them: a blank group, a value that is not `true` or `false`, a policy that is not `earliest`, `latest` or `none` in lower case are Java's exceptions |
+| `max.poll.records` | the most records one poll returns (500); checked as Java checks it |
+| `default.api.timeout.ms` | how long finding the partitions and the offsets may take (60 seconds); an unreachable broker fails the call after it, as in Java |
+| `isolation.level`, `allow.auto.create.topics`, `check.crcs`, `request.timeout.ms` left out | set to Java's defaults (`read_uncommitted`, `true`, `true`, 30 seconds), which are not librdkafka's |
+| `security.protocol` other than `PLAINTEXT`; `auto.offset.reset=by_duration:...` | refused by name |
+| `key.deserializer`, `value.deserializer`, `deephaven.*` | read by the specs and the table, as before |
+| every other name | not passed, and without effect: Java's own (`session.timeout.ms`, `heartbeat.interval.ms`, `max.poll.interval.ms`, `partition.assignment.strategy`, which matter only to a consumer that joins a group; `interceptor.classes`, `metric.reporters`, `exclude.internal.topics`, `client.dns.lookup`, `sasl.*`, `ssl.*`, ...) and names nobody knows, which Java logs and ignores too |
+
+A value Java accepts and librdkafka does not (its ranges are narrower in places:
+`fetch.max.bytes` up to 2147483135, `max.partition.fetch.bytes` up to 1000000000) fails
+the call with librdkafka's message. A value of a passed property that neither accepts
+(`fetch.min.bytes=few`) fails in both.
+
+In Python a property whose name or value is not a `str` is refused before any of this,
+as the reference refuses it: `deephaven.jcompat.j_properties` calls
+`Properties#setProperty(String, String)`, and jpy finds no such method for a number
+(`RuntimeError: no matching Java method overloads found`) and passes `None` as null
+(`java.lang.NullPointerException`). The first slice turned such values into text.
+
+### The topics of a broker
+
+`deephaven.stream.kafka.topics(config)` is `KafkaTools#listTopics`: the names in the
+broker's metadata without Kafka's internal topics (`__consumer_offsets`,
+`__transaction_state`, `__share_group_state`), with the properties translated as above.
+Java returns the key set of a `HashMap`, so its order is that of the names' hash codes;
+`client::java_hash_map_order` reproduces it (the more than thirty topics of the probe
+came in the same order from both), except for a bucket of more than eight names, which Java reorders into
+a tree.
 
 ## The engine side
 
@@ -138,159 +219,253 @@ What is missing in the engine, and belongs there and not in this crate (task 7.4
 
 ## The client library
 
-### What librdkafka would bring, and why it is not added
+### What is built
 
-`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 are MIT. `rdkafka-sys` compiles the librdkafka
-2.12.1 sources it carries. With every optional feature off (no `libz`, `zstd`, `ssl`,
-`sasl`, `gssapi`, `curl`, external `lz4`), librdkafka's `src/CMakeLists.txt` still
-compiles these files into the library unconditionally, and its `LICENSES.txt` gives them
-these licences:
+`rdkafka` 0.39.0 and `rdkafka-sys` 4.10.0 (MIT) with the features `zstd` and nothing else:
+no default features (`libz`, `tokio`), and librdkafka's own `configure` build, not the
+`cmake-build` feature, which would add the `cmake` crate for nothing. `rdkafka-sys`
+compiles the librdkafka 2.12.1 sources it carries and links the result statically. Its
+build script passes `--disable-ssl --disable-gssapi --disable-zlib --disable-curl
+--disable-lz4-ext --enable-zstd`, so nothing is taken from the machine it is built on
+even where the machine has it (this one and GitHub's runners have the zlib and OpenSSL
+headers). The server binary links no library it did not link before (`ldd`: libc, libm,
+libgcc, libpython).
 
-| Files in librdkafka | Licence | Within BSD-2-Clause, MIT, Apache-2.0? |
-| --- | --- | --- |
-| librdkafka itself | BSD-2-Clause | yes |
-| `lz4*.c`, `rdxxhash.c` (LZ4, bundled) | BSD-2-Clause | yes |
-| `cJSON.c` | MIT | yes |
-| `rdcrc32.c` (pycrc) | MIT | yes |
-| `rdhdrhistogram.c` | MIT | yes |
-| `opentelemetry/*.pb.c` | Apache-2.0 | yes |
-| `rdmurmur2.c` | MIT, parts public domain | yes, with a public domain part |
-| `rdfnv1a.c`, `regexp.c` | public domain | not a licence in the list |
-| **`snappy.c`** (Snappy, bundled, cannot be switched off through `rdkafka-sys`) | **BSD-3-Clause** | **no** |
-| **`rdsysqueue.h`** (BSD `sys/queue.h`, used throughout) | **BSD-3-Clause** | **no** |
-| **`crc32c.c`** (Mark Adler) | **zlib licence** | **no** |
-| **`tinycthread.c`, `tinycthread_extra.c`** | **zlib licence** | **no** |
-| **`nanopb/*.c`** (for the telemetry messages) | **zlib licence** | **no** |
-| `wingetopt.c` (Windows only, not compiled on Linux) | ISC and BSD-3-Clause | not built |
+The owner's ruling of 2026-11-16 06:18 UTC: BSD-3-Clause and the zlib licence are allowed
+for the files bundled in librdkafka, next to BSD-2-Clause, MIT and Apache-2.0; `zstd-sys`
+was allowed already (`PORTING.md`, "Dependencies").
 
-So the smallest librdkafka needs BSD-3-Clause for two files and the zlib licence for five,
-which the approval of 2026-11-16 (BSD-2-Clause, MIT, Apache-2.0) does not cover. Nothing
-of it is in the repository. The C build itself is not an obstacle here: `cmake`, `make`,
-`gcc` and `g++` are installed, and GitHub's `ubuntu-latest` has them.
-
-Also considered: `rskafka` 0.6.0 (MIT OR Apache-2.0, pure Rust, no consumer groups). It
-always depends on `rsasl`, which brings `subtle` (BSD-3-Clause) and three `unicode-*`
-crates under `(MIT OR Apache-2.0) AND Unicode-3.0`. Not within the rule either.
-
-### What is added
+Crates added to `Cargo.lock`:
 
 | Crate | Version | Licence | Why |
 | --- | --- | --- | --- |
-| `kafka-protocol` | 0.18.0 | MIT OR Apache-2.0 | Wire messages and record batches; features `client` only, so no compression crates |
-| `crc` | 3.4.0 | MIT OR Apache-2.0 | of `kafka-protocol` |
-| `crc-catalog` | 2.5.0 | MIT OR Apache-2.0 | of `crc` |
-| `crc32c` | 0.6.9 | MIT OR Apache-2.0 | of `kafka-protocol`: the checksum of a record batch |
+| `rdkafka` | 0.39.0 | MIT | the client's Rust interface |
+| `rdkafka-sys` | 4.10.0+2.12.1 | MIT | the librdkafka sources and their build |
+| `num_enum`, `num_enum_derive` | 0.7.6 | BSD-3-Clause OR MIT OR Apache-2.0 | of `rdkafka-sys`: error codes as an enum |
+| `proc-macro-crate` | 3.5.0 | MIT OR Apache-2.0 | of `num_enum_derive`, at build time |
+| `toml_edit`, `toml_datetime`, `toml_parser` | 0.25.19, 1.1.3, 1.1.5 | MIT OR Apache-2.0 | of `proc-macro-crate`, at build time |
+| `winnow` | 1.0.5 | MIT | of `toml_edit`, at build time |
 
-Its other dependencies were in `Cargo.lock` already (`anyhow`, `bytes`, `indexmap`,
-`uuid`), as were `serde` and `serde_json`, whose `raw_value` feature is now on. No C code.
+Its other dependencies were in `Cargo.lock` already (`futures-channel`, `futures-util`,
+`libc`, `log`, `serde`, `serde_json`, `slab`, `pkg-config`, and `zstd-sys` 2.1.3,
+BSD-3-Clause AND BSD-2-Clause, for Parquet). Removed with the wire client:
+`kafka-protocol`, `crc`, `crc-catalog`, `crc32c`.
 
-### What the choice costs
+C files compiled into the library, by the licence librdkafka's `LICENSES.txt` gives them
+(the object files of the build were listed to see which are compiled):
 
-`src/wire.rs` does what the slice needs of a consumer: `Metadata` (v8)
-for the partitions and their leaders, `ListOffsets` (v5) for the first and last offset,
-`Fetch` (v11) in a loop, one blocking connection per broker, used by the one polling
-thread. Brokers from 2.4 on answer these versions; it was run against 3.9.1. A librdkafka
-build would give the following at once; here each is work, listed as tasks below:
-
-| | Wire client today | With librdkafka |
+| Files in librdkafka | Licence | Covered by |
 | --- | --- | --- |
-| TLS, SASL | refused | built in (OpenSSL and SASL are further licences to check) |
-| Compressed batches (gzip, snappy, lz4, zstd) | refused | built in |
-| Committed offsets (`DONT_SEEK`), `auto.offset.reset` | refused | built in |
-| A partition that changes leader, a broker that restarts | the table fails | retried |
-| Producing, idempotence, transactions | not built | built in |
-| The consumer properties of Java's client | accepted and without effect, except those above | librdkafka's own property names, which differ from Java's in places |
+| librdkafka itself (`rd*.c`, `rdkafka*.c`, among them its own SASL PLAIN and its mock broker) | BSD-2-Clause | the ruling |
+| `lz4.c`, `lz4frame.c`, `lz4hc.c`, `rdxxhash.c` (LZ4, bundled) | BSD-2-Clause | the ruling |
+| `cJSON.c` | MIT | the ruling |
+| `rdcrc32.c` (pycrc) | MIT | the ruling |
+| `rdhdrhistogram.c` | MIT | the ruling |
+| `opentelemetry/*.pb.c` | Apache-2.0 | the ruling |
+| `rdmurmur2.c` | MIT, parts public domain | the ruling |
+| `rdfnv1a.c` | public domain | the ruling ("public-domain files") |
+| `snappy.c` (Snappy, bundled) | BSD-3-Clause | the ruling |
+| `rdsysqueue.h` (BSD `sys/queue.h`) | BSD-3-Clause | the ruling |
+| `crc32c.c` (Mark Adler) | zlib licence | the ruling |
+| `tinycthread.c`, `tinycthread_extra.c` | zlib licence | the ruling |
+| `nanopb/pb_common.c`, `pb_encode.c`, `pb_decode.c` | zlib licence | the ruling |
+| Zstandard, from `zstd-sys` (not bundled in librdkafka) | BSD-3-Clause AND BSD-2-Clause | the earlier ruling on `zstd-sys` |
+| `regexp.c` (public domain), `wingetopt.c` (ISC and BSD-3-Clause) | | not compiled: the C library's `regex` is used, and the second is for Windows |
 
-Neither client runs Java's `KafkaConsumer`, so either way the consumer properties are a
-translation. If the owner widens the approval, the swap is a second `RecordSource`.
+### What is left off, and what each would add
+
+| Feature of `rdkafka` | Gives | Adds | Licence of what it adds | Why it is off |
+| --- | --- | --- | --- | --- |
+| `libz` | gzip batches | the crate `libz-sys` (MIT OR Apache-2.0), which links the machine's `libz.so` | zlib licence | an external zlib, which the ruling excludes |
+| `libz-static` | gzip batches | `libz-sys` compiling the zlib sources it carries | zlib licence | the same licence the ruling allows, but for files bundled in librdkafka; these are bundled in `libz-sys`. One word from the owner would cover it |
+| `ssl` | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` (MIT) with `openssl-macros`, `vcpkg` and others, and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | excluded by the ruling |
+| `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | excluded by the ruling |
+| `gssapi` (alias `sasl`) | SASL GSSAPI (Kerberos) | `ssl`, and `sasl2-sys` (Apache-2.0) with Cyrus SASL | BSD-4-Clause-like (Cyrus SASL, with an advertising clause) | excluded by the ruling |
+| `gssapi-vendored` | the same | Cyrus SASL and MIT Kerberos (`krb5-src`) compiled from source | Cyrus SASL's licence; MIT (Kerberos) | excluded by the ruling |
+| `curl`, `curl-static` | OAUTHBEARER over OIDC | `curl-sys` (MIT) and libcurl, which needs TLS itself | curl licence (MIT-like) | excluded by the ruling |
+| `external-lz4` | nothing new | `lz4-sys` (MIT) | BSD-2-Clause | lz4 is bundled |
+| `cmake-build` | the same library | `cmake` (MIT OR Apache-2.0) | | the `configure` build works |
+| `tokio`, `naive-runtime` | async consumers | `tokio` is in the tree; `futures-executor` | MIT | the source polls from its own thread |
+
+The licences in the third and fourth columns are from the crates' manifests and from
+what is generally known of the C libraries; none of these crates was downloaded, so
+their own dependency lists were not checked. Check them again before turning one on.
+
+**gzip, answered.** librdkafka has no zlib of its own: gzip needs the `libz` feature,
+which is an external zlib either way (the machine's, or `libz-sys`'s copy). So gzip is
+off, and a gzip batch fails the table by the name
+`org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator`. Java reads it
+(probed). gzip is Kafka's oldest codec and common in old topics; see "For the owner's
+ruling".
+
+**SASL PLAIN** is in librdkafka's own BSD-2-Clause code and is compiled, so
+`SASL_PLAINTEXT` with `sasl.mechanism=PLAIN` needs no further licence. It is still
+refused with the rest of `security.protocol`: it was not asked for, no broker with SASL
+was at hand to probe it, and a password over a connection without TLS is seldom wanted.
+It is the cheap first half of task 7.4.5.
+
+### The wire client is removed
+
+`src/wire.rs` of the first slice, and the `kafka-protocol` crate under it, are deleted.
+It read uncompressed batches from a broker that never moved, and nothing else: no
+committed offsets, no reconnect. Keeping it as a second way to a broker would mean two
+consumers with different behaviour and one of them untested against Java from now on. Its
+one advantage, a build without a C compiler, is not a need of this project: `zstd-sys`
+needs one already. Tests do not need it either: tables are tested over a scripted
+`RecordSource`, and the client against a broker. Its three unit tests of record batch
+decoding went with it; librdkafka does that decoding now, and `tests/broker.rs` covers it.
+
+### Build cost
+
+Measured here (4 cores shared with three other builds, `-j 2`, line tables only):
+
+| | Time |
+| --- | --- |
+| `rdkafka-sys`: `configure` and `make libs` of librdkafka, once per target directory | 105 s |
+| `rdkafka`, `num_enum` and the build-time crates | under 10 s together |
+| `kafka-protocol`, no longer built | 12 s saved |
+| `cargo build -p oxhaven-kafka` from nothing, with both clients still in it | 3 min 28 s |
+
+`make libs` also builds librdkafka's C++ wrapper, which nothing links; `rdkafka-sys`
+offers no way to leave it out. The build directory of `rdkafka-sys` takes 200 MB.
+
+Kafka stays in the `python` feature. The cost does not depend on that choice anyway:
+`oxhaven-kafka` is a member of the workspace, so `cargo test --workspace` and
+`cargo clippy --workspace` compile librdkafka whatever the server's features are.
+
+**CI.** Every job that compiles (`rust`, `python-console-on` twice, `oracle-replay`,
+`kafka-broker`, and `nightly`) builds librdkafka once and then has it in its
+`Swatinem/rust-cache`. The build needs `gcc`, `g++`, `make`, `bash` and the C library's
+headers, all of which GitHub's `ubuntu-latest` image has; no step installs a package and
+none is needed. This was not run on GitHub by this task: it is read off the image's
+documented contents and off this machine, which has the same tools.
 
 ## Tests and the broker
 
 | Layer | Test | Needs | Where it runs |
 | --- | --- | --- | --- |
-| JSON conversion, record batches, refusals | unit tests in `src/` | nothing | `cargo test --workspace`: every pull request |
+| JSON conversion, refusals, the translation of properties, Java's hash order, which errors end a consumption | unit tests in `src/` | nothing | `cargo test --workspace`: every pull request |
 | Tables from a scripted `RecordSource`, with the consistency checker | `tests/consume.rs` | nothing | every pull request |
-| The Python module: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
-| The wire client against a broker | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`, by hand until CI has the job below |
-| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in task 7.4.1; a recorded corpus is task 7.4.6 |
+| The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
+| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
+| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1 and 7.4.4; a recorded corpus is task 7.4.6 |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
 (`dockerd` with its own socket and data root, no bridge and no iptables rules, the
 container on the host network) pulled `apache/kafka:3.9.1` (204 MB) from Docker Hub and
 ran it in KRaft mode on `127.0.0.1:19092`. `tests/broker.sh` does the same for the tests:
-it starts the container, creates and fills two topics with the image's own tools, runs
-`cargo test -p oxhaven-kafka --test broker -- --ignored` and removes the container. The
-tests refuse a broker address that is not `127.0.0.1` or `localhost`.
+it starts the container, creates and fills three topics with the image's own tools (one
+of them compressed with gzip, which the tests' own producer cannot write), runs the tests
+and removes the container. The other records the tests produce themselves, with
+librdkafka's producer, into topics named after the time. The test of a restart runs
+alone, after the others, with `docker restart` as the command it is given. The tests
+refuse a broker address that is not `127.0.0.1` or `localhost`.
 
-**A broker in CI.** GitHub-hosted `ubuntu-latest` runners have a running Docker daemon and
-may pull public images, so the script should run there unchanged; this was not tried. The
-job to add (a change to `.github/workflows/ci.yml`, which task 7.4.1 does not make):
+**A broker in CI.** The job `kafka-broker` in `.github/workflows/ci.yml` runs the script
+on `ubuntu-latest`, whose Docker daemon may pull public images. It uses no secret and no
+other runner. It was added by task 7.4.4 without having been run on GitHub: the first
+pull request shows whether the runner's Docker takes `--network host` with a broker on
+`127.0.0.1` as this machine's does.
 
-```yaml
-  kafka-broker:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      # the toolchain and cache steps of the `rust` job
-      - run: crates/oxhaven-kafka/tests/broker.sh
-```
-
-No secret and no other runner are needed. Until it exists, a pull request exercises
-everything but `src/wire.rs`'s connections: its record decoding has unit tests, its
-requests do not.
-
-**Not verified anywhere:** brokers other than 3.9.1; a topic with more than two
-partitions or more than one broker; batches larger than one fetch; what Java does on a
-leader change.
+**Not verified anywhere:** brokers other than 3.9.1; more than one broker, so a
+partition that changes leader while its old leader stays up (a single broker that
+restarts is tested and probed); a topic with more than two partitions; aborted
+transactions under `read_committed`; `SEEK_TO_END` under `read_committed` while a
+transaction is open (librdkafka's last offset is the high watermark, Java's the last
+stable offset); SASL PLAIN; `group.instance.id`.
 
 ## Differences from Java seen in the probes
 
-Both servers consumed the same topics of one broker (Java on port 10986, Oxhaven on
-10987), 21 cases and a run with records arriving while the tables were open.
+Both servers consumed the same topics of one broker. Task 7.4.1: Java on port 10986,
+Oxhaven on 10987, 21 cases and a run with records arriving while the tables were open.
+Task 7.4.4, over librdkafka: Java on 10992, Oxhaven on 10993, 33 tables in four rounds
+with records arriving between them, 25 calls expected to raise or to list, the offsets
+each consumer group had committed (`kafka-consumer-groups.sh`), and a restart of the
+broker under the open tables of both.
 
 - Same: the schemas; the rows of simple and JSON tables, sorted by partition and offset;
   the flags (blink, refreshing, flat, failed); offsets from the beginning, the end and a
   number; one partition of two; a ring table of one partition; a blink table and an
   aggregation of it, and append-only tables, as records arrive; the four failures above.
-- Different, by design for now: the three refused conversions.
-- Different in text only: the Python traceback around an error (`PARITY.md` A5).
+- Same, new in 7.4.4: no `offsets` without a group (`latest`, `earliest`, `none`, which
+  fails the table in both); no `offsets` with a group, before and after it has committed;
+  an offset for one partition of two; an offset past the end, with each policy; what
+  eight groups had committed, among them one that only sought to the end, one with a
+  given offset, one of a blink table, and one with `enable.auto.commit=false` (nothing);
+  topics compressed with snappy, lz4 and zstd; a transactional topic at both isolation
+  levels; a topic that did not exist when the table was made (no rows, also after
+  records arrived); every table after the broker restarted and more records arrived;
+  the list of topics and its order; which of the 25 calls raise.
+- Different, by design for now: the three refused conversions; a gzip topic (Java reads
+  it, Oxhaven fails the table by name); `auto.offset.reset=by_duration:PT1H` (Java
+  accepts, Oxhaven refuses by name); `security.protocol` (Java fails for want of a TLS
+  broker or a JAAS entry, Oxhaven refuses by name).
+- Different in text only (`PARITY.md` A5): the Python traceback around an error; an
+  unreachable broker (Java: `TimeoutException: Timeout expired while fetching topic
+  metadata`, here librdkafka's words, both after `default.api.timeout.ms`); a malformed
+  or unresolvable `bootstrap.servers`, which Java refuses at once and Oxhaven after that
+  time; `topics` without `bootstrap.servers`.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
-  and so `tail` and a ring table over two partitions, differ. Java defines no order
-  here; see below.
+  and so `tail` and a ring table over two partitions, differ. Seen again in 7.4.4 (an
+  offset for one partition of two). Java defines no order here; see below.
 
 ## For the owner's ruling
 
-1. **The licence of the client.** Either widen the approval to the zlib licence and
-   BSD-3-Clause for the librdkafka files in the table above (and then decide TLS: OpenSSL
-   is Apache-2.0 from 3.0), or keep the wire client and schedule tasks 7.4.4 and 7.4.5.
-2. **Row order across partitions within one poll** is the iteration order of a Java
+1. ~~The licence of the client.~~ Ruled on 2026-11-16: librdkafka is in, as "The client
+   library" lists it.
+2. **gzip.** Reading gzip batches needs zlib, which librdkafka does not carry. The
+   ruling allows the zlib licence for files bundled in librdkafka and excludes an
+   external zlib. The `libz-static` feature would compile the zlib sources bundled in
+   the crate `libz-sys` (itself MIT OR Apache-2.0): the same licence, another bundle.
+   Allow that, or leave gzip refused?
+3. **TLS and SASL** (task 7.4.5) each need a library outside the ruling: OpenSSL
+   (Apache-2.0 from version 3; the machine's, or compiled from `openssl-src`) for TLS,
+   SCRAM and OAUTHBEARER; Cyrus SASL (its own BSD-style licence with an advertising
+   clause) for Kerberos; libcurl (curl licence) for OIDC. SASL PLAIN alone needs
+   nothing, but is of little use without TLS. Which of these may be added?
+4. **Row order across partitions within one poll** is the iteration order of a Java
    `HashMap` keyed by topic and partition. It is stable for one topic name and partition
    count, but nothing documents it. Oxhaven orders by partition number. Is this
    `PARITY.md` A3 (row order where Java defines none), or should the hash order be
-   reproduced?
-3. **Records before a bad one.** Java's client returns the records before a record it
+   reproduced? librdkafka changes one thing here: what "one poll" holds. Java's poll
+   returns what one round of fetches brought, up to `max.poll.records`; the source
+   returns what librdkafka has queued, up to the same number. Which records share a poll
+   is a matter of timing in both.
+5. **Records before a bad one.** Java's client returns the records before a record it
    cannot deserialize and throws on the next poll, so those rows may show for a cycle
-   before the table fails. Oxhaven decodes a fetch at once and fails without them. The
-   failed table is the same.
-4. **A consumer property Oxhaven does not act on is accepted in silence**, as Java's
-   client accepts (and logs) a property it does not know. For properties Java does act on
-   (`max.poll.records`, `fetch.max.bytes`, `session.timeout.ms`, ...) this means a setting
-   without effect. The alternative is to refuse every property outside a known list.
-5. **Text that is not UTF-8 in a `String` column** is refused. Java replaces the bad bytes
+   before the table fails. Oxhaven decodes a poll at once and fails without them. The
+   failed table is the same. Unchanged by librdkafka.
+6. **A consumer property Oxhaven does not act on is accepted in silence**, as Java's
+   client accepts (and logs) a property it does not know. With librdkafka the list of
+   properties that do act is longer ("Consumer properties"), and what remains without
+   effect matters only to a consumer that joins a group, which neither Java's ingester
+   nor this one does, or to TLS and SASL, which are refused. The alternative is still to
+   refuse every property outside a known list.
+7. **Text that is not UTF-8 in a `String` column** is refused. Java replaces the bad bytes
    (`new String(bytes, UTF_8)`); Rust's lossy conversion is not known to replace them the
-   same way in every case.
+   same way in every case. Unchanged by librdkafka.
+8. **The order of `kafka.topics`** is the iteration order of a Java `HashMap` of topic
+   names, undocumented like item 4. Here it is reproduced, because it could be: the
+   order depends only on the names. A bucket of more than eight names in a listing of 49
+   or more topics is the one case not reproduced (Java turns it into a tree). Say if
+   sorted, or any order, is preferred; then the reproduction can go.
+9. **A property value that is not text** (`{"max.poll.records": 5}`) is an error in the
+   reference, by accident of jpy (`no matching Java method overloads found`), and so
+   here now. The first slice accepted it. Most users would call the reference's
+   behaviour a defect; it is reproduced until ruled otherwise.
+10. **A value Java accepts and librdkafka does not** fails the call (the ranges under
+    "Consumer properties"). The alternative is to clamp, which would be a silent change
+    of what was asked.
 
 ## Refused, by Java method
 
 | What | Named in the refusal |
 | --- | --- |
-| `offsets` left at its default, `DONT_SEEK` | `org.apache.kafka.clients.consumer.KafkaConsumer#position` |
 | `security.protocol` other than `PLAINTEXT` | `org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder` |
-| `isolation.level=read_committed` | `org.apache.kafka.clients.consumer.internals.FetchCollector` |
-| A compressed record batch | `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator` |
-| A record batch older than format 2 | `org.apache.kafka.common.record.AbstractLegacyRecordBatch` |
+| A record batch compressed with gzip (fails the table) | `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator` |
+| `auto.offset.reset=by_duration:<duration>` | `org.apache.kafka.clients.consumer.internals.AutoOffsetResetStrategy#timestamp` |
 | A simple column of `byte[]`, `UUID`, `ByteBuffer`, `Bytes` or any other type | `io.deephaven.kafka.SimpleImpl.SerDeserVisitor` |
 | Bytes that are not UTF-8 in a `String` column | `org.apache.kafka.common.serialization.StringDeserializer#deserialize` |
 | A JSON column of `char`, `Instant`, or another type | `io.deephaven.kafka.ingest.JsonNodeCharFieldCopier`, `JsonNodeInstantFieldCopier`, `JsonNodeChunkAdapter#makeFieldCopier` |
@@ -303,8 +478,12 @@ Both servers consumed the same topics of one broker (Java on port 10986, Oxhaven
 | An integer outside 128 bits | `com.fasterxml.jackson.databind.node.BigIntegerNode` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
 | `avro_spec`, `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#avroSpec`, `#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
-| `deephaven.stream.kafka.topics` | `io.deephaven.kafka.KafkaTools#listTopics` |
 | `deephaven.stream.blink_to_append_only`, `add_only_to_blink` | `io.deephaven.engine.table.impl.BlinkTableTools#blinkToAppendOnly`, `AddOnlyToBlinkTableAdapter#toBlink` |
+
+No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
+other than gzip, `isolation.level=read_committed`, record batches older than format 2
+(librdkafka reads them; not probed, the broker writes none), `deephaven.stream.kafka.
+topics`.
 
 `deephaven.stream.kafka.producer`, `cdc` and `deephaven.stream.table_publisher` do not
 exist yet: importing them fails.
@@ -318,11 +497,11 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.1 | This design and the first slice | done here | |
 | 7.4.2 | Engine: public `stream_table` with a publisher, public `blink_to_append_only`, a callback when a table is released; `deephaven.stream.table_publisher`, `blink_to_append_only`; move this crate onto them | M | 7.4.1 |
 | 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | M | 7.4.1 |
-| 7.4.4 | Client: committed offsets and `auto.offset.reset` (`DONT_SEEK`), compressed batches (gzip through `flate2`, which is in the tree; the others need a licence check each), leader changes and reconnects, `kafka.topics`. Or, if the owner allows librdkafka, a second `RecordSource` and the property translation | L (M with librdkafka) | owner's ruling 1 |
-| 7.4.5 | TLS and SASL (`rustls` if within the rule; PLAIN and SCRAM by hand) | M | 7.4.4 |
-| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source; the `kafka-broker` CI job | M | 7.4.2 |
+| 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
+| 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
+| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
 | 7.4.7 | Avro specs and the schema registry client (a licence check of the Avro crate first) | L | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | M | 7.4.7 for the registry |
-| 7.5.1 | Produce: the `Produce` request in the wire client, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | L | 7.4.4 |
+| 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | M | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | M | 7.5.1, 7.4.7 |
 | 7.5.3 | `deephaven.stream.kafka.cdc` | M | 7.4.7 |
