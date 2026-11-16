@@ -1404,6 +1404,7 @@ dependencies = [
  "oxhaven-csv",
  "oxhaven-engine",
  "oxhaven-expr",
+ "oxhaven-kafka",
  "oxhaven-parquet",
  "oxhaven-proto",
  "oxhaven-testkit",

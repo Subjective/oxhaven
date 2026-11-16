@@ -159,7 +159,7 @@ fn names(plan: &Plan) -> Vec<(String, ColumnType)> {
 
 #[test]
 fn a_blink_table_shows_each_batch_for_one_cycle() {
-    let plan = Plan::new(&[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
     assert_eq!(
         names(&plan),
         [
@@ -217,7 +217,7 @@ fn an_append_only_table_keeps_every_row() {
         column: None,
         data_type: None,
     };
-    let plan = Plan::new(&properties, &from_properties, &from_properties).unwrap();
+    let plan = Plan::new("test", &properties, &from_properties, &from_properties).unwrap();
     assert_eq!(
         names(&plan),
         [
@@ -252,7 +252,7 @@ fn an_append_only_table_keeps_every_row() {
 
 #[test]
 fn a_ring_table_keeps_the_last_rows() {
-    let plan = Plan::new(&[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
     let topic = Topic::new(plan, TableType::Ring(2));
     topic.cycle(Ok(vec![
         record(0, None, Some(b"a")),
@@ -278,7 +278,7 @@ fn json_fields_fill_the_columns_named_for_them() {
             ("/a~1b".to_owned(), "Px".to_owned()),
         ]),
     };
-    let plan = Plan::new(&[], &Spec::Ignore, &value).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
     let topic = Topic::new(plan, TableType::Append);
     topic.cycle(Ok(vec![
         record(
@@ -291,7 +291,7 @@ fn json_fields_fill_the_columns_named_for_them() {
         record(
             1,
             None,
-            Some(br#"{"Sym": "ignored", "Qty": 4294967297, "a/b": 2, "Live": 0}"#),
+            Some(br#"{"Sym": "ignored", "Qty": 4294967297, "a/b": 2, "Live": "f"}"#),
         ),
         record(
             2,
@@ -332,7 +332,7 @@ fn a_record_that_cannot_become_a_row_fails_the_table() {
         columns: vec![("Qty".to_owned(), ColumnType::Int)],
         mapping: None,
     };
-    let plan = Plan::new(&[], &Spec::Ignore, &value).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &value).unwrap();
     let topic = Topic::new(plan, TableType::Blink);
     topic.cycle(Ok(vec![record(0, None, Some(br#"{"Qty": 1}"#))]));
     assert!(!topic.table.is_failed());
@@ -343,23 +343,21 @@ fn a_record_that_cannot_become_a_row_fails_the_table() {
         "{message}"
     );
 
-    let plan = Plan::new(&[], &Spec::Ignore, &simple("V", ColumnType::Int)).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &simple("V", ColumnType::Int)).unwrap();
     let topic = Topic::new(plan, TableType::Append);
     topic.failing_cycle(Ok(vec![record(0, None, Some(b"12345"))]));
     let message = failure_of(&topic);
-    assert!(
-        message.starts_with("not ported yet: io.deephaven.kafka.ingest.KafkaIngester#pollOnce"),
-        "{message}"
-    );
-    assert!(
-        message.contains("IntegerDeserializer is not 4"),
-        "{message}"
+    assert_eq!(
+        message,
+        "org.apache.kafka.common.errors.RecordDeserializationException: Error deserializing \
+         VALUE for partition test-2 at offset 0. If needed, please seek past the record to \
+         continue consumption."
     );
 }
 
 #[test]
 fn a_source_that_fails_fails_the_table() {
-    let plan = Plan::new(&[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
+    let plan = Plan::new("test", &[], &Spec::Ignore, &simple("V", ColumnType::String)).unwrap();
     let topic = Topic::new(plan, TableType::Blink);
     topic.failing_cycle(Err(KafkaError::Broker("the broker left".to_owned())));
     assert_eq!(failure_of(&topic), "the broker left");
@@ -368,7 +366,7 @@ fn a_source_that_fails_fails_the_table() {
 #[test]
 fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
     let refused = |key: &Spec, value: &Spec, properties: &[(&str, &str)]| {
-        Plan::new(&config(properties), key, value)
+        Plan::new("test", &config(properties), key, value)
             .unwrap_err()
             .to_string()
     };
@@ -423,5 +421,5 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
         columns: vec![("KafkaOffset".to_owned(), ColumnType::Int)],
         mapping: None,
     };
-    assert!(refused(&Spec::Ignore, &duplicate, &[]).contains("duplicate column name KafkaOffset"));
+    assert!(refused(&Spec::Ignore, &duplicate, &[]).contains("duplicate names [KafkaOffset]"));
 }

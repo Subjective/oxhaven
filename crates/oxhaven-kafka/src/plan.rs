@@ -84,6 +84,7 @@ enum Cells {
 /// The definition of a consumed topic's table and the source of each column.
 #[derive(Clone, Debug)]
 pub struct Plan {
+    topic: String,
     definition: TableDefinition,
     cells: Vec<Cells>,
 }
@@ -248,24 +249,38 @@ fn json_columns(
     Ok(())
 }
 
-fn fixed<const N: usize>(bytes: &[u8], deserializer: &str) -> Result<[u8; N], KafkaError> {
+/// The bytes of a number, which must be exactly its size.
+///
+/// Behavior: `org.apache.kafka.clients.consumer.internals.CompletedFetch#parseRecord`, which
+/// wraps what the deserializer throws; the exception fails the table through
+/// `io.deephaven.kafka.ingest.KafkaIngester#pollOnce`.
+fn fixed<const N: usize>(
+    bytes: &[u8],
+    topic: &str,
+    side: Side,
+    record: &Record,
+) -> Result<[u8; N], KafkaError> {
     bytes.try_into().map_err(|_| {
-        // Java's consumer throws this from `poll`, and the ingester then stops reading
-        // without telling the table (docs/KAFKA.md, "For the owner's ruling").
-        not_ported(
-            "io.deephaven.kafka.ingest.KafkaIngester#pollOnce",
-            &format!(
-                "a record the deserializer refuses \
-                 (org.apache.kafka.common.errors.SerializationException: Size of data received \
-                 by {deserializer} is not {N})"
-            ),
-        )
+        let side = side.name().to_uppercase();
+        let (partition, offset) = (record.partition, record.offset);
+        KafkaError::Record(format!(
+            "org.apache.kafka.common.errors.RecordDeserializationException: Error \
+             deserializing {side} for partition {topic}-{partition} at offset {offset}. If \
+             needed, please seek past the record to continue consumption."
+        ))
     })
 }
 
 impl Plan {
+    /// The table of `topic`, whose name appears in the failure a bad record causes.
+    ///
     /// Behavior: io.deephaven.kafka.KafkaTools#getConsumeStruct
-    pub fn new(config: &[(String, String)], key: &Spec, value: &Spec) -> Result<Self, KafkaError> {
+    pub fn new(
+        topic: &str,
+        config: &[(String, String)],
+        key: &Spec,
+        value: &Spec,
+    ) -> Result<Self, KafkaError> {
         if *key == Spec::Ignore && *value == Spec::Ignore {
             return Err(invalid(
                 "java.lang.IllegalArgumentException: can't ignore both key and value: keySpec \
@@ -304,14 +319,19 @@ impl Plan {
                 }
             }
         }
+        // Behavior: io.deephaven.engine.table.TableDefinition#checkDuplicateNames
         let definition = TableDefinition::new(definitions).map_err(|duplicate| {
             invalid(format!(
-                "io.deephaven.engine.table.impl.NoSuchColumnException: duplicate column name \
-                 {}",
+                "java.lang.IllegalArgumentException: Supplied ColumnDefinitions include \
+                 duplicate names [{}]",
                 duplicate.0
             ))
         })?;
-        Ok(Self { definition, cells })
+        Ok(Self {
+            topic: topic.to_owned(),
+            definition,
+            cells,
+        })
     }
 
     pub fn definition(&self) -> &TableDefinition {
@@ -347,7 +367,7 @@ impl Plan {
             let column_type = &column.column_type;
             columns.push(match cells {
                 Cells::Common(common) => common_column(*common, records, received)?,
-                Cells::Simple(side) => simple_cells(*side, column_type, records)?,
+                Cells::Simple(side) => simple_cells(&self.topic, *side, column_type, records)?,
                 Cells::Json(side, field) => {
                     let documents = match side {
                         Side::Key => &key_documents,
@@ -417,34 +437,37 @@ fn utf8(bytes: &[u8]) -> Result<String, KafkaError> {
 /// `StringDeserializer`, `ShortDeserializer`, `IntegerDeserializer`, `LongDeserializer`,
 /// `FloatDeserializer` and `DoubleDeserializer`: big-endian, of exactly the type's size
 fn simple_cells(
+    topic: &str,
     side: Side,
     column_type: &ColumnType,
     records: &[Record],
 ) -> Result<ArrayRef, KafkaError> {
-    let payloads = records.iter().map(|record| side.bytes(record));
     macro_rules! numbers {
-        ($array:ty, $native:ty, $deserializer:literal, $null:expr) => {{
-            let cell = |bytes: Option<&[u8]>| -> Result<Option<$native>, KafkaError> {
-                let Some(bytes) = bytes else { return Ok(None) };
-                let value = <$native>::from_be_bytes(fixed(bytes, $deserializer)?);
+        ($array:ty, $native:ty, $null:expr) => {{
+            let cell = |record: &Record| -> Result<Option<$native>, KafkaError> {
+                let Some(bytes) = side.bytes(record) else {
+                    return Ok(None);
+                };
+                let value = <$native>::from_be_bytes(fixed(bytes, topic, side, record)?);
                 Ok(Some(value).filter(|value| *value != $null))
             };
-            let cells: Vec<Option<$native>> = payloads.map(cell).collect::<Result<_, _>>()?;
+            let cells: Vec<Option<$native>> = records.iter().map(cell).collect::<Result<_, _>>()?;
             Arc::new(<$array>::from(cells)) as ArrayRef
         }};
     }
     Ok(match column_type {
         ColumnType::String => {
-            let cells: Vec<Option<String>> = payloads
-                .map(|bytes| bytes.map(utf8).transpose())
+            let cells: Vec<Option<String>> = records
+                .iter()
+                .map(|record| side.bytes(record).map(utf8).transpose())
                 .collect::<Result<_, _>>()?;
             Arc::new(StringArray::from(cells))
         }
-        ColumnType::Short => numbers!(Int16Array, i16, "ShortDeserializer", i16::MIN),
-        ColumnType::Int => numbers!(Int32Array, i32, "IntegerDeserializer", i32::MIN),
-        ColumnType::Long => numbers!(Int64Array, i64, "LongDeserializer", i64::MIN),
-        ColumnType::Float => numbers!(Float32Array, f32, "FloatDeserializer", -f32::MAX),
-        ColumnType::Double => numbers!(Float64Array, f64, "DoubleDeserializer", -f64::MAX),
+        ColumnType::Short => numbers!(Int16Array, i16, i16::MIN),
+        ColumnType::Int => numbers!(Int32Array, i32, i32::MIN),
+        ColumnType::Long => numbers!(Int64Array, i64, i64::MIN),
+        ColumnType::Float => numbers!(Float32Array, f32, -f32::MAX),
+        ColumnType::Double => numbers!(Float64Array, f64, -f64::MAX),
         other => unreachable!("Plan::new admits no simple column of type {other:?}"),
     })
 }
@@ -474,7 +497,7 @@ fn json_cells(
     Ok(match column_type {
         ColumnType::Boolean => {
             let cells: Vec<Option<bool>> = nodes
-                .map(|node| Ok(node?.boolean()))
+                .map(|node| node?.boolean(field))
                 .collect::<Result<_, KafkaError>>()?;
             Arc::new(BooleanArray::from(cells))
         }

@@ -209,7 +209,12 @@ pub fn consume(
     graph: Arc<dyn UpdateGraph>,
     options: &ConsumeOptions,
 ) -> Result<Arc<dyn Table>, KafkaError> {
-    let plan = Plan::new(&options.config, &options.key, &options.value)?;
+    let plan = Plan::new(
+        &options.topic,
+        &options.config,
+        &options.key,
+        &options.value,
+    )?;
     refuse_properties(&options.config)?;
     // Behavior: org.apache.kafka.clients.consumer.ConsumerConfig, where the property is
     // required

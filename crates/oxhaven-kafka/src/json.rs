@@ -2,7 +2,7 @@
 //! of a field to a column's type.
 //!
 //! Java parses a record with Jackson into a tree and converts each field with the
-//! `asInt`, `asLong`, `asDouble`, `asBoolean` and `asText` of the node it finds, which
+//! `asInt`, `asLong`, `asDouble` and `asText` of the node it finds, which
 //! coerce: `true` is 1 in an `int` column, a number is text in a `String` column, an object
 //! is 0. Jackson is set to read every number with a fraction or an exponent as an exact
 //! `BigDecimal`, so the text of a number matters (`1.50` stays `1.50` in a `String`
@@ -146,16 +146,27 @@ impl Node {
         }))
     }
 
-    /// Behavior: JsonNodeUtil#getBoolean; `BooleanNode`, `IntNode`, `LongNode`,
-    /// `BigIntegerNode`, `TextNode` and `JsonNode` `#asBoolean`
-    pub fn boolean(&self) -> Option<bool> {
-        Some(match self {
-            Node::Null => return None,
-            Node::Bool(value) => *value,
-            Node::Integer(value) => *value != 0,
-            // Java's `String#trim` removes every character up to U+0020.
-            Node::Text(text) => text.trim_matches(|c| c <= ' ') == "true",
-            Node::Decimal(_) | Node::Container => false,
+    /// A cell of a `Boolean` column, which Java reads from the field's text and not with
+    /// `asBoolean`: a few spellings of true and false, nothing for empty text, and a
+    /// failure for anything else, `0` included. `field` is named in the failure.
+    ///
+    /// Behavior: io.deephaven.kafka.ingest.JsonNodeBooleanFieldCopier#copyField
+    pub fn boolean(&self, field: &str) -> Result<Option<bool>, KafkaError> {
+        let Some(text) = self.text()? else {
+            return Ok(None);
+        };
+        // Java's `String#trim` removes every character up to U+0020.
+        Ok(match text.trim_matches(|c| c <= ' ') {
+            "TRUE" | "True" | "true" | "T" | "t" | "1" => Some(true),
+            "FALSE" | "False" | "false" | "F" | "f" => Some(false),
+            "" => None,
+            _ => {
+                let pointer = field.replace('~', "~0").replace('/', "~1");
+                return Err(KafkaError::Record(format!(
+                    "io.deephaven.UncheckedDeephavenException: value {text} not recognized as \
+                     Boolean for field /{pointer}"
+                )));
+            }
         })
     }
 
@@ -305,10 +316,20 @@ mod tests {
         assert_eq!(Node::Bool(true).double().unwrap(), Some(1.0));
         assert!(Node::Text("1.5".into()).double().is_err());
 
-        assert_eq!(Node::Text(" true\n".into()).boolean(), Some(true));
-        assert_eq!(Node::Text("TRUE".into()).boolean(), Some(false));
-        assert_eq!(Node::Integer(2).boolean(), Some(true));
-        assert_eq!(Node::Decimal("1.0".into()).boolean(), Some(false));
+        assert_eq!(
+            Node::Text(" true\n".into()).boolean("B").unwrap(),
+            Some(true)
+        );
+        assert_eq!(Node::Text("F".into()).boolean("B").unwrap(), Some(false));
+        assert_eq!(Node::Integer(1).boolean("B").unwrap(), Some(true));
+        assert_eq!(Node::Text(" ".into()).boolean("B").unwrap(), None);
+        assert_eq!(Node::Null.boolean("B").unwrap(), None);
+        assert_eq!(
+            Node::Integer(0).boolean("a/b").unwrap_err().to_string(),
+            "io.deephaven.UncheckedDeephavenException: value 0 not recognized as Boolean for \
+             field /a~1b"
+        );
+        assert!(Node::Decimal("1.0".into()).boolean("B").is_err());
 
         assert_eq!(Node::Integer(-7).text().unwrap().as_deref(), Some("-7"));
         assert_eq!(Node::Bool(false).text().unwrap().as_deref(), Some("false"));
