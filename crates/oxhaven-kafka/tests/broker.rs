@@ -21,7 +21,7 @@ use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_kafka::{
     consume, AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset,
-    JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec, Spec, TableType,
+    JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec, ProtobufProtocol, Spec, TableType,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -783,6 +783,88 @@ fn avro_keys_and_values_are_read_through_a_schema_registry() {
     );
     assert_eq!(longs(table.as_ref(), "n"), [Some(5), Some(-1)]);
     assert_eq!(strings(table.as_ref(), "s"), [None, None]);
+}
+
+/// Behavior: io.deephaven.kafka.KafkaTools.Consume#protobufSpec, the value's schema fetched
+/// from the registry with the schema it imports, records in Confluent's framing with the
+/// message indexes; a message left out of a record is null below it.
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn protobuf_values_are_read_through_a_schema_registry() {
+    let topic = fresh("protobuf");
+    let quoted = |text: &str| text.replace('"', "\\\"").replace('\n', "\\n");
+    let dep = "syntax = \"proto3\";\npackage dep;\nmessage In { int32 x = 1; }\n";
+    let main = "syntax = \"proto3\";\npackage m;\nimport \"dep.proto\";\n\
+                message Other { int32 o = 1; }\n\
+                message V { string s = 1; dep.In in = 2; repeated int64 r = 3; }\n";
+    let registry = serve_registry(vec![
+        (
+            format!("/subjects/{topic}-value/versions/latest"),
+            r#"{"id":7,"version":1,"schemaType":"PROTOBUF"}"#.to_owned(),
+        ),
+        (
+            format!("/schemas/ids/7?fetchMaxId=false&subject={topic}-value"),
+            format!(
+                r#"{{"schemaType":"PROTOBUF","schema":"{}","references":[{{"name":"dep.proto","subject":"dep","version":1}}]}}"#,
+                quoted(main)
+            ),
+        ),
+        (
+            "/subjects/dep/versions/1?deleted=true".to_owned(),
+            format!(r#"{{"schemaType":"PROTOBUF","schema":"{}"}}"#, quoted(dep)),
+        ),
+    ]);
+    // Magic byte, schema id 7, the indexes [1] (count 1 and index 1, zig-zag), then V.
+    let framed = |body: &[u8]| [&[0, 0, 0, 0, 7, 2, 2][..], body].concat();
+    let producer: BaseProducer = ClientConfig::new()
+        .set("bootstrap.servers", broker())
+        .create()
+        .unwrap();
+    // { s: "a", in: { x: 5 }, r: [1, 2] } and { s: "b" }
+    let values = [
+        framed(b"\x0a\x01a\x12\x02\x08\x05\x1a\x02\x01\x02"),
+        framed(b"\x0a\x01b"),
+    ];
+    for value in &values {
+        let record = BaseRecord::<(), [u8]>::to(&topic)
+            .partition(0)
+            .payload(value);
+        producer.send(record).map_err(|(error, _)| error).unwrap();
+    }
+    producer.flush(Duration::from_secs(60)).unwrap();
+
+    let graph = SteppedUpdateGraph::new();
+    let value = Spec::Protobuf {
+        subject: format!("{topic}-value"),
+        version: None,
+        message: Some("V".to_owned()),
+        include: None,
+        protocol: ProtobufProtocol::Serdes,
+    };
+    let mut options = options(&topic, BEGINNING, value, TableType::Append);
+    options.key = Spec::Ignore;
+    options
+        .config
+        .push(("schema.registry.url".to_owned(), registry));
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    let table = consume(shared, &options).unwrap();
+    wait_for(&graph, table.as_ref(), 2);
+    assert_eq!(
+        strings(table.as_ref(), "s"),
+        [Some("a".to_owned()), Some("b".to_owned())]
+    );
+    let column = |name: &str| {
+        let index = table.definition().index_of(name).unwrap();
+        table.column(index).chunk(&table.row_set()).unwrap()
+    };
+    let x: Vec<Option<i32>> = column("in_x").as_primitive::<Int32Type>().iter().collect();
+    assert_eq!(x, [Some(5), None]);
+    let r: Vec<Vec<i64>> = column("r")
+        .as_list::<i32>()
+        .iter()
+        .map(|list| list.unwrap().as_primitive::<Int64Type>().values().to_vec())
+        .collect();
+    assert_eq!(r, [vec![1, 2], vec![]]);
 }
 
 // Producing. Every record expected here is what the Java reference published to a broker
