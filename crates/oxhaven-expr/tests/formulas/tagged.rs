@@ -12,7 +12,7 @@
 //! [`is_filter_syntax`] decides), and a case whose setup fails in Java, which records nothing
 //! to compare with.
 
-use super::recorded::{cells, column_of, kind_of, list_type, ours, Ours};
+use super::recorded::{cells, column_of, kind_of, list_type, object_outcome, ours, Ours};
 use super::*;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -293,6 +293,13 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
     }
 
     let java_type = java["type"].as_str().unwrap_or("no type");
+    let recorded = java["values"].as_array().map(Vec::as_slice);
+    if let Some(outcome) = object_outcome(java_type, &column_type, &values, recorded) {
+        return match outcome {
+            Ok(()) => Outcome::Agrees,
+            Err(difference) => Outcome::Differs(difference),
+        };
+    }
     // A vector of objects names its element type beside its own.
     let kind = match (java_type, java["component"].as_str()) {
         ("io.deephaven.vector.ObjectVector", Some("java.lang.String")) => Some("list<string>"),

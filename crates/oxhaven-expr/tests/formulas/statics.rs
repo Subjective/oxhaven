@@ -618,7 +618,10 @@ fn an_array_java_cannot_create_is_refused() {
         ("new boolean[]{true}", "array creation new boolean[]"),
         ("new Boolean[]{Z}", "array creation new Boolean[]"),
         ("new Integer[]{I}", "array creation new Integer[]"),
-        ("new Object[]{T}", "array creation new Object[]"),
+        (
+            "new Object[]{F, D}",
+            "new Object[] of a float and a double, an array of objects of two classes",
+        ),
         ("new int[2][2]", "array creation new int[][], of arrays"),
         (
             "new int[I]",
