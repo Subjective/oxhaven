@@ -77,7 +77,8 @@ use std::sync::Arc;
 use tonic::Status;
 
 /// What the Python package checks when it builds an argument of an operation
-/// (`console/python/checks.rs`).
+/// (`console/python/checks.rs`), and what its local operations take from the handlers
+/// (`console/python/ops.rs`).
 #[cfg(feature = "python")]
 pub(crate) use self::{
     time_table::parse_duration_nanos, update_by::check_operation as check_update_by_operation,
@@ -295,4 +296,5 @@ handlers! {
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }
-pub(crate) use aggregate::{adapt as adapt_aggregations, check_filters, validate_aggregation};
+/// What the hierarchical table service and the Python package take of `Aggregate`.
+pub(crate) use aggregate::{adapt as adapt_aggregations, validate_aggregation};

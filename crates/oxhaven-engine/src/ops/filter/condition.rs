@@ -424,7 +424,7 @@ fn plain(digits: &[u8], exponent: i32) -> String {
 }
 
 /// Behavior: java.lang.Double#toString(double), as specified since JDK 19.
-fn java_double_to_string(value: f64) -> String {
+pub(crate) fn java_double_to_string(value: f64) -> String {
     if value.is_nan() {
         return "NaN".to_string();
     }

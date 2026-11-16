@@ -35,7 +35,7 @@ use tonic::{Request, Response, Status};
 use crate::partitioned::guarded;
 use crate::schema::{arrow_schema, schema_ipc_bytes, SchemaContext};
 use crate::session::{current_session, ExportError, ExportValue, Reply, TicketRouter};
-use crate::table::ops::{adapt_aggregations, check_filters, validate_aggregation};
+use crate::table::ops::{adapt_aggregations, validate_aggregation};
 use crate::table::support::{missing_field, not_ported, OpContext};
 use crate::table::table_creation_response;
 
@@ -114,7 +114,6 @@ pub fn make_rollup(
     include_constituents: bool,
     group_by: &[String],
 ) -> Result<Hierarchical, ExportError> {
-    check_filters(aggregations)?;
     let group_by: Vec<&str> = group_by.iter().map(String::as_str).collect();
     guarded(&[source], || {
         let rollup = rollup(

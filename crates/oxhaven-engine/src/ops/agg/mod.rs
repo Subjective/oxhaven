@@ -42,7 +42,7 @@
 //!
 //! Not here: the aggregation whose results are tables (`Partition`): there are no
 //! partitioned tables. Nor `FirstRowKey`, `LastRowKey`, the
-//! approximate percentile, t-digest and freeze; `initialGroups`; and, of a column of
+//! approximate percentile, t-digest and freeze; and, of a column of
 //! vectors or arrays, every aggregation but `first`, `last`, `group` and the output of a
 //! sorted first or last. The gRPC handler refuses each of them by name.
 
@@ -83,6 +83,7 @@ use crate::ops::select::ArrayFormula;
 use crate::table::{memoized, CopyType, QueryTable, TableSpec, UnaryOperator};
 use aggregator::{Aggregator, Layout, Planned};
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
+use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
@@ -489,6 +490,9 @@ pub enum AggregateError {
     BlinkUnsupported(AggSpec),
     /// What Java refuses with an `UnsupportedOperationException` and this text.
     Unsupported(String),
+    /// Initial groups without group-by columns, without one of them, or with one of
+    /// another type; the text is Java's.
+    InvalidInitialGroups(String),
     /// The table has failed, or could not be read.
     Failed(TableFailure),
 }
@@ -522,6 +526,7 @@ impl fmt::Display for AggregateError {
             }
             AggregateError::NoSortColumns => write!(f, "columns() must be non-empty"),
             AggregateError::InvalidSentinel(message)
+            | AggregateError::InvalidInitialGroups(message)
             | AggregateError::Unsupported(message)
             | AggregateError::InvalidFilter(message)
             | AggregateError::InvalidFormula(message) => f.write_str(message),
@@ -875,7 +880,7 @@ fn make_operator(
 /// A [`Aggregation::CountWhere`] needs a formula compiler for its filters, and a formula
 /// aggregation for its formula; they are refused here. [`aggregate_with`] takes one.
 ///
-/// Not ported: `initialGroups`.
+/// [`aggregate_seeded`] takes initial groups.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#aggBy and #aggNoMemo, over
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
@@ -885,7 +890,134 @@ pub fn aggregate(
     preserve_empty: bool,
     group_by: &[&str],
 ) -> Result<Arc<dyn Table>, AggregateError> {
-    aggregate_inner(parent, aggregations, preserve_empty, group_by, None, false)
+    aggregate_inner(
+        parent,
+        aggregations,
+        preserve_empty,
+        None,
+        group_by,
+        None,
+        false,
+    )
+}
+
+/// [`aggregate_with`], with a table of initial groups: every key among the rows of
+/// `initial_groups` is a group before any row of `parent` is read. The result therefore
+/// has those groups first, in the order of the rows of `initial_groups`, and then the
+/// other groups of `parent` as they are first seen. With `preserve_empty` a group that
+/// `parent` has no row for has a row all the same; without it the group has none until
+/// `parent` gets a row for it, and then that row is where the initial groups put it.
+///
+/// `initial_groups` must have every group-by column, with the type it has in `parent`;
+/// its other columns are not read. It is read once: a refreshing table of initial groups
+/// gives the groups it has now, and its later changes do nothing. Initial groups are
+/// refused for an aggregation without group-by columns.
+///
+/// Not ported: a refreshing `parent` without `preserve_empty` when it has no row for one
+/// of the initial groups. Java's result shows that group with null in its key columns
+/// once it gets rows.
+///
+/// Behavior: io.deephaven.engine.table.impl.QueryTable#aggBy with `initialGroups`, over
+/// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation and
+/// #initialKeyTableAddition
+pub fn aggregate_seeded(
+    parent: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    preserve_empty: bool,
+    initial_groups: &Arc<dyn Table>,
+    group_by: &[&str],
+    compiler: &dyn FormulaCompiler,
+) -> Result<Arc<dyn Table>, AggregateError> {
+    aggregate_inner(
+        parent,
+        aggregations,
+        preserve_empty,
+        Some(initial_groups),
+        group_by,
+        Some(compiler),
+        false,
+    )
+}
+
+/// The text of Java's `Class#toString` for the type of a group-by column.
+///
+/// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
+fn java_class(column_type: &ColumnType) -> &'static str {
+    match column_type {
+        ColumnType::Boolean => "class java.lang.Boolean",
+        ColumnType::Byte => "byte",
+        ColumnType::Char => "char",
+        ColumnType::Short => "short",
+        ColumnType::Int => "int",
+        ColumnType::Long => "long",
+        ColumnType::Float => "float",
+        ColumnType::Double => "double",
+        ColumnType::String => "class java.lang.String",
+        ColumnType::Instant => "class java.time.Instant",
+        other => unported!(
+            "io.deephaven.engine.table.ColumnDefinition#describeForCompatibility",
+            "a group-by column of type {other:?} that initial groups have with another type"
+        ),
+    }
+}
+
+/// The columns of `initial_groups` that hold the group-by columns `key_columns` of
+/// `parent`, or Java's refusal.
+///
+/// Behavior: the checks of
+/// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#aggregation
+fn initial_group_columns(
+    parent: &TableDefinition,
+    key_columns: &[usize],
+    initial_groups: &TableDefinition,
+) -> Result<Vec<usize>, AggregateError> {
+    if key_columns.is_empty() {
+        return Err(AggregateError::InvalidInitialGroups(
+            "aggregation: initial groups must not be specified if no group-by columns are \
+             specified"
+                .to_string(),
+        ));
+    }
+    let keys = || key_columns.iter().map(|&index| &parent.columns()[index]);
+    let key_names: Vec<&str> = keys().map(|key| key.name.as_str()).collect();
+    let missing: Vec<&str> = key_names
+        .iter()
+        .copied()
+        .filter(|name| initial_groups.index_of(name).is_none())
+        .collect();
+    if !missing.is_empty() {
+        let available: Vec<&str> = initial_groups
+            .columns()
+            .iter()
+            .map(|column| column.name.as_str())
+            .collect();
+        return Err(AggregateError::InvalidInitialGroups(format!(
+            "aggregation: not all group-by columns [{}] are present in initial groups with \
+             columns [{}]. Missing columns: [{}]",
+            key_names.join(", "),
+            available.join(", "),
+            missing.join(", "),
+        )));
+    }
+    let mut columns = Vec::with_capacity(key_columns.len());
+    for key in keys() {
+        let Some(index) = initial_groups.index_of(&key.name) else {
+            continue;
+        };
+        let theirs = &initial_groups.columns()[index].column_type;
+        if *theirs != key.column_type {
+            return Err(AggregateError::InvalidInitialGroups(format!(
+                "aggregation: column definition mismatch between input table and initial \
+                 groups table for {name}; input has [{name}, {}], initial groups has \
+                 [{name}, {}]",
+                java_class(&key.column_type),
+                java_class(theirs),
+                name = key.name,
+            )));
+        }
+        columns.push(index);
+    }
+    Ok(columns)
 }
 
 /// [`aggregate`], with the compiler of the formulas among the filters of a
@@ -902,6 +1034,7 @@ pub fn aggregate_with(
         parent,
         aggregations,
         preserve_empty,
+        None,
         group_by,
         Some(compiler),
         false,
@@ -932,6 +1065,7 @@ pub fn aggregate_all_with(
         parent,
         &[Aggregation::columns(spec, pairs)],
         false,
+        None,
         group_by,
         Some(compiler),
         append_only,
@@ -1321,6 +1455,7 @@ fn aggregate_inner(
     parent: &Arc<dyn Table>,
     aggregations: &[Aggregation],
     preserve_empty: bool,
+    initial_groups: Option<&Arc<dyn Table>>,
     group_by: &[&str],
     compiler: Option<&dyn FormulaCompiler>,
     append_only: bool,
@@ -1343,6 +1478,12 @@ fn aggregate_inner(
             key_columns.push(index);
         }
     }
+    let seed = initial_groups
+        .map(|initial| {
+            let columns = initial_group_columns(definition, &key_columns, initial.definition())?;
+            Ok::<_, AggregateError>((initial.clone(), columns))
+        })
+        .transpose()?;
     let mut result_columns: Vec<ColumnDefinition> = key_columns
         .iter()
         .map(|&index| definition.columns()[index].clone())
@@ -1481,8 +1622,16 @@ fn aggregate_inner(
     let result_definition = TableDefinition::new(result_columns)
         .map_err(|duplicate| AggregateError::DuplicateOutput(duplicate.0))?;
 
-    let flat = match kind {
-        ParentKind::Static | ParentKind::AddOnly | ParentKind::Blink => true,
+    // Behavior: the `setFlat` at the end of ChunkedOperatorAggregationHelper#aggregation.
+    // Without `preserve_empty` an initial group that has no row yet leaves a gap in the
+    // row set: a static result is flat when it has none, and a refreshing one is not.
+    let gaps = !preserve_empty
+        && seed
+            .as_ref()
+            .is_some_and(|(initial, _)| initial.is_refreshing() || !initial.row_set().is_empty());
+    let flat = move |rows: &RowSet| match kind {
+        ParentKind::Static => *rows == RowSet::flat(rows.size()),
+        ParentKind::AddOnly | ParentKind::Blink => !gaps,
         ParentKind::General => !keyed,
     };
     let table = QueryTable::derive(parent, || {
@@ -1493,7 +1642,22 @@ fn aggregate_inner(
             preserve_empty,
             layout,
         )?;
+        if let Some((initial, columns)) = &seed {
+            aggregator.seed(initial, columns)?;
+        }
         let rows = aggregator.initial()?;
+        if kind != ParentKind::Static && !preserve_empty && aggregator.has_empty_group() {
+            // Observed: when such a group gets its first row, Java's result shows a null
+            // in its key columns, for as long as the result lives. Java copies the keys of
+            // a refreshing parent's groups to the result for the groups that have rows at
+            // the start and for those created later, and these are neither.
+            unported!(
+                "io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#copyKeyColumns",
+                "initial groups that the refreshing table has no rows for, without \
+                 preserveEmpty: Java shows such a group with null keys once it has rows"
+            );
+        }
+        let flat = flat(&rows);
         let mut spec = TableSpec::new(result_definition, rows, aggregator.columns());
         if flat {
             spec = spec.flat();

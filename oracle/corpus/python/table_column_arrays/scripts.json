@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "ok"
+    },
+    {
+      "step": 4,
+      "outcome": "ok"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : RuntimeError: java.lang.IllegalArgumentException: Formula 'plus(__X_Shifted_Minus_1__, i)' uses i, ii, k, or column array variables, and is not safe to refresh. Note that some usages, such as on an append-only table are safe. To allow unsafe refreshing formulas, set ",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : RuntimeError: java.lang.IllegalArgumentException: Formula 'X_.get(longCast(1))' uses i, ii, k, or column array variables, and is not safe to refresh. Note that some usages, such as on an append-only table are safe. To allow unsafe refreshing formulas, set the system ",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : RuntimeError: java.lang.IllegalArgumentException: Formula 'isNull(X_.get(longCast(minus(i, 1))))' uses i, ii, k, or column array variables, and is not safe to refresh. Note that some usages, such as on an append-only table are safe. To allow unsafe refreshing formula",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table update operation failed. : Cannot find variable or class Nope_",
+      "operation": "table update operation failed."
+    },
+    {
+      "step": 9,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "table where operation failed. : java.lang.NullPointerException: Cannot invoke \"java.lang.Boolean.booleanValue()\" because \"<local7>\" is null",
+      "operation": "table where operation failed."
+    }
+  ]
+}

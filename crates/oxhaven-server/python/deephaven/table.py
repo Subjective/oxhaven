@@ -994,7 +994,15 @@ class Table:
                 "aggregations": [agg.j_aggregation for agg in _engine.to_sequence(aggs)],
             }
 
-        return self._join("range_join", table, request, "table range_join operation failed.")
+        try:
+            sources = [self.j_table, table.j_table]
+            request = {"left_id": _engine.source(0), "right_id": _engine.source(1), **request()}
+            if request["aggregations"]:
+                return Table(_engine.table_op("range_join", request, sources))
+            # no aggregation, which the table service refuses and the engine answers
+            return Table(_engine.local_op("range_join", {"request": request}, sources))
+        except Exception as e:
+            raise DHError(e, "table range_join operation failed.") from e
 
     # update_by (task 6.6)
 
@@ -1227,7 +1235,12 @@ class MultiJoinTable:
                     for index, (match, add) in enumerate(matches)
                 ]
             }
-            self._handle = _engine.table_op("multi_join", request, handles)
+            if all(match for match, _ in matches):
+                self._handle = _engine.table_op("multi_join", request, handles)
+            else:
+                # an input without key columns, which the table service refuses and the
+                # engine answers
+                self._handle = _engine.local_op("multi_join", {"request": request}, handles)
         except Exception as e:
             raise DHError(e, "failed to build a MultiJoinTable object.") from e
 
@@ -1259,8 +1272,13 @@ def keyed_transpose(
     new_column_behavior: NewColumnBehaviorType = NewColumnBehaviorType.FAIL,
 ) -> Table:
     """A table with one row per value of `row_by_cols` and, for each value of
-    `col_by_cols`, one column per aggregation. Not available yet: the engine has no such
-    operator (`io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose`)."""
+    `col_by_cols`, one column per aggregation, named after the value. The columns are
+    those of the values the table has when the result is made, and of the values of
+    `initial_groups`; a value that appears later fails the result or is left out, as
+    `new_column_behavior` says.
+
+    Behavior: `deephaven.table.keyed_transpose`
+    """
     try:
         handles = [table.j_table]
         if initial_groups is not None:

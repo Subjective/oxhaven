@@ -14,13 +14,15 @@ use oxhaven_testkit::{
 };
 use std::sync::{Mutex, Weak};
 
-type Operation = Arc<dyn Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync>;
+pub(super) type Operation = Arc<dyn Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync>;
 
-fn operation(f: impl Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync + 'static) -> Operation {
+pub(super) fn operation(
+    f: impl Fn(&Arc<dyn Table>) -> Arc<dyn Table> + Send + Sync + 'static,
+) -> Operation {
     Arc::new(f)
 }
 
-fn graph() -> (Arc<SteppedUpdateGraph>, Arc<dyn UpdateGraph>) {
+pub(super) fn graph() -> (Arc<SteppedUpdateGraph>, Arc<dyn UpdateGraph>) {
     let graph = SteppedUpdateGraph::new();
     (graph.clone(), graph)
 }
@@ -34,7 +36,7 @@ fn sym_a_b() -> TableDefinition {
 }
 
 /// A scripted source with rows 0, 1, 5 and 6, `A` 10 to 40 and `B` 1 to 4.
-fn scripted(graph: &Arc<dyn UpdateGraph>) -> Arc<ScriptedTable> {
+pub(super) fn scripted(graph: &Arc<dyn UpdateGraph>) -> Arc<ScriptedTable> {
     ScriptedTable::new(
         graph.clone(),
         sym_a_b(),
@@ -57,7 +59,7 @@ fn batch(columns: &[(&str, ArrayRef)]) -> RecordBatch {
 }
 
 /// A checker that compares `result` with `operation` run on a static copy of `parent`.
-fn checked(
+pub(super) fn checked(
     result: &Arc<dyn Table>,
     parent: &Arc<dyn Table>,
     operation: &Operation,
@@ -68,7 +70,7 @@ fn checked(
 
 /// Runs `operation` over a randomly changing source for many seeds, checking after every
 /// cycle that the result is consistent and equal to the operation run from scratch.
-fn fuzz(what: &str, operation: Operation) {
+pub(super) fn fuzz(what: &str, operation: Operation) {
     let mut updates = 0;
     for seed in test_seeds(0..24) {
         let (stepper, graph) = graph();
@@ -194,7 +196,7 @@ fn stacked_operations_follow_random_changes() {
 // Each incremental case
 // ---------------------------------------------------------------------------------------
 
-fn last_update(recorder: &Recorder) -> TableUpdate {
+pub(super) fn last_update(recorder: &Recorder) -> TableUpdate {
     match recorder.events().last() {
         Some(Ok(update)) => update.clone(),
         other => panic!("expected an update, got {other:?}"),
@@ -622,14 +624,14 @@ fn a_view_fails_only_when_the_bad_row_is_read_and_recovers() {
 // ---------------------------------------------------------------------------------------
 
 /// A root table with one long column `V` that applies whatever the test queues.
-struct Fed {
+pub(super) struct Fed {
     table: Weak<QueryTable>,
     column: Arc<WritableSource>,
     next: Mutex<Option<(TableUpdate, Vec<i64>)>>,
 }
 
 impl Fed {
-    fn push(&self, removed: &[i64], added: &[i64], values: &[i64]) {
+    pub(super) fn push(&self, removed: &[i64], added: &[i64], values: &[i64]) {
         let update = TableUpdate {
             removed: RowSet::from_keys(removed.iter().copied()),
             added: RowSet::from_keys(added.iter().copied()),
@@ -650,7 +652,7 @@ impl UpdateSource for Fed {
     }
 }
 
-fn fed(
+pub(super) fn fed(
     graph: &Arc<dyn UpdateGraph>,
     attributes: TableAttributes,
     flat: bool,
@@ -679,7 +681,7 @@ fn fed(
     (table, handle.unwrap())
 }
 
-fn attributes(add_only: bool, append_only: bool, blink: bool) -> TableAttributes {
+pub(super) fn attributes(add_only: bool, append_only: bool, blink: bool) -> TableAttributes {
     let mut attributes = TableAttributes::default();
     attributes.add_only = add_only;
     attributes.append_only = append_only;
