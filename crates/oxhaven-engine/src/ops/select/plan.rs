@@ -1,13 +1,15 @@
 //! Turns the column strings of one call into steps: what each result column is, what it can
 //! read, and which parent columns change it.
 
+use super::arrays::{self, ShiftedColumn};
 use super::{Flavor, SelectError};
 use crate::table::holds_values;
 use crate::update::ModifiedColumnTransformer;
-use oxhaven_contracts::expr::{Expr, Formula, FormulaCompiler, Literal, RowVariable};
+use oxhaven_contracts::expr::{
+    ColumnAssignment, Expr, Formula, FormulaCompiler, Literal, RowVariable,
+};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table};
-use oxhaven_contracts::unported;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
@@ -65,8 +67,24 @@ impl Step {
     }
 }
 
+/// A column read at a fixed distance in rows from the current row: `Col_[i + amount]`.
+///
+/// Behavior: io.deephaven.engine.table.impl.select.ShiftedColumnDefinition
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub(crate) struct Shift {
+    /// The column read.
+    pub column: String,
+    /// How many rows after the current row, negative for rows before it.
+    pub amount: i64,
+}
+
 pub(super) struct Plan {
+    /// The steps of the listed columns, up to the first that reads a column at a fixed
+    /// distance.
     pub steps: Vec<Step>,
+    /// The first listed column that reads a column at a fixed distance, which the steps
+    /// stop before.
+    pub shifted: Option<ShiftedColumn>,
     /// The result's columns, in order.
     pub published: Vec<Named>,
     /// Whether no step passes through a parent column that holds its values, which is what
@@ -316,7 +334,10 @@ fn validate_safe_for_refresh(
     Ok(())
 }
 
-/// Reads the column list of one call against `parent`.
+/// Reads the column list of one call against `parent`. With `first`, the first column is
+/// that assignment in place of what its text says: a formula whose reads at a fixed
+/// distance have been replaced by shifted columns of `parent`, which is not looked
+/// through for such reads again.
 ///
 /// Behavior: io.deephaven.api.Selectable#parse, the two forms of
 /// io.deephaven.engine.table.impl.select.SelectColumnFactory, the choice between a source
@@ -327,6 +348,7 @@ pub(super) fn analyze<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
+    mut first: Option<ColumnAssignment>,
 ) -> Result<Plan, SelectError> {
     let mut scope: Vec<Named> = parent
         .definition()
@@ -347,14 +369,19 @@ pub(super) fn analyze<S: AsRef<str>>(
     let mut steps: Vec<Step> = Vec::with_capacity(columns.len());
     let mut may_flatten = true;
     let mut only_names = true;
+    let mut shifted = None;
 
-    for text in columns {
+    for (index, text) in columns.iter().enumerate() {
         let text = text.as_ref();
         let formula_error = |error| SelectError::Formula {
             column: text.trim().to_string(),
             error,
         };
-        let assignment = compiler.parse_assignment(text).map_err(formula_error)?;
+        let replaced = first.is_some();
+        let assignment = match first.take() {
+            Some(assignment) => assignment,
+            None => compiler.parse_assignment(text).map_err(formula_error)?,
+        };
         validate_name(&assignment.name)?;
 
         // `Name` alone always names a column. `Name = Other` names one when the text after
@@ -408,20 +435,30 @@ pub(super) fn analyze<S: AsRef<str>>(
                 )
             }
             None => {
-                let formula = compiler
-                    .compile(&assignment.expr, &definition_of(&scope))
-                    .map_err(formula_error)?;
-                let mut shifted = false;
-                visit(&assignment.expr, &mut |node| {
-                    shifted |= matches!(node, Expr::ColumnArrayAccess { .. });
-                });
-                if shifted {
-                    unported!(
-                        "io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions",
-                        "a formula that reads a column at another row: {}",
-                        text.trim()
-                    );
+                let compiled = compiler.compile(&assignment.expr, &definition_of(&scope));
+                // A shifted column needs no more of its column than that it exists, so
+                // the formula is judged once the shifted columns stand in for what they
+                // can: a column of vectors has no column array here, and can be shifted.
+                let rewritten = (!replaced)
+                    .then(|| arrays::constant_array_accesses(text, &assignment.expr))
+                    .flatten()
+                    .filter(|rewritten| {
+                        compiled.is_ok()
+                            || rewritten
+                                .shifts
+                                .iter()
+                                .all(|shift| scope.iter().any(|named| named.name == shift.column))
+                    });
+                if let Some(rewritten) = rewritten {
+                    shifted = Some(ShiftedColumn {
+                        index,
+                        name: assignment.name,
+                        rewritten,
+                        renumbers: may_flatten,
+                    });
+                    break;
                 }
+                let formula = compiled.map_err(formula_error)?;
                 validate_safe_for_refresh(text, &assignment.expr, &*formula, &**parent)?;
                 let depends =
                     depends_on(&mut formula.columns().iter().chain(formula.column_arrays()));
@@ -453,6 +490,7 @@ pub(super) fn analyze<S: AsRef<str>>(
 
     Ok(Plan {
         steps,
+        shifted,
         published,
         may_flatten,
         only_names,

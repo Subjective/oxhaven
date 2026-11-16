@@ -1,0 +1,535 @@
+{
+ "format": 1,
+ "name": "ticking_column_arrays",
+ "description": "Column arrays on a keyed, an append-only and a blink input table: a column at a fixed distance follows rows that are added, replaced and deleted next to the row that reads them; any other use is refused unless the table is a blink table or the formula is a filter.",
+ "inputs": [
+  {
+   "name": "keyed",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     10,
+     "a"
+    ],
+    [
+     2,
+     20,
+     "b"
+    ],
+    [
+     3,
+     30,
+     null
+    ],
+    [
+     4,
+     40,
+     "d"
+    ],
+    [
+     5,
+     50,
+     "e"
+    ]
+   ],
+   "ticking": {
+    "key_columns": [
+     "K"
+    ]
+   }
+  },
+  {
+   "name": "appended",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     1,
+     10,
+     "a"
+    ],
+    [
+     2,
+     20,
+     "b"
+    ]
+   ],
+   "ticking": {
+    "key_columns": []
+   }
+  },
+  {
+   "name": "blinking",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "X",
+     "type": "int32"
+    },
+    {
+     "name": "S",
+     "type": "string"
+    }
+   ],
+   "rows": [],
+   "ticking": {
+    "key_columns": [],
+    "blink": true
+   }
+  }
+ ],
+ "operations": [
+  {
+   "name": "before",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[i - 1]",
+    "D = X - P",
+    "T = S_[i - 1]"
+   ]
+  },
+  {
+   "name": "after",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "N = X_[i + 2]"
+   ]
+  },
+  {
+   "name": "same_distance",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[i - 2] + K_[i - 2]"
+   ]
+  },
+  {
+   "name": "with_current",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[i + 1] - X_[i]"
+   ]
+  },
+  {
+   "name": "viewed",
+   "op": "view",
+   "source": "keyed",
+   "formulas": [
+    "K",
+    "P = X_[i - 1]",
+    "Q = P * 2"
+   ]
+  },
+  {
+   "name": "update_viewed",
+   "op": "update_view",
+   "source": "keyed",
+   "formulas": [
+    "N = S_[i + 1]"
+   ]
+  },
+  {
+   "name": "stored",
+   "op": "select",
+   "source": "keyed",
+   "formulas": [
+    "K",
+    "P = X_[i - 3]"
+   ]
+  },
+  {
+   "name": "lazy",
+   "op": "lazy_update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[i - 1] + 1"
+   ]
+  },
+  {
+   "name": "kept",
+   "op": "where",
+   "source": "keyed",
+   "filters": [
+    "X_[i - 1] > 15"
+   ]
+  },
+  {
+   "name": "kept_two",
+   "op": "where",
+   "source": "keyed",
+   "filters": [
+    "X > 15",
+    "X_[i + 1] < 45"
+   ]
+  },
+  {
+   "name": "kept_chain",
+   "op": "where",
+   "source": "before",
+   "filters": [
+    "P_[i + 1] > 30"
+   ]
+  },
+  {
+   "name": "appended_before",
+   "op": "update",
+   "source": "appended",
+   "formulas": [
+    "P = X_[i - 1]",
+    "I = i",
+    "Kk = k"
+   ]
+  },
+  {
+   "name": "appended_after",
+   "op": "update",
+   "source": "appended",
+   "formulas": [
+    "N = X_[i + 1]"
+   ]
+  },
+  {
+   "name": "appended_kept",
+   "op": "where",
+   "source": "appended",
+   "filters": [
+    "X_[i - 1] > 5 && i > 0"
+   ]
+  },
+  {
+   "name": "blink_before",
+   "op": "update",
+   "source": "blinking",
+   "formulas": [
+    "P = X_[i - 1]",
+    "C = X_.size()"
+   ]
+  },
+  {
+   "name": "blink_whole",
+   "op": "update",
+   "source": "blinking",
+   "formulas": [
+    "U = sum(X_)",
+    "F = X_[0]",
+    "W = isNull(X_[i + 1])"
+   ]
+  },
+  {
+   "name": "fails_position",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[i - 1] + i"
+   ]
+  },
+  {
+   "name": "fails_fixed",
+   "op": "update",
+   "source": "keyed",
+   "formulas": [
+    "P = X_[1]"
+   ]
+  },
+  {
+   "name": "fails_whole",
+   "op": "update_view",
+   "source": "keyed",
+   "formulas": [
+    "P = X_.size()"
+   ]
+  },
+  {
+   "name": "fails_call",
+   "op": "update",
+   "source": "appended",
+   "formulas": [
+    "P = isNull(X_[i - 1])"
+   ]
+  },
+  {
+   "name": "fails_after_shift",
+   "op": "update",
+   "source": "appended",
+   "formulas": [
+    "N = X_[i + 1]",
+    "I = i"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "before"
+  },
+  {
+   "table": "after"
+  },
+  {
+   "table": "same_distance"
+  },
+  {
+   "table": "with_current"
+  },
+  {
+   "table": "viewed"
+  },
+  {
+   "table": "update_viewed"
+  },
+  {
+   "table": "stored"
+  },
+  {
+   "table": "lazy"
+  },
+  {
+   "table": "kept"
+  },
+  {
+   "table": "kept_two"
+  },
+  {
+   "table": "kept_chain"
+  },
+  {
+   "table": "appended_before"
+  },
+  {
+   "table": "appended_after"
+  },
+  {
+   "table": "appended_kept"
+  },
+  {
+   "table": "blink_before"
+  },
+  {
+   "table": "blink_whole"
+  },
+  {
+   "table": "fails_position"
+  },
+  {
+   "table": "fails_fixed"
+  },
+  {
+   "table": "fails_whole"
+  },
+  {
+   "table": "fails_call"
+  },
+  {
+   "table": "fails_after_shift"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "keyed",
+     "rows": [
+      [
+       3,
+       31,
+       "c"
+      ],
+      [
+       7,
+       70,
+       "g"
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "appended",
+     "rows": [
+      [
+       3,
+       30,
+       null
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "blinking",
+     "rows": [
+      [
+       1,
+       10,
+       "a"
+      ],
+      [
+       2,
+       20,
+       "b"
+      ],
+      [
+       3,
+       30,
+       "c"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "keyed",
+     "rows": [
+      [
+       2
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "appended",
+     "rows": [
+      [
+       4,
+       40,
+       "d"
+      ],
+      [
+       5,
+       50,
+       "e"
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "blinking",
+     "rows": [
+      [
+       4,
+       40,
+       "d"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "keyed",
+     "rows": [
+      [
+       2,
+       21,
+       "b2"
+      ],
+      [
+       5,
+       51,
+       "e"
+      ],
+      [
+       0,
+       5,
+       "z"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "delete",
+     "table": "keyed",
+     "rows": [
+      [
+       1
+      ],
+      [
+       7
+      ],
+      [
+       4
+      ]
+     ]
+    },
+    {
+     "action": "add",
+     "table": "blinking",
+     "rows": [
+      [
+       5,
+       50,
+       null
+      ],
+      [
+       6,
+       60,
+       "f"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "keyed",
+     "rows": [
+      [
+       9,
+       90,
+       "i"
+      ]
+     ]
+    },
+    {
+     "action": "delete",
+     "table": "keyed",
+     "rows": [
+      [
+       0
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

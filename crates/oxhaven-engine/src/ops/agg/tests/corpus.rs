@@ -658,7 +658,7 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
-    assert_eq!(scenarios, 83);
+    assert_eq!(scenarios, 85);
     assert_eq!(tally.not_run, NOT_RUN);
     assert_eq!(tally.agg_all_by, AGG_ALL_BY);
     let compared: Vec<String> = tally
