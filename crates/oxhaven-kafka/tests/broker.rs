@@ -588,7 +588,14 @@ fn json_fields_are_found_by_pointers_and_coerced_as_java_does() {
 fn json_records_java_cannot_store_fail_the_table() {
     let graph = SteppedUpdateGraph::new();
     let deep = format!("{{\"v\": {}1{}}}", "[".repeat(1000), "]".repeat(1000));
-    let cases: [(&str, &[(&str, ColumnType)], &[(&str, &str)], &str); 4] = [
+    /// A record, its columns, its mapping and the failure Java gave.
+    type Case<'a> = (
+        &'a str,
+        &'a [(&'a str, ColumnType)],
+        &'a [(&'a str, &'a str)],
+        &'a str,
+    );
+    let cases: [Case; 4] = [
         (
             r#"{"a": 1, "b": 2}"#,
             &[("X", ColumnType::Int), ("Y", ColumnType::Int)],
