@@ -232,7 +232,10 @@ fn a_location_can_have_no_more_rows_than_a_region_has_keys() {
 
 /// A provider that answers what a test hands it.
 #[derive(Default)]
-struct Handed(Mutex<Vec<Result<Vec<Arc<dyn TableLocation>>, TableFailure>>>);
+struct Handed(Mutex<Vec<Found>>);
+
+/// What one look of a provider finds.
+type Found = Result<Vec<Arc<dyn TableLocation>>, TableFailure>;
 
 impl Handed {
     fn hand(&self, locations: Vec<Arc<dyn TableLocation>>) {
