@@ -193,9 +193,9 @@ pub enum SetMode {
     Unique { non_unique: Scalar },
     /// The distinct values, sorted, as a vector: null first, NaN last, and of `0.0` and
     /// `-0.0` the one the group was given first. A group that has no values is a null, not
-    /// an empty vector, except in an aggregation without keys (`singleton`), where Java
-    /// makes the group's set when it is first given rows, whatever they hold, and drops it
-    /// only when a removal empties it.
+    /// an empty vector, except in an aggregation without keys (`singleton`) and for an
+    /// initial group, where Java makes the group's set when it is first given rows,
+    /// whatever they hold, and drops it only when a removal empties it.
     ///
     /// Behavior: io.deephaven.engine.table.impl.by.ssmcountdistinct.distinct.DoubleChunkedDistinctOperator,
     /// whose bucketed `addChunk` skips a run without values and whose singleton `addChunk`
@@ -459,6 +459,15 @@ impl AggOperator for SortedValues {
         if self.sets.len() < slots {
             self.sets.resize(slots, Multiset::default());
             self.present.resize(slots, false);
+        }
+    }
+
+    /// Behavior: the singleton `addChunk` of the distinct operators, which makes the
+    /// group's set before it looks at the chunk: an initial group is an empty vector, not
+    /// a null, until a removal empties it.
+    fn seeded(&mut self, slot: usize) {
+        if matches!(self.mode, SetMode::Distinct { .. }) {
+            self.present[slot] = true;
         }
     }
 

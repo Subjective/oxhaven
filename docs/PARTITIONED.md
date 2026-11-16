@@ -176,7 +176,7 @@ Java's text. A function that has to compile a formula enters an execution contex
 
 **`partitioned_agg_by`** is `agg_by` with a partition aggregation added, then the
 partitioned table of that result (`PartitionedTable::of_aggregation`), with
-`preserve_empty`. `initial_groups` is refused where `agg_by` refuses it.
+`preserve_empty` and `initial_groups` as `agg_by` takes them.
 
 **The proxy** (`PartitionedTableProxy`) is a transform per table operation, with a key
 check for joins. It follows `transform` and is not in the first slice.
@@ -193,7 +193,7 @@ Each names the Java method in its error.
 | `proxy` | `PartitionedTableImpl#proxy` | 7.6.2 |
 | `PartitionedTable.from_partitioned_table`, `from_constituent_tables` | `PartitionedTableFactory#of`, `#ofTables` | 7.6.3 |
 | `update_graph` | `Table#getUpdateGraph` | 6.12 |
-| `partitioned_agg_by` and `agg_by` with `initial_groups` | `QueryTable#aggBy` | 7.6.3 |
+| `partitioned_agg_by` and `agg_by` of a refreshing table with `initial_groups` it has no rows for, without `preserve_empty` | `ChunkedOperatorAggregationHelper#copyKeyColumns` | 4.18, needs a ruling |
 | Reading a constituent whose partitioned table is gone (a copied cell) | `ObjectArraySource#get` | 7.6.3 |
 | `get_constituent` with a key value that is not of the key column's type | `PartitionedTableImpl#constituentFor` | 7.6.4 |
 | `where("C != null")` and other match filters on a column of tables | `MatchFilter.ColumnTypeConvertorFactory#getConvertor` | 7.6.4 |

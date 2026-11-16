@@ -22,6 +22,7 @@ mod corpus_tests;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use condition::java_double_to_string;
 pub use condition::{
     normalize, print, CaseSensitivity, CompareOp, Condition, Literal, MatchType, NanComparison,
     Value,

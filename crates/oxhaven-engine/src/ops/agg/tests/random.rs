@@ -9,7 +9,7 @@ use oxhaven_testkit::{at_least_for, test_seeds, ConsistencyChecker, RandomUpdate
 
 /// The parent's columns: three to group by, and one of each type to aggregate. The last
 /// two hold vectors and arrays, which only `group` aggregates.
-fn parent_columns() -> Vec<(&'static str, ColumnType)> {
+pub(super) fn parent_columns() -> Vec<(&'static str, ColumnType)> {
     vec![
         ("K", ColumnType::String),
         ("G", ColumnType::Int),
@@ -43,7 +43,7 @@ fn parent_columns() -> Vec<(&'static str, ColumnType)> {
 ///   `NullSafeAddition#plusLong`, which drops a chunk sum that wrapped to exactly
 ///   `NULL_LONG` (`LongChunkedWeightedSumOperator#addChunk`); a null `int` value and weight
 ///   count as -2147483648 each, so two such rows do that.
-fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Aggregation> {
+pub(super) fn every_aggregation(weighted_averages: bool, by: &[&str]) -> Vec<Aggregation> {
     let keyed = !by.is_empty();
     let each = |formula: &str, pair: String| {
         let spec = AggSpec::Formula {

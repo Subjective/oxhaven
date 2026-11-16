@@ -362,15 +362,14 @@ import deephaven.updateby as uby
 from deephaven.table import keyed_transpose
 t = empty_table(6).update(["K = i % 2", "C = `c` + (i % 3)", "N = i", "T = '2024-01-01T00:00:00Z' + i * SECOND"])
 not_ported = [
-    ("QueryTable#aggBy: initial groups", lambda: t.agg_by(agg.sum_("N"), by="K", initial_groups=t)),
     ("CountWhereOperator#applyFilters", lambda: t.agg_by(agg.count_where("All", []), by="K")),
-    ("KeyedTranspose#keyedTranspose", lambda: keyed_transpose(t, agg.sum_("N"), "K", "C")),
+    ("KeyedTranspose#keyedTranspose", lambda: keyed_transpose(t, agg.sum_("N"), "K", "T")),
 ]
 for java, call in not_ported:
     text = refused(call)
     assert "Unimplemented: not ported: io.deephaven." in text, text
     assert java in text, text
-assert refused(lambda: keyed_transpose(t, agg.sum_("N"), "K", "C")).startswith(
+assert refused(lambda: keyed_transpose(t, agg.sum_("N"), "K", "T")).startswith(
     "keyed_transpose operation failed. : ")
 parts = t.agg_by(agg.partition("P"), by="K")
 assert [(c.name, str(c.data_type)) for c in parts.columns] == [
