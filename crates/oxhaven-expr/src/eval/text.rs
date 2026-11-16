@@ -10,9 +10,11 @@ use crate::parse::instant::civil_from_days;
 use crate::types::StringMethod;
 use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, Int32Array, StringArray, UInt16Array};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
-    TimestampNanosecondType, UInt16Type,
+    DataType, Date32Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
+    Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
+use oxhaven_column::java_values;
+use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 use std::sync::Arc;
 
@@ -163,6 +165,93 @@ fn java_strings(array: &dyn Array) -> Result<Vec<String>, TableFailure> {
             .collect::<Result<_, _>>()?,
         other => unreachable!("the type checker passed a {other} array to string conversion"),
     })
+}
+
+/// `toString()` of each value of a column of `column_type`, one of the `java.math` and
+/// `java.time` types. A null value is a `NullPointerException`, as for any method called
+/// on a null reference.
+///
+/// Behavior: `java.math.BigDecimal#toString`, `java.math.BigInteger#toString`,
+/// `java.time.LocalDate#toString`, `java.time.LocalTime#toString`,
+/// `java.time.LocalDateTime#toString`
+pub(crate) fn object_text(
+    column_type: &ColumnType,
+    values: &dyn Array,
+) -> Result<StringArray, TableFailure> {
+    if values.null_count() > 0 {
+        return Err(failure(format!(
+            "java.lang.NullPointerException: method call on a null {column_type:?}"
+        )));
+    }
+    let texts: Vec<String> = match column_type {
+        ColumnType::BigInteger => {
+            let cells = values.as_binary::<i32>().iter().flatten();
+            cells.map(java_values::big_integer_text).collect()
+        }
+        ColumnType::BigDecimal => {
+            let cells = values.as_binary::<i32>().iter().flatten();
+            cells
+                .map(|cell| match java_values::big_decimal_parts(cell) {
+                    Some((scale, unscaled)) => Ok(java_values::big_decimal_text(scale, unscaled)),
+                    None => Err(failure("a BigDecimal cell without a number")),
+                })
+                .collect::<Result<_, _>>()?
+        }
+        ColumnType::LocalDate => {
+            let days = values.as_primitive::<Date32Type>().values().iter();
+            days.map(|days| java_values::local_date_text((*days).into()))
+                .collect()
+        }
+        ColumnType::LocalTime => {
+            let nanos = values
+                .as_primitive::<Time64NanosecondType>()
+                .values()
+                .iter();
+            nanos
+                .map(|nanos| java_values::local_time_text(*nanos))
+                .collect()
+        }
+        ColumnType::LocalDateTime => {
+            let nanos = values.as_primitive::<TimestampNanosecondType>();
+            let nanos = nanos.values().iter();
+            nanos
+                .map(|nanos| java_values::local_date_time_text(*nanos))
+                .collect()
+        }
+        other => unreachable!("the type checker passed a {other:?} column to toString()"),
+    };
+    Ok(StringArray::from_iter_values(texts))
+}
+
+/// `new String(bytes)` of each `byte[]` of `arrays`: the text the bytes are in UTF-8. A
+/// null array is a `NullPointerException`.
+///
+/// Bytes that are not UTF-8 are refused. Java puts U+FFFD where the bytes are malformed,
+/// and how many of them for which bytes is not ported.
+///
+/// Behavior: `java.lang.String#String(byte[])` with the default charset of the reference
+/// server, UTF-8
+pub(crate) fn new_string(arrays: &dyn Array) -> Result<StringArray, TableFailure> {
+    if arrays.null_count() > 0 {
+        return Err(failure(
+            "java.lang.NullPointerException: new String() of a null byte[]",
+        ));
+    }
+    let arrays = arrays.as_list::<i32>();
+    let mut texts = Vec::with_capacity(arrays.len());
+    for array in arrays.iter().flatten() {
+        // a null element of a list of bytes is the byte Java reserves for it
+        let bytes = array.as_primitive::<Int8Type>().iter();
+        let bytes: Vec<u8> = bytes.map(|byte| byte.unwrap_or(i8::MIN) as u8).collect();
+        let text = String::from_utf8(bytes).map_err(|_| {
+            failure(
+                "not ported yet: java.lang.String#String(byte[]): bytes that are not UTF-8, \
+                 which Java decodes with replacement characters",
+            )
+        })?;
+        texts.push(text);
+    }
+    Ok(StringArray::from_iter_values(texts))
 }
 
 /// `left + right` where at least one side is a `String`. The result is never null.

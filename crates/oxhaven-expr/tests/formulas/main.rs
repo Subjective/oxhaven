@@ -12,6 +12,7 @@ mod corpus;
 mod external;
 mod formula;
 mod logic;
+mod objects;
 mod recorded;
 mod tagged;
 

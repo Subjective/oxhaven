@@ -1277,6 +1277,7 @@ name = "oxhaven-expr"
 version = "0.0.0"
 dependencies = [
  "arrow",
+ "oxhaven-column",
  "oxhaven-contracts",
  "serde_json",
 ]
