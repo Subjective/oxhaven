@@ -403,9 +403,10 @@ impl Scalar {
 /// An array of `column_type` holding `values`. A value of another shape than the column's
 /// becomes null. Integers are narrowed as Java's casts narrow them.
 /// Whether `Values::decode` holds the values of `column_type`: the integers, `char` and the
-/// instants, dates, times of day and durations as numbers, the floating point numbers,
+/// instants, dates, times of day, dates and times, durations and days of the week as
+/// numbers, the floating point numbers,
 /// `Boolean`, `String` and `ZoneId`, and lists of these. A `Period`, a `ZonedDateTime`,
-/// a `LocalDateTime`, a `BigDecimal` and a `BigInteger` are not held.
+/// a `BigDecimal` and a `BigInteger` are not held.
 fn decodes(column_type: &ColumnType) -> bool {
     match column_type.list_element() {
         Some(element) => decodes(element),
@@ -424,6 +425,8 @@ fn decodes(column_type: &ColumnType) -> bool {
                 | ColumnType::LocalDate
                 | ColumnType::LocalTime
                 | ColumnType::Duration
+                | ColumnType::LocalDateTime
+                | ColumnType::DayOfWeek
                 | ColumnType::ZoneId
         ),
     }
@@ -504,10 +507,14 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
                 .collect::<StringArray>(),
         ),
         // Numbers of days and of nanoseconds, as `Values::decode` read them.
-        ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration => {
+        ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::Duration
+        | ColumnType::LocalDateTime
+        | ColumnType::DayOfWeek => {
             let numbers: ArrayRef = Arc::new(values.map(Scalar::long).collect::<Int64Array>());
             arrow::compute::cast(&numbers, &column_type.arrow_type())
-                .expect("a number read from a date, a time of day or a duration")
+                .expect("a number read from a date, a time of day, a duration or a day")
         }
         // A column type `Values::decode` refuses: no operator reads one.
         _ => arrow::array::new_null_array(&column_type.arrow_type(), values.count()),

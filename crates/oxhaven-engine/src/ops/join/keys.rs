@@ -2,8 +2,9 @@
 //! equality Java's join hashers use.
 
 use arrow::array::{
-    Array, ArrayRef, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, StringArray, TimestampNanosecondArray, UInt16Array,
+    Array, ArrayRef, BooleanArray, Date32Array, DurationNanosecondArray, Float32Array,
+    Float64Array, Int16Array, Int32Array, Int64Array, Int8Array, StringArray, StructArray,
+    Time64NanosecondArray, TimestampNanosecondArray, UInt16Array,
 };
 use arrow::datatypes::{DataType, TimeUnit};
 use oxhaven_contracts::rowset::RowSet;
@@ -29,6 +30,8 @@ pub(crate) enum Cell {
     /// The bits of the value, with one pattern for every NaN and one for both zeros.
     Float(u64),
     Text(String),
+    /// The fields of a `ZonedDateTime` (instant, zone) or a `Period` (years, months, days).
+    Fields(Vec<Cell>),
 }
 
 /// The match column values of one row, in the order of the match columns. Empty for a join
@@ -86,6 +89,34 @@ fn append(keys: &mut [Key], values: &ArrayRef) {
         }
         DataType::Timestamp(TimeUnit::Nanosecond, _) => {
             each::<TimestampNanosecondArray>(keys, values, |a, row| Cell::Int(a.value(row)))
+        }
+        DataType::Date32 => {
+            each::<Date32Array>(keys, values, |a, row| Cell::Int(a.value(row).into()))
+        }
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            each::<Time64NanosecondArray>(keys, values, |a, row| Cell::Int(a.value(row)))
+        }
+        DataType::Duration(TimeUnit::Nanosecond) => {
+            each::<DurationNanosecondArray>(keys, values, |a, row| Cell::Int(a.value(row)))
+        }
+        // A `ZonedDateTime` or a `Period`: equal when every field is, which is
+        // java.time.ZonedDateTime#equals (the instant and the zone) and
+        // java.time.Period#equals (years, months and days).
+        DataType::Struct(_) => {
+            let Some(array) = values.as_any().downcast_ref::<StructArray>() else {
+                panic!("a struct array of another class");
+            };
+            let mut fields = vec![Key::new(); keys.len()];
+            for child in array.columns() {
+                append(&mut fields, child);
+            }
+            for (row, (key, fields)) in keys.iter_mut().zip(fields).enumerate() {
+                key.push(if array.is_null(row) {
+                    Cell::Null
+                } else {
+                    Cell::Fields(fields)
+                });
+            }
         }
         other => unported!(
             "io.deephaven.engine.table.impl.by.typed.TypedHasherFactory#makeNaturalJoin",
@@ -146,6 +177,13 @@ pub(crate) fn key_text(key: &[Cell], types: &[ColumnType]) -> String {
             },
             Cell::Float(bits) => format!("{:?}", f64::from_bits(*bits)),
             Cell::Text(text) => text.clone(),
+            Cell::Fields(fields) => {
+                let texts: Vec<String> = fields
+                    .iter()
+                    .map(|field| key_text(std::slice::from_ref(field), &[ColumnType::Long]))
+                    .collect();
+                format!("({})", texts.join(", "))
+            }
         })
         .collect();
     match cells.as_slice() {
@@ -205,6 +243,20 @@ mod tests {
         assert_eq!(floats[1], float_cell(f64::NAN));
         assert_eq!(floats[2], float_cell(0.0));
         assert_eq!(floats[3], Cell::Null);
+    }
+
+    /// Behavior: java.time.ZonedDateTime#equals: one instant in two zones is two keys.
+    #[test]
+    fn a_zoned_date_time_key_is_its_instant_and_its_zone() {
+        let keys = cells(crate::ops::zoned::tests::zoned(&[
+            Some((5, "UTC")),
+            Some((5, "Asia/Tokyo")),
+            Some((5, "UTC")),
+            None,
+        ]));
+        assert_eq!(keys[0], keys[2]);
+        assert_ne!(keys[0], keys[1]);
+        assert_eq!(keys[3], Cell::Null);
     }
 
     #[test]
