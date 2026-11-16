@@ -3,6 +3,7 @@
 mod arrays;
 mod compare;
 pub(crate) mod numeric;
+mod objects;
 mod text;
 
 use crate::functions::Kernel;
@@ -16,6 +17,7 @@ use arrow::datatypes::{
     TimestampNanosecondType, UInt16Type,
 };
 use numeric::{with_null_values, without_null_value, JavaPrimitive};
+pub(crate) use objects::{class_of, is_primitive};
 use oxhaven_contracts::expr::{Formula, Literal, RowVariable};
 use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
@@ -134,6 +136,9 @@ impl Formula for CompiledFormula {
                 let index = definition
                     .index_of(name)
                     .ok_or_else(|| failure(format!("the table has no column {name}")))?;
+                // A boxed primitive in an `Object` column may hold the value Java reserves
+                // for null as a value.
+                let boxed = holds_objects(&definition.columns()[index].column_type);
                 let source = table.column(index);
                 let values = if use_prev {
                     source.prev_chunk(rows)?
@@ -146,7 +151,11 @@ impl Formula for CompiledFormula {
                         values.len()
                     )));
                 }
-                Ok(without_null_values(values))
+                Ok(if boxed {
+                    values
+                } else {
+                    without_null_values(values)
+                })
             })
             .collect::<Result<_, _>>()?;
         // Behavior: `DhFormulaColumn#generateFillChunkHelper`: the positions are those of
@@ -287,6 +296,15 @@ fn elementwise(
         elements,
         None,
     )))
+}
+
+/// Whether the cells of a column of `column_type`, or their elements, are the cells of an
+/// `Object` column, where a boxed primitive may hold the value Java reserves for null.
+fn holds_objects(column_type: &ColumnType) -> bool {
+    match column_type.list_element() {
+        Some(element) => holds_objects(element),
+        None => matches!(column_type, ColumnType::Object(_)),
+    }
 }
 
 /// Makes null every cell that holds the value Java reserves for null in the column's type.
@@ -593,6 +611,39 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
         }
         Node::Elementwise { body, left, right } => {
             elementwise(body, left, right, batch, &expr.column_type)
+        }
+        Node::ToObject(operand) => {
+            let values = evaluate(operand, batch)?;
+            Ok(objects::to_object(&operand.column_type, values))
+        }
+        Node::FromObject(operand) => {
+            let values = evaluate(operand, batch)?;
+            let class = objects::class_of(&operand.column_type);
+            objects::from_object(class.as_ref(), &expr.column_type, values)
+        }
+        Node::ObjectEquals { left, right } => {
+            let left_values = evaluate(left, batch)?;
+            let right_values = evaluate(right, batch)?;
+            let (left_class, right_class) = (
+                objects::class_of(&left.column_type),
+                objects::class_of(&right.column_type),
+            );
+            objects::equals(
+                left_class.as_ref(),
+                right_class.as_ref(),
+                &left_values,
+                &right_values,
+            )
+            .map(erase)
+        }
+        Node::ObjectString(operand) => {
+            let values = evaluate(operand, batch)?;
+            let class = objects::class_of(&operand.column_type);
+            objects::texts(class.as_ref(), &values).map(erase)
+        }
+        Node::DayOfWeek { number, method } => {
+            let numbers = evaluate(number, batch)?;
+            objects::days_of_week(&numbers, *method)
         }
         // `io.deephaven.function.Basic#isNull`.
         Node::IsNull(operand) => {

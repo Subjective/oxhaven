@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: io.deephaven.engine.table.impl.locations.TableDataException: Parquet metadata file file:/tmp/oxhaven_parquet_read_common_metadata/common_only/_metadata does not exist",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: ParquetMetadataFileLayout does not support refreshing",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: io.deephaven.engine.table.impl.locations.TableDataException: Unexpected number of path elements in K=1/f.parquet for partitions [], found 1 elements, expected 2 based on definition TableDefinition {columns=[ColumnDefinition {name=K, dataType=int, componen",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: io.deephaven.engine.table.impl.locations.TableDataException: Unexpected duplicate partition key K when parsing K=1/K=2/f.parquet for file:/tmp/oxhaven_parquet_read_common_metadata/twice/_metadata",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.engine.table.impl.locations.util.PartitionParser.parse(String)\" because the return value of \"java.util.Map.get(Object)\" is null",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to read parquet data. : RuntimeError: java.lang.IllegalArgumentException: ForInt partition value parser for type java.lang.Integer failed for \"abc\"",
+      "operation": "failed to read parquet data."
+    },
+    {
+      "step": 7,
+      "outcome": "ok"
+    }
+  ]
+}

@@ -1067,16 +1067,21 @@ fn a_partitioned_write_has_metadata_files_with_the_partitioning_columns() {
     expected.extend(leaves(&leaf));
     assert_eq!(leaves(&common), expected);
 
-    // reading a directory whose partitioning columns only `_common_metadata` knows is
-    // not ported: the files are read one by one, or by the layout of their directories
-    let through_metadata = read(&root, &ReadOptions::default());
-    match through_metadata {
-        Err(crate::ReadError::NotPorted { java, .. }) => {
-            assert!(java.ends_with("ParquetMetadataFileLayout#create"), "{java}")
-        }
-        Err(other) => panic!("{other}"),
-        Ok(_) => panic!("read through the metadata file: check its rows here instead"),
-    }
+    // read back through the metadata files, `B` is a partitioning column again, first as
+    // in `_common_metadata`, and the files come in the order `_metadata` lists them
+    let through_metadata = read(&root, &ReadOptions::default()).unwrap();
+    let definition = through_metadata.definition().columns();
+    assert_eq!(
+        (definition[0].name.as_str(), definition[0].partitioning),
+        ("B", true)
+    );
+    assert_eq!(definition[0].column_type, ColumnType::Boolean);
+    assert!(definition[1..].iter().all(|column| !column.partitioning));
+    assert_eq!(columns(&through_metadata), columns(&table));
+    assert_eq!(
+        cells(&through_metadata, "B"),
+        ["null", "null", "null", "false", "false", "true", "true"]
+    );
 }
 
 #[test]

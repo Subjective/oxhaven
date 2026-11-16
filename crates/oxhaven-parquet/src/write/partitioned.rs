@@ -8,7 +8,7 @@ use super::metadata::MetadataFiles;
 use super::{
     check_row_groups, invalid, local_path, out_columns, schema_field, write_files, WriteOptions,
 };
-use crate::layout::has_scheme;
+use crate::layout::resolve;
 use crate::{not_ported, WriteError};
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::datatypes::{DataType, Date32Type, Time64NanosecondType, UInt16Type};
@@ -21,7 +21,6 @@ use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::partitioned::{partition_by, PartitionedTable};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 /// The tokens of a base name.
@@ -31,8 +30,6 @@ use std::sync::Arc;
 const UUID_TOKEN: &str = "{uuid}";
 const PARTITIONS_TOKEN: &str = "{partitions}";
 const FILE_INDEX_TOKEN: &str = "{i}";
-
-const RESOLVE: &str = "io.deephaven.parquet.base.ParquetUtils#resolve";
 
 /// What [`write_partitioned`] writes.
 pub enum PartitionedSource<'a> {
@@ -224,41 +221,6 @@ fn groups_of(keys: &[ArrayRef], rows: usize) -> Result<Vec<Vec<usize>>, WriteErr
     Ok(groups)
 }
 
-/// The path `relative` from the directory `base`, as Java resolves it: `\` is `/`, and
-/// every other character is itself.
-///
-/// Java makes a URI of `relative`, which fails where a `:` comes before the first `/`
-/// and what is before it is no URI scheme; that is every `:` in the value of the first
-/// key, so a table whose first key is a time cannot be written. Where it is a scheme,
-/// Java writes to the store of that scheme, and where a part is `.` or `..` or the path
-/// starts at the root, to another directory: these are refused.
-///
-/// Behavior: `io.deephaven.parquet.base.ParquetUtils#resolve`
-fn resolved(base: &Path, relative: &str) -> Result<PathBuf, WriteError> {
-    let relative = relative.replace('\\', "/");
-    let first = relative.split('/').next().unwrap_or_default();
-    if first.contains(':') {
-        if has_scheme(&relative) {
-            return Err(not_ported(
-                RESOLVE,
-                format_args!("{relative}, a name that starts with a URI scheme"),
-            ));
-        }
-        return Err(invalid(format!(
-            "Failed to create URI from relative path: {relative}"
-        )));
-    }
-    let leaves =
-        relative.starts_with('/') || relative.split('/').any(|part| matches!(part, "." | ".."));
-    if leaves {
-        return Err(not_ported(
-            RESOLVE,
-            format_args!("{relative}, a path that leaves its directory"),
-        ));
-    }
-    Ok(base.join(relative))
-}
-
 /// Behavior: `ParquetTools#writeKeyValuePartitionedTableImpl`
 fn write_constituents(
     partitioned: &PartitionedTable,
@@ -311,7 +273,7 @@ fn write_constituents(
     for group in groups_of(&keys, size)? {
         let partitions = &directories[group[0]];
         let relative: String = partitions.iter().map(|name| format!("{name}/")).collect();
-        let directory = resolved(&root, &relative)?;
+        let directory = resolve(&root, &relative)?;
         for (count, row) in group.into_iter().enumerate() {
             let mut name = base_name.replace(PARTITIONS_TOKEN, &partitions.join("_"));
             name = name.replace(FILE_INDEX_TOKEN, &count.to_string());
@@ -319,7 +281,7 @@ fn write_constituents(
                 name = name.replace(UUID_TOKEN, &uuid::Uuid::new_v4().to_string());
             }
             name.push_str(super::EXTENSION);
-            destinations.push(resolved(&directory, &name)?);
+            destinations.push(resolve(&directory, &name)?);
             tables.push(constituents[row].clone());
         }
     }

@@ -16,6 +16,16 @@ use std::sync::Arc;
 
 pub use external::{ExternalArgument, ExternalFunction, ExternalFunctions};
 
+/// Nanoseconds since the epoch of `text` read as `DateTimeUtils#parseInstant` reads text
+/// that is not a whole number: a date and time with a zone. `Syntax` where Java throws,
+/// `Unsupported` for a spelling not ported. For use outside formulas (Kafka's JSON
+/// `Instant` columns); whole numbers are the caller's, whose overflow Java lets wrap.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant`
+pub fn parse_instant_text(text: &str) -> Result<i64, FormulaError> {
+    parse::instant_of_text(text)
+}
+
 /// The formula language.
 #[derive(Clone, Copy, Default, Debug)]
 pub struct Compiler;

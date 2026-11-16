@@ -397,6 +397,8 @@ impl Parser {
             "Period" | "java.time.Period" => ColumnType::Period,
             "ZoneId" | "java.time.ZoneId" => ColumnType::ZoneId,
             "ZonedDateTime" | "java.time.ZonedDateTime" => ColumnType::ZonedDateTime,
+            // The class of the cells is the operand's, which the type checker knows.
+            "Object" | "java.lang.Object" => ColumnType::object(None),
             other => return Err(unsupported(format!("cast to {other}"))),
         };
         Ok(Expr::Cast { to, operand })

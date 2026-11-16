@@ -51,6 +51,9 @@ pub(crate) struct Metadata {
     pub common: Option<PathBuf>,
     /// For each file, in order, how many of its row groups the metadata file lists.
     pub row_groups: Vec<usize>,
+    /// For each file, in order, its path as the metadata file writes it, with `/` for a
+    /// `\`: the directories in it name the partitions of the file.
+    pub relative: Vec<String>,
 }
 
 impl Files {
@@ -184,7 +187,7 @@ fn metadata_file(path: &Path) -> Result<Files, ReadError> {
         .parse_and_finish(&file)
         .map_err(|error| ReadError::Io(format!("{}: {error}", path.display())))?;
     let root = path.parent().unwrap_or(Path::new(""));
-    let mut files: Vec<Found> = Vec::new();
+    let mut relative: Vec<String> = Vec::new();
     let mut row_groups: Vec<usize> = Vec::new();
     for (index, group) in footer.row_groups().iter().enumerate() {
         let name = group.columns().first().and_then(|chunk| chunk.file_path());
@@ -194,18 +197,23 @@ fn metadata_file(path: &Path) -> Result<Files, ReadError> {
                 path.display()
             )));
         };
-        let file = root.join(name);
-        match files.iter().position(|found| found.path == file) {
+        // Behavior: `org.apache.commons.io.FilenameUtils#separatorsToSystem`, on Unix
+        let name = name.replace('\\', "/");
+        match relative.iter().position(|listed| *listed == name) {
             Some(position) => row_groups[position] += 1,
             None => {
-                files.push(Found {
-                    path: file,
-                    values: Vec::new(),
-                });
+                relative.push(name);
                 row_groups.push(1);
             }
         }
     }
+    let files = relative.iter().map(|name| {
+        Ok(Found {
+            path: resolve(root, name)?,
+            values: Vec::new(),
+        })
+    });
+    let files = files.collect::<Result<_, ReadError>>()?;
     let common = root.join(COMMON_METADATA_FILE);
     Ok(Files {
         files,
@@ -215,8 +223,45 @@ fn metadata_file(path: &Path) -> Result<Files, ReadError> {
             path: path.to_path_buf(),
             common: common.exists().then_some(common),
             row_groups,
+            relative,
         }),
     })
+}
+
+/// The path `relative` from the directory `base`, as Java resolves it: `\` is `/`, and
+/// every other character is itself.
+///
+/// Java makes a URI of `relative`, which fails where a `:` comes before the first `/`
+/// and what is before it is no URI scheme; that is every `:` in the value of the first
+/// key, so a table whose first key is a time cannot be written. Where it is a scheme,
+/// Java goes to the store of that scheme, and where a part is `.` or `..` or the path
+/// starts at the root, to another directory: these are refused.
+///
+/// Behavior: `io.deephaven.parquet.base.ParquetUtils#resolve`
+pub(crate) fn resolve(base: &Path, relative: &str) -> Result<PathBuf, ReadError> {
+    const RESOLVE: &str = "io.deephaven.parquet.base.ParquetUtils#resolve";
+    let relative = relative.replace('\\', "/");
+    let first = relative.split('/').next().unwrap_or_default();
+    if first.contains(':') {
+        if has_scheme(&relative) {
+            return Err(not_ported(
+                RESOLVE,
+                format_args!("{relative}, a name that starts with a URI scheme"),
+            ));
+        }
+        return Err(ReadError::Invalid(format!(
+            "Failed to create URI from relative path: {relative}"
+        )));
+    }
+    let leaves =
+        relative.starts_with('/') || relative.split('/').any(|part| matches!(part, "." | ".."));
+    if leaves {
+        return Err(not_ported(
+            RESOLVE,
+            format_args!("{relative}, a path that leaves its directory"),
+        ));
+    }
+    Ok(base.join(relative))
 }
 
 /// Whether a file named `name` is a Parquet file that is not hidden.

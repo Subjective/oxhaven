@@ -1,19 +1,5 @@
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
-docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	method call .getDayOfWeek() on a value of type LocalDate
-docs-python/getting-started.crash-course.query-strings.L29.11.10	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.0	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.1	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.2	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.3	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.4	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.5	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.6	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.7	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L77.14.8	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	function dayOfWeek()
-docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: function dayOfWeek()
-docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: function dayOfWeek()
-docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: function dayOfWeek()
+docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	function nanosToSeconds()
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	constructor new java.net.URL()
 docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
 docs-python/getting-started.docker-install.L304.8.0	java-fails	static method call org.example.MathFns.square()
@@ -199,10 +185,6 @@ grid-literal/lt.string.literal-double	java-fails	ordering comparison of String w
 grid-literal/lt.string.literal-float	java-fails	ordering comparison of String with float
 grid-literal/lt.string.literal-char	java-fails	ordering comparison of String with char
 grid-literal/lt.string.literal-boolean	java-fails	ordering comparison of String with Boolean
-grid-literal/constant.117	java-accepts	null in both branches of ?:
-grid-literal/constant.123	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
-grid-literal/constant.127	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
-grid-literal/constant.128	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
 grid-literal/constant.133	java-fails	ordering comparison of Boolean with int
 grid-where/columns.lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
 grid-where/columns.lt.byte.string	java-fails	ordering comparison of byte with String
@@ -324,7 +306,6 @@ grid-where/columns.ge.string.float	java-fails	ordering comparison of String with
 grid-where/columns.ge.string.double	java-fails	ordering comparison of String with double
 grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
 grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
-grid-where/extra.018	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
 java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1000.0.1	java-accepts	setup: where
@@ -344,7 +325,7 @@ java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
 java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on int and Vector(Int)
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
-java-formula-column/L329.0	java-fails	cast to Object
+java-formula-column/L329.0	java-fails	method call .hashCode() on a value of type Object
 java-formula-column/L226.e	java-fails	static method call java.util.Collections.singletonList()
 java-formula-column/L230.e	java-fails	static method call Arrays.asList()
 java-formula-column/L234.e	java-accepts	field access .Normal
@@ -536,10 +517,8 @@ java-parser/L3096.0	java-fails	fixture column of type int32[]
 java-parser/L3099.0	java-fails	fixture column of type int32[]
 java-parser/L3103.0	java-fails	fixture column of type int32[]
 py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
-py-server/test_filters.L137.13.0	java-accepts	cast to java.lang.Object
-py-server/test_filters.L137.13.0-r2	java-accepts	setup: cast to java.lang.Object
+py-server/test_filters.L137.13.0-r2	java-accepts	?: whose branches are a int and a String, which makes a java.lang.Object column of two classes
 py-server/test_function_generated_table.L31.19.0	java-fails	static method call io.deephaven.base.clock.Clock.system()
-py-server/test_table.L1307.13.1	java-accepts	array creation new Object[]
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR
 py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()

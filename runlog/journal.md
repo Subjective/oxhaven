@@ -1022,3 +1022,31 @@ Task 5.9 reported from Opus: four java.time column types in the contracts and th
 ## 2026-11-16T09:09Z
 
 Pull request 120 (four java.time column types, formula gate 123 to 48) merged on green.
+
+## 2026-11-16T09:11Z
+
+Task 7.1c (Parquet directories read through their metadata files) reported from Opus at 94k tokens: done, one scenario, replay gate clean after merging main. Opened as pull request 121. Launched the summary of items for the owner on Opus; it reads only, so it does not take a build slot.
+
+## 2026-11-16T09:18Z
+
+Pull request 121 (Parquet metadata directories) merged on green. Decision on my judgment, for the owner to review: the general Object column takes option 3 of the 5.9 notes, Object(Box<ColumnType>) with one static class per column, because it keeps values exact and is additive; a column mixing classes stays refused. Launched it as 5.10 on Opus with boolean[] and the object creation node.
+
+## 2026-11-16T09:23Z
+
+The summary of items for the owner came back from Opus in 11 minutes and 79k tokens: 15 decisions with recommendations and reference tables. I corrected three statements that were out of date (seed 308 is left alone, the Object design is already started, pull request 121 merged) and sent it to the owner.
+
+## 2026-11-16T10:17Z
+
+Task 7.4.3 (Kafka JSON) reported from Opus: built and compared with Java on 146 tables, but three local gates did not finish because the disk filled twice (two other build directories held 9 GB). Opened as pull request 122 with that stated; CI runs the same gates and decides. It also found an overflow panic in the expression crate when digit text is read as an instant, to be fixed separately. Lesson: with this disk, two building agents at once is the safe number, three is the limit.
+
+## 2026-11-16T10:20Z
+
+Task 5.10 reported from Opus: Object, DayOfWeek and boolean[] columns; the formula gate fell from 48 to 24 differing cases. It ended at 358k tokens with piece 4 (sorting the time types) not started; verdict too large. Opened as pull request 123. Formula gate over the day: 294, 123, 48, 24.
+
+## 2026-11-16T10:25Z
+
+Pull request 122 (Kafka JSON) merged: CI ran the gates the agent could not finish locally and all passed. Launched 7.5.1 (Kafka producing) on Opus.
+
+## 2026-11-16T10:32Z
+
+Pull request 123 (Object, DayOfWeek and boolean[] columns) merged on green, after a second CI run on top of pull request 122.

@@ -2,10 +2,8 @@ java-fails	update	(int) S	cast of String to int
 java-fails	update	(int) SN	cast of String to int
 java-fails	update	(long) T	cast of Instant to long
 java-accepts	update	(Integer) I	cast to Integer
-java-accepts	update	(Object) I	cast to Object
 java-accepts	update	(Double) D	cast to Double
 java-fails	update	(char) S	cast of String to char
-java-accepts	update	BN ? null : null	null in both branches of ?:
 java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
 java-fails	update	I < S	ordering comparison of int with String
 java-fails	update	S < I	ordering comparison of String with int
@@ -25,7 +23,6 @@ java-rejects	update	`\u005c`	unicode escape of a quote, backslash or line break
 java-rejects	update	`\u000a`	unicode escape of a quote, backslash or line break
 java-accepts	update	`a\sb`	\s escape in a string literal
 java-accepts	update	`a\sb`.length()	\s escape in a string literal
-java-accepts	update	null	null literal outside ==, !=, ?:, a cast and string concatenation
 java-rejects	update	'2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
 java-rejects	update	'2262-04-11T23:47:16.854775808 UTC'	time literal '2262-04-11T23:47:16.854775808 UTC' outside the range of a 64-bit nanosecond timestamp
 java-accepts	update	'1677-09-21T00:12:43.145224192 UTC'	time literal '1677-09-21T00:12:43.145224192 UTC' outside the range of a 64-bit nanosecond timestamp
@@ -68,7 +65,6 @@ java-accepts	update	SN.getBytes()	method call String.getBytes()
 java-accepts	update	`a😀b`.substring(2)	the result holds an unpaired UTF-16 surrogate, which a UTF-8 string cannot
 java-fails	update	B.booleanValue()	method call .booleanValue() on a value of type Boolean
 java-fails	update	T.getNano()	method call .getNano() on a value of type Instant
-java-rejects	where	null	null literal outside ==, !=, ?:, a cast and string concatenation
 java-accepts	update	0x1p-1023	hexadecimal floating point literal 0x1p-1023
 java-accepts	update	0x1p-1074	hexadecimal floating point literal 0x1p-1074
 java-rejects	update	0x1p-1075	hexadecimal floating point literal 0x1p-1075

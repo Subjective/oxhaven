@@ -202,6 +202,9 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         ColumnType::Period => "java.time.Period",
         ColumnType::ZoneId => "java.time.ZoneId",
         ColumnType::ZonedDateTime => "java.time.ZonedDateTime",
+        ColumnType::DayOfWeek => "java.time.DayOfWeek",
+        ColumnType::PrimitiveBoolean => "boolean",
+        ColumnType::Object(_) => "java.lang.Object",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
@@ -215,8 +218,24 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
 ///
 /// Behavior: `BarrageUtil#columnDefinitionsToFields` (the `deephaven:componentType` entry);
 /// every element type here is one `BarrageUtil#isTypeNativelySupported` accepts
+///
+/// An array of a class Java does not send natively, `Object[]` or `DayOfWeek[]`, has
+/// none: `BarrageUtil#isTypeNativelySupported` refuses its class.
 pub fn java_component_type_name(column_type: &ColumnType) -> Option<Cow<'static, str>> {
-    column_type.list_element().map(java_type_name)
+    fn native(column_type: &ColumnType) -> bool {
+        match column_type {
+            ColumnType::Array(element) => native(element),
+            ColumnType::Object(_) | ColumnType::DayOfWeek => false,
+            _ => true,
+        }
+    }
+    match column_type {
+        ColumnType::Array(_) if !native(column_type) => None,
+        // A vector is sent natively whatever its elements; those Java does not send
+        // natively are declared as strings.
+        ColumnType::Vector(element) if !native(element) => Some(Cow::Borrowed("java.lang.String")),
+        _ => column_type.list_element().map(java_type_name),
+    }
 }
 
 /// The column type of a field whose `deephaven:type` is `name` and whose
@@ -286,6 +305,9 @@ fn is_sortable(column_type: &ColumnType) -> bool {
         ColumnType::Table(_) => false,
         // Neither class is `Comparable`; observed on Java 42.9 for a formula column of each.
         ColumnType::Period | ColumnType::ZoneId => false,
+        // `Object` is not `Comparable`, whatever the class of the cells; a `DayOfWeek` is
+        // an enum, which is. Observed on Java 42.9 for a formula column of each.
+        ColumnType::Object(_) => false,
         _ => true,
     }
 }
@@ -599,6 +621,69 @@ mod tests {
                         ("deephaven:isSortable", "true"),
                         ("deephaven:type", "java.time.ZonedDateTime")
                     ])
+                ),
+            ]
+        );
+    }
+
+    /// What Java 42.9 declared for `update("O = (Object) I", "N = null",
+    /// "W = dayOfWeek(T, 'UTC')")`: an `Object` column has no `isSortable`.
+    #[test]
+    fn an_object_column_and_a_day_of_week_are_declared_as_in_java() {
+        let definition = definition(&[
+            ("O", ColumnType::object(Some(ColumnType::Int))),
+            ("N", ColumnType::object(None)),
+            ("W", ColumnType::DayOfWeek),
+            ("A", ColumnType::array(ColumnType::PrimitiveBoolean)),
+            (
+                "OA",
+                ColumnType::array(ColumnType::object(Some(ColumnType::String))),
+            ),
+        ]);
+        let schema = arrow_schema(&definition, &SchemaContext::default());
+        let seen: Vec<_> = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                let metadata: HashMap<String, String> = f
+                    .metadata()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                (f.data_type().clone(), metadata)
+            })
+            .collect();
+        let object = || {
+            (
+                DataType::Utf8,
+                metadata(&[("deephaven:type", "java.lang.Object")]),
+            )
+        };
+        assert_eq!(
+            seen,
+            vec![
+                object(),
+                object(),
+                (
+                    DataType::Utf8,
+                    metadata(&[
+                        ("deephaven:isSortable", "true"),
+                        ("deephaven:type", "java.time.DayOfWeek")
+                    ])
+                ),
+                // Seen for `new int[]{1, 2} == 1`: no `isSortable`.
+                (
+                    DataType::List(Arc::new(Field::new("", DataType::Boolean, true))),
+                    metadata(&[
+                        ("deephaven:componentType", "boolean"),
+                        ("deephaven:type", "boolean[]")
+                    ])
+                ),
+                // Recorded for `new Object[]{`abc`, `def`}`: no component type, as
+                // `BarrageUtil#isTypeNativelySupported` refuses `Object`.
+                (
+                    DataType::List(Arc::new(Field::new("", DataType::Utf8, true))),
+                    metadata(&[("deephaven:type", "java.lang.Object[]")])
                 ),
             ]
         );
