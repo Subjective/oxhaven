@@ -8,7 +8,6 @@ use crate::graph::SteppedUpdateGraph;
 use crate::ops::merge::merge;
 use crate::ops::sort::head;
 use arrow::array::{Array, Int32Array};
-use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
     at_least_for, definition, ints, test_seeds, ConsistencyChecker, RandomUpdates, ReferenceTable,
     ScriptedTable, TableChange,
@@ -85,7 +84,9 @@ fn partitioned_tables_with_other_keys_are_refused_when_keys_must_match() {
     // non-matching keys", whichever side has the key the other has not
     for other in [parts(&[0, 1], &[some; 2]), parts(&[0, 1, 2, 3], &[some; 4])] {
         for (first, second) in [(&lhs, &other), (&other, &lhs)] {
-            let error = require_matching_keys(first, second).map(|_| ()).unwrap_err();
+            let error = require_matching_keys(first, second)
+                .map(|_| ())
+                .unwrap_err();
             assert!(
                 matches!(&error, PartitionedError::IllegalArgument(text) if text.contains("non-matching keys")),
                 "{error}"
@@ -100,7 +101,9 @@ fn a_join_key_in_two_constituents_is_refused() {
     // N is 0, 1, 2, 3: every value in one constituent
     table.require_distinct_join_keys(&names(&["N"])).unwrap();
     // each K is in its own constituent, with whatever else
-    table.require_distinct_join_keys(&names(&["K", "W"])).unwrap();
+    table
+        .require_distinct_join_keys(&names(&["K", "W"]))
+        .unwrap();
 
     // Observed: "IllegalArgumentException: Partitioned table "QueryTable" has join keys
     // found in multiple constituents": W is 5 in both
@@ -135,7 +138,9 @@ fn a_null_join_key_of_one_column_is_refused_as_java_refuses_it() {
         matches!(&error, PartitionedError::IllegalArgument(text) if text.contains("NullPointerException")),
         "{error}"
     );
-    table.require_distinct_join_keys(&names(&["K", "W"])).unwrap();
+    table
+        .require_distinct_join_keys(&names(&["K", "W"]))
+        .unwrap();
     table.require_distinct_join_keys(&names(&["N"])).unwrap();
 }
 
@@ -377,7 +382,3 @@ fn random_changes_fail_the_join_key_check_exactly_when_a_key_overlaps() {
     }
     assert!(cycles >= at_least_for(60, 0..40), "only {cycles} cycles");
 }
-
-/// So that the import is used when the update type is only named in a signature.
-#[allow(dead_code)]
-fn unused(_: TableUpdate) {}
