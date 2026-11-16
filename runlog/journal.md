@@ -998,3 +998,7 @@ Table formats (new task 4.21) and 7.8.2 (update views and formats of rollup node
 ## 2026-11-16T08:16Z
 
 Pull request 117 (table formats, rollup node views and formats) merged on green. Running: second parity pass, Kafka stream adapter (Opus), formula column types (Opus), Parquet metadata directories (Opus).
+
+## 2026-11-16T08:40Z
+
+Task 7.4.2 (stream tables, table_publisher, Kafka on the adapter) reported from the first Opus agent: scope done, gates passed, three differences from Java listed for the owner (a raising shutdown callback ends the Java server; del of a table ends its stream here; a full head of a blink table stays subscribed). It did not reach 7.4.3 because other builds filled the disk for a stretch. Its branch conflicted with pull request 116 in one module list; I merged main and resolved it. Opened as pull request 118. Four building agents at once is too many for this disk; holding at three until the fuzzer agent ends.
