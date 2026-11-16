@@ -13,10 +13,14 @@ mod tests;
 mod transform;
 #[cfg(test)]
 mod transform_tests;
+mod validate;
+#[cfg(test)]
+mod validate_tests;
 
 pub use cells::{resolve, TableCells, TableColumn};
 pub use partition::{Partition, ResultLink};
 pub use transform::Transformer;
+pub use validate::require_matching_keys;
 
 use crate::ops::agg::{aggregate, AggregateError, Aggregation};
 use crate::ops::distinct::where_in;
@@ -104,6 +108,11 @@ pub struct PartitionedTable {
     constituent_column: String,
     constituent_definition: TableDefinition,
     constituent_changes_permitted: bool,
+    /// The key columns that every constituent has too, with the value of its row of the
+    /// underlying table in every row.
+    ///
+    /// Behavior: PartitionedTableImpl's `consistentKeyColumnNames`
+    consistent_key_columns: Vec<String>,
     /// The result of the last `merge`, while someone still has it.
     ///
     /// Behavior: the `memoizedMerge` of PartitionedTableImpl#merge
@@ -148,8 +157,33 @@ impl PartitionedTable {
             constituent_column,
             constituent_definition,
             constituent_changes_permitted,
+            consistent_key_columns: Vec::new(),
             merged: Arc::default(),
         })
+    }
+
+    /// The key columns that every constituent has too, with the value of its row of the
+    /// underlying table in every row: a filter on them may be applied to the underlying
+    /// table in the place of every constituent. A partition that keeps the key columns
+    /// has them all; a transform has none unless it is told.
+    ///
+    /// Behavior: PartitionedTableImpl#getConsistentKeyColumnNames
+    pub fn consistent_key_columns(&self) -> &[String] {
+        &self.consistent_key_columns
+    }
+
+    /// This partitioned table with `names`, those of them that are key columns, as its
+    /// consistent key columns. The caller says that each is one.
+    ///
+    /// Behavior: the `consistentKeyColumnNames` of PartitionedTableImpl's constructor
+    pub fn with_consistent_key_columns(mut self, names: &[String]) -> PartitionedTable {
+        self.consistent_key_columns = self
+            .key_columns
+            .iter()
+            .filter(|key| names.contains(key))
+            .cloned()
+            .collect();
+        self
     }
 
     /// The underlying table. Behavior: PartitionedTable#table
@@ -182,14 +216,15 @@ impl PartitionedTable {
     ///
     /// Behavior: PartitionedTableImpl#filter and #sort
     pub fn with_table(&self, table: Arc<dyn Table>) -> Result<PartitionedTable, PartitionedError> {
-        PartitionedTable::new(
+        let replaced = PartitionedTable::new(
             table,
             self.key_columns.clone(),
             self.unique_keys,
             self.constituent_column.clone(),
             self.constituent_definition.clone(),
             self.constituent_changes_permitted,
-        )
+        )?;
+        Ok(replaced.with_consistent_key_columns(&self.consistent_key_columns))
     }
 
     fn column(&self) -> Arc<dyn ColumnSource> {
@@ -358,14 +393,19 @@ pub fn of_aggregation(
         }
     }
     let constituent_definition = constituent_definition(parent.definition(), keys, include_keys);
-    PartitionedTable::new(
+    let consistent = match include_keys {
+        true => key_columns.clone(),
+        false => Vec::new(),
+    };
+    let partitioned = PartitionedTable::new(
         aggregated,
         key_columns,
         true,
         constituent_column.to_string(),
         constituent_definition,
         parent.is_refreshing(),
-    )
+    )?;
+    Ok(partitioned.with_consistent_key_columns(&consistent))
 }
 
 /// The definition of the constituents of a partition of a table with `definition`.
