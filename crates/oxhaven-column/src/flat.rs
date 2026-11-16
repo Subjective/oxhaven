@@ -1,11 +1,13 @@
 //! An immutable column: one Arrow array, with row key `k` at position `k`.
 
+use crate::tables::kept_by;
 use crate::{arrow_failure, failure};
 use arrow::array::{Array, ArrayRef, UInt64Array};
 use arrow::compute::{take, TakeOptions};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
+use std::sync::Arc;
 
 /// An immutable source backed by one Arrow array. Row keys are positions in the array, so it
 /// serves tables whose row set is a subset of `0..len`. Previous values equal current values.
@@ -16,6 +18,8 @@ use oxhaven_contracts::table::{ColumnSource, TableFailure};
 pub struct FlatSource {
     column_type: ColumnType,
     values: ArrayRef,
+    /// The tables its cells name, for a column of tables.
+    _tables: Vec<Arc<dyn Table>>,
 }
 
 impl FlatSource {
@@ -29,6 +33,7 @@ impl FlatSource {
             )));
         }
         Ok(Self {
+            _tables: kept_by(&column_type, &values),
             column_type,
             values,
         })

@@ -1,5 +1,6 @@
 //! A writable column addressed by row key, with previous values for the current cycle.
 
+use crate::tables::named_by;
 use crate::tracked::{Clock, Reader, Tracked};
 use crate::{arrow_failure, failure};
 use arrow::array::{new_null_array, Array, ArrayRef};
@@ -7,7 +8,7 @@ use arrow::compute::interleave;
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::shift::RowSetShiftData;
-use oxhaven_contracts::table::{ColumnSource, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
 use std::collections::HashMap;
 use std::sync::{Arc, PoisonError, RwLock};
 
@@ -52,11 +53,29 @@ struct State {
     batches: Vec<ArrayRef>,
     /// Total length of `batches`, excluding batch 0.
     stored: u64,
+    /// For a column of tables, the tables that the handles in `batches` name, kept alive
+    /// while they are stored; `None` when the owner of the column keeps them itself.
+    tables: Option<Vec<Arc<dyn Table>>>,
 }
 
 impl WritableSource {
     /// An empty source that does not track previous values.
+    ///
+    /// For a column of tables (`ColumnType::Table`) the source keeps the tables that the
+    /// handles written to it name, as long as it stores the handles: a copy of a cell
+    /// keeps its table, as a Java object source does.
     pub fn new(column_type: ColumnType) -> Self {
+        let tables = matches!(column_type, ColumnType::Table(_)).then(Vec::new);
+        Self::with_tables(column_type, tables)
+    }
+
+    /// An empty source for the handles of a column of tables whose owner keeps the
+    /// tables and decides when to give them up (a partition, a transform).
+    pub fn of_owned_handles(column_type: ColumnType) -> Self {
+        Self::with_tables(column_type, None)
+    }
+
+    fn with_tables(column_type: ColumnType, tables: Option<Vec<Arc<dyn Table>>>) -> Self {
         let null = new_null_array(&column_type.arrow_type(), 1);
         Self {
             column_type,
@@ -64,6 +83,7 @@ impl WritableSource {
                 slots: Tracked::new(),
                 batches: vec![null],
                 stored: 0,
+                tables,
             }),
         }
     }
@@ -198,6 +218,9 @@ impl State {
         };
         self.batches.push(values.clone());
         self.stored += values.len() as u64;
+        if let Some(tables) = &mut self.tables {
+            tables.extend(named_by(values));
+        }
         let mut writer = self.slots.write();
         for (index, key) in keys.enumerate() {
             writer.put(key, Some((batch, index as u32)));
@@ -254,6 +277,9 @@ impl State {
         };
         self.batches.truncate(1);
         self.stored = 0;
+        if let Some(tables) = &mut self.tables {
+            *tables = named_by(&compacted);
+        }
         if live > 0 {
             self.batches.push(compacted);
             self.stored = live;
