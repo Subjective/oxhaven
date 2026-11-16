@@ -863,3 +863,12 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   as handover. File serving follows the storage ruling (nothing outside the plugin's
   directory); if Java differs, it comes back as a question, not as a PARITY.md entry.
 - Merged pull request 103 (7.11, figures) on six green checks.
+- Pull request 104 opened (7.1b, Parquet read second slice). Contract change made by the
+  implementing agent under the standing permission, additive: `ColumnType` gains
+  `BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime`, `LocalDateTime`; `ColumnDefinition`
+  gains `partitioning`. Recorded here for the owner's later review, as with
+  `ColumnType::Table`. Script scenarios would stand at 75 of 78 clean. The agent's first
+  gate run failed because its server's Python had no pyarrow; it borrowed another
+  worktree's environment read-only. The brief should say how to get the replay
+  environment (`oracle/requirements-replay.txt`) rather than leave it to chance.
+- Started 0.16 (second parity pass). The row set swap (7.7b) stays deferred: it changes a contract with about 35 call sites and would conflict with every engine branch in flight.
