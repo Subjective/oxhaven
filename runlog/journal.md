@@ -958,3 +958,23 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Owner ruling (06:18 UTC): BSD-3-Clause and the zlib licence are allowed for the files
   bundled in librdkafka. Optional features of it (TLS, SASL, curl) were not asked about and
   go back to him with their licences when they are needed.
+- Pull request 112 merged (7.4.1). Started 7.4.4: the consumer on librdkafka, with TLS and
+  SASL left off until their licences are put to the owner.
+- Pull request 113 opened (7.8.3, rollup constituents). The web IDE's rollup panel now works
+  with its default settings. 7.8.2 (format and update views) was not started: the Python
+  package has no `Table.format_columns` yet, so table formats come first. Lesson: the replay
+  gate needs the server built against the same Python as the venv (3.12 or later); two runs
+  failed on that before the agent found it. Add to the brief.
+- Pull request 113 merged (7.8.3).
+- Pull request 114 opened (5.8): 48 of 50 plotly-express figures equal Java's; the two left
+  need business calendars. For the owner: a range column fetched by a client is a `double[]`
+  here and an object with an identity hash in Java; Java wraps an `Instant` variable of the
+  year 1600 to 2184; a Python global named like a language constant replaces the constant in
+  every formula of the session in Java. Lesson for gate runs: leftover console globals named
+  `e`, `t`, `f` change the formula gate counts, so gates run against a freshly started server.
+- Next in the free slot: table formats (`format_columns` and the like), then format and
+  update views of rollups and trees (7.8.2).
+- Owner decision (06:58 UTC, relayed): new agents for the well-defined tasks (formats and
+  views, Kafka follow-ups, formula column types, the review summary) run on Opus to stretch
+  usage limits; the row set swap and fuzzer triage stay on the default model. Agents already
+  running finish as they are; the `who` column of tasks.csv records the model from now on.
