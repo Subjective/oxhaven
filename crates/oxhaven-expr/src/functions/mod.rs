@@ -22,6 +22,8 @@
 //! - The `null` literal is not an argument of any primitive overload.
 
 mod classes;
+pub(crate) mod color;
+mod color_table;
 pub(crate) mod eval;
 mod names;
 pub(crate) mod statics;
@@ -499,6 +501,9 @@ pub(crate) enum Kernel {
     Zoned(ZonedField, crate::parse::instant::Zone),
     /// `compareTo` of two numbers.
     CompareTo,
+    /// A function of colours and styles, which computes with the values Java reserves
+    /// for null.
+    Color(color::ColorFn),
 }
 
 impl Kernel {
