@@ -596,6 +596,52 @@ async fn a_formula_names_python_variables_with_the_types_java_gives_them() {
     assert!(python.server.state.scope.get("bad").is_none());
 }
 
+/// What Java 42.9 answered for the same script; `iris`, `stocks`, `fish_market` and
+/// `outages` of `deephaven.plot.express.data` name such a variable.
+#[tokio::test]
+async fn a_formula_names_an_instant_of_the_scope() {
+    let python = Python::start().await;
+    python.run(
+        "from deephaven import empty_table\n\
+         from deephaven.time import to_j_instant\n\
+         base_time = to_j_instant('1936-01-01T08:00:00 ET')\n\
+         bt = to_j_instant('2024-03-01T00:00:00Z')\n\
+         t = empty_table(3).update(['Index = ii', 'T = bt + (ii - 1) * SECOND'])\n\
+         r = t.update(['Timestamp = base_time + (long)((Index + 5) * SECOND)', \
+         'D = bt - T']).view(['N = epochNanos(Timestamp)', 'D', 'S = Timestamp.toString()'])\n\
+         w = t.where('T > bt').view('Index')\n\
+         w2 = t.where('bt >= T').view('Index')",
+    );
+    assert_eq!(
+        described(&python, "r"),
+        [
+            "N: Long = -1072954795000000000, -1072954794000000000, -1072954793000000000",
+            "D: Long = 1000000000, 0, -1000000000",
+            "S: String = 1936-01-01T13:00:05Z, 1936-01-01T13:00:06Z, 1936-01-01T13:00:07Z",
+        ]
+    );
+    assert_eq!(described(&python, "w"), ["Index: Long = 2"]);
+    assert_eq!(described(&python, "w2"), ["Index: Long = 0, 1"]);
+
+    // an instant that no column holds: Java gives a column another instant for the first
+    // and fails for the second (`DateTimeUtils#epochNanos`)
+    for name in ["1600-01-01T00:00:00Z", "2300-01-01T00:00:00Z"] {
+        let code = format!("far = to_j_instant('{name}')\nbad = t.update('Y = far')");
+        let error = python.console.evaluate(&code).error.unwrap_or_default();
+        assert!(
+            error.contains("io.deephaven.time.DateTimeUtils#epochNanos"),
+            "{name}: {error}"
+        );
+    }
+    // a Python time value is no instant in Java either (`org.jpy.PyObject`)
+    let error = python
+        .console
+        .evaluate("import datetime\nnow = datetime.datetime.now()\nbad = t.update('Y = now + 1')")
+        .error
+        .unwrap_or_default();
+    assert!(error.contains("which holds a Python datetime"), "{error}");
+}
+
 #[tokio::test]
 async fn a_formula_called_in_a_function_names_its_locals_then_the_globals() {
     let python = Python::start().await;

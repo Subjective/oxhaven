@@ -600,10 +600,40 @@ fn formula_value(value: &Bound<'_, PyAny>) -> FormulaValue {
     if value.is_none() {
         return FormulaValue::Other("None".to_string());
     }
+    if let Some(instant) = java_instant(value) {
+        return instant;
+    }
     let type_name = value.get_type().name();
     FormulaValue::Other(match type_name {
         Ok(name) => format!("a Python {name}"),
         Err(_) => "a Python object".to_string(),
+    })
+}
+
+/// The value of a variable that holds the package's `java.time.Instant`
+/// (`deephaven._java_time.Instant`, what `to_j_instant` returns), which Java holds as that
+/// object. A formula reads an instant as a column holds one, in nanoseconds of 64 bits,
+/// so only an instant of the years 1677 to 2262 is given to it.
+///
+/// Java converts one outside them where the formula uses it
+/// (`io.deephaven.time.DateTimeUtils#epochNanos`): that fails for a later instant
+/// (`DateTimeOverflowException`), and for an earlier one a column is given another
+/// instant, 584 years later (the year 1600 became 2184 on Java 42.9), while a method
+/// called on the variable reads the true one. Neither is kept: such a variable is refused.
+fn java_instant(value: &Bound<'_, PyAny>) -> Option<FormulaValue> {
+    let class = value.get_type();
+    let java_name = class.getattr("_java_name").ok()?;
+    if java_name.extract::<String>().ok()? != "java.time.Instant" {
+        return None;
+    }
+    let nanos = value.getattr("nanos").ok()?;
+    Some(match nanos.extract::<i64>() {
+        Ok(nanos) => FormulaValue::Instant(nanos),
+        Err(_) => FormulaValue::Other(
+            "a java.time.Instant outside the years a column holds \
+             (io.deephaven.time.DateTimeUtils#epochNanos)"
+                .to_string(),
+        ),
     })
 }
 

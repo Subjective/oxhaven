@@ -54,6 +54,11 @@ pub enum FormulaValue {
     Long(i64),
     Double(f64),
     String(String),
+    /// A `java.time.Instant`, as `deephaven.time.to_j_instant` makes one: nanoseconds
+    /// since the epoch. Java's parser treats such a variable as it treats an instant
+    /// literal, which it also reads from a variable (`TimeLiteralReplacedExpression`);
+    /// Java 42.9 gave the same answer for either in every formula tried.
+    Instant(i64),
     /// A value of a kind formulas cannot hold here, with words for it, such as
     /// `a Python list`.
     Other(String),
@@ -467,7 +472,10 @@ impl FormulaValue {
             FormulaValue::Int(_) => Some(ColumnType::Int),
             FormulaValue::Long(_) => Some(ColumnType::Long),
             FormulaValue::Double(_) => Some(ColumnType::Double),
-            FormulaValue::Boolean(_) | FormulaValue::String(_) | FormulaValue::Other(_) => None,
+            FormulaValue::Boolean(_)
+            | FormulaValue::String(_)
+            | FormulaValue::Instant(_)
+            | FormulaValue::Other(_) => None,
         }
     }
 
@@ -481,6 +489,7 @@ impl FormulaValue {
             FormulaValue::Long(_) => "java.lang.Long",
             FormulaValue::Double(_) => "java.lang.Double",
             FormulaValue::String(_) => "java.lang.String",
+            FormulaValue::Instant(_) => "java.time.Instant",
             FormulaValue::Other(what) => what,
         }
     }
@@ -493,6 +502,8 @@ impl FormulaValue {
             FormulaValue::Int(value) => *value == i32::MIN,
             FormulaValue::Long(value) => *value == i64::MIN,
             FormulaValue::Double(value) => *value == -f64::MAX,
+            // a column holds an instant as its nanoseconds
+            FormulaValue::Instant(nanos) => *nanos == i64::MIN,
             FormulaValue::Boolean(_) | FormulaValue::String(_) | FormulaValue::Other(_) => false,
         }
     }
@@ -554,6 +565,7 @@ impl Substitution<'_> {
             FormulaValue::Long(value) => Expr::Literal(Literal::Long(*value)),
             FormulaValue::Double(value) => Expr::Literal(Literal::Double(*value)),
             FormulaValue::String(value) => Expr::Literal(Literal::String(value.clone())),
+            FormulaValue::Instant(nanos) => Expr::Literal(Literal::Instant(*nanos)),
             FormulaValue::Other(what) => {
                 return Err(unsupported(format!(
                     "query scope variable {name}, which holds {what}"
@@ -667,7 +679,10 @@ impl Substitution<'_> {
                 arguments,
             } => {
                 if let Some((name, value)) = self.variable(receiver) {
-                    if !matches!(value, FormulaValue::String(_) | FormulaValue::Other(_)) {
+                    if !matches!(
+                        value,
+                        FormulaValue::String(_) | FormulaValue::Instant(_) | FormulaValue::Other(_)
+                    ) {
                         return Err(unsupported(format!(
                             "method {method} of the query scope variable {name}, a {}",
                             value.class_name()
@@ -780,6 +795,7 @@ impl Substitution<'_> {
             (ColumnType::Float, FormulaValue::Double(value)) => f64::from(*value as f32) == *value,
             (ColumnType::String, FormulaValue::String(_)) => true,
             (ColumnType::Boolean, FormulaValue::Boolean(_)) => true,
+            (ColumnType::Instant, FormulaValue::Instant(_)) => true,
             _ => false,
         };
         if unchanged {
@@ -1139,6 +1155,73 @@ mod tests {
             ("X + 1 > xf", "Boolean true"),
         ] {
             assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+    }
+
+    /// What Java 42.9 answered with `bt = to_j_instant("2024-03-01T00:00:00Z")` and
+    /// `base = to_j_instant("1936-01-01T08:00:00 ET")` among the globals, for the second
+    /// row of a table; the formulas are those of the example data of
+    /// `deephaven.plot.express` and their relatives.
+    #[test]
+    fn an_instant_variable_computes_as_an_instant_literal() {
+        let mut holder = variables();
+        let bt = 1_709_251_200_000_000_000;
+        let base = -1_072_954_800_000_000_000;
+        holder.values.insert("bt", FormulaValue::Instant(bt));
+        holder.values.insert("base", FormulaValue::Instant(base));
+        holder
+            .values
+            .insert("tmin", FormulaValue::Instant(i64::MIN));
+        holder.values.insert(
+            "early",
+            FormulaValue::Other("a java.time.Instant outside the years a column holds".to_string()),
+        );
+        let compiler = compiler(holder);
+        // an instant, as its nanoseconds
+        for (text, expected) in [
+            ("bt", bt),
+            ("base", base),
+            ("base + (long)((ii + 5) * SECOND)", base + 6_000_000_000),
+            ("base + ii * SECOND", base + 1_000_000_000),
+            ("base + (long)(ii * SECOND / 2)", base + 500_000_000),
+            ("bt + i", bt + 1),
+            ("bt - 5", bt - 5),
+            ("i == 0 ? bt : base", base),
+            ("i == 1 ? bt : null", bt),
+            ("(Instant) bt", bt),
+        ] {
+            let formula = compile(&compiler, text).unwrap_or_else(|e| panic!("{text}: {e}"));
+            assert_eq!(*formula.result_type(), ColumnType::Instant, "{text}");
+            let nanos = format!("epochNanos({text})");
+            assert_eq!(value(&compiler, &nanos), format!("Long {expected}"), "{text}");
+        }
+        for (text, expected) in [
+            ("bt - base", "Long 2782206000000000000"),
+            ("(bt - base) / DAY", "Double 32201.458333333332"),
+            ("epochMillis(base)", "Long -1072954800000"),
+            ("isNull(bt)", "Boolean false"),
+            ("bt.getEpochSecond()", "Long 1709251200"),
+            ("bt.toString()", "String 2024-03-01T00:00:00Z"),
+            ("`x` + bt", "String x2024-03-01T00:00:00Z"),
+            ("bt == base", "Boolean false"),
+            ("bt >= bt", "Boolean true"),
+            ("base < bt", "Boolean true"),
+        ] {
+            assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+        // Java finds no method for these
+        for text in ["5L + bt", "bt + 1.5", "bt + base", "-bt"] {
+            assert!(
+                matches!(compile(&compiler, text), Err(FormulaError::Type(_))),
+                "{text}"
+            );
+        }
+        // an instant no column holds, and the one a column reads as null
+        for text in ["early", "early + 1", "tmin", "tmin + 1"] {
+            assert!(
+                matches!(compile(&compiler, text), Err(FormulaError::Unsupported(_))),
+                "{text}"
+            );
         }
     }
 
