@@ -914,3 +914,19 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Correction: one slot was free, not two. Started the `jpy` module; Kafka waits for the next
   slot and for disk (librdkafka builds from C).
 - Pull request 108 merged (7.6.1).
+- 7.2b reported with the replay gate failing: a scenario step that was a refusal now succeeds
+  and lists files Java names with random UUIDs. The author asked for the kind `value` to be
+  listed in the baseline. Decision: not that; the scenario is re-recorded with a `base_name`
+  so that both servers can reproduce it, and the baseline stays as strict. The author's
+  context is large (250k tokens), so the follow-up is kept narrow. For the owner from this
+  task: Java does not empty the destination directory of a partitioned write; a null key and
+  an empty key collide; a `/` in a key makes nested directories; Java cannot read its own
+  partitioned output with metadata when a partitioning column is renamed; a probe passed an
+  `s3://` destination to the Java reference, which made one anonymous request to AWS.
+- Pull request 109 opened (7.9, tree tables). For the owner: Java ends its process with a
+  stack overflow when a tree row without an identifier is expanded with expand-all (refused
+  here); a walk is limited to 200 levels here and unlimited in Java; update and format views
+  in `Apply` are ignored by Java and refused here; a duplicate identifier on a ticking source
+  leaves a stale lookup in Java (reproduced). Engine gap noted: `natural_join` does not copy
+  `SortableColumns`. 7.8.2 and 7.8.3 (rollup views and constituents) can start once it is
+  merged. Kafka starts now in the free slot.
