@@ -21,8 +21,10 @@
 //! - An argument of another type is converted as a cast converts it: null stays null.
 //! - The `null` literal is not an argument of any primitive overload.
 
+mod classes;
 pub(crate) mod eval;
 mod names;
+pub(crate) mod statics;
 pub(crate) mod vectors;
 pub(crate) mod volatile;
 
@@ -113,8 +115,61 @@ pub(crate) fn constant(name: &str) -> Option<(ColumnType, Literal)> {
     })
 }
 
-/// The value and type of the static field `class.field` of a boxed numeric class of
-/// `java.lang`, given as [`constant`] gives a constant.
+/// A class of the default static imports that a formula names as `name`: by its full name,
+/// or for `DateTimeUtils` by its simple name too.
+///
+/// Behavior: `QueryLibraryImportsDefaults#classes`, which lists `DateTimeUtils` among the
+/// classes a formula names without a package, and `QueryLanguageParser#visit(NameExpr)`
+/// and `#visit(FieldAccessExpr)`, which find any class by its full name.
+fn library_class(name: &str) -> Option<&'static classes::LibraryClass> {
+    classes::CLASSES.iter().find(|class| {
+        class.name == name || (class.simple && class.name.rsplit('.').next() == Some(name))
+    })
+}
+
+/// What `class.function(...)` means when `class` is a class of the default static imports.
+pub(crate) enum LibraryMember {
+    /// The class is not one of them.
+    NotLibrary,
+    /// The class has no public static member of that name.
+    Missing,
+    /// The member is the default import of the same name, of this class alone.
+    Import,
+    /// The member is a default import that another class has too (`plus`, `lowerBin`).
+    /// `time` says whether the class is `DateTimeUtils`.
+    Shared { time: bool },
+}
+
+/// How a formula reaches the static method `class.function`.
+pub(crate) fn library_function(class: &str, function: &str) -> LibraryMember {
+    let Some(class) = library_class(class) else {
+        return LibraryMember::NotLibrary;
+    };
+    if class.functions.binary_search(&function).is_err() {
+        return LibraryMember::Missing;
+    }
+    let shared = classes::CLASSES
+        .iter()
+        .filter(|other| other.functions.binary_search(&function).is_ok())
+        .count()
+        > 1;
+    if shared {
+        LibraryMember::Shared {
+            time: class.name == "io.deephaven.time.DateTimeUtils",
+        }
+    } else {
+        LibraryMember::Import
+    }
+}
+
+/// Whether `class.field` is a constant of a class of the default static imports, and so
+/// the constant a formula names as `field` alone.
+pub(crate) fn is_library_constant(class: &str, field: &str) -> bool {
+    library_class(class).is_some_and(|class| class.constants.binary_search(&field).is_ok())
+}
+
+/// The value and type of the static field `class.field` of a class of `java.lang`, given
+/// as [`constant`] gives a constant.
 ///
 /// `java.lang` is a default-imported package, so a formula names these classes by their
 /// simple names, and the field keeps its declared primitive type: `Long.MIN_VALUE` is a
@@ -123,9 +178,11 @@ pub(crate) fn constant(name: &str) -> Option<(ColumnType, Literal)> {
 /// `PRECISION`, which exists only from JDK 19 on.
 ///
 /// Behavior: the `public static final` fields of `java.lang.Byte`, `Short`, `Integer`,
-/// `Long`, `Float` and `Double`, resolved by `QueryLanguageParser#visit(FieldAccessExpr)`
-/// through `QueryLibraryImportsDefaults#packages`.
+/// `Long`, `Float`, `Double`, `Boolean`, `Math` and `StrictMath`, resolved by
+/// `QueryLanguageParser#visit(FieldAccessExpr)` through
+/// `QueryLibraryImportsDefaults#packages`, or by the class's full name.
 pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Literal)> {
+    let class = class.strip_prefix("java.lang.").unwrap_or(class);
     let byte = |value: i8| (ColumnType::Byte, Literal::Int(value.into()));
     let short = |value: i16| (ColumnType::Short, Literal::Int(value.into()));
     let int = |value: i32| (ColumnType::Int, Literal::Int(value));
@@ -133,6 +190,10 @@ pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Lite
     let float = |value: f32| (ColumnType::Float, Literal::Float(value));
     let double = |value: f64| (ColumnType::Double, Literal::Double(value));
     Some(match (class, field) {
+        ("Math" | "StrictMath", "PI") => double(std::f64::consts::PI),
+        ("Math" | "StrictMath", "E") => double(std::f64::consts::E),
+        ("Boolean", "TRUE") => (ColumnType::Boolean, Literal::Boolean(true)),
+        ("Boolean", "FALSE") => (ColumnType::Boolean, Literal::Boolean(false)),
         ("Byte", "MIN_VALUE") => byte(i8::MIN),
         ("Byte", "MAX_VALUE") => byte(i8::MAX),
         ("Byte", "SIZE") => int(8),
@@ -312,12 +373,34 @@ pub(crate) enum Kernel {
     /// A function of `io.deephaven.function.Random`; the evaluator supplies the number of
     /// rows, and the arguments are widened as Java widens them, without regard to null.
     Random(volatile::RandomFn),
+    /// A static method of a class of `java.lang`, called through the class. The evaluator
+    /// supplies the number of rows and makes null what holds the null value of its type.
+    Static(&'static statics::Method),
 }
 
 impl Kernel {
     /// Whether two calls with the same arguments may return different values.
     pub(crate) fn is_volatile(self) -> bool {
-        matches!(self, Kernel::Now | Kernel::Random(_))
+        match self {
+            Kernel::Now | Kernel::Random(_) => true,
+            Kernel::Static(method) => method.function == statics::StaticFn::Random,
+            _ => false,
+        }
+    }
+
+    /// Whether the kernel is a method of `DateTimeUtils` that shares its name with a
+    /// method of another class of the default imports.
+    pub(crate) fn is_shared_time(self) -> bool {
+        matches!(
+            self,
+            Kernel::InstantPlus
+                | Kernel::InstantMinus
+                | Kernel::InstantDifference
+                | Kernel::InstantLowerBin
+                | Kernel::InstantUpperBin
+                | Kernel::DurationMultiply
+                | Kernel::DurationDivide
+        )
     }
 }
 

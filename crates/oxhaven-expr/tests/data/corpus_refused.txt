@@ -30,8 +30,6 @@ docs-python/conceptual.column-types.L447.6.4	java-accepts	setup: object creation
 docs-python/conceptual.column-types.L447.6.5	java-accepts	setup: object creation (new)
 docs-python/conceptual.column-types.L488.6.3	java-accepts	function parseDouble()
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
-docs-python/conceptual.ninja.L192.5.0	java-fails	field access .lang
-docs-python/conceptual.time-in-deephaven.L39.4.2	java-fails	static method call Math.sin()
 docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	function epochDaysToLocalDate()
 docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	setup: function epochDaysToLocalDate()
 docs-python/conceptual.time-in-deephaven.L135.4.1	java-accepts	function parsePeriod()
@@ -107,9 +105,8 @@ docs-python/getting-started.crash-course.time-calendars.L121.4.5	java-accepts	se
 docs-python/getting-started.crash-course.time-calendars.L121.4.6	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L121.4.7	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L121.4.8	java-accepts	setup: time literal 'PT'
-docs-python/getting-started.docker-install.L304.8.0	java-fails	field access .example
+docs-python/getting-started.docker-install.L304.8.0	java-fails	static method call org.example.MathFns.square()
 docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	object creation (new)
-docs-python/how-to-guides.built-in-functions.L103.9.1	java-fails	static method call StrictMath.acos()
 docs-python/how-to-guides.casting.L122.9.0	java-fails	static method call MyClass.change_value()
 docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	function parseDuration()
 docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: function parseDuration()
@@ -117,31 +114,24 @@ docs-python/how-to-guides.date-time-literals.L85.9.0	java-accepts	time literal '
 docs-python/how-to-guides.date-time-literals.L106.9.0	java-accepts	time literal '14:30:00.12345'
 docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	function parseDuration()
 docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	function parsePeriod()
-docs-python/how-to-guides.dedicated-aggregations.L119.4.0	java-accepts	static method call Long.toString()
-docs-python/how-to-guides.dedicated-aggregations.L119.4.1	java-accepts	setup: static method call Long.toString()
-docs-python/how-to-guides.dedicated-aggregations.L130.4.1	java-accepts	setup: static method call Long.toString()
-docs-python/how-to-guides.dedicated-aggregations.L130.4.2	java-accepts	setup: static method call Long.toString()
 docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: where
 docs-python/how-to-guides.grouping-data.L120.4.1	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.grouping-data.L147.4.1	java-accepts	setup: object creation (new)
-docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	field access .codehaus
+docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	static method call org.codehaus.plexus.util.StringUtils.abbreviate()
 docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	object creation (new)
 docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: object creation (new)
-docs-python/how-to-guides.java-classes.L66.9.0	java-fails	static method call Math.random()
 docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	function parseDuration()
 docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: function parseDuration()
 docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: function parseDuration()
 docs-python/how-to-guides.java-classes.L88.9.4	java-accepts	setup: function parseDuration()
-docs-python/how-to-guides.joins-exact-relational.L263.8.2	java-fails	static method call Math.sin()
 docs-python/how-to-guides.keyed-transpose.L229.10.0	java-accepts	method call String.replace()
 docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: where
-docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	field access .lang
+docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	static method call java.lang.Thread.currentThread()
 docs-python/how-to-guides.python-classes.L45.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L66.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call MyClass.change_value()
 docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.use-numpy.L136.9.0	java-accepts	field access .PI
 docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	function absAvg()
 docs-python/how-to-guides.work-with-arrays.L280.9.0	java-accepts	object creation (new)
 docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
@@ -175,10 +165,6 @@ docs-python/reference.community-questions.convert-integer-date-to-formatted-stri
 docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	time literal 'ET'
 docs-python/reference.community-questions.python-vs-query-language-time-ops.L38.9.0	java-accepts	function parseInstant()
 docs-python/reference.community-questions.python-vs-query-language-time-ops.L39.9.0	java-accepts	setup: function parseInstant()
-docs-python/reference.query-language.types.NaNs.L29.9.0	java-fails	field access .lang
-docs-python/reference.table-operations.join.full-outer-join.L70.8.2	java-fails	static method call Math.sin()
-docs-python/reference.table-operations.join.full-outer-join.L93.7.1	java-fails	static method call Math.sin()
-docs-python/reference.table-operations.join.full-outer-join.L94.8.1	java-fails	static method call Math.cos()
 grid-array/extra.72	java-fails	an index on a value of a vector type
 grid-array/extra.73	java-fails	an index on a value of a vector type
 grid-array/extra.85	java-accepts	a column array of type Vector(Boolean) as the value of a formula, which Java sends as strings (io.deephaven.engine.table.vectors.ColumnVectors#of)
@@ -318,13 +304,6 @@ grid-function/java.14	java-fails	method call String.replace()
 grid-function/java-guarded.14	java-accepts	method call String.replace()
 grid-function/java.16	java-fails	method call String.hashCode()
 grid-function/java-guarded.16	java-accepts	method call String.hashCode()
-grid-function/java.18	java-accepts	static method call String.valueOf()
-grid-function/java.19	java-accepts	static method call Integer.parseInt()
-grid-function/java.20	java-fails	static method call Math.abs()
-grid-function/java.21	java-fails	static method call Math.max()
-grid-function/java.22	java-fails	static method call Math.sqrt()
-grid-function/java.23	java-fails	static method call Math.floorMod()
-grid-function/java.26	java-accepts	static method call Double.isNaN()
 grid-function/java.28	java-accepts	object creation (new)
 grid-function/java.29	java-accepts	object creation (new)
 grid-literal/plus.boolean.null	java-fails	null literal as an operand of +
@@ -527,19 +506,9 @@ grid-where/columns.ge.string.double	java-fails	ordering comparison of String wit
 grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
 grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
 grid-where/extra.018	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
-java-engine/DeferredViewTableTest.L104.0.0	java-accepts	static method call DateTimeUtils.now()
-java-engine/QueryTableAggregationTest.L163.0.0	java-accepts	static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L163.0.1	java-accepts	setup: static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L164.0.0	java-accepts	static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L164.0.1	java-accepts	setup: static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L206.0.2	java-accepts	setup: static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L231.1.0	java-accepts	static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L231.1.1	java-accepts	setup: static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: static method call Integer.toString()
-java-engine/QueryTableAggregationTest.L424.0.0	java-accepts	static method call Long.toString()
-java-engine/QueryTableAggregationTest.L424.0.1	java-accepts	setup: static method call Long.toString()
+java-engine/QueryTableAggregationTest.L231.1.1	java-accepts	method call String.hashCode()
+java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: method call String.hashCode()
 java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
-java-engine/QueryTableRangeJoinTest.L160.0.0	java-accepts	static method call Long.toString()
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
 java-engine/QueryTableRangeJoinTest.L185.0.0	java-accepts	object creation (new)
 java-engine/QueryTableRangeJoinTest.L185.0.1	java-accepts	setup: object creation (new)
@@ -548,8 +517,6 @@ java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1000.0.1	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1059.0.1	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1060.0.0	java-accepts	setup: where
-java-engine/QueryTableSelectUpdateTest.L1081.0.1	java-accepts	static method call DateTimeUtils.now()
-java-engine/QueryTableSelectUpdateTest.L1081.1.0	java-accepts	setup: static method call DateTimeUtils.now()
 java-engine/QueryTableSelectUpdateTest.L1091.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1122.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1122.0.1	java-accepts	setup: where
@@ -561,25 +528,9 @@ java-engine/QueryTableSelectUpdateTest.L1166.0.1	java-fails	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.1	java-fails	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
-java-engine/QueryTableSelectUpdateTest.L1675.0.2	java-accepts	static method call String.valueOf()
 java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on int and Vector(Int)
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
-java-engine/QueryTableWhereTest.L3130.0.0	java-accepts	static method call Long.toString()
-java-engine/QueryTableWhereTest.L3130.0.1	java-accepts	setup: static method call Long.toString()
-java-engine/TestAggBy.L394.0.0	java-accepts	static method call DateTimeUtils.epochNanosToInstant()
-java-engine/TestAggBy.L1441.0.0	java-accepts	static method call Long.toHexString()
-java-engine/TestAggBy.L1441.0.1	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1441.0.2	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1441.0.3	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1441.0.4	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.0	java-accepts	static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.1	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.2	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.3	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.4	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestAggBy.L1458.0.5	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestTreeTable.L118.0.1	java-accepts	static method call Long.numberOfLeadingZeros()
 java-engine/TestWindowCheck.L308.0.0	java-fails	time literal '2022-07-01T00:00 NY'
 java-formula-column/L94.0	java-fails	time literal '2019-04-11T09:30 NY'
 java-formula-column/L137.0	java-accepts	object creation (new)
@@ -590,22 +541,15 @@ java-formula-column/L141.0	java-accepts	object creation (new)
 java-formula-column/L142.0	java-accepts	object creation (new)
 java-formula-column/L143.0	java-accepts	object creation (new)
 java-formula-column/L329.0	java-fails	cast to Object
-java-formula-column/L330.0	java-fails	static method call Long.parseLong()
-java-formula-column/L215.e	java-fails	static method call Math.sqrt()
-java-formula-column/L219.e	java-fails	static method call Math.sqrt()
-java-formula-column/L226.e	java-fails	field access .util
+java-formula-column/L226.e	java-fails	static method call java.util.Collections.singletonList()
 java-formula-column/L230.e	java-fails	static method call Arrays.asList()
-java-formula-column/L234.e	java-accepts	field access .deephaven
+java-formula-column/L234.e	java-accepts	field access .Normal
 java-formula-column/L238.e	java-fails	field access .class
 java-formula-column/L242.e	java-accepts	field access .JANUARY
 java-formula-column/L246.e	java-fails	static method call Calendar.getAvailableCalendarTypes()
-java-formula-column/L254.e	java-fails	static method call Math.sqrt()
-java-formula-column/L258.e	java-fails	static method call Math.sqrt()
-java-formula-column/L297.e	java-accepts	static method call Integer.toString()
 java-formula-column/L301.e	java-accepts	object creation (new)
 java-formula-column/L305.e	java-accepts	object creation (new)
 java-formula-column/L309.e	java-fails	object creation (new)
-java-formula-column/L317.e	java-accepts	static method call DateTimeUtils.epochNanosToInstant()
 java-parser/L158.0	java-accepts	fixture column of type int32[]
 java-parser/L162.0	java-accepts	fixture column of type int32[]
 java-parser/L166.0	java-accepts	fixture column of type int32[]
@@ -790,23 +734,14 @@ java-parser/L3096.0	java-fails	fixture column of type int32[]
 java-parser/L3099.0	java-fails	fixture column of type int32[]
 java-parser/L3103.0	java-fails	fixture column of type int32[]
 py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
-py-server/test_data_index.L15.21.2	java-accepts	static method call String.valueOf()
-py-server/test_data_index.L15.21.3	java-accepts	setup: static method call String.valueOf()
-py-server/test_filters.L46.25.0	java-accepts	static method call String.valueOf()
-py-server/test_filters.L54.25.0	java-accepts	setup: static method call String.valueOf()
-py-server/test_filters.L111.12.1	java-accepts	static method call String.valueOf()
-py-server/test_filters.L137.13.0	java-accepts	setup: static method call String.valueOf()
-py-server/test_filters.L137.13.0-r2	java-accepts	setup: static method call String.valueOf()
-py-server/test_filters.L144.12.2	java-accepts	setup: static method call String.valueOf()
-py-server/test_function_generated_table.L31.19.0	java-fails	field access .deephaven
-py-server/test_parquet.L107.16.1	java-accepts	static method call String.valueOf()
-py-server/test_parquet.L107.16.2	java-accepts	setup: static method call String.valueOf()
-py-server/test_parquet.L221.19.1	java-accepts	static method call DateTimeUtils.now()
-py-server/test_parquet.L466.19.0	java-accepts	field access .time
-py-server/test_parquet.L466.19.1	java-accepts	setup: field access .time
-py-server/test_parquet.L466.19.2	java-accepts	setup: field access .time
-py-server/test_parquet.L466.19.3	java-accepts	setup: field access .time
-py-server/test_parquet.L520.19.0	java-accepts	field access .time
+py-server/test_filters.L137.13.0	java-accepts	cast to java.lang.Object
+py-server/test_filters.L137.13.0-r2	java-accepts	setup: cast to java.lang.Object
+py-server/test_function_generated_table.L31.19.0	java-fails	static method call io.deephaven.base.clock.Clock.system()
+py-server/test_parquet.L466.19.0	java-accepts	static method call java.time.LocalDate.ofEpochDay()
+py-server/test_parquet.L466.19.1	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
+py-server/test_parquet.L466.19.2	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
+py-server/test_parquet.L466.19.3	java-accepts	setup: static method call java.time.LocalDate.ofEpochDay()
+py-server/test_parquet.L520.19.0	java-accepts	static method call java.time.LocalTime.of()
 py-server/test_table.L1307.13.1	java-accepts	object creation (new)
 py-server/test_table.L1308.13.1	java-accepts	object creation (new)
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR

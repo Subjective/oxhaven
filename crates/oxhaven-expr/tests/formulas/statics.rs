@@ -1,0 +1,443 @@
+//! Static methods and fields called through their class: `java.lang.Math`, the boxed
+//! classes, `String`, and the classes of the default static imports.
+//!
+//! The expected values are what Java 42.9 returned for the same formulas on the same
+//! columns: over gRPC for the methods a client may call, and in a console script for
+//! those of `Math`, which Java refuses a client.
+
+use super::*;
+use oxhaven_expr::RequestCompiler;
+
+/// A null in the third row and the type's extreme in the last, as the probe table had.
+fn table() -> TestTable {
+    TestTable::new([
+        ("B", bytes([Some(-1), Some(0), None, Some(2), Some(3)])),
+        (
+            "S",
+            shorts([Some(-100), Some(0), None, Some(200), Some(300)]),
+        ),
+        (
+            "C",
+            chars([Some('A'), Some('B'), None, Some('D'), Some('E')]),
+        ),
+        (
+            "I",
+            ints([Some(-1), Some(0), None, Some(2), Some(i32::MAX)]),
+        ),
+        (
+            "L",
+            longs([Some(-3), Some(0), None, Some(6), Some(i64::MAX)]),
+        ),
+        (
+            "F",
+            floats([Some(-0.5), Some(0.0), None, Some(1.0), Some(f32::NAN)]),
+        ),
+        (
+            "D",
+            doubles([Some(-0.5), Some(0.0), None, Some(1.0), Some(f64::NAN)]),
+        ),
+        (
+            "Z",
+            booleans([Some(true), Some(false), None, Some(false), Some(true)]),
+        ),
+        (
+            "T",
+            strings([Some("x-0"), Some("x-1"), None, Some("x-3"), Some("")]),
+        ),
+        (
+            "N",
+            strings([Some("-7"), Some("0"), Some("7"), Some("14"), Some("21")]),
+        ),
+        (
+            "TS",
+            instants([
+                Some(1_710_053_999_123_456_789),
+                Some(1_710_057_599_123_456_789),
+                None,
+                Some(1_710_064_799_123_000_000),
+                Some(0),
+            ]),
+        ),
+    ])
+}
+
+fn texts<const N: usize>(values: [&str; N]) -> Column {
+    strings(values.map(Some))
+}
+
+#[test]
+fn a_number_prints_as_the_value_the_generated_code_holds() {
+    let table = table();
+    let ints_printed = ["-1", "0", "-2147483648", "2", "2147483647"];
+    table.assert("Integer.toString(I)", texts(ints_printed));
+    table.assert("String.valueOf(I)", texts(ints_printed));
+    // A narrower argument is converted by `intCast`, which keeps null.
+    table.assert(
+        "Integer.toString(B)",
+        texts(["-1", "0", "-2147483648", "2", "3"]),
+    );
+    table.assert(
+        "String.valueOf(S)",
+        texts(["-100", "0", "-2147483648", "200", "300"]),
+    );
+    table.assert(
+        "Long.toString(I)",
+        texts(["-1", "0", "-9223372036854775808", "2", "2147483647"]),
+    );
+    table.assert("String.valueOf(C)", texts(["A", "B", "\u{ffff}", "D", "E"]));
+    table.assert(
+        "String.valueOf(D)",
+        texts(["-0.5", "0.0", "-1.7976931348623157E308", "1.0", "NaN"]),
+    );
+    table.assert(
+        "Float.toString(F)",
+        texts(["-0.5", "0.0", "-3.4028235E38", "1.0", "NaN"]),
+    );
+    table.assert(
+        "Double.toString(I)",
+        texts([
+            "-1.0",
+            "0.0",
+            "-1.7976931348623157E308",
+            "2.0",
+            "2.147483647E9",
+        ]),
+    );
+    table.assert(
+        "java.lang.String.valueOf(T)",
+        texts(["x-0", "x-1", "null", "x-3", ""]),
+    );
+    table.assert(
+        "String.valueOf(TS)",
+        texts([
+            "2024-03-10T06:59:59.123456789Z",
+            "2024-03-10T07:59:59.123456789Z",
+            "null",
+            "2024-03-10T09:59:59.123Z",
+            "1970-01-01T00:00:00Z",
+        ]),
+    );
+}
+
+#[test]
+fn radix_and_bit_methods_read_the_null_value_as_a_number() {
+    let table = table();
+    table.assert(
+        "Integer.toString(I, 16)",
+        texts(["-1", "0", "-80000000", "2", "7fffffff"]),
+    );
+    table.assert(
+        "Integer.toString(I, 37)",
+        texts(["-1", "0", "-2147483648", "2", "2147483647"]),
+    );
+    table.assert(
+        "Long.toString(L, 36)",
+        texts(["-3", "0", "-1y2p0ij32e8e8", "6", "1y2p0ij32e8e7"]),
+    );
+    // The radix of the third row is `NULL_INT`, which is no radix, so 10.
+    table.assert(
+        "Long.toString(L, I)",
+        texts([
+            "-3",
+            "0",
+            "-9223372036854775808",
+            "110",
+            "9223372036854775807",
+        ]),
+    );
+    table.assert(
+        "Integer.toHexString(I)",
+        texts(["ffffffff", "0", "80000000", "2", "7fffffff"]),
+    );
+    table.assert(
+        "Long.toHexString(I)",
+        texts(["ffffffffffffffff", "0", "8000000000000000", "2", "7fffffff"]),
+    );
+    table.assert(
+        "Integer.toOctalString(I)",
+        texts(["37777777777", "0", "20000000000", "2", "17777777777"]),
+    );
+    table.assert(
+        "Long.numberOfLeadingZeros(L)",
+        ints([Some(0), Some(64), Some(0), Some(61), Some(1)]),
+    );
+    table.assert(
+        "Long.numberOfTrailingZeros(L)",
+        ints([Some(0), Some(64), Some(63), Some(1), Some(0)]),
+    );
+    table.assert(
+        "Integer.bitCount(I)",
+        ints([Some(32), Some(0), Some(1), Some(1), Some(31)]),
+    );
+}
+
+#[test]
+fn a_result_is_null_only_where_it_is_the_null_value_of_its_type() {
+    let table = table();
+    table.assert(
+        "Integer.valueOf(I)",
+        ints([Some(-1), Some(0), None, Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "Integer.max(I, 0)",
+        ints([Some(0), Some(0), Some(0), Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "Integer.min(I, 0)",
+        ints([Some(-1), Some(0), None, Some(0), Some(0)]),
+    );
+    // The sum wraps to `Integer.MIN_VALUE` in the last row, and that is null.
+    table.assert(
+        "Integer.sum(I, 1)",
+        ints([Some(0), Some(1), Some(-2147483647), Some(3), None]),
+    );
+    table.assert(
+        "Long.compare(L, I)",
+        ints([Some(-1), Some(0), Some(0), Some(1), Some(1)]),
+    );
+    table.assert(
+        "Double.compare(D, 0.0)",
+        ints([Some(-1), Some(0), Some(-1), Some(1), Some(1)]),
+    );
+    table.assert("Double.isNaN(D)", flags([false, false, false, false, true]));
+    table.assert("Double.isNaN(I)", flags([false; 5]));
+    table.assert("Float.isNaN(F)", flags([false, false, false, false, true]));
+    table.assert("Double.isFinite(D)", flags([true, true, true, true, false]));
+    table.assert(
+        "Integer.signum(I)",
+        ints([Some(-1), Some(0), Some(-1), Some(1), Some(1)]),
+    );
+}
+
+#[test]
+fn text_is_parsed_as_java_parses_it() {
+    let table = table();
+    table.assert(
+        "Integer.parseInt(N)",
+        ints([Some(-7), Some(0), Some(7), Some(14), Some(21)]),
+    );
+    table.assert(
+        "Long.valueOf(N)",
+        longs([Some(-7), Some(0), Some(7), Some(14), Some(21)]),
+    );
+    table.assert(
+        "Double.parseDouble(N)",
+        doubles([Some(-7.0), Some(0.0), Some(7.0), Some(14.0), Some(21.0)]),
+    );
+    table.assert("Boolean.parseBoolean(T)", flags([false; 5]));
+    table.assert("Boolean.parseBoolean(`TRUE`)", flags([true; 5]));
+    // A null fails: `NumberFormatException` or `NullPointerException` in Java.
+    for formula in [
+        "Integer.parseInt(T)",
+        "Long.parseLong(T)",
+        "Double.parseDouble(T)",
+        "Float.parseFloat(T)",
+        "Integer.valueOf(T)",
+        "String.valueOf(Z)",
+        "Boolean.toString(Z)",
+    ] {
+        assert!(table.evaluate(formula).is_err(), "{formula}");
+    }
+    table.assert(
+        "Boolean.toString(Z == null ? false : Z)",
+        texts(["true", "false", "false", "false", "true"]),
+    );
+}
+
+#[test]
+fn math_computes_on_the_null_values() {
+    let table = table();
+    // `doubleCast` keeps the null of the `int`, and `sin` takes it as a number.
+    let of_null = (-f64::MAX).sin();
+    let (ColumnType::Double, sines) = table.evaluate("Math.sin(I)").unwrap() else {
+        panic!("Math.sin is a double")
+    };
+    let sines = sines.as_primitive::<arrow::datatypes::Float64Type>();
+    assert!(sines.is_valid(2));
+    assert_eq!(sines.value(2), of_null);
+    table.assert(
+        "Math.abs(I)",
+        ints([Some(1), Some(0), None, Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "Math.abs(S)",
+        ints([Some(100), Some(0), None, Some(200), Some(300)]),
+    );
+    table.assert(
+        "Math.abs(D)",
+        doubles([
+            Some(0.5),
+            Some(0.0),
+            Some(f64::MAX),
+            Some(1.0),
+            Some(f64::NAN),
+        ]),
+    );
+    table.assert(
+        "Math.max(I, 2)",
+        ints([Some(2), Some(2), Some(2), Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "Math.max(I, L)",
+        longs([Some(-1), Some(0), None, Some(6), Some(i64::MAX)]),
+    );
+    table.assert(
+        "Math.max(D, I)",
+        doubles([Some(-0.5), Some(0.0), None, Some(2.0), Some(f64::NAN)]),
+    );
+    table.assert(
+        "Math.floor(D)",
+        doubles([Some(-1.0), Some(0.0), None, Some(1.0), Some(f64::NAN)]),
+    );
+    table.assert(
+        "Math.round(D)",
+        longs([Some(0), Some(0), None, Some(1), Some(0)]),
+    );
+    table.assert(
+        "StrictMath.round(F)",
+        ints([Some(0), Some(0), None, Some(1), Some(0)]),
+    );
+    table.assert(
+        "Math.floorMod(I, 3)",
+        ints([Some(2), Some(0), Some(1), Some(2), Some(1)]),
+    );
+    table.assert(
+        "java.lang.Math.floorDiv(I, 2)",
+        ints([
+            Some(-1),
+            Some(0),
+            Some(-1_073_741_824),
+            Some(1),
+            Some(1_073_741_823),
+        ]),
+    );
+    table.assert(
+        "Math.exp(I) == 0",
+        flags([false, false, true, false, false]),
+    );
+    table.assert("Math.PI", doubles([Some(std::f64::consts::PI); 5]));
+    table.assert(
+        "java.lang.StrictMath.E",
+        doubles([Some(std::f64::consts::E); 5]),
+    );
+    assert!(table.evaluate("Math.floorMod(I, 0)").is_err());
+    let (random_type, _) = table.evaluate("Math.random()").unwrap();
+    assert_eq!(random_type, ColumnType::Double);
+}
+
+/// Behavior: `ParsingColumnExpressionValidator#validateInvocations`, as the corpus records
+/// it for `Math.sin(I)` and its relatives sent as table operations.
+#[test]
+fn a_client_may_not_call_math_and_may_call_everything_else() {
+    let table = table();
+    let request = |formula: &str| {
+        RequestCompiler
+            .parse(formula)
+            .and_then(|expr| RequestCompiler.compile(&expr, &table.definition))
+            .map(|_| ())
+    };
+    for (formula, method) in [
+        ("Math.sin(I)", "sin(double) on class java.lang.Math"),
+        (
+            "2 * Math.max(I, L) + 1",
+            "max(long, long) on class java.lang.Math",
+        ),
+        (
+            "java.lang.Math.floorMod(L, I)",
+            "floorMod(long, int) on class java.lang.Math",
+        ),
+        ("Math.random()", "random() on class java.lang.Math"),
+        (
+            "StrictMath.acos(D)",
+            "acos(double) on class java.lang.StrictMath",
+        ),
+        // The first call Java does not allow is the one it names.
+        (
+            "Math.abs(F) + Math.sqrt(D)",
+            "abs(float) on class java.lang.Math",
+        ),
+    ] {
+        assert_eq!(
+            request(formula),
+            Err(FormulaError::Type(format!(
+                "java.lang.IllegalStateException: User expressions are not permitted to use \
+                 static method {method}"
+            ))),
+            "{formula}"
+        );
+    }
+    for formula in [
+        "Math.PI * I",
+        "sin(I)",
+        "Integer.toString(I)",
+        "String.valueOf(D)",
+        "Long.toHexString(L)",
+        "DateTimeUtils.epochNanos(TS)",
+    ] {
+        assert_eq!(request(formula), Ok(()), "{formula}");
+    }
+    // A formula that does not compile fails as it does without the check.
+    assert!(matches!(
+        request("Math.sin(T)"),
+        Err(FormulaError::Unsupported(_))
+    ));
+}
+
+#[test]
+fn a_default_import_may_be_called_through_its_class() {
+    let table = table();
+    let nanos = longs([
+        Some(1_710_053_999_123_456_789),
+        Some(1_710_057_599_123_456_789),
+        None,
+        Some(1_710_064_799_123_000_000),
+        Some(0),
+    ]);
+    table.assert("DateTimeUtils.epochNanos(TS)", nanos.clone());
+    table.assert("io.deephaven.time.DateTimeUtils.epochNanos(TS)", nanos);
+    table.assert(
+        "io.deephaven.function.Numeric.min(D, 0.25)",
+        doubles([Some(-0.5), Some(0.0), Some(0.25), Some(0.25), Some(f64::NAN)]),
+    );
+    table.assert(
+        "io.deephaven.function.Numeric.abs(I)",
+        ints([Some(1), Some(0), None, Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "DateTimeUtils.plus(TS, 1) == TS + 1",
+        booleans([Some(true), Some(true), Some(true), Some(true), Some(true)]),
+    );
+    table.assert("io.deephaven.util.QueryConstants.NULL_INT", ints([None; 5]));
+    table.assert("DateTimeUtils.SECOND", longs([Some(1_000_000_000); 5]));
+    let (now, _) = table.evaluate("DateTimeUtils.now()").unwrap();
+    assert_eq!(now, ColumnType::Instant);
+    // A class has only its own methods, and only `DateTimeUtils` goes without a package.
+    for formula in [
+        "DateTimeUtils.abs(I)",
+        "io.deephaven.function.Numeric.now()",
+        "DateTimeUtils.plus(I, 1)",
+        "io.deephaven.engine.table.impl.lang.QueryLanguageFunctionUtils.plus(TS, 1)",
+        "Numeric.abs(I)",
+        "io.deephaven.function.Numeric.NULL_INT",
+    ] {
+        let error = table.compile_error(formula);
+        assert!(
+            matches!(error, FormulaError::Type(_) | FormulaError::Unsupported(_)),
+            "{formula}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn a_column_comes_before_a_class_of_its_name() {
+    let table = TestTable::new([("Math", doubles([Some(1.0)])), ("X", ints([Some(4)]))]);
+    assert_eq!(
+        table.compile_error("Math.PI"),
+        FormulaError::Unsupported("field access .PI".into())
+    );
+    assert!(matches!(
+        table.compile_error("Math.sqrt(X)"),
+        FormulaError::Type(_)
+    ));
+    table.assert("StrictMath.sqrt(X)", doubles([Some(2.0)]));
+}

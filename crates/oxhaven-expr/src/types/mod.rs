@@ -277,6 +277,9 @@ pub(crate) struct Checked {
     pub(crate) positions: bool,
     /// Whether the formula uses `k`.
     pub(crate) keys: bool,
+    /// Why Java refuses the formula in a table operation of a client, when it does: the
+    /// message of its `ColumnExpressionValidator` for the first call it does not allow.
+    pub(crate) refused_to_clients: Option<String>,
 }
 
 /// Refuses a formula whose value is a column array of a column that is neither primitive
@@ -324,6 +327,7 @@ pub(crate) fn check(
         arrays: Vec::new(),
         positions: false,
         keys: false,
+        refused_to_clients: None,
     };
     let root = checker.check(expr)?;
     refuse_object_column_array(&root)?;
@@ -333,6 +337,7 @@ pub(crate) fn check(
         arrays: checker.arrays,
         positions: checker.positions,
         keys: checker.keys,
+        refused_to_clients: checker.refused_to_clients,
     })
 }
 
@@ -440,6 +445,7 @@ struct Checker<'a> {
     arrays: Vec<String>,
     positions: bool,
     keys: bool,
+    refused_to_clients: Option<String>,
 }
 
 impl Checker<'_> {
@@ -501,7 +507,7 @@ impl Checker<'_> {
 
     fn column(&mut self, name: &str) -> Result<Typed, FormulaError> {
         // The parser writes `Class.FIELD` as one qualified name; a column name has no `.`.
-        if let Some((scope, field)) = name.split_once('.') {
+        if let Some((scope, field)) = name.rsplit_once('.') {
             return self.static_field(scope, field);
         }
         let Some(index) = self.definition.index_of(name) else {
@@ -586,19 +592,111 @@ impl Checker<'_> {
         Ok(typed(ColumnType::vector(element), Node::ColumnArray(slot)))
     }
 
-    /// `scope.field`, where `scope` is a simple name.
+    /// Whether the qualified name `scope` starts with the name of a column, and so is a
+    /// field of that column's value and no class.
+    fn is_column_scope(&self, scope: &str) -> bool {
+        let first = scope.split('.').next().unwrap_or(scope);
+        self.definition.index_of(first).is_some()
+    }
+
+    /// `scope.field`, where `scope` is a name, simple or qualified.
     ///
     /// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)`, which types the scope with
     /// `#resolveName`, where a column comes before a class, and then takes the type of the
     /// field `Class#getField` finds on it. No column type has a field the language reads,
     /// so a column scope stays refused, as does every field [`functions::static_field`]
-    /// does not give.
+    /// does not give. A constant of a class of the default static imports is the constant
+    /// a formula names without the class.
     fn static_field(&self, scope: &str, field: &str) -> Result<Typed, FormulaError> {
-        let class = self.definition.index_of(scope).is_none();
-        match functions::static_field(scope, field).filter(|_| class) {
-            Some((column_type, literal)) => Ok(constant(column_type, literal)),
-            None => Err(unsupported(format!("field access .{field}"))),
+        let refused = || unsupported(format!("field access .{field}"));
+        if self.is_column_scope(scope) {
+            return Err(refused());
         }
+        if functions::is_library_constant(scope, field) {
+            return match functions::constant(field) {
+                Some((column_type, literal)) => Ok(constant(column_type, literal)),
+                None => Err(unsupported(format!("constant {field}"))),
+            };
+        }
+        match functions::static_field(scope, field) {
+            Some((column_type, literal)) => Ok(constant(column_type, literal)),
+            None => Err(refused()),
+        }
+    }
+
+    /// `class.method(arguments)`, where `class` is a name, simple or qualified, that is no
+    /// column.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` with a class as the scope. A
+    /// method of a class of the default static imports is the function a formula calls
+    /// without the class. A method of a class of `java.lang` is the raw Java method
+    /// ([`functions::statics`]): `#convertParameters` wraps an argument of another
+    /// primitive type in the cast function of the parameter's type, and nothing else looks
+    /// for null.
+    fn static_call(
+        &mut self,
+        class: &str,
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        if class.contains('.') && self.is_column_scope(class) {
+            let field = class.split('.').nth(1).unwrap_or(class);
+            return Err(unsupported(format!("field access .{field}")));
+        }
+        let refused = || unsupported(format!("static method call {class}.{method}()"));
+        match functions::library_function(class, method) {
+            functions::LibraryMember::NotLibrary => {}
+            functions::LibraryMember::Missing => {
+                return Err(type_error(format!(
+                    "Cannot find method {method}() in class {class}"
+                )))
+            }
+            functions::LibraryMember::Import => return self.import_call(method, arguments),
+            // The call is that class's method only where the function a formula calls
+            // without the class is.
+            functions::LibraryMember::Shared { time } => {
+                let call = self.import_call(method, arguments)?;
+                let of_time = matches!(
+                    &call.node,
+                    Node::Call { kernel, .. } if kernel.is_shared_time()
+                );
+                return if of_time == time {
+                    Ok(call)
+                } else {
+                    Err(refused())
+                };
+            }
+        }
+        if !functions::statics::is_class(class) {
+            return Err(refused());
+        }
+        let mut checked = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            checked.push(if is_null_literal(argument) {
+                None
+            } else {
+                Some(self.check(argument)?)
+            });
+        }
+        let types: Vec<Option<ColumnType>> = checked
+            .iter()
+            .map(|argument| argument.as_ref().map(|typed| typed.column_type.clone()))
+            .collect();
+        let resolved = functions::statics::resolve(class, method, &types)?;
+        if self.refused_to_clients.is_none() {
+            self.refused_to_clients = resolved.refusal();
+        }
+        let checked: Vec<Typed> = checked.into_iter().flatten().collect();
+        let types: Vec<ColumnType> = types.into_iter().flatten().collect();
+        Ok(library_call(
+            functions::Call {
+                kernel: Kernel::Static(resolved),
+                parameters: functions::statics::parameter_types(resolved, &types),
+                result: resolved.result_type(),
+                exchanged: false,
+            },
+            checked,
+        ))
     }
 
     /// Behavior: `QueryLanguageParser#visit(UnaryExpr)`: `-` resolves to
@@ -1154,7 +1252,7 @@ impl Checker<'_> {
                     .strip_suffix('_')
                     .is_some_and(|base| self.definition.index_of(base).is_some());
             if !column {
-                return Err(unsupported(format!("static method call {name}.{method}()")));
+                return self.static_call(name, method, arguments);
             }
         }
         let receiver = self.check(receiver)?;
@@ -1275,6 +1373,21 @@ impl Checker<'_> {
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:
     /// a static method of the default imports. [`functions::resolve`] chooses the overload.
     fn call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        self.call_of(function, arguments, true)
+    }
+
+    /// A call of a default import through its class, which no function of the embedder
+    /// can stand in for.
+    fn import_call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        self.call_of(function, arguments, false)
+    }
+
+    fn call_of(
+        &mut self,
+        function: &str,
+        arguments: &[Expr],
+        externals: bool,
+    ) -> Result<Typed, FormulaError> {
         if function == "isNull" {
             let [argument] = arguments else {
                 return Err(type_error(format!(
@@ -1310,7 +1423,7 @@ impl Checker<'_> {
             // call, a variable of that name that can be called does. A column of the
             // name is a variable that cannot.
             Err(FormulaError::Type(message)) => {
-                let external = match self.functions {
+                let external = match self.functions.filter(|_| externals) {
                     Some(functions) if self.definition.index_of(function).is_none() => {
                         let described: Vec<ExternalArgument<'_>> = checked
                             .iter()

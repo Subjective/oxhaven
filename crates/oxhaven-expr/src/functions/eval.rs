@@ -23,7 +23,7 @@ fn failure(message: impl Into<String>) -> TableFailure {
 
 /// `java.lang.Math#round(float)`: the nearest `int`, ties toward positive infinity, NaN as
 /// zero, and the ends of the `int` range for what lies beyond them.
-fn round_float(value: f32) -> i32 {
+pub(super) fn round_float(value: f32) -> i32 {
     let floor = value.floor();
     (if value - floor >= 0.5 {
         floor + 1.0
@@ -33,7 +33,7 @@ fn round_float(value: f32) -> i32 {
 }
 
 /// `java.lang.Math#round(double)`, likewise to `long`.
-fn round_double(value: f64) -> i64 {
+pub(super) fn round_double(value: f64) -> i64 {
     let floor = value.floor();
     (if value - floor >= 0.5 {
         floor + 1.0
@@ -393,7 +393,7 @@ fn numeric<T: Number>(
 }
 
 impl Math {
-    fn apply(self, value: f64) -> f64 {
+    pub(super) fn apply(self, value: f64) -> f64 {
         match self {
             Math::Acos => value.acos(),
             Math::Asin => value.asin(),
@@ -430,7 +430,7 @@ fn doubles(values: impl Iterator<Item = Option<f64>>) -> ArrayRef {
 
 /// Behavior: `java.lang.Integer#parseInt(String)` and its relatives for the other types: an
 /// optional sign and decimal digits, within `min..=max`.
-fn parse_integer(text: &str, min: i64, max: i64) -> Result<i64, TableFailure> {
+pub(super) fn parse_integer(text: &str, min: i64, max: i64) -> Result<i64, TableFailure> {
     let invalid = || {
         failure(format!(
             "NumberFormatException: For input string: \"{text}\""
@@ -751,7 +751,7 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
 
 /// `java.lang.Math#pow`, which differs from C's `pow` in two cases: with a NaN exponent the
 /// result is NaN even for a base of one, and one to an infinite power is NaN.
-fn java_pow(base: f64, exponent: f64) -> f64 {
+pub(super) fn java_pow(base: f64, exponent: f64) -> f64 {
     if exponent.is_nan() || (base.abs() == 1.0 && exponent.is_infinite()) {
         f64::NAN
     } else {

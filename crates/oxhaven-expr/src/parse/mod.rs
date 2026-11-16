@@ -128,18 +128,18 @@ fn infix(symbol: &str) -> Option<(u8, Infix)> {
     Some((strength, Infix::Operator(op)))
 }
 
-/// The scope of a static field access the formula language reads: a simple name that may
-/// be one of the boxed numeric classes of `java.lang`.
+/// The scope of a field access that may name a class or a static field: a name, simple
+/// or already qualified.
 ///
-/// `Integer.MAX_VALUE` becomes the qualified name `Integer.MAX_VALUE`, and the type checker
-/// resolves it as it resolves a default-imported constant such as `NULL_INT`: a column of
-/// the scope's name comes first, as a variable comes before a class in
-/// `QueryLanguageParser#resolveName`, and otherwise the field is looked up on the class.
-/// Every other field access is refused here.
+/// `Integer.MAX_VALUE` becomes the qualified name `Integer.MAX_VALUE`, and
+/// `java.lang.Math.sin(X)` a call of `sin` on the qualified name `java.lang.Math`. The type
+/// checker resolves a qualified name: a column of the name of its first part comes first,
+/// as a variable comes before a class in `QueryLanguageParser#resolveName`, and otherwise
+/// the name is a class or a field of one. `.length` is the one field of a value the
+/// language reads, and stays a field of whatever stands before it.
 fn static_field_scope(expr: &Expr) -> Option<&str> {
-    const SCOPES: [&str; 6] = ["Byte", "Short", "Integer", "Long", "Float", "Double"];
     match expr {
-        Expr::Column(name) if SCOPES.contains(&name.as_str()) => Some(name),
+        Expr::Column(name) => Some(name),
         _ => None,
     }
 }
@@ -410,8 +410,11 @@ impl Parser {
                                 .and_then(|at| self.tokens.get(at)),
                             Some((Token::Identifier(_), _))
                         );
-                        expr = match static_field_scope(&expr).filter(|_| bare) {
-                            Some(scope) => Expr::Column(format!("{scope}.{name}")),
+                        let scope = static_field_scope(&expr)
+                            .filter(|_| bare && name != "length")
+                            .map(|scope| format!("{scope}.{name}"));
+                        expr = match scope {
+                            Some(qualified) => Expr::Column(qualified),
                             // The only field of a value the language reads: the type
                             // checker refuses it for anything but a Java array.
                             None if name == "length" => Expr::MethodCall {
@@ -1024,6 +1027,28 @@ mod tests {
                 arguments: vec![column("D")],
             })
         );
+        // A name of several parts is one qualified name, whatever it names: the type
+        // checker knows the classes and the columns.
+        for name in ["Math.PI", "Double.NaN.x", "java.lang.Double.NaN", "A.b"] {
+            assert_eq!(parse_expression(name), Ok(column(name)), "{name}");
+        }
+        assert_eq!(
+            parse_expression("java.lang.Math.sin(D)"),
+            Ok(Expr::MethodCall {
+                receiver: Box::new(column("java.lang.Math")),
+                method: "sin".into(),
+                arguments: vec![column("D")],
+            })
+        );
+        // `.length` stays the field of the value before it.
+        assert_eq!(
+            parse_expression("A.length"),
+            Ok(Expr::MethodCall {
+                receiver: Box::new(column("A")),
+                method: LENGTH_FIELD.into(),
+                arguments: Vec::new(),
+            })
+        );
     }
 
     #[test]
@@ -1032,10 +1057,8 @@ mod tests {
             ("(Integer) A", "cast to Integer"),
             ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
             ("(Integer[]) A", "cast to Integer[]"),
-            ("Math.PI", "field access .PI"),
             ("(Double).NaN", "field access .NaN"),
-            ("Double.NaN.x", "field access .x"),
-            ("java.lang.Double.NaN", "field access .lang"),
+            ("(A + B).x", "field access .x"),
             ("new String(`a`)", "object creation (new)"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];

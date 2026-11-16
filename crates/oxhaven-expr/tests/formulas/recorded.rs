@@ -240,10 +240,13 @@ pub(super) enum Ours {
     Column(Column),
 }
 
+///
+/// The recordings were made with table operations of a client, so the compiler is the one
+/// those run with: Java's server refuses a client some calls that it computes in a script.
 pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
-    let compiled = Compiler
+    let compiled = oxhaven_expr::RequestCompiler
         .parse(formula)
-        .and_then(|expr| Compiler.compile(&expr, &table.definition));
+        .and_then(|expr| oxhaven_expr::RequestCompiler.compile(&expr, &table.definition));
     let compiled = match compiled {
         Ok(compiled) => compiled,
         Err(error) => return Ours::Rejected(error),

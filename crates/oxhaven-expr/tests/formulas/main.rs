@@ -14,6 +14,7 @@ mod formula;
 mod gaps;
 mod logic;
 mod recorded;
+mod statics;
 mod tagged;
 
 use arrow::array::{

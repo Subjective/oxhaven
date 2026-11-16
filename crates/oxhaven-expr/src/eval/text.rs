@@ -119,7 +119,7 @@ pub(crate) fn instant_to_string(nanos: i64) -> String {
 /// `NULL_INT` and prints as `-2147483648`, a null `double` prints as
 /// `-1.7976931348623157E308`, and a null `char` is the character U+FFFF. A `Boolean`,
 /// `String` or `Instant` is a reference, and a null reference prints as `null`.
-fn java_strings(array: &dyn Array) -> Result<Vec<String>, TableFailure> {
+pub(crate) fn java_strings(array: &dyn Array) -> Result<Vec<String>, TableFailure> {
     fn primitive<P: arrow::datatypes::ArrowPrimitiveType>(
         array: &dyn Array,
         null: P::Native,
