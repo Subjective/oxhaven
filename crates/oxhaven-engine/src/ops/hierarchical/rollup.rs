@@ -536,6 +536,9 @@ impl RollupTable {
     /// Behavior: io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
     /// and #absoluteSelectColumns
     pub fn check_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
+        if !self.aggregated_columns.is_empty() {
+            return self.check_recorded_sorts(false, &self.node_operations(false)?, sorts);
+        }
         let finest = &self.levels.tables[self.group_by.len()];
         check_sort_columns(finest.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
@@ -577,6 +580,9 @@ impl RollupTable {
     /// BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
     pub fn check_constituent_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
         self.assert_includes_constituents()?;
+        if !self.constituent_columns.is_empty() {
+            return self.check_recorded_sorts(true, &self.node_operations(true)?, sorts);
+        }
         check_sort_columns(self.base.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
                 let definition = self.base.definition();
