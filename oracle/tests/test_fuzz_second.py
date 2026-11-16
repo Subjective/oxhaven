@@ -279,9 +279,20 @@ def test_what_a_finding_restricts_is_not_drawn():
             if op["source"] in live and distances:
                 seen["R5"] += 1
                 assert len(distances) == 1, (doc["name"], op)
-        elif kind == "agg_by" and "initial_groups" in op and op["name"] in live:
-            seen["R4"] += 1
-            assert op["preserve_empty"] is True, (doc["name"], op)
+        elif kind == "agg_by" and op["name"] in live and (
+                "initial_groups" in op or op.get("preserve_empty")):
+            types = dict(predicted[op["source"]])
+            if "initial_groups" in op:
+                seen["R4"] += 1
+                assert op["preserve_empty"] is True, (doc["name"], op)
+                seen["J6"] += 1
+                assert not {"first", "last"} <= {agg["agg"] for agg in op["aggs"]}, (
+                    doc["name"], op)
+            if op.get("preserve_empty"):
+                seen["J5"] += 1
+                assert not any(
+                    agg["agg"] == "distinct" and types[pair.split("=")[-1].strip()] == "timestamp"
+                    for agg in op["aggs"] for pair in agg.get("columns", ())), (doc["name"], op)
         elif kind == "keyed_transpose":
             types = dict(predicted[op["source"]])
             seen["R7"] += 1
@@ -299,7 +310,7 @@ def test_what_a_finding_restricts_is_not_drawn():
                         if found.group(2) in types:
                             seen["J4"] += 1
                             assert op["source"] not in live, (doc["name"], op)
-    for name in ("J1", "J2", "J4", "R1", "R2", "R4", "R5", "R6", "R7"):
+    for name in ("J1", "J2", "J4", "J5", "J6", "R1", "R2", "R4", "R5", "R6", "R7"):
         assert seen[name] > 5, (name, seen[name])
 
 

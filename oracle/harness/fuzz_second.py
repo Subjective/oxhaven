@@ -67,6 +67,9 @@ RESTRICTIONS: dict[str, str] = {
     "J2": "second_formula: no fixed-distance read in a select of anything but an input table",
     "J4": "stops_reference: no count where of update_by that compares two columns, on a "
           "refreshing table (the reference fails it when the first row is read)",
+    "J5": "build_agg: no distinct of a timestamp column with preserve_empty on a refreshing "
+          "table (the reference cannot write a group that lost its rows)",
+    "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
     "D4": "filter: no zone the reference refuses in a comparison of a timestamp column "
           "with a literal",
     "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
@@ -347,8 +350,18 @@ class _Second(_Wide):
                 self.tables[op["name"]].live |= self.tables[initial].live
         if "initial_groups" not in op or self.chance(0.4):
             op["preserve_empty"] = self.chance(0.8)
-        if "initial_groups" in op and self.tables[op["name"]].live:
+        live = self.tables[op["name"]].live
+        kinds = {agg["agg"] for agg in op["aggs"]}
+        if live and {"first", "last"} <= kinds:
+            op.pop("initial_groups", None)  # J6
+        if "initial_groups" in op and live:
             op["preserve_empty"] = True  # R4
+        if live and op.get("preserve_empty") and any(
+                agg["agg"] == "distinct" and source.type_of(
+                    pair.split("=")[-1].strip()) == "timestamp"
+                for agg in op["aggs"] for pair in agg.get("columns", ())):
+            op.pop("initial_groups", None)  # J5
+            op["preserve_empty"] = False
         return True
 
     # ------------------------------------------------------------ partitioned tables
