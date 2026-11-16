@@ -292,11 +292,6 @@ def test_what_a_finding_restricts_is_not_drawn():
                 assert not any(
                     agg["agg"] == "distinct" and types[pair.split("=")[-1].strip()] == "timestamp"
                     for agg in op["aggs"] for pair in agg.get("columns", ())), (doc["name"], op)
-        elif kind == "keyed_transpose":
-            types = dict(predicted[op["source"]])
-            seen["R7"] += 1
-            assert not {types[c] for c in op["col_by"]} & {"float32", "timestamp"}, (
-                doc["name"], op)
         elif kind == "update_by":
             types = dict(predicted[op["source"]])
             for operator in op["ops"]:
@@ -304,7 +299,7 @@ def test_what_a_finding_restricts_is_not_drawn():
                     seen["J1"] += 1  # and J4
                     found = fuzz_second._COLUMN_COMPARISON.match(text)
                     assert not found or found.group(2) not in types, (doc["name"], op)
-    for name in ("J1", "J2", "J5", "J6", "J7", "R1", "R5", "R6", "R7"):
+    for name in ("J1", "J2", "J5", "J6", "J7", "R1", "R5", "R6"):
         assert seen[name] > 5, (name, seen[name])
 
 

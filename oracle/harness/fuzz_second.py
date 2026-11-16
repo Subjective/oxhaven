@@ -79,7 +79,6 @@ RESTRICTIONS: dict[str, str] = {
           "add-only table the reference's result fails when a group gets its first row)",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
     "R6": "second_formula, filter: no column array of an array column",
-    "R7": "build_keyed_transpose: no float32 or timestamp column to name columns after",
     "R8": "_DURATIONS: no period of months or years",
 }
 _COLUMN_COMPARISON = re.compile(r"^([A-Za-z_]\w*) (?:<|<=|>|>=|==|!=) ([A-Za-z_]\w*)$")
@@ -438,8 +437,7 @@ class _Second(_Wide):
         if len(usable) < 2:
             return False
         row_by = self.keys(source, 1, 2)
-        named = [c for c in usable if c not in row_by
-                 and source.type_of(c) not in ("float32", "timestamp")]  # R7
+        named = [c for c in usable if c not in row_by]
         if not named:
             return False
         col_by = rng.sample(named, 1 if self.chance(0.85) else min(2, len(named)))
