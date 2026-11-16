@@ -1,6 +1,7 @@
 //! Literal text to typed values: what a match or range filter compares a column with.
 
 use oxhaven_column::sentinel::{NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
+use oxhaven_contracts::expr::{Expr, FormulaCompiler, FormulaError, Literal};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::unported;
 
@@ -267,12 +268,55 @@ fn parse_time(text: &str) -> Option<i64> {
 /// milliseconds, microseconds or nanoseconds, whichever its magnitude suggests.
 ///
 /// Only the UTC forms `yyyy-MM-ddTHH:mm[:ss[.f]] UTC`, `yyyy-MM-dd UTC` and
-/// `yyyy-MM-ddTHH:mm[:ss[.f]]Z` are read; other zones need the time zone database.
+/// `yyyy-MM-ddTHH:mm[:ss[.f]]Z` are read; other zones need the time zone database, which
+/// [`parse_instant_with`] reaches through the formula compiler.
 ///
 /// Behavior: io.deephaven.time.DateTimeUtils#parseInstant,
 /// io.deephaven.time.DateTimeUtils#epochAutoToEpochNanos,
 /// io.deephaven.time.DateTimeUtils#parseZonedDateTime
 pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
+    match read_instant(text)? {
+        Some(nanos) => Ok(nanos),
+        None => unported!(
+            "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
+            "the date time {text}"
+        ),
+    }
+}
+
+/// [`parse_instant`], with any zone the formula compiler reads in a time literal: the
+/// text is the content of one, and Java reads both with the one method.
+///
+/// Behavior: io.deephaven.time.DateTimeUtils#parseInstant, which is
+/// `parseZonedDateTime(s).toInstant()` for text that is not a whole number, as is the
+/// instant of a time literal (io.deephaven.time.TimeLiteralReplacedExpression#convertExpression).
+/// Text the compiler reads as another kind of time literal, a date or a duration, is no
+/// instant.
+pub(super) fn parse_instant_with(
+    text: &str,
+    compiler: &dyn FormulaCompiler,
+) -> Result<i64, String> {
+    if let Some(nanos) = read_instant(text)? {
+        return Ok(nanos);
+    }
+    let bad = || format!("Cannot parse instant: {text}");
+    // A quote would end the literal, and the rest would be read as a formula.
+    if text.contains('\'') {
+        return Err(bad());
+    }
+    match compiler.parse(&format!("'{text}'")) {
+        Ok(Expr::Literal(Literal::Instant(nanos))) => Ok(nanos),
+        Ok(_) | Err(FormulaError::Syntax(_) | FormulaError::Type(_)) => Err(bad()),
+        Err(FormulaError::Unsupported(_)) => unported!(
+            "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
+            "the date time {text}"
+        ),
+    }
+}
+
+/// [`parse_instant`] for the forms it reads itself; `None` for text with a date or a
+/// time in it that is none of them.
+fn read_instant(text: &str) -> Result<Option<i64>, String> {
     let bad = || format!("Cannot parse instant: {text}");
     let digits = text.strip_prefix('-').unwrap_or(text);
     if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -280,10 +324,10 @@ pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
         // TimeConstants.MICROTIME_THRESHOLD
         const MICROS: u64 = 9_309_341_000_000;
         if offset == NULL_LONG {
-            return Ok(offset);
+            return Ok(Some(offset));
         }
         let size = offset.unsigned_abs();
-        return Ok(if size > 1000 * MICROS {
+        return Ok(Some(if size > 1000 * MICROS {
             offset
         } else if size > MICROS {
             offset.wrapping_mul(1000)
@@ -291,7 +335,7 @@ pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
             offset.wrapping_mul(1_000_000)
         } else {
             offset.wrapping_mul(1_000_000_000)
-        });
+        }));
     }
     let nanos_of = |date: &str, time: Option<&str>| -> Option<i64> {
         let days = parse_date(date)?;
@@ -314,13 +358,10 @@ pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
         None
     };
     match utc {
-        Some(nanos) => Ok(nanos),
+        Some(nanos) => Ok(Some(nanos)),
         // Every form Java reads has a date or a time in it.
         None if !text.bytes().any(|b| b.is_ascii_digit()) => Err(bad()),
-        None => unported!(
-            "io.deephaven.time.DateTimeUtils#parseZonedDateTime",
-            "the date time {text}"
-        ),
+        None => Ok(None),
     }
 }
 
@@ -330,6 +371,15 @@ pub(super) fn parse_instant(text: &str) -> Result<i64, String> {
 /// Behavior: io.deephaven.engine.table.impl.select.MatchFilter.ColumnTypeConvertorFactory#getConvertor
 /// (each convertor's `convertStringLiteral`)
 fn convert_literal(column_type: &ColumnType, text: &str) -> Result<Key, String> {
+    convert_literal_with(column_type, text, None)
+}
+
+/// [`convert_literal`]; with a compiler, an instant may name any zone it reads.
+fn convert_literal_with(
+    column_type: &ColumnType,
+    text: &str,
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<Key, String> {
     let integer = |null_name: &str, min: i64, max: i64| -> Result<Key, String> {
         if text == "null" || text == null_name {
             return Ok(Key::Null);
@@ -416,7 +466,11 @@ fn convert_literal(column_type: &ColumnType, text: &str) -> Result<Key, String> 
                     "Instant literal not enclosed in single-quotes (\"{text}\")"
                 ));
             }
-            let nanos = parse_instant(&text[1..text.len() - 1])?;
+            let inner = &text[1..text.len() - 1];
+            let nanos = match compiler {
+                Some(compiler) => parse_instant_with(inner, compiler)?,
+                None => parse_instant(inner)?,
+            };
             Ok(if nanos == NULL_LONG {
                 Key::Null
             } else {
@@ -460,6 +514,7 @@ pub(super) fn convert_value(
     column: &ColumnDefinition,
     definition: &TableDefinition,
     text: &str,
+    compiler: &dyn FormulaCompiler,
 ) -> Result<Key, String> {
     let failed = |why: &str| {
         format!(
@@ -476,7 +531,8 @@ pub(super) fn convert_value(
     {
         return Err(failed("; it is a column array access name"));
     }
-    convert_literal(&column.column_type, text).map_err(|e| failed(&format!(": {e}")))
+    convert_literal_with(&column.column_type, text, Some(compiler))
+        .map_err(|e| failed(&format!(": {e}")))
 }
 
 #[cfg(test)]
@@ -581,8 +637,48 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "unported: io.deephaven.time.DateTimeUtils#parseZonedDateTime")]
-    fn other_time_zones_are_unported() {
-        let _ = parse_instant("2023-11-14T22:13:20 NY");
+    fn other_time_zones_are_unported_without_a_compiler() {
+        let _ = parse_instant("2023-11-14T22:13:20 ET");
+    }
+
+    /// Expected values and refusals are those of Java 42.9 for `where T >= '...'`
+    /// (tasks/4.20-fuzz-findings-2.md, D4, R2 and R3).
+    #[test]
+    fn a_compiler_reads_the_zones_java_reads_and_refuses_the_rest() {
+        let with = |text| parse_instant_with(text, &oxhaven_expr::Compiler);
+        let base = 1_700_000_000_000_000_000_i64;
+        assert_eq!(with("2023-11-14T17:13:21 ET"), Ok(base + 1_000_000_000));
+        assert_eq!(
+            with("2023-11-14T23:13:21 Europe/Paris"),
+            Ok(base + 1_000_000_000)
+        );
+        assert_eq!(with("2023-11-14T23:13:21 +01:00"), Ok(base + 1_000_000_000));
+        assert_eq!(with("2023-11-14 ET"), Ok(base - 62_000_000_000_000));
+        assert_eq!(with("2023-11-14T22:13:20 UTC"), Ok(base));
+        assert_eq!(with("1700000000"), Ok(base));
+        for text in [
+            "2023-11-14T22:13:21",
+            "2023-11-14T22:13:21 NY",
+            "2023-11-14T22:13:21 EST",
+            "2023-11-14T22:13:21 et",
+            "2023-11-14",
+            "PT1s",
+            "12:30",
+            "ET",
+            "2023-11-14T22:13:21 UTC' + '",
+        ] {
+            assert_eq!(
+                with(text),
+                Err(format!("Cannot parse instant: {text}")),
+                "{text}"
+            );
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "unported: io.deephaven.time.DateTimeUtils#parseZonedDateTime")]
+    fn a_spelling_the_compiler_does_not_read_is_unported() {
+        let _ = parse_instant_with("2023-11-14T22:13:20+01:00", &oxhaven_expr::Compiler);
     }
 
     #[test]

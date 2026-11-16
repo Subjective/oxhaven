@@ -458,7 +458,14 @@ impl AggOperator for SortedValues {
     fn ensure_slots(&mut self, slots: usize) {
         if self.sets.len() < slots {
             self.sets.resize(slots, Multiset::default());
-            self.present.resize(slots, false);
+            // Behavior: without key columns Java gives the operator the table's rows once
+            // when the aggregation is made, also when there are none, and its singleton
+            // `addChunk` makes the set before it looks at them: the group of a table
+            // without rows, which `preserve_empty` keeps, is an empty vector until a
+            // removal empties a set that held values (observed on Java 42.9,
+            // tasks/4.20-fuzz-findings-2.md, D3).
+            let singleton = matches!(self.mode, SetMode::Distinct { singleton: true });
+            self.present.resize(slots, singleton);
         }
     }
 

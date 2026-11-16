@@ -1,5 +1,4 @@
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
-docs-python/conceptual.time-in-deephaven.L627.4.0	java-fails	time literal '2017-04-29T10:30:00 IST'
 docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	function nanosToSeconds()
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	constructor new java.net.URL()
 docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
@@ -307,7 +306,6 @@ grid-where/columns.ge.string.float	java-fails	ordering comparison of String with
 grid-where/columns.ge.string.double	java-fails	ordering comparison of String with double
 grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
 grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
-java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
 java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1000.0.1	java-accepts	setup: where
@@ -327,8 +325,6 @@ java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
 java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on int and Vector(Int)
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
-java-engine/TestWindowCheck.L308.0.0	java-fails	time literal '2022-07-01T00:00 NY'
-java-formula-column/L94.0	java-fails	time literal '2019-04-11T09:30 NY'
 java-formula-column/L329.0	java-fails	method call .hashCode() on a value of type Object
 java-formula-column/L226.e	java-fails	static method call java.util.Collections.singletonList()
 java-formula-column/L230.e	java-fails	static method call Arrays.asList()

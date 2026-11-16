@@ -208,6 +208,7 @@ fn resolve_match(
     values: &[String],
     options: MatchOptions,
     definition: &TableDefinition,
+    compiler: &dyn FormulaCompiler,
 ) -> Result<Resolved, String> {
     let mut values = values.to_vec();
     let index = match definition.index_of(column) {
@@ -225,7 +226,7 @@ fn resolve_match(
     let column = &definition.columns()[index];
     let keys = values
         .iter()
-        .map(|value| convert_value(column, definition, value))
+        .map(|value| convert_value(column, definition, value, compiler))
         .collect::<Result<_, _>>()?;
     Ok(Resolved::Match {
         column: index,
@@ -240,13 +241,14 @@ fn resolve_range(
     op: RangeOp,
     value: &str,
     definition: &TableDefinition,
+    compiler: &dyn FormulaCompiler,
 ) -> Result<Resolved, String> {
     let (index, op, value) = match (definition.index_of(column), definition.index_of(value)) {
         (Some(index), _) => (index, op, value),
         (None, Some(index)) => (index, op.mirror(), column),
         (None, None) => return Err(no_column(column, definition)),
     };
-    let pivot = convert_value(&definition.columns()[index], definition, value)?;
+    let pivot = convert_value(&definition.columns()[index], definition, value, compiler)?;
     Ok(Resolved::Range {
         column: index,
         op,
@@ -312,7 +314,7 @@ pub(super) fn resolve(
             options,
             failover,
         } => or_failover(
-            resolve_match(column, values, *options, definition),
+            resolve_match(column, values, *options, definition, compiler),
             failover.as_ref(),
             definition,
             compiler,
@@ -323,7 +325,7 @@ pub(super) fn resolve(
             value,
             failover,
         } => or_failover(
-            resolve_range(column, *op, value, definition),
+            resolve_range(column, *op, value, definition, compiler),
             failover.as_ref(),
             definition,
             compiler,

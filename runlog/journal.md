@@ -1054,3 +1054,19 @@ Pull request 123 (Object, DayOfWeek and boolean[] columns) merged on green, afte
 ## 2026-11-16T11:06Z
 
 The Kafka produce agent stopped with code written but nothing run: the disk had 327 MB free while two other build directories held 14 GB. The session has about 39 GB in all. I freed 13 GB (three stale virtual environments in worktrees of merged tasks, pip and uv caches, scratch directories of finished tasks) and resumed the agent. Rule from now: at most two building agents at a time.
+
+## 2026-11-16T11:07Z
+
+Task 7.8.4 (tree formats and filters, ColorUtil styles) reported from Opus; opened as pull request 124. A colour as a column value needs a contract type for io.deephaven.gui.color.Color, left for the owner list. Opus agents on this code base end between 90k and 370k tokens for a medium task; the three largest all carried several Java probing rounds.
+
+## 2026-11-16T11:21Z
+
+Task 4.20 (fixes for the second fuzzer findings) reported: D1 to D4, R2 and R3 fixed, four families clean over 1000 seeds, known entries removed. Opened as pull request 125. The remaining refusals R1, R4, R6, R7, R8 go to a follow-up.
+
+## 2026-11-16T11:22Z
+
+Pull request 124 (tree formats and filters) merged on green.
+
+## 2026-11-16T11:29Z
+
+Pull request 125 (fuzz fixes) merged on green.

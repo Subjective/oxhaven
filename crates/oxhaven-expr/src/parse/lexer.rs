@@ -772,11 +772,16 @@ mod tests {
             Ok(Literal::Instant(1_700_000_000_000_000_000))
         );
         assert_eq!(
-            literal("'2024-01-01T00:00:00 NY'"),
+            literal("'2024-01-01T00:00:00 America/Nowhere'"),
             Err(FormulaError::Unsupported(
-                "time literal '2024-01-01T00:00:00 NY'".into()
+                "time literal '2024-01-01T00:00:00 America/Nowhere'".into()
             ))
         );
+        // Java knows no zone `NY`.
+        assert!(matches!(
+            literal("'2024-01-01T00:00:00 NY'"),
+            Err(FormulaError::Syntax(_))
+        ));
         // Longer than one char, so Java tries these as time literals and fails.
         assert!(is_syntax(literal("'\\n'")));
         assert!(is_syntax(literal("'\\\\'")));

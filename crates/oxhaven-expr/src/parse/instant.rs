@@ -72,10 +72,11 @@ pub(crate) enum Zone {
 /// The zone a time literal names after its space, when this server knows that Java knows it.
 ///
 /// Behavior: `io.deephaven.time.TimeZoneAliases#zoneId`, which is `ZoneId.of(name, aliases)`
-/// with the aliases of `default_time_zone_aliases.csv`. Java 42.9 rejects `EST`, `NY` and
-/// `et`. Only the aliases, `UTC`, `GMT` and names with a `/` are looked up here, case
-/// sensitively as in Java; an offset such as `+01:00` or `UTC+1`, which Java reads, is left
-/// unsupported.
+/// with the aliases of `default_time_zone_aliases.csv`: an alias, or the name of a region
+/// of the time zone database, case sensitively. Java 42.9 was asked for each of the 597
+/// names of the database compiled in here and reads all but `EST`, `HST`, `MST` and `ROC`;
+/// it rejects `NY` and `et`. A zone written as an offset (`+01:00`, `UTC+1`), which Java
+/// reads too, is no region: see [`zone_offset`].
 pub(crate) fn zone(name: &str) -> Option<Zone> {
     let region = match name {
         "UTC" => return Some(Zone::Utc),
@@ -86,11 +87,64 @@ pub(crate) fn zone(name: &str) -> Option<Zone> {
         "HK" => "Asia/Hong_Kong",
         "JP" => "Asia/Tokyo",
         "LON" => "Europe/London",
-        "GMT" => "GMT",
-        other if other.contains('/') => other,
-        _ => return None,
+        "EST" | "HST" | "MST" | "ROC" => return None,
+        other => other,
     };
     region.parse().ok().map(Zone::Region)
+}
+
+/// The seconds east of UTC of a zone written as an offset: `None` when `name` is not
+/// written as one, and `Some(None)` when it is and Java rejects it.
+///
+/// Behavior: `java.time.ZoneId#of` for an id that starts with a sign, or with `UTC`, `GMT`
+/// or `UT` and a sign, which is `java.time.ZoneOffset#of`: `h`, `hh`, `hh:mm`, `hhmm`,
+/// `hh:mm:ss` or `hhmmss` after the sign, at most 18 hours. Seen on Java 42.9: `+1`,
+/// `-05:30`, `+010030`, `UTC-0530`, `GMT+01:00:30`, `UT+1`, `-18:00` and `-0` are read, and
+/// `+19:00`, `+01:60`, `+1:00`, `UTC+18:01`, `UTC+` and `UTC0` are not.
+pub(crate) fn zone_offset(name: &str) -> Option<Option<i64>> {
+    // `ZoneId.of("UT")` is UTC under the id `UT`, which is no region of the database.
+    if name == "UT" {
+        return Some(Some(0));
+    }
+    let rest = ["UTC", "GMT", "UT"]
+        .iter()
+        .find_map(|prefix| name.strip_prefix(prefix))
+        .filter(|rest| rest.starts_with(['+', '-']))
+        .unwrap_or(name);
+    let negative = match rest.as_bytes().first()? {
+        b'+' => false,
+        b'-' => true,
+        _ => return None,
+    };
+    let fields = &rest.as_bytes()[1..];
+    let two = |at: usize| -> Option<i64> {
+        let field = fields.get(at..at + 2)?;
+        field
+            .iter()
+            .all(u8::is_ascii_digit)
+            .then(|| i64::from(field[0] - b'0') * 10 + i64::from(field[1] - b'0'))
+    };
+    let colon = |at: usize| fields.get(at) == Some(&b':');
+    let parts = match fields.len() {
+        1 if fields[0].is_ascii_digit() => Some((i64::from(fields[0] - b'0'), Some(0), Some(0))),
+        2 => two(0).map(|hours| (hours, Some(0), Some(0))),
+        4 => two(0).map(|hours| (hours, two(2), Some(0))),
+        5 if colon(2) => two(0).map(|hours| (hours, two(3), Some(0))),
+        6 => two(0).map(|hours| (hours, two(2), two(4))),
+        8 if colon(2) && colon(5) => two(0).map(|hours| (hours, two(3), two(6))),
+        _ => None,
+    };
+    Some(match parts {
+        Some((hours, Some(minutes), Some(seconds)))
+            if minutes <= 59
+                && seconds <= 59
+                && (hours < 18 || (hours == 18 && minutes == 0 && seconds == 0)) =>
+        {
+            let total = hours * 3_600 + minutes * 60 + seconds;
+            Some(if negative { -total } else { total })
+        }
+        _ => None,
+    })
 }
 
 /// The seconds since the epoch of a local date and time in `zone`.
@@ -457,7 +511,8 @@ pub(crate) fn duration_nanos(content: &str) -> Option<Option<i64>> {
 /// Reads the content of a time literal as an instant.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#parseZonedDateTime`, for
-/// these spellings only: `yyyy-MM-ddTHH:mm[:ss[.f]] ZONE` with a zone [`zone`] knows, the
+/// these spellings only: `yyyy-MM-ddTHH:mm[:ss[.f]] ZONE` with a zone [`zone`] knows or an
+/// offset [`zone_offset`] reads, the
 /// same with `Z` directly after the time in place of the zone
 /// (`java.time.ZonedDateTime#parse`), and `yyyy-MM-dd ZONE` or `yyyy-MM-ddT ZONE`, which is
 /// midnight. Fields have exactly the widths shown and `f` is one to nine digits. `Z` after
@@ -473,15 +528,29 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
 }
 
 /// [`parse_instant`], with the id of the zone the text names: `Z` where the time ends
-/// with `Z`, and otherwise the id of the zone after the space.
+/// with `Z`, and otherwise the id of the zone after the space. A zone written as an
+/// offset is unsupported here: no column of this server holds its id.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseZonedDateTime`, which keeps the zone
 /// that `java.time.ZonedDateTime#parse` or `DateTimeUtils#parseTimeZoneQuiet` gives.
 pub(crate) fn zoned_of_text(content: &str) -> Result<(i64, &'static str), FormulaError> {
-    parse_zoned(content)
+    match parse_zoned(content)? {
+        (nanos, Some(id)) => Ok((nanos, id)),
+        (_, None) => Err(FormulaError::Unsupported(format!(
+            "time literal '{content}' as a ZonedDateTime: a zone written as an offset"
+        ))),
+    }
 }
 
-fn parse_zoned(content: &str) -> Result<(i64, &'static str), FormulaError> {
+/// Where a time literal places its local date and time.
+enum Placed {
+    In(Zone),
+    /// Seconds east of UTC.
+    Offset(i64),
+}
+
+/// The instant of a time literal, and the id of its zone unless that is an offset.
+fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaError> {
     let unsupported = || FormulaError::Unsupported(format!("time literal '{content}'"));
     let invalid = || {
         FormulaError::Syntax(format!(
@@ -516,17 +585,36 @@ fn parse_zoned(content: &str) -> Result<(i64, &'static str), FormulaError> {
         return Err(invalid());
     }
     // Java takes the zone from the first space on.
-    let (clock, zone, id) = match rest.split_once(' ') {
-        Some((clock, name)) => match zone(name) {
-            Some(zone) => (clock, zone, zone_id(&zone)),
-            None => return Err(unsupported()),
+    let (clock, placed, id) = match rest.split_once(' ') {
+        Some((clock, name)) => match (zone(name), zone_offset(name)) {
+            (Some(zone), _) => (clock, Placed::In(zone), Some(zone_id(&zone))),
+            (None, Some(Some(offset))) => (clock, Placed::Offset(offset), None),
+            (None, Some(None)) => return Err(invalid()),
+            // A region is named with a `/`, but for the few names [`zone`] knows: no
+            // other text without one is a zone to Java. A region with a `/` that the
+            // database compiled in here lacks may still be one of Java's (`SystemV/EST5`).
+            (None, None) if !name.contains('/') => return Err(invalid()),
+            (None, None) => return Err(unsupported()),
         },
         None => match rest.strip_suffix('Z') {
-            Some(clock) if clock.len() > 1 => (clock, Zone::Utc, "Z"),
+            Some(clock) if clock.len() > 1 => (clock, Placed::In(Zone::Utc), Some("Z")),
+            // Without a space Java reads only what `java.time.ZonedDateTime#parse` does,
+            // which ends with an offset, `Z` or a zone in brackets: a local date and time
+            // alone has "No time zone provided".
+            _ if !rest.contains(['+', '-', 'Z', '[']) => return Err(invalid()),
             _ => return Err(unsupported()),
         },
     };
     let (hour, minute, second, nanos) = if matches!(clock, "" | "T") {
+        // Behavior: `DateTimeUtils.DATE_TZ_PATTERN`, whose zone is letters, `_` and `/`
+        // only; any other zone leaves a date without a time, which Java does not read.
+        let name = rest.split_once(' ').map_or("", |(_, name)| name);
+        if !name
+            .bytes()
+            .all(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'/')
+        {
+            return Err(invalid());
+        }
         (0, 0, 0, 0)
     } else {
         let Some(time) = clock.strip_prefix('T') else {
@@ -588,11 +676,11 @@ fn parse_zoned(content: &str) -> Result<(i64, &'static str), FormulaError> {
         return Err(unsupported());
     }
 
-    let seconds = match &zone {
-        Zone::Utc => {
-            days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second
-        }
-        Zone::Region(region) => {
+    let local = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second;
+    let seconds = match &placed {
+        Placed::In(Zone::Utc) => local,
+        Placed::Offset(offset) => local - offset,
+        Placed::In(Zone::Region(region)) => {
             match zoned_seconds(region, (year, month, day), (hour, minute, second)) {
                 Some(seconds) => seconds,
                 None => return Err(unsupported()),
@@ -771,6 +859,101 @@ mod tests {
         }
     }
 
+    /// Expected values are what Java 42.9 returned for the literal in a formula
+    /// (tasks/4.20-fuzz-findings-2.md, R3).
+    #[test]
+    fn zones_written_as_offsets_and_regions_without_a_slash_are_read() {
+        let base = 1_700_000_000_000_000_000_i64;
+        let second = 1_000_000_000_i64;
+        let cases = [
+            ("+01:00", 1),
+            ("+01", 1),
+            ("+0100", 1),
+            ("+1", 1),
+            ("UTC+1", 1),
+            ("UTC+01:00", 1),
+            ("GMT+1", 1),
+            ("UT+1", 1),
+            ("CET", 1),
+            ("-05:30", 23_401),
+            ("UTC-0530", 23_401),
+            ("+01:00:30", -29),
+            ("+010030", -29),
+            ("GMT+01:00:30", -29),
+            ("UT+01:30", -1_799),
+            ("+18:00", -61_199),
+            ("-18:00", 68_401),
+            ("-00:00", 3_601),
+            ("+00", 3_601),
+            ("-0", 3_601),
+            ("UTC-00:00", 3_601),
+            ("GMT+0", 3_601),
+            ("UT", 3_601),
+            ("GMT0", 3_601),
+            ("Zulu", 3_601),
+            ("Greenwich", 3_601),
+            ("EST5EDT", 21_601),
+            ("Cuba", 21_601),
+            ("Japan", -28_799),
+            ("Etc/GMT+5", 21_601),
+        ];
+        for (zone, seconds) in cases {
+            let content = format!("2023-11-14T23:13:21 {zone}");
+            assert_eq!(value(&content), Ok(base + seconds * second), "{content}");
+        }
+        // A date alone takes a zone of letters, `_` and `/` only.
+        assert_eq!(value("2023-11-14 UT"), Ok(base - 80_000 * second));
+        assert_eq!(value("2023-11-14 Japan"), Ok(base - 112_400 * second));
+        // A zone id is kept for a region and not for an offset.
+        assert_eq!(
+            zoned_of_text("2023-11-14T23:13:21 Japan"),
+            Ok((base - 28_799 * second, "Japan"))
+        );
+        assert!(matches!(
+            zoned_of_text("2023-11-14T23:13:21 +01:00"),
+            Err(FormulaError::Unsupported(_))
+        ));
+    }
+
+    /// Each of these Java 42.9 refuses in a formula and in a filter, with
+    /// `INVALID_ARGUMENT` (tasks/4.20-fuzz-findings-2.md, D4 and R3).
+    #[test]
+    fn zones_java_does_not_know_and_a_missing_zone_are_syntax_errors() {
+        for content in [
+            "2023-11-14T22:13:20 NY",
+            "2023-11-14T22:13:20 EST",
+            "2023-11-14T22:13:20 MST",
+            "2023-11-14T22:13:20 HST",
+            "2023-11-14T22:13:20 ROC",
+            "2023-11-14T22:13:20 et",
+            "2023-11-14T22:13:20 utc",
+            "2023-11-14T22:13:20 z",
+            "2023-11-14T22:13:20 UTCX",
+            "2023-11-14T22:13:20 UTC0",
+            "2023-11-14T22:13:20 UTC+",
+            "2023-11-14T22:13:20 +19:00",
+            "2023-11-14T22:13:20 UTC+18:01",
+            "2023-11-14T22:13:20 +01:60",
+            "2023-11-14T22:13:20 +1:00",
+            "2023-11-14T22:13:20 UTC+1:00",
+            "2023-11-14T22:13:20",
+            "2023-11-14T22:13",
+            "2023-11-14",
+            "2023-11-14 +01:00",
+            "2023-11-14 UTC+1",
+            "2023-11-14 GMT0",
+            "2023-11-14 EST5EDT",
+            "2023-11-14 Etc/GMT+5",
+            "2023-11-14 NY",
+        ] {
+            assert!(
+                matches!(value(content), Err(FormulaError::Syntax(_))),
+                "{content} gave {:?}",
+                value(content)
+            );
+        }
+    }
+
     #[test]
     fn periods_and_durations_are_told_apart_as_java_tells_them() {
         for (content, expected) in [
@@ -818,15 +1001,10 @@ mod tests {
     #[test]
     fn other_time_literals_are_named() {
         for content in [
-            "2023-11-14T22:13:20 NY",
-            "2023-11-14T22:13:20 EST",
-            "2023-11-14T22:13:20 et",
             "2023-11-14T22:13:20 America/Nowhere",
-            "2023-11-14T22:13:20 +01:00",
-            "2023-11-14T22:13:20 UTC+1",
+            "2023-11-14T22:13:20 SystemV/EST5",
             "2023-11-14T22:13:20+01:00",
-            "2023-11-14",
-            "2023-11-14T22:13:20",
+            "2023-11-14T22:13:20Z[UTC]",
             "2023-1-4T22:13:20 UTC",
             "2023-11-14T2:13:20 UTC",
             "2023-11-14T22:13:20. UTC",

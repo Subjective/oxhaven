@@ -600,16 +600,26 @@ fn what_is_left_of_a_formula_decides_whether_it_is_safe_to_refresh() {
 }
 
 /// Behavior: `AnalyzerContext#applyShiftsAndRemainingColumns`: the result is append-only
-/// when the parent is and no column is read ahead, a blink table when the parent is, and
-/// never add-only.
+/// when the parent is and no column is read ahead, and a blink table when the parent is.
+/// The shifted column itself never makes it add-only; the `update` or `lazyUpdate` of the
+/// columns after it does, also when there are none, and `updateView` of none does not
+/// (observed on Java 42.9, `tasks/4.20-fuzz-findings-2.md`, D1).
 #[test]
 fn results_with_shifted_columns_keep_what_holds_for_them() {
     let (stepper, graph) = graph();
     let (append_only, source) = fed(&graph, attributes(true, true, false), false);
     let behind = update(&append_only, &["P = V_[i - 1]"], &Compiler).unwrap();
-    assert_eq!(behind.attributes(), attributes(false, true, false));
+    assert_eq!(behind.attributes(), attributes(true, true, false));
+    let same_row = update(&append_only, &["P = V_[i]"], &Compiler).unwrap();
+    assert_eq!(same_row.attributes(), attributes(true, true, false));
+    let lazy = lazy_update(&append_only, &["P = V_[i - 1]"], &Compiler).unwrap();
+    assert_eq!(lazy.attributes(), attributes(true, true, false));
+    let followed = update(&append_only, &["P = V_[i - 1]", "Q = P"], &Compiler).unwrap();
+    assert_eq!(followed.attributes(), attributes(true, true, false));
     let ahead = update(&append_only, &["P = V_[i + 1]"], &Compiler).unwrap();
     assert_eq!(ahead.attributes(), attributes(false, false, false));
+    let lazy_ahead = lazy_update(&append_only, &["P = V_[i + 1]"], &Compiler).unwrap();
+    assert_eq!(lazy_ahead.attributes(), attributes(false, false, false));
     let viewed = update_view(&append_only, &["P = V_[i - 1]"], &Compiler).unwrap();
     assert_eq!(viewed.attributes(), attributes(false, true, false));
 

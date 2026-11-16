@@ -186,6 +186,40 @@ fn an_empty_table_has_no_groups_and_a_preserved_one_has_an_empty_vector() {
     let preserved = aggregate(&empty, &[group(&["I"]), count("N")], true, &[]).unwrap();
     assert_eq!(rows(&*preserved), ["[]|0"]);
     assert_eq!(read(&*preserved)[0].null_count(), 0);
+    // Behavior: the singleton `addChunk` of the distinct operators, which is given the
+    // rows of a table without rows too and makes the set first: an empty vector as well
+    // (tasks/4.20-fuzz-findings-2.md, D3).
+    for include_nulls in [false, true] {
+        let distinct = agg(AggSpec::Distinct { include_nulls }, &["A = I"]);
+        let preserved = aggregate(&empty, &[distinct, count("N")], true, &[]).unwrap();
+        assert_eq!(rows(&*preserved), ["[]|0"]);
+        assert_eq!(read(&*preserved)[0].null_count(), 0);
+    }
+}
+
+/// The one group of a `distinct` without keys that `preserve_empty` keeps, through the
+/// history probed on Java 42.9 (tasks/4.20-fuzz-findings-2.md, D3): an empty vector for a
+/// table without rows, and while it holds only nulls; a null once a removal took the
+/// last value.
+#[test]
+fn a_distinct_without_keys_is_empty_until_a_removal_takes_its_last_value() {
+    let distinct = agg(
+        AggSpec::Distinct {
+            include_nulls: false,
+        },
+        &["A = I"],
+    );
+    let fixture = Fixture::with(&kid(&[]), &[], vec![distinct], &[], true, false);
+    assert_eq!(fixture.rows(), ["[]"]);
+    let null_row = vec![strs(&["a"]), ints(&[None]), doubles(&[Some(0.0)])];
+    fixture.step(TableChange::new().add([0], null_row));
+    assert_eq!(fixture.rows(), ["[]"]);
+    fixture.step(TableChange::new().remove([0]));
+    assert_eq!(fixture.rows(), ["[]"]);
+    fixture.step(TableChange::new().add([1], kid_values(&[("a", 3, 0.0)])));
+    assert_eq!(fixture.rows(), ["[3]"]);
+    fixture.step(TableChange::new().remove([1]));
+    assert_eq!(fixture.rows(), ["null"]);
 }
 
 #[test]

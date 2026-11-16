@@ -125,7 +125,7 @@ pub fn constituents_for(
         let rows = partitioned.rows_for_keys(keys)?;
         let requested = partitioned.with_table(rows.clone())?;
         if !unique {
-            return Ok(requested.merge()?);
+            return Ok(requested.with_constituent_changes_permitted().merge()?);
         }
         let size = rows.row_set().size();
         if size != 1 {
