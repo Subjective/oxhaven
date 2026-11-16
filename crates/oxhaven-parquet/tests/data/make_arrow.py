@@ -155,3 +155,50 @@ structs = pa.table(
 )
 pq.write_table(structs, os.path.join(D, "more_structs.parquet"), compression="NONE",
                write_statistics=False)
+
+
+# Directories with a `_metadata` file and a `_common_metadata` file whose schema has
+# partitioning columns that the files do not have (task 7.1c).
+def with_metadata(directory, files, common):
+    collected = []
+    for relative, columns in files:
+        path = os.path.join(D, "common", directory, relative)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        pq.write_table(pa.table(columns), path, compression="NONE", write_statistics=False,
+                       metadata_collector=collected)
+        collected[-1].set_file_path(relative)
+    pq.write_metadata(pa.table(files[0][1]).schema,
+                      os.path.join(D, "common", directory, "_metadata"),
+                      metadata_collector=collected)
+    pq.write_metadata(pa.schema(common), os.path.join(D, "common", directory, "_common_metadata"))
+
+
+def x(*values):
+    return {"X": pa.array(values, pa.int32())}
+
+
+# Two keys after the column of the files, listed out of order, the last with a null value.
+with_metadata("hive", [("A=1/B=x/f.parquet", x(1, 2)), ("A=0/B=y/f.parquet", x(3)),
+                       ("A=2/B=/f.parquet", x(4))],
+              [("X", pa.int32()), ("A", pa.int32()), ("B", pa.string())])
+# Directories without key=, whose values are the partitioning columns in order.
+with_metadata("positional", [("a/1/f.parquet", x(1)), ("b/2/f.parquet", x(2))],
+              [("S", pa.string()), ("N", pa.int32()), ("X", pa.int32())])
+# A value of every type Java parses, and a type it does not, which is read as a string.
+with_metadata(
+    "types",
+    [("I=7/C=c/Z=TRUE/F=0.5/D=1.50/G=2024-1-2/T=1:2:3.5/L=2024-01-02T03:04:05/N=/f.parquet", x(1))],
+    [("I", pa.int64()), ("C", pa.uint16()), ("Z", pa.bool_()), ("F", pa.float32()),
+     ("D", pa.decimal128(5, 2)), ("G", pa.date32()), ("T", pa.time64("ns")),
+     ("L", pa.timestamp("ns")), ("N", pa.int16()), ("X", pa.int32())])
+# A key Deephaven makes a legal name.
+with_metadata("names", [("a b=1/f.parquet", x(1))], [("a b", pa.int32()), ("X", pa.int32())])
+# What Java refuses: too few directories, a key twice, a key that is no column, a value
+# that is not of its type, a column of another type in the two files.
+with_metadata("levels", [("K=1/f.parquet", x(1))],
+              [("K", pa.int32()), ("L", pa.int32()), ("X", pa.int32())])
+with_metadata("twice", [("K=1/K=2/f.parquet", x(1))],
+              [("K", pa.int32()), ("L", pa.int32()), ("X", pa.int32())])
+with_metadata("unknown", [("Z=1/f.parquet", x(1))], [("K", pa.int32()), ("X", pa.int32())])
+with_metadata("unparsed", [("K=abc/f.parquet", x(1))], [("K", pa.int32()), ("X", pa.int32())])
+with_metadata("mismatch", [("K=1/f.parquet", x(1))], [("K", pa.int32()), ("X", pa.int64())])
