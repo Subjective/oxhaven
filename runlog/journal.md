@@ -1110,3 +1110,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T16:35Z: task 7.6.4 came back complete in 50 minutes; opened pull request 133. It used 390k tokens although the brief said to hand over at 180k: the threshold is not being honoured when an agent judges itself close to done, so the next briefs state it more firmly. Its work passed every gate. Started task 4.24 (fuzzing the time column types) on the default model, as fuzzer triage stays there.
 
 - 2026-11-16T16:42Z: merged pull request 133 (columns of tables in filters, where_in, first/last and formulas) on seven green checks.
+
+- 2026-11-16T17:00Z: task 4.24 came back partial after 25 minutes and 248k tokens: the generator for the time types exists and 100 seeds gave 66 clean, 34 differing in 11 groups, none confirmed as a wrong answer yet. This agent did honour the hand-over line. New finding R6: as-of joins on date and time types are refused here where Java computes them; likely its own task. A fresh agent continues from the handover with the steps ordered so that triage and gates come before optional ports.
