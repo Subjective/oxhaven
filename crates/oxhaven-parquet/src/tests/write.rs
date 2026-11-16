@@ -895,7 +895,7 @@ fn metadata_files_list_the_row_groups_of_every_file_of_the_write() {
 
     // a later write replaces the metadata files, which then list only its files
     let three = target(&directory, "d/three.parquet");
-    write(&[types.clone()], &[&three], &options).unwrap();
+    write(std::slice::from_ref(&types), &[&three], &options).unwrap();
     let all = footer(&target(&directory, "d/_metadata"));
     assert_eq!(group_files(&all), ["three.parquet", "three.parquet"]);
     assert_eq!(names(&directory.join("d")).len(), 5);
