@@ -133,7 +133,9 @@ pub(crate) fn style_of(rgb: [u8; 3]) -> i64 {
 /// Behavior: `ColorUtilImpl#toLong(Color)`: zero for `Color.NO_FORMATTING` itself, which
 /// is not the black other fields are.
 pub(crate) fn field(name: &str) -> Option<i64> {
-    let index = FIELDS.binary_search_by(|(field, _)| field.cmp(&name)).ok()?;
+    let index = FIELDS
+        .binary_search_by(|(field, _)| field.cmp(&name))
+        .ok()?;
     Some(if name == "NO_FORMATTING" {
         0
     } else {
@@ -277,11 +279,7 @@ fn heatmap(value: f64, min: f64, max: f64, low: i64, high: i64, foreground: bool
         return high;
     }
     let part = (value - min) / (max - min);
-    let shifts: [u32; 3] = if foreground {
-        [16, 8, 0]
-    } else {
-        [48, 40, 32]
-    };
+    let shifts: [u32; 3] = if foreground { [16, 8, 0] } else { [48, 40, 32] };
     let mix = |shift: u32| {
         let from = ((low >> shift) & 0xff) as f64;
         let to = ((high >> shift) & 0xff) as f64;
@@ -299,7 +297,10 @@ fn heatmap(value: f64, min: f64, max: f64, low: i64, high: i64, foreground: bool
 /// Evaluates `function` over arguments of its parameter types: `long` for a style or a
 /// part of one, `double` for the first three of a heat map, `String` for a name, `int`
 /// or `float` for the parts of a colour.
-pub(crate) fn evaluate(function: ColorFn, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
+pub(crate) fn evaluate(
+    function: ColorFn,
+    arguments: &[ArrayRef],
+) -> Result<ArrayRef, TableFailure> {
     let rows = arguments[0].len();
     let long = |index: usize, row: usize| {
         let values = arguments[index].as_primitive::<Int64Type>();

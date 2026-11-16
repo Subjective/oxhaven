@@ -113,7 +113,10 @@ fn a_null_is_the_value_java_reserves_for_it() {
         "fg(N)",
         each([fg_null, 67108864, fg_null, 67108864, fg_null, 67108864]),
     );
-    table.assert("bg(N)", longs([None, Some(0), None, Some(0), None, Some(0)]));
+    table.assert(
+        "bg(N)",
+        longs([None, Some(0), None, Some(0), None, Some(0)]),
+    );
     table.assert("toLong(N)", each([0, 1, 0, 3, 0, 5]));
     table.assert("toLong((long)N)", each([0, 1, 0, 3, 0, 5]));
     // The null `double` is below every minimum.
@@ -201,7 +204,12 @@ fn java_s_refusals_are_refusals() {
 #[test]
 fn a_colour_is_not_the_value_of_a_formula() {
     let table = table();
-    for formula in ["RED", "X > 2 ? RED : BLUE", "colorRGB(1, 2, 3)", "RED.toHex()"] {
+    for formula in [
+        "RED",
+        "X > 2 ? RED : BLUE",
+        "colorRGB(1, 2, 3)",
+        "RED.toHex()",
+    ] {
         assert!(
             matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
             "{formula}"

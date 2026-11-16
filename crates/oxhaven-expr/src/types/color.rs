@@ -60,7 +60,11 @@ fn style(function: ColorFn, arguments: Vec<Typed>) -> Typed {
 fn is_integral(value: &Typed) -> bool {
     matches!(
         value.column_type,
-        ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int | ColumnType::Long
+        ColumnType::Byte
+            | ColumnType::Short
+            | ColumnType::Char
+            | ColumnType::Int
+            | ColumnType::Long
     )
 }
 
@@ -195,15 +199,15 @@ impl Checker<'_> {
             ("color", 1) if checked[0].column_type == ColumnType::String => {
                 Ok(style(ColorFn::ColorOfName, checked))
             }
-            ("colorRGB", 1) if ints => Ok(style(
-                ColorFn::RgbPacked,
-                all_to(checked, ColumnType::Int),
-            )),
-            ("colorRGB", 3 | 4) if ints => Ok(style(ColorFn::Rgb, all_to(checked, ColumnType::Int))),
-            ("colorRGB", 3 | 4) if floats => Ok(style(
-                ColorFn::RgbFloat,
-                all_to(checked, ColumnType::Float),
-            )),
+            ("colorRGB", 1) if ints => {
+                Ok(style(ColorFn::RgbPacked, all_to(checked, ColumnType::Int)))
+            }
+            ("colorRGB", 3 | 4) if ints => {
+                Ok(style(ColorFn::Rgb, all_to(checked, ColumnType::Int)))
+            }
+            ("colorRGB", 3 | 4) if floats => {
+                Ok(style(ColorFn::RgbFloat, all_to(checked, ColumnType::Float)))
+            }
             ("colorHSL", 3 | 4) if floats => {
                 Ok(style(ColorFn::Hsl, all_to(checked, ColumnType::Float)))
             }
