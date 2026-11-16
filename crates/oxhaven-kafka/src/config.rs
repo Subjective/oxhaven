@@ -560,4 +560,98 @@ mod tests {
             assert!(matches!(error, KafkaError::NotPorted { .. }), "{error}");
         }
     }
+
+    fn producer(config: &[(&str, &str)]) -> Result<ProducerSettings, KafkaError> {
+        ProducerSettings::new(&pairs(config))
+    }
+
+    #[test]
+    fn a_producer_takes_java_s_names_and_defaults() {
+        let settings = producer(&[
+            BROKER,
+            ("delivery.timeout.ms", "5000"),
+            ("max.request.size", "2000"),
+            ("batch.size", "0"),
+            ("send.buffer.bytes", "-1"),
+            ("linger.ms", "3"),
+            ("compression.type", "lz4"),
+            ("max.block.ms", "250"),
+            (
+                "key.serializer",
+                "org.apache.kafka.common.serialization.IntegerSerializer",
+            ),
+            ("no.such.property", "x"),
+        ])
+        .unwrap();
+        let client = settings.client.config_map();
+        let expected = [
+            ("acks", "all"),
+            ("batch.size", "1"),
+            ("bootstrap.servers", "127.0.0.1:1"),
+            ("compression.type", "lz4"),
+            ("enable.idempotence", "true"),
+            ("linger.ms", "3"),
+            ("message.max.bytes", "2000"),
+            ("message.timeout.ms", "5000"),
+            ("partitioner", "murmur2_random"),
+            ("socket.send.buffer.bytes", "0"),
+        ];
+        assert_eq!(client.into_iter().collect::<Vec<_>>(), expected);
+        assert_eq!(settings.max_block, Duration::from_millis(250));
+
+        let defaults = producer(&[BROKER]).unwrap();
+        assert_eq!(defaults.max_block, Duration::from_millis(60_000));
+        let client = &defaults.client;
+        assert_eq!(client.get("message.timeout.ms"), Some("120000"));
+        assert_eq!(client.get("message.max.bytes"), Some("1048576"));
+        assert_eq!(client.get("batch.size"), Some("16384"));
+        assert_eq!(client.get("compression.type"), Some("none"));
+    }
+
+    /// Behavior: ProducerConfig#postProcessAndValidateIdempotenceConfigs
+    #[test]
+    fn idempotence_is_on_unless_the_other_settings_rule_it_out() {
+        let idempotent = |config: &[(&str, &str)]| {
+            let mut all = vec![BROKER];
+            all.extend_from_slice(config);
+            let settings = producer(&all).unwrap();
+            let idempotence = settings.client.get("enable.idempotence").unwrap();
+            idempotence.to_owned()
+        };
+        assert_eq!(idempotent(&[]), "true");
+        assert_eq!(idempotent(&[("acks", "-1")]), "true");
+        assert_eq!(idempotent(&[("acks", "1")]), "false");
+        assert_eq!(idempotent(&[("acks", "0")]), "false");
+        assert_eq!(idempotent(&[("retries", "0")]), "false");
+        assert_eq!(idempotent(&[("max.in.flight.requests.per.connection", "5")]), "true");
+        assert_eq!(idempotent(&[("max.in.flight.requests.per.connection", "6")]), "false");
+        assert_eq!(idempotent(&[("enable.idempotence", "false")]), "false");
+        assert_eq!(idempotent(&[("enable.idempotence", "true")]), "true");
+    }
+
+    #[test]
+    fn what_a_producer_cannot_honour_is_refused() {
+        let text = |config: &[(&str, &str)]| match producer(config) {
+            Ok(_) => panic!("accepted"),
+            Err(error) => error.to_string(),
+        };
+        assert!(text(&[]).contains("Missing required configuration \"bootstrap.servers\""));
+        assert!(text(&[BROKER, ("acks", "2")]).contains("String must be one of: all, -1, 0, 1"));
+        assert!(text(&[BROKER, ("compression.type", "brotli")])
+            .contains("String must be one of: none, gzip, snappy, lz4, zstd"));
+        assert!(text(&[BROKER, ("max.block.ms", "soon")]).contains("Not a number of type LONG"));
+        assert!(text(&[BROKER, ("acks", "0"), ("enable.idempotence", "true")])
+            .contains("Must set acks to all in order to use the idempotent producer"));
+        for (name, value, java) in [
+            ("compression.type", "gzip", "GzipCompression"),
+            ("transactional.id", "tx", "KafkaProducer#initTransactions"),
+            ("partitioner.class", "p.P", "producer.Partitioner"),
+            ("interceptor.classes", "p.I", "ProducerInterceptor"),
+            ("security.protocol", "SSL", "security.protocol"),
+        ] {
+            let error = producer(&[BROKER, (name, value)]).err().expect("refused");
+            assert!(matches!(error, KafkaError::NotPorted { .. }), "{error}");
+            assert!(error.to_string().contains(java), "{error}");
+        }
+    }
 }

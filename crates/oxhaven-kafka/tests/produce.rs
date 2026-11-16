@@ -179,9 +179,8 @@ fn a_static_table_is_published_once_with_kafka_s_serializers() {
     let cases = [
         ("S", "I", vec![(some("a"), some("0x00000001")), (None, None), (some("é"), some("0xfffffffe")), (some(""), some("0x7fffffff"))]),
         ("H", "L", vec![(some("0x0001"), some("0x0000000000000001")), (None, None), (some("0x0003"), some("0x0000000000000003")), (some("0x0004"), some("0xffffffffffffffff"))]),
-        ("D", "F", vec![(some("?\u{f8}"), None), (None, None), (None, None), (None, None)]),
     ];
-    for (key, value, expected) in cases.into_iter().take(2) {
+    for (key, value, expected) in cases {
         let publication = sent.publish(table.clone(), &options(simple(key), simple(value)));
         let publication = publication.unwrap();
         assert_eq!(sent.take(), [expected]);
@@ -219,6 +218,21 @@ fn a_static_table_is_published_once_with_kafka_s_serializers() {
         sent.take(),
         [vec![(None, some("a")), (None, None), (None, some("é")), (None, some(""))]]
     );
+
+    // Rows go out in chunks of 2048 (`PublishToKafka.CHUNK_SIZE`), each row once, in order.
+    let count = 2 * 2048 + 1;
+    let many = ReferenceTable::new_static(
+        definition(&[("I", ColumnType::Int)]),
+        RowSet::flat(count as u64),
+        vec![ints(&(0..count).map(Some).collect::<Vec<_>>())],
+    );
+    let _ = sent
+        .publish(many, &options(ProduceSpec::Ignore, simple("I")))
+        .unwrap();
+    let raw: Vec<_> = sent.flushed.lock().unwrap().drain(..).flatten().collect();
+    let values: Vec<_> = raw.iter().map(|record| record.value.clone().unwrap()).collect();
+    let expected: Vec<_> = (0..count).map(|i| i.to_be_bytes().to_vec()).collect();
+    assert_eq!(values, expected);
 }
 
 fn json_table() -> Arc<ReferenceTable> {
