@@ -173,7 +173,7 @@ impl Registry {
             .get(&format!("/schemas/ids/{id}?fetchMaxId=false&subject="))
             .and_then(|body| schema_text(&body))
             .map_err(unchecked)?;
-        avro::parse(&text).map_err(|failure| KafkaError::Invalid(failure))
+        avro::parse(&text).map_err(KafkaError::Invalid)
     }
 
     /// The schema a record was written with, by the id in the record, cached by id.

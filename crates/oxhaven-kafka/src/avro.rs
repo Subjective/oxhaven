@@ -1101,10 +1101,11 @@ fn best_branch(writer: &Schema, w: &Ty, reader: &Schema, branches: &[Ty]) -> Opt
         if wn == bn {
             return Some(j);
         }
-        if wk == Kind::Record && resolvable(writer, w, reader, b, &mut Vec::new()) {
-            if structure.is_none() || short_name(wn) == short_name(bn) {
-                structure = Some(j);
-            }
+        if wk == Kind::Record
+            && resolvable(writer, w, reader, b, &mut Vec::new())
+            && (structure.is_none() || short_name(wn) == short_name(bn))
+        {
+            structure = Some(j);
         }
     }
     if structure.is_some() {

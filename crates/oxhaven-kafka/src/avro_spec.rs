@@ -299,10 +299,11 @@ pub(crate) fn decode(
     const SERIALIZATION: &str = "org.apache.kafka.common.errors.SerializationException";
     if bytes.len() < 5 || bytes[0] != 0 {
         if bytes.first() == Some(&1) && bytes.len() >= 17 {
-            return Err(format!(
-                "not ported yet: io.confluent.kafka.serializers.schema.id.SchemaId: a record \
-                 with a schema GUID (magic byte 1)"
-            ));
+            return Err(
+                "not ported yet: io.confluent.kafka.serializers.schema.id.SchemaId: a \
+                        record with a schema GUID (magic byte 1)"
+                    .to_owned(),
+            );
         }
         return Err(format!("{SERIALIZATION}: Error deserializing schema ID"));
     }
