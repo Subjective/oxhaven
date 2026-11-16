@@ -681,7 +681,7 @@ fn scenarios_match_the_recorded_java_results() {
         }
     }
     paths.sort();
-    assert_eq!(paths.len(), 88);
+    assert_eq!(paths.len(), 89);
     let mut tally = Tally::default();
     for path in &paths {
         replay(&json(path), &mut tally);
@@ -826,6 +826,16 @@ fn scenarios_match_the_recorded_java_results() {
         "filter_structured.is_nan_float: is_nan, which the gRPC handler refuses",
         "filter_structured.is_nan_int: is_nan, which the gRPC handler refuses",
         "lazy_update_update_view.uv_then_where: update_view",
+        "time_types.where_d: update",
+        "time_types.where_d_in: update",
+        "time_types.where_d_range: update",
+        "time_types.where_lt: update",
+        "time_types.where_dur: update",
+        "time_types.where_w: update",
+        "time_types.where_w_ne: update",
+        "time_types.where_z: update",
+        "time_types.where_z_le: update",
+        "time_types.where_z_gt: update",
         "ticking_blink_sort_head_tail.big: blink input",
         "ticking_column_arrays.kept_chain: update",
         "ticking_lazy_update_update_view.uv_big: update_view",

@@ -224,7 +224,10 @@ fn the_results_of_the_oracle_match_java() {
     // 13 static results at one step, 1 ticking one at 4 steps and 3 at 9 steps.
     assert_eq!(tally.comparisons, 13 + 4 + 3 * 9);
     // Results made from an operation of another test.
-    let not_run = ["select_distinct/all_but_key: drop_columns"];
+    let not_run = [
+        "select_distinct/all_but_key: drop_columns",
+        "time_types/distinct_w_dur: update",
+    ];
     assert_eq!(tally.not_run, not_run, "not run");
 }
 
@@ -284,6 +287,9 @@ fn the_where_in_results_of_the_oracle_match_java() {
     // The results of `select_distinct` alone (see above), 15 static results of `where_in`
     // at one step and 5 ticking ones at 9 steps.
     assert_eq!(tally.comparisons, (13 + 4 + 3 * 9) + 15 + 5 * 9);
-    let not_run = ["select_distinct/all_but_key: drop_columns"];
+    let not_run = [
+        "select_distinct/all_but_key: drop_columns",
+        "time_types/distinct_w_dur: update",
+    ];
     assert_eq!(tally.not_run, not_run, "not run");
 }

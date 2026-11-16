@@ -311,7 +311,28 @@ fn apply(operation: &Value, tables: &BTreeMap<String, Made>) -> Made {
         }
     };
     match result {
-        Ok(table) => Made::Result(table),
+        Ok(table) => {
+            // Java sends these types in another form than the engine stores them in
+            // (`oxhaven_server::wire_columns`), so the recorded tables are compared by
+            // the replay gate instead.
+            let sent_otherwise = table.definition().columns().iter().find(|column| {
+                matches!(
+                    column.column_type,
+                    ColumnType::LocalDate
+                        | ColumnType::LocalDateTime
+                        | ColumnType::Period
+                        | ColumnType::ZonedDateTime
+                        | ColumnType::DayOfWeek
+                )
+            });
+            match sent_otherwise {
+                Some(column) => Made::NotRun(format!(
+                    "column {} of type {:?}, sent in another form",
+                    column.name, column.column_type
+                )),
+                None => Made::Result(table),
+            }
+        }
         // What the formula compiler does not support yet is not a refusal of Java's.
         Err(SelectError::Formula {
             column,
@@ -461,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 88);
+    assert_eq!(scenarios.len(), 89);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -583,6 +604,7 @@ fn results_match_the_ones_recorded_from_java() {
             "ticking_column_arrays.blink_before: blink input",
             "ticking_column_arrays.blink_whole: blink input",
             "ticking_time_table.numbered: head",
+            "time_types.base: column D of type LocalDate, sent in another form",
         ],
         "not run"
     );
