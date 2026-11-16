@@ -110,7 +110,7 @@ def unwrap(value):
 
     Behavior: `deephaven._wrapper.javaify`, without the wrapping of other Python objects
     """
-    handles = (_oxhaven.TableHandle, _oxhaven.PartitionedHandle)
+    handles = (_oxhaven.TableHandle, _oxhaven.PartitionedHandle, _oxhaven.FigureHandle)
     if isinstance(value, handles):
         return value
     try:

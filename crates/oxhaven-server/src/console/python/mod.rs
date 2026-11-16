@@ -41,6 +41,7 @@ pub mod interrupt;
 mod listener;
 mod ops;
 mod parquet;
+mod figure;
 mod partitioned;
 mod plugin;
 #[cfg(test)]
@@ -451,6 +452,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         input::register(&native)?;
         listener::register(&native)?;
         partitioned::register(&native)?;
+        figure::register(&native)?;
         plugin::register(&native)?;
         checks::register(&native)?;
         appmode::register(&native)?;
@@ -493,6 +495,9 @@ fn export_of(value: &Bound<'_, PyAny>) -> Option<ExportValue> {
     if let Ok(handle) = value.cast::<partitioned::PartitionedHandle>() {
         let partitioned = handle.get().partitioned.clone();
         return Some(crate::partitioned::export_value(partitioned));
+    }
+    if let Ok(handle) = value.cast::<figure::FigureHandle>() {
+        return Some(crate::figure::export_value(handle.get().figure.clone()));
     }
     Some(ExportValue::object(PythonObject(value.clone().unbind())))
 }
@@ -712,6 +717,18 @@ impl PythonSession {
                         .import("deephaven.table")?
                         .getattr("PartitionedTable")?
                         .call1((handle,));
+                }
+                if let Some(shown) = crate::figure::figure_of(&value) {
+                    let handle = Py::new(
+                        py,
+                        figure::FigureHandle {
+                            figure: shown.clone(),
+                        },
+                    )?;
+                    return py
+                        .import("deephaven.plot.figure")?
+                        .getattr("Figure")?
+                        .call_method1("_shown", (handle,));
                 }
                 // Java makes any Java object a Python variable through jpy
                 Err(PyRuntimeError::new_err(

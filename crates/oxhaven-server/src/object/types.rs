@@ -128,7 +128,7 @@ const RESERVED_NAMES_LOWERCASE: [&str; 4] = ["table", "rolluptable", "treetable"
 /// The types Java registers before any plugin and this server does not have yet. A plugin
 /// cannot take their names in Java, so it cannot here; the task that adds one of them
 /// registers it in [`registry`] and takes its name out of this list.
-const JAVA_TYPES_NOT_PORTED_LOWERCASE: [&str; 2] = ["hierarchicaltable", "figure"];
+const JAVA_TYPES_NOT_PORTED_LOWERCASE: [&str; 1] = ["hierarchicaltable"];
 
 /// The words `javax.lang.model.SourceVersion#isKeyword` answers true for (Java 21).
 const JAVA_KEYWORDS: [&str; 54] = [
@@ -297,7 +297,8 @@ impl ObjectTypes {
     }
 }
 
-/// The object types of this process: `PartitionedTable`, and what plugins registered.
+/// The object types of this process: `PartitionedTable`, `Figure`, and what plugins
+/// registered.
 ///
 /// Behavior: the singleton `ObjectTypes` of a Java server, after
 /// `io.deephaven.server.plugin.PluginRegistration#registerAll`
@@ -308,6 +309,9 @@ pub fn registry() -> &'static ObjectTypes {
         types
             .register(Arc::new(PartitionedTableType))
             .expect("the first type of an empty registry");
+        types
+            .register(Arc::new(crate::figure::FigureType))
+            .expect("a name of its own");
         types
     })
 }

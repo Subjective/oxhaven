@@ -4,6 +4,7 @@ pub mod app;
 pub mod barrage;
 pub mod config;
 pub mod console;
+pub mod figure;
 pub mod flight;
 pub mod inputtable;
 pub mod java_text;
