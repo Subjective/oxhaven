@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 
+use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::Table;
 use oxhaven_parquet::{
@@ -90,8 +91,9 @@ pub(super) fn read_parquet(
                 .flatten(),
         });
     }
+    let graph: Arc<dyn UpdateGraph> = super::runtime()?.context.graph.clone();
     let table = py
-        .detach(|| oxhaven_parquet::read(path, &options))
+        .detach(|| oxhaven_parquet::read_in(&graph, path, &options))
         .map_err(exception)?;
     Ok(TableHandle { table })
 }
