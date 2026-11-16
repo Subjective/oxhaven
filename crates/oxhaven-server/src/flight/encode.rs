@@ -22,8 +22,9 @@ use arrow::array::{
     Array, ArrayRef, ArrowPrimitiveType, AsArray, ListArray, PrimitiveArray, UInt32Array,
 };
 use arrow::datatypes::{
-    DataType, Date64Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
-    Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
+    DataType, Date64Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
+    Int64Type, Int8Type, IntervalUnit, IntervalYearMonthType, Time64NanosecondType, TimeUnit,
+    TimestampNanosecondType, UInt16Type,
 };
 use arrow::ipc;
 use flatbuffers::FlatBufferBuilder;
@@ -85,6 +86,8 @@ pub(crate) fn has_sentinel(data_type: &DataType) -> bool {
             | DataType::Timestamp(TimeUnit::Nanosecond, _)
             | DataType::Date64
             | DataType::Time64(TimeUnit::Nanosecond)
+            | DataType::Duration(TimeUnit::Nanosecond)
+            | DataType::Interval(IntervalUnit::YearMonth)
     )
 }
 
@@ -226,11 +229,12 @@ impl BatchWriter {
     }
 
     fn column(&mut self, array: &ArrayRef, nullable: bool) -> Result<(), EncodeError> {
-        // A `LocalDate` is sent as the milliseconds of its day and a `LocalTime` as the
-        // nanoseconds of its time, both by the writer of a `long`.
+        // A `LocalDate` is sent as the milliseconds of its day, a `LocalTime` as the
+        // nanoseconds of its time and a `Duration` as its nanoseconds, by the writer of a
+        // `long`; a `Period` as its months by the writer of an `int`.
         //
         // Behavior: io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#dateFromLocalDate,
-        // `#timeFromLocalTime`
+        // `#timeFromLocalTime`, `#durationFromDuration`, `#intervalFromPeriod`
         let longs: ArrayRef;
         let array = match array.data_type() {
             DataType::Date64 => {
@@ -241,6 +245,16 @@ impl BatchWriter {
             DataType::Time64(TimeUnit::Nanosecond) => {
                 let nanos = array.as_primitive::<Time64NanosecondType>();
                 longs = std::sync::Arc::new(nanos.reinterpret_cast::<Int64Type>());
+                &longs
+            }
+            DataType::Duration(TimeUnit::Nanosecond) => {
+                let nanos = array.as_primitive::<DurationNanosecondType>();
+                longs = std::sync::Arc::new(nanos.reinterpret_cast::<Int64Type>());
+                &longs
+            }
+            DataType::Interval(IntervalUnit::YearMonth) => {
+                let months = array.as_primitive::<IntervalYearMonthType>();
+                longs = std::sync::Arc::new(months.reinterpret_cast::<Int32Type>());
                 &longs
             }
             _ => array,

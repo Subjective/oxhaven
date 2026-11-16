@@ -19,6 +19,10 @@ pub(crate) enum TimeValue {
     Period,
     /// A `java.time.ZoneId`, which Java makes with `DateTimeUtils#parseTimeZone`.
     Zone,
+    /// A `java.time.LocalDate`, which Java makes with `DateTimeUtils#parseLocalDate`.
+    LocalDate,
+    /// A `java.time.LocalTime`, which Java makes with `DateTimeUtils#parseLocalTime`.
+    LocalTime,
 }
 
 /// A single-quoted span of the formula that Java treats as a time literal.
@@ -121,8 +125,7 @@ pub(crate) fn zoned_seconds(
 /// Reads the content of a time literal.
 ///
 /// Behavior: `io.deephaven.time.TimeLiteralReplacedExpression#convertExpression`, which
-/// tries an instant, then a period, then a duration, and then the kinds this server does
-/// not read.
+/// tries an instant, then a period, a duration, a date, a time of day and a zone.
 fn parse(content: &str) -> Result<TimeValue, FormulaError> {
     match parse_instant(content) {
         Ok(nanos) => Ok(TimeValue::Instant(nanos)),
@@ -131,14 +134,175 @@ fn parse(content: &str) -> Result<TimeValue, FormulaError> {
                 Ok(TimeValue::Period)
             } else if duration_nanos(content).is_some() {
                 Ok(TimeValue::Duration)
+            } else if let Some(date) = local_date_days(content) {
+                // A date Java reads in a spelling this server does not is refused.
+                date.map(|_| TimeValue::LocalDate)
+            } else if let Some(time) = local_time_nanos(content) {
+                time.map(|_| TimeValue::LocalTime)
             } else if zone(content).is_some() {
-                // A date and a time of day come before a zone in Java's order, and no
-                // name of a zone is either.
                 Ok(TimeValue::Zone)
             } else {
                 Err(error)
             }
         }
+    }
+}
+
+/// The days since 1970-01-01 of a date; `None` when the text is no date, and an error for
+/// a date Java reads that this server does not, or that is outside the range of a cell.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseLocalDate`: the year in four digits,
+/// or more after a `+`, or after a `-`, then the month and the day in one or two digits
+/// each, separated by `-`. A day past the end of its month is the month's last day (the
+/// formatter's `ResolverStyle.SMART`): seen on Java 42.9, `2021-02-29` is 2021-02-28 and
+/// `2020-04-32` fails. Read here: four digits without a sign or after `-`, and five to
+/// nine after `+`; other signed years are refused.
+pub(crate) fn local_date_days(text: &str) -> Option<Result<i64, FormulaError>> {
+    let (sign, unsigned) = match text.as_bytes().first()? {
+        b'+' => (1, &text[1..]),
+        b'-' => (-1, &text[1..]),
+        _ => (0, text),
+    };
+    let mut fields = unsigned.split('-');
+    let (year, month, day) = (fields.next()?, fields.next()?, fields.next()?);
+    let digits = |field: &str, most: usize| {
+        (1..=most).contains(&field.len()) && field.bytes().all(|b| b.is_ascii_digit())
+    };
+    if fields.next().is_some() || !digits(year, 10) || !digits(month, 2) || !digits(day, 2) {
+        return None;
+    }
+    let read = match sign {
+        1 => (5..=9).contains(&year.len()),
+        _ => year.len() == 4,
+    };
+    if !read {
+        if sign == 0 {
+            // Java needs a `+` before a year of more than four digits.
+            return None;
+        }
+        return Some(Err(FormulaError::Unsupported(format!(
+            "the date \"{text}\", in a spelling this server does not read \
+             (io.deephaven.time.DateTimeUtils#parseLocalDate)"
+        ))));
+    }
+    let number = |field: &str| field.parse::<i64>().ok();
+    let (year, month, day) = (number(year)?, number(month)?, number(day)?);
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let year = if sign < 0 { -year } else { year };
+    let days = days_from_civil(year, month, day.min(days_in_month(year, month)));
+    Some(if i32::try_from(days).is_ok() {
+        Ok(days)
+    } else {
+        Err(FormulaError::Unsupported(format!(
+            "the date \"{text}\", outside the range of a LocalDate column"
+        )))
+    })
+}
+
+/// The nanoseconds since midnight of a time of day; `None` when the text is no time of
+/// day, and an error for one Java reads that this server does not.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseLocalTime`: the hour and the minute,
+/// then optionally the second and after it a `.` and zero to nine digits of fraction,
+/// each field one or two digits, separated by `:`. Seen on Java 42.9: `24:00` and
+/// `24:00:00` are midnight, `12:30:45.` is 12:30:45, and ten digits of fraction fail. An
+/// hour of 24 with anything but zeros is refused here.
+pub(crate) fn local_time_nanos(text: &str) -> Option<Result<i64, FormulaError>> {
+    let (clock, fraction) = match text.split_once('.') {
+        Some((clock, fraction)) => (clock, Some(fraction)),
+        None => (text, None),
+    };
+    let fields: Vec<&str> = clock.split(':').collect();
+    let short =
+        |field: &&str| (1..=2).contains(&field.len()) && field.bytes().all(|b| b.is_ascii_digit());
+    if !(2..=3).contains(&fields.len()) || !fields.iter().all(short) {
+        return None;
+    }
+    if fraction.is_some() && fields.len() != 3 {
+        return None;
+    }
+    let fraction = fraction.unwrap_or("");
+    if fraction.len() > 9 || !fraction.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    let number = |field: &str| field.parse::<i64>().ok();
+    let hour = number(fields[0])?;
+    let minute = number(fields[1])?;
+    let second = match fields.get(2) {
+        Some(field) => number(field)?,
+        None => 0,
+    };
+    let mut nanos = 0;
+    for place in 0..9 {
+        let digit = fraction
+            .as_bytes()
+            .get(place)
+            .map_or(0, |d| i64::from(d - b'0'));
+        nanos = nanos * 10 + digit;
+    }
+    if hour > 24 || minute > 59 || second > 59 {
+        return None;
+    }
+    if hour == 24 {
+        return Some(if minute == 0 && second == 0 && nanos == 0 {
+            Ok(0)
+        } else {
+            Err(FormulaError::Unsupported(format!(
+                "the time \"{text}\", in a spelling this server does not read \
+                 (io.deephaven.time.DateTimeUtils#parseLocalTime)"
+            )))
+        });
+    }
+    Some(Ok(((hour * 60 + minute) * 60 + second)
+        * NANOS_PER_SECOND as i64
+        + nanos))
+}
+
+/// The years, months and days of a period; `Some(None)` for one whose numbers no Java
+/// `int` holds, which Java refuses; `None` when the text is not a period.
+///
+/// Behavior: `java.time.Period#parse`: each number is an `int`, multiplied by -1 when the
+/// period starts with `-`, and the days are the days plus seven times the weeks, all in
+/// exact arithmetic.
+pub(crate) fn period_parts(content: &str) -> Option<Option<[i32; 3]>> {
+    let (negative, mut rest) = after_p(content)?;
+    let mut found = [None; 4];
+    for (slot, unit) in found.iter_mut().zip(*b"YMWD") {
+        if let Some((value, after)) = component(rest, unit) {
+            *slot = Some(value);
+            rest = after;
+        }
+    }
+    if !rest.is_empty() || found.iter().all(Option::is_none) {
+        return None;
+    }
+    let sign = if negative { -1 } else { 1 };
+    let exact = |value: Option<i64>| -> Option<i32> {
+        i32::try_from(value.unwrap_or(0)).ok()?.checked_mul(sign)
+    };
+    Some((|| {
+        let [years, months, weeks, days] = found;
+        let days = exact(days)?.checked_add(exact(weeks)?.checked_mul(7)?)?;
+        Some([exact(years)?, exact(months)?, days])
+    })())
+}
+
+/// The id of a zone this server knows, as `java.time.ZoneId#getId` gives it.
+pub(crate) fn zone_id(zone: &Zone) -> &'static str {
+    match zone {
+        Zone::Utc => "UTC",
+        Zone::Region(region) => region.name(),
+    }
+}
+
+/// The zone whose id is `id`, one [`zone_id`] or [`zoned_of_text`] gives; `None` for any
+/// other.
+pub(crate) fn zone_of_id(id: &str) -> Option<Zone> {
+    match id {
+        "UTC" | "Z" => Some(Zone::Utc),
+        _ => id.parse().ok().map(Zone::Region),
     }
 }
 
@@ -305,6 +469,19 @@ pub(crate) fn duration_nanos(content: &str) -> Option<Option<i64>> {
 /// `Long.MAX_VALUE / 1_000_000_000` on, which is the last 0.85 seconds a long of
 /// nanoseconds could hold.
 fn parse_instant(content: &str) -> Result<i64, FormulaError> {
+    parse_zoned(content).map(|(nanos, _)| nanos)
+}
+
+/// [`parse_instant`], with the id of the zone the text names: `Z` where the time ends
+/// with `Z`, and otherwise the id of the zone after the space.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseZonedDateTime`, which keeps the zone
+/// that `java.time.ZonedDateTime#parse` or `DateTimeUtils#parseTimeZoneQuiet` gives.
+pub(crate) fn zoned_of_text(content: &str) -> Result<(i64, &'static str), FormulaError> {
+    parse_zoned(content)
+}
+
+fn parse_zoned(content: &str) -> Result<(i64, &'static str), FormulaError> {
     let unsupported = || FormulaError::Unsupported(format!("time literal '{content}'"));
     let invalid = || {
         FormulaError::Syntax(format!(
@@ -339,13 +516,13 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
         return Err(invalid());
     }
     // Java takes the zone from the first space on.
-    let (clock, zone) = match rest.split_once(' ') {
+    let (clock, zone, id) = match rest.split_once(' ') {
         Some((clock, name)) => match zone(name) {
-            Some(zone) => (clock, zone),
+            Some(zone) => (clock, zone, zone_id(&zone)),
             None => return Err(unsupported()),
         },
         None => match rest.strip_suffix('Z') {
-            Some(clock) if clock.len() > 1 => (clock, Zone::Utc),
+            Some(clock) if clock.len() > 1 => (clock, Zone::Utc, "Z"),
             _ => return Err(unsupported()),
         },
     };
@@ -425,7 +602,7 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
     let total = i128::from(seconds) * NANOS_PER_SECOND + i128::from(nanos);
     // The smallest long is the value Java reserves for a null instant.
     match i64::try_from(total) {
-        Ok(value) if value != i64::MIN && seconds < i64::MAX / 1_000_000_000 => Ok(value),
+        Ok(value) if value != i64::MIN && seconds < i64::MAX / 1_000_000_000 => Ok((value, id)),
         _ => Err(FormulaError::Unsupported(format!(
             "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
         ))),
@@ -475,7 +652,7 @@ fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }
 
-fn days_in_month(year: i64, month: i64) -> i64 {
+pub(crate) fn days_in_month(year: i64, month: i64) -> i64 {
     match month {
         4 | 6 | 9 | 11 => 30,
         2 if is_leap_year(year) => 29,

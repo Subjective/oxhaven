@@ -167,6 +167,16 @@ pub(crate) fn convert<T: JavaPrimitive>(array: &dyn Array) -> PrimitiveArray<T::
         DataType::Timestamp(TimeUnit::Nanosecond, _) => array
             .as_primitive::<TimestampNanosecondType>()
             .unary(T::from_integer),
+        // A `LocalDate`, `LocalTime` and `Duration`, which are compared as their numbers.
+        DataType::Date32 => array
+            .as_primitive::<arrow::datatypes::Date32Type>()
+            .unary(|v| T::from_integer(v.into())),
+        DataType::Time64(TimeUnit::Nanosecond) => array
+            .as_primitive::<arrow::datatypes::Time64NanosecondType>()
+            .unary(T::from_integer),
+        DataType::Duration(TimeUnit::Nanosecond) => array
+            .as_primitive::<arrow::datatypes::DurationNanosecondType>()
+            .unary(T::from_integer),
         DataType::Float32 => array
             .as_primitive::<Float32Type>()
             .unary(|v| T::from_floating(v.into())),

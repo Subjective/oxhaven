@@ -148,6 +148,14 @@ pub(crate) fn java_strings(array: &dyn Array) -> Result<Vec<String>, TableFailur
             array.as_primitive::<TimestampNanosecondType>().iter(),
             instant_to_string,
         ),
+        // Behavior: `java.time.LocalDate#toString`, `java.time.LocalTime#toString`
+        DataType::Date32 => reference(array.as_primitive::<Date32Type>().iter(), |days| {
+            java_values::local_date_text(days.into())
+        }),
+        DataType::Time64(TimeUnit::Nanosecond) => reference(
+            array.as_primitive::<Time64NanosecondType>().iter(),
+            java_values::local_time_text,
+        ),
         DataType::Int8 => primitive::<Int8Type>(array, i8::MIN, |v| v.to_string()),
         DataType::Int16 => primitive::<Int16Type>(array, i16::MIN, |v| v.to_string()),
         DataType::Int32 => primitive::<Int32Type>(array, i32::MIN, |v| v.to_string()),
