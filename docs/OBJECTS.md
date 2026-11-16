@@ -55,8 +55,8 @@ with a type written in Rust) and `crates/oxhaven-server/src/console/python/plugi
 A plugin sees these as `RuntimeError: java.lang.IllegalArgumentException: <text>`.
 
 Java registers `PartitionedTable`, `HierarchicalTable` and `Figure` before any plugin. Here
-`PartitionedTable` is registered; the other two names count as taken
-(`JAVA_TYPES_NOT_PORTED_LOWERCASE`) until their tasks register the types.
+`PartitionedTable` and `HierarchicalTable` are registered; `Figure` counts as taken
+(`JAVA_TYPES_NOT_PORTED_LOWERCASE`) until its task registers the type.
 
 The lower case of a name is Rust's `to_lowercase`, Java's is `toLowerCase(Locale.ENGLISH)`.
 They agree on ASCII.
@@ -197,7 +197,7 @@ before they touch the server. The registry's own lock is not held while a type i
 | --- | --- | --- |
 | A JS plugin | `io.deephaven.server.plugin.python.CallbackAdapter#registerJsPlugin` | left out with a warning in the server's log that names the method; the object types of its package are registered, and `/js-plugins/manifest.json` stays empty |
 | A reference to `None` | `io.deephaven.server.session.SessionState#newServerSideExport` of null, which makes an export that fails when a client uses it | the message that refers to it fails, with a `RuntimeError` that names the method |
-| The type names `Figure` and `HierarchicalTable` | Java's built-in types | taken, so no plugin can have them; nothing is of them yet |
+| The type name `Figure` | Java's built-in type | taken, so no plugin can have it; nothing is of it yet |
 
 ## For the owner
 

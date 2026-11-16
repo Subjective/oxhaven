@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 
 use tonic::Status;
 
+use crate::hierarchical::hierarchical_of;
 use crate::partitioned::{describe, partitioned_of};
 use crate::session::{ExportError, ExportValue};
 
@@ -120,6 +121,36 @@ impl ObjectType for PartitionedTableType {
     }
 }
 
+/// A hierarchical table, as clients open one: its descriptor. The rows are read through a
+/// view of it (`crate::hierarchical`), so the message refers to nothing.
+///
+/// Behavior: `io.deephaven.server.hierarchicaltable.HierarchicalTableTypePlugin`
+struct HierarchicalTableType;
+
+impl ObjectType for HierarchicalTableType {
+    fn name(&self) -> &str {
+        crate::hierarchical::TYPE_NAME
+    }
+
+    fn is_type(&self, value: &ExportValue) -> Result<bool, ExportError> {
+        Ok(hierarchical_of(value).is_some())
+    }
+
+    fn connect(
+        &self,
+        value: &ExportValue,
+        connection: Arc<dyn MessageStream>,
+    ) -> Result<Arc<dyn MessageStream>, ExportError> {
+        let hierarchical = hierarchical_of(value)
+            .ok_or_else(|| ExportError::Internal("not a hierarchical table".to_string()))?;
+        send_once(
+            connection.as_ref(),
+            crate::hierarchical::describe(hierarchical),
+            Vec::new(),
+        )
+    }
+}
+
 /// The names no type may have: a client opens these kinds through services of their own.
 ///
 /// Behavior: `ObjectTypes#RESERVED_TYPE_NAMES_LOWERCASE`
@@ -128,7 +159,7 @@ const RESERVED_NAMES_LOWERCASE: [&str; 4] = ["table", "rolluptable", "treetable"
 /// The types Java registers before any plugin and this server does not have yet. A plugin
 /// cannot take their names in Java, so it cannot here; the task that adds one of them
 /// registers it in [`registry`] and takes its name out of this list.
-const JAVA_TYPES_NOT_PORTED_LOWERCASE: [&str; 2] = ["hierarchicaltable", "figure"];
+const JAVA_TYPES_NOT_PORTED_LOWERCASE: [&str; 1] = ["figure"];
 
 /// The words `javax.lang.model.SourceVersion#isKeyword` answers true for (Java 21).
 const JAVA_KEYWORDS: [&str; 54] = [
@@ -297,7 +328,8 @@ impl ObjectTypes {
     }
 }
 
-/// The object types of this process: `PartitionedTable`, and what plugins registered.
+/// The object types of this process: `PartitionedTable`, `HierarchicalTable`, and what
+/// plugins registered.
 ///
 /// Behavior: the singleton `ObjectTypes` of a Java server, after
 /// `io.deephaven.server.plugin.PluginRegistration#registerAll`
@@ -308,6 +340,9 @@ pub fn registry() -> &'static ObjectTypes {
         types
             .register(Arc::new(PartitionedTableType))
             .expect("the first type of an empty registry");
+        types
+            .register(Arc::new(HierarchicalTableType))
+            .expect("a type that no other has the name of");
         types
     })
 }

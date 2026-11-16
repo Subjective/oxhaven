@@ -842,3 +842,10 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   owner: SortedFirst/SortedLast in a rollup with group-by columns (Java fails or sorts
   results, not rows); key table row order changes the expansion result in Java
   (reproduced).
+- Pull request 102 opened (5.6, formula gaps). Its gate still exits 1 on seven cases: the
+  Boolean column array (a Java defect) and six array comparisons that need a `boolean[]`
+  column type in the contracts. Static `Math` calls are a task of their own: Java accepts
+  them in a console script and refuses them over gRPC, and treats null values as numbers.
+- The rollup agent ended at its context limit after 10,590 s and 339k tokens of its own
+  window. A resumed agent carries its whole history, so reuse has a ceiling: after one
+  large task plus one follow-up message, start fresh and hand over notes instead.

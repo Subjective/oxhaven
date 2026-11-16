@@ -95,5 +95,15 @@
       "staticName": "ide_notebook_static",
       "selected": { "name": "ide_notebook_selected", "columns": ["Sel"], "displayed": [["7"], ["8"]] }
     }
+  },
+  "rollup": {
+    "comment": "Route rollup: the command typed into the console makes a rollup of six rows by Sym and Ex. `collapsed` is what the grid paints at first (the grand total and the first level), `expanded` what it paints after a click on the row of `expand`. Observed on the Java reference.",
+    "commands": {
+      "python": "from deephaven import new_table, agg; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col('Sym', ['AAPL', 'AAPL', 'MSFT', 'AAPL', 'MSFT', 'GOOG']), string_col('Ex', ['N', 'Q', 'N', 'N', 'Q', 'Q']), int_col('Qty', [10, 20, 30, 40, 50, 60])]).rollup(aggs=[agg.sum_('Qty'), agg.count_('Rows')], by=['Sym', 'Ex'])"
+    },
+    "columns": ["Group", "Sym", "Ex", "Qty", "Rows"],
+    "expand": "AAPL",
+    "collapsed": [["210", "6"], ["AAPL", "AAPL", "70", "3"], ["MSFT", "MSFT", "80", "2"], ["GOOG", "GOOG", "60", "1"]],
+    "expanded": [["210", "6"], ["AAPL", "AAPL", "70", "3"], ["AAPL", "N", "50", "2"], ["AAPL", "Q", "20", "1"], ["MSFT", "MSFT", "80", "2"], ["GOOG", "GOOG", "60", "1"]]
   }
 }

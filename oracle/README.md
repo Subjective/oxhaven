@@ -27,6 +27,7 @@ recorded from the Java reference. The reference is pinned in [REFERENCE.md](REFE
 | `scenarios/static/`, `scenarios/ticking/` | The scenarios, one JSON file each |
 | `corpus/<scenario>/` | The recorded Java results of each scenario |
 | `harness/scripts.py` | Script scenarios: the format, the runner, the recordings |
+| `harness/views.py` | Reading a view of a hierarchical table, for script scenarios |
 | `scenarios/python/` | The script scenarios, one Python file each |
 | `corpus/python/<scenario>/` | The recorded Java results of each script scenario |
 | `harness/formulas/` | The `formulas` command: corpus format, classifier, grid, extractors |
@@ -168,6 +169,7 @@ overall = source.agg_by([agg.sum_("Sum = NoSuchColumn")])
 | Line | Meaning |
 | --- | --- |
 | `# oracle: results a, b` | The variables to compare. Each is read through its `s/<name>` ticket after every step |
+| `# oracle: views v = r, w = r k A` | Views to compare, each under the name before the `=`: of the hierarchical table (a rollup) in the variable `r`, with its default expansions for `v`, and for `w` with those of the key table in the variable `k`, whose actions are in its column `A` (without `A` every row expands). Each is read after every step as a client reads it: `HierarchicalTableService/View`, then the first snapshot of a subscription to the first 2000 rows (`harness/views.py`) |
 | `# oracle: computed a.Col` | A float column under the tolerance of A1, as an aggregation's sum is in a table scenario |
 | `# oracle: step` | What follows is the script of the next step. A step without code only waits |
 | `# oracle: fails` | The script of this step must fail on the reference |
@@ -228,7 +230,7 @@ oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
 oracle/bin/ci-replay.sh
 ```
 
-It takes about 35 seconds after the build (85 scenarios, 74 script scenarios and 31 smoke
+It takes about 35 seconds after the build (85 scenarios, 78 script scenarios and 31 smoke
 checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).

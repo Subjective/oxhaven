@@ -31,8 +31,7 @@ pub const TABLE_TYPE_NAME: &str = "Table";
 /// A table is a `Table`. Java leaves out a table with the attribute `NonDisplayTable`; the
 /// tables of this engine have no such attribute, so every table is listed. Anything else
 /// is listed when an object type knows it (`crate::object::types`): a partitioned table,
-/// and the objects a plugin registered a type for. Java's `HierarchicalTable` is not here
-/// yet; the task that adds it registers its type.
+/// a hierarchical table, and the objects a plugin registered a type for.
 ///
 /// An error is a type that failed to say whether the value is its own: the text of what
 /// it raised.

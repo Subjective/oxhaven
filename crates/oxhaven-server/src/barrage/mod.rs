@@ -18,7 +18,7 @@ pub mod snapshot;
 pub mod writer;
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use exchange::Barrage;
 pub use snapshot::snapshot_request_messages;

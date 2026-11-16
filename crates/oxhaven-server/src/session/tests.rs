@@ -2074,15 +2074,20 @@ mod wire {
 
     #[tokio::test]
     async fn services_not_ported_answer_unimplemented_and_still_authenticate() {
-        use oxhaven_proto::grpc::hierarchical_table_service_client::HierarchicalTableServiceClient;
-        use oxhaven_proto::grpc::HierarchicalTableSourceExportRequest;
-
         let server = Server::start().await;
-        let err = HierarchicalTableServiceClient::new(server.channel.clone())
-            .export_source(with_auth(
-                HierarchicalTableSourceExportRequest::default(),
-                &format!("{PSK_AUTH_TYPE} {PSK}"),
-            ))
+        // every service of the protocol files is listed now, so: one of no file
+        let mut client = tonic::client::Grpc::new(server.channel.clone());
+        client.ready().await.unwrap();
+        let path = "/io.deephaven.proto.backplane.grpc.NoSuchService/Call";
+        let err = client
+            .unary::<HandshakeRequest, HandshakeRequest, _>(
+                with_auth(
+                    HandshakeRequest::default(),
+                    &format!("{PSK_AUTH_TYPE} {PSK}"),
+                ),
+                path.parse().unwrap(),
+                tonic_prost::ProstCodec::default(),
+            )
             .await
             .unwrap_err();
         assert_eq!(err.code(), Code::Unimplemented);
