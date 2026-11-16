@@ -45,6 +45,7 @@ mod input;
 pub mod interrupt;
 #[cfg(test)]
 mod jpy_tests;
+mod kafka;
 mod listener;
 mod ops;
 mod parquet;
@@ -503,6 +504,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
+        native.add_function(wrap_pyfunction!(kafka::kafka_consume, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
         generated::register(&native)?;
