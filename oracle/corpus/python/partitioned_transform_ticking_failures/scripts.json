@@ -1,0 +1,63 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : RuntimeError: java.lang.IllegalStateException: Encountered null constituent",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : RuntimeError: java.lang.NullPointerException: Cannot invoke \"io.deephaven.engine.table.Table.getDefinition()\" because \"resultEmptyConstituent\" is null",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : RuntimeError: io.deephaven.engine.table.TableDefinition$IncompatibleTableDefinitionException: Table definition incompatibilities: ",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : java.lang.ClassCastException: class java.lang.Byte cannot be cast to class io.deephaven.engine.table.Table (java.lang.Byte is in module java.base of loader 'bootstrap'; io.deephaven.engine.table.Table is in unnamed module of loader 'app')",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : ZeroDivisionError: integer division or modulo by zero",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to transform the PartitionedTable. : io.deephaven.util.ExecutionContextRegistrationException: No ExecutionContext registered, or current ExecutionContext has no QueryScope",
+      "operation": "failed to transform the PartitionedTable."
+    },
+    {
+      "step": 9,
+      "outcome": "ok"
+    }
+  ]
+}
