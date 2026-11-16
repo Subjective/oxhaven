@@ -64,6 +64,18 @@ from .fuzz_wide import LIST, _Wide, _list
 RESTRICTIONS: dict[str, str] = {
     "J1": "stops_reference: no count where of update_by that compares a boolean or "
           "timestamp column with a column (the reference shuts down)",
+    "J2": "second_formula: no fixed-distance read in a select of anything but an input table",
+    "D4": "filter: no zone the reference refuses in a comparison of a timestamp column "
+          "with a literal",
+    "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
+          "a fixed-distance read",
+    "R2": "filter: only UTC in a comparison of a timestamp column with a literal",
+    "R3": "_NO_ZONES: no zone written as an offset",
+    "R4": "build_agg: initial groups of a refreshing aggregation only with preserve_empty",
+    "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
+    "R6": "second_formula, filter: no column array of an array column",
+    "R7": "build_keyed_transpose: no float32 or timestamp column to name columns after",
+    "R8": "_DURATIONS: no period of months or years",
 }
 _COLUMN_COMPARISON = re.compile(r"^([A-Za-z_]\w*) (?:<|<=|>|>=|==|!=) ([A-Za-z_]\w*)$")
 
@@ -72,14 +84,15 @@ _INTEGERS = tuple(INT_BITS)
 # does not, which it refuses.
 _ZONES = ("UTC", "GMT", "ET", "CT", "MT", "PT", "HK", "JP", "LON", "America/New_York",
           "Europe/Paris", "Asia/Tokyo", "Australia/Sydney")
-_NO_ZONES = ("NY", "EST", "et", "+01:00")
+_NO_ZONES = ("NY", "EST", "et")  # R3: and no "+01:00"
 # Instants around `fuzz.T0` (2023-11-14T22:13:20Z), and two that a clock change of the
 # eastern United States skips or repeats.
 _LOCAL_TIMES = ("2023-11-14T22:13:20", "2023-11-14T22:13:21", "2023-11-14T17:13:22",
                 "2023-11-14T17:13:19.5", "2023-11-15T07:13:20", "2023-11-14T22:13:23.000000001",
                 "2024-03-10T02:30:00", "2024-11-03T01:30:00", "2023-11-14")
-_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s", "P1m")
+_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s")  # R8: no "P1m"
 # Operations whose result adds rows to an append-only table and never changes or moves one.
+_FORMULA_OPERATIONS = ("view", "select", "update", "update_view", "lazy_update")
 _APPENDING = frozenset({"where", "update", "update_view", "view", "select", "lazy_update",
                         "drop_columns"})
 # What `keyed_transpose` aggregates: exact results only, since its columns are named after
@@ -104,6 +117,9 @@ class _Second(_Wide):
         super().__init__(rng, ops)
         self.appending: set[str] = set()  # append-only inputs and what only adds to them
         self.single: set[str] = set()  # tables that never hold more than one row
+        self.input_names: set[str] = set()
+        self.kind = ""  # the operation being built
+        self.distance: str | None = None  # the distance its filters read at (R5)
 
     # ------------------------------------------------------------ inputs
 
@@ -120,6 +136,7 @@ class _Second(_Wide):
     def make_input(self, name: str, columns: list[tuple[str, str]], key_roles: set[str],
                    mode: str, id_column: str, unique_k: bool = False) -> None:
         super().make_input(name, columns, key_roles, mode, id_column, unique_k)
+        self.input_names.add(name)
         if mode == "append":
             self.appending.add(name)
 
@@ -146,6 +163,28 @@ class _Second(_Wide):
     def static_or(self, names: set[str]):
         return lambda table: not table.live or table.name in names
 
+    def build(self, kind: str) -> bool:
+        self.kind, self.distance = kind, None
+        try:
+            return super().build(kind)
+        finally:
+            self.kind = ""
+
+    def pick_table(self) -> _Table:
+        # Array columns are rare among the tables: a formula gets one of theirs now and then.
+        if self.kind in _FORMULA_OPERATIONS and self.chance(0.3):
+            with_arrays = self.pick(lambda t: any(
+                kind.startswith(LIST) and kind[len(LIST):] in NUMERIC and name not in t.computed
+                for name, kind in t.columns))
+            if with_arrays is not None:
+                return with_arrays
+        return super().pick_table()
+
+    @staticmethod
+    def scalars(table: _Table) -> list[str]:
+        """R6: the columns a column array is made of; none of an array column."""
+        return [c for c in table.usable() if not table.type_of(c).startswith(LIST)]
+
     # ------------------------------------------------------------ formulas and filters
 
     def formula(self, table: _Table) -> tuple[str, str] | None:
@@ -155,19 +194,25 @@ class _Second(_Wide):
 
     def second_formula(self, table: _Table) -> tuple[str, str] | None:
         rng = self.rng
-        columns = table.usable()
+        columns = self.scalars(table)
         numeric = table.usable(NUMERIC)
         stamps = table.usable(("timestamp",))
         arrays = [name for name, kind in table.columns
                   if kind.startswith(LIST) and kind[len(LIST):] in NUMERIC
                   and name not in table.computed]
-        shapes = ["row"]
+        lazy = self.kind == "lazy_update"  # R1
+        shapes = [] if lazy else ["row"]
         if columns:
-            shapes += ["shift", "shift", "column_array"]
+            if not lazy:
+                shapes += ["column_array"]
+            if self.kind != "select" or table.name in self.input_names:  # J2
+                shapes += ["shift", "shift"]
         if stamps:
             shapes += ["time", "time"]
         if arrays:
-            shapes += ["array", "array", "array"]
+            shapes += ["array"] * 8
+        if not shapes:
+            return None
         shape = rng.choice(shapes)
         if shape == "row":
             if numeric and self.chance(0.4):
@@ -207,7 +252,7 @@ class _Second(_Wide):
             if form == "plus":
                 return f"{a} {rng.choice(['+', '-'])} '{duration}'", "timestamp"
             if form == "scaled":
-                factor = rng.choice(["ii", "2", "i", "3"])
+                factor = rng.choice(["2", "3"] if lazy else ["ii", "2", "i", "3"])
                 return (f"{a} + '{duration}' {rng.choice(['*', '*', '/'])} {factor}"
                         if factor not in ("ii", "i") else f"{a} + '{duration}' * {factor}",
                         "timestamp")
@@ -250,16 +295,21 @@ class _Second(_Wide):
         if self.chance(0.45):
             return super().filter(table)
         stamps = table.usable(("timestamp",))
-        columns = table.usable()
+        columns = self.scalars(table)
         if stamps and self.chance(0.5):
             a = rng.choice(stamps)
-            if self.chance(0.25):
+            if self.chance(0.4):
                 return f"{a} + '{rng.choice(_DURATIONS)}' > {self.instant()}"
-            return f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} {self.instant()}"
+            # R2, D4: the comparison of a column with a literal is a filter of its own, which
+            # reads the literal with another parser than a formula does.
+            return (f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} "
+                    f"'{rng.choice(_LOCAL_TIMES)} UTC'")
         if columns and self.chance(0.5):
             a = rng.choice(columns)
             kind = table.type_of(a)
             index = rng.choice(["i-1", "i+1", "ii-1"])
+            if table.live:  # R5
+                index = self.distance = self.distance or index
             if kind == "bool":
                 return f"{a}_[{index}] == {a}"
             if self.chance(0.3):
@@ -295,13 +345,15 @@ class _Second(_Wide):
                 self.tables[op["name"]].live |= self.tables[initial].live
         if "initial_groups" not in op or self.chance(0.4):
             op["preserve_empty"] = self.chance(0.8)
+        if "initial_groups" in op and self.tables[op["name"]].live:
+            op["preserve_empty"] = True  # R4
         return True
 
     # ------------------------------------------------------------ partitioned tables
 
     def build_partition_merge(self, name: str) -> bool:
         source = self.pick_table()
-        by = self.keys(source, 0 if self.chance(0.08) else 1, 2)
+        by = self.keys(source, 0 if self.chance(0.12) else 1, 2)
         op: dict[str, Any] = {"name": name, "op": "partition_merge", "source": source.name,
                               "by": by}
         columns = list(source.columns)
@@ -323,9 +375,11 @@ class _Second(_Wide):
             return False
         op: dict[str, Any] = {"name": name, "op": "partition_get", "source": source.name,
                               "by": by, "key": key}
-        if self.chance(0.75):
-            op["unique"] = rng.choice(["permit_multiple", "permit_multiple", "require_unique",
-                                       "not_set"])
+        # Anything but `permit_multiple` is refused unless the key table has one row.
+        if self.chance(0.7):
+            op["unique"] = "permit_multiple"
+        elif self.chance(0.7):
+            op["unique"] = rng.choice(["require_unique", "not_set"])
         columns = list(source.columns)
         if self.chance(0.25):
             op["drop_keys"] = self.chance(0.8)
@@ -359,7 +413,8 @@ class _Second(_Wide):
         if len(usable) < 2:
             return False
         row_by = self.keys(source, 1, 2)
-        named = [c for c in usable if c not in row_by]
+        named = [c for c in usable if c not in row_by
+                 and source.type_of(c) not in ("float32", "timestamp")]  # R7
         if not named:
             return False
         col_by = rng.sample(named, 1 if self.chance(0.85) else min(2, len(named)))
@@ -385,8 +440,8 @@ class _Second(_Wide):
         op: dict[str, Any] = {"name": name, "op": "keyed_transpose", "source": source.name,
                               "aggs": aggs, "row_by": row_by, "col_by": col_by}
         if self.chance(0.3):
-            initial = self.initial_groups(source, col_by if self.chance(0.6) else
-                                          row_by + col_by)
+            # The initial groups name the columns and, in the reference, the rows too.
+            initial = self.initial_groups(source, row_by + col_by)
             if initial:
                 op["initial_groups"] = initial
         if source.live or self.chance(0.2):
@@ -414,9 +469,11 @@ class _Second(_Wide):
         if not tables:
             return False
         single = [t for t in tables if t.name in self.single]
+        if not single and not self.chance(0.1):
+            return False
         chosen = []
         for _ in range(rng.choice([1, 2, 2, 3])):
-            pool = single if single and self.chance(0.8) else tables
+            pool = single if single and self.chance(0.9) else tables
             table = rng.choice(pool)
             if table not in chosen:
                 chosen.append(table)
