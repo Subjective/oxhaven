@@ -10,7 +10,7 @@ workspace = true
 [features]
 # The Python console: embeds CPython, so building with it needs a Python 3 with a shared
 # libpython and its headers, and running needs that libpython. See docs/CONSOLE.md.
-python = ["dep:oxhaven-csv", "dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi"]
+python = ["dep:oxhaven-csv", "dep:oxhaven-kafka", "dep:oxhaven-parquet", "dep:pyo3", "dep:prost-reflect", "dep:serde_json", "arrow/ffi"]
 
 [dependencies]
 arrow.workspace = true
@@ -31,6 +31,7 @@ oxhaven-contracts = { path = "../oxhaven-contracts" }
 oxhaven-csv = { path = "../oxhaven-csv", optional = true }
 oxhaven-engine = { path = "../oxhaven-engine" }
 oxhaven-expr = { path = "../oxhaven-expr" }
+oxhaven-kafka = { path = "../oxhaven-kafka", optional = true }
 oxhaven-parquet = { path = "../oxhaven-parquet", optional = true }
 oxhaven-proto = { path = "../oxhaven-proto" }
 prost.workspace = true
