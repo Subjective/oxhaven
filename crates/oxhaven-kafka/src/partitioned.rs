@@ -165,7 +165,10 @@ fn poll_loop(mut source: Box<dyn RecordSource>, plan: Plan, live: Live, stopped:
         }
         let mut by_partition: BTreeMap<i32, Vec<Record>> = BTreeMap::new();
         for record in records {
-            by_partition.entry(record.partition).or_default().push(record);
+            by_partition
+                .entry(record.partition)
+                .or_default()
+                .push(record);
         }
         let received = now_nanos();
         let publishers = publishers(&live);
@@ -231,7 +234,8 @@ impl UpdateSource for Shower {
         let Some(table) = self.table.upgrade() else {
             return;
         };
-        let added = std::mem::take(&mut *self.pending.lock().unwrap_or_else(PoisonError::into_inner));
+        let added =
+            std::mem::take(&mut *self.pending.lock().unwrap_or_else(PoisonError::into_inner));
         if added.is_empty() || table.is_failed() {
             return;
         }
@@ -240,11 +244,10 @@ impl UpdateSource for Shower {
         let partitions: ArrayRef = Arc::new(Int32Array::from_iter_values(
             added.iter().map(|(partition, _)| *partition),
         ));
-        let handles: ArrayRef = Arc::new(Int64Array::from_iter_values(
-            added
-                .iter()
-                .map(|(_, constituent)| oxhaven_column::tables::register(constituent)),
-        ));
+        let handles: ArrayRef =
+            Arc::new(Int64Array::from_iter_values(added.iter().map(
+                |(_, constituent)| oxhaven_column::tables::register(constituent),
+            )));
         let written = self
             .partitions
             .fill(&rows, &partitions)

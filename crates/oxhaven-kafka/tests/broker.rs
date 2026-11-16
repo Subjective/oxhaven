@@ -20,8 +20,9 @@ use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_kafka::{
-    consume, consume_to_partitioned_table, AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset,
-    JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec, ProtobufProtocol, Spec, TableType,
+    consume, consume_to_partitioned_table, AvroMapping, AvroProduceSpec, AvroSchema,
+    ConsumeOptions, InitialOffset, JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec,
+    ProtobufProtocol, Spec, TableType,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -220,14 +221,21 @@ fn a_partitioned_table_has_a_constituent_per_partition() {
     wait_for(&graph, merged.as_ref(), 6);
     let underlying = partitioned.table();
     let index = underlying.definition().index_of("Partition").unwrap();
-    let keys = underlying.column(index).chunk(&underlying.row_set()).unwrap();
+    let keys = underlying
+        .column(index)
+        .chunk(&underlying.row_set())
+        .unwrap();
     assert_eq!(keys.as_primitive::<Int32Type>().values(), &[0, 1]);
     let mut total = 0;
     for (key, constituent) in [0, 1].into_iter().zip(partitioned.constituents().unwrap()) {
         let index = constituent.definition().index_of("KafkaPartition").unwrap();
         let rows = constituent.row_set();
         let partitions = constituent.column(index).chunk(&rows).unwrap();
-        assert!(partitions.as_primitive::<Int32Type>().values().iter().all(|p| *p == key));
+        assert!(partitions
+            .as_primitive::<Int32Type>()
+            .values()
+            .iter()
+            .all(|p| *p == key));
         let offsets = longs(constituent.as_ref(), "KafkaOffset");
         let expected: Vec<Option<i64>> = (0..rows.size() as i64).map(Some).collect();
         assert_eq!(offsets, expected, "partition {key}");
@@ -260,9 +268,13 @@ fn a_partitioned_table_has_a_constituent_per_partition() {
 
     // A topic the request makes the broker create has no partition yet, in Java's answer.
     let missing = options(&fresh("missing"), BEGINNING, json(), TableType::Append);
-    let error = consume_to_partitioned_table(shared, &missing).err().unwrap();
+    let error = consume_to_partitioned_table(shared, &missing)
+        .err()
+        .unwrap();
     assert!(
-        error.to_string().starts_with("java.lang.NullPointerException"),
+        error
+            .to_string()
+            .starts_with("java.lang.NullPointerException"),
         "{error}"
     );
 }

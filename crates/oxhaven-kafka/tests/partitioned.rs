@@ -117,7 +117,10 @@ fn strings(table: &Arc<dyn Table>) -> Vec<Option<String>> {
 }
 
 fn ints(table: &Arc<dyn Table>, name: &str) -> Vec<i32> {
-    column(table, name).as_primitive::<Int32Type>().values().to_vec()
+    column(table, name)
+        .as_primitive::<Int32Type>()
+        .values()
+        .to_vec()
 }
 
 #[test]
@@ -226,13 +229,19 @@ fn append_and_ring_constituents_keep_their_rows() {
 #[test]
 fn a_record_that_cannot_be_read_fails_its_partition_alone() {
     let topic = Topic::new(plan_of_ints(), &[0, 1], TableType::Append);
-    topic.cycle(Ok(vec![record(0, 0, Some("abcd")), record(1, 0, Some("efgh"))]));
+    topic.cycle(Ok(vec![
+        record(0, 0, Some("abcd")),
+        record(1, 0, Some("efgh")),
+    ]));
     let (zero, one) = (topic.constituent(0), topic.constituent(1));
     assert_eq!(zero.row_set().size(), 1);
     let merged = topic.partitioned.merge().unwrap();
     // Partition 0 is read first; the bad record of partition 1 fails its table and ends
     // the consumption, as KafkaIngester#pollOnce does.
-    topic.cycle(Ok(vec![record(0, 1, Some("ijkl")), record(1, 1, Some("xy"))]));
+    topic.cycle(Ok(vec![
+        record(0, 1, Some("ijkl")),
+        record(1, 1, Some("xy")),
+    ]));
     assert!(!zero.is_failed());
     assert_eq!(zero.row_set().size(), 2);
     assert!(one.is_failed());
@@ -271,7 +280,14 @@ fn no_partition_is_java_s_null_pointer_exception() {
         script: script_end,
         polled: polled_end,
     };
-    let made = consume_partitioned_from(graph as Arc<dyn UpdateGraph>, plan(), Box::new(source), &[], TableType::Blink, "t");
+    let made = consume_partitioned_from(
+        graph as Arc<dyn UpdateGraph>,
+        plan(),
+        Box::new(source),
+        &[],
+        TableType::Blink,
+        "t",
+    );
     let error = made.err().unwrap().to_string();
     assert!(
         error.starts_with("java.lang.NullPointerException: Cannot invoke"),
@@ -293,7 +309,8 @@ fn dropping_the_partitioned_table_stops_the_consumption() {
     graph.run_cycle();
     let mut ended = false;
     for _ in 0..500 {
-        if let Err(RecvTimeoutError::Disconnected) = polled.recv_timeout(Duration::from_millis(20)) {
+        if let Err(RecvTimeoutError::Disconnected) = polled.recv_timeout(Duration::from_millis(20))
+        {
             ended = true;
             break;
         }
@@ -308,7 +325,10 @@ fn a_merge_fails_with_a_failed_constituent() {
     // Made before any constituent shows; the one of partition 1 fails in the cycle that
     // shows it, and Java's merge fails as it cannot listen to it.
     let early = topic.partitioned.merge().unwrap();
-    topic.cycle(Ok(vec![record(0, 0, Some("abcd")), record(1, 0, Some("xy"))]));
+    topic.cycle(Ok(vec![
+        record(0, 0, Some("abcd")),
+        record(1, 0, Some("xy")),
+    ]));
     assert!(topic.constituent(1).is_failed());
     assert!(early.is_failed());
     let error = topic.partitioned.merge().err().unwrap().to_string();

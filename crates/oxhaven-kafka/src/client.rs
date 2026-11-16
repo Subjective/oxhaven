@@ -59,9 +59,7 @@ fn partitions_of(
             error,
         )
     };
-    let existing = consumer
-        .fetch_metadata(None, timeout)
-        .map_err(unanswered)?;
+    let existing = consumer.fetch_metadata(None, timeout).map_err(unanswered)?;
     let existed = existing
         .topics()
         .iter()
