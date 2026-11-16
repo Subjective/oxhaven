@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "ok"
+    },
+    {
+      "step": 2,
+      "outcome": "ok"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on TreeTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table",
+      "operation": "with_node_operations on TreeTable failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on TreeTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table",
+      "operation": "with_node_operations on TreeTable failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on TreeTable failed. : RuntimeError: java.lang.IllegalArgumentException: Incompatible operation recorders; compatible recorders must be created from the same table",
+      "operation": "with_node_operations on TreeTable failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: Nope > 1"
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "java.lang.RuntimeException: Unknown columns: [Nope], available columns = [Parent, V, Id, Name]"
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [V__TABLE_STYLE_FORMAT], available column names are [Id, Parent, Name, V]"
+    },
+    {
+      "step": 9,
+      "outcome": "ok"
+    }
+  ]
+}

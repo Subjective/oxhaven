@@ -639,3 +639,170 @@ fn random_changes_keep_trees_right() {
     }
     assert!(rows >= at_least_for(2000, 0..40), "only {rows} rows");
 }
+
+/// The last cell of every row of the walk with every node expanded.
+fn last_cells(tree: &Arc<TreeTable>) -> Vec<String> {
+    text(&snapshot_of(tree, &[(0, EXPAND_ALL)]).unwrap())
+        .iter()
+        .map(|row| row.rsplit('|').next().unwrap().to_string())
+        .collect()
+}
+
+const RED: &str = "143833713130660064";
+const BLUE: &str = "72058689286103264";
+
+fn with_ops(
+    tree: &Arc<TreeTable>,
+    record: impl FnOnce(NodeOperations) -> Result<NodeOperations, HierarchicalError>,
+) -> Result<Arc<TreeTable>, HierarchicalError> {
+    let operations = record(tree.node_operations())?;
+    tree.with_node_operations(&operations).map(Arc::new)
+}
+
+fn texts(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| item.to_string()).collect()
+}
+
+#[test]
+fn formats_add_columns_to_the_nodes() {
+    let tree = tree_of(&valued());
+    let formatted = with_ops(&tree, |ops| {
+        ops.format_columns(&texts(&["V = V > 2 ? RED : BLUE"]), &Compiler)
+    })
+    .unwrap();
+    let names: Vec<&str> = formatted
+        .snapshot_definition()
+        .columns()
+        .iter()
+        .map(|column| column.name.as_str())
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "__DEPTH__",
+            "__EXPANDED__",
+            "Id",
+            "Parent",
+            "V",
+            "V__TABLE_STYLE_FORMAT"
+        ]
+    );
+    assert_eq!(everything(&formatted), everything(&tree));
+    // as Java 42.9 answered
+    assert_eq!(
+        last_cells(&formatted),
+        [RED, RED, BLUE, BLUE, RED, RED, BLUE]
+    );
+    // the rows that a condition holds for, and 0 for the others
+    let rows = with_ops(&tree, |ops| {
+        ops.format_columns(
+            &[crate::ops::select::format::conditional_format(
+                "*", "V > 2", "PINK",
+            )],
+            &Compiler,
+        )
+    })
+    .unwrap();
+    let pink = "144045691226816512";
+    assert_eq!(last_cells(&rows), [pink, pink, "0", "0", pink, pink, "0"]);
+    // a filter of the source keeps the formats
+    let checked = CheckedFilters::parse(&["V > 4"], tree.source().definition(), &Compiler).unwrap();
+    let source_filtered = Arc::new(formatted.with_filters(&checked, &Compiler).unwrap());
+    assert_eq!(everything(&source_filtered), "1+1 2.4 1.2");
+    assert_eq!(last_cells(&source_filtered), [RED, RED, RED]);
+}
+
+#[test]
+fn a_node_filter_keeps_the_rows_of_a_node_that_pass() {
+    let tree = tree_of(&valued());
+    let big = with_ops(&tree, |ops| {
+        ops.where_filters(&texts(&["V > 2"]), &Compiler)
+    })
+    .unwrap();
+    // 3 and 2 have children, none of which passes: they cannot be expanded
+    assert_eq!(everything(&big), "1+1 2.3 2.4 1.2");
+    let two = with_ops(&tree, |ops| {
+        ops.where_filters(&texts(&["V > 2", "V < 9"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(everything(&two), "1+1 2.3 2.4");
+    // the position of a row is its position in its node
+    let later = with_ops(&tree, |ops| {
+        ops.where_filters(&texts(&["i > 0"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(everything(&later), "1.2");
+    // a key of a row that does not pass expands nothing
+    let over_four = with_ops(&tree, |ops| {
+        ops.where_filters(&texts(&["V > 4"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(shown(&over_four, &[(1, 1), (3, 1)]), "1+1 2.4 1.2");
+    // sorted too: a static node has no reverse lookup of its sort, and Java passes the
+    // key over (a ticking one fails the view: the scenario `tree_formatted`)
+    let sorted = with_ops(&tree, |ops| {
+        Ok(ops
+            .where_filters(&texts(&["V > 4"]), &Compiler)?
+            .sort(&[SortColumn::descending("V")]))
+    })
+    .unwrap();
+    assert_eq!(shown(&sorted, &[(1, 1), (3, 1)]), "1.2 1+1 2.4");
+    // a filter may read a formatting column recorded before it
+    let by_format = with_ops(&tree, |ops| {
+        ops.format_columns(&texts(&["V = RED"]), &Compiler)?
+            .where_filters(&texts(&["V__TABLE_STYLE_FORMAT != 0"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(everything(&by_format), everything(&tree));
+    assert!(matches!(
+        tree.node_operations()
+            .where_filters(&texts(&["Nope > 1"]), &Compiler),
+        Err(HierarchicalError::Formula(_))
+    ));
+    assert!(matches!(
+        tree.node_operations()
+            .where_filters(&texts(&["V_[i - 1] > 1"]), &Compiler),
+        Err(HierarchicalError::Unsupported(_))
+    ));
+}
+
+/// Behavior: TreeNodeOperationsRecorder#withOperations, as Java 42.9 answered it
+#[test]
+fn formats_are_refused_for_nodes_that_have_operations() {
+    let tree = tree_of(&valued());
+    let incompatible = |result: Result<TreeTable, HierarchicalError>| {
+        assert_eq!(
+            result.err().map(|error| error.to_string()),
+            Some(
+                "Incompatible operation recorders; compatible recorders must be created from \
+                 the same table"
+                    .to_string()
+            )
+        );
+    };
+    let format = |ops: NodeOperations| ops.format_columns(&texts(&["V = RED"]), &Compiler);
+    let sorted = tree.with_sorts(&[SortColumn::ascending("V")]);
+    incompatible(sorted.with_node_operations(&format(tree.node_operations()).unwrap()));
+    let filtered = with_ops(&tree, |ops| {
+        ops.where_filters(&texts(&["V > 2"]), &Compiler)
+    })
+    .unwrap();
+    incompatible(filtered.with_node_operations(&format(tree.node_operations()).unwrap()));
+    let formatted = with_ops(&tree, format).unwrap();
+    incompatible(
+        formatted.with_node_operations(&tree.node_operations().sort(&[SortColumn::ascending("V")])),
+    );
+    // filters add no column, and a recorder of the formatted tree has its columns
+    let again = with_ops(&filtered, |ops| {
+        ops.where_filters(&texts(&["V < 9"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(everything(&again), "1+1 2.3 2.4");
+    let refmt = with_ops(&formatted, |ops| {
+        ops.format_columns(&texts(&["V = BLUE"]), &Compiler)?
+            .where_filters(&texts(&["V < 9"]), &Compiler)
+    })
+    .unwrap();
+    assert_eq!(everything(&refmt), "1+1 2+3 3.5 3.6 2.4");
+    assert_eq!(last_cells(&refmt), [BLUE; 5]);
+}

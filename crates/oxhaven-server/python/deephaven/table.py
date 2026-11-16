@@ -1526,8 +1526,8 @@ class RollupTable:
 
 class TreeNodeOperationsRecorder:
     """Records operations to apply to the nodes of a tree when a client reads it:
-    sorts. `TreeTable.node_operation_recorder` makes one, and every operation returns a
-    new one.
+    sorts, formats and filters. `TreeTable.node_operation_recorder` makes one, and every
+    operation returns a new one.
 
     Behavior: `deephaven.table.TreeNodeOperationsRecorder`
     """
@@ -1550,29 +1550,35 @@ class TreeNodeOperationsRecorder:
         order_by = _engine.to_sequence(order_by)
         return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
 
-    def where(self, filters):
-        """Not ported: a recorder that also filters the rows of a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where"
-        )
+    def where(self, filters: Union[str, Sequence[str]]):
+        """A recorder that also keeps, of the rows of a node, those that pass every
+        filter. A filter may read a formatting column recorded before it. A row whose
+        children no filter keeps cannot be expanded.
+
+        Behavior: `deephaven.table.TreeNodeOperationsRecorder.where`, which is
+        `io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where`
+        """
+        filters = _engine.to_sequence(filters)
+        if not all(isinstance(f, str) for f in filters):
+            # a `deephaven.filters.Filter`, which this package does not have
+            raise dtypes._java_time.NotPorted(
+                "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where(Filter)"
+            )
+        return self.__class__(self.j_node_ops_recorder.where_filters(filters))
 
     def format_column(self, formulas: Union[str, Sequence[str]]):
-        """Not ported: a recorder that also formats columns of a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumns"
-        )
+        """A recorder that also formats columns of a node, as `Table.format_columns`
+        formats those of a table."""
+        formulas = _engine.to_sequence(formulas)
+        return self.__class__(self.j_node_ops_recorder.format_columns(formulas))
 
     def format_row_where(self, cond: str, formula: str):
-        """Not ported: a recorder that also formats the rows of a node that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatRowWhere"
-        )
+        """A recorder that also formats the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where("*", cond, formula))
 
     def format_column_where(self, col: str, cond: str, formula: str):
-        """Not ported: a recorder that also formats a column of the rows that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumnWhere"
-        )
+        """A recorder that also formats `col` in the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where(col, cond, formula))
 
 
 class TreeTable:

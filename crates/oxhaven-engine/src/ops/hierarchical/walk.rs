@@ -397,8 +397,16 @@ impl Walk<'_> {
                     Some(position) => children.push((position, child)),
                     // Java looks the row up in the sorted table while it still fills the
                     // viewport, and takes a row that is not there for an inconsistency.
-                    // Behavior: HierarchicalTableImpl.LinkedDirective#setRowKeyInParentSorted
-                    None if filling && matches!(rows, Shown::Sorted(_)) => {
+                    // The sort of a static table has no reverse lookup, and the row is
+                    // looked up unsorted: one that is not there is passed over. A row
+                    // can be missing from a static node only when a filter of the nodes
+                    // of a tree drops it (observed on Java 42.9).
+                    // Behavior: HierarchicalTableImpl.LinkedDirective#setRowKeyInParentSorted,
+                    // SortOperation#getReverseLookup
+                    None if filling
+                        && matches!(rows, Shown::Sorted(_))
+                        && self.hierarchy.source().is_refreshing() =>
+                    {
                         return Err(failure(
                             "Failed to perform sort reverse lookup: an expanded node has \
                              no row in its sorted parent now",

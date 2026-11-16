@@ -403,7 +403,27 @@ it is in a rollup. The schema has no `ColumnDescriptions` attribute.
 **Python.** `Table.tree(id_col, parent_col, promote_orphans)` and
 `deephaven.table.TreeTable` with `id_col`, `parent_col`, `node_operation_recorder()`,
 `with_node_operations(recorder)` and `with_filters(filters)`;
-`TreeNodeOperationsRecorder` has `sort` and `sort_descending`.
+`TreeNodeOperationsRecorder` has `sort`, `sort_descending`, `format_column`,
+`format_row_where`, `format_column_where` and `where`.
+
+**Formats and filters of nodes.** Task 7.8.4 (`tasks/7.8.4-tree-formats.md`), observed on
+Java 42.9 with the scenario `tree_formatted`. The tree's recorder is the rollup's
+`NodeOperations` with filters and without update views. Formats add their hidden
+columns to every node and to the snapshot schema after the columns of the source, as
+for a rollup. A filter of the recorder (`where`) keeps, of the rows of every node, those
+that pass, after the formats (`TreeTableImpl#applyNodeFormatsAndFilters`): it may read a
+formatting column, `i` is the position of a row in its node, and a row none of whose
+children pass cannot be expanded (`#nodeIdExpandable` reads the filtered node). A key of
+a row that a filter drops expands nothing. The filters of a node are evaluated at every
+snapshot, for each node visited and for each shown row whose children may be expanded;
+Java keeps a filtered table per visited node. Java takes a second recorder only when it
+gives the nodes the columns they have (`TreeNodeOperationsRecorder#withOperations`):
+formats for a tree whose nodes have sorts, filters or other formats are refused, unless
+the recorder was made of that tree and formats only columns already formatted; filters
+and sorts after formats are taken from a recorder of the formatted tree. Reproduced. A
+filter of the tree's source (`with_filters`) keeps the formats. A filter that reads a
+column at other rows (`Column_`) and a `deephaven.filters.Filter` (this package has no
+`deephaven.filters`) are refused by name.
 
 ## Refused for now
 
@@ -418,7 +438,7 @@ Each names the Java method in its error.
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
 | The expansion of a row of a tree that has no identifier | `TreeTableImpl#makeChildNodeIdLookup` | needs a ruling |
 | A walk of a tree more than 200 levels deep | `HierarchicalTableImpl#visitExpandedNode` | needs a ruling |
-| The tree recorder's `where`, `format_column`, `format_row_where`, `format_column_where` | `TreeNodeOperationsRecorder#where`, `#formatColumns`, `#formatRowWhere`, `#formatColumnWhere` | none yet |
+| A filter of the tree recorder that reads a column at other rows, or given as a `Filter` | `TreeNodeOperationsRecorder#where` | none yet |
 | A colour as the value of a formula (`AK = RED`, `new Color(..)`), the colours of `io.deephaven.engine.util.ColorUtil.RED`, `colorRGB(int, boolean)` | `io.deephaven.gui.color.Color`, `ColorUtilImpl` | 4.21 |
 | A tree of a blink table | `TreeTableImpl#makeTree` | none yet |
 | The refusal of an identifier and a parent of two types when one is of a type whose Java description is not written here | `ColumnDefinition#describeForCompatibility` | none yet |
@@ -463,9 +483,16 @@ Each names the Java method in its error.
   that have operations (`RollupNodeOperationsRecorder#withOperations`): two update views
   in a row, `with_update_view` twice, formats after a sort, update views and formats of
   one node type in one `Apply`. Reproduced. Listed for a ruling.
-- Java's Python `TreeNodeOperationsRecorder` has `where` (a filter of the rows of a
-  node); it is refused by name here, and `TreeTable#withNodeFilterColumns` is not
-  offered.
+- `TreeTable#withNodeFilterColumns` is not offered (Java's Python package does not
+  offer it either).
+- The filters a tree's recorder records are evaluated for a node at every snapshot;
+  Java keeps a filtered table per visited node. A client sees the same rows.
+- With node filters and sorts, a key table that expands a row the filter drops fails
+  the view of a tree of a ticking table in Java (`LinkedDirective#setRowKeyInParentSorted`
+  finds no sorted row, as for a sorted rollup), and not of a static one, whose sort has
+  no reverse lookup (`SortOperation#getReverseLookup`): the key is passed over. Both
+  reproduced (scenario `tree_formatted`). Listed for a ruling: the failure is an
+  assertion of Java's, not a refusal.
 - Java's natural join copies the sortable columns of its left table; `ops::join` does
   not yet, and the promotion of orphans restores them itself.
 

@@ -227,6 +227,7 @@
   "time_zones": {"state": "clean"},
   "tree_expansions": {"state": "clean"},
   "tree_filtered": {"state": "clean"},
+  "tree_formatted": {"state": "clean"},
   "tree_refused": {"state": "clean"},
   "tree_sorted": {"state": "clean"},
   "tree_static": {"state": "clean"},

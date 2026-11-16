@@ -6,6 +6,7 @@
 //! with the recorded columns, each computed when it is read.
 
 use super::HierarchicalError;
+use crate::ops::filter::RowFilters;
 use crate::ops::select::format::{format_assignments, is_formatting_column};
 use crate::ops::sort::SortColumn;
 use arrow::array::ArrayRef;
@@ -36,6 +37,8 @@ pub struct NodeOperations {
     formats: Vec<NodeColumn>,
     update_views: Vec<NodeColumn>,
     sorts: Vec<SortColumn>,
+    /// The filters of the rows of a node of a tree, one set per `where`, in order.
+    filters: Vec<Arc<RowFilters>>,
 }
 
 fn illegal(message: impl Into<String>) -> HierarchicalError {
@@ -50,12 +53,16 @@ impl NodeOperations {
             formats: Vec::new(),
             update_views: Vec::new(),
             sorts: Vec::new(),
+            filters: Vec::new(),
         }
     }
 
-    /// Behavior: RollupNodeOperationsRecorder#isEmpty
+    /// Behavior: RollupNodeOperationsRecorder#isEmpty, TreeNodeOperationsRecorder#isEmpty
     pub fn is_empty(&self) -> bool {
-        self.formats.is_empty() && self.update_views.is_empty() && self.sorts.is_empty()
+        self.formats.is_empty()
+            && self.update_views.is_empty()
+            && self.sorts.is_empty()
+            && self.filters.is_empty()
     }
 
     /// The columns of the nodes with what was recorded.
@@ -209,6 +216,36 @@ impl NodeOperations {
         Ok(result)
     }
 
+    /// This recorder with the filters `filters` of the rows of a node of a tree, each read
+    /// as `Table.where` reads a filter string, against the columns of the nodes and the
+    /// formatting columns recorded before; a node keeps the rows that pass every filter.
+    /// No filter is no change. A filter that reads a column at other rows (`Column_`) is
+    /// refused as not ported.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where,
+    /// whose filters are initialized for the recorder's result definition, and #mergeFilters
+    pub fn where_filters(
+        &self,
+        filters: &[String],
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<NodeOperations, HierarchicalError> {
+        if filters.is_empty() {
+            return Ok(self.clone());
+        }
+        let parsed = RowFilters::parse(filters, &self.table_definition()?, compiler)
+            .map_err(HierarchicalError::Formula)?;
+        if parsed.reads_arrays() {
+            return Err(HierarchicalError::Unsupported(format!(
+                "not ported: io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where: \
+                 a filter of the rows of a node that reads a column at other rows: {}",
+                filters.join(", ")
+            )));
+        }
+        let mut result = self.clone();
+        result.filters.push(Arc::new(parsed));
+        Ok(result)
+    }
+
     /// This recorder with `sorts`, which the caller has checked, in front of its sorts.
     ///
     /// Behavior: BaseNodeOperationsRecorder#sort and #mergeSortColumns
@@ -221,22 +258,26 @@ impl NodeOperations {
 }
 
 /// The columns recorded for the nodes of one type of a hierarchical table, as the table
-/// keeps them.
+/// keeps them, and for a tree the filters of its nodes.
 #[derive(Clone, Default)]
 pub(super) struct NodeColumns {
     pub(super) update_views: Vec<NodeColumn>,
     pub(super) formats: Vec<NodeColumn>,
+    pub(super) filters: Vec<Arc<RowFilters>>,
 }
 
 impl NodeColumns {
+    /// Whether no column is recorded; filters are not columns.
     pub(super) fn is_empty(&self) -> bool {
         self.update_views.is_empty() && self.formats.is_empty()
     }
 
     /// These columns and those of `operations` after them. Of two update views of one
     /// name the first stays; formats are all kept, and a later one of a name decides.
+    /// The filters of `operations` follow these.
     ///
-    /// Behavior: RollupNodeOperationsRecorder#withOperations
+    /// Behavior: RollupNodeOperationsRecorder#withOperations,
+    /// TreeNodeOperationsRecorder#withOperations and #mergeFilters
     pub(super) fn with(&self, operations: &NodeOperations) -> NodeColumns {
         let mut result = self.clone();
         for view in &operations.update_views {
@@ -249,6 +290,7 @@ impl NodeColumns {
             }
         }
         result.formats.extend(operations.formats.iter().cloned());
+        result.filters.extend(operations.filters.iter().cloned());
         result
     }
 }
@@ -403,4 +445,93 @@ pub(super) fn node_table(
         }
     }
     Ok(table_of(&defined, &sources)?)
+}
+
+/// A node's table restricted to the rows its filters keep. Like [`NodeTable`] it is read
+/// during one snapshot and listened to by no one, so the rows are found when it is made:
+/// the current rows, and for a refreshing table the previous rows by the previous values.
+struct FilteredNode {
+    table: Arc<dyn Table>,
+    rows: Arc<RowSet>,
+    prev_rows: Arc<RowSet>,
+}
+
+impl Dependency for FilteredNode {
+    fn satisfied(&self, step: u64) -> bool {
+        self.table.satisfied(step)
+    }
+}
+
+impl Table for FilteredNode {
+    fn definition(&self) -> &TableDefinition {
+        self.table.definition()
+    }
+
+    fn row_set(&self) -> Arc<RowSet> {
+        self.rows.clone()
+    }
+
+    fn prev_row_set(&self) -> Arc<RowSet> {
+        self.prev_rows.clone()
+    }
+
+    fn column(&self, index: usize) -> Arc<dyn ColumnSource> {
+        self.table.column(index)
+    }
+
+    fn is_refreshing(&self) -> bool {
+        self.table.is_refreshing()
+    }
+
+    fn attributes(&self) -> TableAttributes {
+        self.table.attributes()
+    }
+
+    fn is_flat(&self) -> bool {
+        false
+    }
+
+    fn is_failed(&self) -> bool {
+        self.table.is_failed()
+    }
+
+    fn update_graph(&self) -> Option<Arc<dyn UpdateGraph>> {
+        self.table.update_graph()
+    }
+
+    fn add_listener(&self, listener: &Arc<dyn UpdateListener>) {
+        self.table.add_listener(listener)
+    }
+}
+
+/// The rows of `table`, the table of a node, that pass every filter of `filters`, each
+/// set applied to the rows the ones before it kept; `table` itself without filters.
+///
+/// Behavior: TreeNodeOperationsRecorder#applyFilters, a `where` of the node's formatted
+/// table
+pub(super) fn filtered_node(
+    table: Arc<dyn Table>,
+    filters: &[Arc<RowFilters>],
+) -> Result<Arc<dyn Table>, HierarchicalError> {
+    if filters.is_empty() {
+        return Ok(table);
+    }
+    let kept = |rows: &RowSet, use_prev: bool| -> Result<RowSet, TableFailure> {
+        let mut rows = rows.clone();
+        for set in filters {
+            rows = set.accepted(table.as_ref(), &rows, use_prev)?;
+        }
+        Ok(rows)
+    };
+    let rows = Arc::new(kept(&table.row_set(), false)?);
+    let prev_rows = if table.is_refreshing() {
+        Arc::new(kept(&table.prev_row_set(), true)?)
+    } else {
+        rows.clone()
+    };
+    Ok(Arc::new(FilteredNode {
+        table,
+        rows,
+        prev_rows,
+    }))
 }

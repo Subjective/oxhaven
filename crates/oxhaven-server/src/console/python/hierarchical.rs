@@ -16,7 +16,7 @@ use std::sync::Arc;
 use oxhaven_contracts::expr::FormulaCompiler;
 use oxhaven_engine::ops::filter::CheckedFilters;
 use oxhaven_engine::ops::hierarchical::{
-    merged_sorts, HierarchicalError, NodeOperations, RollupTable, TreeTable,
+    HierarchicalError, NodeOperations, RollupTable, TreeTable,
 };
 use oxhaven_engine::ops::select::format::conditional_format;
 use oxhaven_engine::ops::sort::SortColumn;
@@ -80,12 +80,11 @@ impl HierarchicalHandle {
     ///
     /// Behavior: `io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeNodeOperationsRecorder`
     fn tree_recorder(&self) -> PyResult<RecorderHandle> {
-        self.tree()?;
+        let tree = self.tree()?;
         Ok(RecorderHandle {
             table: self.table.clone(),
             constituents: false,
-            sorts: Vec::new(),
-            operations: None,
+            operations: tree.node_operations(),
         })
     }
 
@@ -111,15 +110,14 @@ impl HierarchicalHandle {
         Ok(RecorderHandle {
             table: self.table.clone(),
             constituents,
-            sorts: Vec::new(),
-            operations: Some(operations),
+            operations,
         })
     }
 
     /// This table with what `recorders` recorded applied to its nodes, each after the
     /// ones before it; this table itself when they recorded nothing. The sorts were
     /// checked when they were recorded, for the table the recorder was made of, and as
-    /// in Java are not checked again for this one. A rollup whose nodes of a type have
+    /// in Java are not checked again for this one. A table whose nodes (of a type) have
     /// operations takes no recorder that adds a column to them, as in Java.
     ///
     /// Behavior: `RollupTableImpl#withNodeOperations`, `TreeTableImpl#withNodeOperations`
@@ -135,23 +133,32 @@ impl HierarchicalHandle {
             HierarchicalTable::Rollup(rollup) => {
                 let mut result = rollup.clone();
                 for recorder in recorded {
-                    let Some(operations) = &recorder.operations else {
+                    if recorder.is_tree() {
                         return Err(PyValueError::new_err("not a recorder of a rollup"));
-                    };
+                    }
                     // a recorder made of a rollup that has constituents, applied to one
                     // that has none, is refused here too
                     result = Arc::new(
                         result
-                            .with_node_operations(recorder.constituents, operations)
+                            .with_node_operations(recorder.constituents, &recorder.operations)
                             .map_err(|error| illegal(&error.to_string()))?,
                     );
                 }
                 HierarchicalTable::Rollup(result)
             }
             HierarchicalTable::Tree(tree) => {
-                HierarchicalTable::Tree(recorded.fold(tree.clone(), |tree, recorder| {
-                    Arc::new(tree.with_sorts(&recorder.sorts))
-                }))
+                let mut result = tree.clone();
+                for recorder in recorded {
+                    if !recorder.is_tree() {
+                        return Err(PyValueError::new_err("not a recorder of a tree"));
+                    }
+                    result = Arc::new(
+                        result
+                            .with_node_operations(&recorder.operations)
+                            .map_err(|error| illegal(&error.to_string()))?,
+                    );
+                }
+                HierarchicalTable::Tree(result)
             }
         });
         Py::new(slf.py(), HierarchicalHandle { table })
@@ -190,60 +197,52 @@ impl HierarchicalHandle {
 }
 
 /// What a script has recorded to apply to the nodes of a rollup or a tree: sorts, the
-/// one that decides first in front, and for a rollup update views and formats. The
-/// Python `RollupNodeOperationsRecorder` wraps one.
+/// one that decides first in front, formats, for a rollup update views, and for a tree
+/// filters. The Python `RollupNodeOperationsRecorder` and `TreeNodeOperationsRecorder`
+/// wrap one.
 ///
-/// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder`
+/// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder`,
+/// `TreeNodeOperationsRecorder`
 #[pyclass(frozen, module = "_oxhaven")]
 pub(super) struct RecorderHandle {
-    /// The rollup the recorder was made of, whose columns its sorts are checked against.
+    /// The table the recorder was made of, whose columns its sorts are checked against.
     table: Hierarchical,
     /// Whether it records for the constituent nodes of a rollup: the rows of the source.
     constituents: bool,
-    /// The sorts of a recorder of a tree.
-    sorts: Vec<SortColumn>,
-    /// What a recorder of a rollup recorded, its sorts too.
-    operations: Option<NodeOperations>,
+    /// What was recorded.
+    operations: NodeOperations,
 }
 
 impl RecorderHandle {
     fn is_empty(&self) -> bool {
-        self.sorts.is_empty()
-            && self
-                .operations
-                .as_ref()
-                .is_none_or(NodeOperations::is_empty)
+        self.operations.is_empty()
     }
 
-    /// This recorder of a rollup with what `record` adds to its operations. The formulas
-    /// are compiled against the columns of the nodes and what the recorder added. For a
-    /// tree the Java method `java` is named as not ported.
+    fn is_tree(&self) -> bool {
+        matches!(self.table.as_ref(), HierarchicalTable::Tree(_))
+    }
+
+    /// This recorder with what `record` adds to its operations. The formulas are
+    /// compiled against the columns of the nodes and what the recorder added.
     fn recorded(
         &self,
         py: Python<'_>,
-        java: &str,
         record: impl Fn(&NodeOperations, &dyn FormulaCompiler) -> Result<NodeOperations, HierarchicalError>
             + Send
             + Sync,
     ) -> PyResult<Self> {
-        let Some(operations) = &self.operations else {
-            return Err(PyRuntimeError::new_err(format!(
-                "not ported: io.deephaven.engine.table.impl.hierarchical.{java}"
-            )));
-        };
         let runtime = runtime()?;
         let operations = py
             .detach(|| {
                 guarded(&[], || {
-                    Ok(record(operations, runtime.context.compiler.as_ref())?)
+                    Ok(record(&self.operations, runtime.context.compiler.as_ref())?)
                 })
             })
             .map_err(failure)?;
         Ok(RecorderHandle {
             table: self.table.clone(),
             constituents: self.constituents,
-            sorts: Vec::new(),
-            operations: Some(operations),
+            operations,
         })
     }
 }
@@ -278,28 +277,19 @@ impl RecorderHandle {
             .collect();
         let table = &self.table;
         py.detach(|| {
-            guarded(&[], || match (table.as_ref(), &self.operations) {
-                (HierarchicalTable::Rollup(rollup), Some(operations)) => {
-                    Ok(rollup.check_recorded_sorts(self.constituents, operations, &sorts)?)
+            guarded(&[], || match table.as_ref() {
+                HierarchicalTable::Rollup(rollup) => {
+                    Ok(rollup.check_recorded_sorts(self.constituents, &self.operations, &sorts)?)
                 }
-                (HierarchicalTable::Rollup(rollup), None) => Ok(rollup.check_sorts(&sorts)?),
-                (HierarchicalTable::Tree(tree), _) => Ok(tree.check_sorts(&sorts)?),
+                // a tree's recorder adds no column a sort may name
+                HierarchicalTable::Tree(tree) => Ok(tree.check_sorts(&sorts)?),
             })
         })
         .map_err(failure)?;
-        Ok(match &self.operations {
-            Some(operations) => RecorderHandle {
-                table: self.table.clone(),
-                constituents: self.constituents,
-                sorts: Vec::new(),
-                operations: Some(operations.sort(&sorts)),
-            },
-            None => RecorderHandle {
-                table: self.table.clone(),
-                constituents: self.constituents,
-                sorts: merged_sorts(&sorts, &self.sorts),
-                operations: None,
-            },
+        Ok(RecorderHandle {
+            table: self.table.clone(),
+            constituents: self.constituents,
+            operations: self.operations.sort(&sorts),
         })
     }
 
@@ -307,22 +297,35 @@ impl RecorderHandle {
     ///
     /// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView`
     fn update_view(&self, py: Python<'_>, formulas: Vec<String>) -> PyResult<Self> {
-        self.recorded(
-            py,
-            "TreeNodeOperationsRecorder#updateView",
-            |operations, compiler| operations.update_view(&formulas, compiler),
-        )
+        if self.is_tree() {
+            // Java's tree recorder has no update view; the Python class offers none
+            return Err(PyValueError::new_err("not a recorder of a rollup"));
+        }
+        self.recorded(py, |operations, compiler| {
+            operations.update_view(&formulas, compiler)
+        })
+    }
+
+    /// This recorder of a tree with the filters `filters` of the rows of its nodes.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where`
+    fn where_filters(&self, py: Python<'_>, filters: Vec<String>) -> PyResult<Self> {
+        if !self.is_tree() {
+            // Java's rollup recorder has no filters; the Python class offers none
+            return Err(PyValueError::new_err("not a recorder of a tree"));
+        }
+        self.recorded(py, |operations, compiler| {
+            operations.where_filters(&filters, compiler)
+        })
     }
 
     /// This recorder of a rollup with the formats `formats` of columns of the nodes.
     ///
     /// Behavior: `io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder#formatColumns`
     fn format_columns(&self, py: Python<'_>, formats: Vec<String>) -> PyResult<Self> {
-        self.recorded(
-            py,
-            "TreeNodeOperationsRecorder#formatColumns",
-            |operations, compiler| operations.format_columns(&formats, compiler),
-        )
+        self.recorded(py, |operations, compiler| {
+            operations.format_columns(&formats, compiler)
+        })
     }
 
     /// This recorder of a rollup with the format `format` of `column`, `*` for the row,
@@ -337,12 +340,7 @@ impl RecorderHandle {
         format: &str,
     ) -> PyResult<Self> {
         let formats = [conditional_format(column, condition, format)];
-        let java = if column == "*" {
-            "TreeNodeOperationsRecorder#formatRowWhere"
-        } else {
-            "TreeNodeOperationsRecorder#formatColumnWhere"
-        };
-        self.recorded(py, java, |operations, compiler| {
+        self.recorded(py, |operations, compiler| {
             operations.format_columns(&formats, compiler)
         })
     }
@@ -522,7 +520,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn what_a_tree_does_not_have_yet_is_refused_by_name() {
+    async fn the_recorder_of_a_tree_and_what_it_refuses() {
         let python = Python::start().await;
         python.run(
             "from deephaven import empty_table, agg, DHError\n\
@@ -536,11 +534,18 @@ mod tests {
              \x20   else:\n\
              \x20       raise AssertionError('must be refused: ' + java)\n\
              recorder = t.node_operation_recorder()\n\
-             refused(lambda: recorder.where('Id > 1'), 'TreeNodeOperationsRecorder#where')\n\
-             refused(lambda: recorder.format_column('Id = RED'), 'TreeNodeOperationsRecorder#formatColumns')\n\
-             refused(lambda: recorder.format_row_where('Id > 1', 'RED'), 'TreeNodeOperationsRecorder#formatRowWhere')\n\
-             refused(lambda: recorder.format_column_where('Id', 'Id > 1', 'RED'), 'TreeNodeOperationsRecorder#formatColumnWhere')\n\
+             refused(lambda: recorder.where('Id_[i - 1] > 1'), 'TreeNodeOperationsRecorder#where')\n\
+             refused(lambda: recorder.where(object()), 'TreeNodeOperationsRecorder#where(Filter)')\n\
+             formatted = t.with_node_operations(recorder.format_column('Id = RED').format_row_where('Id > 1', 'BLUE'))\n\
+             formatted = formatted.with_node_operations(formatted.node_operation_recorder().format_column_where('Id', 'Id > 1', 'BLUE').where('Id > 1'))\n\
+             assert formatted.id_col == 'Id'\n\
+             # a format of another column changes the columns of the nodes\n\
+             refused(lambda: formatted.with_node_operations(formatted.node_operation_recorder().format_column('Name = RED')), 'Incompatible operation recorders')\n\
              # what Java refuses, in Java's words\n\
+             refused(lambda: t.with_node_operations(recorder.sort('Id')).with_node_operations(recorder.format_column('Id = RED')), 'Incompatible operation recorders')\n\
+             refused(lambda: formatted.with_node_operations(recorder.where('Id > 1')), 'Incompatible operation recorders')\n\
+             refused(lambda: formatted.node_operation_recorder().sort('Id__TABLE_STYLE_FORMAT'), 'Unknown column names [Id__TABLE_STYLE_FORMAT]')\n\
+             refused(lambda: recorder.format_column('Nope = RED'), 'Unknown columns: [Nope]')\n\
              refused(lambda: source.tree('Nope', 'Parent'), 'tree identifier column: Unknown column names [Nope]')\n\
              refused(lambda: source.tree('Id', 'Nope'), 'tree parent column: Unknown column names [Nope]')\n\
              refused(lambda: source.tree('Id', 'Name'), 'tree parent and identifier columns must have the same data type')\n\
