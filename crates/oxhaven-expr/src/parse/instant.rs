@@ -116,7 +116,7 @@ pub(crate) fn zone_offset(name: &str) -> Option<Option<i64>> {
         b'-' => true,
         _ => return None,
     };
-    let fields = rest[1..].as_bytes();
+    let fields = &rest.as_bytes()[1..];
     let two = |at: usize| -> Option<i64> {
         let field = fields.get(at..at + 2)?;
         field
