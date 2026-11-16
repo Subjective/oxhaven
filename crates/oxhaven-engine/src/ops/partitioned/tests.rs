@@ -7,9 +7,9 @@ use crate::graph::SteppedUpdateGraph;
 use crate::ops::agg::Pair;
 use crate::ops::agg::{aggregate, AggSpec};
 use arrow::array::{Float64Array, Int32Array};
-use arrow::datatypes::Int32Type;
 use arrow::util::display::array_value_to_string;
 use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_contracts::schema::TableClass;
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
     at_least_for, definition, doubles, ints, test_seeds, ConsistencyChecker, RandomUpdates,
@@ -18,7 +18,7 @@ use oxhaven_testkit::{
 use std::collections::HashMap;
 
 /// The rows of `table`, each as the text of its cells joined by `|`.
-fn rows(table: &dyn Table) -> Vec<String> {
+pub(super) fn rows(table: &dyn Table) -> Vec<String> {
     let row_set = table.row_set();
     let columns: Vec<ArrayRef> = (0..table.definition().columns().len())
         .map(|index| {
@@ -40,7 +40,7 @@ fn rows(table: &dyn Table) -> Vec<String> {
 }
 
 /// The key columns of the underlying table of `partitioned`, as [`rows`] gives them.
-fn keys(partitioned: &PartitionedTable) -> Vec<String> {
+pub(super) fn keys(partitioned: &PartitionedTable) -> Vec<String> {
     let table = partitioned.table();
     let row_set = table.row_set();
     let columns: Vec<ArrayRef> = partitioned
@@ -65,7 +65,7 @@ fn keys(partitioned: &PartitionedTable) -> Vec<String> {
         .collect()
 }
 
-fn names(definition: &TableDefinition) -> Vec<&str> {
+pub(super) fn names(definition: &TableDefinition) -> Vec<&str> {
     definition
         .columns()
         .iter()
@@ -74,7 +74,7 @@ fn names(definition: &TableDefinition) -> Vec<&str> {
 }
 
 /// `K = i % 3`, `V = i * 1.5` for seven rows: the table of the Java probe.
-fn seven_rows() -> Arc<dyn Table> {
+pub(super) fn seven_rows() -> Arc<dyn Table> {
     ReferenceTable::new_static(
         definition(&[("K", ColumnType::Int), ("V", ColumnType::Double)]),
         RowSet::flat(7),
@@ -198,13 +198,13 @@ fn a_handle_names_nothing_once_its_partition_is_gone() {
 }
 
 /// The keyed input table of the Java probe: `K`, `N`, `V`, rows keyed by `N`.
-struct Probe {
-    graph: Arc<SteppedUpdateGraph>,
-    source: Arc<ScriptedTable>,
-    partitioned: PartitionedTable,
+pub(super) struct Probe {
+    pub(super) graph: Arc<SteppedUpdateGraph>,
+    pub(super) source: Arc<ScriptedTable>,
+    pub(super) partitioned: PartitionedTable,
 }
 
-fn probe_columns(k: &[i32], n: &[i32], v: &[f64]) -> Vec<ArrayRef> {
+pub(super) fn probe_columns(k: &[i32], n: &[i32], v: &[f64]) -> Vec<ArrayRef> {
     vec![
         Arc::new(Int32Array::from(k.to_vec())),
         Arc::new(Int32Array::from(n.to_vec())),
@@ -212,7 +212,7 @@ fn probe_columns(k: &[i32], n: &[i32], v: &[f64]) -> Vec<ArrayRef> {
     ]
 }
 
-fn probe(drop_keys: bool) -> Probe {
+pub(super) fn probe(drop_keys: bool) -> Probe {
     let graph = SteppedUpdateGraph::new();
     let source = ScriptedTable::new(
         graph.clone(),
@@ -387,45 +387,6 @@ fn a_merge_of_the_rows_for_some_keys_follows_the_key_table() {
 }
 
 #[test]
-fn a_transformed_partition_keeps_its_rows_and_holds_the_given_tables() {
-    let partitioned = partition_by(&seven_rows(), &["K"], false).unwrap();
-    let reversed: Vec<Arc<dyn Table>> = partitioned
-        .constituents()
-        .unwrap()
-        .into_iter()
-        .rev()
-        .collect();
-    let transformed = partitioned
-        .transformed(reversed, partitioned.constituent_definition().clone())
-        .unwrap();
-    assert_eq!(
-        transformed.table().definition().columns()[1].column_type,
-        ColumnType::Table(TableClass::Table)
-    );
-    assert!(transformed.table().is_flat());
-    assert_eq!(transformed.key_columns(), ["K"]);
-    assert_eq!(
-        rows(&*transformed.merge().unwrap()),
-        ["2|3.0", "2|7.5", "1|1.5", "1|6.0", "0|0.0", "0|4.5", "0|9.0"]
-    );
-    // the key column still reads the keys of the partition: 0, 1, 2
-    let keys = transformed
-        .table()
-        .column(0)
-        .chunk(&transformed.table().row_set())
-        .unwrap();
-    assert_eq!(keys.as_primitive::<Int32Type>().values(), &[0, 1, 2]);
-
-    let short = partitioned.transformed(Vec::new(), partitioned.constituent_definition().clone());
-    assert!(matches!(short, Err(PartitionedError::IllegalArgument(_))));
-    assert_eq!(partitioned.empty_constituent().unwrap().row_set().size(), 0);
-    assert_eq!(
-        partitioned.empty_constituent().unwrap().definition(),
-        partitioned.constituent_definition()
-    );
-}
-
-#[test]
 fn head_by_refuses_a_column_of_tables_it_would_have_to_cast() {
     use crate::ops::head_by::{head_by, HeadByError};
     let partitioned = partition_by(&seven_rows(), &["K"], false).unwrap();
@@ -442,7 +403,7 @@ fn head_by_refuses_a_column_of_tables_it_would_have_to_cast() {
 }
 
 /// The rows of `parent` by the text of their `by` columns, in the parent's order.
-fn groups(parent: &dyn Table, by: &[usize]) -> HashMap<String, Vec<String>> {
+pub(super) fn groups(parent: &dyn Table, by: &[usize]) -> HashMap<String, Vec<String>> {
     let row_set = parent.row_set();
     let columns: Vec<ArrayRef> = (0..parent.definition().columns().len())
         .map(|index| parent.column(index).chunk(&row_set).unwrap())

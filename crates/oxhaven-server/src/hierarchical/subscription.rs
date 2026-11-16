@@ -93,7 +93,6 @@ impl ViewSubscription {
         let hierarchy = view.view.hierarchy().clone();
         let definition = hierarchy.columns();
         let wire: Vec<WireColumn> = definition
-            .columns()
             .iter()
             .map(|column| WireColumn::described(&column.column_type))
             .collect();

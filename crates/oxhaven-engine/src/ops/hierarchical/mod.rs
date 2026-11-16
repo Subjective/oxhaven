@@ -5,17 +5,24 @@
 //! which nodes are expanded; [`View::snapshot`] gives a range of the rows of the
 //! depth-first walk of the expanded nodes. `docs/HIERARCHICAL.md` is the design.
 //!
-//! [`RollupTable`] is the one hierarchy so far. The walk ([`walk`]) knows nothing about
-//! rollups; a tree is another implementation of [`Hierarchy`].
+//! [`RollupTable`] and [`TreeTable`] are the hierarchies. The walk ([`walk`]) knows
+//! neither.
 
+#[cfg(test)]
+mod constituent_tests;
 mod keys;
 mod rollup;
 #[cfg(test)]
 mod tests;
+mod tree;
+mod tree_filter;
+#[cfg(test)]
+mod tree_tests;
 mod walk;
 
 pub use keys::Part;
 pub use rollup::{rollup, RollupTable};
+pub use tree::{promote_orphans, tree, TreeTable};
 pub use walk::Snapshot;
 
 use crate::ops::agg::AggregateError;
@@ -24,7 +31,7 @@ use crate::ops::sort::SortColumn;
 use arrow::array::ArrayRef;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
-use oxhaven_contracts::schema::TableDefinition;
+use oxhaven_contracts::schema::ColumnDefinition;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::fmt;
 use std::sync::Arc;
@@ -193,6 +200,10 @@ pub enum Parent {
 pub enum Expandable {
     All,
     None,
+    /// Some can and some cannot: [`Hierarchy::expandable_rows`] says which.
+    ///
+    /// Behavior: HierarchicalTableImpl.LevelExpandable#Undetermined
+    ByRow,
 }
 
 /// Nodes and their child tables: what the walk of a snapshot needs to know of a
@@ -207,8 +218,11 @@ pub trait Hierarchy: Send + Sync {
     /// The columns of a snapshot: the depth, whether the row is expanded, then the
     /// columns of the nodes.
     ///
+    /// Two columns may have one name: a rollup with constituents has the group-by columns
+    /// of the aggregated nodes and of the source.
+    ///
     /// Behavior: HierarchicalTable#getAvailableColumnDefinitions
-    fn columns(&self) -> &TableDefinition;
+    fn columns(&self) -> &[ColumnDefinition];
 
     /// The nodes that are expanded before any row of a key table.
     fn default_expansions(&self) -> Vec<NodeKey>;
@@ -220,7 +234,8 @@ pub trait Hierarchy: Send + Sync {
     /// cannot be expanded. A node that was there and is not there now may be known.
     fn locate(&self, key: &NodeKey) -> Result<Option<Located>, HierarchicalError>;
 
-    fn parent(&self, key: &NodeKey) -> Parent;
+    /// The key of the parent of the node of `key`, which [`Hierarchy::locate`] found.
+    fn parent(&self, key: &NodeKey) -> Result<Parent, HierarchicalError>;
 
     fn root(&self) -> NodeId;
 
@@ -241,6 +256,19 @@ pub trait Hierarchy: Send + Sync {
 
     /// Whether the rows at `depth` (the rows of the root table are at 1) can be expanded.
     fn rows_expandable(&self, depth: u32) -> Expandable;
+
+    /// For a level that is [`Expandable::ByRow`]: whether each of `rows` of `table`, the
+    /// child table of a node, can be expanded, in the order of their keys.
+    ///
+    /// Behavior: HierarchicalTableImpl#nodeIdExpandable of the node that
+    /// #makeChildNodeIdLookup finds for a row
+    fn expandable_rows(
+        &self,
+        _table: &dyn Table,
+        rows: &RowSet,
+    ) -> Result<Vec<bool>, HierarchicalError> {
+        Ok(vec![true; rows.size() as usize])
+    }
 
     /// The values of column `column` of [`Hierarchy::columns`], which is neither the
     /// depth nor the expanded column, for `rows` of `table`, the child table of a node
@@ -307,7 +335,7 @@ impl View {
         let columns = match columns {
             Some(columns) => columns,
             None => {
-                all = (0..self.hierarchy.columns().columns().len()).collect();
+                all = (0..self.hierarchy.columns().len()).collect();
                 &all
             }
         };

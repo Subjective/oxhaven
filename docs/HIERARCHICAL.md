@@ -1,9 +1,10 @@
 # Hierarchical tables
 
-How Oxhaven holds a rollup, answers a client that looks at part of it, and what a tree
-will reuse. Written by task 7.8 (`tasks/7.8-rollup.md`), which also built the first slice;
+How Oxhaven holds a rollup and a tree, answers a client that looks at part of one, and
+what a tree reuses. Written by task 7.8 (`tasks/7.8-rollup.md`), which also built the first slice;
 the follow-on tasks, 7.8.1 to 7.8.5, are sized in that file, and `tasks/7.9-tree.md` says
-what this means for a tree.
+what this means for a tree. Constituents are task 7.8.3
+(`tasks/7.8.3-rollup-constituents.md`).
 
 What Java does was read in `RollupTableImpl`, `HierarchicalTableImpl`,
 `AggregationProcessor` (the two rollup converters), `HierarchicalTableServiceGrpcImpl`,
@@ -82,12 +83,55 @@ Three things follow from how Java makes the coarser levels, and are kept:
 
 ## Constituents
 
-With `include_constituents` the rows of the finest groups can be expanded into the source
-rows of the group, with the source's columns: one more level whose children are the
-partition of the source by all keys, and one more set of columns in the snapshot schema,
-null for aggregated rows as the aggregated columns are null for constituent rows. The
-`Hierarchy` trait has what this needs (a node's columns depend on its level). Not in the
-first slice (7.8.3).
+With `include_constituents` the rows of the finest groups can be expanded into the rows of
+the source that are in the group. Read from `RollupTableImpl` and
+`AggregationProcessor#forRollupBase`, and observed on Java 42.9 with the script scenarios
+`oracle/scenarios/python/rollup_constituents*.py`, the same `Apply` calls made to both
+servers, and the IDE route `rollup`, whose panel includes constituents by default.
+
+- **One more level.** The children of a row of the last level are the rows of the source
+  with its keys, in the order of the source: the source partitioned by all the group-by
+  columns (`partition_by`), found by key with a `KeyIndex` as the children of the other
+  levels are. Java adds this partition to the aggregations of the last level. Without
+  group-by columns the last level is the grand total and its children are the source
+  itself.
+- **Depths.** With `n` group-by columns a row of the source is at depth `n + 2`, cannot be
+  expanded (`__EXPANDED__` is null), and a finest group, at depth `n + 1`, can. A key
+  table names a finest group with depth `n + 1` and every key value; a deeper key is
+  refused as before (`Invalid depth`). Expanding everything, or to a depth, goes down to
+  the rows of the source.
+- **Default expansions.** The root and the grand total, also without group-by columns:
+  such a rollup shows the rows of the source at once
+  (`RollupTableImpl#getDefaultExpansionNodeKeys`).
+- **Columns.** A snapshot has the structural columns, the columns of the aggregated nodes,
+  then every column of the source, group-by columns included: two columns have one name
+  wherever a result or a group-by column is named like a column of the source, which with
+  group-by columns is always. A row of the source is null in the aggregated columns and a
+  row of a level null in the source's (`RollupTableImpl#makeOrFillChunkSourceArray`).
+  `Hierarchy::columns` is therefore a list of columns and not a `TableDefinition`, which
+  holds no name twice. The fields of the source's columns have
+  `rollupTable.isConstituentNodeColumn`, and `rollupTable.isGroupByColumn` where they are
+  group-by columns; they are not expand-by columns and have no description. Java describes
+  them with the rollup's attributes, so a restriction of the source's sorting marks them
+  as it marks the aggregated ones.
+- **Sorts.** The rows of the source under a group have sorts of their own, a second list
+  kept with the rollup (`RollupTable::with_constituent_sorts`). The Python recorder for
+  `NodeType.CONSTITUENT` records them, checked against the columns of the source; a
+  recorder for `NodeType.AGGREGATED` sorts the levels alone. `Apply` sorts both: the
+  request's sorts are the levels', and each is translated for the rows of the source
+  (`RollupTableImpl#translateAggregatedNodeOperationsForConstituentNodes`): a result
+  becomes the column it aggregates, a group-by column is left out, since the rows under
+  one group are equal by it, a result without an input (a count) is left out, and an
+  absolute value stays one where the input is a number. A sort by a column the source
+  alone has is refused by `Apply` as a column the levels do not have.
+- **Filters.** As without constituents: the rows of the source under a group are those
+  the filters accept. A filter of group-by columns keeps or drops whole groups, so the
+  partition of the filtered table is what Java shows, which filters the last level and
+  keeps its partition.
+- **Ticking.** The partition follows the source; a snapshot reads it under the lock as it
+  reads the levels. An expanded finest group that has no rows now is left out, or fails
+  the snapshot of a rollup whose levels are sorted, as any expanded node does ("Sorted
+  nodes").
 
 ## Node keys and the key table
 
@@ -194,8 +238,9 @@ values when a cycle is running, and retries. The result is the same.
     list (`BaseNodeOperationsRecorder#sort`); the absolute value of a column is a column
     of its own, `__ABS__<name>`. A sort names a column of the nodes, not `__DEPTH__` or
     `__EXPANDED__`; anything else is an internal error. See "Sorted nodes".
-- `Tree`: task 7.9.
-- `Tree`: task 7.9.
+- `Tree`: source ticket, identifier column, parent identifier column, `promote_orphans`;
+  the result export holds the tree. A name that is empty is a field that is missing
+  (`GrpcErrorHelper#checkHasField`). See "Trees".
 
 **The object type.** `ListFields` and the console name the type `HierarchicalTable`.
 `FetchObject` and `MessageStream` answer with `HierarchicalTableDescriptor`: the snapshot
@@ -233,8 +278,9 @@ does; a variable that holds one is listed as a `HierarchicalTable`.
 whose `sort` and `sort_descending` record sorts, checked when they are recorded (the
 error is Java's `RuntimeError`, not a `DHError`); `with_node_operations(recorders)`
 applies them, later recorders after earlier ones; `with_filters(filters)` filters, with
-the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` is refused as Java refuses
-it for a rollup without constituents. `with_node_operations` does not check that a
+the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` records sorts of the rows of
+the source, checked against the source's columns; it is refused for a rollup without
+constituents, and so is applying one to such a rollup, as in Java. `with_node_operations` does not check that a
 recorder was made by this rollup; neither does Java. The recorder's `format_column`,
 `format_row_where`, `format_column_where` and `update_view`, and
 `RollupTable.with_update_view`, are refused by name (7.8.2).
@@ -254,6 +300,69 @@ expandable row by row, and a node key of one value. `__EXPANDED__` is null for a
 without children; `Hierarchy::rows_expandable` answers for a whole level today (`All` or
 `None`, which is all a rollup needs), and a tree adds the answer per row.
 
+## Trees
+
+Task 7.9 (`tasks/7.9-tree.md`). Read from `TreeTableImpl`, `TreeTableFilter`,
+`TreeSourceRowLookup`, `TreeTable#promoteOrphans` and `HierarchicalTableImpl`; every
+behaviour below was observed on Java 42.9 with the script scenarios
+`oracle/scenarios/python/tree_*.py`, the same calls made to both servers, and the IDE
+route `tree` (`oracle/ide/traces/http-console-tree.txt`).
+
+**What a tree is.** `ops::hierarchical::tree(source, identifier, parent)` is the source
+partitioned by the parent column: one node table per parent identifier, whose rows keep
+the row keys of the source, so a node is a row of the source and the root is the node of
+the rows without a parent. A `KeyIndex` over the partition finds the children of an
+identifier. `RowLookup` finds the row of an identifier (`TreeSourceRowLookup`): a map
+that a listener of the source builds again in every cycle that adds, removes or shifts
+rows or changes the identifier column. Java keeps it as an aggregation, incrementally.
+The two columns must be of one type; the messages for a missing column and for two types
+are Java's.
+
+**What a view shows.**
+
+- By default the root alone is expanded. `__EXPANDED__` is null for a row that is no
+  one's parent (`Expandable::ByRow`), and `__DEPTH__` is 1 for the rows of the root.
+- A key table names a node by the identifier column, in the type the tree has it; a null
+  identifier is the root. It needs no `__DEPTH__` column. A column of another type or no
+  such column fails the view when it is read, `INVALID_ARGUMENT`.
+- A row whose parent is no row is not shown. With `promote_orphans` it is a child of the
+  root for as long as that is so: the source is joined with itself and the parent
+  replaced by null where nothing matched (`TreeTable#promoteOrphans`). The sortable
+  columns of the source survive the promotion, in the order of the set Java's `view`
+  collects them in.
+- Rows that are their own ancestors are not reached from the root and not shown.
+- A key that names a row which has or had children and whose parent is no row fails the
+  snapshot: `Failed to find ancestor for existing key table directive`,
+  `INVALID_ARGUMENT`. A key of such a row that never had children is dropped. Keys that
+  name two rows that are each other's ancestors fail it with an assertion of
+  `HierarchicalTableImpl#removeOldChildren`. Both are reproduced.
+- A tree by one column as identifier and parent has no rows.
+
+**Two rows with one identifier.** Of a static source the tree is refused
+(`UniqueRowKeyChunkedOperator`). Of a ticking source that gets such a row later, Java's
+lookup aggregation fails alone and nothing tells a client: views keep being answered,
+with the lookup as it was before that cycle. Reproduced: `RowLookup` stops at that cycle
+and keeps its map.
+
+**Sorts and filters.** `Apply` and the Python recorder sort the children of every node,
+with the list of sorts and `__ABS__<name>` as for a rollup; the order is computed at a
+snapshot. Unlike a sorted rollup, a sorted tree with an expanded node that is gone
+answers. A filter keeps the rows that pass and their ancestors (`TreeTableFilter`): the
+filtered tree is a tree of that table, which here is computed again from the source in
+every cycle the source or the filter's result changes, and Java maintains
+incrementally. A filter of a filtered tree filters that table, so an ancestor the first
+filter kept may pass the second. A filter that nothing passes leaves no rows.
+
+**The schema.** The fields have `treeTable.isNodeColumn`, the identifier column also
+`treeTable.isIdentifierColumn` and `hierarchicalTable.isExpandByColumn`, the parent
+column `treeTable.isParentIdentifierColumn`; `__DEPTH__` is not an expand-by column, as
+it is in a rollup. The schema has no `ColumnDescriptions` attribute.
+
+**Python.** `Table.tree(id_col, parent_col, promote_orphans)` and
+`deephaven.table.TreeTable` with `id_col`, `parent_col`, `node_operation_recorder()`,
+`with_node_operations(recorder)` and `with_filters(filters)`;
+`TreeNodeOperationsRecorder` has `sort` and `sort_descending`.
+
 ## Refused for now
 
 Each names the Java method in its error.
@@ -263,11 +372,15 @@ Each names the Java method in its error.
 | `Apply`: format and update views; the recorder's `format_column`, `format_row_where`, `format_column_where`, `update_view` | `RollupNodeOperationsRecorder#formatColumns`, `#formatRowWhere`, `#formatColumnWhere`, `#updateView` | 7.8.2 |
 | A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | needs a ruling |
 | A sort by a column of vectors or arrays (the result of `Distinct`), the absolute value of a `char` column | `SortOperation#SortOperation`, `QueryLanguageParser#visit(MethodCallExpr)`: the refusals of the engine's sort | none yet |
-| `include_constituents` | `RollupTableImpl#makeRollup` (constituents) | 7.8.3 |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
 | `SortedFirst`, `SortedLast` by a column that is not their own result, with group-by columns | `AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator` | 7.8.4 |
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
-| `Tree`, Python `Table.tree` | `HierarchicalTableServiceGrpcImpl#tree`, `QueryTable#tree` | 7.9 |
+| The expansion of a row of a tree that has no identifier | `TreeTableImpl#makeChildNodeIdLookup` | needs a ruling |
+| A walk of a tree more than 200 levels deep | `HierarchicalTableImpl#visitExpandedNode` | needs a ruling |
+| `Apply` to a tree with update views or format views, which Java does not read | `HierarchicalTableServiceGrpcImpl#apply` | needs a ruling |
+| The tree recorder's `where`, `format_column`, `format_row_where`, `format_column_where` | `TreeNodeOperationsRecorder#where`, `#formatColumns`, `#formatRowWhere`, `#formatColumnWhere` | none yet |
+| A tree of a blink table | `TreeTableImpl#makeTree` | none yet |
+| The refusal of an identifier and a parent of two types when one is of a type whose Java description is not written here | `ColumnDefinition#describeForCompatibility` | none yet |
 | Python `with_update_view` | `RollupTableImpl#withUpdateView` | 7.8.2 |
 | The browser streams of `Handshake` and `DoExchange` | `BrowserFlightServiceGrpcBinding#bindService` | 2.6 |
 
@@ -290,6 +403,26 @@ Each names the Java method in its error.
   in `BarrageUtil#columnDefinitionsToFields`. Here it is described, with no sortable
   column. Not reproduced: the place is the schema code every table shares.
 - The order of the keys of the schema's metadata differs, as that of a field's.
+- A tree's lookup of rows by identifier and the table of a filtered tree are computed
+  again in a cycle that changes them; Java maintains both incrementally. A client sees
+  the same rows; a cycle costs the size of the source.
+- A row of a tree without an identifier can be expanded in Java, and its children are
+  the rows of the root, itself among them. Expanded to a depth, Java then shows rows of
+  the root with depths that are not theirs; with every row expanded its stack overflows
+  and the server process ends (observed: the reference server had to be started again).
+  Here the expansion of such a row is refused by name. The default view, in which the row
+  is shown and not expanded, is the same. Needs a ruling.
+- Java's walk has no limit of depth and overflows its stack on a tree that is deep
+  enough; here a walk more than 200 levels deep fails the snapshot, by name. Needs a
+  ruling on the limit.
+- Java's `Apply` does not read the update views and format views of a request for a
+  tree: a request with only those gives the tree back. Here they are refused by name, as
+  a rollup's are. Needs a ruling.
+- Java's Python `TreeNodeOperationsRecorder` has `where` (a filter of the rows of a
+  node); it is refused by name here, and `TreeTable#withNodeFilterColumns` is not
+  offered.
+- Java's natural join copies the sortable columns of its left table; `ops::join` does
+  not yet, and the promotion of orphans restores them itself.
 
 ## Contracts
 
@@ -301,8 +434,11 @@ No change.
 (with and without `--features python`), the script scenarios `rollup_*` in the replay
 gate, and `node oracle/ide/ide-test.js --routes rollup` on Java and on Oxhaven. The route
 makes its rollup in the IDE's Rollup Rows panel, which sends `first` of every column that
-is not grouped by, and a new `Rollup` for every column added.
+is not grouped by, a new `Rollup` for every column added, and `include_constituents`
+unless its option is unchecked; the route leaves it checked and expands a finest group.
 
 The script scenarios compare views: the directive `# oracle: views <name> = <rollup>
 [<key table> [<action column>]]` (`oracle/README.md`) reads the first rows of a view of
-a rollup with the key table's expansions on both servers, after every step.
+a rollup with the key table's expansions on both servers, after every step. Where a view
+has two columns of one name, the harness names the later one `<name>#2`
+(`harness/views.py`).

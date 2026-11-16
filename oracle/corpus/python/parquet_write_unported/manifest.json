@@ -1,7 +1,7 @@
 {
   "format": 2,
   "scenario": "parquet_write_unported",
-  "scenario_sha256": "35a3d4052f09584c6e6b345919f5dc32c47bf1f761849ee0fad6e395cfca4c7c",
+  "scenario_sha256": "9caa38c9f3af8120a1f921ce034c6df18a12f9d62e68d7b27ef601653be4e276",
   "reference": "42.9",
   "entries": [
     {

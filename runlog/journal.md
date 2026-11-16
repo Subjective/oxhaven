@@ -904,3 +904,65 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Owner approval (04:37 UTC, relayed): Kafka may be built on librdkafka through a Rust
   binding, BSD-2-Clause. Any other licence in its dependency tree goes back to him. Kafka
   starts when a build slot frees.
+- Pull request 108 opened (7.6.1). The proxy (7.6.2) was not started and is a separate large
+  task: 38 Python operations, and it needs the query scope carried into the cycle. The 7.6
+  notes were wrong that Java accepts `None` from a transform function; it refuses. For the
+  owner: a failed transform (Q11 again), call order when the result is made, a function
+  reading a refreshing table it did not name as a dependency.
+- Starting the minimal `jpy` module (ruled 04:24 UTC) and Kafka (licence approved 04:37 UTC)
+  in the two free slots.
+- Correction: one slot was free, not two. Started the `jpy` module; Kafka waits for the next
+  slot and for disk (librdkafka builds from C).
+- Pull request 108 merged (7.6.1).
+- 7.2b reported with the replay gate failing: a scenario step that was a refusal now succeeds
+  and lists files Java names with random UUIDs. The author asked for the kind `value` to be
+  listed in the baseline. Decision: not that; the scenario is re-recorded with a `base_name`
+  so that both servers can reproduce it, and the baseline stays as strict. The author's
+  context is large (250k tokens), so the follow-up is kept narrow. For the owner from this
+  task: Java does not empty the destination directory of a partitioned write; a null key and
+  an empty key collide; a `/` in a key makes nested directories; Java cannot read its own
+  partitioned output with metadata when a partitioning column is renamed; a probe passed an
+  `s3://` destination to the Java reference, which made one anonymous request to AWS.
+- Pull request 109 opened (7.9, tree tables). For the owner: Java ends its process with a
+  stack overflow when a tree row without an identifier is expanded with expand-all (refused
+  here); a walk is limited to 200 levels here and unlimited in Java; update and format views
+  in `Apply` are ignored by Java and refused here; a duplicate identifier on a ticking source
+  leaves a stale lookup in Java (reproduced). Engine gap noted: `natural_join` does not copy
+  `SortableColumns`. 7.8.2 and 7.8.3 (rollup views and constituents) can start once it is
+  merged. Kafka starts now in the free slot.
+- Pull request 110 opened (7.10.2, the `jpy` module) with allowed difference A10, written
+  from the owner's ruling of 04:24 UTC. The label was set after the first run started, so
+  the `rules` job may need the branch updated once to see it. Left for plotly-express:
+  histograms (`new DiscretizedRangeEqual` in a formula) and business calendars. `deephaven.ui`
+  imports once `TreeTable` (pull request 109) is on main. For the owner: `jpy.destroy_jvm()`
+  from the console ends Java's server.
+- Pull request 109 merged (7.9, tree tables). Start times of 7.2b run 2, 7.4.1 and 5.8 in
+  tasks.csv corrected: they had been written from an estimate, not the clock.
+- Pull request 111 opened (7.2b, Parquet writes). The replay gate passes after the scenario's
+  partitioned step was re-recorded with a `base_name`; the baseline line got stricter. Gap
+  for a follow-up: a directory whose partitioning columns only `_common_metadata` knows
+  cannot be read, so partitioned output with metadata files is not read back as a directory.
+- Next in the free slot: rollup update and format views with constituents (7.8.2 and 7.8.3),
+  now that tree tables are on main.
+- Pull request 110 merged (7.10.2): the server starts with plotly-express installed.
+- Pull request 111 merged (7.2b).
+- Pull request 112 opened (7.4.1, Kafka design and first consume slice). The agent stopped
+  before adding librdkafka: even its smallest build compiles files under BSD-3-Clause and the
+  zlib licence, outside the approval. It built a small client over `kafka-protocol` (MIT OR
+  Apache-2.0) behind a trait instead. Asked the owner on a decision card whether to allow the
+  two licences for librdkafka. The agent ran a private Docker daemon for a broker and removed
+  it. For the owner besides: row order across partitions within a poll; consumer properties
+  accepted silently; non-UTF-8 text refused; `consume` with default offsets is refused.
+- Starting 7.4.2 with 7.4.3 (stream adapter in the engine, `table_publisher`, JSON
+  completely): neither depends on the licence answer.
+- Owner ruling (06:18 UTC): BSD-3-Clause and the zlib licence are allowed for the files
+  bundled in librdkafka. Optional features of it (TLS, SASL, curl) were not asked about and
+  go back to him with their licences when they are needed.
+- Pull request 112 merged (7.4.1). Started 7.4.4: the consumer on librdkafka, with TLS and
+  SASL left off until their licences are put to the owner.
+- Pull request 113 opened (7.8.3, rollup constituents). The web IDE's rollup panel now works
+  with its default settings. 7.8.2 (format and update views) was not started: the Python
+  package has no `Table.format_columns` yet, so table formats come first. Lesson: the replay
+  gate needs the server built against the same Python as the venv (3.12 or later); two runs
+  failed on that before the agent found it. Add to the brief.
+- Pull request 113 merged (7.8.3).

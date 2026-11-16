@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Avg], available column names are [Sym, Ex, Qty, P, F, T, Other]"
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Rows], available column names are [Sym, Ex, Qty, P, F, T, Other]"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [__DEPTH__], available column names are [Sym, Ex, Qty, P, F, T, Other]"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: abs(Sym)"
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Other], available column names are [Sym, Qty, Rows, Avg, MaxF]"
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Invalid filter found: RangeFilter(Qty greater than 0) may only use non-aggregation columns, which are [Sym, Ex, T, Other], but has used [Qty]",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a RollupNodeOperationsRecorder. : RuntimeError: java.lang.IllegalArgumentException: Rollup does not have constituent nodes",
+      "operation": "failed to create a RollupNodeOperationsRecorder."
+    },
+    {
+      "step": 8,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Rollup does not have constituent nodes",
+      "operation": "with_node_operations on RollupTable failed."
+    }
+  ]
+}

@@ -43,6 +43,9 @@ mod generated;
 mod hierarchical;
 mod input;
 pub mod interrupt;
+#[cfg(test)]
+mod jpy_tests;
+mod kafka;
 mod listener;
 mod ops;
 mod parquet;
@@ -92,9 +95,9 @@ use crate::table::run_local;
 use crate::table::support::OpContext;
 use crate::ServerState;
 
-/// The modules of the `deephaven` and `deephaven_internal` packages, compiled into the binary:
-/// name, whether it is a package, source. `build.rs` lists every file under `python/deephaven`
-/// and `python/deephaven_internal`.
+/// The modules of the `deephaven` and `deephaven_internal` packages and the module `jpy`,
+/// compiled into the binary: name, whether it is a package, source. `build.rs` lists every
+/// file under `python/deephaven` and `python/deephaven_internal`, and `python/jpy.py`.
 const MODULES: &[(&str, bool, &str)] = include!(concat!(env!("OUT_DIR"), "/python_modules.rs"));
 
 const BOOTSTRAP: &str = include_str!("../../../python/_oxhaven_bootstrap.py");
@@ -133,6 +136,11 @@ impl TableHandle {
 
     fn is_refreshing(&self) -> bool {
         self.table.is_refreshing()
+    }
+
+    /// Behavior: `io.deephaven.engine.table.Table#isFailed`
+    fn is_failed(&self) -> bool {
+        self.table.is_failed()
     }
 
     /// The columns as `(name, Java type name)`, the type as the schema on the wire has it.
@@ -489,9 +497,14 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(require_query_scope, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::read_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(parquet::write_parquet, &native)?)?;
+        native.add_function(wrap_pyfunction!(
+            parquet::write_parquet_partitioned,
+            &native
+        )?)?;
         native.add_function(wrap_pyfunction!(parquet::delete_parquet, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::read_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
+        native.add_function(wrap_pyfunction!(kafka::kafka_consume, &native)?)?;
         ops::register(&native)?;
         data::register(&native)?;
         generated::register(&native)?;

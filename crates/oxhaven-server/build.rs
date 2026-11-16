@@ -1,6 +1,7 @@
-//! Lists the Python modules under `python/deephaven` and `python/deephaven_internal` so
-//! that the server binary can hold their source (`src/console/python/mod.rs`, `MODULES`). A module added to the package is
-//! picked up by its file being there; nothing else has to change.
+//! Lists the Python modules under `python/deephaven` and `python/deephaven_internal`, and
+//! the module `python/jpy.py`, so that the server binary can hold their source
+//! (`src/console/python/mod.rs`, `MODULES`). A module added to a package is picked up by
+//! its file being there; nothing else has to change.
 //!
 //! No Java counterpart: the Java server imports the two packages from the Python
 //! environment.
@@ -36,6 +37,8 @@ fn main() -> io::Result<()> {
     for package in ["deephaven", "deephaven_internal"] {
         python_files(&root, &root.join(package), &mut files)?;
     }
+    // the one module that is no part of a package (`docs/CONSOLE.md`, "The jpy module")
+    files.push(PathBuf::from("jpy.py"));
 
     // `(module name, is a package, source)`, a package before its modules
     let mut list = String::from("&[\n");

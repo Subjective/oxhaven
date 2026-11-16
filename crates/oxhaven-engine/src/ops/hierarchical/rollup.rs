@@ -34,8 +34,13 @@ struct Levels {
     /// Per level, the row of each key.
     indexes: Vec<KeyIndex>,
     /// `children[d]` for `d >= 1` and below the last level: the rows of level `d + 1` by
-    /// the keys of level `d`. Level 0 has one row, whose children are level 1.
+    /// the keys of level `d`. Level 0 has one row, whose children are level 1. With
+    /// constituents and group-by columns, the last one is the rows of the source by all
+    /// the keys.
     children: Vec<Option<ChildParts>>,
+    /// In a rollup with constituents, what the levels aggregate: without group-by columns
+    /// its rows are the children of the grand total.
+    constituents: Option<Arc<dyn Table>>,
 }
 
 /// The aggregations of a table by every prefix of its group-by columns.
@@ -47,6 +52,7 @@ struct Levels {
 /// Behavior: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl. Java makes the
 /// coarser levels by aggregating the finer ones again; here every level aggregates the
 /// source (`docs/HIERARCHICAL.md`, "Decision").
+#[derive(Clone)]
 pub struct RollupTable {
     source: Arc<dyn Table>,
     /// What the levels aggregate: the source, or the rows of it that the filters on
@@ -54,11 +60,18 @@ pub struct RollupTable {
     base: Arc<dyn Table>,
     aggregations: Vec<Aggregation>,
     group_by: Vec<String>,
+    include_constituents: bool,
     levels: Arc<Levels>,
-    /// The columns of a snapshot.
-    columns: TableDefinition,
-    /// What the rows of every node are sorted by, the column that decides first.
+    /// The depth, whether the row is expanded, and the columns of the aggregated nodes.
+    aggregated: TableDefinition,
+    /// The columns of a snapshot: those of `aggregated`, then with constituents the
+    /// columns of the source.
+    columns: Vec<ColumnDefinition>,
+    /// What the rows of every aggregated node are sorted by, the column that decides
+    /// first.
     sorts: Vec<SortColumn>,
+    /// What the rows of the source under a finest group are sorted by.
+    constituent_sorts: Vec<SortColumn>,
     /// The columns a client may sort by, when the source's sorting was restricted.
     sortable: Option<Vec<String>>,
 }
@@ -185,19 +198,19 @@ pub fn rollup(
     if !group_by.is_empty() {
         check_reaggregation(aggregations, group_by)?;
     }
-    if include_constituents {
-        oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup",
-            "a rollup that includes constituents"
-        );
-    }
     if source.attributes().blink {
         oxhaven_contracts::unported!(
             "io.deephaven.engine.table.impl.by.AggregationProcessor#forRollupBase",
             "a rollup of a blink table"
         );
     }
-    let finest = build_levels(source, aggregations, group_by, compiler)?;
+    let finest = build_levels(
+        source,
+        aggregations,
+        group_by,
+        include_constituents,
+        compiler,
+    )?;
     // Behavior: RollupTableImpl#makeRollup, which copies the restriction of the source's
     // sorting for the columns the rollup has
     let sortable = sortable_columns(source.as_ref()).map(|names| {
@@ -211,20 +224,43 @@ pub fn rollup(
         base: source.clone(),
         aggregations: aggregations.to_vec(),
         group_by: group_by.iter().map(|name| name.to_string()).collect(),
+        include_constituents,
         levels: Arc::new(finest.0),
-        columns: finest.1,
+        columns: snapshot_columns(&finest.1, include_constituents.then_some(source)),
+        aggregated: finest.1,
         sorts: Vec::new(),
+        constituent_sorts: Vec::new(),
         sortable,
     })
 }
 
-/// The levels of `base` rolled up by `group_by`, and the columns of a snapshot of them.
+/// The columns of a snapshot: the structural columns and those of the aggregated nodes,
+/// then those of the constituents.
 ///
-/// Behavior: RollupTableImpl#makeRollupInternal
+/// Behavior: RollupTableImpl#computeAvailableColumnDefinitions
+fn snapshot_columns(
+    aggregated: &TableDefinition,
+    constituents: Option<&Arc<dyn Table>>,
+) -> Vec<ColumnDefinition> {
+    let mut columns = aggregated.columns().to_vec();
+    if let Some(source) = constituents {
+        columns.extend(source.definition().columns().iter().cloned());
+    }
+    columns
+}
+
+/// The levels of `base` rolled up by `group_by`, and the structural columns with the
+/// columns of the aggregated nodes. With `include_constituents` the rows of `base` are
+/// the children of the rows of the last level.
+///
+/// Behavior: RollupTableImpl#makeRollupInternal; for the constituents,
+/// AggregationProcessor#forRollupBase, which adds a partition of the source by the
+/// group-by columns to the aggregations of the last level
 fn build_levels(
     base: &Arc<dyn Table>,
     aggregations: &[Aggregation],
     group_by: &[&str],
+    include_constituents: bool,
     compiler: Option<&dyn FormulaCompiler>,
 ) -> Result<(Levels, TableDefinition), HierarchicalError> {
     let source = base;
@@ -261,10 +297,12 @@ fn build_levels(
         .collect();
     let mut children = Vec::with_capacity(levels.len());
     for depth in 0..levels.len() {
-        children.push(if depth == 0 || depth + 1 >= levels.len() {
+        let last = depth + 1 == levels.len();
+        children.push(if depth == 0 || (last && !include_constituents) {
             None
         } else {
-            let partitioned = partition_by(&levels[depth + 1], &group_by[..depth], false)?;
+            let below = if last { source } else { &levels[depth + 1] };
+            let partitioned = partition_by(below, &group_by[..depth], false)?;
             let index = KeyIndex::new(partitioned.table().clone(), (0..depth).collect());
             Some(ChildParts { partitioned, index })
         });
@@ -285,6 +323,7 @@ fn build_levels(
             tables: levels,
             indexes,
             children,
+            constituents: include_constituents.then(|| source.clone()),
         },
         columns,
     ))
@@ -303,12 +342,34 @@ impl RollupTable {
 
     /// Behavior: RollupTable#includesConstituents
     pub fn includes_constituents(&self) -> bool {
-        false
+        self.include_constituents
     }
 
-    /// What the rows of every node are sorted by, the column that decides first.
+    /// The depth, whether a row is expanded, and the columns of the aggregated nodes:
+    /// the group-by columns, then the results.
+    ///
+    /// Behavior: RollupTable#getNodeDefinition(Aggregated), after the structural columns
+    pub fn aggregated_definition(&self) -> &TableDefinition {
+        &self.aggregated
+    }
+
+    /// The columns of the constituent nodes, which are the source's, in a rollup that has
+    /// them.
+    ///
+    /// Behavior: RollupTable#getNodeDefinition(Constituent)
+    pub fn constituent_definition(&self) -> Option<&TableDefinition> {
+        self.include_constituents.then(|| self.base.definition())
+    }
+
+    /// What the rows of every aggregated node are sorted by, the column that decides
+    /// first.
     pub fn sorts(&self) -> &[SortColumn] {
         &self.sorts
+    }
+
+    /// What the rows of the source under a finest group are sorted by.
+    pub fn constituent_sorts(&self) -> &[SortColumn] {
+        &self.constituent_sorts
     }
 
     /// The columns a client may sort by, or `None` when it may sort by any: the columns
@@ -333,7 +394,7 @@ impl RollupTable {
         let finest = &self.levels.tables[self.group_by.len()];
         check_sort_columns(finest.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
-                let available: Vec<&str> = self.columns.columns()[2..]
+                let available: Vec<&str> = self.aggregated.columns()[2..]
                     .iter()
                     .map(|column| column.name.as_str())
                     .collect();
@@ -357,15 +418,103 @@ impl RollupTable {
     /// aggregated nodes, and BaseNodeOperationsRecorder#mergeSortColumns
     pub fn with_sorts(&self, sorts: &[SortColumn]) -> RollupTable {
         RollupTable {
-            source: self.source.clone(),
-            base: self.base.clone(),
-            aggregations: self.aggregations.clone(),
-            group_by: self.group_by.clone(),
-            levels: self.levels.clone(),
-            columns: self.columns.clone(),
             sorts: merged_sorts(sorts, &self.sorts),
-            sortable: self.sortable.clone(),
+            ..self.clone()
         }
+    }
+
+    /// Whether the rows of the source under a finest group can be sorted by `sorts`, as
+    /// [`RollupTable::check_sorts`] says it of the aggregated nodes: the rollup has
+    /// constituents, and the source has the columns, of types that sort.
+    ///
+    /// Behavior: RollupTableImpl#makeNodeOperationsRecorder(Constituent), which is
+    /// #assertIncludesConstituents, and
+    /// BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
+    pub fn check_constituent_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
+        self.assert_includes_constituents()?;
+        check_sort_columns(self.base.as_ref(), sorts).map_err(|error| match error {
+            SortError::NoSuchColumn(missing) => {
+                let definition = self.base.definition();
+                let available: Vec<&str> = definition
+                    .columns()
+                    .iter()
+                    .map(|column| column.name.as_str())
+                    .collect();
+                HierarchicalError::IllegalArgument(format!(
+                    "Unknown column names [{}], available column names are [{}]",
+                    missing.join(", "),
+                    available.join(", ")
+                ))
+            }
+            SortError::Table(failure) => HierarchicalError::Table(failure),
+            other => HierarchicalError::IllegalArgument(other.to_string()),
+        })
+    }
+
+    /// Behavior: RollupTableImpl#assertIncludesConstituents
+    pub fn assert_includes_constituents(&self) -> Result<(), HierarchicalError> {
+        if self.include_constituents {
+            Ok(())
+        } else {
+            Err(HierarchicalError::IllegalArgument(
+                "Rollup does not have constituent nodes".to_string(),
+            ))
+        }
+    }
+
+    /// This rollup with the rows of the source under every finest group sorted by
+    /// `sorts`, and where those leave rows equal by what they were sorted by before, as
+    /// [`RollupTable::with_sorts`] sorts the aggregated nodes. The sorts are not checked:
+    /// [`RollupTable::check_constituent_sorts`] does that.
+    ///
+    /// Behavior: RollupTableImpl#withNodeOperations with the sorts of a recorder for
+    /// constituent nodes
+    pub fn with_constituent_sorts(&self, sorts: &[SortColumn]) -> RollupTable {
+        RollupTable {
+            constituent_sorts: merged_sorts(sorts, &self.constituent_sorts),
+            ..self.clone()
+        }
+    }
+
+    /// What sorts the constituent nodes as `sorts` sort the aggregated ones: each result
+    /// of an aggregation becomes the column it was aggregated from. A group-by column is
+    /// left out, since the rows under one group are equal by it, and so is a result that
+    /// has no input, a count. An absolute value stays one where the input is a number.
+    ///
+    /// Behavior: RollupTableImpl#translateAggregatedNodeOperationsForConstituentNodes,
+    /// which is #translateSorts
+    pub fn constituent_sorts_of(&self, sorts: &[SortColumn]) -> Vec<SortColumn> {
+        let definition = self.base.definition();
+        sorts
+            .iter()
+            .filter(|sort| !self.group_by.contains(&sort.column))
+            .filter_map(|sort| {
+                // no two results of a rollup have one name
+                let input = self.aggregations.iter().find_map(|aggregation| {
+                    let Aggregation::Columns { pairs, .. } = aggregation else {
+                        return None;
+                    };
+                    let pair = pairs.iter().find(|pair| pair.output == sort.column)?;
+                    Some(pair.input.as_str())
+                })?;
+                let number = definition.index_of(input).is_some_and(|index| {
+                    matches!(
+                        definition.columns()[index].column_type,
+                        ColumnType::Byte
+                            | ColumnType::Short
+                            | ColumnType::Int
+                            | ColumnType::Long
+                            | ColumnType::Float
+                            | ColumnType::Double
+                    )
+                });
+                Some(SortColumn {
+                    column: input.to_string(),
+                    absolute: sort.absolute && number,
+                    ..sort.clone()
+                })
+            })
+            .collect()
     }
 
     /// Why `filters`, made for the columns of the source, may not filter this rollup, if
@@ -458,7 +607,13 @@ impl RollupTable {
                 .all(|name| self.group_by.contains(name))
         });
         let group_by: Vec<&str> = self.group_by.iter().map(String::as_str).collect();
-        let (levels, columns) = build_levels(&base, &self.aggregations, &group_by, Some(compiler))?;
+        let (levels, aggregated) = build_levels(
+            &base,
+            &self.aggregations,
+            &group_by,
+            self.include_constituents,
+            Some(compiler),
+        )?;
         Ok(RollupTable {
             source: if only_group_by {
                 self.source.clone()
@@ -466,12 +621,9 @@ impl RollupTable {
                 base.clone()
             },
             base,
-            aggregations: self.aggregations.clone(),
-            group_by: self.group_by.clone(),
             levels: Arc::new(levels),
-            columns,
-            sorts: self.sorts.clone(),
-            sortable: self.sortable.clone(),
+            aggregated,
+            ..self.clone()
         })
     }
 
@@ -500,13 +652,13 @@ impl Hierarchy for RollupTable {
         &self.source
     }
 
-    fn columns(&self) -> &TableDefinition {
+    fn columns(&self) -> &[ColumnDefinition] {
         &self.columns
     }
 
     /// Behavior: RollupTableImpl#getDefaultExpansionNodeKeys
     fn default_expansions(&self) -> Vec<NodeKey> {
-        if self.group_by.is_empty() {
+        if self.group_by.is_empty() && !self.include_constituents {
             vec![NodeKey::Root]
         } else {
             vec![NodeKey::Root, NodeKey::Path(Vec::new())]
@@ -535,7 +687,7 @@ impl Hierarchy for RollupTable {
             .group_by
             .iter()
             .enumerate()
-            .map(|(index, name)| column(name, &self.columns.columns()[2 + index].column_type))
+            .map(|(index, name)| column(name, &self.aggregated.columns()[2 + index].column_type))
             .collect::<Result<Vec<_>, _>>()?;
         let depths = key_table.column(depth_column).chunk(&rows)?;
         let depths = depths
@@ -586,8 +738,9 @@ impl Hierarchy for RollupTable {
                 row_in_parent: None,
             }));
         };
-        // a row of the last level has no children
-        if key.len() >= self.group_by.len() {
+        // a row of the last level has no children but the constituents
+        let deepest = self.group_by.len() + usize::from(self.include_constituents);
+        if key.len() >= deepest {
             return Ok(None);
         }
         // A key whose group has no rows now keeps its node, as in Java, whose lookup is
@@ -604,14 +757,14 @@ impl Hierarchy for RollupTable {
     }
 
     /// Behavior: RollupTableImpl#findParentNodeKey
-    fn parent(&self, key: &NodeKey) -> Parent {
-        match key {
+    fn parent(&self, key: &NodeKey) -> Result<Parent, HierarchicalError> {
+        Ok(match key {
             NodeKey::Root => Parent::None,
             NodeKey::Path(key) => Parent::Key(match key.split_last() {
                 None => NodeKey::Root,
                 Some((_, parent)) => NodeKey::Path(parent.to_vec()),
             }),
-        }
+        })
     }
 
     fn root(&self) -> NodeId {
@@ -621,6 +774,10 @@ impl Hierarchy for RollupTable {
     /// Behavior: RollupTableImpl#nodeIdToNodeBaseTable
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
         let depth = node.depth as usize;
+        if depth == 1 && self.group_by.is_empty() {
+            // the grand total is the last level: its children are the rows of the source
+            return Ok(self.levels.constituents.clone());
+        }
         if depth <= 1 {
             // the root's child is the grand total, whose children are all of level 1
             return Ok(self.levels.tables.get(depth).cloned());
@@ -654,6 +811,21 @@ impl Hierarchy for RollupTable {
         depth: u32,
         table: &dyn Table,
     ) -> Result<Option<Vec<RowKey>>, HierarchicalError> {
+        let sorted = |sorts: &[SortColumn]| {
+            sorted_rows(table, &table.row_set(), sorts)
+                .map(Some)
+                .map_err(|error| match error {
+                    SortError::Table(failure) => HierarchicalError::Table(failure),
+                    other => HierarchicalError::IllegalArgument(other.to_string()),
+                })
+        };
+        if depth as usize == self.group_by.len() + 2 {
+            // rows of the source
+            if self.constituent_sorts.is_empty() {
+                return Ok(None);
+            }
+            return sorted(&self.constituent_sorts);
+        }
         // the rows at `depth` are rows of level `depth - 1`, which has that many keys
         let keys = (depth as usize).saturating_sub(1);
         let sorts: Vec<SortColumn> = self
@@ -672,24 +844,21 @@ impl Hierarchy for RollupTable {
             // and a node that is sorted.
             return Ok((!self.sorts.is_empty()).then(|| table.row_set().iter().collect()));
         }
-        sorted_rows(table, &table.row_set(), &sorts)
-            .map(Some)
-            .map_err(|error| match error {
-                SortError::Table(failure) => HierarchicalError::Table(failure),
-                other => HierarchicalError::IllegalArgument(other.to_string()),
-            })
+        sorted(&sorts)
     }
 
     /// Behavior: RollupTableImpl#levelExpandable
     fn rows_expandable(&self, depth: u32) -> Expandable {
-        if (depth as usize) <= self.group_by.len() {
+        let deepest = self.group_by.len() + usize::from(self.include_constituents);
+        if (depth as usize) <= deepest {
             Expandable::All
         } else {
             Expandable::None
         }
     }
 
-    /// Behavior: RollupTableImpl#makeOrFillChunkSourceArray, and the null columns of
+    /// Behavior: RollupTableImpl#makeOrFillChunkSourceArray, with its null sources for the
+    /// columns of the other node type, and the null columns of
     /// io.deephaven.engine.table.impl.by.rollup.NullColumns for the keys a level does not
     /// group by
     fn fill(
@@ -699,16 +868,29 @@ impl Hierarchy for RollupTable {
         rows: &RowSet,
         column: usize,
     ) -> Result<ArrayRef, HierarchicalError> {
+        let all_keys = self.group_by.len();
+        let null = || {
+            let column_type = self.columns[column].column_type.arrow_type();
+            Ok(arrow::array::new_null_array(
+                &column_type,
+                rows.size() as usize,
+            ))
+        };
+        // Rows of the source have its columns and null in those of the aggregated nodes;
+        // the others the reverse.
+        let first_constituent = self.aggregated.columns().len();
+        let constituent_rows = depth as usize == all_keys + 2;
+        if (column >= first_constituent) != constituent_rows {
+            return null();
+        }
+        if constituent_rows {
+            return Ok(table.column(column - first_constituent).chunk(rows)?);
+        }
         // the rows at `depth` are rows of level `depth - 1`, which has that many keys
         let keys = depth as usize - 1;
         let node_column = column - 2;
-        let all_keys = self.group_by.len();
         if node_column < all_keys && node_column >= keys {
-            let column_type = self.columns.columns()[column].column_type.arrow_type();
-            return Ok(arrow::array::new_null_array(
-                &column_type,
-                rows.size() as usize,
-            ));
+            return null();
         }
         let in_level = if node_column < all_keys {
             node_column

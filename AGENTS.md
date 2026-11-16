@@ -22,6 +22,7 @@ Before changing anything, read, in this order:
 | `crates/oxhaven-expr` | Formula parser, type checker, evaluator |
 | `crates/oxhaven-parquet` | Parquet files as tables |
 | `crates/oxhaven-csv` | CSV files read as tables and written from them |
+| `crates/oxhaven-kafka` | Kafka topics consumed into tables (`docs/KAFKA.md`) |
 | `crates/oxhaven-proto` | Generated protocol types |
 | `crates/oxhaven-server` | gRPC services, sessions, Barrage |
 | `oracle/` | Differential harness, fuzzer, recorded Java results. Protected. |

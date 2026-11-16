@@ -1,0 +1,260 @@
+{
+  "format": 2,
+  "scenario": "partitioned_transform_ticking_dependencies",
+  "scenario_sha256": "2af9fff25838eef3224f2bf02efeaea1e603227b9618f8667e7643bfb5da6f3f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rows",
+      "file": "step000.rows.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "look",
+      "file": "step000.look.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "static_joined",
+      "file": "step000.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "static_underlying",
+      "file": "step000.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ticking_joined",
+      "file": "step000.ticking_joined.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ticking_underlying",
+      "file": "step000.ticking_underlying.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "heads",
+      "file": "step000.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "rows",
+      "file": "step001.rows.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "look",
+      "file": "step001.look.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "static_joined",
+      "file": "step001.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "static_underlying",
+      "file": "step001.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "ticking_joined",
+      "file": "step001.ticking_joined.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "ticking_underlying",
+      "file": "step001.ticking_underlying.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "heads",
+      "file": "step001.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "rows",
+      "file": "step002.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "look",
+      "file": "step002.look.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "static_joined",
+      "file": "step002.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "static_underlying",
+      "file": "step002.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "ticking_joined",
+      "file": "step002.ticking_joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "ticking_underlying",
+      "file": "step002.ticking_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "heads",
+      "file": "step002.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "rows",
+      "file": "step003.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "look",
+      "file": "step003.look.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "static_joined",
+      "file": "step003.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "static_underlying",
+      "file": "step003.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "ticking_joined",
+      "file": "step003.ticking_joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "ticking_underlying",
+      "file": "step003.ticking_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "heads",
+      "file": "step003.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "rows",
+      "file": "step004.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "look",
+      "file": "step004.look.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "static_joined",
+      "file": "step004.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "static_underlying",
+      "file": "step004.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "ticking_joined",
+      "file": "step004.ticking_joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "ticking_underlying",
+      "file": "step004.ticking_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "heads",
+      "file": "step004.heads.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "rows",
+      "file": "step005.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "look",
+      "file": "step005.look.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "static_joined",
+      "file": "step005.static_joined.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "static_underlying",
+      "file": "step005.static_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "ticking_joined",
+      "file": "step005.ticking_joined.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "ticking_underlying",
+      "file": "step005.ticking_underlying.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "heads",
+      "file": "step005.heads.arrow",
+      "rows": 3
+    }
+  ]
+}

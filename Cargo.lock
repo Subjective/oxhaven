@@ -506,6 +506,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "crc"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5eb8a2a1cd12ab0d987a5d5e825195d372001a4094a0376319d5a0ad71c1ba0d"
+dependencies = [
+ "crc-catalog",
+]
+
+[[package]]
+name = "crc-catalog"
+version = "2.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "217698eaf96b4a3f0bc4f3662aaa55bdf913cd54d7204591faa790070c6d0853"
+
+[[package]]
+name = "crc32c"
+version = "0.6.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7f132a176423ee852e8f0a35d43088d1850966b50745be818a88b76f64b1c6cb"
+dependencies = [
+ "rustc_version",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -977,6 +1001,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "kafka-protocol"
+version = "0.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "099d5c2f1b40cd830cbf18ca4d2a0805f2875b811ca18f0372b2433e68fe2dda"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "crc",
+ "crc32c",
+ "indexmap",
+ "uuid",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1295,6 +1333,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "oxhaven-kafka"
+version = "0.0.0"
+dependencies = [
+ "arrow",
+ "bytes",
+ "kafka-protocol",
+ "oxhaven-column",
+ "oxhaven-contracts",
+ "oxhaven-engine",
+ "oxhaven-testkit",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "oxhaven-parquet"
 version = "0.0.0"
 dependencies = [
@@ -1305,6 +1358,7 @@ dependencies = [
  "oxhaven-engine",
  "parquet",
  "serde_json",
+ "uuid",
 ]
 
 [[package]]
@@ -1351,6 +1405,7 @@ dependencies = [
  "oxhaven-csv",
  "oxhaven-engine",
  "oxhaven-expr",
+ "oxhaven-kafka",
  "oxhaven-parquet",
  "oxhaven-proto",
  "oxhaven-testkit",

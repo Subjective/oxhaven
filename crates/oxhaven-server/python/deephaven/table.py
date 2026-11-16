@@ -288,6 +288,11 @@ class Table:
         return self.j_table.is_refreshing()
 
     @property
+    def is_failed(self) -> bool:
+        """Whether this table failed in an update cycle: it does not change any more."""
+        return self.j_table.is_failed()
+
+    @property
     def is_blink(self) -> bool:
         """Whether this table is a blink table: its rows last one update cycle."""
         return _engine.native.is_blink(self.j_table)
@@ -1088,7 +1093,9 @@ class Table:
         include_constituents: bool = False,
     ) -> "RollupTable":
         """A rollup table: this table aggregated by the `by` columns, and by one column
-        less on each level above, up to the one row of the whole table.
+        less on each level above, up to the one row of the whole table. With
+        `include_constituents` the rows of this table are shown under the groups of the
+        last level.
 
         Behavior: `io.deephaven.engine.table.impl.QueryTable#rollup`
         """
@@ -1107,9 +1114,19 @@ class Table:
         except Exception as e:
             raise DHError(e, "table rollup operation failed.") from e
 
-    def tree(self, id_col: str, parent_col: str, promote_orphans: bool = False):
-        """Not ported: a tree table."""
-        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.impl.QueryTable#tree")
+    def tree(self, id_col: str, parent_col: str, promote_orphans: bool = False) -> "TreeTable":
+        """A tree table: the rows of this table, each under the row whose `id_col` is its
+        `parent_col`. The rows without a parent are under the root; a row whose parent
+        is no row's identifier is not shown, or with `promote_orphans` is under the root
+        too.
+
+        Behavior: `deephaven.table.Table.tree`
+        """
+        try:
+            handle = _oxhaven.tree(self.j_table, id_col, parent_col, bool(promote_orphans))
+            return TreeTable(j_tree_table=handle, id_col=id_col, parent_col=parent_col)
+        except Exception as e:
+            raise DHError(e, "table tree operation failed.") from e
 
 
 # Aggregations (task 6.5)
@@ -1457,10 +1474,169 @@ class RollupTable:
         )
 
 
-def _wrap_hierarchical(handle) -> RollupTable:
+class TreeNodeOperationsRecorder:
+    """Records operations to apply to the nodes of a tree when a client reads it:
+    sorts. `TreeTable.node_operation_recorder` makes one, and every operation returns a
+    new one.
+
+    Behavior: `deephaven.table.TreeNodeOperationsRecorder`
+    """
+
+    def __init__(self, j_node_ops_recorder):
+        self.j_node_ops_recorder = j_node_ops_recorder
+
+    @property
+    def j_object(self):
+        """The engine's recorder. In the reference package this is the Java recorder."""
+        return self.j_node_ops_recorder
+
+    def sort(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, ascending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, False))
+
+    def sort_descending(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, descending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
+
+    def where(self, filters):
+        """Not ported: a recorder that also filters the rows of a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where"
+        )
+
+    def format_column(self, formulas: Union[str, Sequence[str]]):
+        """Not ported: a recorder that also formats columns of a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumns"
+        )
+
+    def format_row_where(self, cond: str, formula: str):
+        """Not ported: a recorder that also formats the rows of a node that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatRowWhere"
+        )
+
+    def format_column_where(self, col: str, cond: str, formula: str):
+        """Not ported: a recorder that also formats a column of the rows that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumnWhere"
+        )
+
+
+class TreeTable:
+    """The result of `Table.tree`: a hierarchical table of the rows of a table, each
+    under its parent. A client reads it through a view; a script only makes it.
+
+    Behavior: `deephaven.table.TreeTable`
+    """
+
+    def __init__(self, j_tree_table, id_col: str, parent_col: str):
+        if not isinstance(j_tree_table, _oxhaven.HierarchicalHandle):
+            raise DHError(
+                message=f"not a hierarchical table handle: {type(j_tree_table).__name__}"
+            )
+        self.j_tree_table = j_tree_table
+        self.id_col = id_col
+        self.parent_col = parent_col
+
+    @property
+    def j_object(self):
+        """The engine's handle. In the reference package this is the Java tree table."""
+        return self.j_tree_table
+
+    def node_operation_recorder(self) -> "TreeNodeOperationsRecorder":
+        """A recorder of operations to apply to the nodes when a client reads this
+        tree, with nothing recorded.
+
+        Behavior: `deephaven.table.TreeTable.node_operation_recorder`
+        """
+        return TreeNodeOperationsRecorder(j_node_ops_recorder=self.j_tree_table.tree_recorder())
+
+    def with_node_operations(self, recorder: "TreeNodeOperationsRecorder") -> "TreeTable":
+        """This tree with the recorded operations applied to its nodes.
+
+        Behavior: `deephaven.table.TreeTable.with_node_operations`
+        """
+        try:
+            return TreeTable(
+                j_tree_table=self.j_tree_table.with_node_operations(
+                    [recorder.j_node_ops_recorder]
+                ),
+                id_col=self.id_col,
+                parent_col=self.parent_col,
+            )
+        except Exception as e:
+            raise DHError(e, "with_node_operations on TreeTable failed.") from e
+
+    def with_filters(self, filters: Union[str, Sequence[str]]) -> "TreeTable":
+        """This tree of the rows of its source that pass every filter, and of their
+        ancestors.
+
+        Behavior: `deephaven.table.TreeTable.with_filters`
+        """
+        try:
+            filters = _engine.to_sequence(filters)
+            if filters:
+                _engine.native.require_query_scope()
+            return TreeTable(
+                j_tree_table=self.j_tree_table.with_filters(filters),
+                id_col=self.id_col,
+                parent_col=self.parent_col,
+            )
+        except Exception as e:
+            raise DHError(e, "with_filters operation on TreeTable failed.") from e
+
+
+def _wrap_hierarchical(handle) -> Union[RollupTable, TreeTable]:
     """The Python object of a hierarchical table that was not made by this code: a
-    variable read back from the server's scope. What made it is not kept with it."""
+    variable read back from the server's scope. What made a rollup is not kept with
+    it."""
+    columns = handle.tree_columns()
+    if columns is not None:
+        return TreeTable(handle, id_col=columns[0], parent_col=columns[1])
     return RollupTable(handle, aggs=(), include_constituents=False, by=())
+
+
+def _transformer(func):
+    """`func`, a function of tables that answers a table, as the engine calls it: with
+    table handles, and where there is no query scope.
+
+    Behavior: `deephaven.jcompat.j_unary_operator` and `j_binary_operator` of a function
+    whose answer is a `Table`, and the execution context that
+    `PartitionedTableImpl#transform` applies the function in, which has no query scope
+    """
+
+    def apply(*handles):
+        before = _engine.native.without_query_scope(True)
+        try:
+            made = func(*[Table(handle) for handle in handles])
+        finally:
+            _engine.native.without_query_scope(before)
+        if made is None:
+            return None
+        if not isinstance(made, Table):
+            raise TypeError(f"the transform function returned a {type(made).__name__}, not a Table")
+        return made.j_table
+
+    return apply
+
+
+def _refreshing_dependencies(dependencies) -> list:
+    """The handles of the refreshing tables among `dependencies`, and of the underlying
+    tables of the refreshing partitioned tables among them. Anything else is passed over.
+
+    Behavior: the `j_dependencies` of `deephaven.table.PartitionedTable.transform`
+    """
+    dependencies = _engine.to_sequence(dependencies)
+    tables = [d.j_table for d in dependencies if isinstance(d, Table) and d.is_refreshing]
+    tables.extend(
+        d.table.j_table
+        for d in dependencies
+        if isinstance(d, PartitionedTable) and d.is_refreshing
+    )
+    return tables
 
 
 class PartitionedTable:
@@ -1659,60 +1835,44 @@ class PartitionedTable:
         """A partitioned table whose constituents are what `func` makes of the
         constituents of this one. The other columns of the underlying table are kept.
 
-        Only for a partitioned table that is not refreshing: the transform of one that is
-        applies `func` to constituents as they appear, which is not ported.
+        `func` is called for every constituent now and, when this partitioned table is
+        refreshing, in the update cycle for every constituent that appears. The columns
+        of the result's constituents are those `func` gives a table without rows.
+        `dependencies` are the refreshing tables and partitioned tables that `func` uses
+        besides the constituent: it is not called in a cycle before they have finished.
 
         As in the reference, `func` cannot use a formula or a filter: they fail there for
         want of a query scope.
 
-        Behavior: `PartitionedTableImpl#transform`, which applies the function to each
-        constituent and then to a table without rows, for the columns of the result
+        Behavior: `deephaven.table.PartitionedTable.transform`
         """
         try:
-            if self.is_refreshing:
-                raise dtypes._java_time.NotPorted(
-                    "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#transform",
-                    "a refreshing partitioned table",
+            return PartitionedTable(
+                self.j_partitioned_table.transform(
+                    _transformer(func), _refreshing_dependencies(dependencies)
                 )
-            sources = self.j_partitioned_table.constituents()
-            sources.append(self.j_partitioned_table.empty_constituent())
-            results = []
-            for source in sources:
-                # Java applies the function where there is no query scope
-                before = _engine.native.without_query_scope(True)
-                try:
-                    result = func(Table(source))
-                finally:
-                    _engine.native.without_query_scope(before)
-                if result is not None and not isinstance(result, Table):
-                    raise TypeError(
-                        f"the transform function returned a {type(result).__name__}, not a Table"
-                    )
-                results.append(result)
-            if results[-1] is None:
-                # Behavior: `PartitionedTableImpl#transform`, which reads the definition of
-                # what the function made of the table without rows
-                raise RuntimeError(
-                    'java.lang.NullPointerException: Cannot invoke "io.deephaven.engine.table.'
-                    'Table.getDefinition()" because "resultEmptyConstituent" is null'
-                )
-            if None in results:
-                raise dtypes._java_time.NotPorted(
-                    "io.deephaven.engine.table.impl.partitioned.TableTransformationColumn",
-                    "a transform function that returns None for a constituent",
-                )
-            results = [result.j_table for result in results]
-            definition = results.pop()
-            return PartitionedTable(self.j_partitioned_table.transformed(results, definition))
+            )
         except Exception as e:
             raise DHError(e, "failed to transform the PartitionedTable.") from e
 
-    def partitioned_transform(self, other: "PartitionedTable", func, dependencies=None) -> "PartitionedTable":
-        """Not ported: a transform of the constituents of two partitioned tables with the
-        same keys."""
+    def partitioned_transform(
+        self, other: "PartitionedTable", func, dependencies=None
+    ) -> "PartitionedTable":
+        """A partitioned table with a row for each row of this one whose key `other` has
+        too. Its constituents are what `func` makes of the constituent of this one and
+        the constituent of `other` with that key; the other columns are those of this
+        one's underlying table. `func` is called as the function of `transform` is, for
+        every such pair now and for every pair that appears.
+
+        Behavior: `deephaven.table.PartitionedTable.partitioned_transform`
+        """
         try:
-            raise dtypes._java_time.NotPorted(
-                "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#partitionedTransform"
+            return PartitionedTable(
+                self.j_partitioned_table.partitioned_transform(
+                    other.j_partitioned_table,
+                    _transformer(func),
+                    _refreshing_dependencies(dependencies),
+                )
             )
         except Exception as e:
             raise DHError(
