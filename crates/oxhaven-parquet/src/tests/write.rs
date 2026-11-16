@@ -3,9 +3,13 @@
 //! back. `oracle/scenarios/python/parquet_write_*.py` compare with a running reference.
 
 use super::{assert_java_types, cells, columns, data, read_default, scratch};
-use crate::{delete, read, write, ReadOptions, RowGroups, WriteColumn, WriteError, WriteOptions};
+use crate::{
+    delete, read, write, write_partitioned, PartitionedSource, ReadOptions, RowGroups, WriteColumn,
+    WriteError, WriteOptions,
+};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
+use oxhaven_engine::ops::partitioned::partition_by;
 use oxhaven_engine::table::QueryTable;
 use parquet::basic::Compression;
 use parquet::file::metadata::ParquetMetaData;
@@ -279,6 +283,17 @@ fn pages_are_compressed_with_the_codec_java_knows_by_the_name() {
         ("LZ4", Compression::LZ4),
         ("lz4raw", Compression::LZ4_RAW),
         ("LZ4_RAW", Compression::LZ4_RAW),
+        // a class is known by its whole name, in the case it is spelt in
+        (
+            "org.apache.parquet.hadoop.codec.SnappyCodec",
+            Compression::SNAPPY,
+        ),
+        (
+            "org.apache.parquet.hadoop.codec.Lz4RawCodec",
+            Compression::LZ4_RAW,
+        ),
+        ("org.apache.hadoop.io.compress.Lz4Codec", Compression::LZ4),
+        ("io.airlift.compress.lz4.Lz4Codec", Compression::LZ4),
     ];
     for (name, expected) in cases {
         write_one(&table, &path, &named(name)).unwrap();
@@ -288,28 +303,47 @@ fn pages_are_compressed_with_the_codec_java_knows_by_the_name() {
         }
         assert_java_types(&read_back(&path));
     }
-    for name in ["Gzip", "jdkgzip"] {
+    let gzip = [
+        "Gzip",
+        "jdkgzip",
+        "org.apache.hadoop.io.compress.GzipCodec",
+        "io.airlift.compress.gzip.JdkGzipCodec",
+    ];
+    for name in gzip {
         write_one(&table, &path, &named(name)).unwrap();
         let codec = footer(&path).row_group(0).column(0).compression();
         assert!(matches!(codec, Compression::GZIP(_)), "{name}");
         assert_java_types(&read_back(&path));
     }
-    write_one(&table, &path, &named("zstdcodec")).unwrap();
-    let codec = footer(&path).row_group(0).column(0).compression();
-    assert!(matches!(codec, Compression::ZSTD(_)));
-    assert_java_types(&read_back(&path));
+    for name in ["zstdcodec", "io.airlift.compress.zstd.ZstdCodec"] {
+        write_one(&table, &path, &named(name)).unwrap();
+        let codec = footer(&path).row_group(0).column(0).compression();
+        assert!(matches!(codec, Compression::ZSTD(_)), "{name}");
+        assert_java_types(&read_back(&path));
+    }
 
     // names Java does not know
-    for name in ["zstandard", "bogus", "LZ4 RAW", "BROTLI"] {
+    let unknown = [
+        "zstandard",
+        "bogus",
+        "LZ4 RAW",
+        "BROTLI",
+        "org.apache.hadoop.io.compress.gzipcodec",
+        "org.apache.hadoop.io.compress.SnappyCodec",
+        "org.apache.parquet.hadoop.codec.ZstandardCodec",
+    ];
+    for name in unknown {
         let refused = write_one(&table, &path, &named(name));
-        assert!(refused.is_err(), "{name}");
+        assert!(invalid(refused).contains(name), "{name}");
     }
     // a codec Java writes and this crate does not
-    let java = not_ported(write_one(&table, &path, &named("LZO")));
-    assert!(
-        java.ends_with("DeephavenCompressorAdapterFactory#getByName"),
-        "{java}"
-    );
+    for name in ["LZO", "io.airlift.compress.lzo.LzoCodec"] {
+        let java = not_ported(write_one(&table, &path, &named(name)));
+        assert!(
+            java.ends_with("DeephavenCompressorAdapterFactory#getByName"),
+            "{java}"
+        );
+    }
 }
 
 #[test]
@@ -537,13 +571,6 @@ fn what_is_not_ported_is_refused_by_the_java_method() {
     let cases = [
         (
             WriteOptions {
-                generate_metadata_files: true,
-                ..default()
-            },
-            "ParquetMetadataFileWriterImpl#writeMetadataFiles",
-        ),
-        (
-            WriteOptions {
                 index_columns: vec![vec!["I".to_string()]],
                 ..default()
             },
@@ -608,4 +635,530 @@ fn delete_removes_a_file_a_directory_and_nothing() {
     assert!(names(&directory).is_empty());
     delete(&target(&directory, "nothing.parquet")).unwrap();
     delete(&file).unwrap();
+}
+
+/// Every file under `directory`, by its path from it, in order.
+fn files_under(directory: &Path) -> Vec<String> {
+    fn walk(root: &Path, directory: &Path, found: &mut Vec<String>) {
+        let Ok(entries) = std::fs::read_dir(directory) else {
+            return;
+        };
+        for entry in entries {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, found);
+            } else {
+                let relative = path.strip_prefix(root).unwrap();
+                found.push(relative.to_string_lossy().into_owned());
+            }
+        }
+    }
+    let mut found = Vec::new();
+    walk(directory, directory, &mut found);
+    found.sort();
+    found
+}
+
+/// The physical type and the annotation of each leaf column of a file.
+fn leaves(footer: &ParquetMetaData) -> Vec<String> {
+    let columns = footer.file_metadata().schema_descr().columns().iter();
+    columns
+        .map(|column| {
+            use parquet::basic::LogicalType;
+            let annotation = match column.logical_type_ref() {
+                Some(LogicalType::Decimal(of)) => {
+                    format!("DECIMAL({},{})", of.precision, of.scale)
+                }
+                Some(LogicalType::Date) => "DATE".to_string(),
+                Some(LogicalType::Time(of)) => {
+                    format!("TIME({},{:?})", of.is_adjusted_to_u_t_c, of.unit)
+                }
+                Some(LogicalType::Timestamp(of)) => {
+                    format!("TIMESTAMP({},{:?})", of.is_adjusted_to_u_t_c, of.unit)
+                }
+                Some(LogicalType::Integer(of)) => {
+                    format!("INT({},{})", of.bit_width, of.is_signed)
+                }
+                other => format!("{other:?}"),
+            };
+            format!(
+                "{} {} {annotation}",
+                column.path().string(),
+                column.physical_type()
+            )
+        })
+        .collect()
+}
+
+/// The keys of the entries of a footer, in order.
+fn entry_keys(footer: &ParquetMetaData) -> Vec<String> {
+    let entries = footer.file_metadata().key_value_metadata().unwrap();
+    let mut keys: Vec<String> = entries.iter().map(|entry| entry.key.clone()).collect();
+    keys.sort();
+    keys
+}
+
+/// The file each row group of a metadata file says it is in.
+fn group_files(footer: &ParquetMetaData) -> Vec<String> {
+    let groups = footer.row_groups().iter();
+    groups
+        .map(|group| {
+            let mut paths = group.columns().iter().map(|column| column.file_path());
+            let first = paths.next().unwrap();
+            assert!(paths.all(|path| path == first));
+            first.unwrap_or("").to_string()
+        })
+        .collect()
+}
+
+/// `types.parquet` with its columns `keys` as partitioning columns.
+fn partitioned_by(table: &QueryTable, keys: &[&str]) -> TableDefinition {
+    let columns = table.definition().columns().iter();
+    let columns = columns.map(|column| match keys.contains(&column.name.as_str()) {
+        true => ColumnDefinition::partitioning(&column.name, column.column_type.clone()),
+        false => column.clone(),
+    });
+    TableDefinition::new(columns.collect()).unwrap()
+}
+
+fn by_keys(table: &QueryTable, keys: &[&str], base_name: Option<&str>) -> WriteOptions {
+    WriteOptions {
+        definition: Some(partitioned_by(table, keys)),
+        base_name: base_name.map(str::to_string),
+        ..WriteOptions::default()
+    }
+}
+
+fn write_by(
+    table: &Arc<QueryTable>,
+    directory: &str,
+    options: &WriteOptions,
+) -> Result<(), WriteError> {
+    let table: Arc<dyn Table> = table.clone();
+    write_partitioned(PartitionedSource::Table(&table), directory, options)
+}
+
+/// The annotations are the ones Java 42.9 wrote for the same table, and the precision of
+/// a decimal column is the one its values need: 12345.67 needs 7 digits, 255 needs 3.
+#[test]
+fn the_object_types_are_written_as_java_writes_them() {
+    let directory = scratch("write-objects");
+    let path = target(&directory, "more.parquet");
+    let table = read_default("more_types.parquet").unwrap();
+    write_one(&table, &path, &WriteOptions::default()).unwrap();
+
+    let ours = footer(&path);
+    assert_eq!(
+        leaves(&ours),
+        [
+            "Dec BYTE_ARRAY DECIMAL(7,2)",
+            "Wide BYTE_ARRAY DECIMAL(38,10)",
+            "Whole BYTE_ARRAY DECIMAL(3,0)",
+            "Date INT32 DATE",
+            "TimeMs INT64 TIME(true,NANOS)",
+            "TimeUs INT64 TIME(true,NANOS)",
+            "TimeNs INT64 TIME(true,NANOS)",
+            "LocalMs INT64 TIMESTAMP(false,NANOS)",
+            "LocalUs INT64 TIMESTAMP(false,NANOS)",
+            "LocalNs INT64 TIMESTAMP(false,NANOS)",
+            "U64 BYTE_ARRAY DECIMAL(1,0)",
+            "Bin.list.element INT32 INT(8,true)",
+            "Fixed.list.element INT32 INT(8,true)",
+        ]
+    );
+    assert_eq!(deephaven(&ours), r#"{"version":"42.9"}"#);
+
+    let back = read_back(&path);
+    assert_eq!(columns(&back), columns(&table));
+    for (name, _) in columns(&table) {
+        assert_eq!(cells(&back, &name), cells(&table, &name), "{name}");
+    }
+
+    // a decimal column kept in an integer has the digits of its values too
+    let ints = read_default("more_decimals_int.parquet").unwrap();
+    write_one(&ints, &path, &WriteOptions::default()).unwrap();
+    assert_eq!(
+        leaves(&footer(&path)),
+        [
+            "D32 BYTE_ARRAY DECIMAL(9,2)",
+            "D64 BYTE_ARRAY DECIMAL(18,3)"
+        ]
+    );
+    let back = read_back(&path);
+    for (name, _) in columns(&ints) {
+        assert_eq!(cells(&back, &name), cells(&ints, &name), "{name}");
+    }
+}
+
+#[test]
+fn a_destination_may_be_a_file_uri() {
+    let directory = scratch("write-uri");
+    let root = directory.to_str().unwrap();
+    let table = read_default("types.parquet").unwrap();
+    let default = WriteOptions::default();
+    write_one(&table, &format!("file://{root}/one.parquet"), &default).unwrap();
+    write_one(&table, &format!("file:{root}/two.parquet"), &default).unwrap();
+    // the path of a URI is decoded, and a path that is not a URI is taken as it is
+    write_one(&table, &format!("file://{root}/a%20b.parquet"), &default).unwrap();
+    write_one(&table, &format!("{root}/c%20d.parquet"), &default).unwrap();
+    assert_eq!(
+        names(&directory),
+        ["a b.parquet", "c%20d.parquet", "one.parquet", "two.parquet"]
+    );
+    assert_java_types(&read_back(&target(&directory, "a b.parquet")));
+
+    let refused = write_one(
+        &table,
+        &format!("file://localhost{root}/x.parquet"),
+        &default,
+    );
+    assert_eq!(invalid(refused), "URI has an authority component");
+    let spaced = format!("file://{root}/x y.parquet");
+    let refused = write_one(&table, &spaced, &default);
+    assert_eq!(
+        invalid(refused),
+        format!("Failed to convert to URI: '{spaced}'")
+    );
+    // Java knows a scheme in the case it is registered in
+    for other in [
+        format!("FILE://{root}/x.parquet"),
+        "nope://x/y.parquet".to_string(),
+    ] {
+        let java = not_ported(write_one(&table, &other, &default));
+        assert!(
+            java.ends_with("SeekableChannelsProviderLoader#load"),
+            "{java}"
+        );
+    }
+    assert_eq!(names(&directory).len(), 4);
+}
+
+#[test]
+fn metadata_files_list_the_row_groups_of_every_file_of_the_write() {
+    let directory = scratch("write-metadata");
+    let types: Arc<dyn Table> = read_default("types.parquet").unwrap();
+    let same: Arc<dyn Table> = read_default("types_gzip.parquet").unwrap();
+    let options = WriteOptions {
+        generate_metadata_files: true,
+        row_groups: RowGroups::MaxRows(4),
+        ..WriteOptions::default()
+    };
+    let one = target(&directory, "d/one.parquet");
+    let two = target(&directory, "d/two.parquet");
+    write(&[types.clone(), same.clone()], &[&one, &two], &options).unwrap();
+    assert_eq!(
+        names(&directory.join("d")),
+        [
+            "_common_metadata",
+            "_metadata",
+            "one.parquet",
+            "two.parquet"
+        ]
+    );
+
+    let all = footer(&target(&directory, "d/_metadata"));
+    let of_one = footer(&one);
+    assert_eq!(schema(&all), schema(&of_one));
+    assert_eq!(row_groups(&all), [4, 3, 4, 3]);
+    assert_eq!(all.file_metadata().num_rows(), 14);
+    assert_eq!(
+        group_files(&all),
+        ["one.parquet", "one.parquet", "two.parquet", "two.parquet"]
+    );
+    // where the pages of a row group are is where its file has them
+    for (listed, own) in all.row_groups().iter().zip(of_one.row_groups()) {
+        for (listed, own) in listed.columns().iter().zip(own.columns()) {
+            assert_eq!(listed.data_page_offset(), own.data_page_offset());
+            assert_eq!(listed.compressed_size(), own.compressed_size());
+            assert_eq!(own.file_path(), None);
+        }
+    }
+    let keys = [
+        "deephaven",
+        "deephaven_per_file_one.parquet",
+        "deephaven_per_file_two.parquet",
+    ];
+    assert_eq!(entry_keys(&all), keys);
+    for entry in all.file_metadata().key_value_metadata().unwrap() {
+        assert_eq!(entry.value.as_deref(), Some(r#"{"version":"42.9"}"#));
+    }
+
+    let common = footer(&target(&directory, "d/_common_metadata"));
+    assert_eq!(schema(&common), schema(&of_one));
+    assert!(common.row_groups().is_empty());
+    assert_eq!(common.file_metadata().num_rows(), 0);
+    assert_eq!(entry_keys(&common), keys);
+
+    // the directory is read through its metadata file
+    let back = read_back(&target(&directory, "d"));
+    assert_eq!(back.row_set().size(), 14);
+
+    // a later write replaces the metadata files, which then list only its files
+    let three = target(&directory, "d/three.parquet");
+    write(&[types.clone()], &[&three], &options).unwrap();
+    let all = footer(&target(&directory, "d/_metadata"));
+    assert_eq!(group_files(&all), ["three.parquet", "three.parquet"]);
+    assert_eq!(names(&directory.join("d")).len(), 5);
+
+    // the metadata files of files of two directories have no one place to be
+    let apart = [
+        target(&directory, "e/one.parquet"),
+        target(&directory, "e/f/two.parquet"),
+    ];
+    let refused = write(&[types, same], &[&apart[0], &apart[1]], &options);
+    let message = invalid(refused);
+    assert!(
+        message.starts_with("All destination files must be in the same directory"),
+        "{message}"
+    );
+    assert_eq!(names(&directory), ["d"]);
+}
+
+#[test]
+fn a_table_is_written_under_a_directory_for_each_value_of_its_partitioning_columns() {
+    let directory = scratch("write-partitioned");
+    let table = read_default("types.parquet").unwrap();
+    let root = target(&directory, "by");
+
+    // B is null, false, true, null, true, false, null: a null names the directory `B=`
+    write_by(&table, &root, &by_keys(&table, &["B"], Some("data"))).unwrap();
+    let files = [
+        "B=/data.parquet",
+        "B=false/data.parquet",
+        "B=true/data.parquet",
+    ];
+    assert_eq!(files_under(&directory.join("by")), files);
+    let leaf = footer(&target(&directory, "by/B=false/data.parquet"));
+    assert_eq!(leaves(&leaf).len(), 9, "every column but the key");
+    assert!(leaves(&leaf).iter().all(|leaf| !leaf.starts_with("B ")));
+    assert_eq!(row_groups(&leaf), [2]);
+    assert_eq!(deephaven(&leaf), r#"{"version":"42.9"}"#);
+
+    let back = read_back(&root);
+    assert!(back.definition().columns()[0].partitioning);
+    assert_eq!(back.definition().columns()[0].name, "B");
+    assert_eq!(
+        cells(&back, "B"),
+        ["null", "null", "null", "false", "false", "true", "true"]
+    );
+    assert_eq!(
+        cells(&back, "I"),
+        ["-300000", "null", "300000", "-200000", "200000", "-100000", "100000"]
+    );
+
+    // the tokens of a base name; a file under another name stays, as in Java
+    std::fs::write(directory.join("by/B=true/kept.txt"), "kept").unwrap();
+    let named = by_keys(&table, &["B"], Some("{partitions}-{i}"));
+    write_by(&table, &root, &named).unwrap();
+    assert_eq!(
+        files_under(&directory.join("by")),
+        [
+            "B=/B=-0.parquet",
+            "B=/data.parquet",
+            "B=false/B=false-0.parquet",
+            "B=false/data.parquet",
+            "B=true/B=true-0.parquet",
+            "B=true/data.parquet",
+            "B=true/kept.txt",
+        ]
+    );
+
+    // the default name is a UUID, a different one for each file
+    let uuids = target(&directory, "uuids");
+    write_by(&table, &uuids, &by_keys(&table, &["B"], None)).unwrap();
+    let written = files_under(&directory.join("uuids"));
+    assert_eq!(written.len(), 3);
+    let mut seen = std::collections::HashSet::new();
+    for file in &written {
+        let name = file.rsplit('/').next().unwrap();
+        let uuid = name.strip_suffix(".parquet").unwrap();
+        assert_eq!(uuid.len(), 36, "{file}");
+        assert!(uuid.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
+        assert!(seen.insert(uuid.to_string()), "{file}");
+    }
+
+    // two keys are two levels, in the order of the definition
+    let two = target(&directory, "two");
+    write_by(&table, &two, &by_keys(&table, &["B", "Y"], Some("d"))).unwrap();
+    let written = files_under(&directory.join("two"));
+    assert_eq!(written.len(), 7);
+    assert!(
+        written.contains(&"B=false/Y=2/d.parquet".to_string()),
+        "{written:?}"
+    );
+    assert!(
+        written.contains(&"B=/Y=-3/d.parquet".to_string()),
+        "{written:?}"
+    );
+    assert!(
+        written.contains(&"B=false/Y=/d.parquet".to_string()),
+        "{written:?}"
+    );
+
+    // a partitioned table is written by its keys
+    let parent: Arc<dyn Table> = table.clone();
+    let parts = partition_by(&parent, &["H"], false).unwrap();
+    let from_parts = target(&directory, "parts");
+    let options = WriteOptions {
+        base_name: Some("p".to_string()),
+        ..WriteOptions::default()
+    };
+    write_partitioned(
+        PartitionedSource::Partitioned(&parts),
+        &from_parts,
+        &options,
+    )
+    .unwrap();
+    let written = files_under(&directory.join("parts"));
+    assert_eq!(written.len(), 7);
+    assert!(
+        written.contains(&"H=-3000/p.parquet".to_string()),
+        "{written:?}"
+    );
+    assert!(written.contains(&"H=/p.parquet".to_string()), "{written:?}");
+    assert_eq!(read_back(&from_parts).row_set().size(), 7);
+}
+
+#[test]
+fn a_partitioned_write_has_metadata_files_with_the_partitioning_columns() {
+    let directory = scratch("write-partitioned-metadata");
+    let table = read_default("types.parquet").unwrap();
+    let root = target(&directory, "by");
+    let options = WriteOptions {
+        generate_metadata_files: true,
+        ..by_keys(&table, &["B"], Some("data"))
+    };
+    write_by(&table, &root, &options).unwrap();
+    assert_eq!(
+        files_under(&directory.join("by")),
+        [
+            "B=/data.parquet",
+            "B=false/data.parquet",
+            "B=true/data.parquet",
+            "_common_metadata",
+            "_metadata",
+        ]
+    );
+    let all = footer(&target(&directory, "by/_metadata"));
+    let leaf = footer(&target(&directory, "by/B=/data.parquet"));
+    assert_eq!(schema(&all), schema(&leaf));
+    assert_eq!(
+        group_files(&all),
+        [
+            "B=/data.parquet",
+            "B=false/data.parquet",
+            "B=true/data.parquet"
+        ]
+    );
+    assert_eq!(row_groups(&all), [3, 2, 2]);
+    // a `/` of a path is a `_` of its key
+    let keys = [
+        "deephaven",
+        "deephaven_per_file_B=_data.parquet",
+        "deephaven_per_file_B=false_data.parquet",
+        "deephaven_per_file_B=true_data.parquet",
+    ];
+    assert_eq!(entry_keys(&all), keys);
+
+    let common = footer(&target(&directory, "by/_common_metadata"));
+    assert!(common.row_groups().is_empty());
+    assert_eq!(entry_keys(&common), keys);
+    let mut expected = vec!["B BOOLEAN None".to_string()];
+    expected.extend(leaves(&leaf));
+    assert_eq!(leaves(&common), expected);
+
+    // reading a directory whose partitioning columns only `_common_metadata` knows is
+    // not ported: the files are read one by one, or by the layout of their directories
+    let through_metadata = read(&root, &ReadOptions::default());
+    match through_metadata {
+        Err(crate::ReadError::NotPorted { java, .. }) => {
+            assert!(java.ends_with("ParquetMetadataFileLayout#create"), "{java}")
+        }
+        Err(other) => panic!("{other}"),
+        Ok(_) => panic!("read through the metadata file: check its rows here instead"),
+    }
+}
+
+#[test]
+fn a_partitioned_write_that_fails_leaves_what_was_there() {
+    let directory = scratch("write-partitioned-failed");
+    let table = read_default("types.parquet").unwrap();
+    let root = target(&directory, "by");
+    std::fs::create_dir_all(directory.join("by/B=")).unwrap();
+    std::fs::write(directory.join("by/B=/data.parquet"), "old").unwrap();
+    std::fs::write(directory.join("by/_metadata"), "old metadata").unwrap();
+    std::fs::create_dir_all(directory.join("by/B=true/data.parquet")).unwrap();
+    let options = WriteOptions {
+        generate_metadata_files: true,
+        ..by_keys(&table, &["B"], Some("data"))
+    };
+    let message = invalid(write_by(&table, &root, &options));
+    assert!(
+        message.ends_with("B=true/data.parquet exists and is a directory"),
+        "{message}"
+    );
+    assert_eq!(
+        files_under(&directory.join("by")),
+        ["B=/data.parquet", "_metadata"]
+    );
+    assert!(!directory.join("by/B=false").exists());
+    let old = std::fs::read_to_string(directory.join("by/B=/data.parquet")).unwrap();
+    assert_eq!(old, "old");
+    let old = std::fs::read_to_string(directory.join("by/_metadata")).unwrap();
+    assert_eq!(old, "old metadata");
+}
+
+#[test]
+fn partitioned_writes_java_refuses_are_refused_with_its_words() {
+    let directory = scratch("write-partitioned-refused");
+    let table = read_default("types.parquet").unwrap();
+    let root = target(&directory, "by");
+    let nothing_written = || assert!(files_under(&directory).is_empty());
+
+    let refused = write_by(&table, &root, &WriteOptions::default());
+    assert_eq!(
+        invalid(refused),
+        "Table must have partitioning columns to write partitioned data"
+    );
+    let every = ["B", "Y", "H", "I", "L", "C", "F", "D", "S", "T"];
+    let refused = write_by(&table, &root, &by_keys(&table, &every, Some("d")));
+    assert_eq!(
+        invalid(refused),
+        "Cannot write a partitioned parquet table without any non-partitioning columns"
+    );
+    let indexed = WriteOptions {
+        index_columns: vec![vec!["B".to_string()]],
+        ..by_keys(&table, &["B"], Some("d"))
+    };
+    assert_eq!(
+        invalid(write_by(&table, &root, &indexed)),
+        "Cannot add index on partitioning column B"
+    );
+    nothing_written();
+
+    // S is null in one row and empty in another: both are the directory `S=`, and the
+    // second file can not be put where the first is
+    let message = invalid(write_by(&table, &root, &by_keys(&table, &["S"], Some("d"))));
+    assert!(
+        message.starts_with("Failed to install shadow file at"),
+        "{message}"
+    );
+    nothing_written();
+
+    for key in ["F", "D", "T"] {
+        let java = not_ported(write_by(&table, &root, &by_keys(&table, &[key], Some("d"))));
+        assert!(java.ends_with("PartitionFormatter#formatObject"), "{java}");
+    }
+    nothing_written();
+
+    // Java asks the first file for its scheme, and there is none
+    let empty = read_default("flat/empty.parquet").unwrap();
+    assert!(empty.row_set().is_empty());
+    let first = empty.definition().columns()[0].name.clone();
+    let refused = write_by(&empty, &root, &by_keys(&empty, &[&first], Some("d")));
+    assert_eq!(
+        invalid(refused),
+        "java.lang.ArrayIndexOutOfBoundsException: Index 0 out of bounds for length 0"
+    );
+    nothing_written();
 }

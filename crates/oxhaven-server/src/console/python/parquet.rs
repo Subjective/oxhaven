@@ -427,7 +427,9 @@ reserved = read("{DATA}/reserved.parquet")
             r#"
 import os
 from deephaven import dtypes, empty_table, time_table
+from deephaven.column import ColumnType, col_def
 from deephaven.parquet import ColumnInstruction, RowGroupInfo, batch_write, delete, read, write
+from deephaven.parquet import write_partitioned
 
 source = empty_table(10).update(["X = i", "S = `s` + (i % 3)", "K = (int)(i / 4)"])
 write(source, "{root}/plain.parquet")
@@ -452,6 +454,30 @@ written = read("{root}/ticking.parquet")
 write(source, "{root}/gone/deep/table.parquet")
 delete("{root}/gone")
 delete("{root}/nothing")
+# one file for each value of the partitioning column, and the two metadata files
+write_partitioned(
+    source,
+    "{root}/by",
+    table_definition=[
+        col_def("K", dtypes.int32, column_type=ColumnType.PARTITIONING),
+        col_def("X", dtypes.int32),
+        col_def("S", dtypes.string),
+    ],
+    base_name="data",
+    generate_metadata_files=True,
+)
+by_files = sorted(
+    os.path.relpath(os.path.join(parent, name), "{root}/by")
+    for parent, _, names in os.walk("{root}/by")
+    for name in names
+)
+write_partitioned(source.partition_by("K"), "{root}/parts", base_name="{{partitions}}-{{i}}")
+parts_files = sorted(
+    os.path.relpath(os.path.join(parent, name), "{root}/parts")
+    for parent, _, names in os.walk("{root}/parts")
+    for name in names
+)
+parts = read("{root}/parts")
 left = sorted(os.listdir("{root}"))
 "#
         ));
@@ -477,9 +503,23 @@ left = sorted(os.listdir("{root}"))
         let expected: Vec<_> = (0..written.len() as i32).map(Some).collect();
         assert_eq!(written, expected);
         let left = console.evaluate(
-            "assert left == ['a', 'options.parquet', 'plain.parquet', 'ticking.parquet'], left",
+            "assert left == ['a', 'by', 'options.parquet', 'parts', 'plain.parquet', 'ticking.parquet'], left",
         );
         assert_eq!(left.error, None);
+        let by_files = console.evaluate(
+            "assert by_files == ['K=0/data.parquet', 'K=1/data.parquet', 'K=2/data.parquet', '_common_metadata', '_metadata'], by_files",
+        );
+        assert_eq!(by_files.error, None);
+        let parts_files = console.evaluate(
+            "assert parts_files == ['K=0/K=0-0.parquet', 'K=1/K=1-0.parquet', 'K=2/K=2-0.parquet'], parts_files",
+        );
+        assert_eq!(parts_files.error, None);
+        let parts = table("parts");
+        let first = &parts.definition().columns()[0];
+        assert!(first.partitioning && first.name == "K", "{first:?}");
+        let expected: Vec<_> = (0..10).map(Some).collect();
+        assert_eq!(ints(&*parts, "X"), expected);
+        assert_eq!(ints(&*parts, "K"), [0, 0, 0, 0, 1, 1, 1, 1, 2, 2].map(Some));
 
         // every failure is a DHError with the reference's message, then the cause
         let failure = |code: &str, message: &str| {
@@ -515,10 +555,6 @@ left = sorted(os.listdir("{root}"))
             "Number of groups must be at least 1, got: 0"
         );
         for (argument, java) in [
-            (
-                "generate_metadata_files=True",
-                "ParquetMetadataFileWriterImpl#writeMetadataFiles",
-            ),
             ("index_columns=[['X']]", "Builder#addAllIndexColumns"),
             (
                 "compression_codec_name='LZO'",
@@ -546,6 +582,16 @@ left = sorted(os.listdir("{root}"))
             partitioned.contains("Table must have partitioning columns to write partitioned data"),
             "{partitioned}"
         );
+        let not_a_table = console
+            .evaluate(&format!(
+                "from deephaven.parquet import write_partitioned\nwrite_partitioned(1, '{root}/one')"
+            ))
+            .error
+            .expect("a number is not written");
+        assert!(
+            not_a_table.contains("'int' object has no attribute 'j_object'"),
+            "{not_a_table}"
+        );
         let constructor = console
             .evaluate("from deephaven.parquet import RowGroupInfo\nRowGroupInfo.max_groups(0)");
         assert!(constructor.error.unwrap().contains("RuntimeError"));
@@ -556,7 +602,14 @@ left = sorted(os.listdir("{root}"))
         left.sort();
         assert_eq!(
             left,
-            ["a", "options.parquet", "plain.parquet", "ticking.parquet"]
+            [
+                "a",
+                "by",
+                "options.parquet",
+                "parts",
+                "plain.parquet",
+                "ticking.parquet"
+            ]
         );
         std::fs::remove_dir_all(root).unwrap();
     }
