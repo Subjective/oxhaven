@@ -216,8 +216,9 @@ impl ClientSource {
 ///
 /// Behavior: org.apache.kafka.clients.consumer.KafkaConsumer#poll, the exceptions it
 /// documents (`InvalidOffsetException`, `AuthorizationException`, `KafkaException` for
-/// "any other unrecoverable errors")
-fn ends_consumption(error: &ClientError) -> Option<KafkaError> {
+/// "any other unrecoverable errors"). `grouped` is whether the properties name a group: a
+/// consumer without one asks nothing of a group in Java, so nothing about one can fail it.
+fn ends_consumption(error: &ClientError, grouped: bool) -> Option<KafkaError> {
     let code = match error {
         ClientError::MessageConsumptionFatal(code) => {
             return Some(broker_error("the Kafka consumer failed", code));
@@ -227,13 +228,13 @@ fn ends_consumption(error: &ClientError) -> Option<KafkaError> {
     };
     use RDKafkaErrorCode as Code;
     match code {
-        // No codec for the batch in this build of librdkafka (gzip: `docs/KAFKA.md`).
-        Code::NotImplemented | Code::UnsupportedFeature | Code::UnsupportedCompressionType => {
-            Some(not_ported(
-                "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator",
-                &format!("a record batch compressed with a codec that is not built in ({code})"),
-            ))
-        }
+        // What librdkafka's reader of record batches says of a codec it was built
+        // without. That is gzip: `docs/KAFKA.md`, "What is left off".
+        Code::NotImplemented => Some(not_ported(
+            "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator",
+            "a record batch compressed with gzip",
+        )),
+        Code::GroupAuthorizationFailed if !grouped => None,
         Code::AutoOffsetReset
         | Code::OffsetOutOfRange
         | Code::TopicAuthorizationFailed
@@ -267,7 +268,7 @@ impl RecordSource for ClientSource {
                     value: message.payload().map(Bytes::copy_from_slice),
                 }),
                 Some(Err(error)) => {
-                    if let Some(failure) = ends_consumption(&error) {
+                    if let Some(failure) = ends_consumption(&error, self.commits) {
                         if records.is_empty() {
                             return Err(failure);
                         }
@@ -380,7 +381,10 @@ mod tests {
     #[test]
     fn only_what_java_cannot_recover_from_ends_the_consumption() {
         use RDKafkaErrorCode as Code;
-        let consumption = |code| ends_consumption(&ClientError::MessageConsumption(code));
+        let of = |code, grouped| ends_consumption(&ClientError::MessageConsumption(code), grouped);
+        let consumption = |code| of(code, true);
+        assert_eq!(of(Code::GroupAuthorizationFailed, false), None);
+        assert!(consumption(Code::GroupAuthorizationFailed).is_some());
         for code in [
             Code::BrokerTransportFailure,
             Code::AllBrokersDown,
@@ -398,6 +402,6 @@ mod tests {
         assert!(matches!(refused, Some(KafkaError::NotPorted { java, .. })
             if java == "org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator"));
         let fatal = ClientError::MessageConsumptionFatal(Code::Fatal);
-        assert!(ends_consumption(&fatal).is_some());
+        assert!(ends_consumption(&fatal, false).is_some());
     }
 }
