@@ -558,3 +558,125 @@ pub fn filter(
     let spec = condition::to_spec(&condition).map_err(FilterError::Invalid)?;
     where_specs(parent, &[spec], compiler)
 }
+
+/// What one filter of a [`CheckedFilters`] reads.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct FilterReads {
+    /// The filter as it was written, or as its condition prints.
+    pub text: String,
+    /// The columns it reads at the current row.
+    pub columns: Vec<String>,
+    /// Whether it reads a column at other rows (`Column_`).
+    pub arrays: bool,
+    /// Whether it uses `i`, `ii` or `k`.
+    pub row_variables: bool,
+}
+
+/// Filters made for the columns of a table before they are applied to it, for an
+/// operation that restricts what its filters may read, as a rollup does.
+///
+/// Behavior: the `WhereFilter#init`, `#getColumns` and `#getColumnArrays` that
+/// io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#initializeAndValidateFilters
+/// calls before its filters are applied
+pub struct CheckedFilters {
+    specs: Vec<FilterSpec>,
+    reads: Vec<FilterReads>,
+}
+
+impl CheckedFilters {
+    fn of_specs(
+        specs: Vec<(String, FilterSpec)>,
+        definition: &TableDefinition,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<CheckedFilters, FilterError> {
+        let mut reads = Vec::with_capacity(specs.len());
+        for (text, spec) in &specs {
+            let (mut rewritten, mut shifts) = (Vec::new(), Vec::new());
+            shifted_reads(spec, compiler, &mut rewritten, &mut shifts);
+            let mut columns = BTreeSet::new();
+            let (mut arrays, mut row_variables) = (!shifts.is_empty(), false);
+            match filters::resolve(spec, definition, compiler) {
+                Ok(filter) => {
+                    arrays |= filter.inputs(definition, &mut columns);
+                    row_variables = filter.uses_row_variables();
+                }
+                // a filter that reads a shifted column is made again by `where` once that
+                // column stands in
+                Err(_) if arrays => {}
+                Err(error) => return Err(FilterError::Invalid(error)),
+            }
+            reads.push(FilterReads {
+                text: text.clone(),
+                columns: columns
+                    .into_iter()
+                    .map(|index| definition.columns()[index].name.clone())
+                    .collect(),
+                arrays,
+                row_variables,
+            });
+        }
+        Ok(CheckedFilters {
+            specs: specs.into_iter().map(|(_, spec)| spec).collect(),
+            reads,
+        })
+    }
+
+    /// The filters of `texts`, each read as [`unstructured_filter`] reads a filter string,
+    /// for a table of `definition`.
+    pub fn parse(
+        texts: &[impl AsRef<str>],
+        definition: &TableDefinition,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<CheckedFilters, FilterError> {
+        let specs = texts
+            .iter()
+            .map(|text| {
+                Ok((
+                    text.as_ref().to_string(),
+                    factory::parse_filter(text.as_ref())?,
+                ))
+            })
+            .collect::<Result<Vec<_>, String>>()
+            .map_err(FilterError::Invalid)?;
+        CheckedFilters::of_specs(specs, definition, compiler)
+    }
+
+    /// The one filter that `conditions` are, as [`filter`] makes it, for a table of
+    /// `definition`; no filter for no conditions.
+    pub fn of_conditions(
+        conditions: &[Condition],
+        definition: &TableDefinition,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<CheckedFilters, FilterError> {
+        let specs = match normalize(conditions).map_err(FilterError::Invalid)? {
+            Some(condition) => vec![(
+                print(&condition),
+                condition::to_spec(&condition).map_err(FilterError::Invalid)?,
+            )],
+            None => Vec::new(),
+        };
+        CheckedFilters::of_specs(specs, definition, compiler)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.specs.is_empty()
+    }
+
+    /// What each filter reads, in order.
+    pub fn reads(&self) -> &[FilterReads] {
+        &self.reads
+    }
+
+    /// The rows of `parent` that every filter accepts, as [`unstructured_filter`] and
+    /// [`filter`] give them. `parent` has the columns the filters were made for.
+    pub fn apply(
+        &self,
+        parent: &Arc<dyn Table>,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<Arc<dyn Table>, FilterError> {
+        if self.specs.is_empty() {
+            return Ok(parent.clone());
+        }
+        where_specs(parent, &self.specs, compiler)
+    }
+}

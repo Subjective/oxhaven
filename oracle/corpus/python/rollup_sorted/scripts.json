@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Nope], available column names are [Sym, Ex, Qty, Rows, Avg, MaxF, FirstT]"
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [__DEPTH__], available column names are [Sym, Ex, Qty, Rows, Avg, MaxF, FirstT]"
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "RuntimeError",
+      "text": "io.deephaven.engine.table.impl.select.FormulaCompilationException: Formula compilation error for: abs(Sym)"
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a RollupNodeOperationsRecorder. : RuntimeError: java.lang.IllegalArgumentException: Rollup does not have constituent nodes",
+      "operation": "failed to create a RollupNodeOperationsRecorder."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to create a RollupNodeOperationsRecorder. : AttributeError: 'NoneType' object has no attribute 'value'",
+      "operation": "failed to create a RollupNodeOperationsRecorder."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : TypeError: 'RollupNodeOperationsRecorder' object is not iterable",
+      "operation": "with_node_operations on RollupTable failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_node_operations on RollupTable failed. : AttributeError: 'str' object has no attribute 'j_node_ops_recorder'",
+      "operation": "with_node_operations on RollupTable failed."
+    }
+  ]
+}

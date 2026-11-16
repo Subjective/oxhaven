@@ -1,0 +1,431 @@
+{
+  "format": 2,
+  "scenario": "rollup_sorted_ticking",
+  "scenario_sha256": "686764579675e849e9c124f127d0f6f5d4df7ebc8d50920f85e245efc87bdbb2",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "plain",
+      "file": "step000.plain.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "by_qty",
+      "file": "step000.by_qty.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "by_qty_some",
+      "file": "step000.by_qty_some.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "by_qty_closed",
+      "file": "step000.by_qty_closed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "by_ex_desc",
+      "file": "step000.by_ex_desc.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "by_two",
+      "file": "step000.by_two.arrow",
+      "rows": 11
+    },
+    {
+      "step": 0,
+      "table": "followed",
+      "file": "step000.followed.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "plain",
+      "file": "step001.plain.arrow",
+      "rows": 11
+    },
+    {
+      "step": 1,
+      "table": "by_qty",
+      "file": "step001.by_qty.arrow",
+      "rows": 11
+    },
+    {
+      "step": 1,
+      "table": "by_qty_some",
+      "file": "step001.by_qty_some.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "by_qty_closed",
+      "file": "step001.by_qty_closed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "by_ex_desc",
+      "file": "step001.by_ex_desc.arrow",
+      "rows": 11
+    },
+    {
+      "step": 1,
+      "table": "by_two",
+      "file": "step001.by_two.arrow",
+      "rows": 11
+    },
+    {
+      "step": 1,
+      "table": "followed",
+      "file": "step001.followed.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "plain",
+      "file": "step002.plain.arrow",
+      "rows": 13
+    },
+    {
+      "step": 2,
+      "table": "by_qty",
+      "file": "step002.by_qty.arrow",
+      "rows": 13
+    },
+    {
+      "step": 2,
+      "table": "by_qty_some",
+      "file": "step002.by_qty_some.arrow",
+      "rows": 9
+    },
+    {
+      "step": 2,
+      "table": "by_qty_closed",
+      "file": "step002.by_qty_closed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "by_ex_desc",
+      "file": "step002.by_ex_desc.arrow",
+      "rows": 13
+    },
+    {
+      "step": 2,
+      "table": "by_two",
+      "file": "step002.by_two.arrow",
+      "rows": 13
+    },
+    {
+      "step": 2,
+      "table": "followed",
+      "file": "step002.followed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "plain",
+      "file": "step003.plain.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "by_qty",
+      "file": "step003.by_qty.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "by_qty_some",
+      "file": "step003.by_qty_some.arrow",
+      "rows": 9
+    },
+    {
+      "step": 3,
+      "table": "by_qty_closed",
+      "file": "step003.by_qty_closed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "by_ex_desc",
+      "file": "step003.by_ex_desc.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "by_two",
+      "file": "step003.by_two.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "followed",
+      "file": "step003.followed.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "plain",
+      "file": "step004.plain.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "by_qty",
+      "file": "step004.by_qty.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "by_qty_some",
+      "file": "step004.by_qty_some.arrow",
+      "rows": 9
+    },
+    {
+      "step": 4,
+      "table": "by_qty_closed",
+      "file": "step004.by_qty_closed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "by_ex_desc",
+      "file": "step004.by_ex_desc.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "by_two",
+      "file": "step004.by_two.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "followed",
+      "file": "step004.followed.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "plain",
+      "file": "step005.plain.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "by_qty",
+      "file": "step005.by_qty.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "by_qty_some",
+      "file": "step005.by_qty_some.arrow",
+      "rows": 10
+    },
+    {
+      "step": 5,
+      "table": "by_qty_closed",
+      "file": "step005.by_qty_closed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "by_ex_desc",
+      "file": "step005.by_ex_desc.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "by_two",
+      "file": "step005.by_two.arrow",
+      "rows": 14
+    },
+    {
+      "step": 5,
+      "table": "followed",
+      "file": "step005.followed.arrow",
+      "rows": 11
+    },
+    {
+      "step": 6,
+      "table": "plain",
+      "file": "step006.plain.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_qty",
+      "file": "step006.by_qty.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_qty_some",
+      "file": "step006.by_qty_some.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "by_qty_closed",
+      "file": "step006.by_qty_closed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "by_ex_desc",
+      "file": "step006.by_ex_desc.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "by_two",
+      "file": "step006.by_two.arrow",
+      "rows": 10
+    },
+    {
+      "step": 6,
+      "table": "followed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 7,
+      "table": "plain",
+      "file": "step007.plain.arrow",
+      "rows": 14
+    },
+    {
+      "step": 7,
+      "table": "by_qty",
+      "file": "step007.by_qty.arrow",
+      "rows": 14
+    },
+    {
+      "step": 7,
+      "table": "by_qty_some",
+      "file": "step007.by_qty_some.arrow",
+      "rows": 10
+    },
+    {
+      "step": 7,
+      "table": "by_qty_closed",
+      "file": "step007.by_qty_closed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "by_ex_desc",
+      "file": "step007.by_ex_desc.arrow",
+      "rows": 14
+    },
+    {
+      "step": 7,
+      "table": "by_two",
+      "file": "step007.by_two.arrow",
+      "rows": 14
+    },
+    {
+      "step": 7,
+      "table": "followed",
+      "file": "step007.followed.arrow",
+      "rows": 9
+    },
+    {
+      "step": 8,
+      "table": "plain",
+      "file": "step008.plain.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_qty",
+      "file": "step008.by_qty.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_qty_some",
+      "file": "step008.by_qty_some.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_qty_closed",
+      "file": "step008.by_qty_closed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_ex_desc",
+      "file": "step008.by_ex_desc.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "by_two",
+      "file": "step008.by_two.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "followed",
+      "file": "step008.followed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 9,
+      "table": "plain",
+      "file": "step009.plain.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "by_qty",
+      "file": "step009.by_qty.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "by_qty_some",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 9,
+      "table": "by_qty_closed",
+      "file": "step009.by_qty_closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "by_ex_desc",
+      "file": "step009.by_ex_desc.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "by_two",
+      "file": "step009.by_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "followed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}

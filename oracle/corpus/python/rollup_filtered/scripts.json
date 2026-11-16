@@ -1,0 +1,58 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Invalid filter found: RangeFilter(Qty greater than 0) may only use non-aggregation columns, which are [Sym, Ex, N, Tag], but has used [Qty]",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Invalid filter found: RangeFilter(P less than 10.0) may only use non-aggregation columns, which are [Sym, Ex, N, Tag], but has used [P]",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : Cannot find variable or class Rows",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : RuntimeError: java.lang.RuntimeException: Column \"Nope\" doesn't exist in this table, available columns: [Sym, Ex, Qty, P, N, Tag]",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : RuntimeError: java.lang.IllegalArgumentException: Invalid filter found: Sym_[i - 1] == `s1` may not use column arrays, but uses column arrays from [Sym]",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : Invalid expression N +",
+      "operation": "with_filters operation on RollupTable failed."
+    },
+    {
+      "step": 7,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "with_filters operation on RollupTable failed. : java.lang.RuntimeException: Invalid condition filter expression type: boolean required.",
+      "operation": "with_filters operation on RollupTable failed."
+    }
+  ]
+}
