@@ -591,10 +591,11 @@ fn to_column_type(
             let cells = unsigned.iter().map(|v| v.map(big_integer_cell_unsigned));
             return Ok(Arc::new(BinaryArray::from_iter(cells)));
         }
-        ColumnType::Array(element) if **element == ColumnType::Byte => {
-            if !matches!(values.data_type(), DataType::List(_)) {
-                return byte_arrays(&values);
-            }
+        ColumnType::Array(element)
+            if **element == ColumnType::Byte
+                && !matches!(values.data_type(), DataType::List(_)) =>
+        {
+            return byte_arrays(&values);
         }
         _ => {}
     }
