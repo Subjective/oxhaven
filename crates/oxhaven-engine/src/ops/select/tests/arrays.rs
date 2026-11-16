@@ -263,10 +263,12 @@ fn a_static_select_shifts_the_columns_it_has_computed_with_new_row_keys() {
         "I = W + i",
         "A = W * 2",
         "B = A + 1",
+        "S = sum(W_) + sum(B_)",
         "W = W_[i - 2]",
     ];
     let result = select(&parent, &columns, &Compiler).unwrap();
-    assert_eq!(names(&*result), ["W", "Y", "Z", "I", "A", "B"]);
+    assert_eq!(names(&*result), ["W", "Y", "Z", "I", "A", "B", "S"]);
+    assert_eq!(values(&*result, "S"), ["192"; 3]);
     assert_eq!(values(&*result, "Y"), ["null", "42", "null"]);
     assert_eq!(values(&*result, "Z"), ["42", "null", "null"]);
     assert_eq!(values(&*result, "I"), ["11", "22", "33"]);

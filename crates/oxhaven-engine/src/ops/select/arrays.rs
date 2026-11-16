@@ -709,6 +709,7 @@ fn run<S: AsRef<str>>(
 /// before it is read; `Y = W_[i-1] + X`, a later `Z = X * 2`, `Z = X_[i-1]` and
 /// `sum(X_)` have the values of other rows, and `k` is the new row key.
 fn reads_nothing_of_the_parent(
+    parent: &TableDefinition,
     before: &[&str],
     columns: &[&str],
     compiler: &dyn FormulaCompiler,
@@ -727,11 +728,20 @@ fn reads_nothing_of_the_parent(
     }
     for text in columns {
         let assignment = parse(text)?;
+        // `W_` is a name like any other until it is compiled: the whole of the column `W`,
+        // unless the table has a column of that name.
+        let is_defined = |name: &String| {
+            defined.contains(name)
+                || name.strip_suffix('_').is_some_and(|column| {
+                    defined.iter().any(|defined| defined == column)
+                        && parent.index_of(name).is_none()
+                })
+        };
         let mut nothing = true;
         super::plan::visit(&assignment.expr, &mut |expr| match expr {
             Expr::Column(name)
             | Expr::ColumnVector(name)
-            | Expr::ColumnArrayAccess { column: name, .. } => nothing &= defined.contains(name),
+            | Expr::ColumnArrayAccess { column: name, .. } => nothing &= is_defined(name),
             Expr::RowVariable(RowVariable::K) => nothing = false,
             _ => {}
         });
@@ -781,7 +791,7 @@ pub(super) fn with_shifted_column<S: AsRef<str>>(
         }
         if shifted.renumbers {
             let (before, rest) = texts.split_at(shifted.index);
-            if !reads_nothing_of_the_parent(before, rest, compiler)? {
+            if !reads_nothing_of_the_parent(parent.definition(), before, rest, compiler)? {
                 unported!(
                     "io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources",
                     "select on a static table whose result gets new row keys, with a \
