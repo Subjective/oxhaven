@@ -10,6 +10,7 @@ use crate::ops::select::drop_columns;
 use crate::ops::sort::{head, reverse, tail};
 use arrow::datatypes::Int32Type;
 use oxhaven_contracts::schema::TableClass;
+use oxhaven_contracts::update::TableUpdate;
 use oxhaven_testkit::{
     at_least_for, definition, ints, test_seeds, ConsistencyChecker, RandomUpdates, ScriptedTable,
     TableChange,
@@ -31,16 +32,22 @@ fn counted(
 }
 
 fn last_row(tables: &[Arc<dyn Table>]) -> Made {
-    Ok(Some(tail(&tables[0], 1).map_err(|error| failure(error.to_string()))?))
+    Ok(Some(
+        tail(&tables[0], 1).map_err(|error| failure(error.to_string()))?,
+    ))
 }
 
 fn reversed(tables: &[Arc<dyn Table>]) -> Made {
-    Ok(Some(reverse(&tables[0]).map_err(|error| failure(error.to_string()))?))
+    Ok(Some(
+        reverse(&tables[0]).map_err(|error| failure(error.to_string()))?,
+    ))
 }
 
 /// The rows of the first table, then those of the second.
 fn both(tables: &[Arc<dyn Table>]) -> Made {
-    Ok(Some(merge(tables).map_err(|error| failure(error.to_string()))?))
+    Ok(Some(
+        merge(tables).map_err(|error| failure(error.to_string()))?,
+    ))
 }
 
 fn taken(calls: &AtomicUsize) -> usize {
@@ -111,7 +118,10 @@ fn what_java_refuses_of_a_function_is_refused() {
     // Observed: "NullPointerException: Cannot invoke ... because
     // "resultEmptyConstituent" is null" when it answers null for every table
     let nothing = transform(|_| Ok(None));
-    assert!(matches!(nothing, PartitionedError::NullPointer(_)), "{nothing}");
+    assert!(
+        matches!(nothing, PartitionedError::NullPointer(_)),
+        "{nothing}"
+    );
 
     // Observed: "IllegalStateException: Encountered null constituent"
     let nothing_for_rows = transform(|tables| match tables[0].row_set().is_empty() {
@@ -236,10 +246,7 @@ fn the_function_is_called_in_the_cycle_for_each_constituent_that_appears() {
 
     // A new key: one call, for its constituent. A row added to a constituent that is
     // there is the business of what the function made of it.
-    source.push(TableChange::new().add(
-        [3, 4],
-        probe_columns(&[3, 1], &[13, 14], &[4.0, 5.0]),
-    ));
+    source.push(TableChange::new().add([3, 4], probe_columns(&[3, 1], &[13, 14], &[4.0, 5.0])));
     graph.run_cycle();
     verify();
     assert_eq!(taken(&calls), 1);
@@ -266,10 +273,7 @@ fn the_function_is_called_in_the_cycle_for_each_constituent_that_appears() {
 
     // It has rows again: the function is called again, with the constituent it was
     // called with before, which has the two rows by then.
-    source.push(TableChange::new().add(
-        [7, 8],
-        probe_columns(&[2, 2], &[17, 18], &[7.0, 8.0]),
-    ));
+    source.push(TableChange::new().add([7, 8], probe_columns(&[2, 2], &[17, 18], &[7.0, 8.0])));
     graph.run_cycle();
     verify();
     assert_eq!(taken(&calls), 1);
@@ -289,6 +293,79 @@ fn the_function_is_called_in_the_cycle_for_each_constituent_that_appears() {
     assert_eq!(taken(&calls), 0);
     assert_eq!(rows(&*merged), ["1|12|3.0", "2|18|8.5", "3|14|5.5"]);
     assert_eq!(rows(&*first), ["1|12|3.0"]);
+}
+
+#[test]
+fn a_row_whose_constituent_changes_is_made_again() {
+    use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
+    let Probe {
+        graph,
+        source,
+        partitioned,
+    } = probe(false);
+    // A table whose rows name a key, each with the constituent of its key: a row that
+    // changes its key changes its constituent.
+    let wanted = ScriptedTable::new(
+        graph.clone(),
+        definition(&[("K", ColumnType::Int), ("Tag", ColumnType::Int)]),
+        RowSet::flat(2),
+        vec![ints([1, 2]), ints([7, 8])],
+    );
+    let wanted_table: Arc<dyn Table> = wanted.table();
+    let joined = natural_join(
+        &wanted_table,
+        partitioned.table(),
+        &[JoinMatch::same("K")],
+        &[JoinAddition::same(CONSTITUENT)],
+        NaturalJoinType::ErrorOnDuplicate,
+    )
+    .unwrap();
+    let chosen = PartitionedTable::new(
+        joined,
+        vec!["K".to_string()],
+        false,
+        CONSTITUENT.to_string(),
+        partitioned.constituent_definition().clone(),
+        true,
+    )
+    .unwrap();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let transformed = chosen.transform(counted(&calls, last_row), &[]).unwrap();
+    assert_eq!(taken(&calls), 3);
+    assert_eq!(
+        names(transformed.table().definition()),
+        ["K", "Tag", CONSTITUENT]
+    );
+    let merged = transformed.merge().unwrap();
+    let recorder = oxhaven_testkit::Recorder::attach(transformed.table().clone());
+    let checks = [
+        ConsistencyChecker::attach(transformed.table().clone()),
+        ConsistencyChecker::attach(merged.clone()),
+    ];
+    assert_eq!(rows(&*merged), ["1|12|3.0", "2|11|2.0"]);
+
+    // The first row takes the key 2: one call, for the constituent it has now.
+    wanted.push(TableChange::new().modify([0], [(0, ints([2]))]));
+    graph.run_cycle();
+    checks.iter().for_each(|check| check.assert_consistent());
+    assert_eq!(taken(&calls), 1);
+    assert_eq!(rows(&*merged), ["2|11|2.0", "2|11|2.0"]);
+
+    // Another column of the row changes: no call, and the cell is not modified.
+    wanted.push(TableChange::new().modify([0], [(1, ints([9]))]));
+    graph.run_cycle();
+    checks.iter().for_each(|check| check.assert_consistent());
+    assert_eq!(taken(&calls), 0);
+    let updates: Vec<TableUpdate> = recorder
+        .events()
+        .into_iter()
+        .map(|event| event.expect("no failure"))
+        .collect();
+    assert_eq!(updates.len(), 2);
+    assert!(updates[0].modified_columns.contains(2));
+    assert!(!updates[1].modified_columns.contains(2));
+    assert!(updates[1].modified_columns.contains(1));
+    drop(source);
 }
 
 /// A transform of the probe whose function does `broken` for the constituent of the key
@@ -451,7 +528,14 @@ fn a_pair_has_the_rows_of_the_first_whose_key_the_second_has() {
     assert_eq!(keys(&pairs), ["1", "3"]);
     assert_eq!(
         rows(&*merged),
-        ["1|10|1.0", "1|12|3.0", "1|41|10.0", "3|13|4.0", "3|31|30.0", "3|32|31.0"]
+        [
+            "1|10|1.0",
+            "1|12|3.0",
+            "1|41|10.0",
+            "3|13|4.0",
+            "3|31|30.0",
+            "3|32|31.0"
+        ]
     );
 
     // It has the key 2 again, and the first loses the key 1.
@@ -463,7 +547,13 @@ fn a_pair_has_the_rows_of_the_first_whose_key_the_second_has() {
     assert_eq!(keys(&pairs), ["2", "3"]);
     assert_eq!(
         rows(&*merged),
-        ["2|11|2.0", "2|22|21.0", "3|13|4.0", "3|31|30.0", "3|32|31.0"]
+        [
+            "2|11|2.0",
+            "2|22|21.0",
+            "3|13|4.0",
+            "3|31|30.0",
+            "3|32|31.0"
+        ]
     );
 }
 
@@ -473,13 +563,18 @@ fn a_pair_of_static_partitions_and_the_keys_java_refuses() {
     let right_rows = oxhaven_testkit::ReferenceTable::new_static(
         definition(&[("J", ColumnType::Int), ("V", ColumnType::Double)]),
         RowSet::flat(3),
-        vec![ints([2, 5, 0]), oxhaven_testkit::doubles([0.5, 0.25, 0.125])],
+        vec![
+            ints([2, 5, 0]),
+            oxhaven_testkit::doubles([0.5, 0.25, 0.125]),
+        ],
     );
     let right_rows: Arc<dyn Table> = right_rows;
     // Key columns of other names are matched by position.
     let right = partition_by(&right_rows, &["J"], true).unwrap();
     let first: Transformer = Arc::new(last_row);
-    let pairs = left.partitioned_transform(&right, first.clone(), &[]).unwrap();
+    let pairs = left
+        .partitioned_transform(&right, first.clone(), &[])
+        .unwrap();
     assert!(!pairs.table().is_refreshing());
     assert!(!pairs.constituent_changes_permitted());
     assert_eq!(pairs.key_columns(), ["K"]);
@@ -488,7 +583,9 @@ fn a_pair_of_static_partitions_and_the_keys_java_refuses() {
     // Observed: the underlying table is flat when all its rows are pairs, and not when
     // a row of the first found no constituent.
     assert!(!pairs.table().is_flat());
-    let with_itself = left.partitioned_transform(&left, first.clone(), &[]).unwrap();
+    let with_itself = left
+        .partitioned_transform(&left, first.clone(), &[])
+        .unwrap();
     assert!(with_itself.table().is_flat());
 
     // Observed: "Incompatible partitioned table input for partitioned transform; key
