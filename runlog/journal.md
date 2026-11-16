@@ -1098,3 +1098,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T14:46Z: task 7.6.3 came back in 38 minutes and 311k tokens with 7.6.3 complete and 7.6.4 untouched; opened pull request 130. It moved the table-handle registry into the column crate so copied cells keep their tables. Owner item: Java validates only the first 2048 constituents (reproduced). Started task 5.11, a batch of four small formula-crate gaps, now that pull request 129 has left that crate.
 
 - 2026-11-16T14:52Z: merged pull request 130 (partitioned tables made from tables) on seven green checks.
+
+- 2026-11-16T15:44Z: task 7.5.2 came back complete in 79 minutes and 280k tokens; opened pull request 131. Owner items 18 to 22 in docs/KAFKA.md, the weightiest being that Java pairs Avro fields with columns by position, so include_only_columns and exclude_columns can write values into the wrong fields (reproduced). Started task 7.6.4 (columns of tables in filters, aggregations and formulas).
