@@ -1094,3 +1094,7 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T14:24Z: task 4.23 came back complete after 157 minutes and 263k tokens (long wall time because of ten 1000-seed fuzz runs); opened pull request 129 with the oracle-change label. Restrictions R1, R4, R7, R8 removed from the second generator, R6 narrowed; new Java defect J7 (initial groups with first/last on an add-only table fail in a later cycle) is refused up front. Owner items: object-vector column arrays are refused wholesale where Java sends strings, including one read that previously answered a typed list.
 
 - 2026-11-16T14:30Z: merged pull request 129 (requests the second fuzzer found refused) on seven green checks with the oracle-change label in place. The formula crate is free again for the instant overflow fix and the four filter formula gaps from task 4.22.
+
+- 2026-11-16T14:46Z: task 7.6.3 came back in 38 minutes and 311k tokens with 7.6.3 complete and 7.6.4 untouched; opened pull request 130. It moved the table-handle registry into the column crate so copied cells keep their tables. Owner item: Java validates only the first 2048 constituents (reproduced). Started task 5.11, a batch of four small formula-crate gaps, now that pull request 129 has left that crate.
+
+- 2026-11-16T14:52Z: merged pull request 130 (partitioned tables made from tables) on seven green checks.

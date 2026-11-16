@@ -3,7 +3,8 @@
 How Oxhaven holds a table of tables, keeps its constituents up to date, and hands it to
 clients. Written by task 7.6 (`tasks/7.6-partitioned-tables.md`), which also built the first
 slice. The follow-on tasks, 7.6.1 to 7.6.6, are sized in that file; 7.6.1
-(`tasks/7.6.1-partitioned-transform.md`) wrote "Transforms".
+(`tasks/7.6.1-partitioned-transform.md`) wrote "Transforms"; 7.6.3
+(`tasks/7.6.3-partitioned-factories.md`) wrote "Made from tables".
 
 What Java does was read in `PartitionByChunkedOperator`, `PartitionedTableImpl`,
 `PartitionedTableServiceGrpcImpl` and `PartitionedTableTypePlugin`, and observed on Java 42.9
@@ -62,10 +63,15 @@ sees them.
   is dropped. The registry itself refers to them weakly. Operators that pass a column on
   share or wrap the source, or hold the table that has it, so the handles of their cells
   stay good.
-- **What copies cells loses the tables.** An operation that copies values into columns of
-  its own (`select`, `snapshot`, a static `update`) copies handles, not ownership. When the
-  table the cells came from is gone, such a handle resolves to nothing, and reading the
-  constituent fails by name. Java keeps such a table reachable but no longer updates it.
+- **A copied cell keeps its table.** An operation that copies values into columns of its
+  own (`select`, `snapshot`, a static `update`) copies handles, and the column source it
+  stores them in (`FlatSource`, `WritableSource`) keeps the tables they name
+  (`oxhaven_column::tables`), as Java's object sources refer to their tables. So the
+  constituent of a copied cell can be read after the partitioned table is gone; as in
+  Java, nothing updates it any more. A `WritableSource` keeps the tables of the handles it
+  stores until it compacts its storage, so a table can outlive the cell a little, never
+  the other way. The source that makes the tables (the partition, a transform) keeps them
+  itself and decides when to give them up.
 - **Keys.** Two cells are equal when they are the same table, which is when their handles
   are equal, so a column of tables is a group key and a join key with the code for
   `Int64`. A sort by it is refused, as Java refuses it; what else is refused is in
@@ -151,9 +157,12 @@ on the key columns (by name when both have the same names, by position otherwise
 types must match), less the rows that found no constituent, then the transform with a
 function of two tables. So the result has the rows of the first table whose key the
 second has, in the first one's order, and a pair appears and goes as either side gets or
-loses the key. Constituents can change when they can in either. Java does this for a
-partitioned table with unique keys; for one without it uses `join`, which is refused
-here (no operation of this package makes such a partitioned table yet).
+loses the key. Constituents can change when they can in either. That is for a partitioned
+table with unique keys; for one without (`from_partitioned_table` without arguments,
+`from_constituent_tables`), as in Java, it is the `join` of the two: each row with every
+row of the second that has its key, in the second's order, and with no key columns every
+pair. A first partitioned table with unique keys and a second without fails in the
+natural join, with Java's "Natural Join found duplicate right key for ...".
 
 **What the function may not answer**, when the result is made (the transform fails) and
 in a cycle (the result fails: its underlying table and every merge of it):
@@ -181,6 +190,34 @@ interpreter lock.
 refreshing by a dependency, has the attributes its constituents share, as in Java
 (`PartitionedTableImpl#computeSharedAttributes`): a merge of `head`s of static tables is
 append-only.
+
+## Made from tables
+
+`PartitionedTable::of`, `of_table` and `of_tables` (`ops/partitioned/factory.rs`), Python's
+`PartitionedTable.from_partitioned_table` (with every argument, or with none) and
+`from_constituent_tables`, as Java's `PartitionedTableFactory`. Every case was observed
+on Java 42.9; the table of `tasks/7.6.3-partitioned-factories.md` holds them.
+
+- **With every argument**, the key columns and the constituent column must be columns of
+  the table, and the constituent column one of tables. Constituents can change only when
+  the table refreshes, whatever the caller says.
+- **With none**, the key columns are the columns that do not hold tables, the keys are not
+  unique, the one column of tables is the constituent column (none or two are refused),
+  the constituents have the columns of the first one, and they can change when the table
+  refreshes. A first cell that is null counts as no constituent.
+- **From tables**, the underlying table has one column `__CONSTITUENT__` of type `Table`
+  and a flat row per table that is not `None`, no key columns, constituents that cannot
+  change, and the columns of the definition given or of the first table. When one of the
+  tables refreshes, the underlying table is refreshing too, as Java's `addParentReference`
+  makes it, though its rows never change.
+- **The constituents are checked** when it is made and, for a refreshing table, in every
+  cycle for the rows added and modified, as Java's `ValidateConstituents` does: none is
+  null, none refreshes in a static table, each has the columns of the definition (Java's
+  `checkMutualCompatibility` and its text). A check that fails in a cycle fails the
+  underlying table. Java checks only the first 2048 rows it is given (one chunk); so does
+  this, for the owner's ruling.
+- `get_constituent([])` of a partitioned table without key columns matches every row, as
+  Java's filter by no key does, and fails when there are two.
 
 ## `merge`
 
@@ -217,7 +254,8 @@ and go.
 `deephaven.table.PartitionedTable` with `table`, `key_columns`, `unique_keys`,
 `constituent_column`, `constituent_table_columns`, `constituent_changes_permitted`,
 `is_refreshing`, `update_graph`, `keys`, `constituent_tables`, `get_constituent`, `merge`,
-`filter`, `sort`, `transform`, and `Table.partition_by`, `agg.partition` and
+`filter`, `sort`, `transform`, `from_partitioned_table`, `from_constituent_tables`, and
+`Table.partition_by`, `agg.partition` and
 `Table.partitioned_agg_by`.
 
 **`transform` and `partitioned_transform`.** See "Transforms" below. The function is called
@@ -358,12 +396,9 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `partitioned_transform` of a partitioned table whose keys are not unique | `PartitionedTableImpl#partitionedTransform` | 7.6.3, which makes the first such table |
 | A transform function that compiles a formula inside an execution context it enters | `deephaven.execution_context` | 6.12 |
-| `PartitionedTable.from_partitioned_table`, `from_constituent_tables` | `PartitionedTableFactory#of`, `#ofTables` | 7.6.3 |
 | `update_graph` | `Table#getUpdateGraph` | 6.12 |
 | `partitioned_agg_by` and `agg_by` of a refreshing table with `initial_groups` it has no rows for, without `preserve_empty` | `ChunkedOperatorAggregationHelper#copyKeyColumns` | 4.18, needs a ruling |
-| Reading a constituent whose partitioned table is gone (a copied cell) | `ObjectArraySource#get` | 7.6.3 |
 | `get_constituent` with a key value that is not of the key column's type | `PartitionedTableImpl#constituentFor` | 7.6.4 |
 | `where("C != null")` and other match filters on a column of tables | `MatchFilter.ColumnTypeConvertorFactory#getConvertor` | 7.6.4 |
 | `where_in` on a column of tables | `DynamicWhereFilter#beginOperation` | 7.6.4 |
@@ -389,7 +424,9 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 - The text of a constituent cell is `QueryTable` on both.
 - The bytes of the schema inside the `PartitionedTableDescriptor` are laid out differently
   by the two flatbuffer writers; the schema they decode to is the same.
-- The rows of the table above marked 7.6.3 and 7.6.4 work in Java and are refused here.
+- The rows of the table above marked 7.6.4 work in Java and are refused here.
+- The texts of the factories name every table `QueryTable`; Java names some tables
+  otherwise (`FilteredTable(null)` for a `where`).
 - When a transform is made, Java may call the function for several constituents at once,
   on threads of its own; here the calls are one after the other in row order. In a cycle
   both call on the thread of the cycle.
@@ -451,6 +488,9 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
   while one is entered), `_oxhaven_bootstrap.py` (`scope_snapshot`),
   `console/python/ops.rs` (`local_operation`, a local operation by its name),
   `console/python/mod.rs` (the module `proxy`).
+- Task 7.6.3: `crates/oxhaven-column` (`tables.rs`, the registry of handles, moved from
+  `ops/partitioned/cells.rs`; `FlatSource` and `WritableSource` keep the tables of the
+  handles they store).
 
 ## Gate
 
@@ -461,3 +501,6 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 `partitioned_transform_pair*`. Task 7.6.2 adds
 `cargo test -p oxhaven-server --features python console::python::proxy` and the scenarios
 `partitioned_proxy_*`, one for each family of operations and one for refreshing tables.
+Task 7.6.3 adds the engine tests `partitioned::factory_tests` and
+`cargo test -p oxhaven-server --features python console::python::partitioned`; it adds no
+scenario.

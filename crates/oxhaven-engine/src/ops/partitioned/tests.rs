@@ -248,13 +248,68 @@ fn a_handle_names_nothing_once_its_partition_is_gone() {
     assert!(tables_of(&handles).unwrap().iter().all(Option::is_some));
     drop(partitioned);
     drop(underlying);
+    // A chunk read from a column keeps nothing; a column that holds the cells does.
     let error = tables_of(&handles).err().expect("the tables are gone");
-    assert!(
-        error
-            .message
-            .contains("io.deephaven.engine.table.impl.sources.ObjectArraySource#get"),
-        "{error}"
-    );
+    assert!(error.message.contains("is gone"), "{error}");
+}
+
+/// The rows of each constituent of `copy`, a copy of an underlying table whose
+/// constituent column is its second column.
+fn copied_constituents(copy: &Arc<dyn Table>) -> Vec<Vec<String>> {
+    let handles = copy.column(1).chunk(&copy.row_set()).unwrap();
+    tables_of(&handles)
+        .unwrap()
+        .into_iter()
+        .map(|table| rows(&*table.expect("a constituent")))
+        .collect()
+}
+
+/// Seen on Java 42.9: `select`, `snapshot` and `update` of the underlying table of a
+/// `partition_by` read the constituents after the partitioned table is gone.
+///
+/// Behavior: io.deephaven.engine.table.impl.sources.ObjectArraySource#get, whose cells
+/// refer to their tables
+#[test]
+fn a_copied_cell_keeps_its_table_when_the_partition_is_gone() {
+    type Copy = fn(&Arc<dyn Table>) -> Arc<dyn Table>;
+    let copies: [(&str, Copy); 3] = [
+        ("select", |table| {
+            crate::ops::select::select(
+                table,
+                &["K", "C = __CONSTITUENT__"],
+                &oxhaven_expr::Compiler,
+            )
+            .unwrap()
+        }),
+        ("update", |table| {
+            crate::ops::select::update(table, &["X = 1"], &oxhaven_expr::Compiler).unwrap()
+        }),
+        ("snapshot", |table| {
+            crate::ops::snapshot::snapshot(table).unwrap()
+        }),
+    ];
+    for (name, copy) in copies {
+        let partitioned = partition_by(&seven_rows(), &["K"], false).unwrap();
+        let expected = copied_constituents(partitioned.table());
+        let copied = copy(partitioned.table());
+        drop(partitioned);
+        assert_eq!(copied_constituents(&copied), expected, "{name}");
+    }
+}
+
+/// A snapshot of a refreshing partition is a copy that does not keep the partition.
+#[test]
+fn a_snapshot_of_a_refreshing_partition_keeps_its_tables() {
+    let Probe {
+        graph, partitioned, ..
+    } = probe(false);
+    let snapshot = locked(&*graph, || {
+        crate::ops::snapshot::snapshot(partitioned.table())
+    })
+    .unwrap();
+    let expected = copied_constituents(partitioned.table());
+    drop(partitioned);
+    assert_eq!(copied_constituents(&snapshot), expected);
 }
 
 /// The keyed input table of the Java probe: `K`, `N`, `V`, rows keyed by `N`.
