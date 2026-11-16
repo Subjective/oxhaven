@@ -808,3 +808,11 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   which changed an expectation from pull request 92.
 - Started 4.19 (ring tables, generated tables, floating point input keys).
 - Merged pull request 98 (7.10, object service and Python plugins) on six green checks. Figures (7.11) wait for a free build slot; the same agent will be resumed for them.
+- Pull request 99 opened (4.10, chart downsample and seek row). The task file was stale:
+  two of its three operations were already on main, and the remaining one was the hard
+  one. Lesson for task files written far ahead: have the agent check main first (this one
+  was told to) and expect the size to be wrong. For the owner: six Java defects in the
+  downsample listener reproduced; a `long` X column refused more widely than Java;
+  `Math.sin(...)` in a formula is refused ("static method call"), seen in passing and
+  passed to the formula work.
+- Started 7.11 (figures and JS plugin leftovers) by resuming the object service agent.
