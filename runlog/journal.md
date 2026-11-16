@@ -887,3 +887,10 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   Java leaves a partial copy when a registration fails; `serial` and `concurrent` executors
   are one thread in Java; histograms of plotly-express construct a Java class in formulas;
   deephaven.ui needs `deephaven.table.TreeTable` and `configuration.get_configuration`.
+- Pull request 107 opened (5.7): formula cases that differ from Java fell from 294 to 123,
+  all refusals. The author judged the task too large (four separable causes, about 4,900
+  lines). Next step for formulas is contract work: `Duration`, `Period`, `ZoneId`,
+  `ZonedDateTime`, `Object`, `boolean[]` column types, literals for `LocalDate` and
+  `LocalTime`, and an `Expr` node for object and array creation. For the owner: Java's
+  `java.lang` statics on null sentinels (reproduced), `false & null` is null, `(Double)`
+  casts, `compareTo(long, double)` (refused), the gate counts array results as uncompared.
