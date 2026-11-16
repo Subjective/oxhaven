@@ -389,11 +389,9 @@ fn static_result(
     }
 
     // Behavior: QueryTable#selectOrUpdate marks a static result flat when its row set is.
-    let result = TableSpec::new(
-        plan.definition(),
-        result_rows.clone(),
-        sources.all(&plan.published),
-    );
+    let published = sources.all(&plan.published);
+    let definition = super::inferred(parent, plan.definition(), &published);
+    let result = TableSpec::new(definition, result_rows.clone(), published).keeping_partitioning();
     Ok(if result_rows == flat_rows {
         result.flat()
     } else {

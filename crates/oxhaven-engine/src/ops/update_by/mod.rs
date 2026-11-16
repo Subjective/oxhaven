@@ -284,7 +284,8 @@ fn update_by_inner<S: AsRef<str>>(
         let rows = parent.row_set();
         let state = plan.initialize(&rows)?;
         let columns = plan.result_columns();
-        let spec = TableSpec::new(plan.definition.clone(), (*rows).clone(), columns);
+        let spec = TableSpec::new(plan.definition.clone(), (*rows).clone(), columns)
+            .keeping_partitioning();
         let plan = plan.clone();
         let state = Mutex::new(state);
         Ok((spec, move |_result: &QueryTable, upstream: &TableUpdate| {

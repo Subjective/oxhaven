@@ -321,3 +321,42 @@ fn a_provider_that_fails_fails_the_table() {
     graph.run_cycle();
     assert!(table.is_failed());
 }
+
+/// Which results Java 42.9 gives a partitioning column, of a table read from partition
+/// directories (`tasks/7.1b-parquet-read-more.md`).
+#[test]
+fn a_partitioning_column_stays_one_where_java_keeps_the_definition() {
+    use crate::ops::merge::{flatten, merge};
+    use crate::ops::select::drop_columns;
+    use crate::ops::sort::{head, reverse, sort, tail, SortColumn};
+    let definition = TableDefinition::new(vec![
+        ColumnDefinition::partitioning("Row", ColumnType::Long),
+        ColumnDefinition::new("Odd", ColumnType::Int),
+    ])
+    .unwrap();
+    let locations: Vec<Arc<dyn TableLocation>> =
+        vec![Counted::new("a", 100, 2), Counted::new("b", 200, 2)];
+    let table: Arc<dyn Table> = stored_table(definition, locations).unwrap();
+    let partitioning = |table: &Arc<dyn Table>| -> Vec<bool> {
+        let columns = table.definition().columns().iter();
+        columns.map(|column| column.partitioning).collect()
+    };
+    assert_eq!(partitioning(&table), [true, false]);
+    // the definition of the table, or the source of the column, goes into the result
+    assert_eq!(partitioning(&head(&table, 3).unwrap()), [true, false]);
+    assert_eq!(partitioning(&tail(&table, 3).unwrap()), [true, false]);
+    assert_eq!(partitioning(&reverse(&table).unwrap()), [true, false]);
+    assert_eq!(
+        partitioning(&drop_columns(&table, &["Odd"]).unwrap()),
+        [true]
+    );
+    // a sort that moves no row answers the table itself
+    let in_order = sort(&table, &[SortColumn::ascending("Row")]).unwrap();
+    assert_eq!(partitioning(&in_order), [true, false]);
+    // the result is made of new columns
+    let sorted = sort(&table, &[SortColumn::descending("Row")]).unwrap();
+    assert_eq!(partitioning(&sorted), [false, false]);
+    assert_eq!(partitioning(&flatten(&table).unwrap()), [false, false]);
+    let merged = merge(&[table.clone(), table.clone()]).unwrap();
+    assert_eq!(partitioning(&merged), [false, false]);
+}

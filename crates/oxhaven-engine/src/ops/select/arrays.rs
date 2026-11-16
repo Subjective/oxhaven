@@ -552,7 +552,9 @@ pub(crate) fn add_shifted_columns(
                 shift: shift.amount,
             }));
         }
-        let spec = TableSpec::new(definition, (*parent.row_set()).clone(), sources);
+        let definition = super::inferred(parent, definition, &sources);
+        let spec =
+            TableSpec::new(definition, (*parent.row_set()).clone(), sources).keeping_partitioning();
         Ok((spec, move |_result: &QueryTable, upstream: &TableUpdate| {
             let parent = &operator_parent;
             let mut modified_columns = transformer.transform(&upstream.modified_columns);

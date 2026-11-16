@@ -4,7 +4,7 @@ use super::failure;
 use crate::graph::{MergedHandler, MergedListener, ParentListener, Subscribers, UpdateHandler};
 use oxhaven_contracts::graph::{locked, ClockPhase, Dependency, UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::schema::TableDefinition;
+use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{
     ColumnSource, InputTable, Table, TableAttributes, TableFailure, UpdateListener,
 };
@@ -24,6 +24,9 @@ pub struct TableSpec {
     pub flat: bool,
     /// The write side of the input table this table has the `InputTable` attribute of.
     pub input: Option<Arc<dyn InputTable>>,
+    /// Whether the partitioning columns of `definition` are partitioning columns of the
+    /// table. Without it the table has the same columns and none is a partitioning one.
+    pub partitioning: bool,
 }
 
 impl TableSpec {
@@ -40,7 +43,23 @@ impl TableSpec {
             attributes: TableAttributes::default(),
             flat: false,
             input: None,
+            partitioning: false,
         }
+    }
+
+    /// Keeps the partitioning columns of the definition as partitioning columns. For a
+    /// table read from partitions, and for the operations whose result has the definition
+    /// of their parent: a table made of new column definitions has none, whatever the
+    /// definition it was given says, because most operations take the columns of their
+    /// parent and Java gives most results columns that are not partitioning ones.
+    ///
+    /// Behavior: the operations of io.deephaven.engine.table.impl.QueryTable that make
+    /// their result with `getDefinition()` or with
+    /// io.deephaven.engine.table.TableDefinition#inferFrom(Table, Map), against those that
+    /// make it from column sources alone
+    pub fn keeping_partitioning(mut self) -> Self {
+        self.partitioning = true;
+        self
     }
 
     /// Gives the table the `InputTable` attribute of `parent`, if it has one. For the
@@ -221,6 +240,19 @@ impl QueryTable {
                 RowSet::flat(spec.rows.size()),
                 "a flat table must start with a flat row set"
             );
+        }
+        let partitioned = declared.iter().any(|column| column.partitioning);
+        if partitioned && !spec.partitioning {
+            let columns = declared.iter();
+            let columns = columns
+                .map(|column| {
+                    ColumnDefinition::new(column.name.clone(), column.column_type.clone())
+                })
+                .collect();
+            spec.definition = match TableDefinition::new(columns) {
+                Ok(definition) => definition,
+                Err(duplicate) => unreachable!("{duplicate}: the names were a definition's"),
+            };
         }
         QueryTable {
             definition: spec.definition,

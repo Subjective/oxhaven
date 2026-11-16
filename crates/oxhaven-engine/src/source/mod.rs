@@ -131,7 +131,7 @@ fn spec(definition: TableDefinition, regions: &Arc<Regions>, rows: RowSet) -> Ta
             })
         })
         .collect();
-    TableSpec::new(definition, rows, sources)
+    TableSpec::new(definition, rows, sources).keeping_partitioning()
 }
 
 /// The first row key of region `region`.
