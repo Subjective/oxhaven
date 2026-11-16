@@ -1,0 +1,7 @@
+java-accepts	update	new Random(R).nextInt()	method nextInt of a java.util.Random: not ported: java.util.Random#nextInt
+java-accepts	update	new Random(R).nextInt(2, 9)	method nextInt(int, int) of a java.util.Random: not ported: java.util.Random#nextInt(int, int)
+java-accepts	update	new Random(R).nextLong()	method nextLong of a java.util.Random: not ported: java.util.Random#nextLong
+java-accepts	update	new Random(R).nextDouble()	method nextDouble of a java.util.Random: not ported: java.util.Random#nextDouble
+java-accepts	update	new Random(R).nextBoolean()	method nextBoolean of a java.util.Random: not ported: java.util.Random#nextBoolean
+java-accepts	update	new Random(R).nextGaussian()	method nextGaussian of a java.util.Random: not ported: java.util.Random#nextGaussian
+java-rejects	update	new Random(R).nextInt(3, null)	method nextInt(int, null) of a java.util.Random: not ported: java.util.Random#nextInt(int, int)

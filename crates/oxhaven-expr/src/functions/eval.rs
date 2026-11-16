@@ -799,6 +799,7 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         Kernel::Zoned(field, zone) => zoned(field, zone, arguments),
         Kernel::CompareTo => compare_to(arguments),
         Kernel::Range(function) => super::range::evaluate(function, arguments),
+        Kernel::RandomNextInt => super::random::evaluate(arguments),
         Kernel::EpochNanos
         | Kernel::Epoch(_)
         | Kernel::EpochToInstant(_)

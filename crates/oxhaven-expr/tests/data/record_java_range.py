@@ -1,7 +1,8 @@
-"""Records what the Java reference server answers for formulas that make and call a
-`io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual`.
+"""Records what the Java reference server answers for formulas that make an object of a
+class and call it: a `io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual`
+(java_range) and a `java.util.Random` (java_random).
 
-No Java counterpart: this produces java_range.json, which the test
+No Java counterpart: this produces java_range.json and java_random.json, which the test
 `tests/formulas/recorded.rs` compares Oxhaven's formula compiler against, in the format of
 `record_java_formulas.py`.
 
@@ -11,9 +12,9 @@ directory, with the oracle's Python environment and a Java reference server with
 console (see `oracle/README.md`):
 
     .venv/bin/python ../crates/oxhaven-expr/tests/data/record_java_range.py \
-        dh+psk://oxhaven@127.0.0.1:10000
+        dh+psk://oxhaven@127.0.0.1:10000 [java_random]
 
-Each line of java_range.txt is `update <expression>` or `where <expression>`, as in
+The second argument names the recording, java_range without it. Each line of its `.txt` is `update <expression>` or `where <expression>`, as in
 java_formulas.txt; `D` in an expression stands for the name of the class.
 
 Row 12 is null in every column of numbers. `Lo`, `Hi` and `N` are a range per row, with a
@@ -79,7 +80,8 @@ def main():
     session = open_session(sys.argv[1])
     session.bind_table("range_source", session.import_table(input_table()))
     cases = []
-    for line in (HERE / "java_range.txt").read_text(encoding="utf-8").splitlines():
+    name = sys.argv[2] if len(sys.argv) > 2 else "java_range"
+    for line in (HERE / f"{name}.txt").read_text(encoding="utf-8").splitlines():
         if not line.strip() or line.startswith("#"):
             continue
         op, formula = line.split(" ", 1)
@@ -101,7 +103,7 @@ def main():
                 case["kept"] = result.column("R").to_pylist()
         cases.append(case)
     columns = [{"name": name, "type": kind, "values": values} for name, kind, values in COLUMNS]
-    with open(HERE / "java_range.json", "w", encoding="utf-8") as out:
+    with open(HERE / f"{name}.json", "w", encoding="utf-8") as out:
         out.write('{\n"columns": [\n')
         out.write(",\n".join(json.dumps(c) for c in columns))
         out.write('\n],\n"cases": [\n')

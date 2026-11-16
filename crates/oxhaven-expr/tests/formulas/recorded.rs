@@ -453,6 +453,15 @@ fn every_recorded_range_formula_does_what_java_did_or_is_refused_by_name() {
     check_recording_with(&Compiler, "java_range", 250);
 }
 
+/// `tests/data/java_random.txt`, recorded by the same script: `new Random(seed).nextInt(bound)`
+/// of `java.util.Random` over seeds of every integer type with nulls, bounds that are and
+/// are not powers of two up to the largest `int`, the bounds Java fails for, and the other
+/// methods and constructors, which are refused.
+#[test]
+fn every_recorded_random_formula_does_what_java_did_or_is_refused_by_name() {
+    check_recording_with(&Compiler, "java_random", 50);
+}
+
 /// Compares the recording `name` with the compiler; at least `least` formulas must agree.
 fn check_recording(name: &str, least: usize) {
     check_recording_with(&oxhaven_expr::RequestCompiler, name, least);
