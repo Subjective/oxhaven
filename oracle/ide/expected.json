@@ -56,8 +56,22 @@
     },
     "gone": { "name": "ide_errors_gone", "columns": ["Gone"], "displayed": [["41"], ["42"]] }
   },
+  "format": {
+    "comment": "Route format: a table with a colour of column X where X > 0, a number format of Y, and a background and a text colour of the row where X is 2, made in the console. `cells` are its painted rows, each cell its text and the colour of its text, as the IDE painted them on the Java reference (42.9): a cell without a format has the theme's colour of its number, and the colour of column X wins over that of the row.",
+    "commands": {
+      "python": "from deephaven import empty_table; ide_format = empty_table(3).update(['X = (int)ii', 'Y = ii * 1.5']).format_columns(['X = X > 0 ? fg(colorRGB(200, 30, 30)) : 0L', 'Y = Decimal(`0.000`)']).format_row_where('X == 2', 'bgfg(colorRGB(10, 20, 120), colorRGB(250, 250, 0))')",
+      "groovy": "ide_format = emptyTable(3).update('X = (int)ii', 'Y = ii * 1.5').formatColumns('X = X > 0 ? fg(colorRGB(200, 30, 30)) : 0L', 'Y = Decimal(`0.000`)').formatRowWhere('X == 2', 'bgfg(colorRGB(10, 20, 120), colorRGB(250, 250, 0))')"
+    },
+    "name": "ide_format",
+    "columns": ["X", "Y"],
+    "cells": [
+      [["0", "#fad459"], ["0.000", "#fad459"]],
+      [["1", "#c81e1e"], ["1.500", "#ace97e"]],
+      [["2", "#c81e1e"], ["3.000", "#fafa00"]]
+    ]
+  },
   "grid": {
-    "comment": "Route grid: a table of 300 rows, K = 0..299 and G = K % 7, made in the console; more rows than a viewport holds. `top` and `bottom` are its first and last painted rows; `sort.top` after sorting K descending; `filter.top` after also filtering G to the value of the first row.",
+    "comment":"Route grid: a table of 300 rows, K = 0..299 and G = K % 7, made in the console; more rows than a viewport holds. `top` and `bottom` are its first and last painted rows; `sort.top` after sorting K descending; `filter.top` after also filtering G to the value of the first row.",
     "python": { "create": "from deephaven import empty_table; ide_grid = empty_table(300).update(['K = (int)ii', 'G = (int)(ii % 7)'])" },
     "groovy": { "create": "ide_grid = emptyTable(300).update('K = (int)ii', 'G = (int)(ii % 7)')" },
     "name": "ide_grid",

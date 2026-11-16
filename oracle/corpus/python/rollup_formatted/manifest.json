@@ -1,0 +1,440 @@
+{
+  "format": 2,
+  "scenario": "rollup_formatted",
+  "scenario_sha256": "5b64dc8fa8b750de94e95b94d453ddc8e1778a603cb3fae053c0c8a5a84c111f",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "v_fmt",
+      "file": "step000.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_both",
+      "file": "step000.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_cons",
+      "file": "step000.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_rows",
+      "file": "step000.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_where",
+      "file": "step000.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_refmt",
+      "file": "step000.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_sorted",
+      "file": "step000.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_default",
+      "file": "step000.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "v_fmt",
+      "file": "step001.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_both",
+      "file": "step001.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_cons",
+      "file": "step001.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_rows",
+      "file": "step001.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_where",
+      "file": "step001.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_refmt",
+      "file": "step001.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_sorted",
+      "file": "step001.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_default",
+      "file": "step001.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "v_fmt",
+      "file": "step002.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_both",
+      "file": "step002.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_cons",
+      "file": "step002.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_rows",
+      "file": "step002.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_where",
+      "file": "step002.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_refmt",
+      "file": "step002.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_sorted",
+      "file": "step002.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_default",
+      "file": "step002.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "v_fmt",
+      "file": "step003.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_both",
+      "file": "step003.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_cons",
+      "file": "step003.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_rows",
+      "file": "step003.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_where",
+      "file": "step003.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_refmt",
+      "file": "step003.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_sorted",
+      "file": "step003.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_default",
+      "file": "step003.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "v_fmt",
+      "file": "step004.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_both",
+      "file": "step004.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_cons",
+      "file": "step004.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_rows",
+      "file": "step004.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_where",
+      "file": "step004.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_refmt",
+      "file": "step004.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_sorted",
+      "file": "step004.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_default",
+      "file": "step004.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "v_fmt",
+      "file": "step005.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_both",
+      "file": "step005.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_cons",
+      "file": "step005.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_rows",
+      "file": "step005.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_where",
+      "file": "step005.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_refmt",
+      "file": "step005.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_sorted",
+      "file": "step005.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_default",
+      "file": "step005.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "v_fmt",
+      "file": "step006.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_both",
+      "file": "step006.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_cons",
+      "file": "step006.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_rows",
+      "file": "step006.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_where",
+      "file": "step006.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_refmt",
+      "file": "step006.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_sorted",
+      "file": "step006.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_default",
+      "file": "step006.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "v_fmt",
+      "file": "step007.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_both",
+      "file": "step007.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_cons",
+      "file": "step007.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_rows",
+      "file": "step007.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_where",
+      "file": "step007.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_refmt",
+      "file": "step007.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_sorted",
+      "file": "step007.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_default",
+      "file": "step007.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "v_fmt",
+      "file": "step008.v_fmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_both",
+      "file": "step008.v_both.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_cons",
+      "file": "step008.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_rows",
+      "file": "step008.v_rows.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_where",
+      "file": "step008.v_where.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_refmt",
+      "file": "step008.v_refmt.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_sorted",
+      "file": "step008.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_default",
+      "file": "step008.v_default.arrow",
+      "rows": 5
+    }
+  ]
+}

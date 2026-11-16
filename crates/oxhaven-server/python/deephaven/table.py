@@ -7,6 +7,7 @@ from enum import Enum, auto
 from typing import Any, Dict, Generator, List, Optional, Sequence, Tuple, Union
 
 import _oxhaven
+import _oxhaven_bootstrap
 
 from . import _engine, dtypes, liveness_scope
 from .agg import Aggregation
@@ -572,6 +573,43 @@ class Table:
         """A new table with the columns of this one and one column per formula, computed
         when read."""
         return self._select_op("update_view", formulas, "table update_view operation failed.")
+
+    def format_columns(self, formulas: Union[str, Sequence[str]]) -> "Table":
+        """This table with the formats `formulas`, each `Column = format`: a colour or a
+        style for the cells of the column (`*` for the whole row), `Decimal(pattern)` for
+        its numbers or `Date(pattern)` for its instants. A format is a hidden column,
+        computed when read, that a client reads the format of each cell from.
+
+        Behavior: `deephaven.table.Table.format_columns`
+        """
+        failure = "failed to color format columns."
+        try:
+            formulas = _engine.to_sequence(formulas)
+        except Exception as e:
+            raise DHError(e, failure) from e
+        return self._local_op("format_columns", {"formats": formulas}, failure)
+
+    def format_column_where(self, col: str, cond: str, formula: str) -> "Table":
+        """This table with the format `formula` of `col` in the rows where `cond` holds.
+
+        Behavior: `deephaven.table.Table.format_column_where`
+        """
+        return self._local_op(
+            "format_column_where",
+            {"col": col, "cond": cond, "formula": formula},
+            "failed to color format column conditionally.",
+        )
+
+    def format_row_where(self, cond: str, formula: str) -> "Table":
+        """This table with the format `formula` of the rows where `cond` holds.
+
+        Behavior: `deephaven.table.Table.format_row_where`
+        """
+        return self._local_op(
+            "format_column_where",
+            {"col": "*", "cond": cond, "formula": formula},
+            "failed to color format rows conditionally.",
+        )
 
     def select(self, formulas: Union[str, Sequence[str], None] = None) -> "Table":
         """A new in-memory table with one column per formula, or with every column of this
@@ -1370,28 +1408,24 @@ class RollupNodeOperationsRecorder:
         return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
 
     def format_column(self, formulas: Union[str, Sequence[str]]):
-        """Not ported: a recorder that also formats columns of a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumns"
-        )
+        """A recorder that also formats columns of a node, as `Table.format_columns`
+        formats those of a table."""
+        formulas = _engine.to_sequence(formulas)
+        return self.__class__(self.j_node_ops_recorder.format_columns(formulas))
 
     def format_row_where(self, cond: str, formula: str):
-        """Not ported: a recorder that also formats the rows of a node that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatRowWhere"
-        )
+        """A recorder that also formats the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where("*", cond, formula))
 
     def format_column_where(self, col: str, cond: str, formula: str):
-        """Not ported: a recorder that also formats a column of the rows that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumnWhere"
-        )
+        """A recorder that also formats `col` in the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where(col, cond, formula))
 
     def update_view(self, formulas: Union[str, Sequence[str]]):
-        """Not ported: a recorder that also adds columns to a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView"
-        )
+        """A recorder that also adds a column per formula to a node, computed when read.
+        A format recorded before can read it."""
+        formulas = _engine.to_sequence(formulas)
+        return self.__class__(self.j_node_ops_recorder.update_view(formulas))
 
 
 class RollupTable:
@@ -1467,11 +1501,27 @@ class RollupTable:
         except Exception as e:
             raise DHError(e, "with_filters operation on RollupTable failed.") from e
 
-    def with_update_view(self, formulas) -> "RollupTable":
-        """Not ported: this rollup with columns added to its nodes."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withUpdateView"
-        )
+    def with_update_view(self, formulas: Union[str, Sequence[str]]) -> "RollupTable":
+        """This rollup with a column per formula added to its aggregated nodes, computed
+        when read.
+
+        Behavior: `deephaven.table.RollupTable.with_update_view`, which is
+        `io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withUpdateView`: the
+        update view of a recorder for aggregated nodes, applied to the rollup
+        """
+        try:
+            formulas = _engine.to_sequence(formulas)
+            recorder = self.j_rollup_table.recorder(NodeType.AGGREGATED.value)
+            return RollupTable(
+                j_rollup_table=self.j_rollup_table.with_node_operations(
+                    [recorder.update_view(formulas)]
+                ),
+                include_constituents=self.include_constituents,
+                aggs=self.aggs,
+                by=self.by,
+            )
+        except Exception as e:
+            raise DHError(e, "with_update_view operation on RollupTable failed.") from e
 
 
 class TreeNodeOperationsRecorder:
@@ -1791,7 +1841,9 @@ class PartitionedTable:
                     f"{self.constituent_column}"
                 )
             ordered = self.table.sort(order_by, order)
-            return PartitionedTable(self.j_partitioned_table.with_table(ordered.j_table))
+            return PartitionedTable(
+                self.j_partitioned_table.with_table(ordered.j_table, sorted=True)
+            )
         except Exception as e:
             raise DHError(e, "failed to sort the partitioned table.") from e
 
@@ -1879,8 +1931,636 @@ class PartitionedTable:
                 e, "failed to transform the PartitionedTable with another PartitionedTable."
             ) from e
 
-    def proxy(self, require_matching_keys: bool = True, sanity_check_joins: bool = True):
-        """Not ported: a proxy that applies table operations to every constituent."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#proxy"
+    def proxy(
+        self, require_matching_keys: bool = True, sanity_check_joins: bool = True
+    ) -> "PartitionedTableProxy":
+        """A proxy that applies a table operation to every constituent and answers a proxy
+        of the partitioned table of the results.
+
+        `require_matching_keys` says that an operation with another proxy fails unless
+        both partitioned tables have the same keys, now and after every update cycle.
+        `sanity_check_joins` says that a join with another proxy fails if a join key is
+        in more than one constituent of either.
+
+        Behavior: `deephaven.table.PartitionedTable.proxy`
+        """
+        return PartitionedTableProxy(self, bool(require_matching_keys), bool(sanity_check_joins))
+
+
+def _column_names(formulas) -> set:
+    """The formulas that are the name of a column and nothing else.
+
+    Behavior: the select columns for which `SelectColumn#isRetain` holds
+    """
+    return {str(f).strip(_JAVA_SPACE) for f in formulas if "=" not in str(f)}
+
+
+def _assigned_names(formulas) -> set:
+    """The names of the columns that the formulas `Name = expression` assign."""
+    pairs = (str(f).partition("=") for f in formulas)
+    return {name.strip(_JAVA_SPACE) for name, equals, _ in pairs if equals}
+
+
+def _exact_matches(on) -> Tuple[List[str], List[str]]:
+    """The names of the columns of the left and of the right table that the matches
+    `on`, each `Name` or `Left = Right`, compare.
+
+    Behavior: `io.deephaven.api.JoinMatch#parse`
+    """
+    left, right = [], []
+    for match in on:
+        first, equals, second = match.partition("=")
+        first = first.strip(_JAVA_SPACE)
+        left.append(first)
+        right.append(second.removeprefix("=").strip(_JAVA_SPACE) if equals else first)
+    return left, right
+
+
+class PartitionedTableProxy:
+    """A partitioned table as the target of table operations: each operation is applied
+    to every constituent of `target`, now and to every constituent that appears later,
+    and answers a proxy of the partitioned table of the results. With another proxy as
+    its argument an operation is applied to the pairs of constituents that have the
+    same key.
+
+    A formula or a filter of an operation may name the variables of the code that calls
+    it. Their values are those of the call, also for a constituent that appears later.
+
+    Behavior: `deephaven.table.PartitionedTableProxy`, and
+    `io.deephaven.engine.table.impl.partitioned.PartitionedTableProxyImpl` under it
+    """
+
+    def __init__(
+        self,
+        target: PartitionedTable,
+        require_matching_keys: bool = True,
+        sanity_check_joins: bool = True,
+    ):
+        self.target = target
+        self.require_matching_keys = require_matching_keys
+        self.sanity_check_joins = sanity_check_joins
+
+    @property
+    def j_object(self):
+        """In the reference this is the Java proxy; here the proxy stands for itself."""
+        return self
+
+    @property
+    def is_refreshing(self) -> bool:
+        return self.target.is_refreshing
+
+    @property
+    def update_graph(self):
+        return self.target.update_graph
+
+    def __eq__(self, other):
+        # Behavior: `PartitionedTableProxyImpl#equals`
+        return (
+            isinstance(other, PartitionedTableProxy)
+            and self.require_matching_keys == other.require_matching_keys
+            and self.sanity_check_joins == other.sanity_check_joins
+            and self.target.j_partitioned_table.is_same(other.target.j_partitioned_table)
         )
+
+    def __hash__(self):
+        return hash((self.require_matching_keys, self.sanity_check_joins))
+
+    def __repr__(self):
+        return f"deephaven.table.PartitionedTableProxy({self.target.table!r})"
+
+    def _of(self, j_partitioned_table) -> "PartitionedTableProxy":
+        return PartitionedTableProxy(
+            PartitionedTable(j_partitioned_table),
+            self.require_matching_keys,
+            self.sanity_check_joins,
+        )
+
+    def _consistent(self) -> List[str]:
+        return self.target.j_partitioned_table.consistent_key_columns()
+
+    def _transform(self, operation, consistent=None, other=None, on=None) -> "PartitionedTableProxy":
+        """The proxy of what `operation`, a function of a `Table` that calls one of its
+        methods, makes of every constituent; with `other`, a table or a proxy, what the
+        function of two tables makes of a constituent and that table, or of the two
+        constituents of each key.
+
+        `consistent` are the key columns that still are in every constituent as the
+        underlying table has them: all that were, if not given. `on` are the matches of
+        a join, whose keys are checked when `other` is a proxy.
+
+        Behavior: `PartitionedTableProxyImpl#basicTransform` and `#complexTransform`
+        """
+        scope = _oxhaven_bootstrap.scope_snapshot()
+        handle = self.target.j_partitioned_table
+        kept = self._consistent()
+        if consistent is not None:
+            kept = [name for name in kept if name in consistent]
+        inputs = [handle.empty_constituent()]
+        other_handle, require, join_keys = None, False, None
+        if other is None:
+            arguments = [Table(inputs[0])]
+        elif isinstance(other, Table):
+            arguments = [Table(inputs[0]), other]
+        elif isinstance(other, PartitionedTableProxy):
+            other_handle = other.target.j_partitioned_table
+            inputs.append(other_handle.empty_constituent())
+            arguments = [Table(inputs[0]), Table(inputs[1])]
+            require = self.require_matching_keys
+            if self.sanity_check_joins and on is not None:
+                join_keys = _exact_matches(on)
+        else:
+            raise RuntimeError(
+                "java.lang.IllegalArgumentException: Unexpected TableOperations input "
+                f"{type(other).__name__}, expected Table or PartitionedTable.Proxy"
+            )
+        with _engine.Recording(inputs) as recording:
+            made = operation(*arguments)
+        result = recording.source(made.j_table)
+        return self._of(
+            _oxhaven.proxy_transform(
+                handle,
+                other_handle,
+                recording.steps,
+                result,
+                recording.externals,
+                scope,
+                kept,
+                require,
+                join_keys,
+            )
+        )
+
+    def head(self, num_rows: int) -> "PartitionedTableProxy":
+        """The first `num_rows` rows of every constituent."""
+        try:
+            return self._transform(lambda t: t.head(num_rows))
+        except Exception as e:
+            raise DHError(e, "head operation on the PartitionedTableProxy failed.") from e
+
+    def tail(self, num_rows: int) -> "PartitionedTableProxy":
+        """The last `num_rows` rows of every constituent."""
+        try:
+            return self._transform(lambda t: t.tail(num_rows))
+        except Exception as e:
+            raise DHError(e, "tail operation on the PartitionedTableProxy failed.") from e
+
+    def reverse(self) -> "PartitionedTableProxy":
+        """Every constituent with its rows in the opposite order."""
+        try:
+            return self._transform(lambda t: t.reverse())
+        except Exception as e:
+            raise DHError(e, "reverse operation on the PartitionedTableProxy failed.") from e
+
+    def snapshot(self) -> "PartitionedTableProxy":
+        """A static copy of every constituent as it is now, or as it is when it
+        appears."""
+        try:
+            return self._transform(lambda t: t.snapshot())
+        except Exception as e:
+            raise DHError(e, "snapshot operation on the PartitionedTableProxy failed.") from e
+
+    def snapshot_when(
+        self,
+        trigger_table: Union[Table, "PartitionedTableProxy"],
+        stamp_cols: Optional[Union[str, Sequence[str]]] = None,
+        initial: bool = False,
+        incremental: bool = False,
+        history: bool = False,
+    ) -> "PartitionedTableProxy":
+        """`Table.snapshot_when` of every constituent, with `trigger_table` or, for a
+        proxy, with its constituent of the same key as the trigger."""
+        try:
+            trigger_table.j_object  # the reference reads it, whatever the argument is
+            return self._transform(
+                lambda t, trigger: t.snapshot_when(
+                    trigger, stamp_cols, initial, incremental, history
+                ),
+                other=trigger_table,
+            )
+        except Exception as e:
+            raise DHError(e, "snapshot_when operation on the PartitionedTableProxy failed.") from e
+
+    def sort(
+        self,
+        order_by: Union[str, Sequence[str]],
+        order: Optional[Union[SortDirection, Sequence[SortDirection]]] = None,
+    ) -> "PartitionedTableProxy":
+        """Every constituent sorted by the columns, each in its direction, ascending if
+        no direction is given.
+
+        As in the reference, `order_by` is not made a sequence: a string names one
+        column per character, so only a column whose name is one character can be given
+        as a string.
+        """
+        try:
+            if not order:
+                order = (SortDirection.ASCENDING,) * len(order_by)
+            else:
+                order = _engine.to_sequence(order)
+                if any(o not in (SortDirection.ASCENDING, SortDirection.DESCENDING) for o in order):
+                    raise DHError(
+                        message="The sort direction must be either 'ASCENDING' or 'DESCENDING'."
+                    )
+                if len(order_by) != len(order):
+                    raise DHError(
+                        message="The number of sort columns must be the same as the number of sort directions."
+                    )
+            columns, directions = [], []
+            for column, direction in zip(order_by, order):
+                columns.append(column)
+                directions.append(direction)
+            return self._transform(lambda t: t.sort(columns, directions))
+        except Exception as e:
+            raise DHError(e, "sort operation on the PartitionedTableProxy failed.") from e
+
+    def sort_descending(self, order_by: Union[str, Sequence[str]]) -> "PartitionedTableProxy":
+        """Every constituent sorted by the columns, each from greatest to least."""
+        try:
+            order_by = _engine.to_sequence(order_by)
+            return self._transform(lambda t: t.sort_descending(order_by))
+        except Exception as e:
+            raise DHError(e, "sort_descending operation on the PartitionedTableProxy failed.") from e
+
+    def where(
+        self, filters: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """The rows of every constituent that pass every filter.
+
+        A filter that reads nothing but key columns which every constituent has, with
+        the value of its key, is applied to the underlying table: the constituents of
+        the keys that do not pass are not in the result. Every other filter is applied
+        to each constituent, which stays in the result when no row of it passes.
+
+        As in the reference, a filter that reads a column at other rows (`Col_[i - 1]`)
+        fails for want of a query scope, and a filter that reads only such key columns
+        and `i`, `ii` or `k` is applied to the underlying table, where those are its
+        row's position and key.
+
+        Behavior: `PartitionedTableProxyImpl#where`
+        """
+        try:
+            filters = [str(f) for f in _engine.to_sequence(filters)]
+            if not filters:
+                return self._transform(lambda t: t.where())
+            scope = _oxhaven_bootstrap.scope_snapshot()
+            handle = self.target.j_partitioned_table
+            # Java makes every filter for the columns of a constituent first
+            Table(handle.empty_constituent()).where(filters)
+            reads = _oxhaven.proxy_filter_reads(handle, filters, scope)
+            if any(arrays for _, arrays in reads):
+                # Observed on Java 42.9 for every filter with a column array
+                raise RuntimeError(
+                    "io.deephaven.util.ExecutionContextRegistrationException: No "
+                    "ExecutionContext registered, or current ExecutionContext has no QueryScope"
+                )
+            consistent = set(self._consistent())
+            on_keys = [set(columns) <= consistent for columns, _ in reads]
+            key_filters = [f for f, on_key in zip(filters, on_keys) if on_key]
+            others = [f for f, on_key in zip(filters, on_keys) if not on_key]
+            if not key_filters:
+                return self._transform(lambda t: t.where(others))
+            filtered = self._of(self.target.filter(key_filters).j_partitioned_table)
+            if not others:
+                return filtered
+            return filtered._transform(lambda t: t.where(others))
+        except Exception as e:
+            raise DHError(e, "where operation on the PartitionedTableProxy failed.") from e
+
+    def _where_in(self, filter_table: Table, cols, inverted: bool) -> "PartitionedTableProxy":
+        """Behavior: `PartitionedTableProxyImpl#whereIn` and `#whereNotIn`: matches of
+        consistent key columns alone are applied to the underlying table."""
+        cols = _engine.to_sequence(cols)
+        filter_table.j_table  # the reference takes a table only
+        handle = self.target.j_partitioned_table
+        left, _ = _exact_matches(_split(cols))
+        if set(left) <= set(self._consistent()):
+            table = self.target.table
+            if inverted:
+                kept = table.where_not_in(filter_table, cols)
+            else:
+                kept = table.where_in(filter_table, cols)
+            return self._of(handle.with_table(kept.j_table))
+        if inverted:
+            return self._transform(lambda t, o: t.where_not_in(o, cols), other=filter_table)
+        return self._transform(lambda t, o: t.where_in(o, cols), other=filter_table)
+
+    def where_in(
+        self, filter_table: Table, cols: Union[str, Sequence[str]]
+    ) -> "PartitionedTableProxy":
+        """The rows of every constituent whose values in `cols` are in `filter_table`;
+        for key columns, the constituents whose keys are."""
+        try:
+            return self._where_in(filter_table, cols, False)
+        except Exception as e:
+            raise DHError(e, "where_in operation on the PartitionedTableProxy failed.") from e
+
+    def where_not_in(
+        self, filter_table: Table, cols: Union[str, Sequence[str]]
+    ) -> "PartitionedTableProxy":
+        """The rows of every constituent whose values in `cols` are not in
+        `filter_table`; for key columns, the constituents whose keys are not."""
+        try:
+            return self._where_in(filter_table, cols, True)
+        except Exception as e:
+            raise DHError(e, "where_not_in operation on the PartitionedTableProxy failed.") from e
+
+    def _all_columns(self, formulas) -> tuple:
+        """`formulas`, or the names of every column of a constituent if there is none.
+
+        Behavior: `PartitionedTableProxyImpl#toSelectColumns`
+        """
+        formulas = _engine.to_sequence(formulas)
+        if formulas:
+            return formulas
+        return tuple(column.name for column in self.target.constituent_table_columns)
+
+    def view(self, formulas: Union[str, Sequence[str]]) -> "PartitionedTableProxy":
+        """`Table.view` of every constituent."""
+        try:
+            formulas = self._all_columns(formulas)
+            return self._transform(lambda t: t.view(formulas), _column_names(formulas))
+        except Exception as e:
+            raise DHError(e, "view operation on the PartitionedTableProxy failed.") from e
+
+    def update_view(self, formulas: Union[str, Sequence[str]]) -> "PartitionedTableProxy":
+        """`Table.update_view` of every constituent."""
+        try:
+            formulas = self._all_columns(formulas)
+            kept = set(self._consistent()) - _assigned_names(formulas)
+            return self._transform(lambda t: t.update_view(formulas), kept)
+        except Exception as e:
+            raise DHError(e, "update_view operation on the PartitionedTableProxy failed.") from e
+
+    def update(self, formulas: Union[str, Sequence[str]]) -> "PartitionedTableProxy":
+        """`Table.update` of every constituent."""
+        try:
+            formulas = _engine.to_sequence(formulas)
+            formulas[0]  # the reference looks at the first formula, so none is an error
+            kept = set(self._consistent()) - _assigned_names(formulas)
+            return self._transform(lambda t: t.update(formulas), kept)
+        except Exception as e:
+            raise DHError(e, "update operation on the PartitionedTableProxy failed.") from e
+
+    def select(
+        self, formulas: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.select` of every constituent. As in the reference, without a formula
+        it fails."""
+        try:
+            formulas = _engine.to_sequence(formulas)
+            formulas[0]  # the reference looks at the first formula, so none is an error
+            return self._transform(lambda t: t.select(formulas), _column_names(formulas))
+        except Exception as e:
+            raise DHError(e, "select operation on the PartitionedTableProxy failed.") from e
+
+    def select_distinct(
+        self, formulas: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """The distinct rows of the columns or formulas, or of every column if none is
+        given, of every constituent."""
+        try:
+            formulas = _engine.to_sequence(formulas)
+            kept = _column_names(formulas) if formulas else None
+            return self._transform(lambda t: t.select_distinct(formulas), kept)
+        except Exception as e:
+            raise DHError(e, "select_distinct operation on the PartitionedTableProxy failed.") from e
+
+    def _join(self, method: str, table, on, joins, exact=None) -> "PartitionedTableProxy":
+        """The join `method` of every constituent with `table`, or with the constituent
+        of the same key of a proxy. `exact` are the matches that compare for equality,
+        all of them if not given."""
+        on = _engine.to_sequence(on)
+        joins = _engine.to_sequence(joins)
+        table.j_object  # the reference reads it, whatever the argument is
+        matches = _split(on)
+        return self._transform(
+            lambda t, o: getattr(t, method)(o, on, joins),
+            other=table,
+            on=matches if exact is None else exact(matches),
+        )
+
+    def natural_join(
+        self,
+        table: Union[Table, "PartitionedTableProxy"],
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.natural_join` of every constituent."""
+        try:
+            return self._join("natural_join", table, on, joins)
+        except Exception as e:
+            raise DHError(e, "natural_join operation on the PartitionedTableProxy failed.") from e
+
+    def exact_join(
+        self,
+        table: Union[Table, "PartitionedTableProxy"],
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.exact_join` of every constituent."""
+        try:
+            return self._join("exact_join", table, on, joins)
+        except Exception as e:
+            raise DHError(e, "exact_join operation on the PartitionedTableProxy failed.") from e
+
+    def join(
+        self,
+        table: Union[Table, "PartitionedTableProxy"],
+        on: Optional[Union[str, Sequence[str]]] = None,
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.join` of every constituent."""
+        try:
+            return self._join("join", table, on, joins)
+        except Exception as e:
+            raise DHError(e, "join operation on the PartitionedTableProxy failed.") from e
+
+    def aj(
+        self,
+        table: Union[Table, "PartitionedTableProxy"],
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.aj` of every constituent. The matches before the last are the join
+        key that `sanity_check_joins` checks; without one, only one constituent of each
+        partitioned table may have rows."""
+        try:
+            return self._join("aj", table, on, joins, lambda matches: matches[:-1])
+        except Exception as e:
+            raise DHError(e, "as-of join operation on the PartitionedTableProxy failed.") from e
+
+    def raj(
+        self,
+        table: Union[Table, "PartitionedTableProxy"],
+        on: Union[str, Sequence[str]],
+        joins: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.raj` of every constituent; see `aj`."""
+        try:
+            return self._join("raj", table, on, joins, lambda matches: matches[:-1])
+        except Exception as e:
+            raise DHError(
+                e, "reverse as-of join operation on the PartitionedTableProxy failed."
+            ) from e
+
+    def _aggregated(self, operation) -> "PartitionedTableProxy":
+        """An aggregation of every constituent: no key column is as it was.
+
+        Behavior: `PartitionedTableProxyImpl#aggBy` and `#aggAllBy`
+        """
+        return self._transform(operation, ())
+
+    def group_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.group_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.group_by(by))
+        except Exception as e:
+            raise DHError(e, "group-by operation on the PartitionedTableProxy failed.") from e
+
+    def agg_by(
+        self,
+        aggs: Union[Aggregation, Sequence[Aggregation]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.agg_by` of every constituent."""
+        try:
+            aggs = _engine.to_sequence(aggs)
+            return self._aggregated(lambda t: t.agg_by(aggs, by))
+        except Exception as e:
+            raise DHError(e, "agg_by operation on the PartitionedTableProxy failed.") from e
+
+    def agg_all_by(
+        self, agg: Aggregation, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.agg_all_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.agg_all_by(agg, by))
+        except Exception as e:
+            raise DHError(e, "agg_all_by operation on the PartitionedTableProxy failed.") from e
+
+    def count_by(
+        self, col: str, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.count_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.count_by(col, by))
+        except Exception as e:
+            raise DHError(e, "count_by operation on the PartitionedTableProxy failed.") from e
+
+    def first_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.first_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.first_by(by))
+        except Exception as e:
+            raise DHError(e, "first_by operation on the PartitionedTableProxy failed.") from e
+
+    def last_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.last_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.last_by(by))
+        except Exception as e:
+            raise DHError(e, "last_by operation on the PartitionedTableProxy failed.") from e
+
+    def min_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.min_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.min_by(by))
+        except Exception as e:
+            raise DHError(e, "min_by operation on the PartitionedTableProxy failed.") from e
+
+    def max_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.max_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.max_by(by))
+        except Exception as e:
+            raise DHError(e, "max_by operation on the PartitionedTableProxy failed.") from e
+
+    def sum_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.sum_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.sum_by(by))
+        except Exception as e:
+            raise DHError(e, "sum_by operation on the PartitionedTableProxy failed.") from e
+
+    def abs_sum_by(
+        self, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.abs_sum_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.abs_sum_by(by))
+        except Exception as e:
+            raise DHError(e, "sum_by operation on the PartitionedTableProxy failed.") from e
+
+    def weighted_sum_by(
+        self, wcol: str, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.weighted_sum_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.weighted_sum_by(wcol, by))
+        except Exception as e:
+            raise DHError(e, "sum_by operation on the PartitionedTableProxy failed.") from e
+
+    def avg_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.avg_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.avg_by(by))
+        except Exception as e:
+            raise DHError(e, "avg_by operation on the PartitionedTableProxy failed.") from e
+
+    def weighted_avg_by(
+        self, wcol: str, by: Optional[Union[str, Sequence[str]]] = None
+    ) -> "PartitionedTableProxy":
+        """`Table.weighted_avg_by` of every constituent, when `by` names a column.
+
+        As in the reference, without `by` it is `avg_by(wcol)`: the plain average of
+        every other column, grouped by the weight column.
+        """
+        try:
+            if _engine.to_sequence(by):
+                return self._aggregated(lambda t: t.weighted_avg_by(wcol, by))
+            return self._aggregated(lambda t: t.avg_by(wcol))
+        except Exception as e:
+            raise DHError(e, "avg_by operation on the PartitionedTableProxy failed.") from e
+
+    def median_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.median_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.median_by(by))
+        except Exception as e:
+            raise DHError(e, "median_by operation on the PartitionedTableProxy failed.") from e
+
+    def std_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.std_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.std_by(by))
+        except Exception as e:
+            raise DHError(e, "std_by operation on the PartitionedTableProxy failed.") from e
+
+    def var_by(self, by: Optional[Union[str, Sequence[str]]] = None) -> "PartitionedTableProxy":
+        """`Table.var_by` of every constituent."""
+        try:
+            return self._aggregated(lambda t: t.var_by(by))
+        except Exception as e:
+            raise DHError(e, "var_by operation on the PartitionedTableProxy failed.") from e
+
+    def update_by(
+        self,
+        ops: Union["UpdateByOperation", Sequence["UpdateByOperation"]],
+        by: Optional[Union[str, Sequence[str]]] = None,
+    ) -> "PartitionedTableProxy":
+        """`Table.update_by` of every constituent."""
+        try:
+            ops = _engine.to_sequence(ops)
+            by = _engine.to_sequence(by)
+            # Behavior: `UpdateBy.UpdateByOperatorCollection#getPreservedColumnNames`:
+            # the columns that no operation writes
+            kept = set(self._consistent())
+            for op in ops:
+                pairs = op.j_updateby_op.get("column", {}).get("match_pairs", ())
+                if pairs:
+                    kept -= {str(pair).partition("=")[0].strip(_JAVA_SPACE) for pair in pairs}
+                else:
+                    kept &= set(by)
+            return self._transform(lambda t: t.update_by(ops, by), kept)
+        except Exception as e:
+            raise DHError(e, "update-by operation on the PartitionedTableProxy failed.") from e

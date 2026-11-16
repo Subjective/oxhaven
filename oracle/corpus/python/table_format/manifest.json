@@ -1,0 +1,302 @@
+{
+  "format": 2,
+  "scenario": "table_format",
+  "scenario_sha256": "1696ad962e953b4d217af71868ee19884f0265b1e48c74cec9962e4682534237",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "colours",
+      "file": "step000.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "styles",
+      "file": "step000.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "conditional",
+      "file": "step000.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "by_row",
+      "file": "step000.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "by_column",
+      "file": "step000.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "again",
+      "file": "step000.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "row_first",
+      "file": "step000.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "colours",
+      "file": "step001.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "styles",
+      "file": "step001.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "conditional",
+      "file": "step001.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "by_row",
+      "file": "step001.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "by_column",
+      "file": "step001.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "again",
+      "file": "step001.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "row_first",
+      "file": "step001.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "colours",
+      "file": "step002.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "styles",
+      "file": "step002.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "conditional",
+      "file": "step002.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "by_row",
+      "file": "step002.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "by_column",
+      "file": "step002.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "again",
+      "file": "step002.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "row_first",
+      "file": "step002.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "colours",
+      "file": "step003.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "styles",
+      "file": "step003.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "conditional",
+      "file": "step003.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "by_row",
+      "file": "step003.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "by_column",
+      "file": "step003.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "again",
+      "file": "step003.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "row_first",
+      "file": "step003.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "colours",
+      "file": "step004.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "styles",
+      "file": "step004.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "conditional",
+      "file": "step004.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "by_row",
+      "file": "step004.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "by_column",
+      "file": "step004.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "again",
+      "file": "step004.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 4,
+      "table": "row_first",
+      "file": "step004.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "colours",
+      "file": "step005.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "styles",
+      "file": "step005.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "conditional",
+      "file": "step005.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "by_row",
+      "file": "step005.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "by_column",
+      "file": "step005.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "again",
+      "file": "step005.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 5,
+      "table": "row_first",
+      "file": "step005.row_first.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "colours",
+      "file": "step006.colours.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "styles",
+      "file": "step006.styles.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "conditional",
+      "file": "step006.conditional.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "by_row",
+      "file": "step006.by_row.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "by_column",
+      "file": "step006.by_column.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "again",
+      "file": "step006.again.arrow",
+      "rows": 8
+    },
+    {
+      "step": 6,
+      "table": "row_first",
+      "file": "step006.row_first.arrow",
+      "rows": 8
+    }
+  ]
+}

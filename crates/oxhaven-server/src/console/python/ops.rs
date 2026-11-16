@@ -48,6 +48,8 @@ type Operation = (
 
 /// The local operations.
 const OPERATIONS: &[Operation] = &[
+    ("format_column_where", format_column_where),
+    ("format_columns", format_columns),
     ("head_pct", head_pct),
     ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
@@ -64,6 +66,16 @@ const OPERATIONS: &[Operation] = &[
     ("where_in", where_in),
     ("where_one_of", where_one_of),
 ];
+
+/// The function of a local operation.
+pub(super) type LocalOperation =
+    fn(&OpContext, &Value, &[Arc<dyn Table>]) -> Result<Arc<dyn Table>, ExportError>;
+
+/// The local operation `name`, to run on its arguments and source tables.
+pub(super) fn local_operation(name: &str) -> Option<LocalOperation> {
+    let found = OPERATIONS.iter().find(|(known, _)| *known == name);
+    found.map(|(_, create)| *create)
+}
 
 fn bad_argument(name: &str, expected: &str) -> ExportError {
     Status::invalid_argument(format!("argument {name} must be {expected}")).into()
@@ -164,6 +176,30 @@ fn move_columns_down(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) ->
     Ok(select::move_columns_down(
         &sources[0],
         &pairs(args, "cols")?,
+    )?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.TableDefaults#formatColumns`
+fn format_columns(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let formats = strings(args, "formats")?;
+    Ok(select::format::format_columns(
+        &sources[0],
+        &formats,
+        context.compiler.as_ref(),
+    )?)
+}
+
+/// Behavior: `TableDefaults#formatColumnWhere`, and `#formatRowWhere` with the column `*`
+fn format_column_where(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let text = |name: &str| {
+        let value = args.get(name).and_then(Value::as_str);
+        value.ok_or_else(|| bad_argument(name, "a string"))
+    };
+    let format = select::format::conditional_format(text("col")?, text("cond")?, text("formula")?);
+    Ok(select::format::format_columns(
+        &sources[0],
+        &[format],
+        context.compiler.as_ref(),
     )?)
 }
 
