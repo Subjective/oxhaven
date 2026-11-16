@@ -117,6 +117,29 @@ fn a_static_partition_has_a_constituent_per_key_in_first_seen_order() {
     assert!(Arc::ptr_eq(&merged, &partitioned.merge().unwrap()));
 }
 
+/// Behavior: `BaseTable.CopyAttributeOperation#PartitionBy` and
+/// `PartitionedTableImpl#computeSharedAttributes`: the constituents and the merge of a
+/// static table have the add-only and append-only attributes it has, which the result of
+/// `head` or `where` of a static table does and an in-memory table does not
+/// (`tasks/4.20-fuzz-findings-2.md`, D2, observed on Java 42.9).
+#[test]
+fn constituents_and_merge_of_a_static_table_keep_its_attributes() {
+    let first = crate::ops::sort::head(&seven_rows(), 5).unwrap();
+    let of_head = first.attributes();
+    assert!(of_head.append_only, "head of a static table is append-only");
+    for (parent, expected) in [(first, of_head), (seven_rows(), TableAttributes::default())] {
+        let partitioned = partition_by(&parent, &["K"], false).unwrap();
+        for constituent in partitioned.constituents().unwrap() {
+            let attributes = constituent.attributes();
+            assert_eq!(attributes.add_only, expected.add_only);
+            assert_eq!(attributes.append_only, expected.append_only);
+        }
+        let merged = partitioned.merge().unwrap().attributes();
+        assert_eq!(merged.add_only, expected.add_only);
+        assert_eq!(merged.append_only, expected.append_only);
+    }
+}
+
 #[test]
 fn dropped_keys_are_not_columns_of_the_constituents() {
     let partitioned = partition_by(&seven_rows(), &["K"], true).unwrap();
