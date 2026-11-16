@@ -266,10 +266,7 @@ fn y_values(values: &ArrayRef, column_type: &ColumnType) -> Vec<Option<Value>> {
         }
         ColumnType::Double => {
             let values = values.as_primitive::<Float64Type>();
-            values
-                .iter()
-                .map(|value| value.map(Value::Float))
-                .collect()
+            values.iter().map(|value| value.map(Value::Float)).collect()
         }
         ColumnType::String => {
             let values = values.as_string::<i32>();
@@ -452,7 +449,8 @@ impl Tracker {
                  QueryConstants.NULL_LONG"
             )));
         }
-        let against = |extreme: &Extreme| extreme.value.as_ref().and_then(|old| compare(value, old));
+        let against =
+            |extreme: &Extreme| extreme.value.as_ref().and_then(|old| compare(value, old));
         if first || against(&slot.max) == Some(Ordering::Greater) {
             slot.max.set(value, row);
         }
@@ -715,7 +713,12 @@ impl Bucket {
             ));
         };
         let mut keys = vec![first, last];
-        let garbage = || not_ported("BucketState#makeRowSet", "a bucket without the row of an extreme");
+        let garbage = || {
+            not_ported(
+                "BucketState#makeRowSet",
+                "a bucket without the row of an extreme",
+            )
+        };
         match &mut self.nulls {
             Some(nulls) => {
                 for (column, tracker) in trackers.iter_mut().enumerate() {
@@ -798,7 +801,12 @@ struct State {
 
 impl State {
     /// Behavior: `DownsamplerListener#rerange`
-    fn rerange(&mut self, parent: &dyn Table, rows: &RowSet, bins: i32) -> Result<(), TableFailure> {
+    fn rerange(
+        &mut self,
+        parent: &dyn Table,
+        rows: &RowSet,
+        bins: i32,
+    ) -> Result<(), TableFailure> {
         let (first, last) = match self.zoom {
             Some(range) => range,
             None => match (rows.first_row_key(), rows.last_row_key()) {
@@ -887,7 +895,12 @@ impl State {
             .collect()
     }
 
-    fn x_chunk(&self, parent: &dyn Table, rows: &RowSet, prev: bool) -> Result<Vec<i64>, TableFailure> {
+    fn x_chunk(
+        &self,
+        parent: &dyn Table,
+        rows: &RowSet,
+        prev: bool,
+    ) -> Result<Vec<i64>, TableFailure> {
         let source = parent.column(self.x);
         let values = if prev {
             source.prev_chunk(rows)?
@@ -953,8 +966,7 @@ impl State {
         const METHOD: &str = "RunChartDownsample.DownsamplerListener#handleModified";
         // Java reads the old X values at the new row keys. That is the old value of some
         // other row where the rows were shifted, and nothing where there was no row.
-        if !upstream.shifted.is_empty() && !upstream.modified.is_subset_of(&parent.prev_row_set())
-        {
+        if !upstream.shifted.is_empty() && !upstream.modified.is_subset_of(&parent.prev_row_set()) {
             return Err(not_ported(
                 METHOD,
                 "a modified row at a row key that held no row before the shift",
@@ -1075,7 +1087,10 @@ impl crate::table::UnaryOperator for Operator {
         // parent has. A table can follow that only when the two agree.
         const NOTIFY: &str = "RunChartDownsample.DownsamplerListener#notifyResultTable";
         if !selected.is_subset_of(&parent.row_set()) {
-            return Err(not_ported(NOTIFY, "a result with rows its parent does not have"));
+            return Err(not_ported(
+                NOTIFY,
+                "a result with rows its parent does not have",
+            ));
         }
         match update.clone().normalized() {
             None if selected == *last => {}

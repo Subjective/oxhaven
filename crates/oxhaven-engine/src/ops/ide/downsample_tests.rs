@@ -93,7 +93,9 @@ fn arrays(rows: &[Row]) -> Vec<ArrayRef> {
 
 fn columns(rows: &[Row]) -> Vec<(&'static str, ColumnType, ArrayRef)> {
     let named = NAMES.into_iter().zip(types()).zip(arrays(rows));
-    named.map(|((name, kind), values)| (name, kind, values)).collect()
+    named
+        .map(|((name, kind), values)| (name, kind, values))
+        .collect()
 }
 
 fn rows(keys: impl IntoIterator<Item = i64>) -> Vec<Row> {
@@ -117,7 +119,9 @@ fn java(label: &str) -> Vec<RowKey> {
     let Some(line) = line else {
         panic!("java_downsample.txt has no line {label}");
     };
-    line.split_whitespace().map(|k| k.parse().unwrap()).collect()
+    line.split_whitespace()
+        .map(|k| k.parse().unwrap())
+        .collect()
 }
 
 /// A downsampled scripted table whose row keys are the values of `K`.
@@ -176,7 +180,10 @@ fn add(rows: &[Row]) -> TableChange {
 fn modify(keys: impl IntoIterator<Item = i64>, edit: impl Fn(&mut Row)) -> TableChange {
     let mut rows = rows(keys);
     rows.iter_mut().for_each(edit);
-    TableChange::new().modify(rows.iter().map(|r| r.k), arrays(&rows).into_iter().enumerate())
+    TableChange::new().modify(
+        rows.iter().map(|r| r.k),
+        arrays(&rows).into_iter().enumerate(),
+    )
 }
 
 fn remove(keys: impl IntoIterator<Item = i64>) -> TableChange {
@@ -193,7 +200,11 @@ fn check_steps(label: &str, request: &Downsample, steps: Vec<TableChange>) {
         if let Err(failure) = rig.step(change) {
             panic!("{label} {step}: {failure}");
         }
-        assert_eq!(rig.keys(), java(&format!("{label} {step}")), "{label} {step}");
+        assert_eq!(
+            rig.keys(),
+            java(&format!("{label} {step}")),
+            "{label} {step}"
+        );
     }
 }
 
@@ -327,7 +338,9 @@ fn rows_of_one_x_value_are_refused() {
     let mut same = rows(0..5);
     same.iter_mut().for_each(|r| r.x = 7);
     let table = static_table(&columns(&same));
-    let failure = run_chart_downsample(&table, &request("X", &["Y"], None)).err().unwrap();
+    let failure = run_chart_downsample(&table, &request("X", &["Y"], None))
+        .err()
+        .unwrap();
     assert_eq!(failure.message, "Interval is not positive: 0");
     // a zoom range gives the buckets a width
     let zoomed = run_chart_downsample(&table, &request("X", &["Y"], Some((0, 1000)))).unwrap();
@@ -374,7 +387,10 @@ fn a_request_java_refuses_is_refused() {
     let refused = |change: &dyn Fn(&mut Downsample)| {
         let mut request = request("X", &["Y"], None);
         change(&mut request);
-        run_chart_downsample(&table, &request).err().unwrap().message
+        run_chart_downsample(&table, &request)
+            .err()
+            .unwrap()
+            .message
     };
     assert_eq!(
         refused(&|r| r.pixel_count = 0),
@@ -424,7 +440,10 @@ fn an_instant_x_column_need_not_be_held_in_memory() {
     let result = run_chart_downsample(&redirected(), &request("T", &["Y"], Some(ZOOM))).unwrap();
     // the rows 32 to 25 of the first order, which the range shows, and the two ends
     let keys = keys_of(&*result);
-    assert!([0, 26, 27, 34, 35, 59].iter().all(|k| keys.contains(k)), "{keys:?}");
+    assert!(
+        [0, 26, 27, 34, 35, 59].iter().all(|k| keys.contains(k)),
+        "{keys:?}"
+    );
     assert!(keys.len() < 20);
 }
 
@@ -443,7 +462,8 @@ fn a_cycle_that_only_removes_an_extreme_fails_the_result() {
     // with a row added in the same cycle the bucket is read again: 9 is the first 4 now
     let rig = Rig::new(&rows(0..60), &request("X", &["Z"], None));
     assert!(!rig.keys().contains(&12));
-    rig.step(remove([2]).add([60], arrays(&rows([60])))).unwrap();
+    rig.step(remove([2]).add([60], arrays(&rows([60]))))
+        .unwrap();
     assert_eq!(rig.keys()[..6], [0, 1, 4, 5, 8, 9]);
     assert!(rig.keys().contains(&12));
 }
@@ -501,7 +521,9 @@ fn shifted_rows_are_followed_where_their_bucket_changes_too() {
     let before = rig.keys();
     let mut added = row(59);
     added.k = 170;
-    let change = TableChange::new().shift(40, 59, 100).add([170], arrays(&[added]));
+    let change = TableChange::new()
+        .shift(40, 59, 100)
+        .add([170], arrays(&[added]));
     rig.step(change).unwrap();
     // 59 was there as the last row of its bucket only
     let moved = |k: &RowKey| if *k >= 40 { k + 100 } else { *k };
@@ -535,7 +557,9 @@ fn the_buckets_outside_a_zoom_range_are_never_read_again() {
     // 2 has the largest Z below the range
     let rig = Rig::new(&rows(0..60), &request("T", &["Z"], Some(ZOOM)));
     assert_eq!(rig.keys()[..3], [0, 2, 15]);
-    let failure = rig.step(remove([2]).add([60], arrays(&rows([60])))).unwrap_err();
+    let failure = rig
+        .step(remove([2]).add([60], arrays(&rows([60]))))
+        .unwrap_err();
     assert_eq!(
         failure.message,
         "not ported: io.deephaven.clientsupport.plotdownsampling.RunChartDownsample.\
@@ -543,7 +567,8 @@ fn the_buckets_outside_a_zoom_range_are_never_read_again() {
     );
     // a row that was no extreme may go
     let rig = Rig::new(&rows(0..60), &request("T", &["Z"], Some(ZOOM)));
-    rig.step(remove([3]).add([60], arrays(&rows([60])))).unwrap();
+    rig.step(remove([3]).add([60], arrays(&rows([60]))))
+        .unwrap();
     assert_eq!(rig.keys()[..3], [0, 2, 15]);
 }
 
@@ -572,7 +597,11 @@ impl Numbers {
 fn extremes(table: &dyn Table, column: usize) -> Option<(f64, f64)> {
     let values = table.column(column).chunk(&table.row_set()).unwrap();
     let values: Vec<f64> = match table.column(column).column_type() {
-        ColumnType::Double => values.as_primitive::<Float64Type>().iter().flatten().collect(),
+        ColumnType::Double => values
+            .as_primitive::<Float64Type>()
+            .iter()
+            .flatten()
+            .collect(),
         _ => {
             let values = values.as_primitive::<Int32Type>();
             values.iter().flatten().map(f64::from).collect()
@@ -641,8 +670,16 @@ fn random_changes_keep_the_ends_and_the_extremes() {
             let parent: Arc<dyn Table> = rig.script.table();
             let (rows, all) = (rig.result.row_set(), parent.row_set());
             assert!(rows.is_subset_of(&all), "seed {seed}, step {step}");
-            assert_eq!(rows.first_row_key(), all.first_row_key(), "seed {seed}, step {step}");
-            assert_eq!(rows.last_row_key(), all.last_row_key(), "seed {seed}, step {step}");
+            assert_eq!(
+                rows.first_row_key(),
+                all.first_row_key(),
+                "seed {seed}, step {step}"
+            );
+            assert_eq!(
+                rows.last_row_key(),
+                all.last_row_key(),
+                "seed {seed}, step {step}"
+            );
             assert!(rows.size() < all.size());
             for column in [Y, Y + 1].into_iter().filter(|_| zoom.is_none()) {
                 assert_eq!(

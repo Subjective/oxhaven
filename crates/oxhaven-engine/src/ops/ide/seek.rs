@@ -108,7 +108,9 @@ fn cells(values: &ArrayRef, column_type: &ColumnType) -> Vec<Cell> {
             values
                 .iter()
                 .map(|cell| {
-                    cell.map_or(Cell::Null, |cell| value(SeekValue::String(cell.to_string())))
+                    cell.map_or(Cell::Null, |cell| {
+                        value(SeekValue::String(cell.to_string()))
+                    })
                 })
                 .collect()
         }
@@ -316,7 +318,11 @@ impl Search<'_> {
             Cell::Null => return Ok(false),
             Cell::Value(SeekValue::String(value)) => value.clone(),
             Cell::Char(unit) => String::from_utf16_lossy(&[*unit]),
-            _ => return Err(not_ported("the text of a value that is not a String or a char")),
+            _ => {
+                return Err(not_ported(
+                    "the text of a value that is not a String or a char",
+                ))
+            }
         };
         let value = if self.seek.insensitive {
             value.to_lowercase()
@@ -362,7 +368,9 @@ pub fn seek_row(table: &dyn Table, seek: &Seek) -> Result<i64, TableFailure> {
         .find(|(name, _)| *name == seek.column);
     if let Some((_, descending)) = sorted {
         if rows.last_row_key().is_some_and(|last| last > limit) {
-            return Err(not_ported("a sorted column in a table with a row key that is not an int"));
+            return Err(not_ported(
+                "a sorted column in a table with a row key that is not an int",
+            ));
         }
         return search.sorted(start, !descending);
     }
