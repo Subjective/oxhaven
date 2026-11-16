@@ -1006,3 +1006,7 @@ Task 7.4.2 (stream tables, table_publisher, Kafka on the adapter) reported from 
 ## 2026-11-16T08:44Z
 
 The second parity pass reported after five hours: all 13 existing fuzz families clean over 1000 seeds except seed 308 of all (the chain of 4.17 A1, failed-table serving), and 9 new families whose only differences are four written-up defects (D1 to D4: missing AddOnly after fixed-distance reads, attributes lost by partition merge and get, distinct of no rows, an error code). Eight refusals Java computes, six Java defects (one stops the Java server). Size verdict too large: the baseline sweep and the widening should have been two tasks. Opened as pull request 119. Next on Fable after it merges: fix D1 to D4 and the cheap refusals (task 4.20).
+
+## 2026-11-16T08:46Z
+
+Pull request 118 (stream tables, table publisher) merged on green. Launched 7.4.3 (full JSON spec) on Opus with a fresh agent from the written handover.
