@@ -24,6 +24,8 @@ pub(crate) struct Registry {
     /// a URL without a scheme, which Java's `java.net.URL` refuses when it is asked.
     urls: Vec<Result<(String, String), String>>,
     by_id: Mutex<HashMap<i32, Arc<Schema>>>,
+    /// The ids of the schemas registered so far, by subject and schema text.
+    registered: Mutex<HashMap<(String, String), i32>>,
 }
 
 /// Why a call to the registry failed: what the registry answered, or why it could not be
@@ -110,6 +112,7 @@ impl Registry {
         Ok(Self {
             urls,
             by_id: Mutex::new(HashMap::new()),
+            registered: Mutex::new(HashMap::new()),
         })
     }
 
@@ -118,6 +121,11 @@ impl Registry {
     ///
     /// Behavior: io.confluent.kafka.schemaregistry.client.rest.RestService#httpRequest
     fn get(&self, path: &str) -> Result<Node, CallFailure> {
+        self.call("GET", path, None)
+    }
+
+    /// Sends `method` to `path` at the first URL that answers.
+    fn call(&self, method: &str, path: &str, body: Option<&str>) -> Result<Node, CallFailure> {
         let mut last = CallFailure("java.net.ConnectException: no URL".to_owned());
         for url in &self.urls {
             let (authority, prefix) = match url {
@@ -129,7 +137,7 @@ impl Registry {
                     continue;
                 }
             };
-            match http_get(authority, &format!("{prefix}{path}")) {
+            match http_request(authority, method, &format!("{prefix}{path}"), body) {
                 Ok((status, body)) => return answer(status, &body),
                 Err(failure) => last = failure,
             }
@@ -148,6 +156,16 @@ impl Registry {
         subject: &str,
         version: Option<&str>,
     ) -> Result<Schema, KafkaError> {
+        avro::parse(&self.subject_schema_text(subject, version)?).map_err(KafkaError::Invalid)
+    }
+
+    /// The text of the schema of `subject` at `version`, as [`Registry::subject_schema`]
+    /// fetches it.
+    pub(crate) fn subject_schema_text(
+        &self,
+        subject: &str,
+        version: Option<&str>,
+    ) -> Result<String, KafkaError> {
         let unchecked = |CallFailure(text)| KafkaError::Invalid(format!("{UNCHECKED}: {text}"));
         let path = if version == Some("latest") {
             format!("/subjects/{}/versions/latest", encode(subject))
@@ -173,7 +191,7 @@ impl Registry {
             .get(&format!("/schemas/ids/{id}?fetchMaxId=false&subject="))
             .and_then(|body| schema_text(&body))
             .map_err(unchecked)?;
-        avro::parse(&text).map_err(KafkaError::Invalid)
+        Ok(text)
     }
 
     /// The schema a record was written with, by the id in the record, cached by id.
@@ -191,6 +209,34 @@ impl Registry {
         let schema = Arc::new(avro::parse(&schema_text(&body)?).map_err(CallFailure)?);
         let mut cache = self.by_id.lock().expect("not poisoned");
         Ok(cache.entry(id).or_insert(schema).clone())
+    }
+}
+
+impl Registry {
+    /// Registers `schema` (Avro's `Schema#toString` of it) under `subject` and returns
+    /// its id, asking the registry once per subject and schema, as the serializer of a
+    /// producer does with `auto.register.schemas` left at `true`.
+    ///
+    /// Behavior: io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl,
+    /// io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient#register and
+    /// RestService#registerSchema (probed: `POST /subjects/<subject>/versions?normalize=false`
+    /// with `{"schemaType":"AVRO","schema":...}`)
+    pub(crate) fn register(&self, subject: &str, schema: &str) -> Result<i32, CallFailure> {
+        let key = (subject.to_owned(), schema.to_owned());
+        if let Some(id) = self.registered.lock().expect("not poisoned").get(&key) {
+            return Ok(*id);
+        }
+        let mut body = String::from("{\"schemaType\":\"AVRO\",\"schema\":");
+        json::write_quoted(schema, &mut body);
+        body += "}";
+        let answer = self.call(
+            "POST",
+            &format!("/subjects/{}/versions?normalize=false", encode(subject)),
+            Some(&body),
+        )?;
+        let id = answer.get("id").and_then(Node::exact_long).unwrap_or(0) as i32;
+        self.registered.lock().expect("not poisoned").insert(key, id);
+        Ok(id)
     }
 }
 
@@ -282,8 +328,13 @@ fn answer(status: u16, body: &[u8]) -> Result<Node, CallFailure> {
     }))
 }
 
-/// One HTTP/1.1 GET, with `Connection: close`: the status and the body.
-fn http_get(authority: &str, path: &str) -> Result<(u16, Vec<u8>), CallFailure> {
+/// One HTTP/1.1 request, with `Connection: close`: the status and the body.
+fn http_request(
+    authority: &str,
+    method: &str,
+    path: &str,
+    body: Option<&str>,
+) -> Result<(u16, Vec<u8>), CallFailure> {
     let io = |error: std::io::Error| {
         let class = match error.kind() {
             std::io::ErrorKind::ConnectionRefused => "java.net.ConnectException",
@@ -305,9 +356,14 @@ fn http_get(authority: &str, path: &str) -> Result<(u16, Vec<u8>), CallFailure> 
         .ok_or_else(|| CallFailure(format!("java.net.UnknownHostException: {authority}")))?;
     let mut stream = TcpStream::connect_timeout(&address, TIMEOUT).map_err(io)?;
     stream.set_read_timeout(Some(TIMEOUT)).map_err(io)?;
+    let length = match body {
+        Some(body) => format!("Content-Length: {}\r\n", body.len()),
+        None => String::new(),
+    };
     let request = format!(
-        "GET {path} HTTP/1.1\r\nHost: {authority}\r\nAccept: */*\r\n\
-         Content-Type: application/vnd.schemaregistry.v1+json\r\nConnection: close\r\n\r\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nAccept: */*\r\n\
+         Content-Type: application/vnd.schemaregistry.v1+json\r\n{length}Connection: close\r\n\r\n{}",
+        body.unwrap_or("")
     );
     stream.write_all(request.as_bytes()).map_err(io)?;
     let mut response = Vec::new();

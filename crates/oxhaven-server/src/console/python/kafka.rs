@@ -10,7 +10,7 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_kafka::{
-    AvroMapping, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets,
+    AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets,
     ProduceOptions, ProduceSpec, Publication, Spec, TableType,
 };
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
@@ -141,7 +141,10 @@ pub(super) fn kafka_consume(
 /// A key or value spec of `deephaven.stream.kafka.producer.KeyValueSpec`:
 /// `{"kind": "ignore"}`, `{"kind": "simple", "column": name}` or `{"kind": "json",
 /// "include": [names] or null, "mapping": [[column, field]] or null, "nested_delim": text
-/// or null, "output_nulls": bool, "timestamp_field": text or null}`.
+/// or null, "output_nulls": bool, "timestamp_field": text or null}` or `{"kind": "avro",
+/// "subject", "version", "mapping": [[field, column]] or null, "timestamp_field",
+/// "include_only", "exclude": [names] or null, "publish_schema": bool, "namespace",
+/// "column_properties": [[name, value]]}`.
 fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
     let bad = || PyValueError::new_err(format!("not a key or value spec: {json}"));
     let value: Value = serde_json::from_str(json).map_err(|_| bad())?;
@@ -183,6 +186,43 @@ fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
                 timestamp_field: optional(&value["timestamp_field"])?,
             }))
         }
+        Some("avro") => {
+            let names = |value: &Value| -> PyResult<Option<Vec<String>>> {
+                match value {
+                    Value::Null => Ok(None),
+                    names => names
+                        .as_array()
+                        .ok_or_else(bad)?
+                        .iter()
+                        .map(text)
+                        .collect::<PyResult<_>>()
+                        .map(Some),
+                }
+            };
+            let pairs = |value: &Value| -> PyResult<Option<Vec<(String, String)>>> {
+                match value {
+                    Value::Null => Ok(None),
+                    pairs => pairs
+                        .as_array()
+                        .ok_or_else(bad)?
+                        .iter()
+                        .map(|pair| Ok((text(&pair[0])?, text(&pair[1])?)))
+                        .collect::<PyResult<_>>()
+                        .map(Some),
+                }
+            };
+            Ok(ProduceSpec::Avro(AvroProduceSpec {
+                subject: text(&value["subject"])?,
+                version: optional(&value["version"])?,
+                mapping: pairs(&value["mapping"])?,
+                timestamp_field: optional(&value["timestamp_field"])?,
+                include_only: names(&value["include_only"])?,
+                exclude: names(&value["exclude"])?,
+                publish_schema: value["publish_schema"].as_bool().ok_or_else(bad)?,
+                namespace: optional(&value["namespace"])?,
+                column_properties: pairs(&value["column_properties"])?.unwrap_or_default(),
+            }))
+        }
         _ => Err(bad()),
     }
 }
@@ -213,17 +253,22 @@ pub(super) fn kafka_produce(
     py: Python<'_>,
     table: &TableHandle,
     config: Vec<(String, String)>,
-    topic: &str,
+    topic: Option<&str>,
     partition: Option<i32>,
     key_spec: &str,
     value_spec: &str,
     last_by: bool,
     publish_initial: bool,
+    columns: (Option<String>, Option<String>, Option<String>),
 ) -> PyResult<KafkaPublication> {
+    let (topic_column, partition_column, timestamp_column) = columns;
     let options = ProduceOptions {
         config,
-        topic: topic.to_owned(),
+        topic: topic.unwrap_or_default().to_owned(),
         partition,
+        topic_column,
+        partition_column,
+        timestamp_column,
         key: produce_spec(key_spec)?,
         value: produce_spec(value_spec)?,
         last_by,
