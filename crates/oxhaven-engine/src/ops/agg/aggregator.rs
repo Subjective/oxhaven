@@ -7,6 +7,7 @@ use crate::table::{shared_reads_through, tracked_source};
 use crate::update::modified_pre_shift;
 use arrow::array::{ArrayRef, UInt64Array};
 use oxhaven_column::WritableSource;
+use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
@@ -366,6 +367,11 @@ impl Aggregator {
         ))
     }
 
+    /// Whether some group has no rows.
+    pub fn has_empty_group(&self) -> bool {
+        self.keys.is_some() && self.row_counts.contains(&0)
+    }
+
     fn present(&self, slot: usize) -> bool {
         self.preserve_empty || self.row_counts[slot] > 0
     }
@@ -409,7 +415,16 @@ impl Aggregator {
         if !create {
             return keys.table.find(&arrays);
         }
-        let (slots, created) = keys.table.find_or_create(&arrays)?;
+        self.find_or_create(&arrays)
+    }
+
+    /// The slot of each row of `arrays`, the key columns of some rows, with a new slot for
+    /// each key not seen before, whose key columns are written.
+    fn find_or_create(&mut self, arrays: &[ArrayRef]) -> Result<Vec<usize>, TableFailure> {
+        let Some(keys) = &mut self.keys else {
+            return Ok(vec![0; arrays.first().map_or(0, |array| array.len())]);
+        };
+        let (slots, created) = keys.table.find_or_create(arrays)?;
         if !created.is_empty() {
             let slot_count = keys.table.len();
             let new_slots: Vec<RowKey> = (slot_count - created.len()..slot_count)
@@ -424,6 +439,45 @@ impl Aggregator {
             self.ensure_slots(slot_count);
         }
         Ok(slots)
+    }
+
+    /// Gives every key of `initial_groups` a slot, in the order of its rows, before any
+    /// row of the parent is read: the result has those groups first, and with
+    /// `preserve_empty` also the ones the parent has no row for. `columns` are the key
+    /// columns in `initial_groups`, in the order of the group-by columns. The table is
+    /// read once, as it is now; what it does later changes nothing.
+    ///
+    /// Behavior: ChunkedOperatorAggregationHelper#initialKeyTableAddition and
+    /// #makeInitializedStateManager
+    pub fn seed(
+        &mut self,
+        initial_groups: &Arc<dyn Table>,
+        columns: &[usize],
+    ) -> Result<(), TableFailure> {
+        let read_keys = |aggregator: &mut Aggregator| {
+            let rows = initial_groups.row_set();
+            for chunk in chunks(&rows) {
+                let arrays = columns
+                    .iter()
+                    .map(|&column| initial_groups.column(column).chunk(&chunk))
+                    .collect::<Result<Vec<_>, _>>()?;
+                aggregator.find_or_create(&arrays)?;
+            }
+            Ok::<(), TableFailure>(())
+        };
+        match initial_groups
+            .update_graph()
+            .filter(|_| initial_groups.is_refreshing())
+        {
+            Some(graph) => locked(&*graph, || read_keys(self)),
+            None => read_keys(self),
+        }?;
+        for column in &mut self.ops {
+            for slot in 0..self.slots {
+                column.plan.op.seeded(slot);
+            }
+        }
+        Ok(())
     }
 
     /// The chunks at `rows` of the input and weight columns of the operators that `wanted`

@@ -130,8 +130,34 @@ pub(crate) fn run_local(
     op: Op,
     tables: &[Arc<dyn Table>],
 ) -> Result<Arc<dyn Table>, ExportError> {
+    run_local_as(context, op, tables, true)
+}
+
+/// Runs `op` as [`run_local`] does, without the checks of the request's shape that the
+/// table service makes before it calls the engine: for a call that Java's engine answers
+/// and its table service refuses, which a script makes of the engine.
+///
+/// No Java counterpart: Java's script sessions call the engine directly.
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+pub(crate) fn run_local_unchecked(
+    context: &OpContext,
+    op: Op,
+    tables: &[Arc<dyn Table>],
+) -> Result<Arc<dyn Table>, ExportError> {
+    run_local_as(context, op, tables, false)
+}
+
+#[cfg_attr(not(feature = "python"), allow(dead_code))]
+fn run_local_as(
+    context: &OpContext,
+    op: Op,
+    tables: &[Arc<dyn Table>],
+    validate: bool,
+) -> Result<Arc<dyn Table>, ExportError> {
     let operation = bind(op)?;
-    operation.validate()?;
+    if validate {
+        operation.validate()?;
+    }
     let sources = operation
         .sources()
         .iter()

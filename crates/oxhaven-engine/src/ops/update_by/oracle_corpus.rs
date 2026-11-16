@@ -645,5 +645,5 @@ fn results_match_the_recorded_java_results() {
     assert_eq!(tally.compared, expected);
     // 33 tables of static scenarios at one step, 2 ticking ones at 6 steps and 6 at 8.
     assert_eq!(tally.comparisons, 33 + 2 * 6 + 6 * 8);
-    assert_eq!(tally.not_run.len(), 710, "{:#?}", tally.not_run);
+    assert_eq!(tally.not_run.len(), 747, "{:#?}", tally.not_run);
 }

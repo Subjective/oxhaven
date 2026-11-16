@@ -21,12 +21,14 @@
 //! A formula that fails while a stored column is computed fails the operation, or, in a
 //! later cycle, the result table. A formula computed on read fails that read only.
 //!
-//! Not ported: formulas that read a column at another row (`Col_[i - 1]`), which Java turns
-//! into a join of the table with itself in `ShiftedColumnsFactory`; the redirected storage of
-//! `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
+//! A formula can read a column at another row: `Col_[i - 1]`, `Col_[3]`, `sum(Col_)`. The
+//! module `arrays` has the form Java rewrites into a shifted column and what is refused.
+//!
+//! Not ported: the redirected storage of `QueryTable.redirectSelect` and `QueryTable.redirectUpdate`, which are off by default; and
 //! `DeferredViewTable`, which serves source tables that are not in memory.
 
 mod array_formula;
+pub(crate) mod arrays;
 mod materialize;
 mod plan;
 mod rename;
@@ -38,7 +40,7 @@ mod tests;
 use crate::table::{mark, marks, memoized, CopyType, Marks, QueryTable, TableSpec};
 use crate::update::ModifiedColumnTransformer;
 pub use array_formula::ArrayFormula;
-use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
+use oxhaven_contracts::expr::{ColumnAssignment, FormulaCompiler, FormulaError};
 use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::unported;
@@ -152,7 +154,7 @@ pub fn view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
-    computed_on_read(parent, columns, compiler, Flavor::View)
+    computed_on_read(parent, columns, compiler, Flavor::View, None)
 }
 
 /// The parent's columns and the listed ones, each computed from the parent's current values
@@ -167,7 +169,7 @@ pub fn update_view<S: AsRef<str>>(
     if columns.is_empty() {
         return Ok(parent.clone());
     }
-    computed_on_read(parent, columns, compiler, Flavor::UpdateView)
+    computed_on_read(parent, columns, compiler, Flavor::UpdateView, None)
 }
 
 /// As [`update_view`], but each formula remembers its result for every distinct tuple of
@@ -190,7 +192,7 @@ pub fn lazy_update<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    computed_on_read(parent, columns, compiler, Flavor::LazyUpdate)
+    computed_on_read(parent, columns, compiler, Flavor::LazyUpdate, None)
 }
 
 /// The listed columns with their values stored, so that a formula is computed once per row
@@ -214,9 +216,9 @@ pub fn select<S: AsRef<str>>(
             .iter()
             .map(|column| column.name.as_str())
             .collect();
-        return materialize::stored(parent, &all, compiler, Flavor::Select);
+        return materialize::stored(parent, &all, compiler, Flavor::Select, None);
     }
-    materialize::stored(parent, columns, compiler, Flavor::Select)
+    materialize::stored(parent, columns, compiler, Flavor::Select, None)
 }
 
 /// The parent's columns and the listed ones, the listed ones with their values stored as
@@ -228,7 +230,7 @@ pub fn update<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    materialize::stored(parent, columns, compiler, Flavor::Update)
+    materialize::stored(parent, columns, compiler, Flavor::Update, None)
 }
 
 /// The parent without the named columns. With no names, the parent itself.
@@ -238,7 +240,17 @@ pub fn drop_columns<S: AsRef<str>>(
     parent: &Arc<dyn Table>,
     columns: &[S],
 ) -> Result<Arc<dyn Table>, SelectError> {
-    if columns.is_empty() {
+    drop_columns_as(parent, columns, None)
+}
+
+/// [`drop_columns`], with `replaced` in place of the attributes it copies from the parent
+/// when given; such a result is not memoized.
+fn drop_columns_as<S: AsRef<str>>(
+    parent: &Arc<dyn Table>,
+    columns: &[S],
+    replaced: Option<TableAttributes>,
+) -> Result<Arc<dyn Table>, SelectError> {
+    if columns.is_empty() && replaced.is_none() {
         return Ok(parent.clone());
     }
     let declared = parent.definition().columns();
@@ -273,6 +285,8 @@ pub fn drop_columns<S: AsRef<str>>(
     attributes.add_only = inherited.add_only;
     attributes.append_only = inherited.append_only;
     attributes.blink = inherited.blink;
+    let memoize = replaced.is_none();
+    let attributes = replaced.unwrap_or(attributes);
 
     let of_parent = marks(&**parent);
     let mut result_marks = CopyType::DropColumns.sort_marks(&of_parent);
@@ -295,6 +309,9 @@ pub fn drop_columns<S: AsRef<str>>(
         ))
     })?;
     mark(&table, result_marks);
+    if !memoize {
+        return Ok(table);
+    }
     Ok(memoized(parent, CopyType::DropColumns, false, table)?)
 }
 
@@ -316,6 +333,8 @@ fn spec(
     }
 }
 
+/// `first` is as for [`plan::analyze`].
+///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#viewOrUpdateView and #lazyUpdate,
 /// with the layers io.deephaven.engine.table.impl.select.analyzers.SelectAndViewAnalyzer#createContext
 /// makes in its `VIEW_EAGER` and `VIEW_LAZY` modes
@@ -324,8 +343,12 @@ fn computed_on_read<S: AsRef<str>>(
     columns: &[S],
     compiler: &dyn FormulaCompiler,
     flavor: Flavor,
+    first: Option<ColumnAssignment>,
 ) -> Result<Arc<dyn Table>, SelectError> {
-    let plan = plan::analyze(parent, columns, compiler, flavor)?;
+    let mut plan = plan::analyze(parent, columns, compiler, flavor, first)?;
+    if let Some(shifted) = plan.shifted.take() {
+        return arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
+    }
     let mut sources = Sources::new(parent);
     for step in &plan.steps {
         let source = match &step.kind {

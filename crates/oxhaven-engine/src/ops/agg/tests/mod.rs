@@ -6,6 +6,7 @@ mod formula;
 mod group;
 mod incremental;
 mod random;
+mod seeded;
 mod static_tables;
 
 use super::{aggregate_with, AggSpec, AggregateError, Aggregation, Pair, Sentinel};

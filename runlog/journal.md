@@ -790,3 +790,11 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   in pull request 96 and 95 was closed. The brief now tells agents to run
   `scripts/check-commit-subjects.sh` before reporting. Agents had no way to see this rule
   fail locally except by running that script; it costs nothing to run.
+- Pull request 97 opened (4.18). For the owner: initial groups a refreshing table has no
+  rows for, without `preserveEmpty` (Java later shows the group with null keys; refused);
+  `count_where` with no filter (Java's answer varies between runs; refused); a failed keyed
+  transpose keeps its rows where Java's still shows later changes (failed-table serving
+  again). Left as gaps: keyed input tables with a floating point key, ring tables and
+  function-generated tables (script scenarios `input_key_types`, `input_ring_and_generated`).
+- Merged pull request 96 (5.5, column arrays) on six green checks.
+- Merged pull request 97 (4.18, missing engine pieces) on six green checks, with main's column arrays merged in.

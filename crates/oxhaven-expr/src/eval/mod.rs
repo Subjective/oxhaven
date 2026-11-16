@@ -1,5 +1,6 @@
 //! Evaluation of a type-checked formula over Arrow arrays, one batch of rows at a time.
 
+mod arrays;
 mod compare;
 pub(crate) mod numeric;
 mod text;
@@ -38,6 +39,8 @@ struct Batch {
     positions: Option<Int64Array>,
     /// The key of each row, when the formula uses `k`.
     keys: Option<Int64Array>,
+    /// One per entry of [`Checked::arrays`]: the columns the formula reads as arrays.
+    arrays: Vec<Arc<arrays::ColumnArray>>,
     rows: usize,
 }
 
@@ -63,8 +66,24 @@ impl Batch {
             columns,
             positions: longs(&self.positions)?,
             keys: longs(&self.keys)?,
+            arrays: self.arrays.clone(),
             rows: keep.true_count(),
         })
+    }
+
+    /// The first row alone. The batch has one.
+    fn first_row(&self) -> Batch {
+        Batch {
+            columns: self
+                .columns
+                .iter()
+                .map(|column| column.slice(0, 1))
+                .collect(),
+            positions: self.positions.as_ref().map(|values| values.slice(0, 1)),
+            keys: self.keys.as_ref().map(|values| values.slice(0, 1)),
+            arrays: self.arrays.clone(),
+            rows: 1,
+        }
     }
 }
 
@@ -89,7 +108,7 @@ impl Formula for CompiledFormula {
     }
 
     fn column_arrays(&self) -> &[String] {
-        &[]
+        &self.checked.arrays
     }
 
     fn uses_row_variables(&self) -> bool {
@@ -147,12 +166,33 @@ impl Formula for CompiledFormula {
             .checked
             .keys
             .then(|| rows.iter().collect::<Int64Array>());
+        let arrays = self
+            .checked
+            .arrays
+            .iter()
+            .map(|name| {
+                let index = definition
+                    .index_of(name)
+                    .ok_or_else(|| failure(format!("the table has no column {name}")))?;
+                let all = if use_prev {
+                    table.prev_row_set()
+                } else {
+                    table.row_set()
+                };
+                Ok(Arc::new(arrays::ColumnArray::new(
+                    table.column(index),
+                    all,
+                    use_prev,
+                )))
+            })
+            .collect::<Result<_, TableFailure>>()?;
         evaluate(
             &self.checked.root,
             &Batch {
                 columns,
                 positions,
                 keys,
+                arrays,
                 rows: size,
             },
         )
@@ -266,9 +306,15 @@ fn erase<A: Array + 'static>(array: A) -> ArrayRef {
 }
 
 fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
+    if !batch.arrays.is_empty() {
+        if let Some(values) = arrays::evaluate(expr, batch)? {
+            return Ok(values);
+        }
+    }
     let numeric = Numeric::of(&expr.column_type);
     match &expr.node {
         Node::Column(slot) => Ok(batch.columns[*slot].clone()),
+        Node::ColumnArray(_) => unreachable!("a batch has the arrays its formula reads"),
         Node::RowVariable(variable) => {
             let positions = || {
                 batch
