@@ -135,6 +135,11 @@ impl TableHandle {
         self.table.is_refreshing()
     }
 
+    /// Behavior: `io.deephaven.engine.table.Table#isFailed`
+    fn is_failed(&self) -> bool {
+        self.table.is_failed()
+    }
+
     /// The columns as `(name, Java type name)`, the type as the schema on the wire has it.
     fn columns(&self) -> Vec<(String, String)> {
         let columns = self.table.definition().columns().iter();

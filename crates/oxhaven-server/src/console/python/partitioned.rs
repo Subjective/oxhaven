@@ -8,9 +8,11 @@
 
 use std::sync::Arc;
 
-use oxhaven_contracts::table::Table;
-use oxhaven_engine::ops::partitioned::of_aggregation;
+use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_engine::ops::partitioned::{of_aggregation, Transformer};
+use pyo3::exceptions::PyTypeError;
 use pyo3::prelude::*;
+use pyo3::types::PyTuple;
 
 use super::ops::failure;
 use super::TableHandle;
@@ -117,23 +119,91 @@ impl PartitionedHandle {
         .map_err(failure)
     }
 
-    /// This partitioned table with `tables` in the place of its constituents, which are
-    /// described by `definition`, a table with their columns.
+    /// A partitioned table whose constituents are what `function` makes of the
+    /// constituents of this one. `function` takes the handle of a table and answers the
+    /// handle of a table, or `None`; it is called now for every constituent and for a
+    /// table without rows, and in the update cycle for every constituent that appears.
+    /// `dependencies` are the refreshing tables it reads besides.
     ///
-    /// Behavior: the result of `PartitionedTableImpl#transform` for a partitioned table
-    /// that is not refreshing
-    fn transformed(
+    /// Behavior: `PartitionedTableImpl#transform`
+    fn transform(
         &self,
-        tables: Vec<PyRef<'_, TableHandle>>,
-        definition: &TableHandle,
+        py: Python<'_>,
+        function: Py<PyAny>,
+        dependencies: Vec<PyRef<'_, TableHandle>>,
     ) -> PyResult<PartitionedHandle> {
-        let tables: Vec<Arc<dyn Table>> = tables.iter().map(|table| table.table.clone()).collect();
-        let definition = definition.table.definition().clone();
-        let transformed = self.partitioned.transformed(tables, definition);
-        transformed
-            .map(|partitioned| handle(Arc::new(partitioned)))
-            .map_err(|error| failure(error.into()))
+        let dependencies: Vec<Arc<dyn Table>> =
+            dependencies.iter().map(|table| table.table.clone()).collect();
+        let (partitioned, function) = (&self.partitioned, transformer(function));
+        py.detach(|| {
+            let mut locked = vec![partitioned.table()];
+            locked.extend(&dependencies);
+            guarded(&locked, || {
+                Ok(partitioned.transform(function, &dependencies)?)
+            })
+        })
+        .map(|partitioned| handle(Arc::new(partitioned)))
+        .map_err(failure)
     }
+
+    /// A partitioned table with a constituent for each key that this one and `other`
+    /// both have: what `function` makes of the two constituents of the key. As
+    /// [`PartitionedHandle::transform`], with a function of two tables.
+    ///
+    /// Behavior: `PartitionedTableImpl#partitionedTransform`
+    fn partitioned_transform(
+        &self,
+        py: Python<'_>,
+        other: &PartitionedHandle,
+        function: Py<PyAny>,
+        dependencies: Vec<PyRef<'_, TableHandle>>,
+    ) -> PyResult<PartitionedHandle> {
+        let dependencies: Vec<Arc<dyn Table>> =
+            dependencies.iter().map(|table| table.table.clone()).collect();
+        let (partitioned, other) = (&self.partitioned, &other.partitioned);
+        let function = transformer(function);
+        py.detach(|| {
+            let mut locked = vec![partitioned.table(), other.table()];
+            locked.extend(&dependencies);
+            guarded(&locked, || {
+                Ok(partitioned.partitioned_transform(other, function, &dependencies)?)
+            })
+        })
+        .map(|partitioned| handle(Arc::new(partitioned)))
+        .map_err(failure)
+    }
+}
+
+/// `function` as the engine calls it: with the handles of the tables, under the
+/// interpreter lock, which is taken for the call. The thread is one that holds the update
+/// graph's lock or runs its cycle, so the order is graph, interpreter
+/// (`docs/PYTHON_UDF.md`, "Locks").
+///
+/// Behavior: `io.deephaven.integrations.python.PythonFunction.PythonUnaryOperator#apply`
+/// and `PythonBinaryOperator#apply`, whose answer is cast to a table
+fn transformer(function: Py<PyAny>) -> Transformer {
+    Arc::new(move |tables: &[Arc<dyn Table>]| {
+        Python::attach(|py| {
+            let handles = tables
+                .iter()
+                .map(|table| {
+                    let table = table.clone();
+                    Py::new(py, TableHandle { table })
+                })
+                .collect::<PyResult<Vec<_>>>()?;
+            let made = function.bind(py).call1(PyTuple::new(py, handles)?)?;
+            if made.is_none() {
+                return Ok(None);
+            }
+            let made = made.cast::<TableHandle>().map_err(|_| {
+                PyTypeError::new_err("the transform function did not answer a table")
+            })?;
+            Ok(Some(made.get().table.clone()))
+        })
+        .map_err(|error: PyErr| TableFailure {
+            message: format!("Error in the transform function: {error}"),
+        })
+    })
 }
 
 /// Behavior: `io.deephaven.engine.table.impl.QueryTable#partitionBy`
