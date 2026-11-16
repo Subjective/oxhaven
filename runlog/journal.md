@@ -798,3 +798,22 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   function-generated tables (script scenarios `input_key_types`, `input_ring_and_generated`).
 - Merged pull request 96 (5.5, column arrays) on six green checks.
 - Merged pull request 97 (4.18, missing engine pieces) on six green checks, with main's column arrays merged in.
+- Pull request 98 opened (7.10, object service and Python plugins). The agent judged the
+  task too large: service, registry, Python package and Java probing in one run, with JS
+  plugins and third-party plugins (`deephaven-plugin-ui`, `plotly-express`) left over;
+  those become 7.10.1. For the owner: Java hazards reproduced as observed (a type whose
+  `is_type` raises fails the command although the code ran; `on_close` not called in
+  several endings; a message waiting on a missing export holds its stream until the
+  session ends); a fetch-only message stream now ends after one message as Java's does,
+  which changed an expectation from pull request 92.
+- Started 4.19 (ring tables, generated tables, floating point input keys).
+- Merged pull request 98 (7.10, object service and Python plugins) on six green checks. Figures (7.11) wait for a free build slot; the same agent will be resumed for them.
+- Pull request 99 opened (4.10, chart downsample and seek row). The task file was stale:
+  two of its three operations were already on main, and the remaining one was the hard
+  one. Lesson for task files written far ahead: have the agent check main first (this one
+  was told to) and expect the size to be wrong. For the owner: six Java defects in the
+  downsample listener reproduced; a `long` X column refused more widely than Java;
+  `Math.sin(...)` in a formula is refused ("static method call"), seen in passing and
+  passed to the formula work.
+- Started 7.11 (figures and JS plugin leftovers) by resuming the object service agent.
+- Merged pull request 99 (4.10, chart downsample and seek row) on six green checks. Every batch operation of the table service now has a handler.

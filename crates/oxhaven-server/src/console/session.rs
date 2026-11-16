@@ -15,7 +15,7 @@ use oxhaven_contracts::table::Table;
 
 use super::completer::Completer;
 use crate::app::{script, Application, Applications, FormulaValue, ScopeHolder};
-use crate::session::ExportValue;
+use crate::session::{ExportError, ExportValue};
 
 /// How often the variables are looked at for changes made outside a command.
 ///
@@ -29,21 +29,21 @@ pub const TABLE_TYPE_NAME: &str = "Table";
 /// are not told about such a variable: only values a client can open are listed.
 ///
 /// A table is a `Table`. Java leaves out a table with the attribute `NonDisplayTable`; the
-/// tables of this engine have no such attribute, so every table is listed. Java's other
-/// displayable kinds are `PartitionedTable` and `HierarchicalTable`, which are listed, and
-/// the objects a plugin has a type for; this server has none of those yet, and the task
-/// that adds them names them here.
+/// tables of this engine have no such attribute, so every table is listed. Anything else
+/// is listed when an object type knows it (`crate::object::types`): a partitioned table,
+/// a hierarchical table, and the objects a plugin registered a type for.
+///
+/// An error is a type that failed to say whether the value is its own: the text of what
+/// it raised.
 ///
 /// Behavior: `io.deephaven.engine.util.AbstractScriptSession#getTypeNameIfDisplayable`
-pub fn type_name_if_displayable(value: &ExportValue) -> Option<&'static str> {
-    match value {
-        ExportValue::Table(_) => Some(TABLE_TYPE_NAME),
-        ExportValue::Object(_) => crate::partitioned::partitioned_of(value)
-            .map(|_| crate::partitioned::TYPE_NAME)
-            .or_else(|| {
-                crate::hierarchical::hierarchical_of(value).map(|_| crate::hierarchical::TYPE_NAME)
-            }),
-    }
+pub fn type_name_if_displayable(value: &ExportValue) -> Result<Option<String>, String> {
+    crate::object::types::registry()
+        .type_name(value)
+        .map_err(|error| match error {
+            ExportError::Status(status) => status.message().to_string(),
+            ExportError::Internal(text) => text,
+        })
 }
 
 /// Whether two values of variables are the same object, as Java's `==` on references.
@@ -76,6 +76,15 @@ pub struct Changes {
     /// The error that ended the code, as the text clients are shown. The variables the
     /// code changed before it failed are still listed.
     pub error: Option<String>,
+    /// Why the variables could not be compared: an object type failed to say whether a
+    /// value is its own. No change is listed then, the changes of that look at the
+    /// variables are never told to anyone, and a command that ends so fails as a call,
+    /// though its code ran. Observed on Java 42.9 with a plugin whose `is_type` raises;
+    /// `docs/OBJECTS.md`, "A type that fails".
+    ///
+    /// Behavior: the exception `AbstractScriptSession#applyVariableChangeToDiff` lets out
+    /// of `#observeScopeChanges` and `#evaluateScript`
+    pub failure: Option<String>,
 }
 
 impl Changes {
@@ -89,12 +98,36 @@ impl Changes {
     ///
     /// Behavior: `AbstractScriptSession#applyVariableChangeToDiff`
     pub fn note(&mut self, name: &str, from: Option<&ExportValue>, to: Option<&ExportValue>) {
+        if self.failure.is_some() {
+            return;
+        }
         let variable = |type_name: &str| Variable {
             name: name.to_string(),
             type_name: type_name.to_string(),
         };
-        let from = from.and_then(|value| Some((value, type_name_if_displayable(value)?)));
-        let to = to.and_then(|value| Some((value, type_name_if_displayable(value)?)));
+        fn typed(value: Option<&ExportValue>) -> Result<Option<(&ExportValue, String)>, String> {
+            match value {
+                None => Ok(None),
+                Some(value) => Ok(type_name_if_displayable(value)?.map(|name| (value, name))),
+            }
+        }
+        let both = typed(from).and_then(|from| Ok((from, typed(to)?)));
+        let (from, to) = match both {
+            Ok(both) => both,
+            Err(failure) => {
+                // Java throws: what was noted so far is lost with the rest
+                *self = Changes {
+                    error: self.error.take(),
+                    failure: Some(failure),
+                    ..Default::default()
+                };
+                return;
+            }
+        };
+        let (from, to) = (
+            from.as_ref().map(|(value, name)| (*value, name.as_str())),
+            to.as_ref().map(|(value, name)| (*value, name.as_str())),
+        );
         match (from, to) {
             (None, None) => {}
             (None, Some((_, to_type))) => self.created.push(variable(to_type)),
@@ -305,7 +338,9 @@ impl Console {
     /// As [`Console::evaluate`], for code that a request to `stop` keeps from running or
     /// interrupts.
     pub fn evaluate_stoppable(&self, code: &str, stop: &Arc<Stop>) -> Changes {
-        self.observe();
+        if let Some(failed) = self.observe_before() {
+            return failed;
+        }
         let changes = self.session.evaluate(code, stop);
         self.publish(&changes);
         changes
@@ -317,7 +352,9 @@ impl Console {
     ///
     /// Behavior: `ApplicationFactory#evaluateScripts`
     pub fn evaluate_script(&self, code: &str, application: &Application) -> Changes {
-        self.observe();
+        if let Some(failed) = self.observe_before() {
+            return failed;
+        }
         let changes = self
             .session
             .evaluate_script(code, application, &Stop::new());
@@ -330,7 +367,22 @@ impl Console {
     ///
     /// Behavior: `ScriptSession#observeScopeChanges`
     pub fn observe(&self) {
-        self.publish(&self.session.observe());
+        let changes = self.session.observe();
+        if let Some(failure) = &changes.failure {
+            tracing::error!("the changes of the variables could not be listed: {failure}");
+        }
+        self.publish(&changes);
+    }
+
+    /// The look at the variables that comes before code runs. `Some` if it failed: the
+    /// code then does not run, and this is its outcome.
+    ///
+    /// Behavior: the first `observeScopeChanges` of `AbstractScriptSession#evaluateScript`,
+    /// whose exception ends the method
+    fn observe_before(&self) -> Option<Changes> {
+        let changes = self.session.observe();
+        self.publish(&changes);
+        changes.failure.is_some().then_some(changes)
     }
 
     /// Looks at the variables every `interval`, on the runtime this is called in, for as

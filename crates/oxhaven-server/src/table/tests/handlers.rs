@@ -11,6 +11,7 @@ use oxhaven_proto::grpc::SortDescriptor;
 mod asof;
 mod column_statistics;
 mod head_by;
+mod ide;
 mod multi_join;
 mod range_join;
 mod ungroup;

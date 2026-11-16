@@ -11,6 +11,7 @@ pub mod filter;
 mod flat_select_tests;
 pub mod head_by;
 pub mod hierarchical;
+pub mod ide;
 pub mod join;
 #[cfg(test)]
 mod list_columns;
