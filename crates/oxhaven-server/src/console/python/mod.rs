@@ -53,6 +53,7 @@ mod partitioned;
 mod plugin;
 #[cfg(test)]
 mod plugin_tests;
+mod stream;
 #[cfg(test)]
 mod tests;
 mod udf;
@@ -517,6 +518,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         plugin::register(&native)?;
         checks::register(&native)?;
         appmode::register(&native)?;
+        stream::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
 
         let code = CString::new(BOOTSTRAP).expect("the bootstrap source has no NUL");
