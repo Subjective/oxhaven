@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use arrow::array::AsArray;
-use arrow::array::{ArrayRef, Int64Array, StringArray};
+use arrow::array::{ArrayRef, Int32Array, Int64Array, StringArray, TimestampNanosecondArray};
 use arrow::datatypes::{Int32Type, Int64Type};
 use oxhaven_contracts::graph::{Dependency, UpdateGraph};
 use oxhaven_contracts::rowset::RowSet;
@@ -20,8 +20,8 @@ use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_kafka::{
-    consume, AvroMapping, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, Offsets,
-    ProduceOptions, ProduceSpec, Spec, TableType,
+    consume, AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset,
+    JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec, Spec, TableType,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 use rdkafka::consumer::{BaseConsumer, Consumer};
@@ -669,7 +669,8 @@ fn a_simple_byte_array_column_holds_the_bytes_of_each_value() {
 }
 
 /// A schema registry on this machine that answers the paths it is given and 404 to any
-/// other, as `tests/avro.rs` serves one: the round trip needs no registry image.
+/// other, as `tests/avro.rs` serves one: the round trip needs no registry image. A request
+/// is read to the end of its body, so that a producer's POST is answered.
 fn serve_registry(answers: Vec<(String, String)>) -> String {
     use std::io::{Read, Write};
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -679,7 +680,17 @@ fn serve_registry(answers: Vec<(String, String)>) -> String {
             let Ok(mut stream) = stream else { return };
             let mut request = Vec::new();
             let mut buffer = [0u8; 1024];
-            while !request.windows(4).any(|w| w == b"\r\n\r\n") {
+            loop {
+                if let Some(end) = request.windows(4).position(|w| w == b"\r\n\r\n") {
+                    let head = String::from_utf8_lossy(&request[..end]).to_lowercase();
+                    let length = head
+                        .lines()
+                        .find_map(|line| line.strip_prefix("content-length:"))
+                        .map_or(0, |n| n.trim().parse::<usize>().unwrap());
+                    if request.len() >= end + 4 + length {
+                        break;
+                    }
+                }
                 match stream.read(&mut buffer) {
                     Ok(0) | Err(_) => break,
                     Ok(n) => request.extend_from_slice(&buffer[..n]),
@@ -825,6 +836,18 @@ type Record = (i32, Option<String>, Option<String>);
 /// The partition, key and value of the records of `topic` from its beginning, until
 /// `count` have been read or nothing more came for two seconds; at most twenty seconds.
 fn records_of(topic: &str, count: usize) -> Vec<Record> {
+    let records = timed_records_of(topic, count);
+    let records = records
+        .into_iter()
+        .map(|(partition, _, key, value)| (partition, key, value));
+    records.collect()
+}
+
+/// As [`records_of`], with each record's timestamp in milliseconds.
+fn timed_records_of(
+    topic: &str,
+    count: usize,
+) -> Vec<(i32, Option<i64>, Option<String>, Option<String>)> {
     let consumer: BaseConsumer = ClientConfig::new()
         .set("bootstrap.servers", broker())
         .set("group.id", fresh("reader"))
@@ -843,6 +866,7 @@ fn records_of(topic: &str, count: usize) -> Vec<Record> {
                 let message = message.unwrap();
                 let record = (
                     message.partition(),
+                    message.timestamp().to_millis(),
                     text(message.key()),
                     text(message.payload()),
                 );
@@ -984,5 +1008,165 @@ fn a_partition_or_a_broker_that_is_not_there_times_out() {
              failure: org.apache.kafka.common.errors.TimeoutException: Topic {topic} not \
              present in metadata after 500 ms."
         )
+    );
+}
+
+/// Rows published as Avro records go out in Confluent's wire format, with the id the
+/// registry gives the schema under the topic's subject, and come back through the
+/// consumer (`AvroImpl`, Confluent's `KafkaAvroSerializer`; probes a1, a2).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn avro_records_published_through_a_registry_are_consumed_back() {
+    let topic = fresh("avro_out");
+    let schema = r#"{"type":"record","name":"V","fields":[{"name":"N","type":"long"},{"name":"S","type":["null","string"]}]}"#;
+    let quoted = format!(r#"{{"schema":"{}"}}"#, schema.replace('"', "\\\""));
+    let registry = serve_registry(vec![
+        (
+            "/subjects/v/versions/latest".to_owned(),
+            r#"{"id":3,"version":1}"#.to_owned(),
+        ),
+        (
+            "/schemas/ids/3?fetchMaxId=false&subject=".to_owned(),
+            quoted.clone(),
+        ),
+        (
+            format!("/subjects/{topic}-value/versions?normalize=false"),
+            r#"{"id":9}"#.to_owned(),
+        ),
+        (
+            format!("/subjects/{topic}-value/versions/latest"),
+            r#"{"id":9,"version":1}"#.to_owned(),
+        ),
+        (
+            "/schemas/ids/9?fetchMaxId=false&subject=".to_owned(),
+            quoted.clone(),
+        ),
+        (
+            format!("/schemas/ids/9?fetchMaxId=false&subject={topic}-value"),
+            quoted,
+        ),
+    ]);
+    let table = ReferenceTable::new_static(
+        definition(&[
+            ("K", ColumnType::String),
+            ("N", ColumnType::Long),
+            ("S", ColumnType::String),
+        ]),
+        RowSet::flat(2),
+        vec![
+            texts(&[Some("k1"), Some("k2")]),
+            Arc::new(Int64Array::from(vec![Some(1), Some(2)])),
+            texts(&[Some("a"), None]),
+        ],
+    );
+    let value = ProduceSpec::Avro(AvroProduceSpec {
+        subject: "v".to_owned(),
+        version: Some("latest".to_owned()),
+        ..AvroProduceSpec::default()
+    });
+    let mut published = produce_options(&topic, simple("K"), value);
+    published
+        .config
+        .push(("schema.registry.url".to_owned(), registry.clone()));
+    oxhaven_kafka::produce(table, &published).unwrap();
+    // Zig-zag: N 1 is 2 and 2 is 4; S is branch 1 (2) and "a" of length 1 (2), or branch 0.
+    assert_eq!(
+        records_of(&topic, 2),
+        [
+            (
+                0,
+                Some("k1".to_owned()),
+                Some("\0\0\0\0\x09\x02\x02\x02a".to_owned())
+            ),
+            (
+                0,
+                Some("k2".to_owned()),
+                Some("\0\0\0\0\x09\x04\x00".to_owned())
+            ),
+        ]
+    );
+
+    let consumed = SteppedUpdateGraph::new();
+    let value = Spec::Avro {
+        schema: AvroSchema::Registry {
+            subject: format!("{topic}-value"),
+            version: Some("latest".to_owned()),
+        },
+        mapping: AvroMapping::Direct,
+    };
+    let mut options = options(&topic, BEGINNING, value, TableType::Append);
+    options
+        .config
+        .push(("schema.registry.url".to_owned(), registry));
+    let shared: Arc<dyn UpdateGraph> = consumed.clone();
+    let back = consume(shared, &options).unwrap();
+    wait_for(&consumed, back.as_ref(), 2);
+    let some = |text: &str| Some(text.to_owned());
+    assert_eq!(strings(back.as_ref(), "K"), [some("k1"), some("k2")]);
+    assert_eq!(longs(back.as_ref(), "N"), [Some(1), Some(2)]);
+    assert_eq!(strings(back.as_ref(), "S"), [some("a"), None]);
+}
+
+/// A record's topic, partition and timestamp come from its row's columns, and a null cell
+/// takes the call's topic, the key's partition and the time of sending (`PublishToKafka`;
+/// probes c1, c2: a timestamp is the column's nanoseconds truncated to milliseconds).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn records_take_their_topic_partition_and_timestamp_from_columns() {
+    let run = fresh("columns");
+    let other = format!("{run}_other");
+    let keys = [format!("{run}_a"), format!("{run}_b")];
+    let table = ReferenceTable::new_static(
+        definition(&[
+            ("Top", ColumnType::String),
+            ("P", ColumnType::Int),
+            ("T", ColumnType::Instant),
+            ("K", ColumnType::String),
+            ("V", ColumnType::String),
+        ]),
+        RowSet::flat(2),
+        vec![
+            texts(&[None, Some(&other)]),
+            Arc::new(Int32Array::from(vec![Some(1), None])),
+            Arc::new(
+                TimestampNanosecondArray::from(vec![Some(1_704_164_645_123_999_999), None])
+                    .with_timezone("UTC"),
+            ),
+            texts(&[Some(&keys[0]), Some(&keys[1])]),
+            texts(&[Some("va"), Some("vb")]),
+        ],
+    );
+    // tests/broker.sh creates this topic with two partitions.
+    let mut options = produce_options("oxhaven_produce_two", simple("K"), simple("V"));
+    options.topic_column = Some("Top".to_owned());
+    options.partition_column = Some("P".to_owned());
+    options.timestamp_column = Some("T".to_owned());
+    let before = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH);
+    let before = before.unwrap().as_millis() as i64;
+    oxhaven_kafka::produce(table, &options).unwrap();
+
+    let first = timed_records_of("oxhaven_produce_two", usize::MAX);
+    let first = first
+        .iter()
+        .find(|record| record.2.as_deref() == Some(&keys[0]));
+    assert_eq!(
+        first,
+        Some(&(
+            1,
+            Some(1_704_164_645_123),
+            Some(keys[0].clone()),
+            Some("va".to_owned())
+        ))
+    );
+    let second = timed_records_of(&other, 1);
+    assert_eq!(second.len(), 1, "{second:?}");
+    let (partition, timestamp, key, value) = second[0].clone();
+    assert_eq!(
+        (partition, key, value),
+        (0, Some(keys[1].clone()), Some("vb".to_owned()))
+    );
+    assert!(
+        timestamp.is_some_and(|t| t >= before),
+        "{timestamp:?} is before {before}"
     );
 }
