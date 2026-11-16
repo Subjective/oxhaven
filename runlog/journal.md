@@ -1104,3 +1104,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T15:51Z: task 5.11 came back complete in 64 minutes and 123k tokens, the cheapest full task of the day: four independent small items in one crate suit one agent well. Opened pull request 132. Owner items: boxed arrays need a contract column type; whole-number instants wrap silently as in Java.
 
 - 2026-11-16T15:53Z: merged pull request 131 (Kafka Avro produce and column options) on seven green checks; started task 7.4.8 (Kafka Protobuf specs) from the merged main.
+
+- 2026-11-16T15:57Z: merged pull request 132 (four formula gaps) on seven green checks. PR 131 merged between its CI run and its merge, but 131 touched only Kafka files and the merge was clean.
