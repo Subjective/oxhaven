@@ -1,0 +1,9 @@
+java-rejects	update	new DiscretizedRangeEqual(0, 10, 5).index(V)	constructor new DiscretizedRangeEqual()
+java-rejects	update	new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5).min	field access .min
+java-rejects	update	new io.deephaven.plot.datasets.histogram.Nope(0, 10, 5).index(V)	constructor new io.deephaven.plot.datasets.histogram.Nope()
+java-accepts	update	new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5).equals(new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5))	method call .equals() on a value of an array type
+java-accepts	update	new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5) == new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5)	operator == on Array(Double) and Array(Double)
+java-accepts	update	new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5).hashCode() * 0	method call .hashCode() on a value of an array type
+java-accepts	update	new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5).toString().length() > 0	method call .toString() on a value of an array type
+java-accepts	update	((io.deephaven.plot.datasets.histogram.DiscretizedRange) new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(0, 10, 5)).index(V)	cast to io.deephaven.plot.datasets.histogram.DiscretizedRange
+java-fails	update	((io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual) null).index(V)	cast to io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual

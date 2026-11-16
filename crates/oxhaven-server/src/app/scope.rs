@@ -54,9 +54,45 @@ pub enum FormulaValue {
     Long(i64),
     Double(f64),
     String(String),
+    /// A `java.time.Instant`, as `deephaven.time.to_j_instant` makes one: nanoseconds
+    /// since the epoch. Java's parser treats such a variable as it treats an instant
+    /// literal, which it also reads from a variable (`TimeLiteralReplacedExpression`);
+    /// Java 42.9 gave the same answer for either in every formula tried.
+    Instant(i64),
+    /// A value that is no value of a formula and whose items are, when a cast says of
+    /// which type: `(String) name[index]`, or `name.get(index)` for the same. The words
+    /// are for it, such as `a Python list`. A [`ScopedCompiler`] that reads items
+    /// compiles the three together as a call of the function [`item_function`] names,
+    /// which the functions of its language have; every other use of the variable is
+    /// refused as for [`FormulaValue::Other`].
+    ///
+    /// Behavior: `org.jpy.PyListWrapper#get(int)` and `org.jpy.PyDictWrapper#get(Object)`,
+    /// which give a `org.jpy.PyObject`, and the casts of one in
+    /// `QueryLanguageParser#visit(CastExpr)`
+    Items(String),
     /// A value of a kind formulas cannot hold here, with words for it, such as
-    /// `a Python list`.
+    /// `a Python tuple`.
     Other(String),
+}
+
+/// The casts of an item that are computed, by the name Java has for the type.
+const ITEM_CASTS: [(ColumnType, &str); 4] = [
+    (ColumnType::Int, "int"),
+    (ColumnType::Long, "long"),
+    (ColumnType::Double, "double"),
+    (ColumnType::String, "String"),
+];
+
+/// The name of the function that reads an item of the variable `variable` as the type a
+/// cast named `cast` in Java gives. No formula can call a function of such a name.
+pub fn item_function(cast: &str, variable: &str) -> String {
+    format!("({cast}) {variable}[]")
+}
+
+/// The cast and the variable of a name [`item_function`] made.
+pub fn item_function_parts(function: &str) -> Option<(&str, &str)> {
+    let (cast, variable) = function.strip_prefix('(')?.split_once(") ")?;
+    Some((cast, variable.strip_suffix("[]")?))
 }
 
 /// The one holder of the variables of a server that has a script session.
@@ -403,11 +439,23 @@ impl TicketResolver for ScopeTicketResolver {
 pub struct ScopedCompiler {
     inner: Arc<dyn FormulaCompiler>,
     scope: Arc<Scope>,
+    items: bool,
 }
 
 impl ScopedCompiler {
     pub fn new(inner: Arc<dyn FormulaCompiler>, scope: Arc<Scope>) -> Self {
-        Self { inner, scope }
+        Self {
+            inner,
+            scope,
+            items: false,
+        }
+    }
+
+    /// The compiler, reading the items of a [`FormulaValue::Items`]: `inner` has the
+    /// functions [`item_function`] names.
+    pub fn reading_items(mut self) -> Self {
+        self.items = true;
+        self
     }
 }
 
@@ -467,7 +515,11 @@ impl FormulaValue {
             FormulaValue::Int(_) => Some(ColumnType::Int),
             FormulaValue::Long(_) => Some(ColumnType::Long),
             FormulaValue::Double(_) => Some(ColumnType::Double),
-            FormulaValue::Boolean(_) | FormulaValue::String(_) | FormulaValue::Other(_) => None,
+            FormulaValue::Boolean(_)
+            | FormulaValue::String(_)
+            | FormulaValue::Instant(_)
+            | FormulaValue::Items(_)
+            | FormulaValue::Other(_) => None,
         }
     }
 
@@ -481,7 +533,8 @@ impl FormulaValue {
             FormulaValue::Long(_) => "java.lang.Long",
             FormulaValue::Double(_) => "java.lang.Double",
             FormulaValue::String(_) => "java.lang.String",
-            FormulaValue::Other(what) => what,
+            FormulaValue::Instant(_) => "java.time.Instant",
+            FormulaValue::Items(what) | FormulaValue::Other(what) => what,
         }
     }
 
@@ -493,7 +546,12 @@ impl FormulaValue {
             FormulaValue::Int(value) => *value == i32::MIN,
             FormulaValue::Long(value) => *value == i64::MIN,
             FormulaValue::Double(value) => *value == -f64::MAX,
-            FormulaValue::Boolean(_) | FormulaValue::String(_) | FormulaValue::Other(_) => false,
+            // a column holds an instant as its nanoseconds
+            FormulaValue::Instant(nanos) => *nanos == i64::MIN,
+            FormulaValue::Boolean(_)
+            | FormulaValue::String(_)
+            | FormulaValue::Items(_)
+            | FormulaValue::Other(_) => false,
         }
     }
 }
@@ -520,6 +578,8 @@ struct Substitution<'a> {
     byte_argument: ColumnType,
     /// Whether a `Byte` variable was an argument of a call.
     byte_arguments: Cell<bool>,
+    /// Whether the items of a [`FormulaValue::Items`] are read.
+    items: bool,
 }
 
 impl Substitution<'_> {
@@ -554,12 +614,48 @@ impl Substitution<'_> {
             FormulaValue::Long(value) => Expr::Literal(Literal::Long(*value)),
             FormulaValue::Double(value) => Expr::Literal(Literal::Double(*value)),
             FormulaValue::String(value) => Expr::Literal(Literal::String(value.clone())),
-            FormulaValue::Other(what) => {
+            FormulaValue::Instant(nanos) => Expr::Literal(Literal::Instant(*nanos)),
+            FormulaValue::Items(what) | FormulaValue::Other(what) => {
                 return Err(unsupported(format!(
                     "query scope variable {name}, which holds {what}"
                 )))
             }
         })
+    }
+
+    /// The call that reads an item, if `operand`, the operand of a cast to `to`, is an
+    /// item of a variable whose items are read: `name[index]` or `name.get(index)`.
+    ///
+    /// Java computes more with an item than the casts of [`ITEM_CASTS`]: a cast to
+    /// another primitive type or to `Boolean`, `isNull` of it, and a column of
+    /// `org.jpy.PyObject` where there is no cast. Those are refused.
+    fn item(&self, to: &ColumnType, operand: &Expr) -> Result<Option<Expr>, FormulaError> {
+        let Expr::MethodCall {
+            receiver,
+            method,
+            arguments,
+        } = operand
+        else {
+            return Ok(None);
+        };
+        let Some((name, FormulaValue::Items(what))) = self.variable(receiver) else {
+            return Ok(None);
+        };
+        // `[]` is the method the parser gives an index
+        if !self.items || !matches!(method.as_str(), "[]" | "get") || arguments.len() != 1 {
+            return Ok(None);
+        }
+        let Some((_, cast)) = ITEM_CASTS.iter().find(|(column_type, _)| column_type == to) else {
+            return Err(unsupported(format!(
+                "a cast to {} of an item of the query scope variable {name}, which holds \
+                 {what}: not ported: org.jpy.PyObject",
+                java_primitive_name(to)
+            )));
+        };
+        Ok(Some(Expr::Call {
+            function: item_function(cast, name),
+            arguments: self.arguments(arguments)?,
+        }))
     }
 
     /// The arguments of a call. A `Byte` variable among them is given the type
@@ -611,6 +707,9 @@ impl Substitution<'_> {
                 }
             }
             Expr::Cast { to, operand } => {
+                if let Some(item) = self.item(to, operand)? {
+                    return Ok(item);
+                }
                 if let Some((_, value)) = self.variable(operand) {
                     if let (Some(from), Some(target)) =
                         (value.number_type().as_ref().and_then(width), width(to))
@@ -667,7 +766,13 @@ impl Substitution<'_> {
                 arguments,
             } => {
                 if let Some((name, value)) = self.variable(receiver) {
-                    if !matches!(value, FormulaValue::String(_) | FormulaValue::Other(_)) {
+                    if !matches!(
+                        value,
+                        FormulaValue::String(_)
+                            | FormulaValue::Instant(_)
+                            | FormulaValue::Items(_)
+                            | FormulaValue::Other(_)
+                    ) {
                         return Err(unsupported(format!(
                             "method {method} of the query scope variable {name}, a {}",
                             value.class_name()
@@ -780,6 +885,7 @@ impl Substitution<'_> {
             (ColumnType::Float, FormulaValue::Double(value)) => f64::from(*value as f32) == *value,
             (ColumnType::String, FormulaValue::String(_)) => true,
             (ColumnType::Boolean, FormulaValue::Boolean(_)) => true,
+            (ColumnType::Instant, FormulaValue::Instant(_)) => true,
             _ => false,
         };
         if unchanged {
@@ -849,6 +955,7 @@ impl FormulaCompiler for ScopedCompiler {
             values,
             byte_argument: ColumnType::Byte,
             byte_arguments: Cell::new(false),
+            items: self.items,
         };
         substitution.check_filter_comparison(expr)?;
         let formula = self
@@ -1092,6 +1199,100 @@ mod tests {
         }
     }
 
+    /// The functions of a language that reads the items of `items` as an `int`: ten times
+    /// the index.
+    struct Tens;
+
+    impl oxhaven_expr::ExternalFunction for Tens {
+        fn result_type(&self) -> &ColumnType {
+            &ColumnType::Int
+        }
+
+        fn call(
+            &self,
+            arguments: &[arrow::array::ArrayRef],
+            _rows: usize,
+        ) -> Result<arrow::array::ArrayRef, oxhaven_contracts::table::TableFailure> {
+            use arrow::array::AsArray;
+            let keys = arguments[0].as_primitive::<arrow::datatypes::Int32Type>();
+            let tens: Int32Array = keys.iter().map(|key| key.map(|key| key * 10)).collect();
+            Ok(Arc::new(tens))
+        }
+    }
+
+    impl oxhaven_expr::ExternalFunctions for Tens {
+        fn resolve(
+            &self,
+            name: &str,
+            _arguments: &[oxhaven_expr::ExternalArgument<'_>],
+        ) -> Option<Result<Arc<dyn oxhaven_expr::ExternalFunction>, FormulaError>> {
+            (item_function_parts(name) == Some(("int", "items"))).then(|| Ok(Arc::new(Tens) as _))
+        }
+    }
+
+    #[test]
+    fn the_items_of_a_variable_are_read_by_a_function_of_the_language_under_a_cast() {
+        let mut holder = variables();
+        let list = FormulaValue::Items("a Python list".to_string());
+        holder.values.insert("items", list);
+        let scope = Scope::new();
+        scope.hold(Arc::new(holder));
+        let language = Arc::new(oxhaven_expr::Compiler::with_functions(Arc::new(Tens)));
+        let reading = ScopedCompiler::new(language.clone(), scope.clone()).reading_items();
+        for (text, expected) in [
+            ("(int) items[X]", "Int 10"),
+            ("(int) items.get(X) + 1", "Int 11"),
+            // a variable as the index, and an item as the index of another
+            ("(int) items[xint]", "Int 1000000"),
+            ("(int) items[(int) items[X]]", "Int 100"),
+            ("(long) (int) items[X]", "Long 10"),
+        ] {
+            assert_eq!(value(&reading, text), expected, "{text}");
+        }
+        for (text, problem) in [
+            // Java makes a column of `org.jpy.PyObject` of the first and computes the rest
+            (
+                "items[X]",
+                "query scope variable items, which holds a Python list",
+            ),
+            (
+                "items",
+                "query scope variable items, which holds a Python list",
+            ),
+            (
+                "items.size()",
+                "query scope variable items, which holds a Python list",
+            ),
+            (
+                "(int) items.get(X, 1)",
+                "query scope variable items, which holds a Python list",
+            ),
+            (
+                "(short) items[X]",
+                "a cast to short of an item of the query scope variable items",
+            ),
+        ] {
+            match compile(&reading, text) {
+                Err(FormulaError::Unsupported(message)) => {
+                    assert!(message.contains(problem), "{text}: {message}")
+                }
+                other => panic!(
+                    "{text}: {:?}",
+                    other.map(|formula| formula.result_type().clone())
+                ),
+            }
+        }
+        // a compiler that was not told to read items refuses the variable, whatever its
+        // language has: a client's formula is compiled so
+        let client = ScopedCompiler::new(language, scope);
+        assert!(matches!(
+            compile(&client, "(int) items[X]"),
+            Err(FormulaError::Unsupported(message)) if message.contains("which holds a Python list")
+        ));
+        assert_eq!(item_function("int", "items"), "(int) items[]");
+        assert_eq!(item_function_parts("f"), None);
+    }
+
     #[test]
     fn what_java_computes_by_rules_that_are_not_ported_is_unsupported() {
         let compiler = compiler(variables());
@@ -1139,6 +1340,77 @@ mod tests {
             ("X + 1 > xf", "Boolean true"),
         ] {
             assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+    }
+
+    /// What Java 42.9 answered with `bt = to_j_instant("2024-03-01T00:00:00Z")` and
+    /// `base = to_j_instant("1936-01-01T08:00:00 ET")` among the globals, for the second
+    /// row of a table; the formulas are those of the example data of
+    /// `deephaven.plot.express` and their relatives.
+    #[test]
+    fn an_instant_variable_computes_as_an_instant_literal() {
+        let mut holder = variables();
+        let bt = 1_709_251_200_000_000_000;
+        let base = -1_072_954_800_000_000_000;
+        holder.values.insert("bt", FormulaValue::Instant(bt));
+        holder.values.insert("base", FormulaValue::Instant(base));
+        holder
+            .values
+            .insert("tmin", FormulaValue::Instant(i64::MIN));
+        holder.values.insert(
+            "early",
+            FormulaValue::Other("a java.time.Instant outside the years a column holds".to_string()),
+        );
+        let compiler = compiler(holder);
+        // an instant, as its nanoseconds
+        for (text, expected) in [
+            ("bt", bt),
+            ("base", base),
+            ("base + (long)((ii + 5) * SECOND)", base + 6_000_000_000),
+            ("base + ii * SECOND", base + 1_000_000_000),
+            ("base + (long)(ii * SECOND / 2)", base + 500_000_000),
+            ("bt + i", bt + 1),
+            ("bt - 5", bt - 5),
+            ("i == 0 ? bt : base", base),
+            ("i == 1 ? bt : null", bt),
+            ("(Instant) bt", bt),
+        ] {
+            let formula = compile(&compiler, text).unwrap_or_else(|e| panic!("{text}: {e}"));
+            assert_eq!(*formula.result_type(), ColumnType::Instant, "{text}");
+            let nanos = format!("epochNanos({text})");
+            assert_eq!(
+                value(&compiler, &nanos),
+                format!("Long {expected}"),
+                "{text}"
+            );
+        }
+        for (text, expected) in [
+            ("bt - base", "Long 2782206000000000000"),
+            ("(bt - base) / DAY", "Double 32201.458333333332"),
+            ("epochMillis(base)", "Long -1072954800000"),
+            ("isNull(bt)", "Boolean false"),
+            ("bt.getEpochSecond()", "Long 1709251200"),
+            ("bt.toString()", "String 2024-03-01T00:00:00Z"),
+            ("`x` + bt", "String x2024-03-01T00:00:00Z"),
+            ("bt == base", "Boolean false"),
+            ("bt >= bt", "Boolean true"),
+            ("base < bt", "Boolean true"),
+        ] {
+            assert_eq!(value(&compiler, text), expected, "{text}");
+        }
+        // Java finds no method for these
+        for text in ["5L + bt", "bt + 1.5", "bt + base", "-bt"] {
+            assert!(
+                matches!(compile(&compiler, text), Err(FormulaError::Type(_))),
+                "{text}"
+            );
+        }
+        // an instant no column holds, and the one a column reads as null
+        for text in ["early", "early + 1", "tmin", "tmin + 1"] {
+            assert!(
+                matches!(compile(&compiler, text), Err(FormulaError::Unsupported(_))),
+                "{text}"
+            );
         }
     }
 

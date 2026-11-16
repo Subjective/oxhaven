@@ -596,6 +596,195 @@ async fn a_formula_names_python_variables_with_the_types_java_gives_them() {
     assert!(python.server.state.scope.get("bad").is_none());
 }
 
+/// What Java 42.9 answered for the same script; `iris`, `stocks`, `fish_market` and
+/// `outages` of `deephaven.plot.express.data` name such a variable.
+#[tokio::test]
+async fn a_formula_names_an_instant_of_the_scope() {
+    let python = Python::start().await;
+    python.run(
+        "from deephaven import empty_table\n\
+         from deephaven.time import to_j_instant\n\
+         base_time = to_j_instant('1936-01-01T08:00:00 ET')\n\
+         bt = to_j_instant('2024-03-01T00:00:00Z')\n\
+         t = empty_table(3).update(['Index = ii', 'T = bt + (ii - 1) * SECOND'])\n\
+         r = t.update(['Timestamp = base_time + (long)((Index + 5) * SECOND)', \
+         'D = bt - T']).view(['N = epochNanos(Timestamp)', 'D', 'S = Timestamp.toString()'])\n\
+         w = t.where('T > bt').view('Index')\n\
+         w2 = t.where('bt >= T').view('Index')",
+    );
+    assert_eq!(
+        described(&python, "r"),
+        [
+            "N: Long = -1072954795000000000, -1072954794000000000, -1072954793000000000",
+            "D: Long = 1000000000, 0, -1000000000",
+            "S: String = 1936-01-01T13:00:05Z, 1936-01-01T13:00:06Z, 1936-01-01T13:00:07Z",
+        ]
+    );
+    assert_eq!(described(&python, "w"), ["Index: Long = 2"]);
+    assert_eq!(described(&python, "w2"), ["Index: Long = 0, 1"]);
+
+    // an instant that no column holds: Java gives a column another instant for the first
+    // and fails for the second (`DateTimeUtils#epochNanos`)
+    for name in ["1600-01-01T00:00:00Z", "2300-01-01T00:00:00Z"] {
+        let code = format!("far = to_j_instant('{name}')\nbad = t.update('Y = far')");
+        let error = python.console.evaluate(&code).error.unwrap_or_default();
+        assert!(
+            error.contains("io.deephaven.time.DateTimeUtils#epochNanos"),
+            "{name}: {error}"
+        );
+    }
+    // a Python time value is no instant in Java either (`org.jpy.PyObject`)
+    let error = python
+        .console
+        .evaluate("import datetime\nnow = datetime.datetime.now()\nbad = t.update('Y = now + 1')")
+        .error
+        .unwrap_or_default();
+    assert!(error.contains("which holds a Python datetime"), "{error}");
+}
+
+/// What Java 42.9 answered for the same script; `iris` and `stocks` of
+/// `deephaven.plot.express.data` read a list and a dict so.
+#[tokio::test]
+async fn a_formula_reads_the_items_of_a_list_and_a_dict_with_a_cast() {
+    let python = Python::start().await;
+    python.run(
+        "from deephaven import empty_table, new_table\n\
+         from deephaven.column import string_col, int_col, long_col, char_col, double_col, bool_col\n\
+         from deephaven.constants import NULL_INT, NULL_LONG\n\
+         species = ['setosa', 'versicolor', 'virginica']\n\
+         sym = {'CAT': 0, 'DOG': 1, 'FISH': 2}\n\
+         nones = [None, 7, -2147483648]\n\
+         wide = [2**31, -1, 2**40, True]\n\
+         reals = [1.5, 2, True, 2**64 + 5]\n\
+         keys = {1: 'one', 2: 'two', -2147483648: 'nullint', 5: 'five', None: 'none', 2.5: 'half'}\n\
+         t = new_table([string_col('Sym', ['CAT', 'DOG', 'FISH', 'BIRD', None]), \
+         int_col('I', [0, 1, 2, 3, NULL_INT]), long_col('L', [0, 1, 2, 5, NULL_LONG]), \
+         char_col('Ch', [0, 1, 2, 0, 1]), double_col('Do', [1.0, 2.5, 1.0, 2.5, 1.0]), \
+         bool_col('Bo', [True, False, None, True, False])])\n\
+         e = empty_table(4)\n\
+         iris = empty_table(6).update('Species = (String)species[(int)new Random(ii).nextInt(3)]')\n\
+         lists = t.head(3).view(['A = (String) species[I]', 'B = (String) species.get(Ch)', \
+         'C = (String) species[-1]', 'D = (String) species[(int) sym[Sym]]', \
+         'E = ((String) species[I]).length()'])\n\
+         casts = e.view(['A = (int) nones[i % 3]', 'B = (long) nones[i % 3]', \
+         'C = (double) nones[i % 3]', 'D = (int) wide[i]', 'E = (long) wide[i]', \
+         'F = (double) reals[i]'])\n\
+         dicts = t.view(['A = (int) sym[Sym]', 'B = (long) sym.get(Sym)', 'C = (double) sym[Sym]', \
+         'D = (String) keys[I]', 'E = (String) keys[L]', 'F = (String) keys[Ch]', \
+         'G = (String) keys[Do]', 'H = (String) keys[Bo]', 'J = (String) keys[Sym]', \
+         'K = I > 1 ? (int) sym[Sym] : 7', 'M = (int) sym[Sym] + 1'])\n\
+         kept = t.where('(int) sym[Sym] == 1').view('Sym')\n\
+         def local():\n\
+         \x20   mine = ['p', 'q']\n\
+         \x20   return empty_table(2).update('X = (String) mine[i]')\n\
+         inside = local()\n\
+         later = ['a', 'b']\n\
+         live = empty_table(2).view('X = (String) later[i]')\n\
+         still = empty_table(2).update('X = (String) later[i]')\n\
+         later[0] = 'changed'",
+    );
+    assert_eq!(
+        described(&python, "iris"),
+        ["Species: String = setosa, setosa, versicolor, virginica, virginica, virginica"]
+    );
+    assert_eq!(
+        described(&python, "lists"),
+        [
+            "A: String = setosa, versicolor, virginica",
+            "B: String = setosa, versicolor, virginica",
+            "C: String = virginica, virginica, virginica",
+            "D: String = setosa, versicolor, virginica",
+            "E: Int = 6, 10, 9",
+        ]
+    );
+    // `None` is null, an `int` is the low 32 bits of the number, and the number Java
+    // reserves for null is null
+    assert_eq!(
+        described(&python, "casts"),
+        [
+            "A: Int = , 7, , ",
+            "B: Long = , 7, -2147483648, ",
+            "C: Double = , 7.0, -2147483648.0, ",
+            "D: Int = , -1, 0, 1",
+            "E: Long = 2147483648, -1, 1099511627776, 1",
+            "F: Double = 1.5, 2.0, 1.0, 1.8446744073709552e19",
+        ]
+    );
+    // a key the dict has not is null; a null `String` or `Boolean` is the key `None`, a
+    // null number the number Java reserves for null
+    assert_eq!(
+        described(&python, "dicts"),
+        [
+            "A: Int = 0, 1, 2, , ",
+            "B: Long = 0, 1, 2, , ",
+            "C: Double = 0.0, 1.0, 2.0, , ",
+            "D: String = , one, two, , nullint",
+            "E: String = , one, two, five, ",
+            "F: String = , one, two, , one",
+            "G: String = one, half, one, half, one",
+            "H: String = one, , none, one, ",
+            "J: String = , , , , none",
+            "K: Int = 7, 7, 2, , 7",
+            "M: Int = 1, 2, 3, , ",
+        ]
+    );
+    assert_eq!(described(&python, "kept"), ["Sym: String = DOG"]);
+    assert_eq!(described(&python, "inside"), ["X: String = p, q"]);
+    // the list is read where a row is computed, not where the formula was made
+    assert_eq!(described(&python, "live"), ["X: String = changed, b"]);
+    assert_eq!(described(&python, "still"), ["X: String = a, b"]);
+
+    for (formula, problem) in [
+        // the errors are Python's, as in Java
+        ("(String) species[I]", "IndexError: list index out of range"),
+        ("(String) species[3]", "IndexError: list index out of range"),
+        (
+            "(String) nones[1]",
+            "TypeError: bad argument type for built-in operation",
+        ),
+        (
+            "(int) species[1]",
+            "TypeError: 'str' object cannot be interpreted as an integer",
+        ),
+        (
+            "(int) reals[0]",
+            "TypeError: 'float' object cannot be interpreted as an integer",
+        ),
+        (
+            "(double) species[1]",
+            "TypeError: must be real number, not str",
+        ),
+        (
+            "(long) reals[3]",
+            "OverflowError: Python int too large to convert to C long",
+        ),
+        (
+            "(int) reals[3]",
+            "OverflowError: Python int too large to convert to C long",
+        ),
+        // what Java does not compile
+        (
+            "(String) species[L]",
+            "Cannot find method get(long) in class org.jpy.PyListWrapper",
+        ),
+        (
+            "(String) species[Do]",
+            "Cannot find method get(double) in class org.jpy.PyListWrapper",
+        ),
+        // what Java computes and is refused here
+        ("(float) reals[0]", "not ported: org.jpy.PyObject"),
+        ("(Boolean) wide[3]", "not ported: org.jpy.PyObject"),
+        ("species[0]", "which holds a Python list"),
+        ("species.size()", "which holds a Python list"),
+        ("sym.containsKey(Sym)", "which holds a Python dict"),
+        ("isNull(sym[Sym])", "which holds a Python dict"),
+    ] {
+        let code = format!("bad = t.update('Y = {formula}')");
+        let error = python.console.evaluate(&code).error.unwrap_or_default();
+        assert!(error.contains(problem), "{formula}: {error}");
+    }
+}
+
 #[tokio::test]
 async fn a_formula_called_in_a_function_names_its_locals_then_the_globals() {
     let python = Python::start().await;

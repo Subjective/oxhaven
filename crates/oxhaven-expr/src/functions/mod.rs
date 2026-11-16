@@ -24,6 +24,8 @@
 mod classes;
 pub(crate) mod eval;
 mod names;
+pub(crate) mod random;
+pub(crate) mod range;
 pub(crate) mod statics;
 pub(crate) mod vectors;
 pub(crate) mod volatile;
@@ -499,6 +501,11 @@ pub(crate) enum Kernel {
     Zoned(ZonedField, crate::parse::instant::Zone),
     /// `compareTo` of two numbers.
     CompareTo,
+    /// The constructor or a method of `DiscretizedRangeEqual`; a method's first argument
+    /// is the range.
+    Range(range::RangeFn),
+    /// `new Random(seed).nextInt(bound)` of `java.util.Random`, of the seed and the bound.
+    RandomNextInt,
 }
 
 impl Kernel {
