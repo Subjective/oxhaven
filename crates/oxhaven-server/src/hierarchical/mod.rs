@@ -167,8 +167,9 @@ fn spec_description(spec: &AggSpec) -> Option<String> {
                 ""
             }
         ),
-        AggSpec::WeightedAvg { weight } => format!("average weighted by {weight}"),
-        AggSpec::WeightedSum { weight } => format!("sum weighted by {weight}"),
+        // Java appends the weight's `ColumnName`, whose text is `ColumnName(W)`.
+        AggSpec::WeightedAvg { weight } => format!("average weighted by ColumnName({weight})"),
+        AggSpec::WeightedSum { weight } => format!("sum weighted by ColumnName({weight})"),
         AggSpec::SortedFirst { columns } => format!("first sorted by {}", columns.join(", ")),
         AggSpec::SortedLast { columns } => format!("last sorted by {}", columns.join(", ")),
         // a rollup has none of these

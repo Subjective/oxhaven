@@ -7,6 +7,7 @@ use super::{
 };
 use crate::ops::agg::{aggregate, aggregate_with, AggSpec, Aggregation};
 use crate::ops::partitioned::{partition_by, tables_of, PartitionedTable};
+use crate::ops::select::drop_columns;
 use arrow::array::{ArrayRef, AsArray};
 use arrow::datatypes::Int32Type;
 use oxhaven_contracts::expr::FormulaCompiler;
@@ -63,6 +64,71 @@ fn refused_by_java(aggregation: &Aggregation) -> Option<&'static str> {
     }
 }
 
+/// What Java's way of making the coarser levels, aggregating the finer ones again, refuses
+/// or answers differently from aggregating the source, which is how the levels are made
+/// here.
+///
+/// A coarser level has a null column for every group-by column it does not group by, and
+/// Java counts those among the outputs: an aggregation's output of such a name is a
+/// duplicate. And Java sorts the rows of a finer level for a sorted first or last by that
+/// level's columns of the sort columns' names: it fails when there is none
+/// (`NoSuchColumnException`), and where there is one that is not the sort column's own
+/// values the result is another. Only a sort column that the aggregation itself carries
+/// under its own name gives what the source gives; the rest is refused until it is ruled
+/// whether Java's answers are to be reproduced.
+///
+/// Behavior: the constructor of io.deephaven.engine.table.impl.by.AggregationProcessor
+/// (`RollupAggregationOutputs`), and
+/// AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator
+fn check_reaggregation(
+    aggregations: &[Aggregation],
+    group_by: &[&str],
+) -> Result<(), HierarchicalError> {
+    let mut duplicates = Vec::new();
+    for (index, key) in group_by.iter().enumerate() {
+        if group_by[..index].contains(key) {
+            continue;
+        }
+        let outputs = aggregations.iter().map(|aggregation| match aggregation {
+            Aggregation::Columns { pairs, .. } => {
+                pairs.iter().filter(|pair| pair.output == *key).count()
+            }
+            Aggregation::Count { column } => usize::from(column == key),
+            _ => 0,
+        });
+        let used = outputs.sum::<usize>() + group_by.iter().filter(|other| *other == key).count();
+        if used > 1 {
+            duplicates.push(format!("{key} used {used} times"));
+        }
+    }
+    if !duplicates.is_empty() {
+        return Err(HierarchicalError::IllegalArgument(format!(
+            "Duplicate output columns found: {}",
+            duplicates.join(", ")
+        )));
+    }
+    for aggregation in aggregations {
+        let Aggregation::Columns { spec, pairs } = aggregation else {
+            continue;
+        };
+        let (AggSpec::SortedFirst { columns } | AggSpec::SortedLast { columns }) = spec else {
+            continue;
+        };
+        let carried = |column: &String| {
+            pairs
+                .iter()
+                .any(|pair| pair.output == *column && pair.input == *column)
+        };
+        if !columns.iter().all(carried) {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator",
+                "a sorted first or last in a rollup with group-by columns, sorted by a column that is not one of its own results"
+            );
+        }
+    }
+    Ok(())
+}
+
 /// `source` rolled up by `group_by` with `aggregations`. `compiler` compiles what the
 /// aggregations hold of formulas.
 ///
@@ -100,6 +166,9 @@ pub fn rollup(
             _ => {}
         }
     }
+    if !group_by.is_empty() {
+        check_reaggregation(aggregations, group_by)?;
+    }
     if include_constituents {
         oxhaven_contracts::unported!(
             "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup",
@@ -112,9 +181,28 @@ pub fn rollup(
             "a rollup of a blink table"
         );
     }
-    let level = |keys: &[&str]| match compiler {
-        Some(compiler) => aggregate_with(source, aggregations, false, keys, compiler),
-        None => aggregate(source, aggregations, false, keys),
+    // A rollup without aggregations has the group-by columns alone: its levels are counted,
+    // which an aggregation without aggregations cannot be, and the count is left out.
+    let mut hidden = "__ROLLUP_ROWS__".to_string();
+    while source.definition().index_of(&hidden).is_some() {
+        hidden.push('_');
+    }
+    let counted = [Aggregation::count(hidden.clone())];
+    let (aggregated, hidden) = if aggregations.is_empty() {
+        (&counted[..], Some(hidden))
+    } else {
+        (aggregations, None)
+    };
+    let level = |keys: &[&str]| -> Result<Arc<dyn Table>, HierarchicalError> {
+        let level = match compiler {
+            Some(compiler) => aggregate_with(source, aggregated, false, keys, compiler),
+            None => aggregate(source, aggregated, false, keys),
+        }?;
+        match &hidden {
+            Some(hidden) => drop_columns(&level, &[hidden])
+                .map_err(|error| HierarchicalError::IllegalArgument(error.to_string())),
+            None => Ok(level),
+        }
     };
     let levels = (0..=group_by.len())
         .map(|depth| level(&group_by[..depth]))
@@ -225,9 +313,16 @@ impl Hierarchy for RollupTable {
                 })
         };
         let rows = key_table.row_set();
-        let depths = key_table
-            .column(column(DEPTH_COLUMN_NAME, &ColumnType::Int)?)
-            .chunk(&rows)?;
+        let depth_column = column(DEPTH_COLUMN_NAME, &ColumnType::Int)?;
+        // Java asks the key table for every group-by column, of the rollup's type.
+        // Behavior: RollupTableImpl#makeNodeKeySource
+        let key_columns = self
+            .group_by
+            .iter()
+            .enumerate()
+            .map(|(index, name)| column(name, &self.columns.columns()[2 + index].column_type))
+            .collect::<Result<Vec<_>, _>>()?;
+        let depths = key_table.column(depth_column).chunk(&rows)?;
         let depths = depths
             .as_primitive_opt::<Int32Type>()
             .ok_or_else(|| super::failure("the depth column of a key table is not int"))?;
@@ -240,11 +335,8 @@ impl Hierarchy for RollupTable {
             .unwrap_or(0)
             .clamp(0, self.group_by.len() as i64) as usize;
         let mut values: Vec<Vec<Part>> = Vec::with_capacity(widest);
-        for (index, name) in self.group_by.iter().take(widest).enumerate() {
-            let key_type = &self.columns.columns()[2 + index].column_type;
-            values.push(parts(
-                &key_table.column(column(name, key_type)?).chunk(&rows)?,
-            )?);
+        for &key_column in key_columns.iter().take(widest) {
+            values.push(parts(&key_table.column(key_column).chunk(&rows)?)?);
         }
         depths
             .iter()

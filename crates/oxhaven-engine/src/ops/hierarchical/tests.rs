@@ -391,11 +391,16 @@ fn random_rollup(seed: u64) -> u64 {
             .snapshot(None, 0, 1000)
             .unwrap();
         let keys = ReferenceTable::new_static(
-            definition(&[("__DEPTH__", ColumnType::Int), ("K", ColumnType::String)]),
+            definition(&[
+                ("__DEPTH__", ColumnType::Int),
+                ("K", ColumnType::String),
+                ("G", ColumnType::Int),
+            ]),
             RowSet::flat(first_level.rows - 1),
             vec![
                 ints(vec![2; first_level.rows as usize - 1]),
                 first_level.columns[2].slice(1, first_level.rows as usize - 1),
+                ints(vec![0; first_level.rows as usize - 1]),
             ],
         );
         let view = View::new(rollup.clone(), Some(keys), None);
@@ -446,4 +451,101 @@ fn random_changes_keep_the_walk_right() {
         rows += random_rollup(seed);
     }
     assert!(rows >= at_least_for(8000, 0..40), "only {rows} rows");
+}
+
+/// Observed on Java 42.9: `Duplicate output columns found: Ex used 2 times`, from the
+/// level that has the null column of the group-by column it no longer groups by.
+#[test]
+fn a_result_named_like_a_group_by_column_is_refused() {
+    let named = |output: &str, by: &[&str]| {
+        let aggregations = [Aggregation::columns(
+            AggSpec::Max,
+            [Pair::new(output, "Qty")],
+        )];
+        rollup(&trades(), &aggregations, false, by, None).err()
+    };
+    assert_eq!(
+        named("Ex", &["Sym", "Ex"]),
+        Some(HierarchicalError::IllegalArgument(
+            "Duplicate output columns found: Ex used 2 times".to_string()
+        ))
+    );
+    assert_eq!(
+        named("Most", &["Sym", "Sym"]),
+        Some(HierarchicalError::IllegalArgument(
+            "Duplicate output columns found: Sym used 2 times".to_string()
+        ))
+    );
+    assert_eq!(named("Most", &["Sym", "Ex"]), None);
+}
+
+fn sorted_first(sort: &str, pairs: &[&str], by: &[&str]) -> Result<RollupTable, HierarchicalError> {
+    let spec = AggSpec::SortedFirst {
+        columns: vec![sort.to_string()],
+    };
+    let pairs = pairs.iter().map(|name| Pair::of(*name));
+    rollup(
+        &trades(),
+        &[Aggregation::columns(spec, pairs)],
+        false,
+        by,
+        None,
+    )
+}
+
+/// Java sorts the coarser levels by the finer level's columns, so only a sort column that
+/// is one of the aggregation's own results gives there what the source gives; without
+/// group-by columns there is one level and nothing to sort again.
+#[test]
+fn a_sorted_first_sorts_by_its_own_results() {
+    let rollup: Arc<dyn Hierarchy> = Arc::new(sorted_first("Qty", &["Qty"], &["Sym"]).unwrap());
+    let all = keys(&[(0, "", "", EXPAND_ALL)]);
+    let view = View::new(rollup, Some(all), Some("Action".to_string()));
+    assert_eq!(
+        text(&view.snapshot(None, 0, 10).unwrap()),
+        ["1|true|-|10", "2|-|AAPL|10", "2|-|MSFT|30", "2|-|GOOG|60"]
+    );
+    let flat: Arc<dyn Hierarchy> = Arc::new(sorted_first("Qty", &["Ex"], &[]).unwrap());
+    let snapshot = View::new(flat, None, None).snapshot(None, 0, 10).unwrap();
+    assert_eq!(text(&snapshot), ["1|-|N"]);
+}
+
+#[test]
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.by.AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator"
+)]
+fn a_sorted_first_by_another_column_is_not_ported() {
+    let _ = sorted_first("Qty", &["Ex"], &["Sym"]);
+}
+
+/// Observed on Java 42.9 (`rollup_refused`): the levels have the group-by columns alone.
+#[test]
+fn a_rollup_without_aggregations_has_the_group_by_columns() {
+    let rollup: Arc<dyn Hierarchy> =
+        Arc::new(rollup(&trades(), &[], false, &["Sym"], None).unwrap());
+    let snapshot = View::new(rollup, None, None).snapshot(None, 0, 10).unwrap();
+    assert_eq!(
+        text(&snapshot),
+        ["1|true|-", "2|-|AAPL", "2|-|MSFT", "2|-|GOOG"]
+    );
+}
+
+/// Java asks the key table for every group-by column, also for one that no key of the
+/// table reaches down to.
+#[test]
+fn a_key_table_has_every_group_by_column_of_the_rollup() {
+    let keys: Arc<dyn Table> = ReferenceTable::new_static(
+        definition(&[
+            ("Sym", ColumnType::String),
+            ("Ex", ColumnType::Int),
+            ("__DEPTH__", ColumnType::Int),
+        ]),
+        RowSet::flat(1),
+        vec![strings(["AAPL"]), ints([0]), ints([2])],
+    );
+    let view = View::new(trades_rollup(), Some(keys), None);
+    assert!(matches!(
+        view.snapshot(None, 0, 10),
+        Err(HierarchicalError::IllegalArgument(_))
+    ));
 }
