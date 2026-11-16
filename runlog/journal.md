@@ -849,3 +849,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - The rollup agent ended at its context limit after 10,590 s and 339k tokens of its own
   window. A resumed agent carries its whole history, so reuse has a ceiling: after one
   large task plus one follow-up message, start fresh and hand over notes instead.
+- Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
