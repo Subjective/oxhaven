@@ -137,9 +137,8 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
             "null",
             "null literal outside ==, !=, ?:, a cast and string concatenation",
         ),
-        ("null == null", "comparison of null with null"),
-        ("S < null", "null literal as an operand of <"),
-        ("B & null", "null literal as an operand of &"),
+        ("true ? null : null", "null in both branches of ?:"),
+        ("null - null", "null literal as an operand of -"),
         ("cbrt(I)", "function cbrt()"),
         (
             "replaceIfNull(I, null)",

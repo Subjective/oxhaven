@@ -783,11 +783,10 @@ impl Checker<'_> {
                 (true, false) => Numeric::of(&self.check(right)?.column_type).is_some(),
                 _ => Numeric::of(&self.check(left)?.column_type).is_some(),
             };
-            return Err(if rejected {
-                type_error(format!("cannot apply {} to null", symbol(op)))
-            } else {
-                unsupported(format!("null literal as an operand of {}", symbol(op)))
-            });
+            if rejected {
+                return Err(type_error(format!("cannot apply {} to null", symbol(op))));
+            }
+            return self.null_operand(op, family, left, right);
         }
 
         let left = self.check(left)?;
@@ -1084,8 +1083,88 @@ impl Checker<'_> {
         ))
     }
 
+    /// An operator with the null literal on one side or both, where the other side is no
+    /// number and the operator is neither `==` nor `!=`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` looks the operator's method up
+    /// with the null as an argument that any reference parameter takes. Java 42.9 was run
+    /// for each form here:
+    ///
+    /// - `&`, `|` and `^` reach `QueryLanguageFunctionUtils#binaryAnd(Boolean, Boolean)` and
+    ///   its relatives, which answer null when either side is null, whatever the other is:
+    ///   `false & null` and `true | null` are null.
+    /// - `<`, `<=`, `>` and `>=` beside a `String`, `Boolean` or `Instant` reach
+    ///   `QueryLanguageFunctionUtils#less(Comparable, Comparable)` and its relatives, which
+    ///   order null before every value.
+    /// - `null - Instant` is `DateTimeUtils#minus(Instant, Instant)`, a null `long`.
+    ///
+    /// Java finds no method, or more than one, for the rest, and fails.
+    fn null_operand(
+        &mut self,
+        op: BinaryOp,
+        family: Family,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<Typed, FormulaError> {
+        let refused = || type_error(format!("cannot apply {} to null", symbol(op)));
+        let null_left = is_null_literal(left);
+        let other = match (null_left, is_null_literal(right)) {
+            (true, true) => None,
+            (true, false) => Some(self.check(right)?),
+            _ => Some(self.check(left)?),
+        };
+        let beside = other.as_ref().map(|other| &other.column_type);
+        let null_as = |column_type: ColumnType, other: Option<Typed>| {
+            let null = typed(column_type.clone(), Node::Null);
+            match other {
+                None => (null, typed(column_type, Node::Null)),
+                Some(other) if null_left => (null, other),
+                Some(other) => (other, null),
+            }
+        };
+        match family {
+            Family::Bitwise(bitwise) if matches!(beside, None | Some(ColumnType::Boolean)) => {
+                let (left, right) = null_as(ColumnType::Boolean, other);
+                bitwise_operator(op, bitwise, left, right)
+            }
+            Family::Compare(compare) => match beside {
+                Some(ColumnType::String | ColumnType::Boolean | ColumnType::Instant) => {
+                    let column_type = beside.cloned().expect("matched above");
+                    let (left, right) = null_as(column_type, other);
+                    comparison(compare, left, right)
+                }
+                None => Err(refused()),
+                Some(_) => Err(unsupported(format!(
+                    "null literal as an operand of {}",
+                    symbol(op)
+                ))),
+            },
+            Family::Arithmetic(arithmetic)
+                if op == BinaryOp::Subtract
+                    && null_left
+                    && beside == Some(&ColumnType::Instant) =>
+            {
+                let (left, right) = null_as(ColumnType::Instant, other);
+                self.arithmetic(op, arithmetic, left, right)
+            }
+            Family::Arithmetic(_)
+                if matches!(
+                    beside,
+                    Some(ColumnType::String | ColumnType::Boolean | ColumnType::Instant)
+                ) =>
+            {
+                Err(refused())
+            }
+            _ => Err(unsupported(format!(
+                "null literal as an operand of {}",
+                symbol(op)
+            ))),
+        }
+    }
+
     /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` rewrites `x == null` to `isNull(x)`,
-    /// and `x != null` to `!(x == null)` first.
+    /// and `x != null` to `!(x == null)` first. Of `null == null` that is `isNull(null)`,
+    /// which is true.
     fn null_comparison(
         &mut self,
         op: BinaryOp,
@@ -1094,7 +1173,10 @@ impl Checker<'_> {
     ) -> Result<Typed, FormulaError> {
         let operand = match (left, right) {
             (Expr::Literal(Literal::Null), Expr::Literal(Literal::Null)) => {
-                return Err(unsupported("comparison of null with null"))
+                return Ok(typed(
+                    ColumnType::Boolean,
+                    Node::Literal(Literal::Boolean(op == BinaryOp::Equal)),
+                ))
             }
             (Expr::Literal(Literal::Null), operand) | (operand, _) => operand,
         };

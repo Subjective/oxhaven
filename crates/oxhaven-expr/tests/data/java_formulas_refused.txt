@@ -7,7 +7,6 @@ java-accepts	update	(Double) D	cast to Double
 java-fails	update	(char) S	cast of String to char
 java-accepts	update	BN ? null : null	null in both branches of ?:
 java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
-java-accepts	update	B & null	null literal as an operand of &
 java-fails	update	I < S	ordering comparison of int with String
 java-fails	update	S < I	ordering comparison of String with int
 java-fails	update	S < T	ordering comparison of String with Instant
@@ -16,9 +15,6 @@ java-fails	update	B < I	ordering comparison of Boolean with int
 java-fails	update	B < S	ordering comparison of Boolean with String
 java-fails	update	T < L	ordering comparison of Instant with long
 java-fails	update	T > I	ordering comparison of Instant with int
-java-accepts	update	S < null	null literal as an operand of <
-java-accepts	update	null == null	comparison of null with null
-java-accepts	update	null != null	comparison of null with null
 java-accepts	update	1.5F	float literal with an uppercase F suffix 1.5F
 java-accepts	update	1F	float literal with an uppercase F suffix 1F
 java-accepts	update	1e3F	float literal with an uppercase F suffix 1e3F
@@ -100,6 +96,3 @@ java-rejects	update	S.toUpperCase(S)	method call String.toUpperCase() with 1 arg
 java-fails	update	S.indexOf(S, 1)	method call String.indexOf() with 2 arguments
 java-fails	update	S.hashCode()	method call String.hashCode()
 java-rejects	update	null - null	null literal as an operand of -
-java-accepts	update	BN & null	null literal as an operand of &
-java-accepts	update	SN < null	null literal as an operand of <
-java-rejects	update	null < null	null literal as an operand of <

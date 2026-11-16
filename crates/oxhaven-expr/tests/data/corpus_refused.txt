@@ -306,50 +306,10 @@ grid-function/java.16	java-fails	method call String.hashCode()
 grid-function/java-guarded.16	java-accepts	method call String.hashCode()
 grid-function/java.28	java-accepts	object creation (new)
 grid-function/java.29	java-accepts	object creation (new)
-grid-literal/plus.boolean.null	java-fails	null literal as an operand of +
-grid-literal/plus.null.boolean	java-fails	null literal as an operand of +
-grid-literal/minus.boolean.null	java-fails	null literal as an operand of -
-grid-literal/minus.null.boolean	java-fails	null literal as an operand of -
-grid-literal/minus.string.null	java-fails	null literal as an operand of -
-grid-literal/minus.null.string	java-fails	null literal as an operand of -
-grid-literal/times.boolean.null	java-fails	null literal as an operand of *
-grid-literal/times.null.boolean	java-fails	null literal as an operand of *
-grid-literal/times.string.null	java-fails	null literal as an operand of *
-grid-literal/times.null.string	java-fails	null literal as an operand of *
-grid-literal/divide.boolean.null	java-fails	null literal as an operand of /
-grid-literal/divide.null.boolean	java-fails	null literal as an operand of /
-grid-literal/divide.string.null	java-fails	null literal as an operand of /
-grid-literal/divide.null.string	java-fails	null literal as an operand of /
-grid-literal/remainder.boolean.null	java-fails	null literal as an operand of %
-grid-literal/remainder.null.boolean	java-fails	null literal as an operand of %
-grid-literal/remainder.string.null	java-fails	null literal as an operand of %
-grid-literal/remainder.null.string	java-fails	null literal as an operand of %
-grid-literal/lt.boolean.null	java-accepts	null literal as an operand of <
-grid-literal/lt.null.boolean	java-accepts	null literal as an operand of <
-grid-literal/lt.string.null	java-accepts	null literal as an operand of <
-grid-literal/lt.null.string	java-accepts	null literal as an operand of <
-grid-literal/le.boolean.null	java-accepts	null literal as an operand of <=
-grid-literal/le.null.boolean	java-accepts	null literal as an operand of <=
-grid-literal/le.string.null	java-accepts	null literal as an operand of <=
-grid-literal/le.null.string	java-accepts	null literal as an operand of <=
-grid-literal/gt.boolean.null	java-accepts	null literal as an operand of >
-grid-literal/gt.null.boolean	java-accepts	null literal as an operand of >
-grid-literal/gt.string.null	java-accepts	null literal as an operand of >
-grid-literal/gt.null.string	java-accepts	null literal as an operand of >
-grid-literal/ge.boolean.null	java-accepts	null literal as an operand of >=
-grid-literal/ge.null.boolean	java-accepts	null literal as an operand of >=
-grid-literal/ge.string.null	java-accepts	null literal as an operand of >=
-grid-literal/ge.null.string	java-accepts	null literal as an operand of >=
-grid-literal/band.boolean.null	java-accepts	null literal as an operand of &
-grid-literal/band.null.boolean	java-accepts	null literal as an operand of &
 grid-literal/band.string.null	java-fails	null literal as an operand of &
 grid-literal/band.null.string	java-fails	null literal as an operand of &
-grid-literal/bor.boolean.null	java-accepts	null literal as an operand of |
-grid-literal/bor.null.boolean	java-accepts	null literal as an operand of |
 grid-literal/bor.string.null	java-fails	null literal as an operand of |
 grid-literal/bor.null.string	java-fails	null literal as an operand of |
-grid-literal/xor.boolean.null	java-accepts	null literal as an operand of ^
-grid-literal/xor.null.boolean	java-accepts	null literal as an operand of ^
 grid-literal/xor.string.null	java-fails	null literal as an operand of ^
 grid-literal/xor.null.string	java-fails	null literal as an operand of ^
 grid-literal/lt.byte.literal-boolean	java-fails	ordering comparison of byte with Boolean
@@ -378,10 +338,8 @@ grid-literal/lt.string.literal-double	java-fails	ordering comparison of String w
 grid-literal/lt.string.literal-float	java-fails	ordering comparison of String with float
 grid-literal/lt.string.literal-char	java-fails	ordering comparison of String with char
 grid-literal/lt.string.literal-boolean	java-fails	ordering comparison of String with Boolean
-grid-literal/constant.093	java-accepts	null literal as an operand of >
 grid-literal/constant.117	java-accepts	null in both branches of ?:
 grid-literal/constant.123	java-accepts	null literal outside ==, !=, ?:, a cast and string concatenation
-grid-literal/constant.124	java-accepts	comparison of null with null
 grid-literal/constant.127	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
 grid-literal/constant.128	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
 grid-literal/constant.133	java-fails	ordering comparison of Boolean with int
