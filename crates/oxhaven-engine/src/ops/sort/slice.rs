@@ -6,7 +6,7 @@
 //! they pass: the first rows ever seen, or the latest.
 
 use super::SortError;
-use crate::table::{memoized, tracked_source, CopyType, QueryTable, TableSpec};
+use crate::table::{blink_to_append_only, tracked_source, QueryTable, TableSpec};
 use oxhaven_column::WritableSource;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
@@ -60,12 +60,8 @@ pub(super) fn head(parent: &Arc<dyn Table>, size: i64) -> Result<Arc<dyn Table>,
         )));
     }
     if is_blink(&**parent) {
-        // Behavior: the `BlinkToAppendOnly` key of
-        // io.deephaven.engine.table.impl.MemoizedOperationKey, which a copy shares with
-        // the table it is a copy of and whose copy type is `CopyAttributeOperation.None`:
-        // `head` of a copy, such as a blink input table, is not add-only.
-        let result = blink_to_append_only(parent, size as u64)?;
-        return Ok(memoized(parent, CopyType::None, false, result)?);
+        // Behavior: io.deephaven.engine.table.impl.QueryTable#head of a blink table
+        return Ok(blink_to_append_only(parent, size as u64)?);
     }
     Ok(slice_like(parent, Bounds::Positions(0, size))?)
 }
@@ -401,48 +397,6 @@ fn check_blink_update(upstream: &TableUpdate, message: &str) -> Result<(), Table
     } else {
         Err(failure(message))
     }
-}
-
-/// `head` of a blink table: an append-only table of the first `limit` rows the blink table
-/// ever showed, starting with the rows it shows now.
-///
-/// Behavior: io.deephaven.engine.table.impl.BlinkTableTools#blinkToAppendOnly(Table, long)
-fn blink_to_append_only(
-    parent: &Arc<dyn Table>,
-    limit: u64,
-) -> Result<Arc<QueryTable>, TableFailure> {
-    QueryTable::derive(parent, || {
-        let columns = writable_columns(parent);
-        let initial = parent.row_set().sub_set_by_position_range(0, limit);
-        let rows = RowSet::flat(initial.size());
-        copy_rows(&**parent, &initial, &columns, &rows)?;
-
-        let mut attributes = TableAttributes::default();
-        attributes.add_only = true;
-        attributes.append_only = true;
-        let spec = TableSpec::new(parent.definition().clone(), rows, as_sources(&columns))
-            .keeping_partitioning()
-            .with_attributes(attributes)
-            .flat();
-
-        let parent = parent.clone();
-        let operator = move |result: &QueryTable, upstream: &TableUpdate| {
-            check_blink_update(upstream, "Blink tables should not modify or shift!")?;
-            let size = result.row_set().size();
-            // Once full, nothing more is appended.
-            let room = limit.saturating_sub(size);
-            let taken = upstream.added.sub_set_by_position_range(0, room);
-            let mut downstream = TableUpdate::empty();
-            if taken.is_empty() {
-                return Ok(downstream);
-            }
-            let keys = RowSet::from_range(size as RowKey, (size + taken.size() - 1) as RowKey);
-            copy_rows(&*parent, &taken, &columns, &keys)?;
-            downstream.added = keys;
-            Ok(downstream)
-        };
-        Ok((spec, operator))
-    })
 }
 
 /// `tail` of a blink table: the latest `capacity` rows the blink table added, whether or
