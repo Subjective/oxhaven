@@ -1,0 +1,122 @@
+{
+  "format": 2,
+  "scenario": "partitioned_proxy_joins",
+  "scenario_sha256": "356f7a825278da4e20bc6b9ea4081339a9be36a8bbc2ec63f3deaca8aeeb2aea",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "natural",
+      "file": "step000.natural.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "natural_renamed",
+      "file": "step000.natural_renamed.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "natural_two",
+      "file": "step000.natural_two.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "exact",
+      "file": "step000.exact.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "cross",
+      "file": "step000.cross.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "cross_all",
+      "file": "step000.cross_all.arrow",
+      "rows": 24
+    },
+    {
+      "step": 0,
+      "table": "as_of",
+      "file": "step000.as_of.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "reverse_as_of",
+      "file": "step000.reverse_as_of.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "snapshot",
+      "file": "step000.snapshot.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "pair_natural",
+      "file": "step000.pair_natural.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "pair_keys",
+      "file": "step000.pair_keys.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "pair_unchecked",
+      "file": "step000.pair_unchecked.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "pair_common",
+      "file": "step000.pair_common.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "pair_other_name",
+      "file": "step000.pair_other_name.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "pair_exact",
+      "file": "step000.pair_exact.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "pair_cross",
+      "file": "step000.pair_cross.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "pair_as_of",
+      "file": "step000.pair_as_of.arrow",
+      "rows": 12
+    },
+    {
+      "step": 0,
+      "table": "pair_snapshot",
+      "file": "step000.pair_snapshot.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "pair_null_two",
+      "file": "step000.pair_null_two.arrow",
+      "rows": 6
+    }
+  ]
+}

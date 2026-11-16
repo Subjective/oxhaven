@@ -478,7 +478,7 @@ fn describe(column: &ColumnDefinition) -> String {
 /// The key columns of `left` and `right` in pairs, or Java's refusal.
 ///
 /// Behavior: PartitionedTableImpl#matchKeyColumns
-fn match_key_columns(
+pub(super) fn match_key_columns(
     left: &PartitionedTable,
     right: &PartitionedTable,
 ) -> Result<Vec<JoinMatch>, PartitionedError> {
