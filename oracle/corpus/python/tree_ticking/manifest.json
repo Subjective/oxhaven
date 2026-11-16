@@ -1,0 +1,335 @@
+{
+  "format": 2,
+  "scenario": "tree_ticking",
+  "scenario_sha256": "c79bfcfdec2baf09a70095c5fcfa658ac6d2e833cb026b1a751ce18989d14b95",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "closed",
+      "file": "step000.closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "everything",
+      "file": "step000.everything.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "chosen",
+      "file": "step000.chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "promoted_closed",
+      "file": "step000.promoted_closed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "promoted_everything",
+      "file": "step000.promoted_everything.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "promoted_chosen",
+      "file": "step000.promoted_chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "closed",
+      "file": "step001.closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "everything",
+      "file": "step001.everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "chosen",
+      "file": "step001.chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "promoted_closed",
+      "file": "step001.promoted_closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "promoted_everything",
+      "file": "step001.promoted_everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 1,
+      "table": "promoted_chosen",
+      "file": "step001.promoted_chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "closed",
+      "file": "step002.closed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "everything",
+      "file": "step002.everything.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "promoted_closed",
+      "file": "step002.promoted_closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "promoted_everything",
+      "file": "step002.promoted_everything.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "promoted_chosen",
+      "file": "step002.promoted_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "closed",
+      "file": "step003.closed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "everything",
+      "file": "step003.everything.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "promoted_closed",
+      "file": "step003.promoted_closed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "promoted_everything",
+      "file": "step003.promoted_everything.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "promoted_chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 4,
+      "table": "closed",
+      "file": "step004.closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "everything",
+      "file": "step004.everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "chosen",
+      "file": "step004.chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "promoted_closed",
+      "file": "step004.promoted_closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "promoted_everything",
+      "file": "step004.promoted_everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "promoted_chosen",
+      "file": "step004.promoted_chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "closed",
+      "file": "step005.closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "everything",
+      "file": "step005.everything.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "chosen",
+      "file": "step005.chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "promoted_closed",
+      "file": "step005.promoted_closed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "promoted_everything",
+      "file": "step005.promoted_everything.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "promoted_chosen",
+      "file": "step005.promoted_chosen.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "closed",
+      "file": "step006.closed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "everything",
+      "file": "step006.everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "chosen",
+      "file": "step006.chosen.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "promoted_closed",
+      "file": "step006.promoted_closed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "promoted_everything",
+      "file": "step006.promoted_everything.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "promoted_chosen",
+      "file": "step006.promoted_chosen.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "closed",
+      "file": "step007.closed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "everything",
+      "file": "step007.everything.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "chosen",
+      "file": "step007.chosen.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "promoted_closed",
+      "file": "step007.promoted_closed.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "promoted_everything",
+      "file": "step007.promoted_everything.arrow",
+      "rows": 0
+    },
+    {
+      "step": 7,
+      "table": "promoted_chosen",
+      "file": "step007.promoted_chosen.arrow",
+      "rows": 0
+    },
+    {
+      "step": 8,
+      "table": "closed",
+      "file": "step008.closed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "everything",
+      "file": "step008.everything.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "chosen",
+      "file": "step008.chosen.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "promoted_closed",
+      "file": "step008.promoted_closed.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "promoted_everything",
+      "file": "step008.promoted_everything.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "promoted_chosen",
+      "file": "step008.promoted_chosen.arrow",
+      "rows": 1
+    }
+  ]
+}

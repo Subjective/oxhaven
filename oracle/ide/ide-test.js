@@ -16,6 +16,7 @@
 //   jsapi    /jsapi/dh-core.js in an empty page: log in, fetch the tables, read a viewport
 //   console  /ide/?psk=<key>, type the commands of expected.json into the console
 //   rollup   /ide/?psk=<key>, make a rollup in the Rollup Rows panel, expand a node, sort, filter
+//   tree     /ide/?psk=<key>, make a tree in the console, expand a row, sort, filter
 //   notebook, log, grid, errors, reconnect
 //            what a user does around the console (lib/flows.js); reconnect restarts the
 //            server with the shell command of --restart
@@ -33,10 +34,10 @@ const fs = require('fs');
 const path = require('path');
 const { Trace, describeCalls } = require('./lib/trace');
 const faults = require('./lib/faults');
-const { routeRollup } = require('./lib/rollup');
+const { routeRollup, routeTree } = require('./lib/rollup');
 
 const PSK_HANDLER = 'io.deephaven.authentication.psk.PskAuthenticationHandler';
-const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup', 'notebook', 'log', 'grid', 'errors', 'reconnect'];
+const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup', 'tree', 'notebook', 'log', 'grid', 'errors', 'reconnect'];
 
 function usage(message) {
   if (message) console.error(`error: ${message}`);
@@ -496,6 +497,7 @@ const ROUTES = Object.assign(
     jsapi: routeJsapi,
     console: routeConsole,
     rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure, locateGrid }),
+    tree: (ctx) => routeTree(ctx, { waitForIde, poll, Failure, locateGrid }),
   },
   require('./lib/flows')({ Failure, poll, readGrid, locateGrid, expectStaticGrid, waitForIde, same }),
 );

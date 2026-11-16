@@ -1112,9 +1112,19 @@ class Table:
         except Exception as e:
             raise DHError(e, "table rollup operation failed.") from e
 
-    def tree(self, id_col: str, parent_col: str, promote_orphans: bool = False):
-        """Not ported: a tree table."""
-        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.impl.QueryTable#tree")
+    def tree(self, id_col: str, parent_col: str, promote_orphans: bool = False) -> "TreeTable":
+        """A tree table: the rows of this table, each under the row whose `id_col` is its
+        `parent_col`. The rows without a parent are under the root; a row whose parent
+        is no row's identifier is not shown, or with `promote_orphans` is under the root
+        too.
+
+        Behavior: `deephaven.table.Table.tree`
+        """
+        try:
+            handle = _oxhaven.tree(self.j_table, id_col, parent_col, bool(promote_orphans))
+            return TreeTable(j_tree_table=handle, id_col=id_col, parent_col=parent_col)
+        except Exception as e:
+            raise DHError(e, "table tree operation failed.") from e
 
 
 # Aggregations (task 6.5)
@@ -1462,9 +1472,128 @@ class RollupTable:
         )
 
 
-def _wrap_hierarchical(handle) -> RollupTable:
+class TreeNodeOperationsRecorder:
+    """Records operations to apply to the nodes of a tree when a client reads it:
+    sorts. `TreeTable.node_operation_recorder` makes one, and every operation returns a
+    new one.
+
+    Behavior: `deephaven.table.TreeNodeOperationsRecorder`
+    """
+
+    def __init__(self, j_node_ops_recorder):
+        self.j_node_ops_recorder = j_node_ops_recorder
+
+    @property
+    def j_object(self):
+        """The engine's recorder. In the reference package this is the Java recorder."""
+        return self.j_node_ops_recorder
+
+    def sort(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, ascending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, False))
+
+    def sort_descending(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, descending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
+
+    def where(self, filters):
+        """Not ported: a recorder that also filters the rows of a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#where"
+        )
+
+    def format_column(self, formulas: Union[str, Sequence[str]]):
+        """Not ported: a recorder that also formats columns of a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumns"
+        )
+
+    def format_row_where(self, cond: str, formula: str):
+        """Not ported: a recorder that also formats the rows of a node that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatRowWhere"
+        )
+
+    def format_column_where(self, col: str, cond: str, formula: str):
+        """Not ported: a recorder that also formats a column of the rows that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.TreeNodeOperationsRecorder#formatColumnWhere"
+        )
+
+
+class TreeTable:
+    """The result of `Table.tree`: a hierarchical table of the rows of a table, each
+    under its parent. A client reads it through a view; a script only makes it.
+
+    Behavior: `deephaven.table.TreeTable`
+    """
+
+    def __init__(self, j_tree_table, id_col: str, parent_col: str):
+        if not isinstance(j_tree_table, _oxhaven.HierarchicalHandle):
+            raise DHError(
+                message=f"not a hierarchical table handle: {type(j_tree_table).__name__}"
+            )
+        self.j_tree_table = j_tree_table
+        self.id_col = id_col
+        self.parent_col = parent_col
+
+    @property
+    def j_object(self):
+        """The engine's handle. In the reference package this is the Java tree table."""
+        return self.j_tree_table
+
+    def node_operation_recorder(self) -> "TreeNodeOperationsRecorder":
+        """A recorder of operations to apply to the nodes when a client reads this
+        tree, with nothing recorded.
+
+        Behavior: `deephaven.table.TreeTable.node_operation_recorder`
+        """
+        return TreeNodeOperationsRecorder(j_node_ops_recorder=self.j_tree_table.tree_recorder())
+
+    def with_node_operations(self, recorder: "TreeNodeOperationsRecorder") -> "TreeTable":
+        """This tree with the recorded operations applied to its nodes.
+
+        Behavior: `deephaven.table.TreeTable.with_node_operations`
+        """
+        try:
+            return TreeTable(
+                j_tree_table=self.j_tree_table.with_node_operations(
+                    [recorder.j_node_ops_recorder]
+                ),
+                id_col=self.id_col,
+                parent_col=self.parent_col,
+            )
+        except Exception as e:
+            raise DHError(e, "with_node_operations on TreeTable failed.") from e
+
+    def with_filters(self, filters: Union[str, Sequence[str]]) -> "TreeTable":
+        """This tree of the rows of its source that pass every filter, and of their
+        ancestors.
+
+        Behavior: `deephaven.table.TreeTable.with_filters`
+        """
+        try:
+            filters = _engine.to_sequence(filters)
+            if filters:
+                _engine.native.require_query_scope()
+            return TreeTable(
+                j_tree_table=self.j_tree_table.with_filters(filters),
+                id_col=self.id_col,
+                parent_col=self.parent_col,
+            )
+        except Exception as e:
+            raise DHError(e, "with_filters operation on TreeTable failed.") from e
+
+
+def _wrap_hierarchical(handle) -> Union[RollupTable, TreeTable]:
     """The Python object of a hierarchical table that was not made by this code: a
-    variable read back from the server's scope. What made it is not kept with it."""
+    variable read back from the server's scope. What made a rollup is not kept with
+    it."""
+    columns = handle.tree_columns()
+    if columns is not None:
+        return TreeTable(handle, id_col=columns[0], parent_col=columns[1])
     return RollupTable(handle, aggs=(), include_constituents=False, by=())
 
 

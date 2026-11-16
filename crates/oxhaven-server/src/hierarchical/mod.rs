@@ -8,6 +8,8 @@
 mod subscription;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tree_tests;
 
 pub use subscription::ViewSubscription;
 
@@ -17,9 +19,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use arrow::datatypes::{Field, Schema};
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::agg::{AggSpec, Aggregation};
-use oxhaven_engine::ops::filter::CheckedFilters;
+use oxhaven_engine::ops::filter::{CheckedFilters, Condition};
 use oxhaven_engine::ops::hierarchical::{
-    rollup, HierarchicalError, Hierarchy, RollupTable, View, DEPTH_COLUMN, EXPANDED_COLUMN,
+    promote_orphans, rollup, tree, HierarchicalError, Hierarchy, RollupTable, TreeTable, View,
+    DEPTH_COLUMN, EXPANDED_COLUMN,
 };
 use oxhaven_engine::ops::sort::SortColumn;
 use oxhaven_proto::grpc::hierarchical_table_service_server::HierarchicalTableService;
@@ -47,12 +50,14 @@ use crate::table::table_creation_response;
 /// Behavior: `io.deephaven.engine.table.hierarchical.HierarchicalTable`
 pub enum HierarchicalTable {
     Rollup(Arc<RollupTable>),
+    Tree(Arc<TreeTable>),
 }
 
 impl HierarchicalTable {
     pub fn hierarchy(&self) -> Arc<dyn Hierarchy> {
         match self {
             HierarchicalTable::Rollup(rollup) => rollup.clone(),
+            HierarchicalTable::Tree(tree) => tree.clone(),
         }
     }
 
@@ -60,6 +65,17 @@ impl HierarchicalTable {
     pub fn source(&self) -> Arc<dyn Table> {
         match self {
             HierarchicalTable::Rollup(rollup) => rollup.source().clone(),
+            HierarchicalTable::Tree(tree) => tree.source().clone(),
+        }
+    }
+
+    /// The columns a client may sort by, or `None` when it may sort by any.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.BaseGridAttributes#getSortableColumns`
+    pub fn sortable_columns(&self) -> Option<&[String]> {
+        match self {
+            HierarchicalTable::Rollup(rollup) => rollup.sortable_columns(),
+            HierarchicalTable::Tree(tree) => tree.sortable_columns(),
         }
     }
 }
@@ -130,6 +146,37 @@ pub fn make_rollup(
     })
 }
 
+/// `source` as a tree by its identifier and parent columns; with `promote` the rows whose
+/// parent is no row's identifier are children of the root.
+///
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#tree`, which is
+/// `io.deephaven.engine.table.hierarchical.TreeTable#promoteOrphans` and
+/// `io.deephaven.engine.table.impl.QueryTable#tree`
+pub fn make_tree(
+    context: &OpContext,
+    source: &Arc<dyn Table>,
+    identifier_column: &str,
+    parent_column: &str,
+    promote: bool,
+) -> Result<Hierarchical, ExportError> {
+    guarded(&[source], || {
+        let source = if promote {
+            // Java asks the definition for the parent column's formula before anything
+            // else, and so names a missing column as its `view` does
+            promote_orphans(
+                source,
+                identifier_column,
+                parent_column,
+                context.compiler.as_ref(),
+            )?
+        } else {
+            source.clone()
+        };
+        let tree = tree(&source, identifier_column, parent_column)?;
+        Ok(Arc::new(HierarchicalTable::Tree(Arc::new(tree))))
+    })
+}
+
 /// The sorts of an `Apply` request for the engine. A sort by an absolute value is, in
 /// Java, a sort by a column named `__ABS__<name>`.
 ///
@@ -182,8 +229,8 @@ fn translate_sorts(
 
 /// `table` with the filters and sorts of `request`: the filters first.
 ///
-/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup, without
-/// its format views and update views
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply`, without its format
+/// views and update views
 pub fn apply(
     context: &OpContext,
     table: &Hierarchical,
@@ -196,10 +243,62 @@ pub fn apply(
     {
         return Err(Status::invalid_argument("No operations specified").into());
     }
-    let HierarchicalTable::Rollup(rollup) = table.as_ref();
     // Java reads the conditions, then the sorts, before it applies anything.
     let conditions = conditions(&request.filters).map_err(ExportError::Internal)?;
-    let sorts = translate_sorts(&request.sorts, rollup.sortable_columns())?;
+    let sorts = translate_sorts(&request.sorts, table.sortable_columns())?;
+    match table.as_ref() {
+        HierarchicalTable::Rollup(rollup) => {
+            apply_to_rollup(context, rollup, request, &conditions, &sorts)
+        }
+        HierarchicalTable::Tree(tree) => apply_to_tree(context, tree, request, &conditions, &sorts),
+    }
+}
+
+/// Java reads neither the update views nor the format views of a request for a tree,
+/// and answers as if it had none: a request with nothing else gives the tree back.
+/// They are refused here, as a rollup's are, until it is ruled whether that is wanted.
+///
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a tree
+fn apply_to_tree(
+    context: &OpContext,
+    tree: &Arc<TreeTable>,
+    request: &HierarchicalTableApplyRequest,
+    conditions: &[Condition],
+    sorts: &[SortColumn],
+) -> Result<Hierarchical, ExportError> {
+    if !request.update_views.is_empty() || !request.format_views.is_empty() {
+        return Err(not_ported(
+            "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
+            "update views and format views of a tree, which Java does not read",
+        )
+        .into());
+    }
+    let compiler = context.compiler.as_ref();
+    let source = tree.source().clone();
+    guarded(&[&source], || {
+        let mut result = tree.clone();
+        if !conditions.is_empty() {
+            let filters = CheckedFilters::of_conditions(conditions, source.definition(), compiler)?;
+            if !filters.is_empty() {
+                result = Arc::new(result.with_filters(&filters, compiler)?);
+            }
+        }
+        if !sorts.is_empty() {
+            result.check_sorts(sorts)?;
+            result = Arc::new(result.with_sorts(sorts));
+        }
+        Ok(Arc::new(HierarchicalTable::Tree(result)))
+    })
+}
+
+/// Behavior: the work of `HierarchicalTableServiceGrpcImpl#apply` for a rollup
+fn apply_to_rollup(
+    context: &OpContext,
+    rollup: &Arc<RollupTable>,
+    request: &HierarchicalTableApplyRequest,
+    conditions: &[Condition],
+    sorts: &[SortColumn],
+) -> Result<Hierarchical, ExportError> {
     if !request.update_views.is_empty() {
         return Err(not_ported(
             "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView",
@@ -219,8 +318,7 @@ pub fn apply(
     guarded(&[&source], || {
         let mut result = rollup.clone();
         if !conditions.is_empty() {
-            let filters =
-                CheckedFilters::of_conditions(&conditions, source.definition(), compiler)?;
+            let filters = CheckedFilters::of_conditions(conditions, source.definition(), compiler)?;
             result
                 .check_filters(&filters)
                 .map_err(Status::invalid_argument)?;
@@ -229,8 +327,8 @@ pub fn apply(
             }
         }
         if !sorts.is_empty() {
-            result.check_sorts(&sorts)?;
-            result = Arc::new(result.with_sorts(&sorts));
+            result.check_sorts(sorts)?;
+            result = Arc::new(result.with_sorts(sorts));
         }
         Ok(Arc::new(HierarchicalTable::Rollup(result)))
     })
@@ -291,7 +389,67 @@ const PREFIX: &str = "deephaven:";
 ///
 /// Behavior: `io.deephaven.extensions.barrage.util.HierarchicalTableSchemaUtil#makeSchemaPayload`
 pub fn snapshot_schema(table: &HierarchicalTable) -> Schema {
-    let HierarchicalTable::Rollup(rollup) = table;
+    match table {
+        HierarchicalTable::Rollup(rollup) => rollup_schema(rollup),
+        HierarchicalTable::Tree(tree) => tree_schema(tree),
+    }
+}
+
+/// Behavior: `HierarchicalTableSchemaUtil#makeSchemaPayload` for a tree
+fn tree_schema(tree: &TreeTable) -> Schema {
+    let sortable = tree.sortable_columns();
+    let context = SchemaContext {
+        sortable: sortable.map(<[String]>::to_vec),
+        ..SchemaContext::default()
+    };
+    let plain = arrow_schema(tree.columns(), &context);
+    let fields: Vec<Field> = plain
+        .fields()
+        .iter()
+        .enumerate()
+        .map(|(index, field)| {
+            let name = field.name().as_str();
+            let mut metadata = field.metadata().clone();
+            let mut put = |key: &str| {
+                metadata.insert(format!("{PREFIX}{key}"), "true".to_string());
+            };
+            if index == DEPTH_COLUMN || index == EXPANDED_COLUMN {
+                put("hierarchicalTable.isStructuralColumn");
+                if index == DEPTH_COLUMN {
+                    put("hierarchicalTable.isRowDepthColumn");
+                } else {
+                    put("hierarchicalTable.isRowExpandedColumn");
+                }
+            } else {
+                put("treeTable.isNodeColumn");
+                // a tree by one column for both has both marks on it
+                if name == tree.identifier_column() {
+                    put("treeTable.isIdentifierColumn");
+                    put("hierarchicalTable.isExpandByColumn");
+                }
+                if name == tree.parent_identifier_column() {
+                    put("treeTable.isParentIdentifierColumn");
+                }
+            }
+            field.as_ref().clone().with_metadata(metadata)
+        })
+        .collect();
+    let mut metadata = HashMap::new();
+    if let Some(sortable) = sortable {
+        metadata.insert(
+            format!("{PREFIX}attribute.SortableColumns"),
+            sortable.join(","),
+        );
+        metadata.insert(
+            format!("{PREFIX}attribute_type.SortableColumns"),
+            "java.lang.String".to_string(),
+        );
+    }
+    Schema::new_with_metadata(fields, metadata)
+}
+
+/// Behavior: `HierarchicalTableSchemaUtil#makeSchemaPayload` for a rollup
+fn rollup_schema(rollup: &RollupTable) -> Schema {
     let definition = rollup.columns();
     // the name of each result column's input, and its description
     let mut inputs = HashMap::new();
@@ -485,11 +643,49 @@ impl HierarchicalTableService for HierarchicalTableGrpc {
         reply.wait().await
     }
 
-    async fn tree(&self, _request: Request<TreeRequest>) -> Result<Response<TreeResponse>, Status> {
-        Err(not_ported(
-            "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#tree",
-            "a tree table",
-        ))
+    /// Behavior: `HierarchicalTableServiceGrpcImpl#tree`
+    async fn tree(&self, request: Request<TreeRequest>) -> Result<Response<TreeResponse>, Status> {
+        let session = current_session(&request)?;
+        let request = request.into_inner();
+        let message = "TreeRequest";
+        let result_id = ticket(
+            &request.result_tree_table_id,
+            message,
+            "result_tree_table_id",
+            1,
+        )?;
+        let source_id = ticket(&request.source_table_id, message, "source_table_id", 2)?;
+        // Behavior: `GrpcErrorHelper#checkHasField`, for which a string that is empty is
+        // a field that is not there
+        if request.identifier_column.is_empty() {
+            return Err(missing_field(message, "identifier_column", 3));
+        }
+        if request.parent_identifier_column.is_empty() {
+            return Err(missing_field(message, "parent_identifier_column", 4));
+        }
+        self.router.log_name(&source_id, "sourceTableId")?;
+        let source = self
+            .router
+            .resolve(Some(&session), &source_id, "sourceTableId")?;
+        let reply = Reply::new();
+        let (fail, succeed) = (reply.completer(), reply.completer());
+        let context = self.context.clone();
+        session
+            .new_export_for_ticket(&result_id, "resultTreeTableId")?
+            .require([source])
+            .on_error(move |status| fail(Err(status)))
+            .on_success(move |_| succeed(Ok(TreeResponse {})))
+            .submit(move |inputs| {
+                let source = table_input(&inputs[0], "sourceTableId")?;
+                Ok(export_value(make_tree(
+                    &context,
+                    source,
+                    &request.identifier_column,
+                    &request.parent_identifier_column,
+                    request.promote_orphans,
+                )?))
+            })?;
+        reply.wait().await
     }
 
     /// Behavior: `HierarchicalTableServiceGrpcImpl#apply`
