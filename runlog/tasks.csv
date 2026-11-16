@@ -110,7 +110,7 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 5.6-formula-gaps,1,agent,2026-11-16T00:52Z,106,230447,193,merged,0,102,right-sized,"Zoned time literals, durations, now and random, array arithmetic, narrower select refusal; arrays gate 32 to 7 differing, chains 350 to 120; adds chrono-tz"
 4.19-table-sources,1,agent,2026-11-16T01:27Z,51,140986,223,merged,0,100,right-sized,"Ring tables, function-generated tables, floating point input keys; two scenarios promoted and two recorded; scripts 67 of 74 clean"
 7.11-figures,1,agent,2026-11-16T01:34Z,87,299586,320,merged,0,103,too-large,"Figure object type and hand-written deephaven.plot, 173 cases compared with Java; JS plugins not started; plugin trial reported only"
-7.1b-parquet-read-more,1,agent,2026-11-16T02:19Z,,,,running,,,,"Parquet read: more types, column names, partitioned layouts, partitioning columns (may change contracts); ports 10978/10979"
+7.1b-parquet-read-more,1,agent,2026-11-16T02:19Z,79,149965,347,pr-open,0,104,too-large,"Five object column types and a partitioning flag in the contracts, legal names, partition directories, _metadata, followed directories; scripts 75 of 78 clean"
 7.8.1-rollup-apply,1,agent,2026-11-16T02:28Z,9,6249,12,not-started,0,101,n/a,"Rollup agent merged main into its branch for pull request 101, then stopped with its context nearly used up; 7.8.1 goes to a fresh agent"
 7.8.1-rollup-apply,2,agent,2026-11-16T02:39Z,,,,running,,,,"Fresh agent with handover notes: Apply with sorts and filters, Python recorder, IDE Rollup Rows panel; ports 10970/10971"
 5.7-formula-functions,1,agent,2026-11-16T02:47Z,,,,running,,,,"Remaining refused formulas by cause: date-time functions, literal types, static calls incl. Math; ports 10964/10965"
