@@ -2,7 +2,7 @@
 
 use super::keys::{parts, KeyIndex};
 use super::{
-    Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
+    merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
     DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
 };
 use crate::ops::agg::{aggregate, aggregate_with, AggSpec, Aggregation};
@@ -356,15 +356,6 @@ impl RollupTable {
     /// Behavior: RollupTableImpl#withNodeOperations with the sorts of a recorder for
     /// aggregated nodes, and BaseNodeOperationsRecorder#mergeSortColumns
     pub fn with_sorts(&self, sorts: &[SortColumn]) -> RollupTable {
-        let mut merged: Vec<SortColumn> = Vec::new();
-        for sort in sorts.iter().chain(&self.sorts) {
-            let named = |earlier: &SortColumn| {
-                earlier.column == sort.column && earlier.absolute == sort.absolute
-            };
-            if !merged.iter().any(named) {
-                merged.push(sort.clone());
-            }
-        }
         RollupTable {
             source: self.source.clone(),
             base: self.base.clone(),
@@ -372,7 +363,7 @@ impl RollupTable {
             group_by: self.group_by.clone(),
             levels: self.levels.clone(),
             columns: self.columns.clone(),
-            sorts: merged,
+            sorts: merged_sorts(sorts, &self.sorts),
             sortable: self.sortable.clone(),
         }
     }

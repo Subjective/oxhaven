@@ -20,6 +20,7 @@ pub use walk::Snapshot;
 
 use crate::ops::agg::AggregateError;
 use crate::ops::partitioned::PartitionedError;
+use crate::ops::sort::SortColumn;
 use arrow::array::ArrayRef;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -92,6 +93,24 @@ impl From<PartitionedError> for HierarchicalError {
             other => HierarchicalError::Unsupported(other.to_string()),
         }
     }
+}
+
+/// `sorts` in front of the `earlier` sorts of the nodes of a hierarchical table: the new
+/// ones decide first. A column named again, absolute or not as before, is taken where it
+/// is first named.
+///
+/// Behavior: io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder#mergeSortColumns,
+/// in which a sort by an absolute value has a column name of its own
+pub fn merged_sorts(sorts: &[SortColumn], earlier: &[SortColumn]) -> Vec<SortColumn> {
+    let mut merged: Vec<SortColumn> = Vec::new();
+    for sort in sorts.iter().chain(earlier) {
+        let named =
+            |kept: &SortColumn| kept.column == sort.column && kept.absolute == sort.absolute;
+        if !merged.iter().any(named) {
+            merged.push(sort.clone());
+        }
+    }
+    merged
 }
 
 /// What names a node, in a key table and between snapshots.
