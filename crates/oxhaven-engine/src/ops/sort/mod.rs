@@ -88,6 +88,9 @@ pub enum SortError {
     /// Java's `NotSortableException`: sort columns that the table's restriction of its
     /// sorting does not name. The text is the exception's message.
     NotSortable(String),
+    /// Java's `NotSortableColumnException`: a sort column whose class is neither
+    /// `Comparable` nor primitive. The text is the exception's message.
+    NotSortableColumn(String),
     /// An absolute sort of a column whose type has no `abs`. In Java the formula
     /// `abs(Column)` fails to compile.
     AbsoluteNotSupported {
@@ -118,7 +121,8 @@ impl fmt::Display for SortError {
             ),
             SortError::IllegalArgument(message)
             | SortError::Unsupported(message)
-            | SortError::NotSortable(message) => f.write_str(message),
+            | SortError::NotSortable(message)
+            | SortError::NotSortableColumn(message) => f.write_str(message),
             SortError::Table(failure) => failure.fmt(f),
         }
     }
