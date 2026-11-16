@@ -426,9 +426,11 @@ mod tests {
             texts(&ColumnType::DayOfWeek, Arc::new(days)),
             [Some("MONDAY".into()), None, Some("SUNDAY".into())]
         );
-        assert!(WireColumn::described(&ColumnType::object(Some(ColumnType::Int)))
-            .cells(Arc::new(StringArray::from(vec!["1"])))
-            .is_err());
+        assert!(
+            WireColumn::described(&ColumnType::object(Some(ColumnType::Int)))
+                .cells(Arc::new(StringArray::from(vec!["1"])))
+                .is_err()
+        );
     }
 
     #[test]

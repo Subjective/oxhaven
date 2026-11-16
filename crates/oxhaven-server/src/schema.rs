@@ -618,6 +618,7 @@ mod tests {
             ("O", ColumnType::object(Some(ColumnType::Int))),
             ("N", ColumnType::object(None)),
             ("W", ColumnType::DayOfWeek),
+            ("A", ColumnType::array(ColumnType::PrimitiveBoolean)),
         ]);
         let schema = arrow_schema(&definition, &SchemaContext::default());
         let seen: Vec<_> = schema
@@ -648,6 +649,14 @@ mod tests {
                     metadata(&[
                         ("deephaven:isSortable", "true"),
                         ("deephaven:type", "java.time.DayOfWeek")
+                    ])
+                ),
+                // Seen for `new int[]{1, 2} == 1`: no `isSortable`.
+                (
+                    DataType::List(Arc::new(Field::new("", DataType::Boolean, true))),
+                    metadata(&[
+                        ("deephaven:componentType", "boolean"),
+                        ("deephaven:type", "boolean[]")
                     ])
                 ),
             ]
