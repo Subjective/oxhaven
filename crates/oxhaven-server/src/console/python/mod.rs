@@ -397,18 +397,58 @@ fn new_table(columns: Vec<(String, String, Bound<'_, PyAny>)>) -> PyResult<Table
     Ok(TableHandle { table })
 }
 
-/// The columns of a table as `(name, Java class name of the type, Java class name of the
-/// component type)`, the names as a client is told them in the schema.
+/// A static table without rows whose columns are `(name, Java class name of the type,
+/// whether it is a partitioning column)`: what holds a table definition made in Python
+/// that has a partitioning column, which no table made from values has.
 ///
-/// Behavior: `io.deephaven.engine.table.ColumnDefinition#getDataType`, `#getComponentType`
+/// Behavior: `io.deephaven.engine.table.TableDefinition#of(ColumnDefinition...)`, for the
+/// tables `io.deephaven.engine.util.TableTools#metaTable(TableDefinition)` describes
 #[pyfunction]
-fn column_definitions(source: PyRef<'_, TableHandle>) -> Vec<(String, String, Option<String>)> {
+fn defined_table(columns: Vec<(String, String, bool)>) -> PyResult<TableHandle> {
+    let mut definitions = Vec::with_capacity(columns.len());
+    let mut sources: Vec<Arc<dyn ColumnSource>> = Vec::with_capacity(columns.len());
+    for (name, type_name, partitioning) in columns {
+        let column_type = column_type_for_java_names(&type_name, None).ok_or_else(|| {
+            PyValueError::new_err(format!("the engine has no column type for {type_name}"))
+        })?;
+        let none = arrow::array::new_empty_array(&column_type.arrow_type());
+        let source = FlatSource::new(column_type.clone(), none)
+            .map_err(|failure| PyRuntimeError::new_err(failure.message))?;
+        sources.push(Arc::new(source));
+        definitions.push(ColumnDefinition {
+            partitioning,
+            ..ColumnDefinition::new(name, column_type)
+        });
+    }
+    let definition =
+        TableDefinition::new(definitions).map_err(|e| PyValueError::new_err(e.to_string()))?;
+    let spec = TableSpec::new(definition, RowSet::flat(0), sources).keeping_partitioning();
+    Ok(TableHandle {
+        table: QueryTable::new_static(spec),
+    })
+}
+
+/// The columns of a table as `(name, Java class name of the type, Java class name of the
+/// component type, whether it is a partitioning column)`, the names as a client is told
+/// them in the schema.
+///
+/// Behavior: `io.deephaven.engine.table.ColumnDefinition#getDataType`, `#getComponentType`,
+/// `#isPartitioning`
+#[pyfunction]
+fn column_definitions(
+    source: PyRef<'_, TableHandle>,
+) -> Vec<(String, String, Option<String>, bool)> {
     let columns = source.table.definition().columns().iter();
     columns
         .map(|column| {
             let type_name = java_type_name(&column.column_type).into_owned();
             let component = java_component_type_name(&column.column_type).map(Cow::into_owned);
-            (column.name.clone(), type_name, component)
+            (
+                column.name.clone(),
+                type_name,
+                component,
+                column.partitioning,
+            )
         })
         .collect()
 }
@@ -442,6 +482,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(table_op, &native)?)?;
         native.add_function(wrap_pyfunction!(new_table, &native)?)?;
         native.add_function(wrap_pyfunction!(column_definitions, &native)?)?;
+        native.add_function(wrap_pyfunction!(defined_table, &native)?)?;
         native.add_function(wrap_pyfunction!(validate_column_name, &native)?)?;
         native.add_function(wrap_pyfunction!(log, &native)?)?;
         native.add_function(wrap_pyfunction!(without_query_scope, &native)?)?;

@@ -60,8 +60,8 @@ of the seam, which is the same for every format:
 A directory that gains files while the table is open (`is_refreshing=True`) is the one
 place where locations and a feed meet: a root source that asks a provider for new
 locations on each cycle and appends them as new regions. Regions never move, so the table
-is append-only by construction. It is designed for (the region numbering leaves room, and
-`stored_table` is the static case of it) and not built in this task.
+is append-only by construction. It is `source::following_table`, built by the second
+slice ("The second slice", below).
 
 ## `oxhaven-engine::source`
 
@@ -93,11 +93,10 @@ pub fn stored_table(
   `EmptySourceTable` as well, which no client reads and Oxhaven does not send.
 - More than 2^20 regions or 2^43 rows in a location is an error.
 
-Partitioning columns (the second slice) are a constant per region: a location will also
-say `partition_value(column)`, and the source of a partitioning column answers from that
-without reading the file. They need one addition to the contracts, a flag on
-`ColumnDefinition` that the schema sends as `deephaven:isPartitioning`; it is not made in
-this task.
+Partitioning columns (the second slice) are a constant per region. The trait did not
+need a method for them: a location answers a read of a partitioning column with its value
+repeated, without reading the file. The flag on `ColumnDefinition` that the schema sends
+as `deephaven:isPartitioning` is in the contracts since that slice.
 
 ## `oxhaven-parquet`
 
@@ -131,16 +130,20 @@ skips the guess.
 | `STRING`, `ENUM` | `String` |
 | `TIMESTAMP(millis/micros/nanos, adjusted to UTC)`, `INT96` | `Instant` |
 | A repeated field or a `LIST` of one of the above | `Array` of it, or `Vector` when the `deephaven` entry says `Vector` |
+| `DECIMAL(precision, scale)` on any storage | `BigDecimal`; `BigInteger` for precision 1 and scale 0, which is how Java writes one |
+| `INT(64, unsigned)` without a target | `BigInteger` |
+| `DATE` | `LocalDate` |
+| `TIME(millis/micros/nanos)` | `LocalTime` |
+| `TIMESTAMP(millis/micros/nanos, not adjusted to UTC)` | `LocalDateTime` |
+| `BINARY`, `FIXED_LEN_BYTE_ARRAY` without a logical type | `Array` of `Byte`, Java's `byte[]` |
+| A group that is not a list and has one field | The type of the field |
 
 A value equal to the Java null of its type reads as null, as it does in Java, where it is
 the same bit pattern: a 32-bit `-2147483648` from another writer is a null `int`.
 
-Types that Java reads and that have no `ColumnType` yet are refused by name, when the
-table is created: `DECIMAL` (`BigDecimal`, `BigInteger`), `DATE`, `TIME`, a timestamp that
-is not adjusted to UTC (`LocalDateTime`), an unsigned 64-bit integer without a target
-(`BigInteger`), `BINARY` and `FIXED_LEN_BYTE_ARRAY` without a logical type (`byte[]`),
-a column with a codec, a `StringSet`, and a struct with one leaf (Java reads the leaf).
-They wait for the column types, not for this design.
+The last seven rows are the second slice's ("The second slice", below). Still refused by
+name when the table is created: a list of one of the types of those rows, a column with a
+codec, and a `StringSet`.
 
 ## Dependencies
 
@@ -210,13 +213,8 @@ Out, each refused with `NotPorted`:
 
 | What | Waits for |
 | --- | --- |
-| Partition directories (`key=value`), partitioning columns | The `isPartitioning` flag in the contracts; the type inference of 7.3 |
-| `_metadata` and `_common_metadata` files | Partitioning columns |
-| `is_refreshing=True` on a directory | The refreshing provider above |
 | `table_definition` | `deephaven.dtypes` and `TableDefinition` in the Python package (6.8) |
 | `special_instructions`, and any path with a URI scheme (S3 and the other stores) | Its own task |
-| The types listed under "Which types" | New column types |
-| A column name that Java would change to make it legal (`a b`, `2x`, `int`) | `NameValidator#legalizeColumnName` |
 | A codec named in `col_instructions` | Codecs |
 | Brotli | A decision on parity: the reference fails to read it ("Dependencies") |
 
@@ -252,16 +250,16 @@ written by Java's own `deephaven.parquet.write`, some by pyarrow.
 | `parquet_read_foreign` | clean | Files of another writer: unsigned integers, timestamps, `INT96`, row groups, Java's nulls, column instructions |
 | `parquet_read_errors` | clean | Fourteen reads that fail in Java |
 | `parquet_read_codecs` | differs | Snappy and Zstandard, read; Brotli, refused |
-| `parquet_read_more_types` | differs | The types without a column type |
-| `parquet_read_partitioned` | differs | Partition directories, `_metadata`, refreshing directories |
-| `parquet_read_names` | differs | Names Java makes legal |
+| `parquet_read_more_types` | clean | Decimals, dates, times, local timestamps, unsigned 64-bit integers, bytes, a struct with one field |
+| `parquet_read_partitioned` | clean | Partition directories, `_metadata`, a directory that is followed |
+| `parquet_read_names` | clean | Names Java makes legal |
 
 The harness has no comparison for a `char` column (`unsupported_type`), so the scenarios
 compare a char column through `(int)` in a `view`. The Rust tests compare the chars
 themselves with what Java read.
 It has none either for `BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime` and `byte[]`,
-so `parquet_read_more_types` compares those as text: the slice that ports them also
-needs `toString` of each in a formula.
+so `parquet_read_more_types` compares those as text, with `toString()` of each in a
+formula.
 
 ## Differences from Java
 
@@ -284,6 +282,100 @@ Besides what is refused:
 - Error texts are this reader's, except where Java's text is short and names no class
   (`PARITY.md` A5 does not compare them).
 
+## The second slice
+
+Task 7.1b (`tasks/7.1b-parquet-read-more.md`) took the four rows out of the list above
+that the first slice left for it.
+
+### The column types of Java's objects
+
+Five column types were added to the contracts, each with the Arrow type a column of it
+is held as. The layout of a cell is in `oxhaven-column::java_values`, with the texts
+Java prints.
+
+| Column type | Held as | Sent to a client as (Java's `DefaultChunkWriterFactory`) |
+| --- | --- | --- |
+| `BigDecimal` | `Binary`: the scale, 4 bytes little-endian, then the unscaled value as `BigInteger#toByteArray` gives it | The same bytes, of the value without its trailing zeros |
+| `BigInteger` | `Binary`: `BigInteger#toByteArray` | The same bytes |
+| `LocalDate` | `Date32` | `Date64`, milliseconds |
+| `LocalTime` | `Time64(ns)` | `Time64(ns)` |
+| `LocalDateTime` | `Timestamp(ns)` without a zone | `Utf8`, the text of `toString()` |
+
+`byte[]` needed no new type: it is `Array` of `Byte`, and a client is sent `Binary`.
+
+A formula can test a column of these types for null and print it (`isNull(D)`,
+`D.toString()`), and make a string of a `byte[]` and take its length (`new String(B)`,
+`B.length`). Every other use is refused by the type checker, so the values never reach
+an operator that does not know them. A `LocalDate` before the year -5877641 or a
+`LocalDateTime` outside 1677 to 2262 cannot be held and is an error when it is read.
+
+### Names
+
+A column no instruction names gets the name `NameValidator#legalizeColumnName` gives it,
+with Java's rule for which names a changed name must differ from: none for the first
+name that is changed, then the names of the instructions and the changed names, and
+never a name that was legal as it was. So `a_b` then `a b` is two columns `a_b` and a
+refusal, and `a b` then `a_b` is `a_b` and `a_b2`, as in Java.
+
+### Partition directories
+
+A directory without a `_metadata` file is walked, and each directory named `key=value`
+between the root and a file is a partitioning column, before the columns of the files.
+The first file by path names the keys; the values get their types from the CSV reader,
+given a file whose header is the keys and whose rows are the values, as Java does
+(`LocationTableBuilderCsv`): `K=1` and `K=2` are an `int` column, `K=a` and `K=b` a
+`char` column. The files are ordered by their partition values, then by path. A column of
+the files with the name of a key is not read.
+
+The definition says which columns are partitioning ones, and the schema and the meta
+table tell a client. An operation keeps them where Java does: where its result has the
+definition of its parent (`where`, `head`, `tail`, `slice`, `reverse`, `where_in`, a
+`sort` that moves no row, a copy), and where a column of the result is the very source
+of a partitioning column (`view`, `update_view`, `update`, `lazy_update`,
+`drop_columns`, `rename_columns`, `move_columns`, `update_by`; Java's
+`TableDefinition#inferFrom(Table, Map)`). Every other table is made without them
+(`TableSpec::keeping_partitioning` is the exception, not the rule).
+
+### Metadata files
+
+`_metadata` names the files of the table and has its columns; the files are the ones it
+names, in the order it first names them. The footers of the files themselves are read
+for their row groups, where Java reads what the metadata file says of them, so a file
+that the metadata file lists a part of is refused. Partitioning columns that only
+`_common_metadata` knows are refused (`ParquetMetadataFileLayout#create`): that is the
+layout `write_partitioned` makes with `generate_metadata_files`, which is not ported
+either.
+
+### A directory that is followed
+
+`read_in(graph, path, options)` with `refreshing` makes `source::following_table`: the
+files that are there, and a provider that looks at the directory again when 60 seconds
+have passed since it last did (Java's `TableDataRefreshService`, by default). The files
+it had not seen become regions after the ones that are there, in the order above among
+themselves. The table has the attribute `AppendOnly` and not `AddOnly`, as Java's has.
+The look happens in the cycle, under the graph's exclusive lock: Java looks on a thread
+of its own and hands the result to the cycle.
+
+### Differences from Java, second slice
+
+- A column that renames a partitioning column in `view`, `update_view` or
+  `lazy_update` (`Q = K`) is a partitioning column. In Java it is one when the
+  operation is applied to any table derived from the read, and not when it is applied
+  to the table as `read` answers it, which is not coalesced yet and answers through
+  `DeferredViewTable`. Oxhaven has no such state of a table.
+- The files of partition directories are taken by path; Java takes them in the order
+  its walk of the directory finds them, which decides the names of the keys and which
+  refusal a directory with mixed depths or mixed keys gets. A file with fewer partition
+  directories than an earlier one is refused as not ported
+  (`URIStreamKeyValuePartitionLayout#getPartitions`); Java refuses the deeper file when
+  it meets the shallower one first.
+- A file a `_metadata` file names that is not there is an error when the table is made;
+  in Java when its rows are read.
+- A partition value that turns up later with another type than its column fails the
+  table when it is found; Java fails when the value is read.
+- `new String(bytes)` of bytes that are not UTF-8 is refused; Java replaces them.
+- A `TIME` in microseconds too large for nanoseconds is an error; Java lets it wrap.
+
 ## Risks
 
 1. **Memory.** A decoded column chunk is never dropped while its table lives, so a query
@@ -293,8 +385,9 @@ Besides what is refused:
 2. **Reads happen where the operation runs**, on a blocking file read under the update
    graph's shared lock when the operation is part of a console command. Local disks make
    that acceptable; a remote store will need the reads off that path.
-3. **Types.** A good part of real files have dates and decimals, which wait for column
-   types. The refusal is clear, but it is a refusal.
+3. **Types.** Dates, times and decimals are read since the second slice, and a formula
+   can only print them and test them for null: a query that computes with them is refused
+   by the type checker.
 4. **Codecs**, as above.
 
 ## Writing Parquet

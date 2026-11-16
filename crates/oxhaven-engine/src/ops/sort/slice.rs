@@ -37,11 +37,14 @@ fn parent_columns(parent: &Arc<dyn Table>) -> Vec<Arc<dyn ColumnSource>> {
 /// Behavior: `getSubTable(RowSetFactory.empty().toTracking())` in
 /// io.deephaven.engine.table.impl.QueryTable#head, #tail and #slice
 fn no_rows(parent: &Arc<dyn Table>) -> Arc<dyn Table> {
-    QueryTable::new_static(TableSpec::new(
-        parent.definition().clone(),
-        RowSet::empty(),
-        parent_columns(parent),
-    ))
+    QueryTable::new_static(
+        TableSpec::new(
+            parent.definition().clone(),
+            RowSet::empty(),
+            parent_columns(parent),
+        )
+        .keeping_partitioning(),
+    )
 }
 
 /// The first `size` rows.
@@ -319,6 +322,7 @@ fn slice_like(parent: &Arc<dyn Table>, bounds: Bounds) -> Result<Arc<QueryTable>
             selected(&parent.row_set()),
             parent_columns(parent),
         )
+        .keeping_partitioning()
         .with_attributes(slice_attributes(&**parent, bounds));
         spec.flat = parent.is_flat() && bounds.may_be_flat();
 
@@ -417,6 +421,7 @@ fn blink_to_append_only(
         attributes.add_only = true;
         attributes.append_only = true;
         let spec = TableSpec::new(parent.definition().clone(), rows, as_sources(&columns))
+            .keeping_partitioning()
             .with_attributes(attributes)
             .flat();
 
@@ -467,7 +472,8 @@ fn ring(parent: &Arc<dyn Table>, capacity: u64) -> Result<Arc<QueryTable>, Table
         let (kept, rows) = retained(&initial, 0, capacity);
         copy_rows(&**parent, &kept, &columns, &rows)?;
         let seen = AtomicU64::new(initial.size());
-        let spec = TableSpec::new(parent.definition().clone(), rows, as_sources(&columns));
+        let spec = TableSpec::new(parent.definition().clone(), rows, as_sources(&columns))
+            .keeping_partitioning();
 
         let parent = parent.clone();
         let operator = move |result: &QueryTable, upstream: &TableUpdate| {

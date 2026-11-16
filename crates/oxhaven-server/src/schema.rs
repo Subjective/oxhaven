@@ -193,6 +193,11 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         }
         ColumnType::Table(TableClass::Table) => "io.deephaven.engine.table.Table",
         ColumnType::Table(TableClass::QueryTable) => "io.deephaven.engine.table.impl.QueryTable",
+        ColumnType::BigDecimal => "java.math.BigDecimal",
+        ColumnType::BigInteger => "java.math.BigInteger",
+        ColumnType::LocalDate => "java.time.LocalDate",
+        ColumnType::LocalTime => "java.time.LocalTime",
+        ColumnType::LocalDateTime => "java.time.LocalDateTime",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
@@ -413,6 +418,9 @@ pub fn arrow_schema(definition: &TableDefinition, context: &SchemaContext) -> Sc
                 .sortable
                 .as_ref()
                 .is_none_or(|sortable| sortable.iter().any(|allowed| allowed == name));
+            if column.partitioning {
+                put(&mut metadata, "isPartitioning", TRUE);
+            }
             if preview.is_none() && allowed && is_sortable(&column.column_type) {
                 put(&mut metadata, "isSortable", TRUE);
             }
@@ -536,6 +544,64 @@ mod tests {
             .iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
             .collect()
+    }
+
+    /// What Java 42.9 declared for the columns of the Parquet files of
+    /// `crates/oxhaven-parquet/tests/data` (`no_*.parquet`, `kv/`).
+    #[test]
+    fn the_java_math_and_time_types_and_a_partitioning_column_are_declared_as_in_java() {
+        let mut columns = vec![ColumnDefinition::partitioning("K", ColumnType::Int)];
+        for (name, column_type) in [
+            ("Dec", ColumnType::BigDecimal),
+            ("Big", ColumnType::BigInteger),
+            ("Date", ColumnType::LocalDate),
+            ("Time", ColumnType::LocalTime),
+            ("Local", ColumnType::LocalDateTime),
+            ("X", ColumnType::Int),
+        ] {
+            columns.push(ColumnDefinition::new(name, column_type));
+        }
+        let definition = TableDefinition::new(columns).unwrap();
+        let schema = arrow_schema(&definition, &SchemaContext::default());
+        let seen: Vec<_> = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                (
+                    f.name().as_str(),
+                    f.data_type().clone(),
+                    f.metadata()[TYPE_KEY].as_str(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                ("K", DataType::Int32, "int"),
+                ("Dec", DataType::Binary, "java.math.BigDecimal"),
+                ("Big", DataType::Binary, "java.math.BigInteger"),
+                ("Date", DataType::Date64, "java.time.LocalDate"),
+                (
+                    "Time",
+                    DataType::Time64(TimeUnit::Nanosecond),
+                    "java.time.LocalTime"
+                ),
+                ("Local", DataType::Utf8, "java.time.LocalDateTime"),
+                ("X", DataType::Int32, "int"),
+            ]
+        );
+        assert_eq!(
+            schema.field(0).metadata(),
+            &metadata(&[
+                ("deephaven:isPartitioning", "true"),
+                ("deephaven:isSortable", "true"),
+                ("deephaven:type", "int")
+            ])
+        );
+        for field in &schema.fields()[1..] {
+            assert!(!field.metadata().contains_key("deephaven:isPartitioning"));
+            assert_eq!(field.metadata()["deephaven:isSortable"], "true");
+        }
     }
 
     #[test]

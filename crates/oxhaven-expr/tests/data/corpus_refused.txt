@@ -325,7 +325,7 @@ grid-function/java.21	java-fails	static method call Math.max()
 grid-function/java.22	java-fails	static method call Math.sqrt()
 grid-function/java.23	java-fails	static method call Math.floorMod()
 grid-function/java.26	java-accepts	static method call Double.isNaN()
-grid-function/java.28	java-accepts	object creation (new)
+grid-function/java.28	java-accepts	new String() of a value of type String
 grid-function/java.29	java-accepts	object creation (new)
 grid-literal/plus.boolean.null	java-fails	null literal as an operand of +
 grid-literal/plus.null.boolean	java-fails	null literal as an operand of +
@@ -602,7 +602,7 @@ java-formula-column/L246.e	java-fails	static method call Calendar.getAvailableCa
 java-formula-column/L254.e	java-fails	static method call Math.sqrt()
 java-formula-column/L258.e	java-fails	static method call Math.sqrt()
 java-formula-column/L297.e	java-accepts	static method call Integer.toString()
-java-formula-column/L301.e	java-accepts	object creation (new)
+java-formula-column/L301.e	java-accepts	new String() of a value of type String
 java-formula-column/L305.e	java-accepts	object creation (new)
 java-formula-column/L309.e	java-fails	object creation (new)
 java-formula-column/L317.e	java-accepts	static method call DateTimeUtils.epochNanosToInstant()

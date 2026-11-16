@@ -5,6 +5,7 @@ use crate::{read, ColumnInstruction, Layout, ReadError, ReadOptions, UnsignedLon
 use arrow::array::{Array, AsArray};
 use arrow::datatypes::{DataType, Int64Type, TimestampNanosecondType};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
+use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::rowset::{RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -399,28 +400,281 @@ fn a_directory_of_files_without_rows_is_a_table_without_rows() {
     assert!(cells(&table, "X").is_empty());
 }
 
+/// The cells of a column as Java's `toString` of each, or `Arrays.toString` for a
+/// `byte[]`; `null` for a null.
+fn java_texts(table: &QueryTable, name: &str) -> Vec<String> {
+    use arrow::datatypes::{Date32Type, Int8Type, Time64NanosecondType};
+    use oxhaven_column::java_values as java;
+    let index = table.definition().index_of(name).unwrap();
+    let values = table.column(index).chunk(&table.row_set()).unwrap();
+    let column_type = &table.definition().columns()[index].column_type;
+    assert_eq!(values.data_type(), &column_type.arrow_type(), "{name}");
+    let text = |row: usize| match column_type {
+        ColumnType::BigInteger => java::big_integer_text(values.as_binary::<i32>().value(row)),
+        ColumnType::BigDecimal => {
+            let cell = values.as_binary::<i32>().value(row);
+            let (scale, unscaled) = java::big_decimal_parts(cell).unwrap();
+            // a cell holds its integer in the fewest bytes
+            assert_eq!(java::minimal(unscaled), unscaled, "{name}");
+            java::big_decimal_text(scale, unscaled)
+        }
+        ColumnType::LocalDate => {
+            java::local_date_text(values.as_primitive::<Date32Type>().value(row).into())
+        }
+        ColumnType::LocalTime => {
+            java::local_time_text(values.as_primitive::<Time64NanosecondType>().value(row))
+        }
+        ColumnType::LocalDateTime => {
+            java::local_date_time_text(values.as_primitive::<TimestampNanosecondType>().value(row))
+        }
+        ColumnType::Array(_) => {
+            let bytes = values.as_list::<i32>().value(row);
+            let bytes = bytes.as_primitive::<Int8Type>().iter();
+            // a null element is the byte Java reserves for it
+            let bytes: Vec<String> = bytes.map(|b| b.unwrap_or(i8::MIN).to_string()).collect();
+            format!("[{}]", bytes.join(", "))
+        }
+        other => panic!("{name} is a column of {other:?}"),
+    };
+    (0..values.len())
+        .map(|row| {
+            if values.is_null(row) {
+                "null".to_string()
+            } else {
+                text(row)
+            }
+        })
+        .collect()
+}
+
 #[test]
-fn types_without_a_column_type_are_refused_by_their_java_type() {
-    let files = [
-        ("no_decimal.parquet", "java.math.BigDecimal"),
-        ("no_date.parquet", "java.time.LocalDate"),
-        ("no_time.parquet", "java.time.LocalTime"),
-        ("no_local_timestamp.parquet", "java.time.LocalDateTime"),
-        ("no_uint64.parquet", "java.math.BigInteger"),
-        ("no_binary.parquet", "byte[]"),
-        ("no_struct.parquet", "a struct with the one field a"),
+fn the_types_java_holds_as_objects_are_read_with_the_values_java_reads() {
+    use ColumnType::*;
+    let table = read_default("more_types.parquet").unwrap();
+    let expected = [
+        ("Dec", BigDecimal),
+        ("Wide", BigDecimal),
+        ("Whole", BigDecimal),
+        ("Date", LocalDate),
+        ("TimeMs", LocalTime),
+        ("TimeUs", LocalTime),
+        ("TimeNs", LocalTime),
+        ("LocalMs", LocalDateTime),
+        ("LocalUs", LocalDateTime),
+        ("LocalNs", LocalDateTime),
+        ("U64", BigInteger),
+        ("Bin", ColumnType::array(Byte)),
+        ("Fixed", ColumnType::array(Byte)),
     ];
-    for (name, java_type) in files {
-        let (java, what) = not_ported(read_default(name));
-        assert!(
-            java.ends_with("ParquetSchemaReader#readParquetSchema"),
-            "{name}"
-        );
-        assert!(
-            what.starts_with("column V") && what.ends_with(java_type),
-            "{what}"
-        );
+    let expected: Vec<_> = expected
+        .into_iter()
+        .map(|(n, t)| (n.to_string(), t))
+        .collect();
+    assert_eq!(columns(&table), expected);
+    // two row groups, of four rows and of two
+    assert_eq!(*table.row_set(), RowSet::flat(6));
+    let texts = |name| java_texts(&table, name);
+    // -0.01 and -1 are stored as bytes that are all ones, which Java reads as null
+    assert_eq!(
+        texts("Dec"),
+        ["1.50", "-1.50", "0.00", "null", "null", "12345.67"]
+    );
+    assert_eq!(
+        texts("Wide"),
+        [
+            "1.0000000000",
+            "-12345678901234567890.0123456789",
+            "0E-10",
+            "null",
+            "1E-10",
+            "9999999999999999999999999999.9999999999"
+        ]
+    );
+    assert_eq!(texts("Whole"), ["15", "-15", "0", "null", "null", "255"]);
+    assert_eq!(
+        texts("Date"),
+        [
+            "2024-01-02",
+            "1969-12-31",
+            "null",
+            "1970-01-01",
+            "-0001-12-31",
+            "+10000-01-01"
+        ]
+    );
+    assert_eq!(
+        texts("TimeMs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999",
+            "01:02:00.500",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("TimeUs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999999",
+            "00:00:00.000001",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("TimeNs"),
+        [
+            "01:02:03",
+            "00:00",
+            "null",
+            "23:59:59.999999999",
+            "00:00:00.000000001",
+            "01:02"
+        ]
+    );
+    assert_eq!(
+        texts("LocalMs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.500",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("LocalUs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.000001",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("LocalNs"),
+        [
+            "1970-01-01T00:00",
+            "1969-12-31T23:59:59.999999999",
+            "null",
+            "2024-01-02T01:02:03",
+            "2024-01-02T01:02:03.000000001",
+            "1969-12-31T00:00"
+        ]
+    );
+    assert_eq!(
+        texts("U64"),
+        [
+            "0",
+            "1",
+            "null",
+            "9223372036854775808",
+            "18446744073709551615",
+            "9223372036854775807"
+        ]
+    );
+    // an empty byte string is an empty array, not a null
+    assert_eq!(
+        texts("Bin"),
+        [
+            "[97, 98]",
+            "[]",
+            "null",
+            "[-128, 0, -1]",
+            "[-61, -87]",
+            "[120]"
+        ]
+    );
+    assert_eq!(
+        texts("Fixed"),
+        [
+            "[97, 98]",
+            "[-128, 127]",
+            "null",
+            "[99, 100]",
+            "[0, 0]",
+            "[122, 122]"
+        ]
+    );
+    // the byte -128 is the null element of a list of bytes, as in every such list
+    let bin = table.column(11).chunk(&RowSet::from_keys([3])).unwrap();
+    let bytes = bin.as_list::<i32>().value(0);
+    assert_eq!((bytes.len(), bytes.null_count()), (3, 1));
+    assert!(bytes.is_null(0));
+
+    // the two-row files of the scenario `parquet_read_more_types`
+    for (name, text) in [
+        ("no_decimal.parquet", "1.50"),
+        ("no_date.parquet", "2024-01-02"),
+        ("no_time.parquet", "01:02:03"),
+        ("no_local_timestamp.parquet", "1970-01-01T00:00"),
+        ("no_uint64.parquet", "1"),
+        ("no_binary.parquet", "[97, 98]"),
+    ] {
+        let table = read_default(name).unwrap();
+        assert_eq!(java_texts(&table, "V"), [text, "null"], "{name}");
     }
+}
+
+#[test]
+fn a_decimal_stored_as_an_integer_keeps_every_value() {
+    let table = read_default("more_decimals_int.parquet").unwrap();
+    let both = [ColumnType::BigDecimal, ColumnType::BigDecimal];
+    assert_eq!(
+        columns(&table).into_iter().map(|c| c.1).collect::<Vec<_>>(),
+        both
+    );
+    // -0.01 is not a null here: only bytes can be all ones
+    assert_eq!(
+        java_texts(&table, "D32"),
+        ["1.50", "-1.50", "0.00", "null", "-0.01", "-9999999.99"]
+    );
+    assert_eq!(
+        java_texts(&table, "D64"),
+        [
+            "1.500",
+            "-1.500",
+            "0.000",
+            "null",
+            "-0.001",
+            "-999999999999999.999"
+        ]
+    );
+}
+
+#[test]
+fn the_one_field_of_a_struct_is_read_unless_two_levels_can_leave_it_out() {
+    let table = read_default("more_structs.parquet").unwrap();
+    let ints = ["Outer", "Leaf", "Both"].map(|name| (name.to_string(), ColumnType::Int));
+    assert_eq!(columns(&table), ints);
+    assert_eq!(cells(&table, "Outer"), ["1", "null", "3"]);
+    assert_eq!(cells(&table, "Leaf"), ["1", "null", "3"]);
+    assert_eq!(cells(&table, "Both"), ["1", "2", "3"]);
+
+    // Java makes the table of a struct that can be null with a field that can be null,
+    // and fails when the column is read
+    let table = read_default("no_struct.parquet").unwrap();
+    assert_eq!(columns(&table), [("V".to_string(), ColumnType::Int)]);
+    assert_eq!(*table.row_set(), RowSet::flat(2));
+    let failure = table.column(0).chunk(&table.row_set()).unwrap_err();
+    assert!(
+        failure.message.ends_with(
+            "column V: Failed to read parquet page because nested optional levels are not \
+             supported"
+        ),
+        "{}",
+        failure.message
+    );
+}
+
+#[test]
+fn bytes_without_a_logical_type_are_text_only_in_a_legacy_file() {
     let legacy = ReadOptions {
         legacy: true,
         ..ReadOptions::default()
@@ -480,10 +734,15 @@ fn a_column_is_renamed_by_an_instruction() {
     assert_eq!(names, ["P", "Q", "S"]);
     assert_eq!(cells(&table, "Q"), ["0", "1", "2"]);
 
-    // a name Java would change is refused, unless an instruction names the column
-    let (java, what) = not_ported(read_default("names.parquet"));
-    assert!(java.ends_with("NameValidator#legalizeColumnName"));
-    assert_eq!(what, "column name 'a b'");
+    // a name that is not legal is changed, unless an instruction names the column
+    let table = read_default("names.parquet").unwrap();
+    let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["a_b", "column_2x", "ok"]);
+    assert_eq!(cells(&table, "a_b"), ["1"]);
+    assert_eq!(cells(&table, "column_2x"), ["2"]);
+    let table = read_default("reserved.parquet").unwrap();
+    let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
+    assert_eq!(names, ["column_int", "ok"]);
     let named = with_columns(vec![instruction("a b", "A"), instruction("2x", "B")]);
     let table = read(&data("names.parquet"), &named).unwrap();
     let names: Vec<_> = columns(&table).into_iter().map(|(name, _)| name).collect();
@@ -499,6 +758,12 @@ fn instructions_java_refuses_are_refused() {
         invalid(read(&path, &twice)),
         "Cannot add new mapping from parquetColumnName=X to columnName=B: already mapped to \
          columnName=A"
+    );
+    let shared = with_columns(vec![instruction("X", "A"), instruction("P", "A")]);
+    assert_eq!(
+        invalid(read(&path, &shared)),
+        "Cannot add a mapping from parquetColumnName=P: columnName=A already mapped to \
+         parquetColumnName=X"
     );
     let same = with_columns(vec![instruction("X", "A"), instruction("X", "A")]);
     assert!(read(&path, &same).is_ok());
@@ -564,6 +829,12 @@ fn what_is_missing_or_empty_is_an_error() {
         invalid(read(&data("kv"), &with_layout(Layout::FlatPartitioned))),
         no_files
     );
+    let directories = scratch("only-directories");
+    std::fs::create_dir_all(directories.join("K=1")).unwrap();
+    assert_eq!(
+        invalid(read(directories.to_str().unwrap(), &ReadOptions::default())),
+        no_files
+    );
 
     let garbage = empty.join("garbage.parquet");
     std::fs::write(&garbage, "not a parquet file at all").unwrap();
@@ -572,7 +843,7 @@ fn what_is_missing_or_empty_is_an_error() {
 }
 
 #[test]
-fn a_refreshing_table_is_refused() {
+fn a_single_file_and_a_metadata_file_cannot_be_followed() {
     let refreshing = ReadOptions {
         refreshing: true,
         ..ReadOptions::default()
@@ -584,25 +855,294 @@ fn a_refreshing_table_is_refused() {
     // the missing file is found first, as in Java
     let missing = read(&data("nope.parquet"), &refreshing);
     assert!(matches!(missing, Err(ReadError::Io(_))));
-    let (java, _) = not_ported(read(&data("flat"), &refreshing));
-    assert!(java.ends_with("PollingTableLocationProvider#refresh"));
+    for path in [data("meta"), data("meta/_metadata")] {
+        assert_eq!(
+            invalid(read(&path, &refreshing)),
+            "ParquetMetadataFileLayout does not support refreshing"
+        );
+    }
+    // a directory can, by `read_in`, which has the update graph
+    let needs_graph = invalid(read(&data("flat"), &refreshing));
+    assert!(
+        needs_graph.ends_with("needs an update graph"),
+        "{needs_graph}"
+    );
+}
+
+/// Copies the files `names` of `tests/data` into `directory`, each under its file name or
+/// under the path given after a `>`.
+fn copy(directory: &std::path::Path, names: &[&str]) {
+    for name in names {
+        let file_name = name.rsplit('/').next().unwrap();
+        let (from, to) = name.split_once('>').unwrap_or((name, file_name));
+        let to = directory.join(to);
+        std::fs::create_dir_all(to.parent().unwrap()).unwrap();
+        std::fs::copy(data(from), to).unwrap();
+    }
+}
+
+/// What Java 42.9 read from `tests/data/kv`, and from the directories of the probe of
+/// task 7.1b (`tasks/7.1b-parquet-read-more.md`).
+#[test]
+fn partition_directories_are_partitioning_columns() {
+    for options in [ReadOptions::default(), with_layout(Layout::KvPartitioned)] {
+        let table = read(&data("kv"), &options).unwrap();
+        let definition = table.definition().columns();
+        assert_eq!(
+            columns(&table),
+            [
+                ("K".to_string(), ColumnType::Int),
+                ("X".to_string(), ColumnType::Int)
+            ]
+        );
+        assert!(definition[0].partitioning && !definition[1].partitioning);
+        assert_eq!(cells(&table, "K"), ["1", "2"]);
+        assert_eq!(cells(&table, "X"), ["1", "2"]);
+        assert!(table.attributes().add_only && !table.is_refreshing());
+        // each file is a region
+        let expected = RowSet::from_ranges([RowRange::new(0, 0), RowRange::new(REGION, REGION)]);
+        assert_eq!(*table.row_set(), expected);
+        // a partitioning column is read by row keys in any order too
+        let index = table.definition().index_of("K").unwrap();
+        let keys = table
+            .column(index)
+            .chunk_by_keys(&[REGION, 0, REGION], false);
+        let keys = keys.unwrap();
+        let keys = keys.as_primitive::<arrow::datatypes::Int32Type>();
+        assert_eq!(keys.values(), &[2, 1, 2]);
+    }
+}
+
+#[test]
+fn partition_values_have_the_types_the_csv_reader_infers_and_order_the_files() {
+    let root = scratch("partitions");
+    // two levels; the values of `N` sort as numbers and those of `S` as text
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>t/N=10/S=bb/f.parquet",
+            "kv/K=2/a.parquet>t/N=9/S=bb/f.parquet",
+            "kv/K=1/a.parquet>t/N=10/S=aa/g.parquet",
+            "kv/K=2/a.parquet>t/N=10/S=aa/f.parquet",
+            "kv/K=1/a.parquet>t/N=10/.hidden/f.parquet",
+        ],
+    );
+    let table = read(root.join("t").to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(
+        columns(&table),
+        [
+            ("N".to_string(), ColumnType::Int),
+            ("S".to_string(), ColumnType::String),
+            ("X".to_string(), ColumnType::Int)
+        ]
+    );
+    assert_eq!(cells(&table, "N"), ["9", "10", "10", "10"]);
+    assert_eq!(cells(&table, "S"), ["bb", "aa", "aa", "bb"]);
+    assert_eq!(cells(&table, "X"), ["2", "2", "1", "1"]);
+
+    // a column of the files with the name of a key is not read; a key is made a legal name
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>same/X=7/a.parquet",
+            "kv/K=1/a.parquet>legal/2 k=x/a.parquet",
+            "kv/K=2/a.parquet>legal/2 k=true/a.parquet",
+        ],
+    );
+    let table = read(root.join("same").to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(columns(&table), [("X".to_string(), ColumnType::Int)]);
+    assert_eq!(cells(&table, "X"), ["7"]);
+    let table = read(
+        root.join("legal").to_str().unwrap(),
+        &ReadOptions::default(),
+    )
+    .unwrap();
+    assert_eq!(
+        columns(&table)[0],
+        ("column_2k".to_string(), ColumnType::String)
+    );
+    assert_eq!(cells(&table, "column_2k"), ["true", "x"]);
+    assert_eq!(cells(&table, "X"), ["2", "1"]);
+}
+
+#[test]
+fn partition_directories_java_refuses_are_refused() {
+    let root = scratch("bad-partitions");
+    let read_at = |name: &str| read(root.join(name).to_str().unwrap(), &ReadOptions::default());
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>plain/sub/a.parquet",
+            "kv/K=1/a.parquet>names/A=1/a.parquet",
+            "kv/K=1/a.parquet>names/B=1/a.parquet",
+            "kv/K=1/a.parquet>deeper/A=1/a.parquet",
+            "kv/K=1/a.parquet>deeper/A=2/B=1/a.parquet",
+            "kv/K=1/a.parquet>null/A=1/a.parquet",
+            "kv/K=1/a.parquet>null/A=/a.parquet",
+            "kv/K=1/a.parquet>last/A=/a.parquet",
+            "kv/K=1/a.parquet>shallow/A=1/a.parquet",
+            "kv/K=2/a.parquet>shallow/b.parquet",
+        ],
+    );
+    let Err(ReadError::NotPorted { java, what }) = read_at("shallow") else {
+        panic!("a file above the partition directories of another is read");
+    };
+    assert!(java.ends_with("URIStreamKeyValuePartitionLayout#getPartitions"));
+    assert_eq!(
+        what,
+        "b.parquet has 0 partition directories and an earlier file has 1"
+    );
+    assert_eq!(
+        invalid(read_at("plain")),
+        "Unexpected directory name format (not key=value) at sub/a.parquet"
+    );
+    assert_eq!(
+        invalid(read_at("names")),
+        "Column name mismatch at column index 0: expected A found B at B=1/a.parquet"
+    );
+    assert_eq!(
+        invalid(read_at("deeper")),
+        "Too many partitioning levels at A=2/B=1/a.parquet (expected 1) based on earlier leaf \
+         nodes in the tree."
+    );
+    // a partition without a value is null, and comes first
+    let table = read_at("null").unwrap();
+    assert_eq!(cells(&table, "A"), ["null", "1"]);
+    let text = invalid(read_at("last"));
+    assert!(
+        text.starts_with("Last location key ")
+            && text.ends_with("has null partition value at partition key A"),
+        "{text}"
+    );
+}
+
+#[test]
+fn a_metadata_file_lists_the_files_of_a_table() {
+    for path in [data("meta"), data("meta/_metadata")] {
+        let table = read(&path, &ReadOptions::default()).unwrap();
+        assert_eq!(columns(&table), [("X".to_string(), ColumnType::Int)]);
+        assert_eq!(cells(&table, "X"), ["1"]);
+        assert!(table.attributes().add_only);
+    }
+    let table = read(&data("meta"), &with_layout(Layout::MetadataPartitioned)).unwrap();
+    assert_eq!(cells(&table, "X"), ["1"]);
+
+    // the files are the ones the metadata file names, not the ones of the directory
+    let root = scratch("metadata");
+    copy(
+        &root,
+        &[
+            "meta/_metadata",
+            "meta/a.parquet",
+            "meta/a.parquet>b.parquet",
+        ],
+    );
+    let table = read(root.to_str().unwrap(), &ReadOptions::default()).unwrap();
+    assert_eq!(cells(&table, "X"), ["1"]);
+    // and a file it names must be there
+    std::fs::remove_file(root.join("a.parquet")).unwrap();
+    let missing = read(root.to_str().unwrap(), &ReadOptions::default());
+    assert!(matches!(missing, Err(ReadError::Io(text)) if text.contains("a.parquet")));
 }
 
 #[test]
 fn layouts_that_are_not_ported_are_refused() {
-    let (java, what) = not_ported(read_default("kv"));
-    assert!(java.ends_with("ParquetKeyValuePartitionedLayout#findKeys"));
-    assert!(
-        what.contains("K=1/a.parquet") || what.contains("K=2/a.parquet"),
-        "{what}"
-    );
-
-    for path in [data("meta"), data("meta/_metadata")] {
-        let (java, _) = not_ported(read(&path, &ReadOptions::default()));
-        assert!(java.ends_with("ParquetMetadataFileLayout#create"), "{path}");
-    }
     let (java, _) = not_ported(read("s3://bucket/table.parquet", &ReadOptions::default()));
     assert!(java.ends_with("SeekableChannelsProviderLoader#load"));
+}
+
+#[test]
+fn a_table_follows_the_files_that_appear_in_its_directory() {
+    use oxhaven_engine::graph::SteppedUpdateGraph;
+    use std::time::Duration;
+    let root = scratch("following");
+    copy(&root, &["flat/part1.parquet"]);
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let refreshing = ReadOptions {
+        refreshing: true,
+        ..ReadOptions::default()
+    };
+    let path = root.to_str().unwrap();
+    let following = Some((graph.clone(), Duration::ZERO));
+    let table = crate::read_table(path, &refreshing, following).unwrap();
+    // Java gives it this attribute and not the add-only one
+    assert!(table.attributes().append_only && !table.attributes().add_only);
+    assert!(table.is_refreshing());
+    assert_eq!(cells(&table, "X"), ["0", "1", "2", "3"]);
+
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 4);
+    // the new files come after the rows that are there, in the order of their paths,
+    // whatever their place among the old ones; a file without rows adds none
+    copy(
+        &root,
+        &[
+            "flat/part2.parquet",
+            "flat/part0.parquet",
+            "flat/empty.parquet",
+            "flat/part0.parquet>.hidden.parquet",
+        ],
+    );
+    stepper.run_cycle();
+    assert_eq!(
+        cells(&table, "X"),
+        ["0", "1", "2", "3", "0", "1", "2", "0", "1", "2", "3", "4"]
+    );
+    let expected = RowSet::from_ranges([
+        RowRange::new(0, 3),
+        RowRange::new(REGION, REGION + 2),
+        RowRange::new(2 * REGION, 2 * REGION + 4),
+    ]);
+    assert_eq!(*table.row_set(), expected);
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 12);
+
+    // with the wait Java has between two looks, a cycle right after does not look
+    let waiting = scratch("waiting");
+    copy(&waiting, &["flat/part1.parquet"]);
+    let table = crate::read_in(&graph, waiting.to_str().unwrap(), &refreshing).unwrap();
+    copy(&waiting, &["flat/part2.parquet"]);
+    stepper.run_cycle();
+    assert_eq!(table.row_set().size(), 4);
+
+    // a directory that has no file yet has no columns to give the table
+    let empty = scratch("following-empty");
+    let none = crate::read_in(&graph, empty.to_str().unwrap(), &refreshing);
+    assert!(invalid(none).starts_with("Unable to infer schema"));
+}
+
+#[test]
+fn a_followed_directory_of_partitions_gains_partitions() {
+    use oxhaven_engine::graph::SteppedUpdateGraph;
+    use std::time::Duration;
+    let root = scratch("following-partitions");
+    copy(&root, &["kv/K=2/a.parquet>K=2/a.parquet"]);
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let refreshing = ReadOptions {
+        refreshing: true,
+        ..ReadOptions::default()
+    };
+    let path = root.to_str().unwrap();
+    let table = crate::read_table(path, &refreshing, Some((graph, Duration::ZERO))).unwrap();
+    assert_eq!(cells(&table, "K"), ["2"]);
+    copy(
+        &root,
+        &[
+            "kv/K=1/a.parquet>K=3/a.parquet",
+            "kv/K=1/a.parquet>K=1/a.parquet",
+        ],
+    );
+    stepper.run_cycle();
+    assert_eq!(cells(&table, "K"), ["2", "1", "3"]);
+    assert_eq!(cells(&table, "X"), ["2", "1", "1"]);
+    assert!(!table.is_failed());
+
+    // a partition whose value is of another type than the column fails the table
+    copy(&root, &["kv/K=1/a.parquet>K=x/a.parquet"]);
+    stepper.run_cycle();
+    assert!(table.is_failed());
 }
 
 /// A new empty directory for one test.

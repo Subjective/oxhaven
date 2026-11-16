@@ -249,6 +249,11 @@ pub(crate) enum Node {
         function: crate::external::Bound,
         arguments: Vec<Option<Typed>>,
     },
+    /// `toString()` of a column of `BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime` or
+    /// `LocalDateTime`.
+    ObjectText(Box<Typed>),
+    /// `new String(bytes)` of a `byte[]`.
+    NewString(Box<Typed>),
     /// An operator applied to the elements of a vector or array and a value, or to the
     /// elements of two of them, pairwise. `body` is the operator on one pair: its
     /// `Node::Column(0)` is the left element and its `Node::Column(1)` the right one.
@@ -545,6 +550,39 @@ impl Checker<'_> {
             }
         };
         Ok(typed(column_type, Node::Column(slot)))
+    }
+
+    /// The column `expr` names, if it is a column of one of the `java.math` and
+    /// `java.time` types.
+    ///
+    /// A formula can do three things with such a column: test it with `isNull`, call its
+    /// `toString()`, and nothing else. So a column of these types is not a value like any
+    /// other ([`Checker::column`] refuses it), and the two places that take one ask here.
+    fn object_column(&mut self, expr: &Expr) -> Option<Typed> {
+        let Expr::Column(name) = expr else {
+            return None;
+        };
+        let index = self.definition.index_of(name)?;
+        let column_type = self.definition.columns()[index].column_type.clone();
+        let object = matches!(
+            column_type,
+            ColumnType::BigDecimal
+                | ColumnType::BigInteger
+                | ColumnType::LocalDate
+                | ColumnType::LocalTime
+                | ColumnType::LocalDateTime
+        );
+        if !object {
+            return None;
+        }
+        let slot = match self.columns.iter().position(|used| used == name) {
+            Some(slot) => slot,
+            None => {
+                self.columns.push(name.to_string());
+                self.columns.len() - 1
+            }
+        };
+        Some(typed(column_type, Node::Column(slot)))
     }
 
     /// `Col_`: the whole of the column `name` as a vector.
@@ -1147,6 +1185,17 @@ impl Checker<'_> {
         arguments: &[Expr],
     ) -> Result<Typed, FormulaError> {
         let length = method == crate::parse::LENGTH_FIELD;
+        if method == "toString" && arguments.is_empty() {
+            // Behavior: `java.math.BigDecimal#toString`, `java.math.BigInteger#toString`,
+            // `java.time.LocalDate#toString`, `java.time.LocalTime#toString`,
+            // `java.time.LocalDateTime#toString`
+            if let Some(receiver) = self.object_column(receiver) {
+                return Ok(typed(
+                    ColumnType::String,
+                    Node::ObjectText(Box::new(receiver)),
+                ));
+            }
+        }
         if let Expr::Column(name) = receiver {
             let column = length
                 || self.definition.index_of(name).is_some()
@@ -1289,8 +1338,32 @@ impl Checker<'_> {
                     Node::Literal(Literal::Boolean(true)),
                 ));
             }
-            let argument = self.check(argument)?;
+            let argument = match self.object_column(argument) {
+                Some(column) => column,
+                None => self.check(argument)?,
+            };
             return Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))));
+        }
+        if function == crate::parse::NEW_STRING {
+            // Behavior: `java.lang.String#String(byte[])`. The other constructors of
+            // `String`, and of every other class, are not ported.
+            let [argument] = arguments else {
+                return Err(unsupported("object creation (new)"));
+            };
+            if is_null_literal(argument) {
+                return Err(unsupported("object creation (new)"));
+            }
+            let argument = self.check(argument)?;
+            if argument.column_type != ColumnType::array(ColumnType::Byte) {
+                return Err(unsupported(format!(
+                    "new String() of a value of type {}",
+                    java_name(&argument.column_type)
+                )));
+            }
+            return Ok(typed(
+                ColumnType::String,
+                Node::NewString(Box::new(argument)),
+            ));
         }
         let mut checked = Vec::with_capacity(arguments.len());
         for argument in arguments {

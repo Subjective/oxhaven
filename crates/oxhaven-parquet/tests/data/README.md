@@ -14,12 +14,13 @@ and through `deephaven.parquet.read` in a console.
 | `foreign.parquet` | pyarrow | Unsigned and narrow integers, timestamps in three units, large and dictionary strings, a list; three row groups; values equal to Java's nulls |
 | `int96.parquet` | pyarrow | Timestamps as `INT96` |
 | `uint64_big.parquet` | pyarrow | Unsigned 64-bit values up to 2^64 - 1 |
-| `no_*.parquet` | pyarrow | One file per type that is refused: seven that Java reads and Oxhaven has no column type for, and two (`map`, `nested_list`) that Java refuses too |
+| `no_*.parquet` | pyarrow | One file per type the first slice refused: a decimal, a date, a time, a local timestamp, an unsigned 64-bit integer, bytes and a struct with one field, which are read now, and two (`map`, `nested_list`) that Java refuses too |
+| `more_types.parquet`, `more_decimals_int.parquet`, `more_structs.parquet` | pyarrow | The values of those types that are hard: decimals of every storage and of the precision Java reads as a `BigInteger`, values Java reads as null, dates and times before 1970 and in every unit, empty and fixed-length bytes; decimals stored as integers; structs with one field at one and at two optional levels |
 | `names.parquet`, `reserved.parquet` | pyarrow | Column names Java changes: `a b`, `2x`, `int` |
 | `codec_*.parquet` | pyarrow | One file per compression codec; `codec_brotli.parquet` is refused |
 | `evolve/`, `mismatch/` | pyarrow | Directories whose files do not have the same columns, or the same type for a column |
 | `hidden/` | pyarrow | Hidden files and directories, and a file that is not Parquet |
-| `kv/`, `meta/` | pyarrow | Partition directories; a `_metadata` file |
+| `kv/`, `meta/` | pyarrow | Partition directories `K=1` and `K=2`; a directory with a `_metadata` file |
 
 To make them again, with the environment of `oracle/README.md` and a Java reference
 running:

@@ -67,9 +67,14 @@ class TableDefinition(Mapping):
             self._handle = table_definition
             columns = [
                 ColumnDefinition(
-                    name, dtypes._from_java_name(type_name), dtypes._from_java_name(component)
+                    name,
+                    dtypes._from_java_name(type_name),
+                    dtypes._from_java_name(component),
+                    ColumnType.PARTITIONING if partitioning else ColumnType.NORMAL,
                 )
-                for name, type_name, component in _engine.native.column_definitions(table_definition)
+                for name, type_name, component, partitioning in _engine.native.column_definitions(
+                    table_definition
+                )
             ]
         elif isinstance(table_definition, Mapping):
             for name in table_definition.keys():
@@ -117,16 +122,16 @@ class TableDefinition(Mapping):
         """
         handle = self._handle
         if handle is None:
-            for column in self.values():
-                if column.column_type is not ColumnType.NORMAL:
-                    raise dtypes._java_time.NotPorted(
-                        "io.deephaven.engine.table.ColumnDefinition#isPartitioning",
-                        f"the engine has no partitioning columns ({column.name})",
-                    )
             # the meta table of a table without rows that has these columns
-            handle = _engine.new_table(
-                [(column.name, dtypes._engine_type(column.data_type), []) for column in self.values()]
-            )
+            columns = [
+                (
+                    column.name,
+                    dtypes._engine_type(column.data_type),
+                    column.column_type is ColumnType.PARTITIONING,
+                )
+                for column in self.values()
+            ]
+            handle = _engine.native.defined_table(columns)
         return Table(_engine.table_op("meta_table", _engine.sourced({}), [handle]))
 
     def keys(self):
