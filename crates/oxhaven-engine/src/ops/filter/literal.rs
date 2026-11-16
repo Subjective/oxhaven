@@ -2,7 +2,7 @@
 
 use oxhaven_column::sentinel::{NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_LONG};
 use oxhaven_contracts::expr::{Expr, FormulaCompiler, FormulaError, Literal};
-use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::unported;
 
 /// A value a filter compares cells with. Integer types, `char`, `Instant` (as nanoseconds),
@@ -75,6 +75,9 @@ fn class_name(column_type: &ColumnType) -> Option<&'static str> {
         ColumnType::Duration => "java.time.Duration",
         ColumnType::Period => "java.time.Period",
         ColumnType::ZoneId => "java.time.ZoneId",
+        // the class the column's definition names
+        ColumnType::Table(TableClass::QueryTable) => "io.deephaven.engine.table.impl.QueryTable",
+        ColumnType::Table(TableClass::Table) => "io.deephaven.engine.table.Table",
         _ => return None,
     })
 }
@@ -631,23 +634,27 @@ pub(super) fn convert_value(
     text: &str,
     compiler: &dyn FormulaCompiler,
 ) -> Result<Key, String> {
-    let failed = |why: &str| {
-        format!(
-            "Failed to convert value <{text}> for column \"{}\" of type {:?}{why}",
+    let failed = |what: &str, why: &str| match class_name(&column.column_type) {
+        Some(class) => format!(
+            "Failed to convert {what} <{text}> for column \"{}\" of type {class}{why}",
+            column.name
+        ),
+        None => format!(
+            "Failed to convert {what} <{text}> for column \"{}\" of type {:?}{why}",
             column.name, column.column_type
-        )
+        ),
     };
     if definition.index_of(text).is_some() {
-        return Err(failed("; it is a column name"));
+        return Err(failed("value", "; it is a column name"));
     }
     if text
         .strip_suffix('_')
         .is_some_and(|base| definition.index_of(base).is_some())
     {
-        return Err(failed("; it is a column array access name"));
+        return Err(failed("value", "; it is a column array access name"));
     }
     convert_literal_with(&column.column_type, text, Some(compiler))
-        .map_err(|e| failed(&format!(": {e}")))
+        .map_err(|e| failed("literal value", &format!(": {e}")))
 }
 
 #[cfg(test)]

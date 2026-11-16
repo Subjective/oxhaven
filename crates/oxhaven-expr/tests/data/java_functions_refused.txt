@@ -762,43 +762,15 @@ java-rejects	update	remainder(T, null)	null literal as an argument of remainder(
 java-accepts	update	eq(S, null)	null literal as an argument of eq()
 java-accepts	update	eq(B, null)	null literal as an argument of eq()
 java-accepts	update	eq(T, null)	null literal as an argument of eq()
-java-fails	update	less(S, I)	ordering comparison of String with int
-java-fails	update	less(I, S)	ordering comparison of int with String
-java-fails	update	less(B, I)	ordering comparison of Boolean with int
-java-fails	update	less(T, L)	ordering comparison of Instant with long
-java-fails	update	less(L, T)	ordering comparison of long with Instant
-java-fails	update	less(T, 1)	ordering comparison of Instant with int
-java-fails	update	less(T, 1000000000L)	ordering comparison of Instant with long
 java-accepts	update	less(S, null)	null literal as an argument of less()
 java-accepts	update	less(B, null)	null literal as an argument of less()
 java-accepts	update	less(T, null)	null literal as an argument of less()
-java-fails	update	lessEquals(S, I)	ordering comparison of String with int
-java-fails	update	lessEquals(I, S)	ordering comparison of int with String
-java-fails	update	lessEquals(B, I)	ordering comparison of Boolean with int
-java-fails	update	lessEquals(T, L)	ordering comparison of Instant with long
-java-fails	update	lessEquals(L, T)	ordering comparison of long with Instant
-java-fails	update	lessEquals(T, 1)	ordering comparison of Instant with int
-java-fails	update	lessEquals(T, 1000000000L)	ordering comparison of Instant with long
 java-accepts	update	lessEquals(S, null)	null literal as an argument of lessEquals()
 java-accepts	update	lessEquals(B, null)	null literal as an argument of lessEquals()
 java-accepts	update	lessEquals(T, null)	null literal as an argument of lessEquals()
-java-fails	update	greater(S, I)	ordering comparison of String with int
-java-fails	update	greater(I, S)	ordering comparison of int with String
-java-fails	update	greater(B, I)	ordering comparison of Boolean with int
-java-fails	update	greater(T, L)	ordering comparison of Instant with long
-java-fails	update	greater(L, T)	ordering comparison of long with Instant
-java-fails	update	greater(T, 1)	ordering comparison of Instant with int
-java-fails	update	greater(T, 1000000000L)	ordering comparison of Instant with long
 java-accepts	update	greater(S, null)	null literal as an argument of greater()
 java-accepts	update	greater(B, null)	null literal as an argument of greater()
 java-accepts	update	greater(T, null)	null literal as an argument of greater()
-java-fails	update	greaterEquals(S, I)	ordering comparison of String with int
-java-fails	update	greaterEquals(I, S)	ordering comparison of int with String
-java-fails	update	greaterEquals(B, I)	ordering comparison of Boolean with int
-java-fails	update	greaterEquals(T, L)	ordering comparison of Instant with long
-java-fails	update	greaterEquals(L, T)	ordering comparison of long with Instant
-java-fails	update	greaterEquals(T, 1)	ordering comparison of Instant with int
-java-fails	update	greaterEquals(T, 1000000000L)	ordering comparison of Instant with long
 java-accepts	update	greaterEquals(S, null)	null literal as an argument of greaterEquals()
 java-accepts	update	greaterEquals(B, null)	null literal as an argument of greaterEquals()
 java-accepts	update	greaterEquals(T, null)	null literal as an argument of greaterEquals()

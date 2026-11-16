@@ -42,7 +42,7 @@ use crate::table::{mark, marks, memoized, CopyType, Marks, QueryTable, TableSpec
 use crate::update::ModifiedColumnTransformer;
 pub use array_formula::ArrayFormula;
 use oxhaven_contracts::expr::{ColumnAssignment, FormulaCompiler, FormulaError};
-use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
+use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
 use oxhaven_contracts::update::{ModifiedColumnSet, TableUpdate};
 use plan::{Kind, Plan, Sources};
@@ -384,6 +384,25 @@ fn computed_on_read<S: AsRef<str>>(
     let mut plan = plan::analyze(parent, columns, compiler, flavor, first)?;
     if let Some(shifted) = plan.shifted.take() {
         return arrays::with_shifted_column(parent, columns, compiler, flavor, shifted);
+    }
+    // Behavior: io.deephaven.engine.table.impl.select.analyzers.ViewColumnLayer#checkResultType,
+    // which refuses a formula that makes tables (a `LivenessReferent`). Java puts a column
+    // named on its own into that layer too when its source is not one it can preserve; which
+    // sources those are is not ported, so such a column is passed through here.
+    let view = matches!(flavor, Flavor::View | Flavor::UpdateView);
+    if let Some(step) = plan.steps.iter().filter(|_| view).find(|step| {
+        matches!(step.column_type, ColumnType::Table(_)) && !matches!(step.kind, Kind::Source(_))
+    }) {
+        let class = match step.column_type {
+            ColumnType::Table(TableClass::QueryTable) => {
+                "io.deephaven.engine.table.impl.QueryTable"
+            }
+            _ => "io.deephaven.engine.table.Table",
+        };
+        return Err(SelectError::IllegalArgument(format!(
+            "Cannot use view or updateView to produce results of type class {class}; use \
+             select or update instead"
+        )));
     }
     let mut sources = Sources::new(parent);
     for step in &plan.steps {

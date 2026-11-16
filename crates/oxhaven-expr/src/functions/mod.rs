@@ -434,6 +434,17 @@ pub(crate) enum EpochUnit {
     Micros,
 }
 
+/// What the array of `new String(array, offset, count)` holds.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum StringSource {
+    /// `char[]`: UTF-16 code units.
+    Chars,
+    /// `int[]`: Unicode code points.
+    CodePoints,
+    /// `byte[]`: UTF-8.
+    Bytes,
+}
+
 /// A function as it is evaluated: the algorithm, for whatever types its arguments have.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Kernel {
@@ -488,6 +499,9 @@ pub(crate) enum Kernel {
     Static(&'static statics::Method),
     /// `new T[] { a, b }`: an array of the arguments, which all have the element type.
     ArrayOf,
+    /// `new String(array, offset, count)` of a `char[]`, `int[]` or `byte[]` and two
+    /// `int`s.
+    NewString(StringSource),
     /// `epochSeconds(Instant)`, `epochMillis(Instant)` and `epochMicros(Instant)`.
     Epoch(EpochUnit),
     /// `epochSecondsToInstant(long)` and its two relatives.

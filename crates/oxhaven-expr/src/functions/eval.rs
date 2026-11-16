@@ -815,6 +815,9 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         | Kernel::InstantUpperBin => time(kernel, arguments),
         Kernel::Vector(function) => super::vectors::evaluate(function, arguments),
         Kernel::ArrayOf => array_of(arguments),
+        Kernel::NewString(source) => {
+            crate::eval::new_string_of(source, arguments).map(|texts| Arc::new(texts) as ArrayRef)
+        }
         Kernel::JavaTime(function) => super::java_time::evaluate(function, arguments),
         _ => in_number_type!(arguments[0], |T| numeric::<T>(kernel, arguments, None)),
     }

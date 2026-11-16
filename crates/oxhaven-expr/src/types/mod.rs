@@ -115,7 +115,16 @@ pub(crate) enum CompareDomain {
     /// Strings, ordered by UTF-16 code unit as `String#compareTo` does.
     String,
     /// `==` or `!=` of values of unrelated classes, which are equal only when both are null.
-    Unrelated,
+    /// `primitive` says of each side whether it is a primitive, which Java boxes, so that
+    /// even its null value is an object.
+    Unrelated { primitive: [bool; 2] },
+    /// `<` and its relatives of `Comparable` values of two classes: null is below every
+    /// value, and two values that are not null fail, as `compareTo` of the other class
+    /// does. `primitive` as for [`CompareDomain::Unrelated`].
+    UnrelatedOrder { primitive: [bool; 2] },
+    /// `==` or `!=` of two values of one class held as an Arrow struct (`Period`,
+    /// `ZonedDateTime`), equal when every field is.
+    Fields,
 }
 
 /// The type an arithmetic operator computes in and returns.
@@ -362,6 +371,7 @@ pub(crate) fn check(
         positions: false,
         keys: false,
         refused_to_clients: None,
+        size_only: false,
     };
     let root = checker.check(expr)?;
     refuse_object_column_array(&root)?;
@@ -489,6 +499,10 @@ struct Checker<'a> {
     positions: bool,
     keys: bool,
     refused_to_clients: Option<String>,
+    /// Set while the receiver of a call that reads only sizes and nulls is checked; the
+    /// column array it names may then be one whose elements Java holds without a type
+    /// (see [`Checker::column_array`]). Taken by the first column array checked.
+    size_only: bool,
 }
 
 impl Checker<'_> {
@@ -518,7 +532,25 @@ impl Checker<'_> {
             Expr::Call {
                 function,
                 arguments,
+            } if matches!(function.as_str(), "len" | "isNull")
+                && matches!(arguments.as_slice(), [argument] if self.untyped_vectors(argument)) =>
+            {
+                self.with_size_only(|checker| checker.call(function, arguments))
+            }
+            Expr::Call {
+                function,
+                arguments,
             } => self.call(function, arguments),
+            Expr::MethodCall {
+                receiver,
+                method,
+                arguments,
+            } if matches!(method.as_str(), "size" | "isEmpty")
+                && arguments.is_empty()
+                && self.untyped_vectors(receiver) =>
+            {
+                self.with_size_only(|checker| checker.method_call(receiver, method, arguments))
+            }
             Expr::Ternary {
                 condition,
                 if_true,
@@ -549,6 +581,41 @@ impl Checker<'_> {
                 )
             }
         }
+    }
+
+    /// Whether `expr` is the column array of a column of vectors of `Boolean` or `Instant`,
+    /// or an element of it: `T_` or `T_[i]`.
+    fn untyped_vectors(&self, expr: &Expr) -> bool {
+        let column = match expr {
+            Expr::ColumnVector(column) | Expr::ColumnArrayAccess { column, .. } => column.as_str(),
+            // `T_` as the receiver of a method, unless a column has that name.
+            Expr::Column(name) if self.definition.index_of(name).is_none() => {
+                match name.strip_suffix('_') {
+                    Some(column) => column,
+                    None => return false,
+                }
+            }
+            _ => return false,
+        };
+        self.definition.index_of(column).is_some_and(|index| {
+            matches!(
+                &self.definition.columns()[index].column_type,
+                ColumnType::Vector(inner)
+                    if matches!(**inner, ColumnType::Boolean | ColumnType::Instant)
+            )
+        })
+    }
+
+    /// `check` with [`Checker::size_only`] set, and cleared afterwards whether or not a
+    /// column array took it.
+    fn with_size_only(
+        &mut self,
+        check: impl FnOnce(&mut Self) -> Result<Typed, FormulaError>,
+    ) -> Result<Typed, FormulaError> {
+        self.size_only = true;
+        let checked = check(self);
+        self.size_only = false;
+        checked
     }
 
     fn column(&mut self, name: &str) -> Result<Typed, FormulaError> {
@@ -664,10 +731,16 @@ impl Checker<'_> {
         // The column array of a vector column is an `ObjectVector` of its vectors. One of a
         // column of `ObjectVector`s of `Boolean` or `Instant` has elements without an element
         // type in Java, which a client receives as strings (seen on Java 42.9 for
-        // `update("X = T_[i]")` after a `group_by`), so it stays refused.
+        // `update("X = T_[i]")` after a `group_by`), so it stays refused, but for the
+        // calls that read only sizes and nulls: seen on Java 42.9, `T_.size()`,
+        // `T_[i].size()`, `T_[i].isEmpty()`, `len(T_[i])`,
+        // `isNull(T_[i + 1])` and `T_[i + 1] == null` are computed, and `T_[i][0]` is a
+        // `java.lang.Object` sent as text.
+        let size_only = std::mem::take(&mut self.size_only);
         let known = match &element {
             ColumnType::Vector(inner) => {
-                scalar(inner) && !matches!(**inner, ColumnType::Boolean | ColumnType::Instant)
+                scalar(inner)
+                    && (size_only || !matches!(**inner, ColumnType::Boolean | ColumnType::Instant))
             }
             other => scalar(other),
         };
@@ -1516,6 +1589,26 @@ impl Checker<'_> {
                     let (left, right) = null_as(column_type, other);
                     comparison(compare, left, right)
                 }
+                // `less(Comparable, Comparable)` and its relatives, which order null
+                // first; a `Period` or a `ZoneId` is no `Comparable` (seen on Java 42.9:
+                // `Dur < null` and `ZD < null` are false, `P < null` and `Z < null` do not
+                // compile).
+                Some(column_type) if java_time::is_time_object(column_type) => {
+                    if !comparable(column_type) {
+                        return Err(refused());
+                    }
+                    let (left, right) = null_as(column_type.clone(), other);
+                    let primitive = [false, false];
+                    Ok(typed(
+                        ColumnType::Boolean,
+                        Node::Compare {
+                            op: compare,
+                            domain: CompareDomain::UnrelatedOrder { primitive },
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        },
+                    ))
+                }
                 None => Err(refused()),
                 Some(_) => Err(unsupported(format!(
                     "null literal as an operand of {}",
@@ -1563,7 +1656,11 @@ impl Checker<'_> {
             }
             (Expr::Literal(Literal::Null), operand) | (operand, _) => operand,
         };
-        let operand = self.check(operand)?;
+        let operand = if self.untyped_vectors(operand) {
+            self.with_size_only(|checker| checker.check(operand))?
+        } else {
+            self.check(operand)?
+        };
         let is_null = typed(ColumnType::Boolean, Node::IsNull(Box::new(operand)));
         Ok(match op {
             BinaryOp::Equal => is_null,
@@ -2008,6 +2105,11 @@ impl Checker<'_> {
     /// not know null, and an `int` literal to a narrower type that holds it. Java 42.9
     /// was run for each form.
     fn creation(&mut self, created: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if let Some(at) = created.find("[n]") {
+            let (name, dimensions) = created.split_at(at);
+            let open = dimensions.matches("[]").count();
+            return self.sized_array(name, open, arguments);
+        }
         if let Some(name @ ("Object" | "java.lang.Object")) = created.strip_suffix("[]") {
             return self.object_array(name, arguments);
         }
@@ -2023,28 +2125,6 @@ impl Checker<'_> {
                 .map(|argument| self.array_element(name, &element, argument))
                 .collect::<Result<Vec<_>, _>>()?;
             return Ok(array_of(element, elements));
-        }
-        if let Some(name) = created.strip_suffix("[n]") {
-            let element = array_element(name)?;
-            // Java fills the array with zeros, or with nulls where the elements are
-            // objects.
-            let length = match arguments {
-                [Expr::Literal(Literal::Int(length))] if (1..=1024).contains(length) => *length,
-                _ => {
-                    return Err(unsupported(format!(
-                        "array creation new {name}[n] with a length that is not a literal \
-                         from 1 to 1024"
-                    )))
-                }
-            };
-            let filler = match element {
-                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
-                _ => convert(
-                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
-                    &element,
-                ),
-            };
-            return Ok(array_of(element, vec![filler; length as usize]));
         }
         let class = created.strip_prefix("java.lang.").unwrap_or(created);
         match (class, arguments) {
@@ -2081,6 +2161,119 @@ impl Checker<'_> {
             ))),
             _ => Err(unsupported(format!("constructor new {created}()"))),
         }
+    }
+
+    /// `new name[a][b]...[]...`: an array of `lengths.len()` dimensions with a length each
+    /// and `open` more without, of the element `name`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ArrayCreationExpr)`, which prints the creation
+    /// for javac: the innermost arrays are filled with zeros, or with nulls where the
+    /// elements are objects, and a dimension without a length holds null arrays. Seen on
+    /// Java 42.9: `new int[4][2]` is four `int[]` of two zeros, `new long[2][]` two null
+    /// `long[]`, `new String[2][3]` two `String[]` of three nulls, `new int[2][][]` two
+    /// null `int[][]`. Here the lengths are literals and the arrays hold at most 1024
+    /// elements in all.
+    fn sized_array(
+        &mut self,
+        name: &str,
+        open: usize,
+        lengths: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        let element = array_element(name)?;
+        let spelled = format!(
+            "new {name}{}{}",
+            "[n]".repeat(lengths.len()),
+            "[]".repeat(open)
+        );
+        let refused = || {
+            unsupported(format!(
+                "array creation {spelled} with lengths that are not literals from 1 to 1024 \
+                 or more than 1024 elements in all"
+            ))
+        };
+        let mut sizes = Vec::with_capacity(lengths.len());
+        for length in lengths {
+            match length {
+                Expr::Literal(Literal::Int(length)) if (1..=1024).contains(length) => {
+                    sizes.push(*length as usize)
+                }
+                _ => return Err(refused()),
+            }
+        }
+        if sizes.iter().product::<usize>() > 1024 {
+            return Err(refused());
+        }
+        let mut filler = if open > 0 {
+            let mut inner = element;
+            for _ in 0..open {
+                inner = ColumnType::array(inner);
+            }
+            typed(inner, Node::Null)
+        } else {
+            match element {
+                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
+                _ => convert(
+                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
+                    &element,
+                ),
+            }
+        };
+        for size in sizes.into_iter().rev() {
+            filler = array_of(filler.column_type.clone(), vec![filler; size]);
+        }
+        Ok(filler)
+    }
+
+    /// `new String(array)` and `new String(array, offset, count)` of a `byte[]`, `char[]`
+    /// or `int[]`; `None` for other arguments, which [`Self::creation`] answers.
+    ///
+    /// Behavior: `java.lang.String#String(byte[])`, `#String(char[])`,
+    /// `#String(byte[], int, int)`, `#String(char[], int, int)` and
+    /// `#String(int[], int, int)`, chosen as `QueryLanguageParser#visit(ObjectCreationExpr)`
+    /// chooses a constructor: the offset and the count widen to `int`. Seen on Java 42.9:
+    /// a `short` and a `byte` are taken, a `long` does not compile.
+    fn new_string(&mut self, arguments: &[Expr]) -> Result<Option<Typed>, FormulaError> {
+        use functions::StringSource;
+        if !matches!(arguments.len(), 1 | 3) || arguments.iter().any(is_null_literal) {
+            return Ok(None);
+        }
+        let array = self.check(&arguments[0])?;
+        let source = match &array.column_type {
+            ColumnType::Array(element) => match element.as_ref() {
+                ColumnType::Byte => StringSource::Bytes,
+                ColumnType::Char => StringSource::Chars,
+                ColumnType::Int => StringSource::CodePoints,
+                _ => return Ok(None),
+            },
+            _ => return Ok(None),
+        };
+        let mut checked = vec![array];
+        for argument in &arguments[1..] {
+            let argument = self.check(argument)?;
+            if !matches!(
+                argument.column_type,
+                ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int
+            ) {
+                return Err(type_error(format!(
+                    "Cannot find constructor for java.lang.String with a {} offset or count",
+                    java_name(&argument.column_type)
+                )));
+            }
+            checked.push(convert(argument, &ColumnType::Int));
+        }
+        let text = match (source, checked.len()) {
+            (StringSource::Bytes, 1) => Node::NewString(Box::new(checked.remove(0))),
+            (StringSource::CodePoints, 1) => {
+                return Err(type_error(
+                    "Cannot find constructor for java.lang.String(int[])",
+                ))
+            }
+            _ => Node::Call {
+                kernel: Kernel::NewString(source),
+                arguments: checked,
+            },
+        };
+        Ok(Some(typed(ColumnType::String, text)))
     }
 
     /// `new Random(seed).method(arguments)`. Of the constructors Java takes the one of a
@@ -2350,16 +2543,9 @@ impl Checker<'_> {
         externals: bool,
     ) -> Result<Typed, FormulaError> {
         if let Some(created) = function.strip_prefix(crate::parse::NEW) {
-            // Behavior: `java.lang.String#String(byte[])`.
-            if let (true, [argument]) = (function == crate::parse::NEW_STRING, arguments) {
-                if !is_null_literal(argument) {
-                    let argument = self.check(argument)?;
-                    if argument.column_type == ColumnType::array(ColumnType::Byte) {
-                        return Ok(typed(
-                            ColumnType::String,
-                            Node::NewString(Box::new(argument)),
-                        ));
-                    }
+            if function == crate::parse::NEW_STRING {
+                if let Some(text) = self.new_string(arguments)? {
+                    return Ok(text);
                 }
             }
             return self.creation(created, arguments);
@@ -2546,6 +2732,26 @@ fn array_element(name: &str) -> Result<ColumnType, FormulaError> {
         "double" => ColumnType::Double,
         "String" | "java.lang.String" => ColumnType::String,
         "Instant" | "java.time.Instant" => ColumnType::Instant,
+        // Java makes a `java.lang.Integer[]` of nulls (seen on Java 42.9), which no
+        // column type is: `Array(Int)` is `int[]`.
+        other
+            if matches!(
+                other.strip_prefix("java.lang.").unwrap_or(other),
+                "Boolean"
+                    | "Byte"
+                    | "Character"
+                    | "Short"
+                    | "Integer"
+                    | "Long"
+                    | "Float"
+                    | "Double"
+            ) =>
+        {
+            return Err(unsupported(format!(
+                "array creation new {other}[]: no column type is an array of a boxed java.lang \
+                 class"
+            )))
+        }
         other => return Err(unsupported(format!("array creation new {other}[]"))),
     })
 }
@@ -2644,7 +2850,6 @@ fn time_object_operator(
             ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::ZoneId
         )
     };
-    let same = left.column_type == right.column_type;
     if let Family::Arithmetic(_) = family {
         if let Some(found) = time_arithmetic(op, &left, &right)? {
             let (function, result) = found;
@@ -2694,36 +2899,7 @@ fn time_object_operator(
         {
             Ok(concat(left, right))
         }
-        Family::Compare(compare)
-            if same
-                && matches!(
-                    left.column_type,
-                    ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration
-                ) =>
-        {
-            Ok(typed(
-                ColumnType::Boolean,
-                Node::Compare {
-                    op: compare,
-                    domain: CompareDomain::Integral,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-            ))
-        }
-        Family::Compare(compare)
-            if same && compare.is_equality() && left.column_type == ColumnType::ZoneId =>
-        {
-            Ok(typed(
-                ColumnType::Boolean,
-                Node::Compare {
-                    op: compare,
-                    domain: CompareDomain::String,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-            ))
-        }
+        Family::Compare(compare) => time_comparison(compare, left, right),
         _ => Err(unsupported(format!(
             "operator {} on values of type {} and {}",
             symbol(op),
@@ -2731,6 +2907,55 @@ fn time_object_operator(
             java_name(&right.column_type)
         ))),
     }
+}
+
+/// A comparison with a `java.time` value that is no number on at least one side.
+///
+/// Behavior: `QueryLanguageFunctionUtils#eq(Object, Object)` and
+/// `#compareTo(Comparable, Comparable)`, as [`comparison`] describes them: `==` of one
+/// class is `equals`, of two classes true only for two nulls; `<` and its relatives of
+/// two `Comparable` classes fail where two values meet. `Period` and `ZoneId` are no
+/// `Comparable`, and javac finds no `less` for them. Seen on Java 42.9 (a `LocalDate` `D`,
+/// a `Duration` `Dur`, a `Period` `P`): `D == 2024-03-10`, which compares with the `int`
+/// 2011, and ``D == `2024-03-10` `` keep no row; `D == S` of a `String` keeps the rows
+/// where both are null; `Dur < null` keeps none and `Dur > null` those not null;
+/// `P == 'P1Y'` keeps the `P1Y` rows and `P == 'P12M'` none; `D < S` fails once both are
+/// not null; `P < null`, `P < P` and `Dur < P` do not compile.
+fn time_comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
+    let (l, r) = (&left.column_type, &right.column_type);
+    let domain = match (l == r, l) {
+        (true, ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration) => {
+            CompareDomain::Integral
+        }
+        (true, ColumnType::ZoneId) if op.is_equality() => CompareDomain::String,
+        (true, ColumnType::Period | ColumnType::ZonedDateTime) if op.is_equality() => {
+            CompareDomain::Fields
+        }
+        _ if !op.is_equality() && !(comparable(l) && comparable(r)) => {
+            return Err(type_error(format!(
+                "no ordering comparison ({op:?}) of {} and {}: neither is less(Comparable, Comparable)",
+                java_name(l),
+                java_name(r)
+            )));
+        }
+        (true, _) => {
+            return Err(unsupported(format!(
+                "ordering comparison of two values of type {}: {}#compareTo",
+                java_name(l),
+                java_name(l)
+            )));
+        }
+        (false, _) => return comparison(op, left, right),
+    };
+    Ok(typed(
+        ColumnType::Boolean,
+        Node::Compare {
+            op,
+            domain,
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+    ))
 }
 
 /// `left + right` or `left - right` of an instant, a date, a duration or a period and a
@@ -2877,15 +3102,26 @@ fn bitwise_operator(
 /// which is `equals`, and to `compareTo(Comparable, Comparable)`. Two values of unrelated
 /// types also go to `eq(Object, Object)`: a primitive is boxed and never equals a value of
 /// another class, so they are equal only when both are null. An ordering comparison of
-/// unrelated types compiles in Java and throws `ClassCastException` when it runs.
+/// two `Comparable` types is `compareTo(Comparable, Comparable)`, which orders null first
+/// and throws `ClassCastException` when two values that are not null meet. Seen on Java
+/// 42.9: `S < I` of a `String` and an `int` fails where `S` is not null, and is true
+/// where `S` is null; `B < I` of a `Boolean` and `S < T` of a `String` and an `Instant`
+/// fail likewise.
 fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
     let numeric = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type));
+    let primitive = [
+        crate::eval::is_primitive(&left.column_type),
+        crate::eval::is_primitive(&right.column_type),
+    ];
     let domain = match (numeric, &left.column_type, &right.column_type) {
         (Some((l, r)), _, _) => numeric_compare_domain(op, l, r),
         (None, ColumnType::String, ColumnType::String) => CompareDomain::String,
         (None, ColumnType::Instant, ColumnType::Instant) => CompareDomain::Integral,
         (None, ColumnType::Boolean, ColumnType::Boolean) => CompareDomain::Boolean,
-        (None, _, _) if op.is_equality() => CompareDomain::Unrelated,
+        (None, _, _) if op.is_equality() => CompareDomain::Unrelated { primitive },
+        (None, l, r) if l != r && comparable(l) && comparable(r) => {
+            CompareDomain::UnrelatedOrder { primitive }
+        }
         (None, l, r) => {
             return Err(unsupported(format!(
                 "ordering comparison of {} with {}",
@@ -2905,6 +3141,24 @@ fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, Formula
     ))
 }
 
+/// Whether a value of `column_type` is a `java.lang.Comparable` that this checker orders
+/// against a value of another class: a primitive (boxed), `Boolean`, `String`, `Instant`
+/// and the `java.time` classes that implement it. `Period` and `ZoneId` do not, and Java
+/// finds no `less` for them.
+fn comparable(column_type: &ColumnType) -> bool {
+    crate::eval::is_primitive(column_type)
+        || matches!(
+            column_type,
+            ColumnType::Boolean
+                | ColumnType::String
+                | ColumnType::Instant
+                | ColumnType::LocalDate
+                | ColumnType::LocalTime
+                | ColumnType::Duration
+                | ColumnType::ZonedDateTime
+        )
+}
+
 /// Whether `expr` makes a `DiscretizedRangeEqual`.
 fn makes_range(expr: &Expr) -> bool {
     matches!(expr, Expr::Call { function, .. }
@@ -2915,8 +3169,14 @@ fn makes_range(expr: &Expr) -> bool {
 
 /// Whether a value of `column_type` is an object this checker computes with only as one:
 /// the cells of an `Object` column and a `java.time.DayOfWeek`.
+///
+/// A cell of a column of tables is one too: a formula can compare it with `==` and `!=`,
+/// test it with `isNull` and pass it on; it is refused as text and in a method call.
 fn is_object(column_type: &ColumnType) -> bool {
-    matches!(column_type, ColumnType::Object(_) | ColumnType::DayOfWeek)
+    matches!(
+        column_type,
+        ColumnType::Object(_) | ColumnType::DayOfWeek | ColumnType::Table(_)
+    )
 }
 
 /// Whether a value of `column_type` can be a cell of an `Object` column: a class whose
@@ -3011,6 +3271,15 @@ fn object_operator(op: BinaryOp, left: Typed, right: Typed) -> Result<Typed, For
             } else {
                 typed(ColumnType::Boolean, Node::Not(Box::new(equals)))
             })
+        }
+        // The text of a table is its description, which this crate does not know.
+        BinaryOp::Add
+            if matches!(left.column_type, ColumnType::Table(_))
+                || matches!(right.column_type, ColumnType::Table(_)) =>
+        {
+            Err(unsupported(
+                "a table as text: io.deephaven.engine.table.impl.BaseTable#toString".to_string(),
+            ))
         }
         BinaryOp::Add
             if left.column_type == ColumnType::String

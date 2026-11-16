@@ -16,7 +16,7 @@ use arrow::datatypes::{
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
 use oxhaven_contracts::rowset::RowSet;
-use oxhaven_contracts::schema::{ColumnType, TableDefinition};
+use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -260,6 +260,8 @@ fn resolve_range(
         ColumnType::DayOfWeek => Some("DayOfWeek"),
         ColumnType::Period => Some("Period"),
         ColumnType::ZoneId => Some("ZoneId"),
+        ColumnType::Table(TableClass::QueryTable) => Some("QueryTable"),
+        ColumnType::Table(_) => Some("Table"),
         _ => None,
     };
     if let Some(class) = class {
@@ -418,8 +420,9 @@ fn read(
     // filter can only hold null.
     match source.column_type() {
         ColumnType::ZonedDateTime => return Ok(Cells::Zoned(chunk)),
-        // A period has no convertor of its own: a match filter holds only null.
-        ColumnType::Period => {
+        // A period has no convertor of its own: a match filter holds only null. Nor has a
+        // table, which Java's `ObjectChunkMatchFilterFactory` would compare by identity.
+        ColumnType::Period | ColumnType::Table(_) => {
             return Ok(Cells::Object(
                 (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
             ))

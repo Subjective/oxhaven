@@ -132,7 +132,6 @@ fn formulas_outside_the_subset_are_reported_as_unsupported() {
     let table = checker_table();
     let mut wrong = Vec::new();
     for (formula, construct) in [
-        ("T >= 1L", "ordering comparison of Instant with long"),
         (
             "(Object) parseDuration(S)",
             "a value of type Duration as a java.lang.Object",
