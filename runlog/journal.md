@@ -850,3 +850,30 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   window. A resumed agent carries its whole history, so reuse has a ceiling: after one
   large task plus one follow-up message, start fresh and hand over notes instead.
 - Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
+- Merged pull request 102 (5.6, formula gaps) on six green checks. Started 5.7 (formula functions and static calls) with a fresh agent and the 5.6 notes as handover.
+- Pull request 103 opened (7.11, figures). Two agents built the browser DoPut pair at the
+  same time (rollup and figures both needed it); main's copy won in the merge. The cost
+  was one agent's hour on duplicate work: when two running tasks can need the same
+  missing piece, name it in both briefs and give it to one. For the owner: the embedded
+  importer now also looks on `sys.path` for modules of the `deephaven` package it does not
+  hold (needed for plugin distributions; it would also pick up the reference wheel's
+  modules if that wheel is installed); `jpy` use inside third-party plugins has no
+  principled answer yet.
+- Started 7.10.1 (JS plugins, plotly-express needs) with a fresh agent and docs/FIGURES.md
+  as handover. File serving follows the storage ruling (nothing outside the plugin's
+  directory); if Java differs, it comes back as a question, not as a PARITY.md entry.
+- Merged pull request 103 (7.11, figures) on six green checks.
+- Pull request 104 opened (7.1b, Parquet read second slice). Contract change made by the
+  implementing agent under the standing permission, additive: `ColumnType` gains
+  `BigDecimal`, `BigInteger`, `LocalDate`, `LocalTime`, `LocalDateTime`; `ColumnDefinition`
+  gains `partitioning`. Recorded here for the owner's later review, as with
+  `ColumnType::Table`. Script scenarios would stand at 75 of 78 clean. The agent's first
+  gate run failed because its server's Python had no pyarrow; it borrowed another
+  worktree's environment read-only. The brief should say how to get the replay
+  environment (`oracle/requirements-replay.txt`) rather than leave it to chance.
+- Started 0.16 (second parity pass). The row set swap (7.7b) stays deferred: it changes a contract with about 35 call sites and would conflict with every engine branch in flight.
+- Pull request 105 opened (7.8.1). The fresh agent with handover notes did the task in 63
+  minutes: a written handover from the previous author replaced its context well. For the
+  owner: Java fails a sorted rollup view when an expanded node's group is gone
+  (reproduced); a filter by row position is accepted by Java and refused here.
+- Started 7.9 (tree tables). 7.8.2 and 7.8.3 wait for it: all three change the same walk.

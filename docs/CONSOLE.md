@@ -151,7 +151,10 @@ In a virtual environment the interpreter starts as that environment's `python` w
 reads `pyvenv.cfg`, takes the standard library from the base installation and the packages
 from the environment, and with `include-system-site-packages = false`, the default, does not
 see the base installation's packages. The `deephaven` package is always the server's own
-(the embedded importer comes first), whatever the environment has installed.
+(the embedded importer comes first), whatever the environment has installed. A module of
+`deephaven` that the server does not have and a distribution of the environment does, as the
+plugins `deephaven.plot.express` and `deephaven.ui` install theirs, is taken from the
+environment.
 
 **The environment must be one of the linked Python's minor version.** Packages with native
 code are built for one minor version, and an environment of another keeps them in a

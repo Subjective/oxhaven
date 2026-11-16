@@ -936,3 +936,53 @@ async fn other_threads_of_a_script_are_not_interrupted() {
     );
     assert_eq!(python.table("counted").row_set().size(), 40);
 }
+
+/// A plugin such as `deephaven.plot.express` installs its package inside the `deephaven`
+/// package of the reference. The package of this server is in the binary, so what a
+/// distribution adds to it is looked for in the directories of the same name on `sys.path`,
+/// and nothing there replaces a module of the binary.
+#[tokio::test]
+async fn a_distribution_adds_modules_to_a_package_of_the_binary() {
+    let python = Python::start().await;
+    let base = std::env::temp_dir().join(format!("oxhaven-added-{}", uuid::Uuid::new_v4()));
+    let plot = base.join("deephaven").join("plot");
+    std::fs::create_dir_all(plot.join("oxadded")).unwrap();
+    std::fs::write(
+        plot.join("oxadded").join("__init__.py"),
+        "from .part import VALUE\n",
+    )
+    .unwrap();
+    std::fs::write(plot.join("oxadded").join("part.py"), "VALUE = 7\n").unwrap();
+    // a module of the binary's name, which must not be used
+    std::fs::write(
+        plot.join("figure.py"),
+        "raise ImportError('not this one')\n",
+    )
+    .unwrap();
+    std::fs::write(base.join("deephaven").join("oxtop.py"), "VALUE = 8\n").unwrap();
+
+    let missing = python.console.evaluate("import deephaven.plot.oxadded");
+    let error = missing
+        .error
+        .expect("not found before the directory is on the path");
+    assert!(
+        error.ends_with("ModuleNotFoundError: No module named 'deephaven.plot.oxadded'\n"),
+        "{error}"
+    );
+    python.run(&format!(
+        "import sys\nsys.path.append({:?})\n\
+         import deephaven.plot.oxadded, deephaven.oxtop\n\
+         from deephaven.plot.oxadded.part import VALUE\n\
+         assert (VALUE, deephaven.plot.oxadded.VALUE, deephaven.oxtop.VALUE) == (7, 7, 8)\n\
+         assert sys.meta_path[0].find_spec('deephaven.plot.figure').origin == '<oxhaven>/deephaven/plot/figure.py'\n\
+         sys.path.remove({:?})",
+        base.to_str().unwrap(),
+        base.to_str().unwrap()
+    ));
+    let missing = python.console.evaluate("import deephaven.plot.oxnone");
+    assert!(missing
+        .error
+        .unwrap()
+        .contains("No module named 'deephaven.plot.oxnone'"));
+    std::fs::remove_dir_all(base).unwrap();
+}
