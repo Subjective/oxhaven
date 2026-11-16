@@ -1,0 +1,18 @@
+{
+ "format": 1,
+ "name": "D5_aj_right_snapshot_of_left",
+ "description": "An as-of join of a keyed input with a history snapshot that the same input triggers. One cycle adds a row to the input and writes a row it has again.",
+ "inputs": [
+  {"name": "r", "ticking": {"key_columns": ["RId"]}, "columns": [{"name": "RId", "type": "int32"}], "rows": [[6]]},
+  {"name": "q", "columns": [{"name": "Q1", "type": "int32"}], "rows": [[1]]}
+ ],
+ "operations": [
+  {"name": "history", "op": "snapshot_when", "source": "q", "trigger": "r", "stamp_columns": ["P2 = RId"], "history": true},
+  {"name": "joined", "op": "aj", "left": "r", "right": "history", "on": ["RId > Q1"], "joins": ["J = P2"]},
+  {"name": "joined_reverse", "op": "raj", "left": "r", "right": "history", "on": ["RId < Q1"], "joins": ["J = P2"]}
+ ],
+ "results": [{"table": "history"}, {"table": "joined"}, {"table": "joined_reverse"}],
+ "steps": [
+  {"actions": [{"action": "add", "table": "r", "rows": [[9], [6]]}]}
+ ]
+}

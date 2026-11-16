@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "J5_distinct_timestamp_empty_group",
+ "description": "agg_by distinct of a timestamp column with preserve_empty, for a group without rows: a table without rows, and a group whose only row is deleted in a step.",
+ "inputs": [
+  {"name": "empty", "columns": [{"name": "T", "type": "timestamp"}], "rows": []},
+  {"name": "r", "columns": [{"name": "Id", "type": "int32"}, {"name": "T", "type": "timestamp"}, {"name": "V", "type": "int32"}], "rows": [[3, 1700000005000000000, 7]], "ticking": {"key_columns": ["Id"]}}
+ ],
+ "operations": [
+  {"name": "of_no_rows", "op": "agg_by", "source": "empty", "by": [], "preserve_empty": true, "aggs": [{"agg": "distinct", "columns": ["A = T"], "args": {"include_nulls": true}}]},
+  {"name": "emptied", "op": "agg_by", "source": "r", "by": ["Id"], "preserve_empty": true, "aggs": [{"agg": "distinct", "columns": ["A = T"], "args": {"include_nulls": true}}]},
+  {"name": "emptied_group", "op": "agg_by", "source": "r", "by": ["Id"], "preserve_empty": true, "aggs": [{"agg": "group", "columns": ["A = T"]}]},
+  {"name": "emptied_int", "op": "agg_by", "source": "r", "by": ["Id"], "preserve_empty": true, "aggs": [{"agg": "distinct", "columns": ["A = V"]}]}
+ ],
+ "results": [{"table": "of_no_rows"}, {"table": "emptied"}, {"table": "emptied_group"}, {"table": "emptied_int"}],
+ "steps": [{"actions": [{"action": "delete", "table": "r", "rows": [[3]]}]}]
+}

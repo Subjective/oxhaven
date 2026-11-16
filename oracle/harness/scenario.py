@@ -48,7 +48,7 @@ OPERATIONS: dict[str, tuple[set[str], set[str]]] = {
     "update": ({"source", "formulas"}, set()),
     "drop_columns": ({"source", "columns"}, set()),
     "merge": ({"sources"}, set()),
-    "agg_by": ({"source", "aggs", "by"}, set()),
+    "agg_by": ({"source", "aggs", "by"}, {"initial_groups", "preserve_empty"}),
     "natural_join": ({"left", "right", "on"}, {"joins", "type"}),
     "exact_join": ({"left", "right", "on"}, {"joins"}),
     "join": ({"left", "right", "on"}, {"joins"}),
@@ -72,15 +72,29 @@ OPERATIONS: dict[str, tuple[set[str], set[str]]] = {
     "snapshot": ({"source"}, set()),
     "snapshot_when": ({"source", "trigger"},
                       {"stamp_columns", "initial", "incremental", "history"}),
-    "range_join": ({"left", "right", "on", "aggs"}, set()),
-    "multi_join": ({"inputs"}, set()),
+    "range_join": ({"left", "right", "on", "aggs"}, {"script"}),
+    "multi_join": ({"inputs"}, {"script"}),
     "time_table": ({"period", "start_time"}, {"blink"}),
     "empty_table": ({"size"}, set()),
     "meta_table": ({"source"}, set()),
     "column_statistics": ({"source", "column"}, {"unique_value_limit"}),
+    "partition_merge": ({"source", "by"}, {"drop_keys"}),
+    "partition_get": ({"source", "by", "key"}, {"drop_keys", "unique"}),
+    "ring_table": ({"source", "capacity"}, {"initialize"}),
+    "keyed_transpose": ({"source", "aggs", "row_by", "col_by"},
+                        {"initial_groups", "new_columns"}),
 }
+# Operations that have no request of the table service and are made by a script in the
+# server's Python console (`runner._scripted`); `multi_join` and `range_join` are when they
+# say `"script": true`.
+SCRIPT_OPERATIONS = frozenset({"ring_table", "keyed_transpose"})
+# How `partition_get` asks for its constituents: `GetTableRequest.UniqueBehavior`.
+UNIQUE_BEHAVIORS = {"not_set", "require_unique", "permit_multiple"}
+# What `keyed_transpose` does with a column that a later row would add:
+# `deephaven.table.NewColumnBehaviorType`.
+NEW_COLUMN_BEHAVIORS = {"fail", "ignore"}
 # Keys of an operation that name the tables it reads.
-TABLE_KEYS = ("source", "left", "right", "trigger")
+TABLE_KEYS = ("source", "left", "right", "trigger", "initial_groups", "key")
 
 # Aggregations of `agg_by`, `agg_all_by` and `range_join`. The value is the set of argument
 # names (`args`) the aggregation accepts besides its columns.
@@ -410,14 +424,16 @@ def _operation(where: str, doc: Any, known: set[str]) -> None:
         for i, item in enumerate(doc["inputs"]):
             _keys(f"{where}.inputs[{i}]", item, {"table", "on"}, {"joins"})
             table(item["table"], "table")
-            _strings(f"{where}.inputs[{i}].on", item["on"], allow_empty=False)
+            # Without match columns only as a script: the table service has no such request.
+            _strings(f"{where}.inputs[{i}].on", item["on"],
+                     allow_empty=doc.get("script") is True)
             if item.get("joins") is not None:
                 _strings(f"{where}.inputs[{i}].joins", item["joins"])
     for key in ("filters", "formulas", "columns"):
         if key in doc:
             _strings(f"{where}.{key}", doc[key],
                      allow_empty=op in ("select_distinct", "ungroup"))
-    for key in ("by", "on", "stamp_columns"):
+    for key in ("by", "on", "stamp_columns", "row_by", "col_by"):
         if key in doc and op != "sort":
             _strings(f"{where}.{key}", doc[key])
     if doc.get("joins") is not None:
@@ -438,8 +454,16 @@ def _operation(where: str, doc: Any, known: set[str]) -> None:
             raise _fail(where, "column must be a string")
         if "unique_value_limit" in doc:
             count("unique_value_limit")
-    for key in ("inverted", "null_fill", "initial", "incremental", "history", "blink"):
+    for key in ("inverted", "null_fill", "initial", "incremental", "history", "blink",
+                "preserve_empty", "script", "drop_keys", "initialize"):
         flag(key)
+    if op == "ring_table":
+        # Any integer: the reference has an answer for zero and for a negative capacity.
+        count("capacity", negative=True)
+    if op == "partition_get" and doc.get("unique", "not_set") not in UNIQUE_BEHAVIORS:
+        raise _fail(where, f"unique must be one of {sorted(UNIQUE_BEHAVIORS)}")
+    if op == "keyed_transpose" and doc.get("new_columns", "fail") not in NEW_COLUMN_BEHAVIORS:
+        raise _fail(where, f"new_columns must be one of {sorted(NEW_COLUMN_BEHAVIORS)}")
     if op == "sort":
         if not isinstance(doc["by"], list) or not doc["by"]:
             raise _fail(where, "by must be a non-empty list")
@@ -449,8 +473,10 @@ def _operation(where: str, doc: Any, known: set[str]) -> None:
                 raise _fail(f"{where}.by[{b}]", "direction must be ascending or descending")
             if not isinstance(by.get("absolute", False), bool):
                 raise _fail(f"{where}.by[{b}]", "absolute must be true or false")
-    if op in ("agg_by", "range_join"):
-        if not isinstance(doc["aggs"], list) or not doc["aggs"]:
+    if op in ("agg_by", "range_join", "keyed_transpose"):
+        # A range join without aggregations only as a script, like a multi join without keys.
+        may_be_empty = op == "range_join" and doc.get("script") is True
+        if not isinstance(doc["aggs"], list) or not (doc["aggs"] or may_be_empty):
             raise _fail(where, "aggs must be a non-empty list")
         for a, agg in enumerate(doc["aggs"]):
             _aggregation(f"{where}.aggs[{a}]", agg)

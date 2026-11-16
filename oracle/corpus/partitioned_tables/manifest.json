@@ -1,0 +1,101 @@
+{
+  "format": 2,
+  "scenario": "partitioned_tables",
+  "scenario_sha256": "415bed294a5bbc0aad92d0535fe7e4beef1b3d903b14a92209ce3a4bf2436010",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "merged",
+      "file": "step000.merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "merged_without_keys",
+      "file": "step000.merged_without_keys.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "merged_by_two",
+      "file": "step000.merged_by_two.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "merged_by_none",
+      "file": "step000.merged_by_none.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "constituent",
+      "file": "step000.constituent.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "constituent_unique",
+      "file": "step000.constituent_unique.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "constituents",
+      "file": "step000.constituents.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "constituents_unique",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "constituents_not_set",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "constituent_absent",
+      "file": "step000.constituent_absent.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "constituent_absent_unique",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "constituent_without_keys",
+      "file": "step000.constituent_without_keys.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "seeded",
+      "file": "step000.seeded.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "seeded_kept",
+      "file": "step000.seeded_kept.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "kept",
+      "file": "step000.kept.arrow",
+      "rows": 4
+    }
+  ]
+}

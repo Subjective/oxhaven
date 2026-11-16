@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "name": "J1_count_where_stops_java",
+ "description": "Stops the Java reference: do not run it against a server that other runs use. An update_by count where whose filter compares a timestamp column with a column.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "int32"}, {"name": "T", "type": "timestamp"}],
+   "rows": [[5, 1], [11, 2]]}
+ ],
+ "operations": [
+  {"name": "o1", "op": "update_by", "source": "t", "by": [],
+   "ops": [{"op": "cum_count_where", "columns": ["U1"], "args": {"filters": ["T >= T"]}}]}
+ ],
+ "results": [{"table": "o1"}]
+}

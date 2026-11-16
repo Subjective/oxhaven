@@ -21,6 +21,55 @@
    "reason": "emstd_time over values that include an infinity, on a refreshing table: what Java keeps up to date differs from what Java answers when the same update_by is applied again to the same rows (Infinity against NaN), so there is no single reference answer. Oxhaven agrees with itself (selfcheck) and with Java's answer from scratch. Counted only when Java's two answers do differ for the scenario at hand.",
    "match": {"kind": "value", "operation": "update_by", "producer": "emstd_time",
              "steps": "later", "requires": "reference_inconsistent"}
+  },
+  {
+   "id": "update-shift-add-only",
+   "class": "oxhaven-bug",
+   "reason": "update of an append-only table with a column array read at a fixed distance (X = V_[i-1]): Java's result has AddOnly and AppendOnly, Oxhaven's only AppendOnly. tasks/4.20-fuzz-findings-2.md, D1.",
+   "match": {"kind": "table_metadata", "operation": "update",
+             "key": "deephaven:attribute.AddOnly,deephaven:attribute_type.AddOnly"}
+  },
+  {
+   "id": "lazy-update-shift-add-only",
+   "class": "oxhaven-bug",
+   "reason": "lazy_update of an append-only table with a column array read at a fixed distance: as update-shift-add-only. tasks/4.20-fuzz-findings-2.md, D1.",
+   "match": {"kind": "table_metadata", "operation": "lazy_update",
+             "key": "deephaven:attribute.AddOnly,deephaven:attribute_type.AddOnly"}
+  },
+  {
+   "id": "partition-merge-add-only",
+   "class": "oxhaven-bug",
+   "reason": "partition_merge of a table that has AddOnly and AppendOnly (a static table made by where, or a refreshing append-only one made by an operation): Java's merged table has both, Oxhaven's neither. tasks/4.20-fuzz-findings-2.md, D2.",
+   "match": {"kind": "table_metadata", "operation": "partition_merge",
+             "key": "deephaven:attribute.AddOnly,deephaven:attribute.AppendOnly,deephaven:attribute_type.AddOnly,deephaven:attribute_type.AppendOnly"}
+  },
+  {
+   "id": "partition-merge-append-only",
+   "class": "oxhaven-bug",
+   "reason": "partition_merge of a table that has AppendOnly without AddOnly (a static table made by head): Java's merged table has AppendOnly, Oxhaven's has not. tasks/4.20-fuzz-findings-2.md, D2.",
+   "match": {"kind": "table_metadata", "operation": "partition_merge",
+             "key": "deephaven:attribute.AppendOnly,deephaven:attribute_type.AppendOnly"}
+  },
+  {
+   "id": "partition-get-add-only",
+   "class": "oxhaven-bug",
+   "reason": "partition_get of a table that has AddOnly and AppendOnly: Java's constituents have both, Oxhaven's neither; as partition-merge-add-only. tasks/4.20-fuzz-findings-2.md, D2.",
+   "match": {"kind": "table_metadata", "operation": "partition_get",
+             "key": "deephaven:attribute.AddOnly,deephaven:attribute.AppendOnly,deephaven:attribute_type.AddOnly,deephaven:attribute_type.AppendOnly"}
+  },
+  {
+   "id": "partition-get-append-only",
+   "class": "oxhaven-bug",
+   "reason": "partition_get of a table that has AppendOnly without AddOnly: Java's constituents have AppendOnly, Oxhaven's have not; as partition-merge-append-only. tasks/4.20-fuzz-findings-2.md, D2.",
+   "match": {"kind": "table_metadata", "operation": "partition_get",
+             "key": "deephaven:attribute.AppendOnly,deephaven:attribute_type.AppendOnly"}
+  },
+  {
+   "id": "distinct-of-no-rows",
+   "class": "oxhaven-bug",
+   "reason": "agg_by distinct without key columns and with preserve_empty, of a table without rows: Java's one row holds an empty array, Oxhaven's a null. tasks/4.20-fuzz-findings-2.md, D3.",
+   "match": {"kind": "value", "operation": "agg_by", "producer": "distinct",
+             "expected": [], "actual": null}
   }
  ]
 }

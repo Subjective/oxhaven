@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "D3_distinct_of_no_rows",
+ "description": "Aggregations without key columns of a table without rows, with preserve_empty: the one row of the result.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "C0", "type": "bool"}, {"name": "C1", "type": "int32"}, {"name": "C2", "type": "string"}], "rows": []}
+ ],
+ "operations": [
+  {"name": "distinct", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "distinct", "columns": ["A0 = C0", "A1 = C1", "A2 = C2"]}]},
+  {"name": "group", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "group", "columns": ["A0 = C0", "A1 = C1", "A2 = C2"]}]},
+  {"name": "unique", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "unique", "columns": ["A0 = C0", "A1 = C1", "A2 = C2"]}]},
+  {"name": "count_distinct", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "count_distinct", "columns": ["A0 = C0", "A1 = C1", "A2 = C2"]}]},
+  {"name": "sum", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "sum", "columns": ["A1 = C1"]}]},
+  {"name": "first", "op": "agg_by", "source": "t", "by": [], "preserve_empty": true, "aggs": [{"agg": "first", "columns": ["A0 = C0", "A1 = C1", "A2 = C2"]}]}
+ ],
+ "results": [{"table": "distinct"}, {"table": "group"}, {"table": "unique"}, {"table": "count_distinct"}, {"table": "sum"}, {"table": "first"}]
+}
