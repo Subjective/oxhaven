@@ -228,7 +228,7 @@ oracle/.venv/bin/pip install -r oracle/requirements-replay.txt
 oracle/bin/ci-replay.sh
 ```
 
-It takes about 35 seconds after the build (85 scenarios, 72 script scenarios and 31 smoke
+It takes about 35 seconds after the build (85 scenarios, 74 script scenarios and 31 smoke
 checks). `ORACLE_GATE_PORT` fixes the port (other agents
 share the machine), `ORACLE_GATE_OUT` moves the output directory (default `oracle/.run/gate`),
 and `ORACLE_GATE_TIMEOUT` is the limit in seconds for the replay and the smokes (default 900).
