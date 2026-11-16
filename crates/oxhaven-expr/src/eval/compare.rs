@@ -1,11 +1,13 @@
 //! Comparison operators. The handling of null and NaN is written once, in [`decide`]; the
 //! comparison domains differ only in how two present values are ordered.
 
+use super::failure;
 use super::numeric::convert;
 use crate::types::{CompareDomain, CompareOp};
 use arrow::array::{Array, ArrayAccessor, AsArray, BooleanArray};
 use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::DataType;
+use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
 
 /// A value that takes part in a comparison.
@@ -140,8 +142,8 @@ pub(crate) fn compare(
     domain: CompareDomain,
     left: &dyn Array,
     right: &dyn Array,
-) -> BooleanArray {
-    match domain {
+) -> Result<BooleanArray, TableFailure> {
+    Ok(match domain {
         CompareDomain::Integral => {
             rows(op, &convert::<i64>(left), &convert::<i64>(right), |a, b| {
                 a.cmp(&b)
@@ -189,21 +191,65 @@ pub(crate) fn compare(
         // `QueryLanguageFunctionUtils#eq(Object,Object)` on values of two classes: the
         // same reference, which only two nulls are, or `equals`, which is false. A
         // primitive is boxed on the way in, so even its null value is an object.
-        CompareDomain::Unrelated => {
-            let reference = |array: &dyn Array| {
-                matches!(
-                    array.data_type(),
-                    DataType::Boolean | DataType::Utf8 | DataType::Timestamp(_, _)
-                )
-            };
-            let references = reference(left) && reference(right);
+        CompareDomain::Unrelated { primitive } => {
             let values = BooleanBuffer::collect_bool(left.len(), |row| {
-                let both_null = references && left.is_null(row) && right.is_null(row);
+                let both_null =
+                    is_null(left, primitive[0], row) && is_null(right, primitive[1], row);
                 both_null == (op == CompareOp::Equal)
             });
             BooleanArray::new(values, None)
         }
+        CompareDomain::UnrelatedOrder { primitive } => {
+            let mut values = Vec::with_capacity(left.len());
+            for row in 0..left.len() {
+                let ordering =
+                    match (
+                        is_null(left, primitive[0], row),
+                        is_null(right, primitive[1], row),
+                    ) {
+                        (true, true) => Ordering::Equal,
+                        (true, false) => Ordering::Less,
+                        (false, true) => Ordering::Greater,
+                        (false, false) => return Err(failure(
+                            "java.lang.ClassCastException: compareTo of a value of another class",
+                        )),
+                    };
+                values.push(accepts(op, ordering));
+            }
+            BooleanArray::from(values)
+        }
+        CompareDomain::Fields => fields_equal(op, left, right),
+    })
+}
+
+/// Whether the cell at `row` is Java's `null`: a primitive is boxed first, so it never is.
+fn is_null(array: &dyn Array, primitive: bool, row: usize) -> bool {
+    !primitive && array.is_null(row)
+}
+
+/// Behavior: `java.time.Period#equals` and `java.time.ZonedDateTime#equals`, of values held
+/// as Arrow structs whose fields fix the value (`Period`: years, months and days;
+/// `ZonedDateTime`: the instant and the zone id), through
+/// `QueryLanguageFunctionUtils#eq(Object, Object)`: two nulls are equal.
+fn fields_equal(op: CompareOp, left: &dyn Array, right: &dyn Array) -> BooleanArray {
+    let (left, right) = (left.as_struct(), right.as_struct());
+    let mut equal = vec![true; left.len()];
+    for (l, r) in left.columns().iter().zip(right.columns()) {
+        let same = arrow::compute::kernels::cmp::not_distinct(l, r)
+            .expect("the fields of one struct type compare");
+        for (row, value) in equal.iter_mut().enumerate() {
+            *value &= same.value(row);
+        }
     }
+    let values = BooleanBuffer::collect_bool(left.len(), |row| {
+        let is_equal = match (left.is_valid(row), right.is_valid(row)) {
+            (true, true) => equal[row],
+            (false, false) => true,
+            _ => false,
+        };
+        is_equal == (op == CompareOp::Equal)
+    });
+    BooleanArray::new(values, None)
 }
 
 #[cfg(test)]

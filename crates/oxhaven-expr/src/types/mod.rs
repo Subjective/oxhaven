@@ -115,7 +115,16 @@ pub(crate) enum CompareDomain {
     /// Strings, ordered by UTF-16 code unit as `String#compareTo` does.
     String,
     /// `==` or `!=` of values of unrelated classes, which are equal only when both are null.
-    Unrelated,
+    /// `primitive` says of each side whether it is a primitive, which Java boxes, so that
+    /// even its null value is an object.
+    Unrelated { primitive: [bool; 2] },
+    /// `<` and its relatives of `Comparable` values of two classes: null is below every
+    /// value, and two values that are not null fail, as `compareTo` of the other class
+    /// does. `primitive` as for [`CompareDomain::Unrelated`].
+    UnrelatedOrder { primitive: [bool; 2] },
+    /// `==` or `!=` of two values of one class held as an Arrow struct (`Period`,
+    /// `ZonedDateTime`), equal when every field is.
+    Fields,
 }
 
 /// The type an arithmetic operator computes in and returns.
@@ -1516,6 +1525,26 @@ impl Checker<'_> {
                     let (left, right) = null_as(column_type, other);
                     comparison(compare, left, right)
                 }
+                // `less(Comparable, Comparable)` and its relatives, which order null
+                // first; a `Period` or a `ZoneId` is no `Comparable` (seen on Java 42.9:
+                // `Dur < null` and `ZD < null` are false, `P < null` and `Z < null` do not
+                // compile).
+                Some(column_type) if java_time::is_time_object(column_type) => {
+                    if !comparable(column_type) {
+                        return Err(refused());
+                    }
+                    let (left, right) = null_as(column_type.clone(), other);
+                    let primitive = [false, false];
+                    Ok(typed(
+                        ColumnType::Boolean,
+                        Node::Compare {
+                            op: compare,
+                            domain: CompareDomain::UnrelatedOrder { primitive },
+                            left: Box::new(left),
+                            right: Box::new(right),
+                        },
+                    ))
+                }
                 None => Err(refused()),
                 Some(_) => Err(unsupported(format!(
                     "null literal as an operand of {}",
@@ -2644,7 +2673,6 @@ fn time_object_operator(
             ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::ZoneId
         )
     };
-    let same = left.column_type == right.column_type;
     if let Family::Arithmetic(_) = family {
         if let Some(found) = time_arithmetic(op, &left, &right)? {
             let (function, result) = found;
@@ -2694,36 +2722,7 @@ fn time_object_operator(
         {
             Ok(concat(left, right))
         }
-        Family::Compare(compare)
-            if same
-                && matches!(
-                    left.column_type,
-                    ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration
-                ) =>
-        {
-            Ok(typed(
-                ColumnType::Boolean,
-                Node::Compare {
-                    op: compare,
-                    domain: CompareDomain::Integral,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-            ))
-        }
-        Family::Compare(compare)
-            if same && compare.is_equality() && left.column_type == ColumnType::ZoneId =>
-        {
-            Ok(typed(
-                ColumnType::Boolean,
-                Node::Compare {
-                    op: compare,
-                    domain: CompareDomain::String,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                },
-            ))
-        }
+        Family::Compare(compare) => time_comparison(compare, left, right),
         _ => Err(unsupported(format!(
             "operator {} on values of type {} and {}",
             symbol(op),
@@ -2731,6 +2730,55 @@ fn time_object_operator(
             java_name(&right.column_type)
         ))),
     }
+}
+
+/// A comparison with a `java.time` value that is no number on at least one side.
+///
+/// Behavior: `QueryLanguageFunctionUtils#eq(Object, Object)` and
+/// `#compareTo(Comparable, Comparable)`, as [`comparison`] describes them: `==` of one
+/// class is `equals`, of two classes true only for two nulls; `<` and its relatives of
+/// two `Comparable` classes fail where two values meet. `Period` and `ZoneId` are no
+/// `Comparable`, and javac finds no `less` for them. Seen on Java 42.9 (a `LocalDate` `D`,
+/// a `Duration` `Dur`, a `Period` `P`): `D == 2024-03-10`, which compares with the `int`
+/// 2011, and ``D == `2024-03-10` `` keep no row; `D == S` of a `String` keeps the rows
+/// where both are null; `Dur < null` keeps none and `Dur > null` those not null;
+/// `P == 'P1Y'` keeps the `P1Y` rows and `P == 'P12M'` none; `D < S` fails once both are
+/// not null; `P < null`, `P < P` and `Dur < P` do not compile.
+fn time_comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
+    let (l, r) = (&left.column_type, &right.column_type);
+    let domain = match (l == r, l) {
+        (true, ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration) => {
+            CompareDomain::Integral
+        }
+        (true, ColumnType::ZoneId) if op.is_equality() => CompareDomain::String,
+        (true, ColumnType::Period | ColumnType::ZonedDateTime) if op.is_equality() => {
+            CompareDomain::Fields
+        }
+        _ if !op.is_equality() && !(comparable(l) && comparable(r)) => {
+            return Err(type_error(format!(
+                "no ordering comparison ({op:?}) of {} and {}: neither is less(Comparable, Comparable)",
+                java_name(l),
+                java_name(r)
+            )));
+        }
+        (true, _) => {
+            return Err(unsupported(format!(
+                "ordering comparison of two values of type {}: {}#compareTo",
+                java_name(l),
+                java_name(l)
+            )));
+        }
+        (false, _) => return comparison(op, left, right),
+    };
+    Ok(typed(
+        ColumnType::Boolean,
+        Node::Compare {
+            op,
+            domain,
+            left: Box::new(left),
+            right: Box::new(right),
+        },
+    ))
 }
 
 /// `left + right` or `left - right` of an instant, a date, a duration or a period and a
@@ -2877,15 +2925,26 @@ fn bitwise_operator(
 /// which is `equals`, and to `compareTo(Comparable, Comparable)`. Two values of unrelated
 /// types also go to `eq(Object, Object)`: a primitive is boxed and never equals a value of
 /// another class, so they are equal only when both are null. An ordering comparison of
-/// unrelated types compiles in Java and throws `ClassCastException` when it runs.
+/// two `Comparable` types is `compareTo(Comparable, Comparable)`, which orders null first
+/// and throws `ClassCastException` when two values that are not null meet. Seen on Java
+/// 42.9: `S < I` of a `String` and an `int` fails where `S` is not null, and is true
+/// where `S` is null; `B < I` of a `Boolean` and `S < T` of a `String` and an `Instant`
+/// fail likewise.
 fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
     let numeric = Numeric::of(&left.column_type).zip(Numeric::of(&right.column_type));
+    let primitive = [
+        crate::eval::is_primitive(&left.column_type),
+        crate::eval::is_primitive(&right.column_type),
+    ];
     let domain = match (numeric, &left.column_type, &right.column_type) {
         (Some((l, r)), _, _) => numeric_compare_domain(op, l, r),
         (None, ColumnType::String, ColumnType::String) => CompareDomain::String,
         (None, ColumnType::Instant, ColumnType::Instant) => CompareDomain::Integral,
         (None, ColumnType::Boolean, ColumnType::Boolean) => CompareDomain::Boolean,
-        (None, _, _) if op.is_equality() => CompareDomain::Unrelated,
+        (None, _, _) if op.is_equality() => CompareDomain::Unrelated { primitive },
+        (None, l, r) if l != r && comparable(l) && comparable(r) => {
+            CompareDomain::UnrelatedOrder { primitive }
+        }
         (None, l, r) => {
             return Err(unsupported(format!(
                 "ordering comparison of {} with {}",
@@ -2903,6 +2962,24 @@ fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, Formula
             right: Box::new(right),
         },
     ))
+}
+
+/// Whether a value of `column_type` is a `java.lang.Comparable` that this checker orders
+/// against a value of another class: a primitive (boxed), `Boolean`, `String`, `Instant`
+/// and the `java.time` classes that implement it. `Period` and `ZoneId` do not, and Java
+/// finds no `less` for them.
+fn comparable(column_type: &ColumnType) -> bool {
+    crate::eval::is_primitive(column_type)
+        || matches!(
+            column_type,
+            ColumnType::Boolean
+                | ColumnType::String
+                | ColumnType::Instant
+                | ColumnType::LocalDate
+                | ColumnType::LocalTime
+                | ColumnType::Duration
+                | ColumnType::ZonedDateTime
+        )
 }
 
 /// Whether `expr` makes a `DiscretizedRangeEqual`.

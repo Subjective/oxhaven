@@ -488,7 +488,7 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 *domain,
                 left.as_ref(),
                 right.as_ref(),
-            )))
+            )?))
         }
         Node::Logical { op, left, right } => logical(*op, left, right, batch),
         Node::BooleanBitwise { op, left, right } => {
