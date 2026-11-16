@@ -712,7 +712,8 @@ broker under the open tables of both.
 - Task 7.5.2, producing Avro and the record columns: Java on 10948, Oxhaven on 10949,
   one broker and a stub registry that logs each request with its body, 484 cases in four
   rounds (`tasks/7.5.2-kafka-produce-avro.md`), among them every column type against
-  every Avro field type (420). Same: every record, byte for byte (partition, key, value,
+  every Avro field type (420; its 30 `char` cases failed in the probe's own table on both
+  servers, so `char` was probed apart). Same: every record, byte for byte (partition, key, value,
   and the timestamp where it comes from a column), every registry request and body, and
   every error text, except as follows. Different by design: the timestamp
   field and the records' own timestamps, which are the time of making or sending; the
