@@ -1102,3 +1102,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T15:44Z: task 7.5.2 came back complete in 79 minutes and 280k tokens; opened pull request 131. Owner items 18 to 22 in docs/KAFKA.md, the weightiest being that Java pairs Avro fields with columns by position, so include_only_columns and exclude_columns can write values into the wrong fields (reproduced). Started task 7.6.4 (columns of tables in filters, aggregations and formulas).
 
 - 2026-11-16T15:51Z: task 5.11 came back complete in 64 minutes and 123k tokens, the cheapest full task of the day: four independent small items in one crate suit one agent well. Opened pull request 132. Owner items: boxed arrays need a contract column type; whole-number instants wrap silently as in Java.
+
+- 2026-11-16T15:53Z: merged pull request 131 (Kafka Avro produce and column options) on seven green checks; started task 7.4.8 (Kafka Protobuf specs) from the merged main.
