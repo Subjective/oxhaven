@@ -142,6 +142,13 @@ pub enum ColumnType {
     /// array of nulls. A column whose cells would have two classes, which Java allows
     /// (`c ? (Object) 1 : (Object) "a"`), is no type here.
     Object(Option<Box<ColumnType>>),
+    /// Java's primitive `boolean`, which is only ever the element of an array:
+    /// `Array(PrimitiveBoolean)` is `boolean[]`, what the element-wise comparisons of
+    /// arrays make. A column of booleans is a [`ColumnType::Boolean`], and
+    /// `Array(Boolean)` is `java.lang.Boolean[]`, another class, which has nulls.
+    ///
+    /// A cell is an Arrow `Boolean`, never null.
+    PrimitiveBoolean,
 }
 
 /// The Java class of the cells of a [`ColumnType::Table`] column.
@@ -245,6 +252,7 @@ impl ColumnType {
             ColumnType::DayOfWeek => DataType::Int8,
             ColumnType::Object(Some(class)) => class.arrow_type(),
             ColumnType::Object(None) => DataType::Utf8,
+            ColumnType::PrimitiveBoolean => DataType::Boolean,
         }
     }
 }
@@ -433,6 +441,18 @@ mod tests {
         assert_eq!(ColumnType::object(None).arrow_type(), DataType::Utf8);
         assert_ne!(ColumnType::object(None), ColumnType::String);
         assert_eq!(boxed.list_element(), None);
+    }
+
+    #[test]
+    fn an_array_of_primitive_booleans_is_another_type_than_one_of_boxed_booleans() {
+        let primitive = ColumnType::array(ColumnType::PrimitiveBoolean);
+        let boxed = ColumnType::array(ColumnType::Boolean);
+        assert_ne!(primitive, boxed);
+        assert_eq!(primitive.arrow_type(), boxed.arrow_type());
+        assert_eq!(
+            primitive.list_element(),
+            Some(&ColumnType::PrimitiveBoolean)
+        );
     }
 
     #[test]
