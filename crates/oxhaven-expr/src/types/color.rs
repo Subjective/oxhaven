@@ -43,7 +43,7 @@ enum Argument {
     Name(Typed),
     /// A number, of any primitive type.
     Number(Typed),
-    Other(Typed),
+    Other,
     Null,
 }
 
@@ -226,7 +226,7 @@ impl Checker<'_> {
         } else if Numeric::of(&checked.column_type).is_some() {
             Argument::Number(checked)
         } else {
-            Argument::Other(checked)
+            Argument::Other
         })
     }
 
@@ -304,7 +304,7 @@ impl Checker<'_> {
                 Argument::Color(value) => value,
                 Argument::Name(value) => style(ColorFn::OfName, vec![value]),
                 Argument::Number(value) => convert(value, &ColumnType::Long),
-                Argument::Other(_) | Argument::Null => unreachable!("refused above"),
+                Argument::Other | Argument::Null => unreachable!("refused above"),
             })
             .collect();
         let result = |function: ColorFn, mut values: Vec<Typed>, styles: Vec<Typed>| {
