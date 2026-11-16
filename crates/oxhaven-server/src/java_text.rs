@@ -209,6 +209,10 @@ pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<S
             v.as_primitive::<TimestampNanosecondType>().iter(),
             java_values::local_date_time_text,
         ),
+        // Behavior: `java.time.DayOfWeek#toString`, the name of the constant
+        ColumnType::DayOfWeek => each(v.as_primitive::<Int8Type>().iter(), |day| {
+            day_of_week_name(day).to_string()
+        }),
         ColumnType::Array(_) => unported!(
             "java.lang.Object#toString",
             "the text of an array of type {column_type:?}, which holds its identity hash"
@@ -218,6 +222,50 @@ pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<S
             "the text of a value of type {other:?}"
         ),
     }
+}
+
+/// Whether [`object_texts`] knows the text of a value of `column_type`.
+pub fn has_object_text(column_type: &ColumnType) -> bool {
+    match column_type {
+        ColumnType::Boolean
+        | ColumnType::String
+        | ColumnType::Instant
+        | ColumnType::Byte
+        | ColumnType::Short
+        | ColumnType::Int
+        | ColumnType::Long
+        | ColumnType::Float
+        | ColumnType::Double
+        | ColumnType::Char
+        | ColumnType::BigInteger
+        | ColumnType::BigDecimal
+        | ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::LocalDateTime
+        | ColumnType::DayOfWeek => true,
+        ColumnType::Vector(element) => has_object_text(element),
+        _ => false,
+    }
+}
+
+/// The name of the day whose `getValue` is `day` (Monday 1).
+///
+/// Behavior: `java.time.DayOfWeek#of`, `java.lang.Enum#name`
+pub fn day_of_week_name(day: i8) -> &'static str {
+    const NAMES: [&str; 7] = [
+        "MONDAY",
+        "TUESDAY",
+        "WEDNESDAY",
+        "THURSDAY",
+        "FRIDAY",
+        "SATURDAY",
+        "SUNDAY",
+    ];
+    usize::try_from(i32::from(day) - 1)
+        .ok()
+        .and_then(|at| NAMES.get(at))
+        .copied()
+        .unwrap_or_else(|| unreachable!("a DayOfWeek cell is 1 to 7, not {day}"))
 }
 
 /// The text of a vector, or of an array wrapped as one, with these `elements` of type

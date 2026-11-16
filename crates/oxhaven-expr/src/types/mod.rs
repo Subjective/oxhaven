@@ -266,6 +266,27 @@ pub(crate) enum Node {
         left: Box<Typed>,
         right: Box<Typed>,
     },
+    /// The operand as an object: the node's type is `Object` of the operand's class. A
+    /// primitive is boxed, its null becoming the value Java reserves for it.
+    ToObject(Box<Typed>),
+    /// The value of an `Object` operand as the node's type: a `Number` converted to a
+    /// primitive, or the operand's own class; a value of another class fails.
+    FromObject(Box<Typed>),
+    /// `==` of two operands as objects: an `Object`, a `DayOfWeek`, or a value that
+    /// [`Node::ToObject`] boxed.
+    ObjectEquals {
+        left: Box<Typed>,
+        right: Box<Typed>,
+    },
+    /// The `String` Java converts an object to, null for null: an operand of string
+    /// concatenation.
+    ObjectString(Box<Typed>),
+    /// The `DayOfWeek` whose number (Monday 1) `number`, an `Int`, is; with `method`, a
+    /// null number fails as a method call on a null `LocalDate` does.
+    DayOfWeek {
+        number: Box<Typed>,
+        method: bool,
+    },
     /// `int` arguments are of type `Int`.
     StringMethod {
         method: StringMethod,
@@ -398,6 +419,8 @@ fn java_name(column_type: &ColumnType) -> String {
         ColumnType::Period => "Period".into(),
         ColumnType::ZoneId => "ZoneId".into(),
         ColumnType::ZonedDateTime => "ZonedDateTime".into(),
+        ColumnType::DayOfWeek => "DayOfWeek".into(),
+        ColumnType::Object(_) => "Object".into(),
         other => format!("{other:?}"),
     }
 }
@@ -467,6 +490,9 @@ impl Checker<'_> {
     fn check(&mut self, expr: &Expr) -> Result<Typed, FormulaError> {
         match expr {
             Expr::Column(name) => self.column(name),
+            // Behavior: `QueryLanguageParser#visit(NullLiteralExpr)`: the type of `null`
+            // alone is `Object`, which a column of it has.
+            Expr::Literal(Literal::Null) => Ok(typed(ColumnType::object(None), Node::Null)),
             Expr::Literal(literal) => literal_type(literal)
                 .map(|column_type| typed(column_type, Node::Literal(literal.clone()))),
             // Behavior: `QueryLanguageParser`'s variables `i` (`int`), `ii` and `k` (`long`),
@@ -554,7 +580,8 @@ impl Checker<'_> {
                 | ColumnType::String
                 | ColumnType::Instant
         ) || vectors::is_supported_list(&column_type)
-            || java_time::is_time_object(&column_type);
+            || java_time::is_time_object(&column_type)
+            || is_object(&column_type);
         if !known {
             return Err(unsupported(format!(
                 "column {name} of type {column_type:?}"
@@ -887,6 +914,9 @@ impl Checker<'_> {
 
         let left = self.check(left)?;
         let right = self.check(right)?;
+        if is_object(&left.column_type) || is_object(&right.column_type) {
+            return object_operator(op, left, right);
+        }
         // Java turns an operator with a vector or array operand into `eqArray`,
         // `lessArray` and their relatives, which compare element by element.
         if is_list(&left) || is_list(&right) {
@@ -1542,7 +1572,17 @@ impl Checker<'_> {
         }
         let null_of = |branch: &Typed| typed(branch.column_type.clone(), Node::Null);
         let (if_true, if_false) = match (is_null_literal(if_true), is_null_literal(if_false)) {
-            (true, true) => return Err(unsupported("null in both branches of ?:")),
+            (true, true) => {
+                let null = || Box::new(typed(ColumnType::object(None), Node::Null));
+                return Ok(typed(
+                    ColumnType::object(None),
+                    Node::Ternary {
+                        condition: Box::new(condition),
+                        if_true: null(),
+                        if_false: null(),
+                    },
+                ));
+            }
             (true, false) => {
                 let if_false = self.check(if_false)?;
                 (null_of(&if_false), if_false)
@@ -1554,6 +1594,12 @@ impl Checker<'_> {
             }
             (false, false) => (self.check(if_true)?, self.check(if_false)?),
         };
+        if if_true.column_type != if_false.column_type
+            && (matches!(if_true.column_type, ColumnType::Object(_))
+                || matches!(if_false.column_type, ColumnType::Object(_)))
+        {
+            return object_ternary(condition, if_true, if_false);
+        }
         let Some(result) = ternary_type(&if_true.column_type, &if_false.column_type) else {
             if is_list(&if_true) || is_list(&if_false) {
                 return Err(unsupported(
@@ -1599,6 +1645,15 @@ impl Checker<'_> {
         let from = operand.column_type.clone();
         if from == *to {
             return Ok(operand);
+        }
+        if let ColumnType::Object(_) = to {
+            if let ColumnType::Object(_) = from {
+                return Ok(operand);
+            }
+            return boxed(operand);
+        }
+        if let ColumnType::Object(_) = from {
+            return from_object(to, operand);
         }
         if primitive(to) && primitive(&from) {
             return Ok(typed(to.clone(), Node::Cast(Box::new(operand))));
@@ -1679,6 +1734,28 @@ impl Checker<'_> {
                 "an index on a value of type {}",
                 java_name(&receiver.column_type)
             )));
+        }
+        // Behavior: `java.time.LocalDate#getDayOfWeek`, a method `dh-defaults.prop` lets
+        // a client call.
+        if (&receiver.column_type, method, arguments.len())
+            == (&ColumnType::LocalDate, "getDayOfWeek", 0)
+        {
+            let number = typed(
+                ColumnType::Int,
+                Node::Call {
+                    kernel: Kernel::JavaTime(java_time::TimeFn::DateField(
+                        functions::ZonedField::DayOfWeekValue,
+                    )),
+                    arguments: vec![receiver],
+                },
+            );
+            return Ok(typed(
+                ColumnType::DayOfWeek,
+                Node::DayOfWeek {
+                    number: Box::new(number),
+                    method: true,
+                },
+            ));
         }
         if Numeric::of(&receiver.column_type).is_some() {
             return Err(type_error(format!(
@@ -2199,6 +2276,18 @@ impl Checker<'_> {
                 return Ok(result);
             }
         }
+        if function == "dayOfWeek" {
+            let field = functions::ZonedField::DayOfWeekValue;
+            if let Some(number) = self.zoned(function, field, arguments)? {
+                return Ok(typed(
+                    ColumnType::DayOfWeek,
+                    Node::DayOfWeek {
+                        number: Box::new(number),
+                        method: false,
+                    },
+                ));
+            }
+        }
         if let Some(field) = functions::ZonedField::named(function) {
             if let Some(result) = self.zoned(function, field, arguments)? {
                 return Ok(result);
@@ -2712,6 +2801,173 @@ fn comparison(op: CompareOp, left: Typed, right: Typed) -> Result<Typed, Formula
             domain,
             left: Box::new(left),
             right: Box::new(right),
+        },
+    ))
+}
+
+/// Whether a value of `column_type` is an object this checker computes with only as one:
+/// the cells of an `Object` column and a `java.time.DayOfWeek`.
+fn is_object(column_type: &ColumnType) -> bool {
+    matches!(column_type, ColumnType::Object(_) | ColumnType::DayOfWeek)
+}
+
+/// Whether a value of `column_type` can be a cell of an `Object` column: a class whose
+/// equality and text this crate and the server know.
+fn objectable(column_type: &ColumnType) -> bool {
+    matches!(
+        column_type,
+        ColumnType::Boolean
+            | ColumnType::Byte
+            | ColumnType::Short
+            | ColumnType::Char
+            | ColumnType::Int
+            | ColumnType::Long
+            | ColumnType::Float
+            | ColumnType::Double
+            | ColumnType::String
+            | ColumnType::Instant
+            | ColumnType::LocalDate
+            | ColumnType::LocalTime
+            | ColumnType::DayOfWeek
+    )
+}
+
+/// `(Object) operand`, of an operand that is not yet an `Object`.
+///
+/// Behavior: `QueryLanguageParser#visit(CastExpr)`, which leaves a cast to a class that is
+/// no box to javac: a primitive is boxed as the value it holds.
+fn boxed(operand: Typed) -> Result<Typed, FormulaError> {
+    if !objectable(&operand.column_type) {
+        return Err(unsupported(format!(
+            "a value of type {} as a java.lang.Object",
+            java_name(&operand.column_type)
+        )));
+    }
+    Ok(typed(
+        ColumnType::object(Some(operand.column_type.clone())),
+        Node::ToObject(Box::new(operand)),
+    ))
+}
+
+/// `(to) operand` of an `Object` operand.
+///
+/// Behavior: `QueryLanguageParser#visit(CastExpr)`: a cast to a primitive is
+/// `intCast(Object)` and its relatives, a cast to a class is javac's checked cast.
+fn from_object(to: &ColumnType, operand: Typed) -> Result<Typed, FormulaError> {
+    let known = matches!(
+        to,
+        ColumnType::Int | ColumnType::Long | ColumnType::Float | ColumnType::Double
+    ) || (objectable(to) && !crate::eval::is_primitive(to));
+    if !known {
+        return Err(unsupported(format!(
+            "cast of java.lang.Object to {}",
+            java_name(to)
+        )));
+    }
+    Ok(typed(to.clone(), Node::FromObject(Box::new(operand))))
+}
+
+/// An operator with an operand that is an `Object` or a `DayOfWeek`.
+///
+/// Behavior: `QueryLanguageParser#visit(BinaryExpr)`: `==` is
+/// `QueryLanguageFunctionUtils#eq(Object, Object)`, which boxes a primitive operand, and
+/// `!=` its negation; `+` beside a `String` is Java's string concatenation. Java refuses
+/// any other operator on an `Object`; it orders a `DayOfWeek` by `compareTo`, which is not
+/// ported.
+fn object_operator(op: BinaryOp, left: Typed, right: Typed) -> Result<Typed, FormulaError> {
+    let as_object = |side: Typed| -> Result<Typed, FormulaError> {
+        if is_object(&side.column_type) {
+            Ok(side)
+        } else {
+            boxed(side)
+        }
+    };
+    let text = |side: Typed| {
+        if is_object(&side.column_type) {
+            typed(ColumnType::String, Node::ObjectString(Box::new(side)))
+        } else {
+            side
+        }
+    };
+    match op {
+        BinaryOp::Equal | BinaryOp::NotEqual => {
+            let equals = typed(
+                ColumnType::Boolean,
+                Node::ObjectEquals {
+                    left: Box::new(as_object(left)?),
+                    right: Box::new(as_object(right)?),
+                },
+            );
+            Ok(if op == BinaryOp::Equal {
+                equals
+            } else {
+                typed(ColumnType::Boolean, Node::Not(Box::new(equals)))
+            })
+        }
+        BinaryOp::Add
+            if left.column_type == ColumnType::String
+                || right.column_type == ColumnType::String =>
+        {
+            Ok(concat(text(left), text(right)))
+        }
+        _ if left.column_type == ColumnType::DayOfWeek
+            || right.column_type == ColumnType::DayOfWeek =>
+        {
+            Err(unsupported(format!(
+                "{} of {} and {}: java.time.DayOfWeek#compareTo",
+                symbol(op),
+                java_name(&left.column_type),
+                java_name(&right.column_type)
+            )))
+        }
+        _ => Err(operands_error(op, &left, &right)),
+    }
+}
+
+/// `condition ? if_true : if_false` where a branch is an `Object` and the branches have
+/// two types. The result is an `Object`, whose cells must have one class.
+///
+/// Behavior: `QueryLanguageParser#visit(ConditionalExpr)`, which gives the branches their
+/// common supertype, `Object`, and boxes a primitive branch.
+fn object_ternary(
+    condition: Typed,
+    if_true: Typed,
+    if_false: Typed,
+) -> Result<Typed, FormulaError> {
+    let (true_class, false_class) = (
+        crate::eval::class_of(&if_true.column_type),
+        crate::eval::class_of(&if_false.column_type),
+    );
+    let class = match (true_class, false_class) {
+        (Some(a), Some(b)) if a != b => {
+            return Err(unsupported(format!(
+                "?: whose branches are a {} and a {}, which makes a java.lang.Object column \
+                 of two classes",
+                java_name(&a),
+                java_name(&b)
+            )))
+        }
+        (a, b) => a.or(b),
+    };
+    let result = ColumnType::object(class);
+    let branch = |branch: Typed| -> Result<Typed, FormulaError> {
+        if branch.column_type == result {
+            return Ok(branch);
+        }
+        match (&branch.column_type, &branch.node) {
+            (ColumnType::Object(None), Node::Null) => Ok(typed(result.clone(), Node::Null)),
+            (ColumnType::Object(_), _) => Err(unsupported(
+                "?: with a branch of nulls that is not the null literal beside an Object",
+            )),
+            _ => boxed(branch),
+        }
+    };
+    Ok(typed(
+        result.clone(),
+        Node::Ternary {
+            condition: Box::new(condition),
+            if_true: Box::new(branch(if_true)?),
+            if_false: Box::new(branch(if_false)?),
         },
     ))
 }

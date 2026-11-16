@@ -202,6 +202,8 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         ColumnType::Period => "java.time.Period",
         ColumnType::ZoneId => "java.time.ZoneId",
         ColumnType::ZonedDateTime => "java.time.ZonedDateTime",
+        ColumnType::DayOfWeek => "java.time.DayOfWeek",
+        ColumnType::Object(_) => "java.lang.Object",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
@@ -286,6 +288,9 @@ fn is_sortable(column_type: &ColumnType) -> bool {
         ColumnType::Table(_) => false,
         // Neither class is `Comparable`; observed on Java 42.9 for a formula column of each.
         ColumnType::Period | ColumnType::ZoneId => false,
+        // `Object` is not `Comparable`, whatever the class of the cells; a `DayOfWeek` is
+        // an enum, which is. Observed on Java 42.9 for a formula column of each.
+        ColumnType::Object(_) => false,
         _ => true,
     }
 }
@@ -598,6 +603,50 @@ mod tests {
                     metadata(&[
                         ("deephaven:isSortable", "true"),
                         ("deephaven:type", "java.time.ZonedDateTime")
+                    ])
+                ),
+            ]
+        );
+    }
+
+    /// What Java 42.9 declared for `update("O = (Object) I", "N = null",
+    /// "W = dayOfWeek(T, 'UTC')")`: an `Object` column has no `isSortable`.
+    #[test]
+    fn an_object_column_and_a_day_of_week_are_declared_as_in_java() {
+        let definition = definition(&[
+            ("O", ColumnType::object(Some(ColumnType::Int))),
+            ("N", ColumnType::object(None)),
+            ("W", ColumnType::DayOfWeek),
+        ]);
+        let schema = arrow_schema(&definition, &SchemaContext::default());
+        let seen: Vec<_> = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                let metadata: HashMap<String, String> = f
+                    .metadata()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                (f.data_type().clone(), metadata)
+            })
+            .collect();
+        let object = || {
+            (
+                DataType::Utf8,
+                metadata(&[("deephaven:type", "java.lang.Object")]),
+            )
+        };
+        assert_eq!(
+            seen,
+            vec![
+                object(),
+                object(),
+                (
+                    DataType::Utf8,
+                    metadata(&[
+                        ("deephaven:isSortable", "true"),
+                        ("deephaven:type", "java.time.DayOfWeek")
                     ])
                 ),
             ]
