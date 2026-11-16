@@ -235,7 +235,7 @@ pub(super) fn validate_name(name: &str) -> Result<(), SelectError> {
     Ok(())
 }
 
-fn visit(expr: &Expr, f: &mut impl FnMut(&Expr)) {
+pub(super) fn visit(expr: &Expr, f: &mut impl FnMut(&Expr)) {
     f(expr);
     match expr {
         Expr::Column(_) | Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => {}
