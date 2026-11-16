@@ -783,3 +783,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   than reproduced: stale values with two shift distances on a keyed table; static select
   with a shifted column on a filtered table reads dropped rows; a user column named like
   a shifted column is dropped. The refusal for the second is wider than the defect.
+- Merged pull request 94 (6.18, script applications) on six green checks.
