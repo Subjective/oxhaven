@@ -147,6 +147,9 @@ mod tests {
              assert spec.j_object == {{'kind': 'json', 'columns': [('A', 'long'), \
              ('B', 'java.lang.String')], 'mapping': [('a', 'A')]}}, spec.j_object\n\
              assert V.j_object == {{'kind': 'simple', 'column': 'V', 'type': 'int'}}\n\
+             spec = kc.json_spec({{'C': dtypes.char, 'T': dtypes.Instant}})\n\
+             assert spec.j_object['columns'] == [('C', 'char'), ('T', 'java.time.Instant')]\n\
+             assert kc.simple_spec('V', dtypes.byte_array).j_object['type'] == 'byte[]'\n\
              assert kc.TableType.ring(5).j_object == ('ring', 5)\n\
              assert kc.TableType.Append.j_object == ('append', 0)\n"
         ));
@@ -176,6 +179,14 @@ mod tests {
             ),
             "org.apache.kafka.common.config.ConfigException: Missing required configuration \
              \"bootstrap.servers\" which has no default value."
+        );
+        assert_eq!(
+            failure(
+                "kc.consume(CFG, 't', offsets=BEGIN, key_spec=kc.KeyValueSpec.IGNORE, \
+                 value_spec=kc.json_spec({'X': dtypes.int32}, mapping={'a': 'Z'}))",
+                CONSUME
+            ),
+            "java.lang.IllegalArgumentException: Column not found in Deephaven table: -1"
         );
         let from_properties = failure("kc.consume(CFG, 't', offsets=BEGIN)", CONSUME);
         assert!(
