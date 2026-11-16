@@ -15,7 +15,7 @@ use arrow::array::{
     Float64Array, Float64Builder, Int32Array, Int32Builder, Int64Array, Int64Builder, Int8Builder,
     ListBuilder, StringArray, StringBuilder, TimestampNanosecondArray, TimestampNanosecondBuilder,
 };
-use arrow::datatypes::Field;
+use arrow::datatypes::{DataType, Field};
 use oxhaven_contracts::schema::ColumnType;
 use prost_reflect::{FieldDescriptor, Kind, MessageDescriptor};
 
@@ -137,6 +137,8 @@ enum Cell {
     BooleanArray,
     StringArray,
     InstantArray,
+    /// `byte[][]`
+    BytesArray,
 }
 
 /// Whether a field path is included, by the `include` paths of the spec: none means all.
@@ -282,7 +284,6 @@ impl Translator {
                 Kind::Enum(_) => named(Getter::Refused(
                     "com.google.protobuf.Descriptors.EnumValueDescriptor[]".to_owned(),
                 )),
-                Kind::Bytes => named(Getter::Refused("byte[][]".to_owned())),
                 _ => named(Getter::Array {
                     steps: Vec::new(),
                     list: field.clone(),
@@ -306,7 +307,7 @@ impl Translator {
         };
         // Java skips the rest when the message is missing, except right below an element
         // of a repeated field.
-        let parent_repeated = path.len() >= 2 && path[path.len() - 2].is_list();
+        let parent_repeated = path.len() >= 2 && protobuf::repeated(&path[path.len() - 2]);
         let mut out = Vec::new();
         for function in self.message(path, &inner)? {
             let mut function_path = vec![field.clone()];
@@ -395,7 +396,7 @@ fn leaf_cell(leaf: &Leaf, in_array: bool) -> Result<Cell, String> {
                 Kind::Bool if in_array && !presence => Ok(Cell::BooleanArray),
                 Kind::Bool => primitive(Cell::Boolean, presence, "Boolean"),
                 Kind::String => Ok(Cell::String),
-                Kind::Bytes if in_array => Err("byte[][]".to_owned()),
+                Kind::Bytes if in_array => Ok(Cell::BytesArray),
                 Kind::Bytes => Ok(Cell::Bytes),
                 Kind::Enum(_) => {
                     Err("com.google.protobuf.Descriptors.EnumValueDescriptor".to_owned())
@@ -414,7 +415,7 @@ fn leaf_cell(leaf: &Leaf, in_array: bool) -> Result<Cell, String> {
             WellKnown::Float => Cell::Float,
             WellKnown::Double => Cell::Double,
             WellKnown::String => Cell::String,
-            WellKnown::Bytes if in_array => return Err("byte[][]".to_owned()),
+            WellKnown::Bytes if in_array => Cell::BytesArray,
             WellKnown::Bytes => Cell::Bytes,
             WellKnown::Object(class) => return Err((*class).to_owned()),
         }),
@@ -452,6 +453,7 @@ impl Cell {
             Cell::BooleanArray => ColumnType::array(ColumnType::PrimitiveBoolean),
             Cell::StringArray => ColumnType::array(ColumnType::String),
             Cell::InstantArray => ColumnType::array(ColumnType::Instant),
+            Cell::BytesArray => ColumnType::array(ColumnType::array(ColumnType::Byte)),
         }
     }
 }
@@ -956,6 +958,37 @@ fn list_array(cell: Cell, rows: &[Option<Vec<Scalar>>]) -> ArrayRef {
                 _ => None,
             })
         ),
+        Cell::BytesArray => {
+            let DataType::List(outer) = cell.column_type().arrow_type() else {
+                unreachable!("an array is a list")
+            };
+            let DataType::List(inner) = outer.data_type().clone() else {
+                unreachable!("an array of arrays is a list of lists")
+            };
+            let bytes = ListBuilder::new(Int8Builder::new()).with_field(inner);
+            let mut list = ListBuilder::new(bytes).with_field(outer);
+            for row in rows {
+                match row {
+                    Some(items) => {
+                        for item in items {
+                            let element = list.values();
+                            match item {
+                                Scalar::Bytes(bytes) => {
+                                    element
+                                        .values()
+                                        .extend(bytes.iter().map(|b| Some(*b as i8)));
+                                    element.append(true);
+                                }
+                                _ => element.append(false),
+                            }
+                        }
+                        list.append(true);
+                    }
+                    None => list.append(false),
+                }
+            }
+            Arc::new(list.finish())
+        }
         _ => unreachable!("a scalar cell is built by `scalar_array`"),
     }
 }

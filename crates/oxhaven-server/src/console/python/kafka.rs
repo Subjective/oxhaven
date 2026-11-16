@@ -11,7 +11,8 @@ use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_kafka::{
     AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec,
-    KafkaError, Offsets, ProduceOptions, ProduceSpec, Publication, Spec, TableType,
+    KafkaError, Offsets, ProduceOptions, ProduceSpec, ProtobufProtocol, Publication, Spec,
+    TableType,
 };
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
@@ -36,7 +37,9 @@ fn column_type(name: &str) -> PyResult<ColumnType> {
 /// A key or value spec, as `deephaven.stream.kafka.consumer.KeyValueSpec` writes it:
 /// `{"kind": "ignore"}`, `{"kind": "simple", "column": name or null, "type": Java class
 /// name or null}` or `{"kind": "json", "columns": [[name, Java class name]], "mapping":
-/// [[field, column]] or null}`.
+/// [[field, column]] or null}`, `{"kind": "avro", ...}` or `{"kind": "protobuf",
+/// "subject": text, "version": int or null, "message": text or null, "include": [path] or
+/// null, "protocol": "serdes" or "raw"}`.
 fn spec(json: &str) -> PyResult<Spec> {
     let bad = || PyValueError::new_err(format!("not a key or value spec: {json}"));
     let value: Value = serde_json::from_str(json).map_err(|_| bad())?;
@@ -86,6 +89,34 @@ fn spec(json: &str) -> PyResult<Spec> {
                 _ => return Err(bad()),
             };
             Ok(Spec::Avro { schema, mapping })
+        }
+        Some("protobuf") => {
+            let include = match &value["include"] {
+                Value::Null => None,
+                Value::Array(paths) => Some(paths.iter().map(text).collect::<PyResult<_>>()?),
+                _ => return Err(bad()),
+            };
+            let version = match &value["version"] {
+                Value::Null => None,
+                version => Some(
+                    version
+                        .as_i64()
+                        .and_then(|v| i32::try_from(v).ok())
+                        .ok_or_else(bad)?,
+                ),
+            };
+            let protocol = match value["protocol"].as_str() {
+                Some("serdes") => ProtobufProtocol::Serdes,
+                Some("raw") => ProtobufProtocol::Raw,
+                _ => return Err(bad()),
+            };
+            Ok(Spec::Protobuf {
+                subject: text(&value["subject"])?,
+                version,
+                message: value["message"].as_str().map(str::to_owned),
+                include,
+                protocol,
+            })
         }
         _ => Err(bad()),
     }
