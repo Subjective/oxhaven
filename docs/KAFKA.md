@@ -187,35 +187,30 @@ a tree.
 
 ## The engine side
 
-The stream-to-table adapter is on `main` already, in pieces:
+Since task 7.4.2 (`tasks/7.4.2-stream-adapter.md`) the engine has Java's stream adapter,
+and this crate, the blink input table and `deephaven.stream.table_publisher` are built on
+it:
 
-- `oxhaven_engine::table::blink_input_table` is `StreamToBlinkTableAdapter` behind an input
-  table (written for `TablePublisher`'s input-table half);
-- `QueryTable::root` with an `UpdateSource`, and `tracked_source` columns, are what any
-  root table is built from;
-- `ring_table` is `RingTableTools.of`;
-- `blink_to_append_only` exists, but private to `ops/sort/slice.rs`.
+- `oxhaven_engine::table::stream_table(graph, definition, callbacks)` returns a blink
+  table and its `StreamPublisher` (`StreamToBlinkTableAdapter` with a
+  `TablePublisher`). Any thread calls `publisher.add(columns)`, `add_table(table)` or
+  `fail(failure)`; each cycle the table calls the flush callback, then shows the rows
+  that arrived since the last cycle, or fails with the failures, which go before the rows
+  that came with them. The stream ends when the table fails or is dropped: the publisher
+  is no longer alive, later rows are dropped, and the shutdown callback runs once.
+- `blink_input_table` is a stream table with the `InputTable` attribute.
+- `oxhaven_engine::table::blink_to_append_only(table, limit)` is
+  `BlinkTableTools#blinkToAppendOnly`, a node of its own, and gives the same table when
+  asked again of the same blink table while the first answer is alive, as Java's
+  memoized one does. `head` of a blink table is the same operation with a limit.
+- `ring_table` is `RingTableTools.of`.
 
-The first slice does not use `blink_input_table`: the tables it makes carry the
-`InputTable` attribute, which lets any client add rows, and a Kafka table in Java has no
-such attribute. It builds its own root table in `crates/oxhaven-kafka/src/stream.rs`:
-the polling thread leaves decoded batches in a buffer, and the update
-source drains it once per cycle, replacing the rows of a blink table or appending to an
-append-only one. A failure is delivered in place of the rows of its cycle.
-
-What is missing in the engine, and belongs there and not in this crate (task 7.4.2):
-
-1. **A public stream table**: `stream_table(graph, definition) -> (table, publisher)` with
-   `publisher.add(columns)` and `publisher.fail(failure)`, which `blink_input_table`, this
-   crate and `deephaven.stream.table_publisher` all use. Today there are two copies of the
-   blink refresh.
-2. **`blink_to_append_only` as a public operation** (also `deephaven.stream.
-   blink_to_append_only`, which today raises). The slice appends in its root table
-   instead; the result is the same table, but Java's is a second node, which shows in
-   update performance tables.
-3. **A callback when a table is no longer used.** The slice stops its thread when the
-   table is dropped (`Drop` of the update source). Java stops the ingester when the
-   table's liveness count reaches zero, and `TablePublisher` has `on_shutdown_callback`.
+This crate makes a stream table per `consume`: the polling thread publishes each decoded
+poll, and a record it cannot decode fails the table and ends the thread. The shutdown
+callback stops the thread, so it ends when the table is dropped, as Java's ingester ends
+when the table's liveness count reaches zero. An append-only table is
+`blink_to_append_only` of the blink table, and a ring table `ring_table` of it, as in
+Java; each holds the blink table, which ends when they are dropped.
 
 ## The client library
 
@@ -478,15 +473,16 @@ broker under the open tables of both.
 | An integer outside 128 bits | `com.fasterxml.jackson.databind.node.BigIntegerNode` |
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
 | `avro_spec`, `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#avroSpec`, `#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
-| `deephaven.stream.blink_to_append_only`, `add_only_to_blink` | `io.deephaven.engine.table.impl.BlinkTableTools#blinkToAppendOnly`, `AddOnlyToBlinkTableAdapter#toBlink` |
+| `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
 
 No longer refused since task 7.4.4: `offsets` left at its default, compressed batches
 other than gzip, `isolation.level=read_committed`, record batches older than format 2
 (librdkafka reads them; not probed, the broker writes none), `deephaven.stream.kafka.
 topics`.
 
-`deephaven.stream.kafka.producer`, `cdc` and `deephaven.stream.table_publisher` do not
-exist yet: importing them fails.
+`deephaven.stream.kafka.producer` and `cdc` do not exist yet: importing them fails.
+`deephaven.stream.blink_to_append_only` and `deephaven.stream.table_publisher` exist since
+task 7.4.2.
 
 ## Tasks
 
@@ -495,7 +491,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | Task | What | Size | Needs |
 | --- | --- | --- | --- |
 | 7.4.1 | This design and the first slice | done here | |
-| 7.4.2 | Engine: public `stream_table` with a publisher, public `blink_to_append_only`, a callback when a table is released; `deephaven.stream.table_publisher`, `blink_to_append_only`; move this crate onto them | M | 7.4.1 |
+| 7.4.2 | Engine: public `stream_table` with a publisher, public `blink_to_append_only`, a callback when a table is released; `deephaven.stream.table_publisher`, `blink_to_append_only`; move this crate onto them | done (`tasks/7.4.2-stream-adapter.md`) | 7.4.1 |
 | 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | M | 7.4.1 |
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
 | 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |

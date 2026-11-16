@@ -2031,6 +2031,276 @@ fn blink_input_table_refuses_deletes_and_bad_batches_and_accepts_adds_from_a_cyc
     assert!(table.row_set().is_empty());
 }
 
+/// A stream table whose callbacks write down what happened.
+struct Watched {
+    table: Arc<QueryTable>,
+    publisher: StreamPublisher,
+    flushes: Arc<AtomicI64>,
+    shutdowns: Arc<AtomicI64>,
+}
+
+/// `flush` is called with the publisher and the number of the flush, from 1.
+fn watched_stream(
+    graph: &Arc<dyn UpdateGraph>,
+    flush: impl Fn(&StreamPublisher, i64) -> Result<(), TableFailure> + Send + Sync + 'static,
+) -> Watched {
+    let flushes = Arc::new(AtomicI64::new(0));
+    let shutdowns = Arc::new(AtomicI64::new(0));
+    let own: Arc<Mutex<Option<StreamPublisher>>> = Arc::new(Mutex::new(None));
+    let (counted, flushed_by) = (flushes.clone(), own.clone());
+    let ended = shutdowns.clone();
+    let callbacks = StreamCallbacks {
+        on_flush: Some(Box::new(move || {
+            let number = counted.fetch_add(1, Ordering::SeqCst) + 1;
+            let publisher = flushed_by.lock().unwrap().clone().unwrap();
+            flush(&publisher, number)
+        })),
+        on_shutdown: Some(Box::new(move || {
+            ended.fetch_add(1, Ordering::SeqCst);
+        })),
+    };
+    let (table, publisher) = stream_table(graph.clone(), sym_qty(), callbacks);
+    // The flush callback holds the publisher, as a Python one does: a reference cycle that
+    // the end of the stream breaks.
+    *own.lock().unwrap() = Some(publisher.clone());
+    Watched {
+        table,
+        publisher,
+        flushes,
+        shutdowns,
+    }
+}
+
+#[test]
+fn a_stream_table_shows_what_was_published_and_flushed_since_the_last_cycle() {
+    let (stepper, graph) = graph();
+    let Watched {
+        table,
+        publisher,
+        flushes,
+        shutdowns,
+    } = watched_stream(&graph, |publisher, number| {
+        if number == 2 {
+            publisher.add(vec![strings(["flushed"]), longs([9])])?;
+        }
+        Ok(())
+    });
+    let checker = ConsistencyChecker::attach(table.clone());
+    let recorder = Recorder::attach(table.clone());
+    let attributes = table.attributes();
+    assert!(attributes.blink && !attributes.add_only && !attributes.append_only);
+    assert!(table.is_flat() && table.is_refreshing() && publisher.is_alive());
+
+    // A table's rows, read by name: other columns are ignored.
+    let static_rows = in_memory_table(
+        definition(&[
+            ("Other", ColumnType::Long),
+            ("Qty", ColumnType::Long),
+            ("Sym", ColumnType::String),
+        ]),
+        &[batch(&[
+            ("Other", longs([0, 0])),
+            ("Qty", longs([2, 3])),
+            ("Sym", strings(["b", "c"])),
+        ])],
+    )
+    .unwrap();
+    publisher.add(vec![strings(["a"]), longs([1])]).unwrap();
+    let static_rows: Arc<dyn Table> = static_rows;
+    publisher.add_table(&static_rows).unwrap();
+    assert!(table.row_set().is_empty());
+    stepper.run_cycle();
+    assert_eq!(flushes.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        strings_of(&*table, 0),
+        ["a", "b", "c"].map(|s| Some(s.to_string()))
+    );
+    assert_eq!(longs_of(&*table, 1), [Some(1), Some(2), Some(3)]);
+    checker.assert_consistent();
+
+    // What the flush callback adds shows in the cycle that called it.
+    stepper.run_cycle();
+    assert_eq!(strings_of(&*table, 0), [Some("flushed".to_string())]);
+    checker.assert_consistent();
+    stepper.run_cycle();
+    assert!(table.row_set().is_empty());
+    stepper.run_cycle();
+    assert_eq!(flushes.load(Ordering::SeqCst), 4);
+    assert_eq!(
+        recorder.events(),
+        [Ok(replaces(3, 0)), Ok(replaces(1, 3)), Ok(replaces(0, 1))]
+    );
+
+    // Failures go before the rows that arrived with them, all in one, and end the stream.
+    publisher.add(vec![strings(["lost"]), longs([5])]).unwrap();
+    publisher.fail(failure("first"));
+    publisher.fail(failure("second"));
+    assert!(publisher.is_alive() && !table.is_failed());
+    stepper.run_cycle();
+    assert!(table.is_failed() && !publisher.is_alive());
+    assert!(table.row_set().is_empty());
+    assert_eq!(
+        recorder.events().last().unwrap(),
+        &Err(failure(
+            "Multiple errors encountered while ingesting stream:\nCause 0: first\nCause 1: \
+             second\n"
+        ))
+    );
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    assert_eq!(flushes.load(Ordering::SeqCst), 4);
+
+    // Then nothing happens, without an error.
+    publisher.add(vec![strings(["late"]), longs([6])]).unwrap();
+    publisher.fail(failure("third"));
+    stepper.run_cycle();
+    assert_eq!(recorder.events().len(), 4);
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    drop(table);
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn a_stream_table_fails_alone_with_its_flush_error_or_a_failure_the_flush_published() {
+    let (stepper, graph) = graph();
+    let raising = watched_stream(&graph, |_, number| {
+        if number == 2 {
+            return Err(failure("flush raised"));
+        }
+        Ok(())
+    });
+    let publishing = watched_stream(&graph, |publisher, _| {
+        publisher.add(vec![strings(["x"]), longs([1])])?;
+        publisher.fail(failure("published in the flush"));
+        Ok(())
+    });
+    raising
+        .publisher
+        .add(vec![strings(["a"]), longs([1])])
+        .unwrap();
+    stepper.run_cycle();
+    assert!(!raising.table.is_failed() && raising.table.row_set().size() == 1);
+    assert!(publishing.table.is_failed() && publishing.table.row_set().is_empty());
+    assert_eq!(publishing.shutdowns.load(Ordering::SeqCst), 1);
+    stepper.run_cycle();
+    assert!(raising.table.is_failed() && !raising.publisher.is_alive());
+    assert_eq!(raising.shutdowns.load(Ordering::SeqCst), 1);
+    // The failed table keeps the rows it had.
+    assert_eq!(raising.table.row_set().size(), 1);
+}
+
+#[test]
+fn a_stream_ends_when_its_table_is_dropped_and_refuses_rows_that_do_not_fit() {
+    let (stepper, graph) = graph();
+    let Watched {
+        table,
+        publisher,
+        shutdowns,
+        ..
+    } = watched_stream(&graph, |_, _| Ok(()));
+
+    let message = |result: Result<(), TableFailure>| result.unwrap_err().message;
+    assert_eq!(
+        message(publisher.add(vec![strings(["a"])])),
+        "java.lang.IllegalStateException: StreamConsumer data length = 1 chunks, expected 2"
+    );
+    assert_eq!(
+        message(publisher.add(vec![strings(["a"]), strings(["b"])])),
+        "column Qty is Utf8, expected Int64"
+    );
+    assert!(message(publisher.add(vec![strings(["a"]), longs([1, 2])])).contains("size()"));
+    let wrong: Arc<dyn Table> = in_memory_table(
+        definition(&[("Sym", ColumnType::Long)]),
+        &[batch(&[("Sym", longs([1]))])],
+    )
+    .unwrap();
+    assert_eq!(
+        message(publisher.add_table(&wrong)),
+        "java.lang.ClassCastException: Cannot convert ColumnSource[Sym] of type Long to type \
+         String"
+    );
+    let missing: Arc<dyn Table> = in_memory_table(
+        definition(&[("Sym", ColumnType::String)]),
+        &[batch(&[("Sym", strings(["a"]))])],
+    )
+    .unwrap();
+    assert_eq!(
+        message(publisher.add_table(&missing)),
+        "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names [Qty], \
+         available column names are [Sym]"
+    );
+    stepper.run_cycle();
+    assert!(table.row_set().is_empty());
+
+    // A refreshing table is read as it is between cycles.
+    let source = scripted(&graph);
+    let ticking: Arc<dyn Table> = source.table();
+    publisher.add_table(&ticking).unwrap();
+    stepper.run_cycle();
+    assert_eq!(
+        longs_of(&*table, 1),
+        [Some(10), Some(20), Some(30), Some(40)]
+    );
+
+    // The publisher, held by its own flush callback, does not keep the table alive.
+    assert!(publisher.is_alive());
+    let weak = Arc::downgrade(&table);
+    drop(table);
+    assert!(weak.upgrade().is_none());
+    assert!(!publisher.is_alive());
+    assert_eq!(shutdowns.load(Ordering::SeqCst), 1);
+    publisher.add(vec![strings(["a"]), longs([1])]).unwrap();
+    stepper.run_cycle();
+}
+
+#[test]
+fn blink_to_append_only_collects_every_row_and_is_the_same_table_when_asked_again() {
+    let (stepper, graph) = graph();
+    let (blink, publisher) = stream_table(graph.clone(), sym_qty(), StreamCallbacks::default());
+    let blink: Arc<dyn Table> = blink;
+    publisher
+        .add(vec![strings(["a", "b"]), longs([1, 2])])
+        .unwrap();
+    stepper.run_cycle();
+
+    let all = blink_to_append_only(&blink, u64::MAX).unwrap();
+    let checker = ConsistencyChecker::attach(all.clone());
+    let attributes = all.attributes();
+    assert!(attributes.add_only && attributes.append_only && !attributes.blink);
+    assert!(all.is_flat() && all.is_refreshing());
+    // It starts with the rows the blink table shows now.
+    assert_eq!(longs_of(&*all, 1), [Some(1), Some(2)]);
+    let first_two = blink_to_append_only(&blink, 2).unwrap();
+    assert!(!Arc::ptr_eq(&first_two, &all));
+
+    publisher.add(vec![strings(["c"]), longs([3])]).unwrap();
+    stepper.run_cycle();
+    stepper.run_cycle();
+    assert!(blink.row_set().is_empty());
+    assert_eq!(longs_of(&*all, 1), [Some(1), Some(2), Some(3)]);
+    assert_eq!(longs_of(&*first_two, 1), [Some(1), Some(2)]);
+    checker.assert_consistent();
+    // Asked again, it is the same table, with what it collected.
+    let again = blink_to_append_only(&blink, u64::MAX).unwrap();
+    assert!(Arc::ptr_eq(&again, &all));
+    // Once the first is gone, a new one starts from now.
+    drop((again, checker, all));
+    let fresh = blink_to_append_only(&blink, u64::MAX).unwrap();
+    assert!(fresh.row_set().is_empty());
+
+    // A table that is not a blink table is refused.
+    for not_blink in [fresh.clone(), scripted(&graph).table() as Arc<dyn Table>] {
+        assert_eq!(
+            blink_to_append_only(&not_blink, u64::MAX).err().unwrap(),
+            failure("java.lang.IllegalArgumentException: Input is not a blink table!")
+        );
+    }
+
+    // A failure of the blink table fails it.
+    publisher.fail(failure("broken"));
+    stepper.run_cycle();
+    assert!(fresh.is_failed());
+}
+
 fn done<E>(result: Result<Arc<dyn Table>, E>) -> Arc<dyn Table> {
     match result {
         Ok(table) => table,

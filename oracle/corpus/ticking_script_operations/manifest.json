@@ -1,0 +1,152 @@
+{
+  "format": 2,
+  "scenario": "ticking_script_operations",
+  "scenario_sha256": "1ecf5413696c41d48a54070eeebc7b9163154d283577b17834c672e529323c52",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "ring",
+      "file": "step000.ring.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "ring_not_initialized",
+      "file": "step000.ring_not_initialized.arrow",
+      "rows": 0
+    },
+    {
+      "step": 0,
+      "table": "transposed",
+      "file": "step000.transposed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "merged",
+      "file": "step000.merged.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "constituents",
+      "file": "step000.constituents.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "seeded",
+      "file": "step000.seeded.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "ring",
+      "file": "step001.ring.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "ring_not_initialized",
+      "file": "step001.ring_not_initialized.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "transposed",
+      "file": "step001.transposed.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "merged",
+      "file": "step001.merged.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "constituents",
+      "file": "step001.constituents.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "seeded",
+      "file": "step001.seeded.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "ring",
+      "file": "step002.ring.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "ring_not_initialized",
+      "file": "step002.ring_not_initialized.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "transposed",
+      "file": "step002.transposed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "merged",
+      "file": "step002.merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "constituents",
+      "file": "step002.constituents.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "seeded",
+      "file": "step002.seeded.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "ring",
+      "file": "step003.ring.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "ring_not_initialized",
+      "file": "step003.ring_not_initialized.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "transposed",
+      "file": "step003.transposed.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "merged",
+      "file": "step003.merged.arrow",
+      "rows": 9
+    },
+    {
+      "step": 3,
+      "table": "constituents",
+      "file": "step003.constituents.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "seeded",
+      "file": "step003.seeded.arrow",
+      "rows": 5
+    }
+  ]
+}

@@ -10,6 +10,7 @@ asks of a server, recorded with this test against the Java reference.
 | `ide-test.js` | The test |
 | `expected.json` | The tables the test expects and the text the grid paints for them |
 | `lib/flows.js` | The routes around the console: `notebook`, `log`, `grid`, `errors`, `reconnect` |
+| `lib/format.js` | The route `format` |
 | `lib/trace.js` | Records every request, websocket frame and gRPC call of a page |
 | `lib/faults.js` | Answers chosen gRPC calls in the browser (`--deny`, `--empty`) |
 | `decode_trace.py` | Prints a recorded trace with decoded protobuf and Barrage messages |
@@ -55,6 +56,7 @@ Each route runs in a fresh browser profile. `--routes` selects them; the default
 | `console` | Opens `/ide/?psk=<key>` and types the commands of `expected.json` for the console's language into the console. Needs a Python or Groovy console. |
 | `rollup` | Makes a table in the console with the command of `expected.json` and a rollup of it in the **Rollup Rows** panel of its grid (Table Options), with the constituents the panel includes by default; reads the rows the grid paints (the grand total and the first level), expands a node with a click on its marker, then a finest group under it, whose children are the rows of the table, reads the rows after each, and collapses both; sorts a column from its header, expands the two again and reads the rows of the table sorted by the column the sorted one aggregates; filters by the value of a cell. Checks that the panel called `HierarchicalTableService/Rollup` and the sort and the filter `Apply`. Needs a Python console. |
 | `tree` | Makes a tree in the console with the command of `expected.json`, which the IDE opens as it opens a table; reads the rows the grid paints (the rows without a parent), expands a row with a click on its marker, reads the rows again, and collapses it; sorts a column from its header, expands the row again and filters by the value of a cell of one of its children, after which the grid shows that row and its ancestor. Checks that the sort and the filter each called `HierarchicalTableService/Apply`. Needs a Python console. |
+| `format` | Makes a table with formats in the console with the command of `expected.json` (`lib/format.js`): a text colour of a column where a condition holds, a number format, and a background and a text colour of a row. Checks that the grid paints each cell with the text and the text colour the formats give, the colour being the `fillStyle` its text was painted under. |
 
 | `notebook` | In the File Explorer: makes a folder and a notebook, runs a selected line and the whole notebook, saves it, opens it again, changes it, renames it, drags it into the folder, deletes both. Needs a console and a server that stores files. |
 | `log` | Prints from the console and finds the line in the Log panel; opens a command from Command History in the console and runs it. |

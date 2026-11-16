@@ -435,7 +435,10 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
 def cmd_fuzz(args: argparse.Namespace) -> int:
     if (args.ops is None) == (args.family is None):
         raise sc.ScenarioError("fuzz needs --ops or --family, and not both")
-    if args.family is not None:
+    if args.family in fz.SECOND_FAMILIES:
+        ops = fz.SECOND_FAMILIES[args.family]
+        args.variants = args.variants or "second"
+    elif args.family is not None:
         ops = fz.FAMILIES[args.family]
         args.variants = args.variants or "all"
     else:
@@ -453,7 +456,7 @@ def cmd_fuzz(args: argparse.Namespace) -> int:
         print("variants: recorded (what the fuzzer built when the seeds in the run log were "
               "found; --variants all draws every variant of each operation)")
     else:
-        print("variants: all")
+        print(f"variants: {args.variants}")
     if args.keep_going:
         return _fuzz_all(args, ops, target_a, target_b)
     triage = _Triage(args, target_a)
@@ -589,14 +592,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--a", required=True, help="URL of the expected side (the reference)")
     p.add_argument("--b", help="URL of the actual side; default is --a again")
     p.add_argument("--ops", help="comma-separated operations to draw from")
-    p.add_argument("--family", choices=sorted(fz.FAMILIES),
+    p.add_argument("--family", choices=sorted(set(fz.FAMILIES) | set(fz.SECOND_FAMILIES)),
                    help="instead of --ops: a named set of operations (fuzz.FAMILIES), with "
-                        "the variants \"all\" unless --variants says otherwise")
+                        "the variants \"all\" unless --variants says otherwise; or one of "
+                        "the second parity pass (fuzz.SECOND_FAMILIES), with the variants "
+                        "\"second\"")
     p.add_argument("--variants", choices=fz.VARIANTS,
                    help="recorded: the generator of the seeds in the run log, the default "
                         "for --ops it can build. all: every operation and variant "
                         "(harness/fuzz_wide.py), the default when --ops names a newer "
-                        "operation. A seed means a different scenario under each")
+                        "operation. second: the operations and forms of the second "
+                        "parity pass (harness/fuzz_second.py). A seed means a different "
+                        "scenario under each")
     p.add_argument("--seeds", type=int, default=100, help="how many seeds to run")
     p.add_argument("--seed", type=int, default=0, help="the first seed")
     p.add_argument("--exact", action="store_true",

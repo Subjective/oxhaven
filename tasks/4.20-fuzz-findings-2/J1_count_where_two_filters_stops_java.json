@@ -1,0 +1,14 @@
+{
+ "format": 1,
+ "name": "J1_count_where_two_filters_stops_java",
+ "description": "Stops the Java reference: do not run it against a server that other runs use. An update_by count where with a filter that compares two integer columns and a second filter that reads a timestamp column.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "int16"}, {"name": "C", "type": "int32"}, {"name": "T", "type": "timestamp"}],
+   "rows": [[5, 5, 1], [11, 2, null]]}
+ ],
+ "operations": [
+  {"name": "o1", "op": "update_by", "source": "t", "by": [],
+   "ops": [{"op": "rolling_count_where_tick", "columns": ["U1"], "args": {"filters": ["C == K", "!isNull(T)"], "rev_ticks": 4, "fwd_ticks": 1}}]}
+ ],
+ "results": [{"table": "o1"}]
+}

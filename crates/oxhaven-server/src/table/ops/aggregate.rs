@@ -279,7 +279,9 @@ fn pair(text: &str) -> Result<Pair, ExportError> {
 ///
 /// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#adapt(Selectable)`, which
 /// takes only the raw form, and `io.deephaven.api.Selectable#parse`
-fn selectable(selectable: Option<&proto::Selectable>) -> Result<(String, String), ExportError> {
+pub(crate) fn selectable(
+    selectable: Option<&proto::Selectable>,
+) -> Result<(String, String), ExportError> {
     let Some(proto::selectable::Type::Raw(text)) = selectable.and_then(|s| s.r#type.as_ref())
     else {
         return Err(ExportError::Internal(

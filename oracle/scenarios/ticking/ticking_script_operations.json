@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "name": "ticking_script_operations",
+  "description": "On an append-only input table that grows: a ring table that drops its oldest rows, a keyed transpose that ignores the columns later rows would add, the table partitioned and merged again, the constituents of a key table, and an aggregation with initial groups that stay when they are empty.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "L", "type": "string"}, {"name": "V", "type": "int32"}],
+      "rows": [["b", "x", 1], ["a", "y", 2], ["b", "y", 3]],
+      "ticking": {"key_columns": []}
+    },
+    {"name": "keys", "columns": [{"name": "K", "type": "string"}], "rows": [["a"], ["c"]]}
+  ],
+  "operations": [
+    {"name": "ring", "op": "ring_table", "source": "t", "capacity": 4},
+    {"name": "ring_not_initialized", "op": "ring_table", "source": "t", "capacity": 2, "initialize": false},
+    {"name": "transposed", "op": "keyed_transpose", "source": "t", "row_by": ["K"], "col_by": ["L"], "new_columns": "ignore",
+     "aggs": [{"agg": "sum", "columns": ["Sum = V"]}]},
+    {"name": "merged", "op": "partition_merge", "source": "t", "by": ["K"]},
+    {"name": "constituents", "op": "partition_get", "source": "t", "by": ["K"], "key": "keys", "unique": "permit_multiple"},
+    {"name": "seeded", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "keys", "preserve_empty": true,
+     "aggs": [{"agg": "sum", "columns": ["Sum = V"]}, {"agg": "count", "column": "N"}]}
+  ],
+  "results": [
+    {"table": "ring"}, {"table": "ring_not_initialized"}, {"table": "transposed"}, {"table": "merged"},
+    {"table": "constituents"}, {"table": "seeded"}
+  ],
+  "steps": [
+    {"actions": [{"action": "add", "table": "t", "rows": [["a", "x", 4], ["c", "z", 5]]}]},
+    {"actions": [{"action": "add", "table": "t", "rows": [["c", "y", 6]]}]},
+    {"actions": [{"action": "add", "table": "t", "rows": [["d", "x", 7], ["b", "x", 8], [null, "y", 9]]}]}
+  ]
+}

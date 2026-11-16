@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "R2_where_time_zone",
+ "description": "where comparing a timestamp column with a date time in a zone other than UTC, as a comparison, a match and inside a formula.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "T", "type": "timestamp"}], "rows": [[1700000000000000000], [1700000001000000000], [null], [1700000002000000000]]}
+ ],
+ "operations": [
+  {"name": "eastern", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T17:13:21 ET'"]},
+  {"name": "named", "op": "where", "source": "t", "filters": ["T == '2023-11-14T23:13:21 Europe/Paris'"]},
+  {"name": "matched", "op": "where", "source": "t", "filters": ["T in '2023-11-14T17:13:21 ET', '2023-11-14T22:13:20 UTC'"]},
+  {"name": "date", "op": "where", "source": "t", "filters": ["T > '2023-11-14 ET'"]},
+  {"name": "utc", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T22:13:21 UTC'"]},
+  {"name": "in_formula", "op": "where", "source": "t", "filters": ["T >= '2023-11-14T17:13:21 ET' && true"]}
+ ],
+ "results": [{"table": "eastern"}, {"table": "named"}, {"table": "matched"}, {"table": "date"}, {"table": "utc"}, {"table": "in_formula"}]
+}

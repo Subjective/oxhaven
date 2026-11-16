@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "J4_count_where_two_columns",
+ "description": "update_by count where with a filter that compares two columns: of a table with rows, and of a refreshing table that gets its first row in a step.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "Id", "type": "int32"}, {"name": "C0", "type": "float32"}], "rows": [[1, 0.5], [3, 3.0], [3, 1.0]]},
+  {"name": "e", "columns": [{"name": "Id", "type": "int32"}, {"name": "C0", "type": "float32"}], "rows": [], "ticking": {"key_columns": ["Id"]}}
+ ],
+ "operations": [
+  {"name": "two_columns", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "cum_count_where", "columns": ["U"], "args": {"filters": ["Id == C0"]}}]},
+  {"name": "same_column", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "rolling_count_where_tick", "columns": ["U"], "args": {"filters": ["Id == Id"], "rev_ticks": 2, "fwd_ticks": 2}}]},
+  {"name": "as_formula", "op": "update_by", "source": "t", "by": [], "ops": [{"op": "cum_count_where", "columns": ["U"], "args": {"filters": ["Id == 3 && Id == C0"]}}]},
+  {"name": "first_row_later", "op": "update_by", "source": "e", "by": [], "ops": [{"op": "cum_count_where", "columns": ["U"], "args": {"filters": ["Id == C0"]}}]}
+ ],
+ "results": [{"table": "two_columns"}, {"table": "same_column"}, {"table": "as_formula"}, {"table": "first_row_later"}],
+ "steps": [{"actions": [{"action": "add", "table": "e", "rows": [[1, 0.5]]}]}]
+}
