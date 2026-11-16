@@ -958,3 +958,5 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Owner ruling (06:18 UTC): BSD-3-Clause and the zlib licence are allowed for the files
   bundled in librdkafka. Optional features of it (TLS, SASL, curl) were not asked about and
   go back to him with their licences when they are needed.
+- Pull request 112 merged (7.4.1). Started 7.4.4: the consumer on librdkafka, with TLS and
+  SASL left off until their licences are put to the owner.
