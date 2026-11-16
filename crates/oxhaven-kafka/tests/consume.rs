@@ -442,11 +442,12 @@ fn the_polling_thread_ends_when_the_table_is_dropped() {
         assert_eq!(table.row_set().size(), 1);
         drop((table, checker));
         // The source is dropped with the thread, and with it the sender of `polled`.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
         let ended = loop {
-            match polled.recv_timeout(Duration::from_secs(10)) {
-                Ok(()) => continue,
+            match polled.recv_timeout(Duration::from_millis(100)) {
                 Err(RecvTimeoutError::Disconnected) => break true,
-                Err(RecvTimeoutError::Timeout) => break false,
+                _ if std::time::Instant::now() >= deadline => break false,
+                _ => continue,
             }
         };
         assert!(ended, "the thread of a {table_type:?} table still polls");
