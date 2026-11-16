@@ -103,3 +103,118 @@ pub(super) fn kafka_consume(
         .map_err(exception)?;
     Ok(TableHandle { table })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::super::tests::ONE_INTERPRETER;
+    use crate::test_support::TestServer;
+
+    /// No broker is needed: the calls that reach one name a closed port of this machine.
+    #[tokio::test]
+    async fn deephaven_kafka_consumer_checks_refuses_and_raises_dherror() {
+        let _turn = ONE_INTERPRETER.lock().await;
+        let server = TestServer::start_with(|state| super::super::start(state).unwrap()).await;
+        let console = server.state.console.clone().unwrap();
+        const SETUP: &str = "from deephaven import dtypes\n\
+            from deephaven.stream.kafka import consumer as kc\n\
+            CFG = {'bootstrap.servers': '127.0.0.1:1'}\n\
+            BEGIN = kc.ALL_PARTITIONS_SEEK_TO_BEGINNING\n\
+            V = kc.simple_spec('V', dtypes.int32)\n";
+        let failure = |code: &str, message: &str| {
+            let error = console.evaluate(&format!("{SETUP}{code}")).error;
+            let error = error.expect("the call fails");
+            let last = error.trim_end().lines().last().unwrap().to_string();
+            let prefix = format!("deephaven.dherror.DHError: {message} : ");
+            let text = last.strip_prefix(&prefix);
+            text.unwrap_or_else(|| panic!("not a DHError of {message}: {last}"))
+                .to_string()
+        };
+        const CONSUME: &str = "failed to consume a Kafka stream.";
+        const IGNORED_KEY: &str = "value_spec=V, key_spec=kc.KeyValueSpec.IGNORE";
+
+        let checked = console.evaluate(&format!(
+            "{SETUP}\
+             assert (kc.SEEK_TO_BEGINNING, kc.DONT_SEEK, kc.SEEK_TO_END) == (-1, -2, -3)\n\
+             assert kc.ALL_PARTITIONS_SEEK_TO_END == {{-1: kc.SEEK_TO_END}}\n\
+             spec = kc.json_spec({{'A': dtypes.long, 'B': dtypes.string}}, mapping={{'a': 'A'}})\n\
+             assert spec.j_object == {{'kind': 'json', 'columns': [('A', 'long'), \
+             ('B', 'java.lang.String')], 'mapping': [('a', 'A')]}}, spec.j_object\n\
+             assert V.j_object == {{'kind': 'simple', 'column': 'V', 'type': 'int'}}\n\
+             assert kc.TableType.ring(5).j_object == ('ring', 5)\n\
+             assert kc.TableType.Append.j_object == ('append', 0)\n"
+        ));
+        assert_eq!(checked.error, None);
+
+        let unreachable = failure(
+            &format!("kc.consume(CFG, 't', offsets=BEGIN, {IGNORED_KEY})"),
+            CONSUME,
+        );
+        assert!(
+            unreachable.starts_with("no broker of bootstrap.servers=\"127.0.0.1:1\" answers"),
+            "{unreachable}"
+        );
+        assert_eq!(
+            failure(
+                "kc.consume(CFG, 't', key_spec=kc.KeyValueSpec.IGNORE, \
+                 value_spec=kc.KeyValueSpec.IGNORE)",
+                CONSUME
+            ),
+            "at least one argument for 'key' or 'value' must be different from \
+             KeyValueSpec.IGNORE"
+        );
+        assert_eq!(
+            failure(
+                &format!("kc.consume({{}}, 't', offsets=BEGIN, {IGNORED_KEY})"),
+                CONSUME
+            ),
+            "org.apache.kafka.common.config.ConfigException: Missing required configuration \
+             \"bootstrap.servers\" which has no default value."
+        );
+        let from_properties = failure("kc.consume(CFG, 't', offsets=BEGIN)", CONSUME);
+        assert!(
+            from_properties.contains("Unable to find the type for column 'KafkaKey' (key_spec)"),
+            "{from_properties}"
+        );
+        assert_eq!(
+            failure(
+                &format!(
+                    "kc.consume({{**CFG, 'security.protocol': 'SSL'}}, 't', offsets=BEGIN, \
+                     {IGNORED_KEY})"
+                ),
+                CONSUME
+            ),
+            "not ported yet: \
+             org.apache.kafka.common.network.ChannelBuilders#clientChannelBuilder: \
+             security.protocol=SSL"
+        );
+        assert_eq!(
+            failure("kc.consume_to_partitioned_table(CFG, 't')", CONSUME),
+            "not ported: io.deephaven.kafka.KafkaTools#consumeToPartitionedTable"
+        );
+        assert_eq!(
+            failure(
+                "kc.avro_spec('schema')",
+                "failed to create a Kafka key/value spec"
+            ),
+            "not ported: io.deephaven.kafka.KafkaTools.Consume#avroSpec"
+        );
+        for (call, java) in [
+            (
+                "kc.protobuf_spec(schema='s')",
+                "io.deephaven.kafka.KafkaTools.Consume#protobufSpec",
+            ),
+            (
+                "kc.object_processor_spec(None)",
+                "io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec",
+            ),
+            (
+                "from deephaven.stream.kafka import topics\ntopics(CFG)",
+                "io.deephaven.kafka.KafkaTools#listTopics",
+            ),
+        ] {
+            let error = console.evaluate(&format!("{SETUP}{call}")).error.unwrap();
+            let last = error.trim_end().lines().last().unwrap().to_string();
+            assert!(last.ends_with(&format!("not ported: {java}")), "{last}");
+        }
+    }
+}
