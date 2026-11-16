@@ -176,11 +176,14 @@ from deephaven import input_table, dtypes
 _it = input_table({'A': dtypes.int32})
 _it.add(new_table([int_col('A', [1])]))
 info['input_add'] = _it.size
+app['it'] = _it
+info['get_it'] = [type(app['it']).__name__, type(app.fields['it']).__name__]
+app.j_app_state.removeField('it')
 from deephaven import time_table
 app['tick'] = time_table('PT1S')
 "#;
 
-/// What the scripts noted on Java 42.9, with the two entries Java has otherwise:
+/// What the scripts noted on Java 42.9 (`get_it` in a run of its own), with the two entries Java has otherwise:
 /// `get_pt` is `PartitionedTableImpl` there, the jpy object of the Java class, which the
 /// reference package does not wrap; and `fields` is in the order of Java's hash table.
 const NOTED: &str = r#"assert order == ['a0/s', 'a1/a', 'a1/b', 'a1/abs', 'a1/dotdot', 'a1/c'], order
@@ -205,6 +208,7 @@ _java = {
     'fields': {'7': 'Table', 'lst': 'list', 'num': 'int', 'pt': 'PartitionedTable', 't1': 'Table'},
     'thread_state': 'DHError: failed to get the application state. : java.lang.IllegalStateException: Should not be getting application state outside runUnderContext',
     'input_add': 1,
+    'get_it': ['InputTable', 'InputTable'],
 }
 for _key in sorted(set(info) | set(_java)):
     assert info.get(_key) == _java.get(_key), (_key, info.get(_key), _java.get(_key))

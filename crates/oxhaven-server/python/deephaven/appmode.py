@@ -6,6 +6,23 @@ Behavior: `deephaven.appmode` of the reference package (`py/server/deephaven/app
 import _oxhaven
 
 from deephaven.dherror import DHError
+from deephaven.table import Table
+
+
+def _pythonify(value):
+    """A field's value as code uses it: a table that is an input table as `InputTable`.
+
+    Behavior: `deephaven._wrapper.wrap_j_object`, which gives a Java object the most
+    specific wrapper class of the package that takes it
+    """
+    if type(value) is Table:
+        from deephaven.table_factory import InputTable
+
+        try:
+            return InputTable(value.j_table)
+        except DHError:
+            pass
+    return value
 
 
 class ApplicationState:
@@ -35,7 +52,7 @@ class ApplicationState:
         field = self.j_app_state.getField(item)
         if not field:
             raise KeyError(item)
-        return field[0]
+        return _pythonify(field[0])
 
     def __setitem__(self, key, value):
         self.j_app_state.setField(str(key), value)
@@ -55,7 +72,7 @@ class ApplicationState:
         dict is in the order of Java's hash table."""
         state = self.j_app_state
         found = ((name, state.getField(name)) for name in state.listFields())
-        return {name: field[0] for name, field in found if field}
+        return {name: _pythonify(field[0]) for name, field in found if field}
 
 
 def get_app_state():
