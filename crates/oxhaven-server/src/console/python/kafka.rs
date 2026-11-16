@@ -533,14 +533,15 @@ mod tests {
             "org.apache.kafka.common.config.ConfigException: Missing required configuration \
              \"schema.registry.url\" which has no default value."
         );
-        for (call, java) in [(
-            "kc.object_processor_spec(None)",
-            "io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec",
-        )] {
-            let error = console.evaluate(&format!("{SETUP}{call}")).error.unwrap();
-            let last = error.trim_end().lines().last().unwrap().to_string();
-            assert!(last.ends_with(&format!("not ported: {java}")), "{last}");
-        }
+        let error = console
+            .evaluate(&format!("{SETUP}kc.object_processor_spec(None)"))
+            .error
+            .unwrap();
+        let last = error.trim_end().lines().last().unwrap().to_string();
+        assert!(
+            last.ends_with("not ported: io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec"),
+            "{last}"
+        );
     }
 
     /// No broker is needed: a table without rows sends nothing, and the one call that
