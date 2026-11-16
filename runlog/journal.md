@@ -979,3 +979,10 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   usage limits; the row set swap and fuzzer triage stay on the default model. Agents already
   running finish as they are; the `who` column of tasks.csv records the model from now on.
 - Pull request 114 merged (5.8).
+- Pull request 115 opened (7.4.4, Kafka on librdkafka). For the owner: gzip needs a zlib
+  outside librdkafka (`libz-sys`, zlib licence); TLS needs OpenSSL (Apache-2.0); SASL other
+  than PLAIN needs Cyrus SASL (BSD-style with an advertising clause); the off-feature
+  licences are from manifests, not a download, and need re-checking before any is enabled.
+  The new `kafka-broker` CI job pulls a broker image from Docker Hub and has not run on
+  GitHub yet; its first run is on this pull request. Disk fell to 1.3 GB twice during the C
+  build with four agents building.

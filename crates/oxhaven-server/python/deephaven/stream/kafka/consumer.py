@@ -12,6 +12,7 @@ from typing import Optional, Union
 from warnings import warn
 
 from ... import _engine, dtypes
+from . import _properties
 from ..._java_time import NotPorted
 from ...column import col_def
 from ...dherror import DHError
@@ -100,8 +101,9 @@ def consume(
     `kafka_config` holds the properties of the consumer and of the table.
     `partitions` lists the partitions to read, all of them without it. `offsets` maps a
     partition to the offset to start at, or is one of `ALL_PARTITIONS_SEEK_TO_BEGINNING`,
-    `ALL_PARTITIONS_SEEK_TO_END` and `ALL_PARTITIONS_DONT_SEEK`, the default, which is
-    not supported yet. `key_spec` and `value_spec` default to
+    `ALL_PARTITIONS_SEEK_TO_END` and `ALL_PARTITIONS_DONT_SEEK`, the default: each
+    partition starts where the consumer group of `group.id` left off, or where
+    `auto.offset.reset` says. `key_spec` and `value_spec` default to
     `KeyValueSpec.FROM_PROPERTIES`; `table_type` to `TableType.blink()`.
     """
     if table_type is None:
@@ -150,9 +152,7 @@ def _consume(kafka_config, topic, partitions, offsets, key_spec, value_spec, tab
                 "at least one argument for 'key' or 'value' must be different from KeyValueSpec.IGNORE"
             )
 
-        # Behavior: `deephaven.jcompat.j_properties`, which stores each value as it is;
-        # Java then reads the properties as text.
-        config = [(str(name), str(value)) for name, value in kafka_config.items()]
+        config = _properties(kafka_config)
         kind, capacity = table_type.j_object
         return Table(
             _engine.native.kafka_consume(
