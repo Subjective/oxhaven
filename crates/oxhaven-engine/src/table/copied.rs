@@ -287,6 +287,7 @@ fn copy(
             .map(|index| table.column(index))
             .collect();
         let mut spec = TableSpec::new(definition, (*table.row_set()).clone(), columns)
+            .keeping_partitioning()
             .with_attributes(attributes);
         spec.flat = flat;
         spec.input = input;

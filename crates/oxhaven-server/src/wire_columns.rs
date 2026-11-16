@@ -15,14 +15,20 @@
 //! A column of tables, the constituent column of a partitioned table, is stored as handles
 //! and sent as strings: Java has no Arrow type for a table and sends the text of each.
 //!
+//! Three of the `java.math` and `java.time` types are sent otherwise than stored: a
+//! `BigDecimal` without the zeros at its end (`1.5` for `1.50`), a `LocalDate` as
+//! milliseconds where it is stored as days, and a `LocalDateTime` as its text, because
+//! Java has no Arrow type for one.
+//!
 //! A table a client uploaded is sent back in the layout it was sent in, which for these
 //! types is the stored one: a client cannot upload a list whose elements are an
 //! `ObjectVector`, and a `list<int8>` it uploaded stays one.
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, ListArray, StringArray};
-use arrow::datatypes::{DataType, Field, Int8Type};
+use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, Date64Array, ListArray, StringArray};
+use arrow::datatypes::{DataType, Date32Type, Field, Int8Type, TimestampNanosecondType};
+use oxhaven_column::java_values::{big_decimal_parts, local_date_time_text, strip_trailing_zeros};
 use oxhaven_column::sentinel::nulls_to_sentinels;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
@@ -58,8 +64,73 @@ fn wire_type_at(column_type: &ColumnType, outermost: bool) -> DataType {
             list_of(wire_type_at(element, false))
         }
         ColumnType::Table(_) => DataType::Utf8,
+        // Behavior: `BarrageUtil#arrowTypeFor`: `DATEMILLI` for a `LocalDate`, and the
+        // text of a class it has no type for
+        ColumnType::LocalDate => DataType::Date64,
+        ColumnType::LocalDateTime => DataType::Utf8,
         other => other.arrow_type(),
     }
+}
+
+/// Whether a column of `column_type` holds a `BigDecimal` at any depth: the one type
+/// whose cells are sent in the Arrow type they are stored in and are not the same bytes.
+fn holds_decimal(column_type: &ColumnType) -> bool {
+    match column_type.list_element() {
+        Some(element) => holds_decimal(element),
+        None => *column_type == ColumnType::BigDecimal,
+    }
+}
+
+/// The cells of a `BigDecimal`, `LocalDate` or `LocalDateTime` column as Java sends
+/// them; `None` for a column of any other type.
+///
+/// Behavior: `io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#binaryFromBigDecimal`
+/// (the scale and the unscaled integer of the number without the zeros at its end),
+/// `#dateFromLocalDate` (the milliseconds of the day's start), `#utf8FromObject`
+fn object_cells(
+    column_type: &ColumnType,
+    stored: &ArrayRef,
+) -> Option<Result<ArrayRef, TableFailure>> {
+    let unexpected = || {
+        failure(format!(
+            "a column of {column_type:?} holds {}",
+            stored.data_type()
+        ))
+    };
+    Some(match column_type {
+        ColumnType::BigDecimal => (|| {
+            let cells = stored.as_binary_opt::<i32>().ok_or_else(unexpected)?;
+            let mut sent = Vec::with_capacity(cells.len());
+            for cell in cells {
+                let Some(cell) = cell else {
+                    sent.push(None);
+                    continue;
+                };
+                let (scale, unscaled) = big_decimal_parts(cell)
+                    .ok_or_else(|| failure("a BigDecimal cell without a number"))?;
+                sent.push(Some(strip_trailing_zeros(scale, unscaled)));
+            }
+            Ok(Arc::new(BinaryArray::from_iter(sent)) as ArrayRef)
+        })(),
+        ColumnType::LocalDate => (|| {
+            let days = stored
+                .as_primitive_opt::<Date32Type>()
+                .ok_or_else(unexpected)?;
+            let millis: Date64Array = days.unary(|days| i64::from(days) * 86_400_000);
+            Ok(Arc::new(millis) as ArrayRef)
+        })(),
+        ColumnType::LocalDateTime => (|| {
+            let nanos = stored
+                .as_primitive_opt::<TimestampNanosecondType>()
+                .ok_or_else(unexpected)?;
+            let texts: StringArray = nanos
+                .iter()
+                .map(|nanos| nanos.map(local_date_time_text))
+                .collect();
+            Ok(Arc::new(texts) as ArrayRef)
+        })(),
+        _ => return None,
+    })
 }
 
 /// The Arrow type Java declares for a column of `column_type`. An element field has the
@@ -87,6 +158,9 @@ fn to_wire_at(
 ) -> Result<ArrayRef, TableFailure> {
     if matches!(column_type, ColumnType::Table(_)) {
         return table_texts(stored);
+    }
+    if let Some(cells) = object_cells(column_type, stored) {
+        return cells;
     }
     let Some(element) = column_type.list_element() else {
         return Ok(stored.clone());
@@ -162,7 +236,8 @@ impl WireColumn {
     /// A column of `column_type` of a table that is described from its definition.
     pub fn described(column_type: &ColumnType) -> Self {
         WireColumn {
-            converted: wire_type(column_type) != column_type.arrow_type(),
+            converted: wire_type(column_type) != column_type.arrow_type()
+                || holds_decimal(column_type),
             column_type: column_type.clone(),
         }
     }
@@ -206,6 +281,84 @@ mod tests {
 
     fn utf8_lists() -> DataType {
         list_of(list_of(DataType::Utf8))
+    }
+
+    /// What Java 42.9 sent for the same values, read from the Parquet files of
+    /// `crates/oxhaven-parquet/tests/data` (`no_*.parquet`, `more_types.parquet`).
+    #[test]
+    fn the_java_math_and_time_types_are_sent_as_java_sends_them() {
+        use arrow::array::{Date32Array, Time64NanosecondArray};
+        use arrow::datatypes::TimeUnit;
+        use oxhaven_column::java_values::{big_decimal_cell, big_integer_cell};
+        use ColumnType as T;
+        let sent = |column_type: &ColumnType, stored: ArrayRef| {
+            let column = WireColumn::described(column_type);
+            let cells = column.cells(stored).unwrap();
+            assert_eq!(cells.data_type(), &column.arrow_type(), "{column_type:?}");
+            cells
+        };
+
+        // 1.50, 0.00 and -1.50: without the zeros at the end, and zero with scale 0
+        let decimal =
+            |unscaled: i128, scale: i32| Some(big_decimal_cell(scale, &big_integer_cell(unscaled)));
+        let stored =
+            BinaryArray::from_iter([decimal(150, 2), None, decimal(0, 2), decimal(-150, 2)]);
+        let cells = sent(&T::BigDecimal, Arc::new(stored));
+        let cells: Vec<Option<&[u8]>> = cells.as_binary::<i32>().iter().collect();
+        let expected: [Option<&[u8]>; 4] = [
+            Some(&[1, 0, 0, 0, 0x0f]),
+            None,
+            Some(&[0, 0, 0, 0, 0x00]),
+            Some(&[1, 0, 0, 0, 0xf1]),
+        ];
+        assert_eq!(cells, expected);
+        assert!(WireColumn::described(&T::BigDecimal).converted);
+        assert!(WireColumn::described(&T::vector(T::BigDecimal)).converted);
+
+        // an integer goes as it is stored
+        let stored: ArrayRef = Arc::new(BinaryArray::from_iter([Some(big_integer_cell(1)), None]));
+        assert!(!WireColumn::described(&T::BigInteger).converted);
+        assert_eq!(wire_type(&T::BigInteger), DataType::Binary);
+        assert_eq!(
+            sent(&T::BigInteger, stored.clone()).to_data(),
+            stored.to_data()
+        );
+
+        // 2024-01-02 and the day before 1970: milliseconds
+        let days = Date32Array::from(vec![Some(19_724), None, Some(-1)]);
+        let cells = sent(&T::LocalDate, Arc::new(days));
+        assert_eq!(cells.data_type(), &DataType::Date64);
+        let millis: Vec<Option<i64>> = cells
+            .as_primitive::<arrow::datatypes::Date64Type>()
+            .iter()
+            .collect();
+        assert_eq!(millis, [Some(1_704_153_600_000), None, Some(-86_400_000)]);
+
+        let times: ArrayRef = Arc::new(Time64NanosecondArray::from(vec![
+            Some(3_723_000_000_000),
+            None,
+        ]));
+        assert_eq!(
+            wire_type(&T::LocalTime),
+            DataType::Time64(TimeUnit::Nanosecond)
+        );
+        assert_eq!(
+            sent(&T::LocalTime, times.clone()).to_data(),
+            times.to_data()
+        );
+
+        // Java has no Arrow type for a LocalDateTime and sends its text
+        let local = TimestampNanosecondArray::from(vec![Some(0), None, Some(-1)]);
+        let cells = sent(&T::LocalDateTime, Arc::new(local));
+        let texts: Vec<Option<&str>> = cells.as_string::<i32>().iter().collect();
+        assert_eq!(
+            texts,
+            [
+                Some("1970-01-01T00:00"),
+                None,
+                Some("1969-12-31T23:59:59.999999999")
+            ]
+        );
     }
 
     #[test]

@@ -31,6 +31,10 @@ pub(crate) const NEW: &str = "new ";
 /// parsed as a method call on `receiver` without arguments. No formula can spell it.
 pub(crate) const LENGTH_FIELD: &str = ".length";
 
+/// The function name `new String(...)` is parsed as a call of. It has a space, so no
+/// function a formula can name collides with it.
+pub(crate) const NEW_STRING: &str = "new String";
+
 fn syntax(message: impl Into<String>) -> FormulaError {
     FormulaError::Syntax(message.into())
 }

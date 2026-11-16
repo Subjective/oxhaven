@@ -165,6 +165,9 @@ pub(crate) fn positional(
         let mut spec = TableSpec::new(definition, RowSet::flat(parent.row_set().size()), columns)
             .with_attributes(attributes);
         spec.flat = flat;
+        // Behavior: `QueryTable#reverse` gives its result the definition of the table, and
+        // `QueryTable#flatten` a definition without its partitioning columns
+        spec.partitioning = reversed;
         if keeps_input_table {
             spec = spec.with_input_table_of(&**parent);
         }
@@ -257,9 +260,9 @@ pub(crate) fn pivoted(parent: &Arc<dyn Table>, attributes: TableAttributes) -> A
             ))
         })
         .collect();
-    QueryTable::new_static(
-        TableSpec::new(definition, mirrored, columns).with_attributes(attributes),
-    )
+    // Behavior: `QueryTable#reverse` gives its result the definition of the table
+    let spec = TableSpec::new(definition, mirrored, columns).keeping_partitioning();
+    QueryTable::new_static(spec.with_attributes(attributes))
 }
 
 /// The rows of `parent` in the same order at the row keys `0..size`.

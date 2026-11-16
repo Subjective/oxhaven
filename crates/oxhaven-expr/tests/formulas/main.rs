@@ -13,6 +13,7 @@ mod external;
 mod formula;
 mod gaps;
 mod logic;
+mod objects;
 mod recorded;
 mod statics;
 mod tagged;

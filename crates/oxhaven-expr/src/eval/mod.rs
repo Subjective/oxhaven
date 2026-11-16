@@ -573,6 +573,14 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 .collect::<Result<Vec<_>, _>>()?;
             text::string_method(*method, receiver.as_ref(), &arguments)
         }
+        Node::ObjectText(receiver) => {
+            let values = evaluate(receiver, batch)?;
+            text::object_text(&receiver.column_type, values.as_ref()).map(erase)
+        }
+        Node::NewString(bytes) => {
+            let bytes = evaluate(bytes, batch)?;
+            text::new_string(bytes.as_ref()).map(erase)
+        }
         Node::Elementwise { body, left, right } => {
             elementwise(body, left, right, batch, &expr.column_type)
         }

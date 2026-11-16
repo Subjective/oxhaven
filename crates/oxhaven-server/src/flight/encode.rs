@@ -22,8 +22,8 @@ use arrow::array::{
     Array, ArrayRef, ArrowPrimitiveType, AsArray, ListArray, PrimitiveArray, UInt32Array,
 };
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
-    TimestampNanosecondType, UInt16Type,
+    DataType, Date64Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
+    Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
 use arrow::ipc;
 use flatbuffers::FlatBufferBuilder;
@@ -83,6 +83,8 @@ pub(crate) fn has_sentinel(data_type: &DataType) -> bool {
             | DataType::Float32
             | DataType::Float64
             | DataType::Timestamp(TimeUnit::Nanosecond, _)
+            | DataType::Date64
+            | DataType::Time64(TimeUnit::Nanosecond)
     )
 }
 
@@ -224,6 +226,25 @@ impl BatchWriter {
     }
 
     fn column(&mut self, array: &ArrayRef, nullable: bool) -> Result<(), EncodeError> {
+        // A `LocalDate` is sent as the milliseconds of its day and a `LocalTime` as the
+        // nanoseconds of its time, both by the writer of a `long`.
+        //
+        // Behavior: io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#dateFromLocalDate,
+        // `#timeFromLocalTime`
+        let longs: ArrayRef;
+        let array = match array.data_type() {
+            DataType::Date64 => {
+                let millis = array.as_primitive::<Date64Type>();
+                longs = std::sync::Arc::new(millis.reinterpret_cast::<Int64Type>());
+                &longs
+            }
+            DataType::Time64(TimeUnit::Nanosecond) => {
+                let nanos = array.as_primitive::<Time64NanosecondType>();
+                longs = std::sync::Arc::new(nanos.reinterpret_cast::<Int64Type>());
+                &longs
+            }
+            _ => array,
+        };
         self.start_column(array.as_ref(), nullable);
         let unsupported = || EncodeError(format!("cannot write a column of {}", array.data_type()));
         match array.data_type() {
