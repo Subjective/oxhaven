@@ -13,20 +13,21 @@ use oxhaven_proto::flight::{
 };
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::UnboundedReceiverStream;
-use tokio_stream::Stream;
+use tokio_stream::{Stream, StreamExt};
 use tonic::{Request, Response, Status, Streaming};
 
 use super::encode::schema_message;
 use super::upload::{not_ported as not_ported_status, TableUpload, UploadError};
 use super::wire::wire_schema;
 use crate::barrage::{snapshot_request_messages, Barrage, WireOptions};
+use crate::console::browser::BrowserStream;
 use crate::schema::schema_ipc_bytes;
 use crate::session::{
     current_session, handshake, optional_session, DescribedFlight, Export, ExportBuilder,
     ExportError, ExportValue, HandshakeStream, Reply, Session, SessionStore, TicketRouter,
 };
 
-type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
+pub(super) type BoxStream<T> = Pin<Box<dyn Stream<Item = Result<T, Status>> + Send>>;
 
 fn not_ported<T>(java_method: &str) -> Result<T, Status> {
     Err(Status::unimplemented(format!(
@@ -158,6 +159,85 @@ pub fn do_get_messages(table: &Arc<dyn Table>) -> Result<Vec<FlightData>, Export
     messages.push(schema_message(&schema));
     messages.extend(batches);
     Ok(messages)
+}
+
+/// Serves a `DoPut` call of `session` whose client sends `messages`. `browser` is the
+/// stream of a client that sends them as calls ([`super::browser`]), which is told when
+/// the call is over before the client ended its side.
+///
+/// Behavior: `FlightServiceGrpcImpl#doPutCustom`,
+/// `io.deephaven.server.arrow.ArrowFlightUtil.DoPutObserver`
+pub(super) fn put<M>(
+    session: Arc<Session>,
+    router: Arc<TicketRouter>,
+    mut messages: M,
+    browser: Option<Arc<BrowserStream<FlightData>>>,
+) -> Result<Response<BoxStream<PutResult>>, Status>
+where
+    M: Stream<Item = Result<FlightData, Status>> + Send + Unpin + 'static,
+{
+    let (responses, receiver) = mpsc::unbounded_channel();
+
+    // The end of the session ends the call, and whatever arrives afterwards is ignored.
+    let abandoned = Arc::new(AtomicBool::new(false));
+    let on_close = session.add_on_close({
+        let abandoned = abandoned.clone();
+        let responses = responses.clone();
+        move || {
+            abandoned.store(true, Ordering::SeqCst);
+            let _ = responses.send(Err(Status::unauthenticated("Session expired")));
+        }
+    })?;
+
+    let gone = responses.clone();
+    let mut put = Put {
+        session: session.clone(),
+        router,
+        descriptor: None,
+        builder: None,
+        upload: TableUpload::default(),
+        responses,
+    };
+    tokio::spawn(async move {
+        loop {
+            let next = match &browser {
+                // a browser's messages are calls of their own, so only the response
+                // stream says that the client gave the call up
+                Some(browser) => tokio::select! {
+                    next = messages.next() => next,
+                    () = gone.closed() => {
+                        browser.cancelled();
+                        Some(Err(Status::cancelled("the client gave up the call")))
+                    }
+                },
+                None => messages.next().await,
+            };
+            let outcome = match next {
+                Some(Ok(message)) => {
+                    if abandoned.load(Ordering::SeqCst) {
+                        continue;
+                    }
+                    put.message(message)
+                }
+                None => break,
+                // the client cancelled, or the connection broke
+                Some(Err(status)) => Err(status.into()),
+            };
+            if let Err(error) = outcome {
+                put.fail(error);
+                if let Some(browser) = &browser {
+                    browser.failed();
+                }
+                session.remove_on_close(on_close);
+                return;
+            }
+        }
+        session.remove_on_close(on_close);
+        if !abandoned.load(Ordering::SeqCst) {
+            put.complete();
+        }
+    });
+    Ok(boxed(receiver))
 }
 
 /// What a `DoPut` call has received so far.
@@ -397,53 +477,7 @@ impl FlightService for FlightGrpc {
         request: Request<Streaming<FlightData>>,
     ) -> Result<Response<Self::DoPutStream>, Status> {
         let session = current_session(&request)?;
-        let mut messages = request.into_inner();
-        let (responses, receiver) = mpsc::unbounded_channel();
-
-        // The end of the session ends the call, and whatever arrives afterwards is ignored.
-        let abandoned = Arc::new(AtomicBool::new(false));
-        let on_close = session.add_on_close({
-            let abandoned = abandoned.clone();
-            let responses = responses.clone();
-            move || {
-                abandoned.store(true, Ordering::SeqCst);
-                let _ = responses.send(Err(Status::unauthenticated("Session expired")));
-            }
-        })?;
-
-        let mut put = Put {
-            session: session.clone(),
-            router: self.router.clone(),
-            descriptor: None,
-            builder: None,
-            upload: TableUpload::default(),
-            responses,
-        };
-        tokio::spawn(async move {
-            loop {
-                let outcome = match messages.message().await {
-                    Ok(Some(message)) => {
-                        if abandoned.load(Ordering::SeqCst) {
-                            continue;
-                        }
-                        put.message(message)
-                    }
-                    Ok(None) => break,
-                    // the client cancelled, or the connection broke
-                    Err(status) => Err(status.into()),
-                };
-                if let Err(error) = outcome {
-                    put.fail(error);
-                    session.remove_on_close(on_close);
-                    return;
-                }
-            }
-            session.remove_on_close(on_close);
-            if !abandoned.load(Ordering::SeqCst) {
-                put.complete();
-            }
-        });
-        Ok(boxed(receiver))
+        put(session, self.router.clone(), request.into_inner(), None)
     }
 
     /// Barrage: subscriptions to tables and snapshots of them; see [`crate::barrage`].
