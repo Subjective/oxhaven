@@ -288,6 +288,11 @@ class Table:
         return self.j_table.is_refreshing()
 
     @property
+    def is_failed(self) -> bool:
+        """Whether this table failed in an update cycle: it does not change any more."""
+        return self.j_table.is_failed()
+
+    @property
     def is_blink(self) -> bool:
         """Whether this table is a blink table: its rows last one update cycle."""
         return _engine.native.is_blink(self.j_table)
@@ -1592,6 +1597,46 @@ def _wrap_hierarchical(handle) -> Union[RollupTable, TreeTable]:
     return RollupTable(handle, aggs=(), include_constituents=False, by=())
 
 
+def _transformer(func):
+    """`func`, a function of tables that answers a table, as the engine calls it: with
+    table handles, and where there is no query scope.
+
+    Behavior: `deephaven.jcompat.j_unary_operator` and `j_binary_operator` of a function
+    whose answer is a `Table`, and the execution context that
+    `PartitionedTableImpl#transform` applies the function in, which has no query scope
+    """
+
+    def apply(*handles):
+        before = _engine.native.without_query_scope(True)
+        try:
+            made = func(*[Table(handle) for handle in handles])
+        finally:
+            _engine.native.without_query_scope(before)
+        if made is None:
+            return None
+        if not isinstance(made, Table):
+            raise TypeError(f"the transform function returned a {type(made).__name__}, not a Table")
+        return made.j_table
+
+    return apply
+
+
+def _refreshing_dependencies(dependencies) -> list:
+    """The handles of the refreshing tables among `dependencies`, and of the underlying
+    tables of the refreshing partitioned tables among them. Anything else is passed over.
+
+    Behavior: the `j_dependencies` of `deephaven.table.PartitionedTable.transform`
+    """
+    dependencies = _engine.to_sequence(dependencies)
+    tables = [d.j_table for d in dependencies if isinstance(d, Table) and d.is_refreshing]
+    tables.extend(
+        d.table.j_table
+        for d in dependencies
+        if isinstance(d, PartitionedTable) and d.is_refreshing
+    )
+    return tables
+
+
 class PartitionedTable:
     """A table of tables. Its underlying table has one row for each constituent table: the
     key columns, which say which constituent it is, and one column that holds the
@@ -1788,60 +1833,44 @@ class PartitionedTable:
         """A partitioned table whose constituents are what `func` makes of the
         constituents of this one. The other columns of the underlying table are kept.
 
-        Only for a partitioned table that is not refreshing: the transform of one that is
-        applies `func` to constituents as they appear, which is not ported.
+        `func` is called for every constituent now and, when this partitioned table is
+        refreshing, in the update cycle for every constituent that appears. The columns
+        of the result's constituents are those `func` gives a table without rows.
+        `dependencies` are the refreshing tables and partitioned tables that `func` uses
+        besides the constituent: it is not called in a cycle before they have finished.
 
         As in the reference, `func` cannot use a formula or a filter: they fail there for
         want of a query scope.
 
-        Behavior: `PartitionedTableImpl#transform`, which applies the function to each
-        constituent and then to a table without rows, for the columns of the result
+        Behavior: `deephaven.table.PartitionedTable.transform`
         """
         try:
-            if self.is_refreshing:
-                raise dtypes._java_time.NotPorted(
-                    "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#transform",
-                    "a refreshing partitioned table",
+            return PartitionedTable(
+                self.j_partitioned_table.transform(
+                    _transformer(func), _refreshing_dependencies(dependencies)
                 )
-            sources = self.j_partitioned_table.constituents()
-            sources.append(self.j_partitioned_table.empty_constituent())
-            results = []
-            for source in sources:
-                # Java applies the function where there is no query scope
-                before = _engine.native.without_query_scope(True)
-                try:
-                    result = func(Table(source))
-                finally:
-                    _engine.native.without_query_scope(before)
-                if result is not None and not isinstance(result, Table):
-                    raise TypeError(
-                        f"the transform function returned a {type(result).__name__}, not a Table"
-                    )
-                results.append(result)
-            if results[-1] is None:
-                # Behavior: `PartitionedTableImpl#transform`, which reads the definition of
-                # what the function made of the table without rows
-                raise RuntimeError(
-                    'java.lang.NullPointerException: Cannot invoke "io.deephaven.engine.table.'
-                    'Table.getDefinition()" because "resultEmptyConstituent" is null'
-                )
-            if None in results:
-                raise dtypes._java_time.NotPorted(
-                    "io.deephaven.engine.table.impl.partitioned.TableTransformationColumn",
-                    "a transform function that returns None for a constituent",
-                )
-            results = [result.j_table for result in results]
-            definition = results.pop()
-            return PartitionedTable(self.j_partitioned_table.transformed(results, definition))
+            )
         except Exception as e:
             raise DHError(e, "failed to transform the PartitionedTable.") from e
 
-    def partitioned_transform(self, other: "PartitionedTable", func, dependencies=None) -> "PartitionedTable":
-        """Not ported: a transform of the constituents of two partitioned tables with the
-        same keys."""
+    def partitioned_transform(
+        self, other: "PartitionedTable", func, dependencies=None
+    ) -> "PartitionedTable":
+        """A partitioned table with a row for each row of this one whose key `other` has
+        too. Its constituents are what `func` makes of the constituent of this one and
+        the constituent of `other` with that key; the other columns are those of this
+        one's underlying table. `func` is called as the function of `transform` is, for
+        every such pair now and for every pair that appears.
+
+        Behavior: `deephaven.table.PartitionedTable.partitioned_transform`
+        """
         try:
-            raise dtypes._java_time.NotPorted(
-                "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#partitionedTransform"
+            return PartitionedTable(
+                self.j_partitioned_table.partitioned_transform(
+                    other.j_partitioned_table,
+                    _transformer(func),
+                    _refreshing_dependencies(dependencies),
+                )
             )
         except Exception as e:
             raise DHError(
