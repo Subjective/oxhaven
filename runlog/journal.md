@@ -955,3 +955,6 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   accepted silently; non-UTF-8 text refused; `consume` with default offsets is refused.
 - Starting 7.4.2 with 7.4.3 (stream adapter in the engine, `table_publisher`, JSON
   completely): neither depends on the licence answer.
+- Owner ruling (06:18 UTC): BSD-3-Clause and the zlib licence are allowed for the files
+  bundled in librdkafka. Optional features of it (TLS, SASL, curl) were not asked about and
+  go back to him with their licences when they are needed.
