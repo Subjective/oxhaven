@@ -1,0 +1,316 @@
+{
+  "format": 2,
+  "scenario": "tree_expansions",
+  "scenario_sha256": "24271cb1f5c8259307fc8d07730591bf1c807efa4d8f6ea5f667a9668ee349fe",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "shallow",
+      "file": "step000.shallow.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "contracted",
+      "file": "step000.contracted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "promoted_chosen",
+      "file": "step000.promoted_chosen.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "followed",
+      "file": "step000.followed.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "orphan",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "childless_orphan",
+      "file": "step000.childless_orphan.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "one_of_a_loop",
+      "file": "step000.one_of_a_loop.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "two_of_a_loop",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "words_chosen",
+      "file": "step000.words_chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "unnamed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "shallow",
+      "file": "step001.shallow.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "contracted",
+      "file": "step001.contracted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "promoted_chosen",
+      "file": "step001.promoted_chosen.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "followed",
+      "file": "step001.followed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 1,
+      "table": "orphan",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "childless_orphan",
+      "file": "step001.childless_orphan.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "one_of_a_loop",
+      "file": "step001.one_of_a_loop.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "two_of_a_loop",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "words_chosen",
+      "file": "step001.words_chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 1,
+      "table": "unnamed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "shallow",
+      "file": "step002.shallow.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "contracted",
+      "file": "step002.contracted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "promoted_chosen",
+      "file": "step002.promoted_chosen.arrow",
+      "rows": 8
+    },
+    {
+      "step": 2,
+      "table": "followed",
+      "file": "step002.followed.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "orphan",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "childless_orphan",
+      "file": "step002.childless_orphan.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "one_of_a_loop",
+      "file": "step002.one_of_a_loop.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "two_of_a_loop",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "words_chosen",
+      "file": "step002.words_chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 2,
+      "table": "unnamed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "chosen",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "shallow",
+      "file": "step003.shallow.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "contracted",
+      "file": "step003.contracted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "promoted_chosen",
+      "file": "step003.promoted_chosen.arrow",
+      "rows": 8
+    },
+    {
+      "step": 3,
+      "table": "followed",
+      "file": "step003.followed.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "orphan",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "childless_orphan",
+      "file": "step003.childless_orphan.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "one_of_a_loop",
+      "file": "step003.one_of_a_loop.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "two_of_a_loop",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "words_chosen",
+      "file": "step003.words_chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "mistyped",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 3,
+      "table": "unnamed",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    }
+  ]
+}
