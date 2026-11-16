@@ -10,8 +10,8 @@ use std::sync::Arc;
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_kafka::{
-    AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets,
-    ProduceOptions, ProduceSpec, Publication, Spec, TableType,
+    AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset, JsonProduceSpec,
+    KafkaError, Offsets, ProduceOptions, ProduceSpec, Publication, Spec, TableType,
 };
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;

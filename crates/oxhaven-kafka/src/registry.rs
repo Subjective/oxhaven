@@ -235,7 +235,10 @@ impl Registry {
             Some(&body),
         )?;
         let id = answer.get("id").and_then(Node::exact_long).unwrap_or(0) as i32;
-        self.registered.lock().expect("not poisoned").insert(key, id);
+        self.registered
+            .lock()
+            .expect("not poisoned")
+            .insert(key, id);
         Ok(id)
     }
 }

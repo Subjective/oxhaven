@@ -43,9 +43,17 @@ pub(crate) struct Field {
 
 #[derive(Clone, PartialEq, Debug)]
 pub(crate) enum Kind {
-    Record { error: bool, fields: Vec<Field> },
-    Enum { symbols: Vec<String>, default: Option<String> },
-    Fixed { size: Node },
+    Record {
+        error: bool,
+        fields: Vec<Field>,
+    },
+    Enum {
+        symbols: Vec<String>,
+        default: Option<String>,
+    },
+    Fixed {
+        size: Node,
+    },
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -206,7 +214,13 @@ impl Text {
         }
     }
 
-    fn write_named(&self, named: &Named, done: &mut Vec<String>, space: Option<&str>, out: &mut String) {
+    fn write_named(
+        &self,
+        named: &Named,
+        done: &mut Vec<String>,
+        space: Option<&str>,
+        out: &mut String,
+    ) {
         let word = match &named.kind {
             Kind::Record { error: true, .. } => "error",
             Kind::Record { .. } => "record",
@@ -266,7 +280,13 @@ impl Text {
         out.push('}');
     }
 
-    fn write_field(&self, field: &Field, done: &mut Vec<String>, space: Option<&str>, out: &mut String) {
+    fn write_field(
+        &self,
+        field: &Field,
+        done: &mut Vec<String>,
+        space: Option<&str>,
+        out: &mut String,
+    ) {
         out.push_str("{\"name\":");
         json::write_quoted(&field.name, out);
         out.push_str(",\"type\":");
@@ -315,7 +335,11 @@ pub(crate) fn logical_type_of(props: &[(String, Node)]) -> Option<String> {
     props
         .iter()
         .find(|(name, _)| name == "logicalType")
-        .map(|(_, value)| value.as_str().map_or_else(|| json::compact(value), str::to_owned))
+        .map(|(_, value)| {
+            value
+                .as_str()
+                .map_or_else(|| json::compact(value), str::to_owned)
+        })
 }
 
 /// What a type stands for.
@@ -366,23 +390,30 @@ fn read_ty(node: &Node, space: Option<&str>, named: &mut HashMap<String, Named>)
                 Ty::Named(name.to_owned())
             }
         }
-        Node::Array(branches) => Ty::Union(
-            branches
-                .iter()
-                .map(|b| read_ty(b, space, named))
-                .collect(),
-        ),
+        Node::Array(branches) => {
+            Ty::Union(branches.iter().map(|b| read_ty(b, space, named)).collect())
+        }
         Node::Object(fields) => {
             let kind = node.get("type");
             let word = kind.and_then(Node::as_str).unwrap_or_default();
             match word {
-                "record" | "error" | "enum" | "fixed" => read_named(node, fields, word, space, named),
+                "record" | "error" | "enum" | "fixed" => {
+                    read_named(node, fields, word, space, named)
+                }
                 "array" => Ty::Array {
-                    items: Box::new(read_ty(node.get("items").unwrap_or(&Node::Null), space, named)),
+                    items: Box::new(read_ty(
+                        node.get("items").unwrap_or(&Node::Null),
+                        space,
+                        named,
+                    )),
                     props: props(fields, &RESERVED),
                 },
                 "map" => Ty::Map {
-                    values: Box::new(read_ty(node.get("values").unwrap_or(&Node::Null), space, named)),
+                    values: Box::new(read_ty(
+                        node.get("values").unwrap_or(&Node::Null),
+                        space,
+                        named,
+                    )),
                     props: props(fields, &RESERVED),
                 },
                 _ if PRIMITIVES.contains(&word) => Ty::Primitive {
@@ -455,7 +486,11 @@ fn read_named(
                     };
                     out.push(Field {
                         name: text_of(item.get("name")).unwrap_or_default(),
-                        ty: read_ty(item.get("type").unwrap_or(&Node::Null), own.as_deref(), named),
+                        ty: read_ty(
+                            item.get("type").unwrap_or(&Node::Null),
+                            own.as_deref(),
+                            named,
+                        ),
                         doc: text_of(item.get("doc")),
                         default: item.get("default").cloned(),
                         order: text_of(item.get("order")).filter(|o| o != "ascending"),

@@ -223,11 +223,15 @@ impl Planned {
                     columns,
                     avro.timestamp_field.as_deref(),
                 )?,
-                registry: registry.expect("a registry is made for an Avro spec").clone(),
+                registry: registry
+                    .expect("a registry is made for an Avro spec")
+                    .clone(),
                 suffix: if is_key { "-key" } else { "-value" },
             }),
             (Planned::Avro(_), _) => unreachable!("only an Avro spec reads a schema"),
-            (Planned::Ready(serializer), _) => Ok(Side::Bytes(serializer.over(original, published))),
+            (Planned::Ready(serializer), _) => {
+                Ok(Side::Bytes(serializer.over(original, published)))
+            }
             (Planned::Json(encoding), ProduceSpec::Json(json)) => {
                 let shape = JsonShape {
                     fields: columns
@@ -333,7 +337,9 @@ impl Publisher {
                     let array = cells(&*self.table, column, &chunk, prev)?;
                     let ints = array.as_primitive::<Int32Type>();
                     (0..count)
-                        .map(|i| (ints.is_valid(i) && ints.value(i) != i32::MIN).then(|| ints.value(i)))
+                        .map(|i| {
+                            (ints.is_valid(i) && ints.value(i) != i32::MIN).then(|| ints.value(i))
+                        })
                         .collect()
                 }
                 None => vec![None; count],
@@ -353,7 +359,12 @@ impl Publisher {
                 }
                 None => vec![None; count],
             };
-            let rows = keys.into_iter().zip(values).zip(topics).zip(partitions).zip(timestamps);
+            let rows = keys
+                .into_iter()
+                .zip(values)
+                .zip(topics)
+                .zip(partitions)
+                .zip(timestamps);
             for ((((key, value), topic), partition), timestamp) in rows {
                 // Behavior: PublishToKafka#topic and #partition: a null cell takes the default.
                 let topic = topic.or_else(|| (!self.topic.is_empty()).then(|| self.topic.clone()));
@@ -407,16 +418,29 @@ impl Publisher {
             Cell::Done(bytes) => return Ok(bytes),
             Cell::Avro(body) => body,
         };
-        let Some((Side::Avro { serializer, registry, suffix }, _)) = side else {
+        let Some((
+            Side::Avro {
+                serializer,
+                registry,
+                suffix,
+            },
+            _,
+        )) = side
+        else {
             unreachable!("an Avro cell comes from an Avro side");
         };
         let subject = format!("{topic}{suffix}");
-        let id = registry.register(&subject, &serializer.registered).map_err(|failure| {
-            not_ported(
-                "io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl",
-                &format!("a schema registry that does not register a schema: {}", failure.0),
-            )
-        })?;
+        let id = registry
+            .register(&subject, &serializer.registered)
+            .map_err(|failure| {
+                not_ported(
+                    "io.confluent.kafka.serializers.AbstractKafkaAvroSerializer#serializeImpl",
+                    &format!(
+                        "a schema registry that does not register a schema: {}",
+                        failure.0
+                    ),
+                )
+            })?;
         let body = body?;
         let mut bytes = Vec::with_capacity(body.len() + 5);
         bytes.push(0);
@@ -553,7 +577,9 @@ impl Publication {
 /// Behavior: io.deephaven.kafka.KafkaTools#produceFromTable(KafkaPublishOptions)
 pub fn produce(table: Arc<dyn Table>, options: &ProduceOptions) -> Result<Publication, KafkaError> {
     produce_to(table, options, &|| {
-        Ok(Box::new(crate::producer::ClientSink::connect(&options.config)?))
+        Ok(Box::new(crate::producer::ClientSink::connect(
+            &options.config,
+        )?))
     })
 }
 
@@ -589,7 +615,11 @@ fn check_has_column(
     accepts: impl Fn(&ColumnType) -> bool,
 ) -> Result<usize, KafkaError> {
     let Some(index) = definition.index_of(name) else {
-        let names: Vec<&str> = definition.columns().iter().map(|c| c.name.as_str()).collect();
+        let names: Vec<&str> = definition
+            .columns()
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
         return Err(KafkaError::Invalid(format!(
             "io.deephaven.engine.table.impl.NoSuchColumnException: Unknown column names \
              [{name}], available column names are [{}]",
@@ -695,8 +725,20 @@ fn start(
         None
     };
     let original = table.definition().clone();
-    let key = plan(&options.key, &*table, &options.config, true, registry.as_ref())?;
-    let value = plan(&options.value, &*table, &options.config, false, registry.as_ref())?;
+    let key = plan(
+        &options.key,
+        &*table,
+        &options.config,
+        true,
+        registry.as_ref(),
+    )?;
+    let value = plan(
+        &options.value,
+        &*table,
+        &options.config,
+        false,
+        registry.as_ref(),
+    )?;
     let last_by = options.last_by && options.key != ProduceSpec::Ignore;
     let published = match (&key, last_by) {
         (Some((key_columns, _)), true) => last_by_of(&table, key_columns)?,
