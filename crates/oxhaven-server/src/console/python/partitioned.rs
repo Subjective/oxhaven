@@ -9,8 +9,10 @@
 use std::sync::Arc;
 
 use oxhaven_contracts::table::{Table, TableFailure};
-use oxhaven_engine::ops::partitioned::{of_aggregation, Transformer};
-use pyo3::exceptions::PyTypeError;
+use oxhaven_engine::ops::partitioned::{
+    of_aggregation, PartitionedError, PartitionedTable, Transformer,
+};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError};
 use pyo3::prelude::*;
 use pyo3::types::PyTuple;
 
@@ -127,11 +129,25 @@ impl PartitionedHandle {
     ///
     /// Behavior: `PartitionedTableImpl#constituentFor`, after it has checked the number
     /// of values
-    fn constituent_for(&self, py: Python<'_>, keys: &TableHandle) -> PyResult<Option<TableHandle>> {
-        let (partitioned, keys) = (&self.partitioned, &keys.table);
+    ///
+    /// Without key columns `keys` is `None`, and every row matches: Java filters by
+    /// nothing.
+    #[pyo3(signature = (keys=None))]
+    fn constituent_for(
+        &self,
+        py: Python<'_>,
+        keys: Option<PyRef<'_, TableHandle>>,
+    ) -> PyResult<Option<TableHandle>> {
+        let partitioned = &self.partitioned;
+        let keys = keys.map(|keys| keys.table.clone());
         py.detach(|| {
-            guarded(&[partitioned.table(), keys], || {
-                let rows = partitioned.rows_for_keys(keys)?;
+            let mut locked = vec![partitioned.table()];
+            locked.extend(&keys);
+            guarded(&locked, || {
+                let rows = match &keys {
+                    Some(keys) => partitioned.rows_for_keys(keys)?,
+                    None => partitioned.table().clone(),
+                };
                 Ok(partitioned.single_constituent(&rows)?)
             })
         })
@@ -268,9 +284,96 @@ fn partitioned_aggregation(
         .map_err(|error| failure(ExportError::from(error)))
 }
 
+/// The partitioned table of `table`, with the facts given; `definition` is a table
+/// without rows that has the columns of a constituent.
+///
+/// Behavior: `io.deephaven.engine.table.PartitionedTableFactory#of(Table, Collection,
+/// boolean, String, TableDefinition, boolean)`
+#[pyfunction]
+fn partitioned_of(
+    py: Python<'_>,
+    table: &TableHandle,
+    key_columns: Vec<String>,
+    unique_keys: bool,
+    constituent_column: &str,
+    definition: &TableHandle,
+    constituent_changes_permitted: bool,
+) -> PyResult<PartitionedHandle> {
+    let definition = definition.table.definition().clone();
+    py.detach(|| {
+        PartitionedTable::of(
+            &table.table,
+            key_columns,
+            unique_keys,
+            constituent_column,
+            definition,
+            constituent_changes_permitted,
+        )
+    })
+    .map(|partitioned| handle(Arc::new(partitioned)))
+    .map_err(made_failure)
+}
+
+/// The partitioned table of `table`, with what Java infers from its one column of tables.
+///
+/// Behavior: `io.deephaven.engine.table.PartitionedTableFactory#of(Table)`
+#[pyfunction]
+fn partitioned_of_table(py: Python<'_>, table: &TableHandle) -> PyResult<PartitionedHandle> {
+    py.detach(|| PartitionedTable::of_table(&table.table))
+        .map(|partitioned| handle(Arc::new(partitioned)))
+        .map_err(made_failure)
+}
+
+/// The partitioned table of `tables` (`None` for Java's `null`), whose constituents have
+/// the columns of `definition`, a table without rows, or of the first table.
+///
+/// Behavior: `io.deephaven.engine.table.PartitionedTableFactory#ofTables`
+#[pyfunction]
+#[pyo3(signature = (tables, definition=None))]
+fn partitioned_of_tables(
+    py: Python<'_>,
+    tables: Vec<Option<PyRef<'_, TableHandle>>>,
+    definition: Option<PyRef<'_, TableHandle>>,
+) -> PyResult<PartitionedHandle> {
+    let tables: Vec<Option<Arc<dyn Table>>> = tables
+        .iter()
+        .map(|table| table.as_ref().map(|table| table.table.clone()))
+        .collect();
+    let definition = definition.map(|table| table.table.definition().clone());
+    py.detach(|| PartitionedTable::of_tables(&tables, definition))
+        .map(|partitioned| handle(Arc::new(partitioned)))
+        .map_err(made_failure)
+}
+
+/// A refusal of the factories as Python sees it: the Java exception's class, then its
+/// text, as jpy writes a Java exception.
+///
+/// Behavior: `PartitionedTableCreatorImpl`'s exceptions, and
+/// `TableDefinition#checkMutualCompatibility`'s `IncompatibleTableDefinitionException`
+fn made_failure(error: PartitionedError) -> PyErr {
+    let class = match &error {
+        PartitionedError::IllegalArgument(_) => "java.lang.IllegalArgumentException",
+        PartitionedError::IllegalState(_) => "java.lang.IllegalStateException",
+        PartitionedError::NullPointer(_) => "java.lang.NullPointerException",
+        PartitionedError::Unsupported(_) => "java.lang.UnsupportedOperationException",
+        PartitionedError::Table(failure)
+            if failure
+                .message
+                .starts_with("Table definition incompatibilities") =>
+        {
+            "io.deephaven.engine.table.TableDefinition$IncompatibleTableDefinitionException"
+        }
+        _ => return failure(ExportError::from(error)),
+    };
+    PyRuntimeError::new_err(format!("{class}: {error}"))
+}
+
 /// Adds the class and the functions of this module to the native module `_oxhaven`.
 pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_class::<PartitionedHandle>()?;
+    native.add_function(wrap_pyfunction!(partitioned_of, native)?)?;
+    native.add_function(wrap_pyfunction!(partitioned_of_table, native)?)?;
+    native.add_function(wrap_pyfunction!(partitioned_of_tables, native)?)?;
     native.add_function(wrap_pyfunction!(partition_by, native)?)?;
     native.add_function(wrap_pyfunction!(partitioned_aggregation, native)?)?;
     Ok(())
@@ -473,6 +576,63 @@ mod tests {
              inner = pt.transform(lambda table: pt.transform(lambda t: t.head(1)).merge())\n\
              assert inner.merge().size == 4\n\
              assert pt.merge().where('K > 0').size == 3\n",
+        );
+    }
+
+    /// What Java 42.9 answered for the same script
+    /// (`tasks/7.6.3-partitioned-factories.md`, "Probes").
+    #[tokio::test]
+    async fn partitioned_tables_are_made_from_tables_as_in_java() {
+        let python = Python::start().await;
+        python.run(
+            r#"
+from deephaven import new_table, merge, dtypes
+from deephaven.column import string_col, int_col
+from deephaven.table import PartitionedTable
+
+def refusal(f):
+    try:
+        f()
+    except Exception as e:
+        return str(e)
+    raise AssertionError("not refused")
+
+src = new_table([string_col("K", ["a", "b", "a", "c"]), int_col("V", [1, 2, 3, 4])])
+pt = src.partition_by("K")
+inferred = PartitionedTable.from_partitioned_table(pt.table)
+assert (inferred.key_columns, inferred.unique_keys, inferred.constituent_column) == (["K"], False, "__CONSTITUENT__")
+assert [c.name for c in inferred.constituent_table_columns] == ["K", "V"]
+assert not inferred.constituent_changes_permitted
+assert inferred.merge().size == 4
+good = {"K": dtypes.string, "V": dtypes.int32}
+told = PartitionedTable.from_partitioned_table(pt.table, "K", True, "__CONSTITUENT__", good, True)
+assert (told.key_columns, told.unique_keys, told.constituent_changes_permitted) == (["K"], True, False)
+text = refusal(lambda: PartitionedTable.from_partitioned_table(pt.table, ["K", "Nope"], True, "__CONSTITUENT__", good, True))
+assert "java.lang.IllegalArgumentException: Partitioned table QueryTable does not have all key columns in [K, Nope]; instead has K,__CONSTITUENT__" in text, text
+text = refusal(lambda: PartitionedTable.from_partitioned_table(pt.table, ["K"], None, "__CONSTITUENT__", None, True))
+assert text.startswith("invalid argument values, must specify non-None values for [None, None]."), text
+text = refusal(lambda: PartitionedTable.from_partitioned_table(pt.table, ["K"], True, "__CONSTITUENT__", {"K": dtypes.string, "V": dtypes.int64}, True))
+assert "V: expected dataType 'long' does not match constituent dataType 'int'" in text, text
+
+t1 = new_table([int_col("V", [1, 2])])
+t2 = new_table([int_col("V", [3])])
+of_tables = PartitionedTable.from_constituent_tables([t1, t2])
+assert (of_tables.key_columns, of_tables.unique_keys, of_tables.constituent_changes_permitted) == ([], False, False)
+assert [c.size for c in of_tables.constituent_tables] == [2, 1]
+assert of_tables.merge().size == 3
+text = refusal(lambda: of_tables.get_constituent([]))
+assert "Result size mismatch: expected 0 or 1 results, instead found 2" in text, text
+text = refusal(lambda: PartitionedTable.from_constituent_tables([None]))
+assert "java.lang.IllegalArgumentException: No non-null constituents provided" in text, text
+
+dup = PartitionedTable.from_partitioned_table(merge([pt.table, pt.table.where("K = `a`")]))
+other = new_table([string_col("K", ["a", "b", "d"]), int_col("W", [10, 20, 30])]).partition_by("K")
+paired = dup.partitioned_transform(other, lambda x, y: x.natural_join(y.view(["K", "W"]), "K"))
+assert paired.table.size == 3 and paired.merge().size == 5
+assert not paired.unique_keys
+text = refusal(lambda: pt.partitioned_transform(dup, lambda x, y: x))
+assert "Natural Join found duplicate right key for a" in text, text
+"#,
         );
     }
 }
