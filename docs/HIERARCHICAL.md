@@ -104,8 +104,10 @@ total are expanded (`RollupTableImpl#getDefaultExpansionNodeKeys`).
 The rows are read in order; a later row for a key replaces the earlier one and takes its
 place at the end (`HierarchicalTableImpl#accumulateKeyTableDirective`). They are then
 linked into a tree of directives, each key under its parent's, parents that have no row
-as linkage; a key whose node does not exist now is dropped
-(`#linkKeyTableNodeDirectives`).
+as linkage; a key the rollup never had a node for is dropped
+(`#linkKeyTableNodeDirectives`). A key whose group was there and has no rows now keeps
+its directive, as in Java, whose lookup is the aggregation's and forgets no key; the walk
+finds no row for it and leaves it out, or fails (see "Sorted nodes").
 
 ## The snapshot
 
@@ -123,6 +125,28 @@ as linkage; a key whose node does not exist now is dropped
 - The answer is the total number of rows of the walk and the column data of the
   viewport. The total is needed for the scroll bar; this is why expanded nodes are
   visited beyond the viewport, as in Java. Their rows are not read.
+
+**Sorted nodes.** `Hierarchy::order` gives the rows of a node's child table in the order
+they are shown, or nothing for the order of the table. A rollup with sorts sorts the
+rows of the child table by them at every visit of the node (`ops::sort::sorted_rows`: a
+stable sort of the rows, nothing kept between snapshots); a sort by a group-by column
+that the level does not have sorts nothing there, as Java's sort by its column of nulls.
+The walk then goes by position in that order: the child directives are placed by the
+position of their rows, and a run of the viewport is read in the order of its row keys
+and put in the shown order afterwards. Java keeps one sorted table per visited node with
+the snapshot state of a view and sorts only where it still fills the viewport; here every
+visited node is sorted again for every snapshot, which is the cost task 7.8.5 measures.
+
+Java reproduced: while the viewport is not full, the walk of a sorted node looks up the
+row of every child directive it acts on in the sorted table, and a directive whose group
+is known and has no rows now fails the snapshot (`AssertionFailure: Failed to perform
+sort reverse lookup`, `HierarchicalTableImpl.LinkedDirective#setRowKeyInParentSorted`);
+the client gets `INVALID_ARGUMENT` for the view until the group has rows again or the key
+leaves the key table. A rollup that is not sorted leaves that node out. This looks like
+a defect of Java and is reproduced because a difference is the owner's to decide. One
+case differs: `KeyIndex` learns keys when a snapshot looks one up, so a group that came
+and went between two snapshots of a rollup is not known here, and its directive is
+dropped where Java fails.
 
 **Finding a node.** The walk goes by directive, not by row, so it needs the row of a
 key in its level and the child table of a key. Both are a `KeyIndex`: a hash map from
@@ -148,21 +172,39 @@ values when a cycle is running, and retries. The result is the same.
   releases the old view and key table.
 - `ExportSource`: an export of the source table.
 - `Apply`: filters, sorts, and format and update views per node type, giving a new
-  rollup. Java applies them in the order update views, formats, filters, sorts. A filter
-  may use only group-by columns and filters the finest level, from which the coarser
-  ones are aggregated again (`RollupTableImpl#withFilter`); here that is a `where` on
-  the source in front of every level, which is the same rows. A sort is applied to each
-  node's child table when it is first walked and kept with the view; sorts of aggregated
-  nodes are translated for constituent nodes. Formats and update views add columns to a
-  node's table. Refused in the first slice (7.8.1, 7.8.2); the checks before the first
-  operation are Java's (the fields, the input, `No operations specified`).
+  rollup; the input is left as it was. Java reads the request in this order, and so does
+  `hierarchical::apply`: the conditions of the filters (one that cannot be read is an
+  internal error); the sorts (a direction that is not ascending or descending is
+  `INVALID_ARGUMENT`, `Unsupported or unknown sort direction: <name>`; a column outside
+  the source's `SortableColumns`, where it has that attribute, is `INVALID_ARGUMENT`,
+  `Sorting attempted on restricted column(s): ...`); the update views and format views
+  (refused as not ported, 7.8.2); then it applies the filters, then the sorts.
+  - **Filters.** A filter is checked against the columns of the source and may read any
+    of them that no aggregation reads; one that reads an aggregated column or a column
+    array is `INVALID_ARGUMENT`, `Invalid filter found: ...`, and one that reads a column
+    the source does not have, a result of the rollup among them, is an internal error.
+    Filters that read group-by columns only filter the finest level in Java, from which
+    the coarser ones are aggregated again; the others filter the source, and the filtered
+    table becomes the rollup's source (`RollupTableImpl#withFilter`, `#rebase`). Here
+    both are a `where` in front of every level, which is the same rows; `ExportSource`
+    gives the unfiltered source in the first case and the filtered one in the second, as
+    in Java. A filter that leaves nothing leaves no grand total either.
+  - **Sorts.** The sorts of a rollup are a list kept with it. New sorts go in front of
+    the earlier ones, and a column that is named again keeps its first place in the new
+    list (`BaseNodeOperationsRecorder#sort`); the absolute value of a column is a column
+    of its own, `__ABS__<name>`. A sort names a column of the nodes, not `__DEPTH__` or
+    `__EXPANDED__`; anything else is an internal error. See "Sorted nodes".
+- `Tree`: task 7.9.
 - `Tree`: task 7.9.
 
 **The object type.** `ListFields` and the console name the type `HierarchicalTable`.
 `FetchObject` and `MessageStream` answer with `HierarchicalTableDescriptor`: the snapshot
 schema (`__DEPTH__` int, `__EXPANDED__` Boolean, then the node columns, each with the
 `hierarchicalTable.*` and `rollupTable.*` metadata of `HierarchicalTableSchemaUtil`) and
-`is_static`. There are no exported references.
+`is_static`. There are no exported references. A rollup of a table whose sorts are
+restricted (`restrict_sort_to`) has the attribute in the schema's metadata
+(`attribute.SortableColumns`, the names joined by commas, and its
+`attribute_type`), and `isSortable` on those fields only.
 
 **The subscription.** `DoExchange` with a `BarrageSubscriptionRequest` whose ticket is a
 view: columns, a viewport, `min_update_interval_ms`. The viewport must be one range and
@@ -184,17 +226,29 @@ are refused as not ported; the web client makes those calls on the Flight servic
 ## Python
 
 `Table.rollup(aggs, by, include_constituents)` and `deephaven.table.RollupTable` with
-`aggs`, `by`, `include_constituents`. `node_operation_recorder`, `with_node_operations`,
-`with_filters` and `with_update_view` follow `Apply` and are refused by name until then,
-as `Table.tree` is. `RollupTable` wraps a handle, as `PartitionedTable` does; a variable
-that holds one is listed as a `HierarchicalTable`.
+`aggs`, `by`, `include_constituents`. `RollupTable` wraps a handle, as `PartitionedTable`
+does; a variable that holds one is listed as a `HierarchicalTable`.
+
+`node_operation_recorder(NodeType.AGGREGATED)` gives a `RollupNodeOperationsRecorder`
+whose `sort` and `sort_descending` record sorts, checked when they are recorded (the
+error is Java's `RuntimeError`, not a `DHError`); `with_node_operations(recorders)`
+applies them, later recorders after earlier ones; `with_filters(filters)` filters, with
+the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` is refused as Java refuses
+it for a rollup without constituents. `with_node_operations` does not check that a
+recorder was made by this rollup; neither does Java. The recorder's `format_column`,
+`format_row_where`, `format_column_where` and `update_view`, and
+`RollupTable.with_update_view`, are refused by name (7.8.2).
 
 ## What a tree reuses
 
 Everything but the `Hierarchy` implementation: key table directives and linking, the
 walk, `KeyIndex`, the view and its snapshot state, `View` and `ExportSource`, the object
 type and descriptor (with the `treeTable.*` metadata), the subscription, the harness's
-`views` directive and the IDE route's helpers. A tree's `Hierarchy` has one node table
+`views` directive and the IDE route's helpers. Of `Apply`: `hierarchical::apply` and its
+order of checks, `translate_sorts`, `ops::hierarchical::merged_sorts`,
+`Hierarchy::order` with the walk by shown position, and `ops::filter::CheckedFilters`,
+which says what a filter reads before it is applied; a tree's filters are of another
+kind (they keep the ancestors of a row that passes) and its sorts are per node as here. A tree's `Hierarchy` has one node table
 per parent identifier (the source partitioned by the parent column), levels that are
 expandable row by row, and a node key of one value. `__EXPANDED__` is null for a row
 without children; `Hierarchy::rows_expandable` answers for a whole level today (`All` or
@@ -206,16 +260,15 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `Apply`: sorts | `RollupNodeOperationsRecorder#sort` | 7.8.1 |
-| `Apply`: filters | `RollupTableImpl#withFilter` | 7.8.1 |
-| `Apply`: format and update views | `RollupNodeOperationsRecorder#formatColumns`, `#updateView` | 7.8.2 |
+| `Apply`: format and update views; the recorder's `format_column`, `format_row_where`, `format_column_where`, `update_view` | `RollupNodeOperationsRecorder#formatColumns`, `#formatRowWhere`, `#formatColumnWhere`, `#updateView` | 7.8.2 |
+| A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | needs a ruling |
+| A sort by a column of vectors or arrays (the result of `Distinct`), the absolute value of a `char` column | `SortOperation#SortOperation`, `QueryLanguageParser#visit(MethodCallExpr)`: the refusals of the engine's sort | none yet |
 | `include_constituents` | `RollupTableImpl#makeRollup` (constituents) | 7.8.3 |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
 | `SortedFirst`, `SortedLast` by a column that is not their own result, with group-by columns | `AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator` | 7.8.4 |
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
 | `Tree`, Python `Table.tree` | `HierarchicalTableServiceGrpcImpl#tree`, `QueryTable#tree` | 7.9 |
-| Python `node_operation_recorder`, `with_node_operations` | `RollupTableImpl#makeNodeOperationsRecorder`, `#withNodeOperations` | 7.8.1, 7.8.2 |
-| Python `with_filters`, `with_update_view` | `RollupTableImpl#withFilter`, `#withUpdateView` | 7.8.1, 7.8.2 |
+| Python `with_update_view` | `RollupTableImpl#withUpdateView` | 7.8.2 |
 | The browser streams of `Handshake` and `DoExchange` | `BrowserFlightServiceGrpcBinding#bindService` | 2.6 |
 
 ## Where Java does otherwise
@@ -228,6 +281,15 @@ Each names the Java method in its error.
 - The order of the keys of a field's metadata in the snapshot schema differs; the keys
   and values are the same.
 - `SortedFirst` and `SortedLast`: see "Which aggregations". This one needs a ruling.
+- The sorted order of a node is computed at every snapshot; Java keeps a sorted table per
+  visited node. A client sees the same rows.
+- A view of a sorted rollup with an expanded node that is gone: reproduced but for one
+  case, see "Sorted nodes".
+- Java cannot describe a rollup of a table whose sorts are restricted to no column
+  (`restrict_sort_to` without names): `FetchObject` fails with a `NullPointerException`
+  in `BarrageUtil#columnDefinitionsToFields`. Here it is described, with no sortable
+  column. Not reproduced: the place is the schema code every table shares.
+- The order of the keys of the schema's metadata differs, as that of a field's.
 
 ## Contracts
 
@@ -237,7 +299,9 @@ No change.
 
 `cargo test -p oxhaven-engine hierarchical`, `cargo test -p oxhaven-server hierarchical`
 (with and without `--features python`), the script scenarios `rollup_*` in the replay
-gate, and `node oracle/ide/ide-test.js --routes rollup` on Java and on Oxhaven.
+gate, and `node oracle/ide/ide-test.js --routes rollup` on Java and on Oxhaven. The route
+makes its rollup in the IDE's Rollup Rows panel, which sends `first` of every column that
+is not grouped by, and a new `Rollup` for every column added.
 
 The script scenarios compare views: the directive `# oracle: views <name> = <rollup>
 [<key table> [<action column>]]` (`oracle/README.md`) reads the first rows of a view of

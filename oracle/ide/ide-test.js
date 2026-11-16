@@ -15,7 +15,7 @@
 //   iframe   /iframe/table/?name=<table>&psk=<key>
 //   jsapi    /jsapi/dh-core.js in an empty page: log in, fetch the tables, read a viewport
 //   console  /ide/?psk=<key>, type the commands of expected.json into the console
-//   rollup   /ide/?psk=<key>, make a rollup in the console, expand and collapse a node
+//   rollup   /ide/?psk=<key>, make a rollup in the Rollup Rows panel, expand a node, sort, filter
 //   notebook, log, grid, errors, reconnect
 //            what a user does around the console (lib/flows.js); reconnect restarts the
 //            server with the shell command of --restart
@@ -495,7 +495,7 @@ const ROUTES = Object.assign(
     iframe: routeIframe,
     jsapi: routeJsapi,
     console: routeConsole,
-    rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure }),
+    rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure, locateGrid }),
   },
   require('./lib/flows')({ Failure, poll, readGrid, locateGrid, expectStaticGrid, waitForIde, same }),
 );

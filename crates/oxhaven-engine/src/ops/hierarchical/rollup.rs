@@ -2,16 +2,19 @@
 
 use super::keys::{parts, KeyIndex};
 use super::{
-    Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
+    merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
     DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
 };
 use crate::ops::agg::{aggregate, aggregate_with, AggSpec, Aggregation};
+use crate::ops::filter::{CheckedFilters, FilterError};
 use crate::ops::partitioned::{partition_by, tables_of, PartitionedTable};
 use crate::ops::select::drop_columns;
+use crate::ops::sort::{check_sort_columns, sorted_rows, SortColumn, SortError};
+use crate::table::sortable_columns;
 use arrow::array::{ArrayRef, AsArray};
 use arrow::datatypes::Int32Type;
 use oxhaven_contracts::expr::FormulaCompiler;
-use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::Table;
 use std::sync::Arc;
@@ -21,6 +24,18 @@ use std::sync::Arc;
 struct ChildParts {
     partitioned: PartitionedTable,
     index: KeyIndex,
+}
+
+/// The levels of a rollup and how a node is found in them. Rollups that differ only in
+/// how their nodes are sorted share them.
+struct Levels {
+    /// One per level, 0 to the number of group-by columns.
+    tables: Vec<Arc<dyn Table>>,
+    /// Per level, the row of each key.
+    indexes: Vec<KeyIndex>,
+    /// `children[d]` for `d >= 1` and below the last level: the rows of level `d + 1` by
+    /// the keys of level `d`. Level 0 has one row, whose children are level 1.
+    children: Vec<Option<ChildParts>>,
 }
 
 /// The aggregations of a table by every prefix of its group-by columns.
@@ -34,17 +49,18 @@ struct ChildParts {
 /// source (`docs/HIERARCHICAL.md`, "Decision").
 pub struct RollupTable {
     source: Arc<dyn Table>,
+    /// What the levels aggregate: the source, or the rows of it that the filters on
+    /// group-by columns accept.
+    base: Arc<dyn Table>,
     aggregations: Vec<Aggregation>,
     group_by: Vec<String>,
-    /// One per level, 0 to the number of group-by columns.
-    levels: Vec<Arc<dyn Table>>,
-    /// Per level, the row of each key.
-    indexes: Vec<KeyIndex>,
-    /// `children[d]` for `d >= 1` and below the last level: the rows of level `d + 1` by
-    /// the keys of level `d`. Level 0 has one row, whose children are level 1.
-    children: Vec<Option<ChildParts>>,
+    levels: Arc<Levels>,
     /// The columns of a snapshot.
     columns: TableDefinition,
+    /// What the rows of every node are sorted by, the column that decides first.
+    sorts: Vec<SortColumn>,
+    /// The columns a client may sort by, when the source's sorting was restricted.
+    sortable: Option<Vec<String>>,
 }
 
 /// The name Java refuses `aggregation` in a rollup by, if it does.
@@ -181,6 +197,37 @@ pub fn rollup(
             "a rollup of a blink table"
         );
     }
+    let finest = build_levels(source, aggregations, group_by, compiler)?;
+    // Behavior: RollupTableImpl#makeRollup, which copies the restriction of the source's
+    // sorting for the columns the rollup has
+    let sortable = sortable_columns(source.as_ref()).map(|names| {
+        names
+            .into_iter()
+            .filter(|name| finest.1.index_of(name).is_some())
+            .collect()
+    });
+    Ok(RollupTable {
+        source: source.clone(),
+        base: source.clone(),
+        aggregations: aggregations.to_vec(),
+        group_by: group_by.iter().map(|name| name.to_string()).collect(),
+        levels: Arc::new(finest.0),
+        columns: finest.1,
+        sorts: Vec::new(),
+        sortable,
+    })
+}
+
+/// The levels of `base` rolled up by `group_by`, and the columns of a snapshot of them.
+///
+/// Behavior: RollupTableImpl#makeRollupInternal
+fn build_levels(
+    base: &Arc<dyn Table>,
+    aggregations: &[Aggregation],
+    group_by: &[&str],
+    compiler: Option<&dyn FormulaCompiler>,
+) -> Result<(Levels, TableDefinition), HierarchicalError> {
+    let source = base;
     // A rollup without aggregations has the group-by columns alone: its levels are counted,
     // which an aggregation without aggregations cannot be, and the count is left out.
     let mut hidden = "__ROLLUP_ROWS__".to_string();
@@ -233,15 +280,14 @@ pub fn rollup(
     let columns = TableDefinition::new(columns).map_err(|duplicate| {
         HierarchicalError::IllegalArgument(format!("Duplicate column name {}", duplicate.0))
     })?;
-    Ok(RollupTable {
-        source: source.clone(),
-        aggregations: aggregations.to_vec(),
-        group_by: group_by.iter().map(|name| name.to_string()).collect(),
-        levels,
-        indexes,
-        children,
+    Ok((
+        Levels {
+            tables: levels,
+            indexes,
+            children,
+        },
         columns,
-    })
+    ))
 }
 
 impl RollupTable {
@@ -260,15 +306,184 @@ impl RollupTable {
         false
     }
 
+    /// What the rows of every node are sorted by, the column that decides first.
+    pub fn sorts(&self) -> &[SortColumn] {
+        &self.sorts
+    }
+
+    /// The columns a client may sort by, or `None` when it may sort by any: the columns
+    /// the source's sorting was restricted to, of those the rollup has.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.BaseGridAttributes#getSortableColumns
+    pub fn sortable_columns(&self) -> Option<&[String]> {
+        self.sortable.as_deref()
+    }
+
+    /// Whether the nodes of this rollup can be sorted by `sorts`: its nodes have the
+    /// columns, of types that sort, and the absolute ones of types that have an absolute
+    /// value.
+    ///
+    /// # Panics
+    /// With `unported!` for a column of a type the engine's sort does not have, such as
+    /// the vectors of a distinct aggregation.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
+    /// and #absoluteSelectColumns
+    pub fn check_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
+        let finest = &self.levels.tables[self.group_by.len()];
+        check_sort_columns(finest.as_ref(), sorts).map_err(|error| match error {
+            SortError::NoSuchColumn(missing) => {
+                let available: Vec<&str> = self.columns.columns()[2..]
+                    .iter()
+                    .map(|column| column.name.as_str())
+                    .collect();
+                HierarchicalError::IllegalArgument(format!(
+                    "Unknown column names [{}], available column names are [{}]",
+                    missing.join(", "),
+                    available.join(", ")
+                ))
+            }
+            SortError::Table(failure) => HierarchicalError::Table(failure),
+            other => HierarchicalError::IllegalArgument(other.to_string()),
+        })
+    }
+
+    /// This rollup with the rows of every node sorted by `sorts`, and where those leave
+    /// rows equal by what they were sorted by before. A column named again, absolute or
+    /// not as before, is taken where it is first named. The sorts are not checked:
+    /// [`RollupTable::check_sorts`] does that, for the rollup they were recorded for.
+    ///
+    /// Behavior: RollupTableImpl#withNodeOperations with the sorts of a recorder for
+    /// aggregated nodes, and BaseNodeOperationsRecorder#mergeSortColumns
+    pub fn with_sorts(&self, sorts: &[SortColumn]) -> RollupTable {
+        RollupTable {
+            source: self.source.clone(),
+            base: self.base.clone(),
+            aggregations: self.aggregations.clone(),
+            group_by: self.group_by.clone(),
+            levels: self.levels.clone(),
+            columns: self.columns.clone(),
+            sorts: merged_sorts(sorts, &self.sorts),
+            sortable: self.sortable.clone(),
+        }
+    }
+
+    /// Why `filters`, made for the columns of the source, may not filter this rollup, if
+    /// they may not: a filter reads a column that an aggregation reads, or a column at
+    /// other rows.
+    ///
+    /// Behavior: RollupTableImpl#initializeAndValidateFilters
+    pub fn check_filters(&self, filters: &CheckedFilters) -> Result<(), String> {
+        let aggregated = |name: &str| {
+            self.aggregations
+                .iter()
+                .any(|aggregation| match aggregation {
+                    Aggregation::Columns { pairs, .. } => {
+                        pairs.iter().any(|pair| pair.input == name)
+                    }
+                    _ => false,
+                })
+        };
+        let valid: Vec<&str> = self
+            .source
+            .definition()
+            .columns()
+            .iter()
+            .map(|column| column.name.as_str())
+            .filter(|name| !aggregated(name))
+            .collect();
+        for filter in filters.reads() {
+            let invalid: Vec<&str> = filter
+                .columns
+                .iter()
+                .map(String::as_str)
+                .filter(|name| !valid.contains(name))
+                .collect();
+            if !invalid.is_empty() {
+                return Err(format!(
+                    "Invalid filter found: {} may only use non-aggregation columns, which are \
+                     [{}], but has used [{}]",
+                    filter.text,
+                    valid.join(", "),
+                    invalid.join(", ")
+                ));
+            }
+            if filter.arrays {
+                return Err(format!(
+                    "Invalid filter found: {} may not use column arrays",
+                    filter.text
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// This rollup of the rows of the source that every filter accepts. The filters are
+    /// made for the columns of the source ([`CheckedFilters`]) and may read every column
+    /// that no aggregation reads. With filters that read group-by columns only the source
+    /// stays the source; otherwise the filtered table becomes it. The sorts are kept.
+    ///
+    /// Java filters the finest level when the filters read group-by columns only, and
+    /// aggregates the coarser levels from that; a group is wholly kept or wholly left
+    /// out, so aggregating the filtered source gives the same levels in the same order.
+    ///
+    /// # Panics
+    /// With `unported!` for a filter that uses `i`, `ii` or `k`: Java accepts one as a
+    /// filter of group-by columns, and it then counts the rows of the finest level.
+    ///
+    /// Behavior: RollupTableImpl#withFilter and #rebase
+    pub fn with_filters(
+        &self,
+        filters: &CheckedFilters,
+        compiler: &dyn FormulaCompiler,
+    ) -> Result<RollupTable, HierarchicalError> {
+        self.check_filters(filters)
+            .map_err(HierarchicalError::IllegalArgument)?;
+        if filters.reads().iter().any(|filter| filter.row_variables) {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withFilter",
+                "a filter of a rollup that uses i, ii or k, which Java evaluates on the rows of the finest level"
+            );
+        }
+        let base = filters
+            .apply(&self.base, compiler)
+            .map_err(|error| match error {
+                FilterError::Invalid(message) => HierarchicalError::IllegalArgument(message),
+                FilterError::Failed(failure) => HierarchicalError::Table(failure),
+            })?;
+        let only_group_by = filters.reads().iter().all(|filter| {
+            filter
+                .columns
+                .iter()
+                .all(|name| self.group_by.contains(name))
+        });
+        let group_by: Vec<&str> = self.group_by.iter().map(String::as_str).collect();
+        let (levels, columns) = build_levels(&base, &self.aggregations, &group_by, Some(compiler))?;
+        Ok(RollupTable {
+            source: if only_group_by {
+                self.source.clone()
+            } else {
+                base.clone()
+            },
+            base,
+            aggregations: self.aggregations.clone(),
+            group_by: self.group_by.clone(),
+            levels: Arc::new(levels),
+            columns,
+            sorts: self.sorts.clone(),
+            sortable: self.sortable.clone(),
+        })
+    }
+
     /// The source aggregated by the first `depth` group-by columns.
     pub fn level(&self, depth: usize) -> Option<&Arc<dyn Table>> {
-        self.levels.get(depth)
+        self.levels.tables.get(depth)
     }
 
     /// The key values of row `row` of level `width`, which has `width` key columns.
     fn key_of(&self, width: usize, row: i64) -> Result<Vec<Part>, HierarchicalError> {
         let rows = RowSet::from_range(row, row);
-        let level = &self.levels[width];
+        let level = &self.levels.tables[width];
         (0..width)
             .map(|column| {
                 let mut values = parts(&level.column(column).chunk(&rows)?)?;
@@ -375,13 +590,17 @@ impl Hierarchy for RollupTable {
         if key.len() >= self.group_by.len() {
             return Ok(None);
         }
-        Ok(self.indexes[key.len()].find(key)?.map(|row| Located {
-            node: NodeId {
-                depth: key.len() as u32 + 1,
-                row,
-            },
-            row_in_parent: Some(row),
-        }))
+        // A key whose group has no rows now keeps its node, as in Java, whose lookup is
+        // the aggregation's and forgets no key.
+        Ok(self.levels.indexes[key.len()]
+            .known(key)?
+            .map(|(row, _)| Located {
+                node: NodeId {
+                    depth: key.len() as u32 + 1,
+                    row,
+                },
+                row_in_parent: Some(row),
+            }))
     }
 
     /// Behavior: RollupTableImpl#findParentNodeKey
@@ -404,9 +623,9 @@ impl Hierarchy for RollupTable {
         let depth = node.depth as usize;
         if depth <= 1 {
             // the root's child is the grand total, whose children are all of level 1
-            return Ok(self.levels.get(depth).cloned());
+            return Ok(self.levels.tables.get(depth).cloned());
         }
-        let Some(Some(parts)) = self.children.get(depth - 1) else {
+        let Some(Some(parts)) = self.levels.children.get(depth - 1) else {
             return Ok(None);
         };
         let key = self.key_of(depth - 1, node.row)?;
@@ -422,6 +641,43 @@ impl Hierarchy for RollupTable {
             .column(cell)
             .chunk(&RowSet::from_range(row, row))?;
         Ok(tables_of(&handles)?.pop().flatten())
+    }
+
+    /// A coarser level does not have the group-by columns below its own; Java has them
+    /// there as columns of nulls, by which every row is equal, so a sort by one is left
+    /// out.
+    ///
+    /// Behavior: RollupTableImpl#applyNodeSorts, which is
+    /// BaseNodeOperationsRecorder#applySorts
+    fn order(
+        &self,
+        depth: u32,
+        table: &dyn Table,
+    ) -> Result<Option<Vec<RowKey>>, HierarchicalError> {
+        // the rows at `depth` are rows of level `depth - 1`, which has that many keys
+        let keys = (depth as usize).saturating_sub(1);
+        let sorts: Vec<SortColumn> = self
+            .sorts
+            .iter()
+            .filter(|sort| {
+                self.group_by
+                    .iter()
+                    .position(|key| *key == sort.column)
+                    .is_none_or(|key| key < keys)
+            })
+            .cloned()
+            .collect();
+        if sorts.is_empty() {
+            // Java sorts by the columns of nulls all the same: the order of the table,
+            // and a node that is sorted.
+            return Ok((!self.sorts.is_empty()).then(|| table.row_set().iter().collect()));
+        }
+        sorted_rows(table, &table.row_set(), &sorts)
+            .map(Some)
+            .map_err(|error| match error {
+                SortError::Table(failure) => HierarchicalError::Table(failure),
+                other => HierarchicalError::IllegalArgument(other.to_string()),
+            })
     }
 
     /// Behavior: RollupTableImpl#levelExpandable

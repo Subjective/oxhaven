@@ -300,6 +300,7 @@ handlers! {
 
 /// What the hierarchical table service and the Python package take of `Aggregate`.
 pub(crate) use aggregate::{adapt as adapt_aggregations, validate_aggregation};
+pub(crate) use filter::conditions;
 
 /// `SeekRow` is not a table operation: it answers with a position.
 pub(super) use ide::seek_row;
