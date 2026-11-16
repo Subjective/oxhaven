@@ -303,10 +303,15 @@ pub(crate) fn resolve(name: &str, types: &[ColumnType]) -> Result<Resolved, Form
 /// `#subVector(long, long)`, `Vector#size()`, `#isEmpty()`), and
 /// `QueryLanguageParser#visit(ArrayAccessExpr)`, which prints an index into a Java array
 /// as it is and turns an index into anything else into a call of `get`.
+///
+/// `column_array` says that the receiver is a column array (`Col_`). Java declares that
+/// one with its element type in a filter too, so an element of a `Boolean` one is
+/// accepted: seen on Java 42.9 for `where("Z_[1]")` and `update("P = Z_[1] && X > 5")`.
 pub(crate) fn resolve_method(
     receiver: &ColumnType,
     method: &str,
     arguments: &[ColumnType],
+    column_array: bool,
 ) -> Result<Resolved, FormulaError> {
     let element = receiver.list_element().expect("a vector or an array");
     let vector = matches!(receiver, ColumnType::Vector(_));
@@ -365,7 +370,7 @@ pub(crate) fn resolve_method(
         ),
         _ => return refused(),
     };
-    if matches!(function, VectorFn::Get | VectorFn::ArrayGet) {
+    if matches!(function, VectorFn::Get | VectorFn::ArrayGet) && !column_array {
         refuse_boolean_element(&result)?;
     }
     Ok(call(function, parameters, result))

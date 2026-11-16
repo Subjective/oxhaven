@@ -12,7 +12,7 @@
 //! [`is_filter_syntax`] decides), and a case whose setup fails in Java, which records nothing
 //! to compare with.
 
-use super::recorded::{cells, column_of, kind_of, ours, Ours};
+use super::recorded::{cells, column_of, kind_of, list_type, ours, Ours};
 use super::*;
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -293,13 +293,18 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
     }
 
     let java_type = java["type"].as_str().unwrap_or("no type");
-    let Some(kind) = kind_of(java_type) else {
+    // A vector of objects names its element type beside its own.
+    let kind = match (java_type, java["component"].as_str()) {
+        ("io.deephaven.vector.ObjectVector", Some("java.lang.String")) => Some("list<string>"),
+        _ => kind_of(java_type),
+    };
+    let Some(kind) = kind else {
         return Outcome::Differs(format!(
             "Java returns a {java_type} column; Oxhaven returns {column_type:?}"
         ));
     };
     if java["nondeterministic"] == true {
-        let expected = column_of(kind, &[]).0;
+        let expected = list_type(java_type, column_of(kind, &[]).0);
         return if expected == column_type {
             Outcome::Agrees
         } else {
@@ -309,6 +314,7 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
         };
     }
     let expected = column_of(kind, cells(&java["values"]));
+    let expected = (list_type(java_type, expected.0), expected.1);
     if column_type != expected.0 {
         return Outcome::Differs(format!(
             "Java returns {java_type}; Oxhaven returns {column_type:?}"

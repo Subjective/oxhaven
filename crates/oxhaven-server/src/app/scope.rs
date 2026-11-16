@@ -424,10 +424,8 @@ fn candidate_names<'a>(expr: &'a Expr, names: &mut Vec<&'a str>) {
                 names.push(name);
             }
         }
-        Expr::Literal(_)
-        | Expr::RowVariable(_)
-        | Expr::ColumnVector(_)
-        | Expr::ColumnArrayAccess { .. } => {}
+        Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => {}
+        Expr::ColumnArrayAccess { position, .. } => candidate_names(position, names),
         Expr::Unary { operand, .. } | Expr::Cast { operand, .. } => candidate_names(operand, names),
         Expr::Binary { left, right, .. } => {
             candidate_names(left, names);
@@ -589,10 +587,11 @@ impl Substitution<'_> {
                 Some(value) => self.literal(name, value)?,
                 None => expr.clone(),
             },
-            Expr::Literal(_)
-            | Expr::RowVariable(_)
-            | Expr::ColumnVector(_)
-            | Expr::ColumnArrayAccess { .. } => expr.clone(),
+            Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => expr.clone(),
+            Expr::ColumnArrayAccess { column, position } => Expr::ColumnArrayAccess {
+                column: column.clone(),
+                position: rewrite(position)?,
+            },
             Expr::Unary { op, operand } => {
                 if let (UnaryOp::Negate, Some((name, value))) = (op, self.variable(operand)) {
                     if let Some(primitive) = value.number_type() {
@@ -1046,12 +1045,17 @@ mod tests {
         let compiler = compiler(variables());
         assert_eq!(value(&compiler, "X"), "Int 1");
         assert_eq!(value(&compiler, "NULL_INT"), "Byte 5");
-        // the array of column X is not the variable X_; column arrays are not ported
-        let array = compile(&compiler, "X_").err();
+        // the array of column X is not the variable X_
+        let array = compile(&compiler, "X_").unwrap();
         assert!(
-            matches!(array, Some(FormulaError::Unsupported(_))),
-            "{array:?}"
+            matches!(array.result_type(), ColumnType::Vector(_)),
+            "{:?}",
+            array.result_type()
         );
+        // a variable in the index of a column array has its value
+        assert_eq!(value(&compiler, "X_[xb ? 2 : 0]"), "Int 2");
+        assert_eq!(value(&compiler, "X_[i + xi - 41]"), "Int 1");
+        assert_eq!(value(&compiler, "X_[xl]"), "Int ");
         // without the variable the name is the constant
         let plain = self::compiler(Fixed::default());
         assert_eq!(
