@@ -1058,3 +1058,7 @@ The Kafka produce agent stopped with code written but nothing run: the disk had 
 ## 2026-11-16T11:07Z
 
 Task 7.8.4 (tree formats and filters, ColorUtil styles) reported from Opus; opened as pull request 124. A colour as a column value needs a contract type for io.deephaven.gui.color.Color, left for the owner list. Opus agents on this code base end between 90k and 370k tokens for a medium task; the three largest all carried several Java probing rounds.
+
+## 2026-11-16T11:21Z
+
+Task 4.20 (fixes for the second fuzzer findings) reported: D1 to D4, R2 and R3 fixed, four families clean over 1000 seeds, known entries removed. Opened as pull request 125. The remaining refusals R1, R4, R6, R7, R8 go to a follow-up.
