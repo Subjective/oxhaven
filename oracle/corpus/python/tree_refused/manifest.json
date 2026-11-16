@@ -1,0 +1,272 @@
+{
+  "format": 2,
+  "scenario": "tree_refused",
+  "scenario_sha256": "df9e2ea1b0b48732b299cec76e5b27e32f09b2e4a8944c23bf80765b3f32fddb",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "whole",
+      "file": "step000.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "late",
+      "file": "step000.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "late_promoted",
+      "file": "step000.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "late_filtered",
+      "file": "step000.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "whole",
+      "file": "step001.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "late",
+      "file": "step001.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "late_promoted",
+      "file": "step001.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "late_filtered",
+      "file": "step001.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "whole",
+      "file": "step002.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "late",
+      "file": "step002.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "late_promoted",
+      "file": "step002.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "late_filtered",
+      "file": "step002.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "whole",
+      "file": "step003.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "late",
+      "file": "step003.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "late_promoted",
+      "file": "step003.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "late_filtered",
+      "file": "step003.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "whole",
+      "file": "step004.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "late",
+      "file": "step004.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "late_promoted",
+      "file": "step004.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "late_filtered",
+      "file": "step004.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "whole",
+      "file": "step005.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "late",
+      "file": "step005.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "late_promoted",
+      "file": "step005.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "late_filtered",
+      "file": "step005.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "whole",
+      "file": "step006.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "late",
+      "file": "step006.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "late_promoted",
+      "file": "step006.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "late_filtered",
+      "file": "step006.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "whole",
+      "file": "step007.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "late",
+      "file": "step007.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "late_promoted",
+      "file": "step007.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "late_filtered",
+      "file": "step007.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "whole",
+      "file": "step008.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "late",
+      "file": "step008.late.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "late_promoted",
+      "file": "step008.late_promoted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "late_filtered",
+      "file": "step008.late_filtered.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "whole",
+      "file": "step009.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "late",
+      "file": "step009.late.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "late_promoted",
+      "file": "step009.late_promoted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "late_filtered",
+      "file": "step009.late_filtered.arrow",
+      "rows": 4
+    },
+    {
+      "step": 10,
+      "table": "whole",
+      "file": "step010.whole.arrow",
+      "rows": 3
+    },
+    {
+      "step": 10,
+      "table": "late",
+      "file": "step010.late.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "late_promoted",
+      "file": "step010.late_promoted.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "late_filtered",
+      "file": "step010.late_filtered.arrow",
+      "rows": 5
+    }
+  ]
+}

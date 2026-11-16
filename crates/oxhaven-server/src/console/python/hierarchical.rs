@@ -1,5 +1,6 @@
-//! Hierarchical tables for the `deephaven` package: the handle its `RollupTable` wraps,
-//! the function that makes one, and the recorder of the operations on its nodes.
+//! Hierarchical tables for the `deephaven` package: the handle its `RollupTable` and
+//! `TreeTable` wrap, the functions that make one, and the recorder of the operations on
+//! its nodes.
 //!
 //! A rollup is made as the hierarchical table service makes it
 //! (`crate::hierarchical::make_rollup`): under the update graph's shared lock when the
@@ -13,12 +14,12 @@ use pyo3::prelude::*;
 use std::sync::Arc;
 
 use oxhaven_engine::ops::filter::CheckedFilters;
-use oxhaven_engine::ops::hierarchical::{merged_sorts, Hierarchy, RollupTable};
+use oxhaven_engine::ops::hierarchical::{merged_sorts, RollupTable, TreeTable};
 use oxhaven_engine::ops::sort::SortColumn;
 
 use super::ops::failure;
 use super::{parse_operation, runtime, TableHandle};
-use crate::hierarchical::{make_rollup, Hierarchical, HierarchicalTable};
+use crate::hierarchical::{make_rollup, make_tree, Hierarchical, HierarchicalTable};
 use crate::partitioned::guarded;
 use crate::session::ExportError;
 use crate::table::ops::{adapt_aggregations, validate_aggregation};
@@ -31,9 +32,18 @@ pub(super) struct HierarchicalHandle {
 }
 
 impl HierarchicalHandle {
-    fn rollup(&self) -> &Arc<RollupTable> {
-        let HierarchicalTable::Rollup(rollup) = self.table.as_ref();
-        rollup
+    fn rollup(&self) -> PyResult<&Arc<RollupTable>> {
+        match self.table.as_ref() {
+            HierarchicalTable::Rollup(rollup) => Ok(rollup),
+            HierarchicalTable::Tree(_) => Err(PyValueError::new_err("not a rollup")),
+        }
+    }
+
+    fn tree(&self) -> PyResult<&Arc<TreeTable>> {
+        match self.table.as_ref() {
+            HierarchicalTable::Tree(tree) => Ok(tree),
+            HierarchicalTable::Rollup(_) => Err(PyValueError::new_err("not a tree")),
+        }
     }
 }
 
@@ -51,11 +61,34 @@ impl HierarchicalHandle {
         }
     }
 
+    /// The identifier and the parent column of a tree; `None` for a rollup.
+    fn tree_columns(&self) -> Option<(String, String)> {
+        match self.table.as_ref() {
+            HierarchicalTable::Tree(tree) => Some((
+                tree.identifier_column().to_string(),
+                tree.parent_identifier_column().to_string(),
+            )),
+            HierarchicalTable::Rollup(_) => None,
+        }
+    }
+
+    /// A recorder of operations on the nodes of a tree, with nothing recorded.
+    ///
+    /// Behavior: `io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeNodeOperationsRecorder`
+    fn tree_recorder(&self) -> PyResult<RecorderHandle> {
+        self.tree()?;
+        Ok(RecorderHandle {
+            table: self.table.clone(),
+            sorts: Vec::new(),
+        })
+    }
+
     /// A recorder of operations on the nodes of the type named `node_type`, `Aggregated`
     /// or `Constituent`, with nothing recorded.
     ///
     /// Behavior: `io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeNodeOperationsRecorder`
     fn recorder(&self, node_type: &str) -> PyResult<RecorderHandle> {
+        self.rollup()?;
         match node_type {
             "Aggregated" => Ok(RecorderHandle {
                 table: self.table.clone(),
@@ -67,12 +100,12 @@ impl HierarchicalHandle {
         }
     }
 
-    /// This rollup with what `recorders` recorded applied to its nodes, each after the
-    /// ones before it; this rollup itself when they recorded nothing. The sorts were
-    /// checked when they were recorded, for the rollup the recorder was made of, and as
+    /// This table with what `recorders` recorded applied to its nodes, each after the
+    /// ones before it; this table itself when they recorded nothing. The sorts were
+    /// checked when they were recorded, for the table the recorder was made of, and as
     /// in Java are not checked again for this one.
     ///
-    /// Behavior: `RollupTableImpl#withNodeOperations`
+    /// Behavior: `RollupTableImpl#withNodeOperations`, `TreeTableImpl#withNodeOperations`
     fn with_node_operations(
         slf: Bound<'_, Self>,
         recorders: Vec<PyRef<'_, RecorderHandle>>,
@@ -80,35 +113,48 @@ impl HierarchicalHandle {
         if recorders.iter().all(|recorder| recorder.sorts.is_empty()) {
             return Ok(slf.unbind());
         }
-        let mut rollup = slf.get().rollup().clone();
-        for recorder in &recorders {
-            if !recorder.sorts.is_empty() {
-                rollup = Arc::new(rollup.with_sorts(&recorder.sorts));
+        let recorded = recorders
+            .iter()
+            .map(|recorder| &recorder.sorts)
+            .filter(|sorts| !sorts.is_empty());
+        let table = Arc::new(match slf.get().table.as_ref() {
+            HierarchicalTable::Rollup(rollup) => {
+                HierarchicalTable::Rollup(recorded.fold(rollup.clone(), |rollup, sorts| {
+                    Arc::new(rollup.with_sorts(sorts))
+                }))
             }
-        }
-        let table = Arc::new(HierarchicalTable::Rollup(rollup));
+            HierarchicalTable::Tree(tree) => HierarchicalTable::Tree(
+                recorded.fold(tree.clone(), |tree, sorts| Arc::new(tree.with_sorts(sorts))),
+            ),
+        });
         Py::new(slf.py(), HierarchicalHandle { table })
     }
 
-    /// This rollup of the rows of its source that every filter of `filters` accepts;
-    /// this rollup itself without filters.
+    /// This table of the rows of its source that every filter of `filters` accepts, and
+    /// for a tree of their ancestors; this table itself without filters.
     ///
-    /// Behavior: `RollupTableImpl#withFilter`
+    /// Behavior: `RollupTableImpl#withFilter`, `TreeTableImpl#withFilter`
     fn with_filters(slf: Bound<'_, Self>, filters: Vec<String>) -> PyResult<Py<Self>> {
         if filters.is_empty() {
             return Ok(slf.unbind());
         }
         let py = slf.py();
-        let rollup = slf.get().rollup().clone();
+        let table = slf.get().table.clone();
         let runtime = runtime()?;
         let table = py
             .detach(|| {
                 let compiler = runtime.context.compiler.as_ref();
-                let source = rollup.source().clone();
+                let source = table.source();
                 guarded(&[&source], || {
                     let filters = CheckedFilters::parse(&filters, source.definition(), compiler)?;
-                    let filtered = rollup.with_filters(&filters, compiler)?;
-                    Ok(Arc::new(HierarchicalTable::Rollup(Arc::new(filtered))))
+                    Ok(Arc::new(match table.as_ref() {
+                        HierarchicalTable::Rollup(rollup) => HierarchicalTable::Rollup(Arc::new(
+                            rollup.with_filters(&filters, compiler)?,
+                        )),
+                        HierarchicalTable::Tree(tree) => HierarchicalTable::Tree(Arc::new(
+                            tree.with_filters(&filters, compiler)?,
+                        )),
+                    }))
                 })
             })
             .map_err(failure)?;
@@ -155,9 +201,14 @@ impl RecorderHandle {
                 }
             })
             .collect();
-        let HierarchicalTable::Rollup(rollup) = self.table.as_ref();
-        py.detach(|| guarded(&[], || Ok(rollup.check_sorts(&sorts)?)))
-            .map_err(failure)?;
+        let table = &self.table;
+        py.detach(|| {
+            guarded(&[], || match table.as_ref() {
+                HierarchicalTable::Rollup(rollup) => Ok(rollup.check_sorts(&sorts)?),
+                HierarchicalTable::Tree(tree) => Ok(tree.check_sorts(&sorts)?),
+            })
+        })
+        .map_err(failure)?;
         Ok(RecorderHandle {
             table: self.table.clone(),
             sorts: merged_sorts(&sorts, &self.sorts),
@@ -198,18 +249,48 @@ fn rollup(
     .map_err(failure)
 }
 
-/// Adds the class and the function of this module to the native module `_oxhaven`.
+/// `source` as a tree by its columns `id_column` and `parent_column`, with orphans made
+/// children of the root if `promote_orphans`.
+///
+/// Behavior: `io.deephaven.engine.table.impl.QueryTable#tree`, after
+/// `io.deephaven.engine.table.hierarchical.TreeTable#promoteOrphans`
+#[pyfunction]
+fn tree(
+    py: Python<'_>,
+    source: &TableHandle,
+    id_column: &str,
+    parent_column: &str,
+    promote_orphans: bool,
+) -> PyResult<HierarchicalHandle> {
+    let runtime = runtime()?;
+    let source = &source.table;
+    py.detach(|| {
+        make_tree(
+            &runtime.context,
+            source,
+            id_column,
+            parent_column,
+            promote_orphans,
+        )
+    })
+    .map(|table| HierarchicalHandle { table })
+    .map_err(failure)
+}
+
+/// Adds the classes and the functions of this module to the native module `_oxhaven`.
 pub(super) fn register(native: &Bound<'_, PyModule>) -> PyResult<()> {
     native.add_class::<HierarchicalHandle>()?;
     native.add_class::<RecorderHandle>()?;
     native.add_function(wrap_pyfunction!(rollup, native)?)?;
+    native.add_function(wrap_pyfunction!(tree, native)?)?;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    //! What a client sees of a rollup a script makes is in the script scenarios
-    //! `rollup_*`, recorded from Java; these are the parts no scenario reaches.
+    //! What a client sees of a rollup or a tree a script makes is in the script scenarios
+    //! `rollup_*` and `tree_*`, recorded from Java; these are the parts no scenario
+    //! reaches.
 
     use super::super::tests::Python;
     use crate::hierarchical::hierarchical_of;
@@ -261,8 +342,66 @@ mod tests {
              assert r.with_filters('K > 0').by == r.by\n\
              assert r.with_node_operations([recorder.sort_descending('V')]).by == r.by\n\
              refused(lambda: source.rollup(aggs=[agg.sum_('V')], by='K', include_constituents=True), 'RollupTableImpl#makeRollup')\n\
-             refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n\
-             refused(lambda: source.tree('K', 'V'), 'QueryTable#tree')\n",
+             refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n",
+        );
+    }
+
+    #[tokio::test]
+    async fn a_tree_variable_is_listed_and_opened_as_a_hierarchical_table() {
+        let python = Python::start().await;
+        let changes = python.run(
+            "from deephaven import empty_table\n\
+             source = empty_table(6).update(['Id = i', 'Parent = i == 0 ? NULL_INT : (int)(i / 3)'])\n\
+             t = source.tree('Id', 'Parent')\n\
+             assert t.id_col == 'Id' and t.parent_col == 'Parent'\n\
+             promoted = source.tree(id_col='Id', parent_col='Parent', promote_orphans=True)\n\
+             sorted_ = t.with_node_operations(t.node_operation_recorder().sort_descending('Id'))\n\
+             assert sorted_.id_col == 'Id' and sorted_.parent_col == 'Parent'\n\
+             filtered = t.with_filters(['Id > 3'])\n\
+             assert filtered.id_col == 'Id' and filtered.parent_col == 'Parent'\n",
+        );
+        let types: Vec<(&str, &str)> = changes
+            .created
+            .iter()
+            .map(|variable| (variable.name.as_str(), variable.type_name.as_str()))
+            .collect();
+        for name in ["t", "promoted", "sorted_", "filtered"] {
+            assert!(types.contains(&(name, "HierarchicalTable")), "{types:?}");
+        }
+        let value = python.server.state.scope.get("t").unwrap();
+        let table = hierarchical_of(&value).expect("a hierarchical table");
+        assert_eq!(table.source().row_set().size(), 6);
+        // rows 4 and 5, their parent 1 and its parent 0
+        let value = python.server.state.scope.get("filtered").unwrap();
+        let table = hierarchical_of(&value).expect("a hierarchical table");
+        assert_eq!(table.source().row_set().size(), 4);
+    }
+
+    #[tokio::test]
+    async fn what_a_tree_does_not_have_yet_is_refused_by_name() {
+        let python = Python::start().await;
+        python.run(
+            "from deephaven import empty_table, agg, DHError\n\
+             source = empty_table(6).update(['Id = i', 'Parent = i == 0 ? NULL_INT : (int)(i / 3)', 'Name = `n` + i'])\n\
+             t = source.tree('Id', 'Parent')\n\
+             def refused(call, java):\n\
+             \x20   try:\n\
+             \x20       call()\n\
+             \x20   except (DHError, NotImplementedError, RuntimeError) as e:\n\
+             \x20       assert java in str(e), str(e)\n\
+             \x20   else:\n\
+             \x20       raise AssertionError('must be refused: ' + java)\n\
+             recorder = t.node_operation_recorder()\n\
+             refused(lambda: recorder.where('Id > 1'), 'TreeNodeOperationsRecorder#where')\n\
+             refused(lambda: recorder.format_column('Id = RED'), 'TreeNodeOperationsRecorder#formatColumns')\n\
+             refused(lambda: recorder.format_row_where('Id > 1', 'RED'), 'TreeNodeOperationsRecorder#formatRowWhere')\n\
+             refused(lambda: recorder.format_column_where('Id', 'Id > 1', 'RED'), 'TreeNodeOperationsRecorder#formatColumnWhere')\n\
+             # what Java refuses, in Java's words\n\
+             refused(lambda: source.tree('Nope', 'Parent'), 'tree identifier column: Unknown column names [Nope]')\n\
+             refused(lambda: source.tree('Id', 'Nope'), 'tree parent column: Unknown column names [Nope]')\n\
+             refused(lambda: source.tree('Id', 'Name'), 'tree parent and identifier columns must have the same data type')\n\
+             refused(lambda: t.with_node_operations(recorder.sort('Nope')), 'Nope')\n\
+             refused(lambda: t.with_filters('Nope > 1'), 'Nope')\n",
         );
     }
 }

@@ -100,12 +100,26 @@ fn link(
     let mut by_key: HashMap<NodeKey, usize> = HashMap::new();
     let mut root = None;
     // Takes the directives below a replaced one out of the map; they stay in the arena,
-    // unreachable.
-    fn forget(arena: &[Linked], by_key: &mut HashMap<NodeKey, usize>, removed: usize) {
+    // unreachable. In a tree whose rows name each other as parents, a directive can be
+    // below itself: Java then finds the directive that replaced it in the map and takes
+    // that for a state it cannot be in.
+    // Behavior: HierarchicalTableImpl#removeOldChildren and its assertion
+    fn forget(
+        arena: &[Linked],
+        by_key: &mut HashMap<NodeKey, usize>,
+        removed: usize,
+    ) -> Result<(), HierarchicalError> {
         for &child in &arena[removed].children {
-            by_key.remove(&arena[child].key);
-            forget(arena, by_key, child);
+            if by_key.remove(&arena[child].key) != Some(child) {
+                return Err(failure(
+                    "Assertion failed: asserted linkedDirectives.remove(childDirective.nodeKey) \
+                     == childDirective",
+                )
+                .into());
+            }
+            forget(arena, by_key, child)?;
         }
+        Ok(())
     }
     for (key, action) in directives {
         // A key that names no node now: left over from other data or another filter.
@@ -125,11 +139,11 @@ fn link(
         // with it what hung below.
         let mut removed = by_key.insert(key.clone(), linked);
         if let Some(removed) = removed {
-            forget(&arena, &mut by_key, removed);
+            forget(&arena, &mut by_key, removed)?;
         }
         let mut key = key;
         loop {
-            let parent_key = match hierarchy.parent(&key) {
+            let parent_key = match hierarchy.parent(&key)? {
                 Parent::None => {
                     root = Some(linked);
                     break;
@@ -259,6 +273,11 @@ struct Segment {
     last_expanded: bool,
 }
 
+/// The deepest the walk goes. Java has no limit and visits a node from the visit of its
+/// parent: on a tree that is deep enough its stack overflows and the process ends.
+/// Here such a snapshot fails.
+const MAX_DEPTH: u32 = 200;
+
 struct Walk<'a> {
     hierarchy: &'a dyn Hierarchy,
     arena: Vec<Linked>,
@@ -320,6 +339,13 @@ impl Walk<'_> {
         };
         if table.row_set().is_empty() {
             return Ok(());
+        }
+        if self.depth >= MAX_DEPTH {
+            return Err(failure(format!(
+                "unported: io.deephaven.engine.table.impl.hierarchical.HierarchicalTableImpl#visitExpandedNode: \
+                 a walk more than {MAX_DEPTH} levels deep"
+            ))
+            .into());
         }
         let outer = self.expanding;
         // Behavior: SnapshotStateImpl#filling, as it is when the visit starts
@@ -478,12 +504,26 @@ pub(super) fn snapshot(
             let length = segment.rows.size() as usize;
             parts.push(match column {
                 DEPTH_COLUMN => Arc::new(Int32Array::from(vec![segment.depth as i32; length])),
-                EXPANDED_COLUMN => Arc::new(match segment.expandable {
-                    Expandable::None => BooleanArray::new_null(length),
-                    Expandable::All => (0..length)
-                        .map(|row| Some(segment.last_expanded && row + 1 == length))
-                        .collect(),
-                }),
+                EXPANDED_COLUMN => {
+                    let expanded = |row: usize| segment.last_expanded && row + 1 == length;
+                    Arc::new(match segment.expandable {
+                        Expandable::None => BooleanArray::new_null(length),
+                        Expandable::All => (0..length).map(|row| Some(expanded(row))).collect(),
+                        Expandable::ByRow => {
+                            let stored =
+                                hierarchy.expandable_rows(segment.table.as_ref(), &segment.rows)?;
+                            (0..length)
+                                .map(|row| {
+                                    let place = match &segment.places {
+                                        Some(places) => places[row] as usize,
+                                        None => row,
+                                    };
+                                    stored[place].then(|| expanded(row))
+                                })
+                                .collect::<BooleanArray>()
+                        }
+                    })
+                }
                 _ => {
                     let stored = hierarchy.fill(
                         segment.depth,
