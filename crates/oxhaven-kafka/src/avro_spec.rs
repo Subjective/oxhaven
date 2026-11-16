@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use arrow::array::{
     ArrayRef, BinaryArray, BooleanArray, Float32Array, Float32Builder, Float64Array,
-    Float64Builder, Int32Array, Int32Builder, Int64Array, Int64Builder, ListBuilder,
-    StringArray, StringBuilder, TimestampNanosecondArray, TimestampNanosecondBuilder,
+    Float64Builder, Int32Array, Int32Builder, Int64Array, Int64Builder, ListBuilder, StringArray,
+    StringBuilder, TimestampNanosecondArray, TimestampNanosecondBuilder,
 };
 use arrow::datatypes::Field;
 use oxhaven_column::java_values::big_decimal_cell;
@@ -36,7 +36,10 @@ pub enum AvroMapping {
 impl AvroMapping {
     fn column(&self, path: &str) -> Option<String> {
         let find = |pairs: &[(String, Option<String>)]| {
-            pairs.iter().find(|(field, _)| field == path).map(|(_, column)| column.clone())
+            pairs
+                .iter()
+                .find(|(field, _)| field == path)
+                .map(|(_, column)| column.clone())
         };
         match self {
             AvroMapping::Direct => Some(path.replace('.', "__")),
@@ -75,6 +78,8 @@ enum Cell {
     FloatArray,
     DoubleArray,
     StringArray,
+    /// An array of enum symbols, which Java declares `String[]` and cannot fill.
+    EnumArray,
     InstantArray(i64),
 }
 
@@ -125,7 +130,15 @@ pub(crate) fn columns(
     };
     let mut out = Vec::new();
     for (position, field) in fields.iter().enumerate() {
-        push_field(schema, mapping, "", &mut vec![position], &field.name, &field.ty, &mut out)?;
+        push_field(
+            schema,
+            mapping,
+            "",
+            &mut vec![position],
+            &field.name,
+            &field.ty,
+            &mut out,
+        )?;
     }
     Ok(out)
 }
@@ -145,7 +158,10 @@ fn push_field(
     };
     let ty = avro::effective(ty, name).map_err(KafkaError::Invalid)?;
     let refuse = |java: &str, what: &str| {
-        Err(not_ported(java, &format!("the Avro field {field_path}: {what}")))
+        Err(not_ported(
+            java,
+            &format!("the Avro field {field_path}: {what}"),
+        ))
     };
     let (column_type, cell) = match ty {
         Ty::Boolean => (ColumnType::Boolean, Cell::Boolean),
@@ -162,19 +178,29 @@ fn push_field(
                 "a union other than with null, which Java holds in a GenericRecord column",
             )
         }
-        Ty::Array(element) => {
-            let element = avro::effective(element, name).map_err(KafkaError::Invalid)?;
+        Ty::Array(raw_element) => {
+            let element = avro::effective(raw_element, name).map_err(KafkaError::Invalid)?;
             match element {
                 Ty::Int => (ColumnType::array(ColumnType::Int), Cell::IntArray),
-                Ty::Long(Some(stamp)) => {
-                    (ColumnType::array(ColumnType::Instant), Cell::InstantArray(stamp.nanos()))
+                // Behavior: GenericRecordChunkAdapter#makeFieldCopier, which reads the
+                // logical type of the element as declared, not of its union's branch
+                // (probes atm, arr).
+                Ty::Long(Some(_)) if matches!(**raw_element, Ty::Union(_)) => {
+                    return Err(invalid(&format!(
+                        "java.lang.IllegalArgumentException: Can not map field without a \
+                         logical type to Instant[]: field={field_path}"
+                    )))
                 }
+                Ty::Long(Some(stamp)) => (
+                    ColumnType::array(ColumnType::Instant),
+                    Cell::InstantArray(stamp.nanos()),
+                ),
                 Ty::Long(None) => (ColumnType::array(ColumnType::Long), Cell::LongArray),
                 Ty::Float => (ColumnType::array(ColumnType::Float), Cell::FloatArray),
                 Ty::Double => (ColumnType::array(ColumnType::Double), Cell::DoubleArray),
                 Ty::String => (ColumnType::array(ColumnType::String), Cell::StringArray),
                 Ty::Named(i) if matches!(schema.named[*i], Named::Enum { .. }) => {
-                    (ColumnType::array(ColumnType::String), Cell::StringArray)
+                    (ColumnType::array(ColumnType::String), Cell::EnumArray)
                 }
                 Ty::Boolean => {
                     return refuse(
@@ -213,7 +239,9 @@ fn push_field(
         }
         Ty::Named(_) => match named(schema, ty).expect("named") {
             Named::Enum { .. } => (ColumnType::String, Cell::String),
-            Named::Fixed { decimal: Some(_), .. } => {
+            Named::Fixed {
+                decimal: Some(_), ..
+            } => {
                 // Behavior: GenericRecordBigDecimalFieldCopier#copyField, which fails on
                 // the GenericFixed it is given.
                 return refuse(
@@ -243,7 +271,14 @@ fn push_field(
             }
         },
     };
-    out.push((column, column_type, AvroColumn { path: path.clone(), cell }));
+    out.push((
+        column,
+        column_type,
+        AvroColumn {
+            path: path.clone(),
+            cell,
+        },
+    ));
     Ok(())
 }
 
@@ -272,20 +307,34 @@ pub(crate) fn decode(
         return Err(format!("{SERIALIZATION}: Error deserializing schema ID"));
     }
     let id = i32::from_be_bytes([bytes[1], bytes[2], bytes[3], bytes[4]]);
-    let schema_id = format!("SchemaId{{schemaType='AVRO', id={id}, guid='null', messageIndexes=null}}");
-    let kind = if subject.ends_with("-key") { "key" } else { "value" };
-    let writer = side.registry.writer_schema(id, subject).map_err(|failure| {
-        format!(
-            "{SERIALIZATION}: Error retrieving Avro {kind} schema for id {schema_id}: {}",
-            failure.0
-        )
-    })?;
+    let schema_id =
+        format!("SchemaId{{schemaType='AVRO', id={id}, guid='null', messageIndexes=null}}");
+    let kind = if subject.ends_with("-key") {
+        "key"
+    } else {
+        "value"
+    };
+    let writer = side
+        .registry
+        .writer_schema(id, subject)
+        .map_err(|failure| {
+            format!(
+                "{SERIALIZATION}: Error retrieving Avro {kind} schema for id {schema_id}: {}",
+                failure.0
+            )
+        })?;
     let reader = &side.schema;
-    avro::read(&mut Decoder::new(&bytes[5..]), &writer, &writer.root, reader, &reader.root)
-        .map(Some)
-        .map_err(|cause| {
-            format!("{SERIALIZATION}: Error deserializing Avro message for id {schema_id}: {cause}")
-        })
+    avro::read(
+        &mut Decoder::new(&bytes[5..]),
+        &writer,
+        &writer.root,
+        reader,
+        &reader.root,
+    )
+    .map(Some)
+    .map_err(|cause| {
+        format!("{SERIALIZATION}: Error deserializing Avro message for id {schema_id}: {cause}")
+    })
 }
 
 fn at<'v>(value: Option<&'v Value>, path: &[usize]) -> Option<&'v Value> {
@@ -320,13 +369,22 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
     let item = |element: ColumnType| Field::new("", element.arrow_type(), true);
     Ok(match column.cell {
         Cell::Boolean => Arc::new(BooleanArray::from(
-            found.map(|v| match v { Some(Value::Boolean(b)) => Some(*b), _ => None }).collect::<Vec<_>>(),
+            found
+                .map(|v| match v {
+                    Some(Value::Boolean(b)) => Some(*b),
+                    _ => None,
+                })
+                .collect::<Vec<_>>(),
         )),
         Cell::Int => Arc::new(Int32Array::from(
-            found.map(|v| int(v).filter(|i| *i != i32::MIN)).collect::<Vec<_>>(),
+            found
+                .map(|v| int(v).filter(|i| *i != i32::MIN))
+                .collect::<Vec<_>>(),
         )),
         Cell::Long => Arc::new(Int64Array::from(
-            found.map(|v| long(v).filter(|l| *l != i64::MIN)).collect::<Vec<_>>(),
+            found
+                .map(|v| long(v).filter(|l| *l != i64::MIN))
+                .collect::<Vec<_>>(),
         )),
         // Java multiplies unless the value is its null, and the product wraps.
         Cell::Instant(nanos) => Arc::new(
@@ -343,10 +401,26 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
             .with_timezone("UTC"),
         ),
         Cell::Float => Arc::new(Float32Array::from(
-            found.map(|v| match v { Some(Value::Float(f)) => Some(*f), _ => None }.filter(|f| *f != -f32::MAX)).collect::<Vec<_>>(),
+            found
+                .map(|v| {
+                    match v {
+                        Some(Value::Float(f)) => Some(*f),
+                        _ => None,
+                    }
+                    .filter(|f| *f != -f32::MAX)
+                })
+                .collect::<Vec<_>>(),
         )),
         Cell::Double => Arc::new(Float64Array::from(
-            found.map(|v| match v { Some(Value::Double(f)) => Some(*f), _ => None }.filter(|f| *f != -f64::MAX)).collect::<Vec<_>>(),
+            found
+                .map(|v| {
+                    match v {
+                        Some(Value::Double(f)) => Some(*f),
+                        _ => None,
+                    }
+                    .filter(|f| *f != -f64::MAX)
+                })
+                .collect::<Vec<_>>(),
         )),
         Cell::String => Arc::new(StringArray::from(found.map(text).collect::<Vec<_>>())),
         Cell::Decimal(scale) => {
@@ -369,18 +443,26 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
                         ))
                     }
                     Some(Value::Bytes(bytes)) => cells.push(Some(big_decimal_cell(scale, bytes))),
-                    Some(_) => return Err(record_failure("java.lang.IllegalStateException: not a decimal")),
+                    Some(_) => {
+                        return Err(record_failure(
+                            "java.lang.IllegalStateException: not a decimal",
+                        ))
+                    }
                 }
             }
-            Arc::new(BinaryArray::from(cells.iter().map(|c| c.as_deref()).collect::<Vec<_>>()))
+            Arc::new(BinaryArray::from(
+                cells.iter().map(|c| c.as_deref()).collect::<Vec<_>>(),
+            ))
         }
         Cell::IntArray => {
-            let mut b = ListBuilder::new(Int32Builder::new()).with_field(Arc::new(item(ColumnType::Int)));
+            let mut b =
+                ListBuilder::new(Int32Builder::new()).with_field(Arc::new(item(ColumnType::Int)));
             for v in found {
                 match v {
                     Some(Value::Array(items)) => {
                         for i in items {
-                            b.values().append_option(int(Some(i)).filter(|i| *i != i32::MIN));
+                            b.values()
+                                .append_option(int(Some(i)).filter(|i| *i != i32::MIN));
                         }
                         b.append(true);
                     }
@@ -390,12 +472,14 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
             Arc::new(b.finish())
         }
         Cell::LongArray => {
-            let mut b = ListBuilder::new(Int64Builder::new()).with_field(Arc::new(item(ColumnType::Long)));
+            let mut b =
+                ListBuilder::new(Int64Builder::new()).with_field(Arc::new(item(ColumnType::Long)));
             for v in found {
                 match v {
                     Some(Value::Array(items)) => {
                         for i in items {
-                            b.values().append_option(long(Some(i)).filter(|l| *l != i64::MIN));
+                            b.values()
+                                .append_option(long(Some(i)).filter(|l| *l != i64::MIN));
                         }
                         b.append(true);
                     }
@@ -405,12 +489,16 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
             Arc::new(b.finish())
         }
         Cell::FloatArray => {
-            let mut b = ListBuilder::new(Float32Builder::new()).with_field(Arc::new(item(ColumnType::Float)));
+            let mut b = ListBuilder::new(Float32Builder::new())
+                .with_field(Arc::new(item(ColumnType::Float)));
             for v in found {
                 match v {
                     Some(Value::Array(items)) => {
                         for i in items {
-                            let f = match i { Value::Float(f) => Some(*f), _ => None };
+                            let f = match i {
+                                Value::Float(f) => Some(*f),
+                                _ => None,
+                            };
                             b.values().append_option(f.filter(|f| *f != -f32::MAX));
                         }
                         b.append(true);
@@ -421,12 +509,16 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
             Arc::new(b.finish())
         }
         Cell::DoubleArray => {
-            let mut b = ListBuilder::new(Float64Builder::new()).with_field(Arc::new(item(ColumnType::Double)));
+            let mut b = ListBuilder::new(Float64Builder::new())
+                .with_field(Arc::new(item(ColumnType::Double)));
             for v in found {
                 match v {
                     Some(Value::Array(items)) => {
                         for i in items {
-                            let f = match i { Value::Double(f) => Some(*f), _ => None };
+                            let f = match i {
+                                Value::Double(f) => Some(*f),
+                                _ => None,
+                            };
                             b.values().append_option(f.filter(|f| *f != -f64::MAX));
                         }
                         b.append(true);
@@ -436,16 +528,39 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
             }
             Arc::new(b.finish())
         }
+        // Behavior: GenericRecordArrayFieldCopier, which casts each symbol to CharSequence
+        // (probes ae, arr): an empty array is filled, any other fails the table.
+        Cell::EnumArray => {
+            let mut b = ListBuilder::new(StringBuilder::new())
+                .with_field(Arc::new(item(ColumnType::String)));
+            for v in found {
+                match v {
+                    Some(Value::Array(items)) if items.is_empty() => b.append(true),
+                    Some(Value::Array(_)) => {
+                        return Err(record_failure(
+                            "java.lang.ClassCastException: class \
+                             org.apache.avro.generic.GenericData$EnumSymbol cannot be cast to class \
+                             java.lang.CharSequence (org.apache.avro.generic.GenericData$EnumSymbol \
+                             is in unnamed module of loader 'app'; java.lang.CharSequence is in \
+                             module java.base of loader 'bootstrap')",
+                        ))
+                    }
+                    _ => b.append(false),
+                }
+            }
+            Arc::new(b.finish())
+        }
         Cell::StringArray => {
-            let mut b = ListBuilder::new(StringBuilder::new()).with_field(Arc::new(item(ColumnType::String)));
+            let mut b = ListBuilder::new(StringBuilder::new())
+                .with_field(Arc::new(item(ColumnType::String)));
             for v in found {
                 match v {
                     Some(Value::Array(items)) => {
                         for i in items {
                             match i {
-                                Value::String(s) | Value::Enum(s) => b.values().append_value(s),
+                                Value::String(s) => b.values().append_value(s),
                                 // Behavior: GenericRecordArrayFieldCopier, whose
-                                // `CharSequence::toString` is given the null.
+                                // `CharSequence::toString` is given the null (probe an).
                                 _ => return Err(record_failure("java.lang.NullPointerException")),
                             }
                         }
@@ -464,12 +579,14 @@ pub(crate) fn cells(column: &AvroColumn, values: &[Option<Value>]) -> Result<Arr
                     Some(Value::Array(items)) => {
                         for i in items {
                             // Behavior: GenericRecordInstantArrayFieldCopier#convertArray:
-                            // the product wraps, and only Java's null becomes a null.
+                            // the product wraps, and only Java's null becomes a null. No
+                            // element is null: an array of a union is refused in `columns`.
                             let Some(l) = long(Some(i)) else {
                                 return Err(record_failure("java.lang.NullPointerException"));
                             };
                             let nanos = l.wrapping_mul(nanos);
-                            b.values().append_option(Some(nanos).filter(|n| *n != i64::MIN));
+                            b.values()
+                                .append_option(Some(nanos).filter(|n| *n != i64::MIN));
                         }
                         b.append(true);
                     }

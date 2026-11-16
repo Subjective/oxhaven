@@ -49,8 +49,10 @@ impl Registry {
         ];
         for (name, java) in refused {
             if let Some(value) = property(config, name) {
-                if !(matches!(name, "avro.use.logical.type.converters" | "specific.avro.reader")
-                    && value == "false")
+                if !(matches!(
+                    name,
+                    "avro.use.logical.type.converters" | "specific.avro.reader"
+                ) && value == "false")
                 {
                     return Err(not_ported(java, &format!("{name}={value}")));
                 }
@@ -126,14 +128,18 @@ impl Registry {
         } else {
             let number = version.and_then(parse_java_int).ok_or_else(|| {
                 KafkaError::Invalid(match version {
-                    Some(version) => format!(
-                        "java.lang.NumberFormatException: For input string: \"{version}\""
-                    ),
-                    None => "java.lang.NumberFormatException: Cannot parse null string: null"
-                        .to_owned(),
+                    Some(version) => {
+                        format!("java.lang.NumberFormatException: For input string: \"{version}\"")
+                    }
+                    None => {
+                        "java.lang.NumberFormatException: Cannot parse null string: null".to_owned()
+                    }
                 })
             })?;
-            format!("/subjects/{}/versions/{number}?deleted=false", encode(subject))
+            format!(
+                "/subjects/{}/versions/{number}?deleted=false",
+                encode(subject)
+            )
         };
         let metadata = self.get(&path).map_err(unchecked)?;
         let id = metadata.get("id").and_then(Node::exact_long).unwrap_or(0);
@@ -187,7 +193,11 @@ fn schema_text(body: &Node) -> Result<String, CallFailure> {
     body.get("schema")
         .and_then(Node::as_str)
         .map(str::to_owned)
-        .ok_or_else(|| CallFailure(format!("{REST}: no schema in the answer; error code: 50005")))
+        .ok_or_else(|| {
+            CallFailure(format!(
+                "{REST}: no schema in the answer; error code: 50005"
+            ))
+        })
 }
 
 /// Behavior: java.lang.Integer#parseInt(String) for ASCII digits: an optional sign, then
@@ -224,14 +234,25 @@ fn answer(status: u16, body: &[u8]) -> Result<Node, CallFailure> {
     let node = json::parse(&text).ok();
     if (200..300).contains(&status) {
         return node.ok_or_else(|| {
-            CallFailure(format!("{REST}: the registry's answer is not JSON; error code: 50005"))
+            CallFailure(format!(
+                "{REST}: the registry's answer is not JSON; error code: 50005"
+            ))
         });
     }
-    let message = node.as_ref().and_then(|n| n.get("message")).and_then(Node::as_str);
-    let code = node.as_ref().and_then(|n| n.get("error_code")).and_then(Node::exact_long);
+    let message = node
+        .as_ref()
+        .and_then(|n| n.get("message"))
+        .and_then(Node::as_str);
+    let code = node
+        .as_ref()
+        .and_then(|n| n.get("error_code"))
+        .and_then(Node::exact_long);
     Err(CallFailure(match (message, code) {
         (Some(message), Some(code)) => format!("{REST}: {message}; error code: {code}"),
-        _ => format!("{REST}: Unexpected response from the registry: {text}; error code: {}", u32::from(status) * 100 + 5),
+        _ => format!(
+            "{REST}: Unexpected response from the registry: {text}; error code: {}",
+            u32::from(status) * 100 + 5
+        ),
     }))
 }
 
@@ -348,7 +369,10 @@ mod tests {
     fn urls_are_split_and_tls_is_refused_by_name() {
         let config = |url: &str| vec![(URL_PROPERTY.to_owned(), url.to_owned())];
         let registry = Registry::from_config(&config("http://h:1/, http://g/x/")).unwrap();
-        assert_eq!(registry.urls, [("h:1".into(), "".into()), ("g:80".into(), "/x".into())]);
+        assert_eq!(
+            registry.urls,
+            [("h:1".into(), "".into()), ("g:80".into(), "/x".into())]
+        );
         assert!(matches!(
             Registry::from_config(&config("https://h:1")),
             Err(KafkaError::NotPorted { .. })

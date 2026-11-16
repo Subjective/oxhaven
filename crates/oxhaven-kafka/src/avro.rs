@@ -151,12 +151,18 @@ pub(crate) fn parse(text: &str) -> Result<Schema, Failure> {
     }
     let rest = rest.trim_matches([' ', '\t', '\n', '\r']);
     if !rest.is_empty() {
-        return Err(format!("{PARSE}: dangling content after end of schema: {rest}"));
+        return Err(format!(
+            "{PARSE}: dangling content after end of schema: {rest}"
+        ));
     }
     let mut parser = SchemaParser::default();
     let root = parser.ty(&node, "")?;
     let mut schema = Schema {
-        named: parser.named.into_iter().map(|n| n.expect("defined")).collect(),
+        named: parser
+            .named
+            .into_iter()
+            .map(|n| n.expect("defined"))
+            .collect(),
         root,
     };
     // Names may be used before their definition: resolve them now.
@@ -203,10 +209,16 @@ struct SchemaParser {
     refs: Vec<Vec<String>>,
 }
 
-fn resolve_refs(ty: &mut Ty, refs: &[Vec<String>], names: &[(String, usize)]) -> Result<(), Failure> {
+fn resolve_refs(
+    ty: &mut Ty,
+    refs: &[Vec<String>],
+    names: &[(String, usize)],
+) -> Result<(), Failure> {
     match ty {
         Ty::Array(inner) | Ty::Map(inner) => resolve_refs(inner, refs, names),
-        Ty::Union(branches) => branches.iter_mut().try_for_each(|b| resolve_refs(b, refs, names)),
+        Ty::Union(branches) => branches
+            .iter_mut()
+            .try_for_each(|b| resolve_refs(b, refs, names)),
         Ty::Named(i) if *i >= REF_BASE => {
             let candidates = &refs[*i - REF_BASE];
             for candidate in candidates {
@@ -261,7 +273,10 @@ fn decimal(node: &Node, fixed_size: Option<usize>) -> Option<i32> {
     let int = |name: &str| -> Option<Option<i64>> {
         match node.get(name) {
             None => Some(None),
-            Some(value) => value.exact_long().filter(|v| i32::try_from(*v).is_ok()).map(Some),
+            Some(value) => value
+                .exact_long()
+                .filter(|v| i32::try_from(*v).is_ok())
+                .map(Some),
         }
     };
     let precision = int("precision")??;
@@ -313,7 +328,10 @@ impl SchemaParser {
     /// The full name and the namespace of a named type's definition.
     fn full_name(node: &Node, namespace: &str) -> Result<(String, String), Failure> {
         let Some(name) = node.get("name").and_then(Node::as_str) else {
-            return Err(format!("{PARSE}: No name in schema: {}", json::compact(node)));
+            return Err(format!(
+                "{PARSE}: No name in schema: {}",
+                json::compact(node)
+            ));
         };
         let space = match node.get("namespace").and_then(Node::as_str) {
             Some(space) => space.to_owned(),
@@ -338,9 +356,7 @@ impl SchemaParser {
     }
 
     fn check_new(&self, full: &str) -> Result<(), Failure> {
-        if primitive(full).is_some()
-            || self.names.iter().any(|(n, _)| n == full)
-        {
+        if primitive(full).is_some() || self.names.iter().any(|(n, _)| n == full) {
             return Err(format!("{PARSE}: Can't redefine: {full}"));
         }
         Ok(())
@@ -361,11 +377,20 @@ impl SchemaParser {
                         return Err(format!("{RUNTIME}: Nested union: {}", json::compact(node)));
                     }
                     let key = match (&ty, branch) {
-                        (Ty::Named(i), _) if *i < REF_BASE => {
-                            self.named[*i].as_ref().map_or_else(String::new, |n| n.full_name().to_owned())
+                        (Ty::Named(i), _) if *i < REF_BASE => self.named[*i]
+                            .as_ref()
+                            .map_or_else(String::new, |n| n.full_name().to_owned()),
+                        (Ty::Named(_), Node::Text(_)) => {
+                            branch.as_str().unwrap_or_default().to_owned()
                         }
-                        (Ty::Named(_), Node::Text(_)) => branch.as_str().unwrap_or_default().to_owned(),
-                        (other, _) => type_word(&Schema { named: vec![], root: Ty::Null }, other).to_owned(),
+                        (other, _) => type_word(
+                            &Schema {
+                                named: vec![],
+                                root: Ty::Null,
+                            },
+                            other,
+                        )
+                        .to_owned(),
                     };
                     if seen.contains(&key) {
                         return Err(format!("{RUNTIME}: Duplicate in union:{key}"));
@@ -376,17 +401,18 @@ impl SchemaParser {
                 Ok(Ty::Union(types))
             }
             Node::Object(_) => self.complex(node, namespace),
-            _ => Err(format!("{PARSE}: Schema not yet supported: {}", json::compact(node))),
+            _ => Err(format!(
+                "{PARSE}: Schema not yet supported: {}",
+                json::compact(node)
+            )),
         }
     }
 
     fn complex(&mut self, node: &Node, namespace: &str) -> Result<Ty, Failure> {
-        let Some(type_node) = node.get("type") else {
+        // `{"type": {...}}` and `{"type": [...]}` are refused too (probes s_nested_type,
+        // s_top_nested, s_type_array).
+        let Some(kind) = node.get("type").and_then(Node::as_str) else {
             return Err(format!("{PARSE}: No type: {}", json::compact(node)));
-        };
-        let Some(kind) = type_node.as_str() else {
-            // `{"type": {...}}` and `{"type": [...]}`: the inner schema.
-            return self.ty(type_node, namespace);
         };
         if let Some(ty) = primitive(kind) {
             let logical = node.get("logicalType").and_then(Node::as_str);
@@ -410,19 +436,35 @@ impl SchemaParser {
                     .and_then(Node::exact_long)
                     .filter(|size| (0..=i32::MAX as i64).contains(size));
                 let Some(size) = size else {
-                    return Err(format!("{PARSE}: Invalid or no size: {}", json::compact(node)));
+                    return Err(format!(
+                        "{PARSE}: Invalid or no size: {}",
+                        json::compact(node)
+                    ));
                 };
                 self.check_new(&full)?;
                 let size = size as usize;
                 let decimal = decimal(node, Some(size));
-                Ok(Ty::Named(self.define(&full, Named::Fixed { name: full.clone(), size, decimal })))
+                Ok(Ty::Named(self.define(
+                    &full,
+                    Named::Fixed {
+                        name: full.clone(),
+                        size,
+                        decimal,
+                    },
+                )))
             }
             "array" => match node.get("items") {
-                None => Err(format!("{PARSE}: Array has no items type: {}", json::compact(node))),
+                None => Err(format!(
+                    "{PARSE}: Array has no items type: {}",
+                    json::compact(node)
+                )),
                 Some(items) => Ok(Ty::Array(Box::new(self.ty(items, namespace)?))),
             },
             "map" => match node.get("values") {
-                None => Err(format!("{PARSE}: Map has no values type: {}", json::compact(node))),
+                None => Err(format!(
+                    "{PARSE}: Map has no values type: {}",
+                    json::compact(node)
+                )),
                 Some(values) => Ok(Ty::Map(Box::new(self.ty(values, namespace)?))),
             },
             other => Ok(self.reference(other, namespace)),
@@ -432,7 +474,10 @@ impl SchemaParser {
     fn enumeration(&mut self, node: &Node, namespace: &str) -> Result<Ty, Failure> {
         let (full, _) = Self::full_name(node, namespace)?;
         let Some(Node::Array(items)) = node.get("symbols") else {
-            return Err(format!("{PARSE}: Enum has no symbols: {}", json::compact(node)));
+            return Err(format!(
+                "{PARSE}: Enum has no symbols: {}",
+                json::compact(node)
+            ));
         };
         let mut symbols: Vec<String> = Vec::new();
         for item in items {
@@ -443,7 +488,10 @@ impl SchemaParser {
             }
             symbols.push(symbol);
         }
-        let default = node.get("default").and_then(Node::as_str).map(str::to_owned);
+        let default = node
+            .get("default")
+            .and_then(Node::as_str)
+            .map(str::to_owned);
         if let Some(default) = &default {
             if !symbols.contains(default) {
                 return Err(format!(
@@ -453,17 +501,33 @@ impl SchemaParser {
             }
         }
         self.check_new(&full)?;
-        Ok(Ty::Named(self.define(&full, Named::Enum { name: full.clone(), symbols, default })))
+        Ok(Ty::Named(self.define(
+            &full,
+            Named::Enum {
+                name: full.clone(),
+                symbols,
+                default,
+            },
+        )))
     }
 
     fn record(&mut self, node: &Node, namespace: &str) -> Result<Ty, Failure> {
         let (full, space) = Self::full_name(node, namespace)?;
         self.check_new(&full)?;
         let Some(Node::Array(items)) = node.get("fields") else {
-            return Err(format!("{PARSE}: Record has no fields: {}", json::compact(node)));
+            return Err(format!(
+                "{PARSE}: Record has no fields: {}",
+                json::compact(node)
+            ));
         };
         // Defined before its fields, which may name it.
-        let index = self.define(&full, Named::Record { name: full.clone(), fields: Vec::new() });
+        let index = self.define(
+            &full,
+            Named::Record {
+                name: full.clone(),
+                fields: Vec::new(),
+            },
+        );
         let mut fields: Vec<Field> = Vec::new();
         for item in items {
             let Some(name) = item.get("name").and_then(Node::as_str) else {
@@ -483,8 +547,14 @@ impl SchemaParser {
                             Some(Named::Fixed { .. }) => "FIXED".into(),
                         },
                         Ty::Named(_) => "RECORD".into(),
-                        other => type_word(&Schema { named: vec![], root: Ty::Null }, other)
-                            .to_uppercase(),
+                        other => type_word(
+                            &Schema {
+                                named: vec![],
+                                root: Ty::Null,
+                            },
+                            other,
+                        )
+                        .to_uppercase(),
                     }
                 };
                 return Err(format!(
@@ -496,13 +566,20 @@ impl SchemaParser {
                 ));
             }
             let aliases = match item.get("aliases") {
-                Some(Node::Array(names)) => {
-                    names.iter().filter_map(Node::as_str).map(str::to_owned).collect()
-                }
+                Some(Node::Array(names)) => names
+                    .iter()
+                    .filter_map(Node::as_str)
+                    .map(str::to_owned)
+                    .collect(),
                 _ => Vec::new(),
             };
             let default = item.get("default").cloned();
-            fields.push(Field { name: name.to_owned(), aliases, ty, default });
+            fields.push(Field {
+                name: name.to_owned(),
+                aliases,
+                ty,
+                default,
+            });
         }
         self.named[index] = Some(Named::Record { name: full, fields });
         Ok(Ty::Named(index))
@@ -513,8 +590,14 @@ impl SchemaParser {
 fn schema_json(schema: &Schema, ty: &Ty) -> String {
     match ty {
         Ty::Named(i) => format!("\"{}\"", schema.named[*i].full_name()),
-        Ty::Array(inner) => format!("{{\"type\":\"array\",\"items\":{}}}", schema_json(schema, inner)),
-        Ty::Map(inner) => format!("{{\"type\":\"map\",\"values\":{}}}", schema_json(schema, inner)),
+        Ty::Array(inner) => format!(
+            "{{\"type\":\"array\",\"items\":{}}}",
+            schema_json(schema, inner)
+        ),
+        Ty::Map(inner) => format!(
+            "{{\"type\":\"map\",\"values\":{}}}",
+            schema_json(schema, inner)
+        ),
         Ty::Union(branches) => {
             let parts: Vec<String> = branches.iter().map(|b| schema_json(schema, b)).collect();
             format!("[{}]", parts.join(","))
@@ -575,6 +658,36 @@ pub(crate) enum Value {
     Record(Vec<Value>),
 }
 
+/// UTF-8 decoded with a U+FFFD for each malformed sequence. This is Rust's lossy decoding
+/// except for an encoded surrogate (`ED` then `A0`..`BF`), which Java takes as one
+/// sequence: one U+FFFD for its three bytes, or for its first two when the third is not
+/// a continuation byte (probes utf_surr, utf_surr_lo, utf_surr_pair, utf_ed_x, utf_ed_end).
+///
+/// Behavior: org.apache.avro.util.Utf8#toString, java.lang.String(byte[], UTF_8)
+pub(crate) fn java_utf8(bytes: &[u8]) -> String {
+    let surrogate = |at: usize| bytes[at] == 0xED && matches!(bytes.get(at + 1), Some(0xA0..=0xBF));
+    let mut out = String::with_capacity(bytes.len());
+    let mut at = 0;
+    while at < bytes.len() {
+        if surrogate(at) {
+            out.push('\u{FFFD}');
+            at += if matches!(bytes.get(at + 2), Some(0x80..=0xBF)) {
+                3
+            } else {
+                2
+            };
+            continue;
+        }
+        // `ED` is never a continuation byte, so cutting before it ends no sequence early.
+        let end = (at + 1..bytes.len())
+            .find(|&i| surrogate(i))
+            .unwrap_or(bytes.len());
+        out.push_str(&String::from_utf8_lossy(&bytes[at..end]));
+        at = end;
+    }
+    out
+}
+
 /// Reads the binary encoding.
 ///
 /// Behavior: org.apache.avro.io.BinaryDecoder
@@ -597,7 +710,10 @@ impl<'a> Decoder<'a> {
     }
 
     fn take(&mut self, n: usize) -> Result<&'a [u8], Failure> {
-        let end = self.at.checked_add(n).filter(|end| *end <= self.bytes.len());
+        let end = self
+            .at
+            .checked_add(n)
+            .filter(|end| *end <= self.bytes.len());
         let end = end.ok_or_else(|| EOF.to_owned())?;
         let taken = &self.bytes[self.at..end];
         self.at = end;
@@ -649,7 +765,9 @@ impl<'a> Decoder<'a> {
     fn bytes(&mut self) -> Result<&'a [u8], Failure> {
         let length = self.long()?;
         if length < 0 {
-            return Err(format!("{RUNTIME}: Malformed data. Length is negative: {length}"));
+            return Err(format!(
+                "{RUNTIME}: Malformed data. Length is negative: {length}"
+            ));
         }
         let length = usize::try_from(length).map_err(|_| EOF.to_owned())?;
         self.take(length)
@@ -714,9 +832,7 @@ pub(crate) fn read(
         (Ty::Float, Ty::Double) => Ok(Value::Double(f64::from(d.float()?))),
         (Ty::Double, Ty::Double) => Ok(Value::Double(d.double()?)),
         (Ty::Bytes(_) | Ty::String, Ty::Bytes(_)) => Ok(Value::Bytes(d.bytes()?.to_vec())),
-        (Ty::Bytes(_) | Ty::String, Ty::String) => {
-            Ok(Value::String(String::from_utf8_lossy(d.bytes()?).into_owned()))
-        }
+        (Ty::Bytes(_) | Ty::String, Ty::String) => Ok(Value::String(java_utf8(d.bytes()?))),
         (Ty::Array(wi), Ty::Array(ri)) => {
             let mut items = Vec::new();
             loop {
@@ -738,7 +854,7 @@ pub(crate) fn read(
                     break;
                 }
                 for _ in 0..count {
-                    let key = String::from_utf8_lossy(d.bytes()?).into_owned();
+                    let key = java_utf8(d.bytes()?);
                     entries.push((key, read(d, writer, wi, reader, ri)?));
                 }
             }
@@ -763,15 +879,31 @@ fn read_named(
     r: &Ty,
 ) -> Result<Value, Failure> {
     match (&writer.named[wi], &reader.named[ri]) {
-        (Named::Fixed { name: wn, size: ws, .. }, Named::Fixed { name: rn, size: rs, .. }) => {
+        (
+            Named::Fixed {
+                name: wn, size: ws, ..
+            },
+            Named::Fixed {
+                name: rn, size: rs, ..
+            },
+        ) => {
             if wn != rn || ws != rs {
                 return Err(mismatch(writer, w, reader, r));
             }
             Ok(Value::Fixed(d.take(*ws)?.to_vec()))
         }
         (
-            Named::Enum { name: wn, symbols: wsym, .. },
-            Named::Enum { name: rn, symbols: rsym, default, .. },
+            Named::Enum {
+                name: wn,
+                symbols: wsym,
+                ..
+            },
+            Named::Enum {
+                name: rn,
+                symbols: rsym,
+                default,
+                ..
+            },
         ) => {
             if wn != rn {
                 return Err(mismatch(writer, w, reader, r));
@@ -786,14 +918,24 @@ fn read_named(
             }
         }
         (
-            Named::Record { name: wn, fields: wf },
-            Named::Record { name: rn, fields: rf },
+            Named::Record {
+                name: wn,
+                fields: wf,
+            },
+            Named::Record {
+                name: rn,
+                fields: rf,
+            },
         ) => {
             // A reader's field without a writer's field needs a default.
             let source = |field: &Field| {
-                wf.iter().position(|w| w.name == field.name || field.aliases.contains(&w.name))
+                wf.iter()
+                    .position(|w| w.name == field.name || field.aliases.contains(&w.name))
             };
-            if let Some(missing) = rf.iter().find(|f| source(f).is_none() && f.default.is_none()) {
+            if let Some(missing) = rf
+                .iter()
+                .find(|f| source(f).is_none() && f.default.is_none())
+            {
                 return Err(format!(
                     "{TYPE}: Found {wn}, expecting {rn}, missing required field {}",
                     missing.name
@@ -807,7 +949,10 @@ fn read_named(
                         let value = read(d, writer, &field.ty, reader, &rf[t].ty).map_err(|e| {
                             match e.strip_prefix(&format!("{TYPE}: Found ")) {
                                 Some(rest) if !rest.contains(", missing required field") => {
-                                    format!("{TYPE}: Field \"{}\" content mismatch: Found {rest}", rf[t].name)
+                                    format!(
+                                        "{TYPE}: Field \"{}\" content mismatch: Found {rest}",
+                                        rf[t].name
+                                    )
                                 }
                                 _ => e,
                             }
@@ -986,7 +1131,9 @@ fn resolvable(
     seen: &mut Vec<(usize, usize)>,
 ) -> bool {
     match (w, r) {
-        (Ty::Union(branches), _) => branches.iter().any(|b| resolvable(writer, b, reader, r, seen)),
+        (Ty::Union(branches), _) => branches
+            .iter()
+            .any(|b| resolvable(writer, b, reader, r, seen)),
         (_, Ty::Union(branches)) => match best_branch(writer, w, reader, branches) {
             Some(j) => resolvable(writer, w, reader, &branches[j], seen),
             None => false,
@@ -1002,30 +1149,40 @@ fn resolvable(
             match (&writer.named[*wi], &reader.named[*ri]) {
                 (Named::Record { fields: wf, .. }, Named::Record { fields: rf, .. }) => {
                     rf.iter().all(|f| {
-                        match wf.iter().find(|w| w.name == f.name || f.aliases.contains(&w.name)) {
+                        match wf
+                            .iter()
+                            .find(|w| w.name == f.name || f.aliases.contains(&w.name))
+                        {
                             Some(wfield) => resolvable(writer, &wfield.ty, reader, &f.ty, seen),
                             None => f.default.is_some(),
                         }
                     })
                 }
                 (Named::Enum { name: a, .. }, Named::Enum { name: b, .. }) => a == b,
-                (Named::Fixed { name: a, size: x, .. }, Named::Fixed { name: b, size: y, .. }) => {
-                    a == b && x == y
-                }
+                (
+                    Named::Fixed {
+                        name: a, size: x, ..
+                    },
+                    Named::Fixed {
+                        name: b, size: y, ..
+                    },
+                ) => a == b && x == y,
                 _ => false,
             }
         }
-        _ => matches!(
-            (kind(writer, w), kind(reader, r)),
-            (a, b) if a == b
-        ) || matches!(
-            (kind(writer, w), kind(reader, r)),
-            (Kind::Int, Kind::Long | Kind::Float | Kind::Double)
-                | (Kind::Long, Kind::Float | Kind::Double)
-                | (Kind::Float, Kind::Double)
-                | (Kind::String, Kind::Bytes)
-                | (Kind::Bytes, Kind::String)
-        ),
+        _ => {
+            matches!(
+                (kind(writer, w), kind(reader, r)),
+                (a, b) if a == b
+            ) || matches!(
+                (kind(writer, w), kind(reader, r)),
+                (Kind::Int, Kind::Long | Kind::Float | Kind::Double)
+                    | (Kind::Long, Kind::Float | Kind::Double)
+                    | (Kind::Float, Kind::Double)
+                    | (Kind::String, Kind::Bytes)
+                    | (Kind::Bytes, Kind::String)
+            )
+        }
     }
 }
 
@@ -1034,7 +1191,13 @@ fn resolvable(
 ///
 /// Behavior: org.apache.avro.io.parsing.ResolvingGrammarGenerator#encode
 fn default_value(schema: &Schema, ty: &Ty, node: &Node) -> Result<Value, Failure> {
-    let bad = || format!("{TYPE}: Invalid default {} for {}", json::compact(node), schema_json(schema, ty));
+    let bad = || {
+        format!(
+            "{TYPE}: Invalid default {} for {}",
+            json::compact(node),
+            schema_json(schema, ty)
+        )
+    };
     Ok(match ty {
         Ty::Null => match node {
             Node::Null => Value::Null,
@@ -1046,16 +1209,31 @@ fn default_value(schema: &Schema, ty: &Ty, node: &Node) -> Result<Value, Failure
         },
         Ty::Int => Value::Int(node.exact_long().ok_or_else(bad)? as i32),
         Ty::Long(_) => Value::Long(node.exact_long().ok_or_else(bad)?),
-        Ty::Float => Value::Float(node.as_double().filter(|_| node.is_number()).ok_or_else(bad)? as f32),
-        Ty::Double => Value::Double(node.as_double().filter(|_| node.is_number()).ok_or_else(bad)?),
+        Ty::Float => Value::Float(
+            node.as_double()
+                .filter(|_| node.is_number())
+                .ok_or_else(bad)? as f32,
+        ),
+        Ty::Double => Value::Double(
+            node.as_double()
+                .filter(|_| node.is_number())
+                .ok_or_else(bad)?,
+        ),
         // Bytes in a default are the characters' low eight bits.
         Ty::Bytes(_) => Value::Bytes(
-            node.as_str().ok_or_else(bad)?.chars().map(|c| c as u32 as u8).collect(),
+            node.as_str()
+                .ok_or_else(bad)?
+                .chars()
+                .map(|c| c as u32 as u8)
+                .collect(),
         ),
         Ty::String => Value::String(node.as_str().ok_or_else(bad)?.to_owned()),
         Ty::Array(inner) => match node {
             Node::Array(items) => Value::Array(
-                items.iter().map(|i| default_value(schema, inner, i)).collect::<Result<_, _>>()?,
+                items
+                    .iter()
+                    .map(|i| default_value(schema, inner, i))
+                    .collect::<Result<_, _>>()?,
             ),
             _ => return Err(bad()),
         },
@@ -1075,7 +1253,11 @@ fn default_value(schema: &Schema, ty: &Ty, node: &Node) -> Result<Value, Failure
         Ty::Named(i) => match &schema.named[*i] {
             Named::Enum { .. } => Value::Enum(node.as_str().ok_or_else(bad)?.to_owned()),
             Named::Fixed { .. } => Value::Fixed(
-                node.as_str().ok_or_else(bad)?.chars().map(|c| c as u32 as u8).collect(),
+                node.as_str()
+                    .ok_or_else(bad)?
+                    .chars()
+                    .map(|c| c as u32 as u8)
+                    .collect(),
             ),
             Named::Record { fields, .. } => {
                 let mut out = Vec::new();
@@ -1098,9 +1280,9 @@ fn default_value(schema: &Schema, ty: &Ty, node: &Node) -> Result<Value, Failure
 /// Behavior: io.deephaven.kafka.KafkaSchemaUtils#getEffectiveSchema
 pub(crate) fn effective<'a>(ty: &'a Ty, field: &str) -> Result<&'a Ty, Failure> {
     match ty {
-        Ty::Union(branches) if branches.is_empty() => {
-            Err(format!("java.lang.IllegalArgumentException: empty union {field}"))
-        }
+        Ty::Union(branches) if branches.is_empty() => Err(format!(
+            "java.lang.IllegalArgumentException: empty union {field}"
+        )),
         Ty::Union(branches) if branches.len() == 2 => Ok(match (&branches[0], &branches[1]) {
             (other, Ty::Null) => other,
             (Ty::Null, other) => other,
@@ -1137,6 +1319,38 @@ mod tests {
         read(&mut Decoder::new(bytes), &w, &w.root, &r, &r.root)
     }
 
+    /// The reference's strings for these bytes (probes utf_*).
+    #[test]
+    fn malformed_utf8_is_replaced_as_java_replaces_it() {
+        const R: char = '\u{FFFD}';
+        for (bytes, java) in [
+            (&b"\xed\xa0\x80"[..], format!("{R}")),
+            (b"\xed\xb0\x80", format!("{R}")),
+            (b"\xed\xa0\xbd\xed\xb8\x80", format!("{R}{R}")),
+            (b"\xed\xa0x", format!("{R}x")),
+            (b"\xed\xa0", format!("{R}")),
+            (b"a\xed\xa0\x80b", format!("a{R}b")),
+            (b"\xc0\xaf", format!("{R}{R}")),
+            (b"\xc1\xbf", format!("{R}{R}")),
+            (b"\xe0\x80\x80", format!("{R}{R}{R}")),
+            (b"\xe0\xa0", format!("{R}")),
+            (b"\xe0\x9f", format!("{R}{R}")),
+            (b"a\xe2\x82", format!("a{R}")),
+            (b"\xe1\x80x", format!("{R}x")),
+            (b"\xf0\x80\x80\x80", format!("{R}{R}{R}{R}")),
+            (b"\xf4\x90\x80\x80", format!("{R}{R}{R}{R}")),
+            (b"\xf5\x80\x80\x80", format!("{R}{R}{R}{R}")),
+            (b"\xf0\x9f\x98", format!("{R}")),
+            (b"\xf1\x80\x80x", format!("{R}x")),
+            (b"\xf8\x88\x80\x80\x80", format!("{R}{R}{R}{R}{R}")),
+            (b"\x80a", format!("{R}a")),
+            (b"\xc2", format!("{R}")),
+            (b"\xf0\x9f\x98\x80", "\u{1F600}".to_owned()),
+        ] {
+            assert_eq!(java_utf8(bytes), java, "{bytes:x?}");
+        }
+    }
+
     /// The texts are those the reference raised for the same schemas (probes s_*).
     #[test]
     fn schemas_java_refuses_are_refused_with_its_words() {
@@ -1154,10 +1368,14 @@ mod tests {
             (&record(r#"{"name": "f", "type": {"type": "fixed", "name": "F"}}"#), "org.apache.avro.SchemaParseException: Invalid or no size: {\"type\":\"fixed\",\"name\":\"F\"}"),
             (&record(r#"{"name": "a", "type": {"type": "record", "name": "R", "fields": []}}"#), "org.apache.avro.SchemaParseException: Can't redefine: R"),
             (&record(r#"{"name": "a"}"#), "org.apache.avro.SchemaParseException: No field type: {\"name\":\"a\"}"),
+            (&record(r#"{"name": "a", "type": {"type": {"type": "int"}}}"#), "org.apache.avro.SchemaParseException: No type: {\"type\":{\"type\":\"int\"}}"),
+            (r#"{"type": {"type": "record", "name": "R", "fields": []}}"#, "org.apache.avro.SchemaParseException: No type: {\"type\":{\"type\":\"record\",\"name\":\"R\",\"fields\":[]}}"),
         ] {
             assert_eq!(parse(text).unwrap_err(), error, "{text}");
         }
-        assert!(parse("{").unwrap_err().starts_with("org.apache.avro.SchemaParseException: "));
+        assert!(parse("{")
+            .unwrap_err()
+            .starts_with("org.apache.avro.SchemaParseException: "));
     }
 
     /// Accepted by the reference too (probes s_empty_fields, s_spaces, s_null_default_bad,
@@ -1170,7 +1388,9 @@ mod tests {
             record(r#"{"name": "a", "type": ["int", "null"], "default": null}"#),
             record(r#"{"name": "a", "type": {"type": "long", "logicalType": "foo"}}"#),
             record(r#"{"name": "a", "type": []}"#),
-            record(r#"{"name": "a", "type": "S"}, {"name": "b", "type": {"type": "record", "name": "S", "fields": []}}"#),
+            record(
+                r#"{"name": "a", "type": "S"}, {"name": "b", "type": {"type": "record", "name": "S", "fields": []}}"#,
+            ),
         ] {
             assert!(parse(&text).is_ok(), "{text}");
         }
@@ -1194,9 +1414,18 @@ mod tests {
         assert_eq!(fields[3].ty, Ty::Bytes(None));
         // Two bytes hold four digits at most.
         let Ty::Named(e) = fields[4].ty else { panic!() };
-        assert!(matches!(schema.named[e], Named::Fixed { decimal: None, .. }));
+        assert!(matches!(
+            schema.named[e],
+            Named::Fixed { decimal: None, .. }
+        ));
         let Ty::Named(f) = fields[5].ty else { panic!() };
-        assert!(matches!(schema.named[f], Named::Fixed { decimal: Some(0), .. }));
+        assert!(matches!(
+            schema.named[f],
+            Named::Fixed {
+                decimal: Some(0),
+                ..
+            }
+        ));
     }
 
     /// Probes reg_v1 and ev_json_v2: a newer writer, an older reader, and the reverse.
@@ -1277,9 +1506,18 @@ mod tests {
     #[test]
     fn malformed_data_fails() {
         let s = record(r#"{"name": "s", "type": "string"}"#);
-        assert_eq!(read_as(&s, &s, &[1]).unwrap_err(), "org.apache.avro.AvroRuntimeException: Malformed data. Length is negative: -1");
-        assert_eq!(read_as(&s, &s, &[6, b'a']).unwrap_err(), "java.io.EOFException");
-        assert_eq!(read_as(&s, &s, &[0xff; 11]).unwrap_err(), "org.apache.avro.AvroRuntimeException: Invalid long encoding");
+        assert_eq!(
+            read_as(&s, &s, &[1]).unwrap_err(),
+            "org.apache.avro.AvroRuntimeException: Malformed data. Length is negative: -1"
+        );
+        assert_eq!(
+            read_as(&s, &s, &[6, b'a']).unwrap_err(),
+            "java.io.EOFException"
+        );
+        assert_eq!(
+            read_as(&s, &s, &[0xff; 11]).unwrap_err(),
+            "org.apache.avro.AvroRuntimeException: Invalid long encoding"
+        );
         // Bytes that are not UTF-8 become U+FFFD, as `Utf8#toString` makes them.
         assert_eq!(
             read_as(&s, &s, &[6, b'a', 0xff, b'b']).unwrap(),
