@@ -14,6 +14,10 @@ arrow = "60.1.0"
 arrow-flight = "60.1.0"
 base64 = "0.22.1"
 bytes = "1"
+# Dates for time literals with a time zone; arrow already brings chrono.
+chrono = { version = "0.4", default-features = false }
+# The time zone rules of the IANA database, compiled in: Java carries its own copy too.
+chrono-tz = { version = "0.10", default-features = false }
 flatbuffers = "25.12.19"
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 h2 = "0.4"

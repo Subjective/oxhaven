@@ -32,6 +32,7 @@ use super::producer::{nullable_columns, Job, Listener, Producer, Scheduler, Subs
 use super::snapshot::snapshot_request_messages;
 use super::writer::{batch_options, WireOptions};
 use crate::flight::{schema_message, wire_schema};
+use crate::hierarchical::{view_of, ViewOf, ViewSubscription};
 use crate::session::{ExportError, ExportValue, OnCloseId, Session, TicketRouter};
 use crate::table::support::internal_status;
 
@@ -194,11 +195,19 @@ enum HalfClosed {
     Closed,
 }
 
+/// What a subscription call is subscribed to.
+enum Subscribed {
+    /// Behavior: `io.deephaven.server.barrage.TableExchangeMarshaller.Subscription`
+    Table(Arc<Producer>, SubscriptionId),
+    /// Behavior: `io.deephaven.server.hierarchicaltable.HierarchicalTableViewExchangeMarshaller.Subscription`
+    View(Arc<ViewSubscription>),
+}
+
 #[derive(Default)]
 struct ExchangeState {
     closed: bool,
     kind: Option<Kind>,
-    subscription: Option<(Arc<Producer>, SubscriptionId)>,
+    subscription: Option<Subscribed>,
     /// The requests received while the table of the first one is not exported yet; the
     /// first one is at the front.
     pre_export: Option<VecDeque<TableRequest>>,
@@ -287,8 +296,8 @@ impl Exchange {
         let request = TableRequest::subscription(payload.bytes())?;
         let ticket = {
             let mut state = lock(&self.state);
-            if let Some((producer, id)) = &state.subscription {
-                return apply(producer, *id, request);
+            if let Some(subscribed) = &state.subscription {
+                return apply(subscribed, request);
             }
             if state.closed {
                 return Ok(());
@@ -341,6 +350,9 @@ impl Exchange {
         let Some(request) = request else {
             return Ok(ExportValue::unit());
         };
+        if let Some(view) = view_of(value) {
+            return self.subscribe_to_view(view, request);
+        }
         let Some(table) = value.as_table() else {
             self.listener.on_error(Status::failed_precondition(format!(
                 "Ticket ({log_name}) is not a subscribable table."
@@ -367,10 +379,42 @@ impl Exchange {
             producer.remove_subscription(id);
             return Ok(ExportValue::unit());
         }
-        state.subscription = Some((producer.clone(), id));
+        let subscribed = Subscribed::Table(producer, id);
         for request in waiting {
-            apply(&producer, id, request)?;
+            apply(&subscribed, request)?;
         }
+        state.subscription = Some(subscribed);
+        Ok(ExportValue::unit())
+    }
+
+    /// Subscribes to a view of a hierarchical table, then applies the requests that
+    /// arrived meanwhile.
+    ///
+    /// Behavior: `io.deephaven.server.hierarchicaltable.HierarchicalTableViewExchangeMarshaller#subscribe`
+    fn subscribe_to_view(
+        &self,
+        view: &Arc<ViewOf>,
+        request: TableRequest,
+    ) -> Result<ExportValue, ExportError> {
+        let subscription = ViewSubscription::subscribe(
+            self.barrage.scheduler.clone(),
+            view.clone(),
+            self.listener.clone(),
+            request.options,
+            request.min_update_interval_ms,
+        );
+        let subscribed = Subscribed::View(subscription.clone());
+        let mut state = lock(&self.state);
+        let waiting = state.pre_export.take().unwrap_or_default();
+        if state.closed {
+            subscription.completed();
+            return Ok(ExportValue::unit());
+        }
+        apply(&subscribed, request)?;
+        for request in waiting {
+            apply(&subscribed, request)?;
+        }
+        state.subscription = Some(subscribed);
         Ok(ExportValue::unit())
     }
 
@@ -411,6 +455,14 @@ impl Exchange {
                 }
             })
             .submit(move |inputs| {
+                if view_of(&inputs[0]).is_some() {
+                    // Behavior: HierarchicalTableViewExchangeMarshaller#snapshot
+                    return Err(Status::failed_precondition(format!(
+                        "Ticket ({log_name}) is a HierarchicalTableView and does not support \
+                         snapshots."
+                    ))
+                    .into());
+                }
                 let Some(table) = inputs[0].as_table() else {
                     return Err(Status::failed_precondition(format!(
                         "Ticket ({log_name}) is has no associated exchange marshaller."
@@ -450,7 +502,8 @@ impl Exchange {
                 state.pre_export = None;
                 match state.subscription.take() {
                     // the producer completes the stream
-                    Some((producer, id)) => producer.remove_subscription(id),
+                    Some(Subscribed::Table(producer, id)) => producer.remove_subscription(id),
+                    Some(Subscribed::View(subscription)) => subscription.completed(),
                     None => self.listener.on_completed(),
                 }
             }
@@ -480,8 +533,19 @@ impl Exchange {
 }
 
 /// Behavior: `BarrageSubscriptionRequestHandler#apply`,
-/// `TableExchangeMarshaller.Subscription#update`
-fn apply(producer: &Producer, id: SubscriptionId, request: TableRequest) -> Result<(), Status> {
+/// `TableExchangeMarshaller.Subscription#update`,
+/// `HierarchicalTableViewExchangeMarshaller.Subscription#update`
+fn apply(subscribed: &Subscribed, request: TableRequest) -> Result<(), Status> {
+    let (producer, id) = match subscribed {
+        Subscribed::Table(producer, id) => (producer, *id),
+        Subscribed::View(subscription) => {
+            return subscription.set_viewport(
+                request.columns,
+                request.viewport,
+                request.reverse_viewport,
+            );
+        }
+    };
     let found = producer.update_subscription(
         id,
         request.viewport,

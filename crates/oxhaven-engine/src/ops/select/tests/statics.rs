@@ -464,7 +464,7 @@ fn requests_that_do_not_compile_are_errors() {
         SelectError::Formula { .. }
     ));
     // The compiler's refusal of what it does not support yet comes through as it is.
-    for unsupported in ["X = now()", "X = cbrt(A)"] {
+    for unsupported in ["X = today()", "X = cbrt(A)"] {
         match error(&[unsupported]) {
             SelectError::Formula { column, error } => {
                 assert_eq!(column, unsupported);

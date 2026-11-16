@@ -55,8 +55,8 @@ with a type written in Rust) and `crates/oxhaven-server/src/console/python/plugi
 A plugin sees these as `RuntimeError: java.lang.IllegalArgumentException: <text>`.
 
 Java registers `PartitionedTable`, `HierarchicalTable` and `Figure` before any plugin. Here
-`PartitionedTable` is registered; the other two names count as taken
-(`JAVA_TYPES_NOT_PORTED_LOWERCASE`) until their tasks register the types.
+the three are registered in that order (`JAVA_TYPES_NOT_PORTED_LOWERCASE` is the list of
+those that are not, and is empty).
 
 The lower case of a name is Rust's `to_lowercase`, Java's is `toLowerCase(Locale.ENGLISH)`.
 They agree on ASCII.
@@ -197,7 +197,6 @@ before they touch the server. The registry's own lock is not held while a type i
 | --- | --- | --- |
 | A JS plugin | `io.deephaven.server.plugin.python.CallbackAdapter#registerJsPlugin` | left out with a warning in the server's log that names the method; the object types of its package are registered, and `/js-plugins/manifest.json` stays empty |
 | A reference to `None` | `io.deephaven.server.session.SessionState#newServerSideExport` of null, which makes an export that fails when a client uses it | the message that refers to it fails, with a `RuntimeError` that names the method |
-| The type name `HierarchicalTable` | Java's built-in type | taken, so no plugin can have it; nothing is of it yet. `Figure` is a type of the server since 7.11 (`docs/FIGURES.md`) |
 
 ## For the owner
 
@@ -215,7 +214,7 @@ Java behaviours that look like hazards, each reproduced as observed and not deci
 
 ## The figure (7.11)
 
-`Figure` is registered in `registry()` after `PartitionedTable`, fetch-only, as described
+`Figure` is registered in `registry()` after `HierarchicalTable`, fetch-only, as described
 here before it existed; `docs/FIGURES.md` is its design.
 
 ## Outside the task's paths

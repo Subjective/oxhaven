@@ -402,13 +402,32 @@ def input_table(col_defs=None, init_table: Table = None, key_cols=None) -> Input
         raise DHError(e, "failed to create an in-memory InputTable.") from e
 
 
+def _java_int(value) -> int:
+    """`value` as jpy hands a Python integer to a Java `int` parameter: the low 32 bits of
+    it, so that `2**31` is the lowest `int`. A Boolean is an integer; nothing else is."""
+    if not isinstance(value, int):
+        raise RuntimeError("no matching Java method overloads found")
+    if not -(2**63) <= value < 2**63:
+        raise OverflowError("Python int too large to convert to C long")
+    value &= 2**32 - 1
+    return value - 2**32 if value >= 2**31 else value
+
+
 def ring_table(parent: Table, capacity: int, initialize: bool = True) -> Table:
-    """Not ported: the engine has no ring table. The reference creates a table that keeps
-    the latest `capacity` rows of `parent`."""
+    """Creates a ring table that keeps the latest `capacity` rows of `parent`. The latest
+    rows are the rows added to the parent last: rows it removes stay in the ring, and a
+    parent that modifies or shifts a row fails it. With `initialize` the ring starts with
+    the latest rows the parent has now.
+
+    A ring table is mostly used with a blink table, which keeps its own rows for one
+    update cycle only.
+    """
     try:
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.sources.ring.RingTableTools#of"
-        )
+        if not isinstance(initialize, int):
+            # jpy takes a Boolean or an integer for a Java `boolean`
+            raise RuntimeError("no matching Java method overloads found")
+        args = {"capacity": _java_int(capacity), "initialize": bool(initialize)}
+        return Table(_engine.local_op("ring_table", args, [parent.j_table]))
     except Exception as e:
         raise DHError(e, "failed to create a ring table.") from e
 
@@ -421,16 +440,71 @@ def function_generated_table(
     args: tuple = (),
     kwargs: dict = {},
 ) -> Table:
-    """Not ported: the engine has no function generated table. The reference creates a
-    table that `table_generator` makes anew when a source table changes or an interval has
-    passed."""
+    """Creates a table with the columns and rows of the table that `table_generator`
+    returns. The function is called once now, and then again in every update cycle in
+    which one of `source_tables` changed, or when `refresh_interval_ms` have passed.
+    Exactly one of the two is given. Without source tables (an empty list), or with a
+    negative interval, the function is called once and the table is static.
+
+    The function is called as `table_generator(*args, **kwargs)`, inside `exec_ctx` or
+    the current execution context. The columns of the table it returns must not change
+    from one call to the next: the generated table fails when they do, and when the
+    function raises.
+
+    A function that reads a refreshing table names it in `source_tables`. The function
+    may read the source tables, and should not run table operations on them without care,
+    as the reference package says: an operation's result is not a source table, so nothing
+    makes the function wait for it.
+    """
     if refresh_interval_ms is None and source_tables is None:
         raise DHError("Either refresh_interval_ms or source_tables must be provided!")
     if refresh_interval_ms is not None and source_tables is not None:
         raise DHError("Only one of refresh_interval_ms and source_tables must be provided!")
-    try:
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.util.FunctionGeneratedTableFactory#create"
+
+    if exec_ctx is None:
+        from .execution_context import get_exec_ctx
+
+        exec_ctx = get_exec_ctx()
+
+    def generate():
+        with exec_ctx:
+            result = table_generator(*args, **kwargs)
+        if result is None:
+            raise DHError("table_generator did not return a result")
+        if isinstance(result, Table) is False:
+            raise DHError("table_generator did not return a Table")
+        return result.j_table
+
+    def generated():
+        """The handle of the table and `None`, or `None` and what the function raised as
+        the text the engine fails the generated table with."""
+        try:
+            return generate(), None
+        except Exception as error:
+            import traceback
+
+            trace = error.__traceback__.tb_next if error.__traceback__ else None
+            text = "".join(traceback.format_exception(type(error), error, trace))
+            return None, f"Error in Python interpreter:\n{text}"
+
+    # As in the reference, what the engine refuses reaches the caller as it is, not as a
+    # `DHError`: jpy hands a Java exception over as a `RuntimeError`.
+    if source_tables is not None:
+        if isinstance(source_tables, Table):
+            source_tables = [source_tables]
+        handles = [table.j_table for table in source_tables]
+        # the engine takes the update graph's lock, which the reference takes here
+        return Table(_engine.native.function_generated_table(generated, handles, None))
+    if isinstance(refresh_interval_ms, float):
+        raise RuntimeError("no matching Java method overloads found")
+    if not isinstance(refresh_interval_ms, int):
+        # jpy then tries the overload that takes tables
+        raise ValueError(
+            f"cannot convert a Python '{type(refresh_interval_ms).__name__}' to a Java "
+            "'io.deephaven.engine.table.Table'"
         )
-    except Exception as e:
-        raise DHError(e, "failed to create a function generated table.") from e
+    try:
+        interval = _java_int(refresh_interval_ms)
+    except OverflowError as e:
+        raise RuntimeError(f"Error in Python interpreter:\nOverflowError: {e}") from e
+    return Table(_engine.native.function_generated_table(generated, None, interval))

@@ -51,7 +51,7 @@ per primitive type and replaced by one generic implementation.
 | `proto/proto-backplane-grpc`, Barrage schema | `oxhaven-proto` | 0.6 |
 | `server/session`, `server/auth` | `oxhaven-server::session` | 2.1 |
 | `server/table/ops` | `oxhaven-server::table` | 2.2, then one handler per operator task |
-| `server/arrow` (Flight; of `BrowserFlightServiceGrpcBinding` the `DoPut` pair) | `oxhaven-server::flight` | 2.3, 7.11 |
+| `server/arrow` (Flight; of `BrowserFlightServiceGrpcBinding` the `DoPut` pair) | `oxhaven-server::flight` | 2.3, 7.8 |
 | `server/barrage`, `extensions/barrage` | `oxhaven-server::barrage` | 2.4 |
 | `server/table/inputtables` | `oxhaven-server::inputtable` | 2.5 |
 | `server/config`, `server/browserstreaming` | `oxhaven-server::config`, `::transport` | 2.6 |

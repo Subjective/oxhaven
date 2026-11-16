@@ -6,6 +6,7 @@ pub mod config;
 pub mod console;
 pub mod figure;
 pub mod flight;
+pub mod hierarchical;
 pub mod inputtable;
 pub mod java_text;
 pub mod object;
@@ -35,6 +36,7 @@ use oxhaven_proto::browser_flight::browser_flight_service_server::BrowserFlightS
 use oxhaven_proto::flight::flight_service_server::FlightServiceServer;
 use oxhaven_proto::grpc::application_service_server::ApplicationServiceServer;
 use oxhaven_proto::grpc::config_service_server::ConfigServiceServer;
+use oxhaven_proto::grpc::hierarchical_table_service_server::HierarchicalTableServiceServer;
 use oxhaven_proto::grpc::input_table_service_server::InputTableServiceServer;
 use oxhaven_proto::grpc::object_service_server::ObjectServiceServer;
 use oxhaven_proto::grpc::partitioned_table_service_server::PartitionedTableServiceServer;
@@ -193,6 +195,9 @@ impl ServerState {
         )
         .add_service(PartitionedTableServiceServer::new(
             partitioned::PartitionedTableGrpc::new(self.tickets.clone()),
+        ))
+        .add_service(HierarchicalTableServiceServer::new(
+            hierarchical::HierarchicalTableGrpc::new(self.tickets.clone(), self.op_context()),
         ))
         .add_service(ObjectServiceServer::new(object::ObjectGrpc::new(
             self.tickets.clone(),

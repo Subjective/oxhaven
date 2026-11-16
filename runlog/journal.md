@@ -808,3 +808,46 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   which changed an expectation from pull request 92.
 - Started 4.19 (ring tables, generated tables, floating point input keys).
 - Merged pull request 98 (7.10, object service and Python plugins) on six green checks. Figures (7.11) wait for a free build slot; the same agent will be resumed for them.
+- Pull request 99 opened (4.10, chart downsample and seek row). The task file was stale:
+  two of its three operations were already on main, and the remaining one was the hard
+  one. Lesson for task files written far ahead: have the agent check main first (this one
+  was told to) and expect the size to be wrong. For the owner: six Java defects in the
+  downsample listener reproduced; a `long` X column refused more widely than Java;
+  `Math.sin(...)` in a formula is refused ("static method call"), seen in passing and
+  passed to the formula work.
+- Started 7.11 (figures and JS plugin leftovers) by resuming the object service agent.
+- Merged pull request 99 (4.10, chart downsample and seek row) on six green checks. Every batch operation of the table service now has a handler.
+- Pull request 100 opened (4.19, table sources). Script scenarios: 67 of 74 clean; the
+  seven left are five Parquet, one CSV, and one that needs partitioning columns in the
+  contracts. For the owner: `function_generated_table` whose function later returns a
+  table without a column, or with another reference type, is refused (Java keeps stale or
+  wrongly typed values); Java's float key equality depends on the number of key columns
+  (reproduced); Java hangs when a thread calls `function_generated_table` with sources
+  while the command joins it (Oxhaven returns).
+- Started 7.1b (Parquet read: more types, names, partitioned layouts). It may make an
+  additive contracts change for the new column types and the partitioning flag, decided
+  under the standing permission and labelled oracle-change for later review.
+- Pull request 100: `rules` failed with an empty label list although the label was set.
+  The run for the "opened" event started after the run for the "labeled" event and
+  cancelled it, carrying the labels as they were at opening. Not a fault of the change;
+  merging main into the branch starts a run that sees the label. If this repeats, the
+  `rules` job should read the labels from the API instead of the event payload (a change
+  to the workflow, for the owner to approve since it is the gate).
+- Merged pull request 100 (4.19, table sources) on six green checks after the label race.
+- Pull request 101 opened (7.8, rollup first slice); it conflicts with main after 100, so
+  its author was resumed to merge main, and continues with 7.8.1 afterwards. Design
+  decision taken by the architect agent and recorded in docs/HIERARCHICAL.md: every level
+  of a rollup aggregates the source rather than the level below (simple and correct; cost
+  n+1 aggregations per change; re-aggregation is 7.8.5 after a measurement). For the
+  owner: SortedFirst/SortedLast in a rollup with group-by columns (Java fails or sorts
+  results, not rows); key table row order changes the expansion result in Java
+  (reproduced).
+- Pull request 102 opened (5.6, formula gaps). Its gate still exits 1 on seven cases: the
+  Boolean column array (a Java defect) and six array comparisons that need a `boolean[]`
+  column type in the contracts. Static `Math` calls are a task of their own: Java accepts
+  them in a console script and refuses them over gRPC, and treats null values as numbers.
+- The rollup agent ended at its context limit after 10,590 s and 339k tokens of its own
+  window. A resumed agent carries its whole history, so reuse has a ceiling: after one
+  large task plus one follow-up message, start fresh and hand over notes instead.
+- Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
+- Merged pull request 102 (5.6, formula gaps) on six green checks. Started 5.7 (formula functions and static calls) with a fresh agent and the 5.6 notes as handover.

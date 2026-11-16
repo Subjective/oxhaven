@@ -24,6 +24,7 @@
 pub(crate) mod eval;
 mod names;
 pub(crate) mod vectors;
+pub(crate) mod volatile;
 
 use crate::types::Numeric;
 use oxhaven_contracts::expr::{BinaryOp, FormulaError, Literal, UnaryOp};
@@ -302,6 +303,22 @@ pub(crate) enum Kernel {
     InstantUpperBin,
     /// A function or method of a vector or an array.
     Vector(vectors::VectorFn),
+    /// `multiply(Duration, long)` and `multiply(Period, int)`, on nanoseconds.
+    DurationMultiply,
+    /// `divide(Duration, long)`, on nanoseconds.
+    DurationDivide,
+    /// `now()`. It takes no argument, so the evaluator supplies the number of rows.
+    Now,
+    /// A function of `io.deephaven.function.Random`; the evaluator supplies the number of
+    /// rows, and the arguments are widened as Java widens them, without regard to null.
+    Random(volatile::RandomFn),
+}
+
+impl Kernel {
+    /// Whether two calls with the same arguments may return different values.
+    pub(crate) fn is_volatile(self) -> bool {
+        matches!(self, Kernel::Now | Kernel::Random(_))
+    }
 }
 
 /// A call to an evaluated function.
@@ -482,7 +499,45 @@ pub(crate) fn resolve(
             _ => Err(no_overload()),
         };
     }
+    // `io.deephaven.function.Random`: one overload each, reached by widening.
+    let random = |function: volatile::RandomFn, parameter: ColumnType| {
+        let widens = |argument: &ColumnType| {
+            let rank = |column_type: &ColumnType| match column_type {
+                ColumnType::Byte | ColumnType::Short | ColumnType::Char | ColumnType::Int => 0,
+                ColumnType::Long => 1,
+                ColumnType::Float => 2,
+                _ => 3,
+            };
+            is_numeric(argument) && rank(argument) <= rank(&parameter)
+        };
+        if types.iter().all(widens) {
+            call(
+                Kernel::Random(function),
+                vec![parameter.clone(); types.len()],
+                parameter.clone(),
+            )
+        } else {
+            Err(no_overload())
+        }
+    };
     match (name, types.len()) {
+        // `DateTimeUtils#now()` and `#nowSystem()`: the clock of `now` is the system clock.
+        ("now" | "nowSystem", 0) => call(Kernel::Now, Vec::new(), ColumnType::Instant),
+        ("random", 0) => call(
+            Kernel::Random(volatile::RandomFn::Uniform),
+            Vec::new(),
+            ColumnType::Double,
+        ),
+        ("randomBool", 0) => call(
+            Kernel::Random(volatile::RandomFn::Bool),
+            Vec::new(),
+            ColumnType::Boolean,
+        ),
+        ("randomInt", 2) => random(volatile::RandomFn::Int, ColumnType::Int),
+        ("randomLong", 2) => random(volatile::RandomFn::Long, ColumnType::Long),
+        ("randomFloat", 2) => random(volatile::RandomFn::Float, ColumnType::Float),
+        ("randomDouble", 2) => random(volatile::RandomFn::Double, ColumnType::Double),
+        ("randomGaussian", 2) => random(volatile::RandomFn::Gaussian, ColumnType::Double),
         ("abs", 1) => same(Kernel::Abs, None),
         ("signum", 1) => same(Kernel::Signum, Some(ColumnType::Int)),
         ("round", 1) => same(Kernel::Round, Some(ColumnType::Long)),

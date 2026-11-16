@@ -1,7 +1,7 @@
 //! Splits formula text into tokens, following Java's lexical grammar plus the formula
 //! language's own rewrites: backtick strings and single `=` as equality.
 
-use super::instant::{time_literals, TimeLiteral};
+use super::instant::{time_literals, TimeLiteral, TimeValue};
 use oxhaven_contracts::expr::{FormulaError, Literal};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -72,8 +72,28 @@ pub(crate) fn tokenize(text: &str) -> Result<Vec<Spanned>, FormulaError> {
             rest = &rest[end..];
         } else if c == '\'' {
             if let Some(literal) = time_literals.iter().find(|l| l.start == offset) {
-                let nanos = literal.value.clone()?;
-                tokens.push((Token::Literal(Literal::Instant(nanos)), offset));
+                // Java replaces the literal by a variable it sets with `parseDuration`
+                // or `parsePeriod`; here the literal becomes that call.
+                let call = |function: &str| {
+                    let content = text[literal.start + 1..literal.end - 1].to_string();
+                    [
+                        Token::Identifier(function.to_string()),
+                        Token::Symbol("("),
+                        Token::Literal(Literal::String(content)),
+                        Token::Symbol(")"),
+                    ]
+                };
+                match literal.value.clone()? {
+                    TimeValue::Instant(nanos) => {
+                        tokens.push((Token::Literal(Literal::Instant(nanos)), offset));
+                    }
+                    TimeValue::Duration => {
+                        tokens.extend(call("parseDuration").map(|token| (token, offset)));
+                    }
+                    TimeValue::Period => {
+                        tokens.extend(call("parsePeriod").map(|token| (token, offset)));
+                    }
+                }
                 rest = &text[literal.end..];
                 continue;
             }

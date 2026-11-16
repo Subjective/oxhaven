@@ -76,6 +76,18 @@ fn list_fields_are_described_as_java_recorded_them() {
             let Some(name) = recorded.metadata().get(TYPE_KEY) else {
                 continue;
             };
+            // A view of a hierarchical table says more of a column than its type: its
+            // part in the hierarchy and a description (`crate::hierarchical`).
+            let mut metadata = recorded.metadata().clone();
+            metadata.retain(|key, _| {
+                !["rollupTable.", "hierarchicalTable.", "description"]
+                    .iter()
+                    .any(|more| {
+                        key.strip_prefix("deephaven:")
+                            .is_some_and(|key| key.starts_with(more))
+                    })
+            });
+            let recorded = &recorded.as_ref().clone().with_metadata(metadata);
             if !is_list_class(name) {
                 continue;
             }
@@ -87,7 +99,7 @@ fn list_fields_are_described_as_java_recorded_them() {
                 &definition(&[(recorded.name().as_str(), column_type.clone())]),
                 &SchemaContext::default(),
             );
-            assert_eq!(ours.field(0), recorded.as_ref(), "{at}: {column_type:?}");
+            assert_eq!(ours.field(0), recorded, "{at}: {column_type:?}");
             seen.insert((name.clone(), component.cloned().unwrap_or_default()));
             fields += 1;
         }

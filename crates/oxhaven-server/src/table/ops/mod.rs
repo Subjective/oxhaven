@@ -81,8 +81,7 @@ use tonic::Status;
 /// (`console/python/ops.rs`).
 #[cfg(feature = "python")]
 pub(crate) use self::{
-    aggregate::adapt as adapt_aggregations, time_table::parse_duration_nanos,
-    update_by::check_operation as check_update_by_operation,
+    time_table::parse_duration_nanos, update_by::check_operation as check_update_by_operation,
 };
 
 /// What handler files import.
@@ -277,6 +276,7 @@ handlers! {
     flatten { Flatten => Handler }
     head_by { HeadBy => HeadBy, TailBy => TailBy }
     head_tail { Head => Head, Tail => Tail }
+    ide { RunChartDownsample => RunChartDownsample }
     join { NaturalJoin => NaturalJoin, ExactJoin => ExactJoin, LeftJoin => LeftJoin }
     merge { Merge => Handler }
     meta_table { MetaTable => Handler }
@@ -297,3 +297,9 @@ handlers! {
     unstructured_filter { UnstructuredFilter => Handler }
     update_by { UpdateBy => Handler }
 }
+
+/// What the hierarchical table service and the Python package take of `Aggregate`.
+pub(crate) use aggregate::{adapt as adapt_aggregations, validate_aggregation};
+
+/// `SeekRow` is not a table operation: it answers with a position.
+pub(super) use ide::seek_row;

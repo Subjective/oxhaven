@@ -193,7 +193,7 @@ fn spec(spec: &proto::AggSpec) -> Result<AggSpec, ExportError> {
 /// The checks of one aggregation of a request, which need no table.
 ///
 /// Behavior: `io.deephaven.server.table.ops.AggregationAdapter#validate`
-pub(super) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
+pub(crate) fn validate_aggregation(aggregation: &proto::Aggregation) -> Result<(), Status> {
     match &aggregation.r#type {
         None => Err(missing_one_of("Aggregation")),
         Some(AggregationType::Columns(columns)) => {

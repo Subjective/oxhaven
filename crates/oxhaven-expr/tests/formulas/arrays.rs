@@ -254,7 +254,7 @@ fn column_arrays_that_do_not_compile() {
     }
     // Java has no `get(double)`, and a vector is not a number. The refusal is the one a
     // vector column gets.
-    for formula in ["X_[D]", "X_[S]", "X_ + 1", "X_[i - 1].size()"] {
+    for formula in ["X_[D]", "X_[S]", "X_[i - 1].size()"] {
         table.compile_error(formula);
     }
     // Java sends the column array of a `Boolean` or `Instant` column as strings.

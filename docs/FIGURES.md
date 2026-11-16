@@ -158,8 +158,9 @@ arrays of every source) and opened in `/iframe/chart/`.
 
 The series of a `by` plot open one constituent each. The JS client finds a constituent by
 uploading its key as a table of one row, through `BrowserFlightService/OpenDoPut` and
-`NextDoPut`, on every page and transport. The server did not have that service; its `DoPut`
-pair is added with this task (`flight/browser.rs`), and without it the chart stays empty.
+`NextDoPut`, on every page and transport. Without that pair the chart stays empty, which is
+what this task first saw; task 7.8 added it (`flight/browser.rs`) for the keys of a
+hierarchical table's view, and the `by` chart was drawn with it.
 
 ## For the owner
 

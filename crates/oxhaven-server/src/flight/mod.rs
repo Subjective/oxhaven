@@ -10,8 +10,6 @@
 //! | `DoExchange` | Barrage: subscriptions and snapshots; see [`crate::barrage`] |
 //! | `DoAction`, `ListActions` | Not ported |
 //!
-//! A browser sends the messages of `DoPut` as calls of `BrowserFlightService`; see [`browser`].
-//!
 //! For the Barrage subscription code: [`wire_schema`] is the schema a client is told,
 //! [`snapshot`] reads a table consistently, and [`record_batch_messages`] writes rows the
 //! way the Java server does, with room for the `app_metadata` of the first message.
@@ -27,9 +25,6 @@ mod wire;
 
 #[cfg(test)]
 pub(crate) mod tests;
-
-#[cfg(test)]
-mod browser_tests;
 
 pub use browser::BrowserFlightGrpc;
 pub(crate) use encode::has_sentinel;

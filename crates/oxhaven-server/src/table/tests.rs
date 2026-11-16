@@ -230,6 +230,7 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             "EXACT_JOIN",
             "LEFT_JOIN",
             "RANGE_JOIN",
+            "RUN_CHART_DOWNSAMPLE",
             "SNAPSHOT",
             "SNAPSHOT_WHEN",
             "EMPTY_TABLE",
@@ -279,40 +280,6 @@ fn every_operation_has_a_handler_or_answers_unimplemented_with_its_name() {
             }
         }
     }
-}
-
-#[tokio::test]
-async fn an_operation_without_a_handler_is_unimplemented_in_both_forms() {
-    let mut c = Connected::start().await;
-    let request = RunChartDownsampleRequest {
-        result_id: ticket(1),
-        source_id: by_ticket(2),
-        ..Default::default()
-    };
-    let refused = c.client.run_chart_downsample(c.auth(request.clone()));
-    let refused = refused.await.unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
-    assert_eq!(
-        refused.message(),
-        "TableService operation RUN_CHART_DOWNSAMPLE is not implemented"
-    );
-
-    // In a batch the whole call is refused and nothing before it is created.
-    let refused = c
-        .batch(vec![
-            Op::EmptyTable(empty(ticket(3), 1)),
-            Op::RunChartDownsample(request),
-        ])
-        .await
-        .unwrap_err();
-    assert_eq!(refused.code(), Code::Unimplemented);
-    assert_eq!(
-        refused.message(),
-        "TableService operation RUN_CHART_DOWNSAMPLE is not implemented"
-    );
-    let session = c.server.session(&c.bearer);
-    let unused = session.get_export(3).unwrap();
-    assert_ne!(unused.state(), ExportState::Exported);
 }
 
 // ---------------------------------------------------------------- one-shot operations
