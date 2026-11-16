@@ -6,7 +6,9 @@ use crate::ops::merge::{flatten, merge};
 use crate::ops::select::{drop_columns, lazy_update, select, update, update_view, view};
 use crate::ops::sort::{head, reverse, sort, tail, SortColumn};
 use crate::update::ModifiedColumnTransformer;
-use arrow::array::{Array, Int64Array, StringArray, TimestampNanosecondArray};
+use arrow::array::{
+    Array, Float32Array, Float64Array, Int64Array, StringArray, TimestampNanosecondArray,
+};
 use arrow::datatypes::{DataType, Field, Schema};
 use oxhaven_contracts::graph::{locked, ClockPhase, Dependency, UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -1435,14 +1437,111 @@ fn keyed_input_table_starts_with_its_initial_rows_and_checks_its_key_columns() {
     );
 }
 
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.util.KeyedArrayBackedInputTable#makeKeySource"
-)]
-fn keyed_input_table_with_a_floating_point_key_is_unported() {
+/// The floating point values every case of key equality needs: both zeros, two NaNs of
+/// different bits and a null, and then a zero, a NaN and a null again.
+fn float_keys() -> Vec<Option<f64>> {
+    let other_nan = f64::from_bits(0x7ff8_0000_0000_0001);
+    let first = [Some(0.0), Some(-0.0), Some(f64::NAN), Some(other_nan), None];
+    let again = [Some(-0.0), Some(f64::NAN), None];
+    first.into_iter().chain(again).collect()
+}
+
+/// A keyed input table with the key columns `keys`, the first of them of doubles or of
+/// floats and the others of longs, and what it holds once a row for each of
+/// [`float_keys`] was added, numbered from 1 in `Qty`: the first key column as bits and
+/// `Qty`.
+fn float_keyed(keys: &[&str], floats: bool) -> Vec<(Option<u64>, Option<i64>)> {
     let (_stepper, graph) = graph();
-    let definition = definition(&[("Px", ColumnType::Double), ("Qty", ColumnType::Long)]);
-    let _ = keyed_input_table(graph, definition, &["Px"], None);
+    let key_type = if floats {
+        ColumnType::Float
+    } else {
+        ColumnType::Double
+    };
+    let mut columns = vec![(keys[0], key_type)];
+    columns.extend(keys[1..].iter().map(|name| (*name, ColumnType::Long)));
+    columns.push(("Qty", ColumnType::Long));
+    let table = keyed_input_table(graph, definition(&columns), keys, None).unwrap();
+    let checker = ConsistencyChecker::attach(table.clone());
+
+    let values = float_keys();
+    let size = values.len() as i64;
+    let first: ArrayRef = if floats {
+        let narrow = values.iter().map(|value| value.map(|value| value as f32));
+        Arc::new(Float32Array::from_iter(narrow))
+    } else {
+        Arc::new(Float64Array::from(values))
+    };
+    let mut batch_columns = vec![(keys[0], first)];
+    batch_columns.extend(keys[1..].iter().map(|name| (*name, longs(vec![7; 8]))));
+    batch_columns.push(("Qty", longs(1..=size)));
+    let input = table.input_table().unwrap();
+    input.add(batch(&batch_columns)).unwrap();
+    checker.assert_consistent();
+
+    let cells = table.column(0).chunk(&table.row_set()).unwrap();
+    let bits: Vec<Option<u64>> = if floats {
+        let cells = cells.as_any().downcast_ref::<Float32Array>().unwrap();
+        let wide = cells.iter().map(|cell| cell.map(|cell| cell as f64));
+        wide.map(|cell| cell.map(f64::to_bits)).collect()
+    } else {
+        let cells = cells.as_any().downcast_ref::<Float64Array>().unwrap();
+        cells.iter().map(|cell| cell.map(f64::to_bits)).collect()
+    };
+    let quantities = longs_of(&*table, keys.len());
+    bits.into_iter().zip(quantities).collect()
+}
+
+/// Observed on Java 42.9 with these values (`tasks/4.19-table-sources.md`).
+#[test]
+fn keyed_input_table_takes_floating_point_keys_as_java_compares_them() {
+    let (zero, minus_zero) = (Some(0.0f64.to_bits()), Some((-0.0f64).to_bits()));
+    let nan = Some(f64::NAN.to_bits());
+    // One key column, or four: `Double#equals`. The zeros are two keys, every NaN is one,
+    // and a row holds what the last add of its key wrote.
+    let boxed = [
+        (zero, Some(1)),
+        (minus_zero, Some(6)),
+        (nan, Some(7)),
+        (None, Some(8)),
+    ];
+    assert_eq!(float_keyed(&["Px"], false), boxed);
+    assert_eq!(float_keyed(&["Px"], true), boxed);
+    assert_eq!(float_keyed(&["Px", "A", "B", "C"], false), boxed);
+    // Two key columns, or three: a typed tuple. The zeros are one key.
+    let tuple = [(minus_zero, Some(6)), (nan, Some(7)), (None, Some(8))];
+    assert_eq!(float_keyed(&["Px", "A"], false), tuple);
+    assert_eq!(float_keyed(&["Px", "A"], true), tuple);
+    assert_eq!(float_keyed(&["Px", "A", "B"], false), tuple);
+}
+
+#[test]
+fn keyed_input_table_deletes_floating_point_keys_as_java_compares_them() {
+    let other_nan = f64::from_bits(0xfff8_0000_0000_0002);
+    for (keys, left) in [(&["Px"][..], 2), (&["Px", "A"][..], 1)] {
+        let (_stepper, graph) = graph();
+        let mut columns = vec![("Px", ColumnType::Double)];
+        columns.extend(keys[1..].iter().map(|name| (*name, ColumnType::Long)));
+        columns.push(("Qty", ColumnType::Long));
+        let table = keyed_input_table(graph, definition(&columns), keys, None).unwrap();
+        let checker = ConsistencyChecker::attach(table.clone());
+        let input = table.input_table().unwrap();
+        let rows = |values: Vec<f64>, with_values: bool| {
+            let size = values.len();
+            let mut columns = vec![("Px", Arc::new(Float64Array::from(values)) as ArrayRef)];
+            columns.extend(keys[1..].iter().map(|name| (*name, longs(vec![7; size]))));
+            if with_values {
+                columns.push(("Qty", longs(vec![1; size])));
+            }
+            batch(&columns)
+        };
+        input
+            .add(rows(vec![0.0, -0.0, f64::NAN, 1.5], true))
+            .unwrap();
+        // The other zero, which is another key only for one key column, and another NaN.
+        input.delete(rows(vec![0.0, other_nan], false)).unwrap();
+        checker.assert_consistent();
+        assert_eq!(table.row_set().size(), left, "key columns {keys:?}");
+    }
 }
 
 #[test]
