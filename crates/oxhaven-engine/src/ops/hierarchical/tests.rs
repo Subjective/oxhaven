@@ -14,7 +14,7 @@ use oxhaven_contracts::schema::ColumnType;
 use oxhaven_expr::Compiler;
 use oxhaven_testkit::{
     at_least_for, definition, ints, strings, test_seeds, RandomUpdates, ReferenceTable,
-    ScriptedTable,
+    ScriptedTable, TableChange,
 };
 use std::collections::BTreeMap;
 
@@ -1036,4 +1036,79 @@ fn random_changes_keep_sorted_and_filtered_rollups_right() {
         rows += random_sorted_and_filtered(seed);
     }
     assert!(rows >= at_least_for(8000, 0..40), "only {rows} rows");
+}
+
+/// Java reproduced: where it still fills the viewport, the walk of a sorted node looks up
+/// the row of every node expanded below it, and fails for a node whose group was there and
+/// has no rows now; a rollup that is not sorted leaves that node out, and so do both for a
+/// key that never was one.
+///
+/// Behavior: HierarchicalTableImpl.LinkedDirective#setRowKeyInParentSorted and
+/// NodeTableState#filterKeyAndSortChildDirectives
+#[test]
+fn a_sorted_node_fails_for_an_expanded_child_that_is_gone() {
+    let graph = SteppedUpdateGraph::new();
+    let source = ScriptedTable::new(
+        graph.clone(),
+        definition(&[
+            ("Sym", ColumnType::String),
+            ("Ex", ColumnType::String),
+            ("Qty", ColumnType::Int),
+        ]),
+        RowSet::flat(3),
+        vec![
+            strings(["AAPL", "MSFT", "GOOG"]),
+            strings(["N", "N", "Q"]),
+            ints([10, 30, 60]),
+        ],
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let plain = rollup(&parent, &aggregations(), false, &["Sym", "Ex"], None).unwrap();
+    let by_qty = plain.with_sorts(&[SortColumn::descending("Qty")]);
+    // a sort by a key the first level does not have sorts nothing there, and the node
+    // is sorted all the same
+    let by_ex = plain.with_sorts(&[SortColumn::ascending("Ex")]);
+    let view = |rollup: &RollupTable, rows: &[(i32, &str, &str, i8)]| {
+        View::new(
+            Arc::new(rollup.with_sorts(&[])),
+            Some(keys(rows)),
+            Some("Action".to_string()),
+        )
+    };
+    let msft = [(2, "MSFT", "", EXPAND)];
+    let never = [(2, "IBM", "", EXPAND)];
+    let shown = |rollup: &RollupTable, rows: &[(i32, &str, &str, i8)]| {
+        view(rollup, rows)
+            .snapshot(None, 0, 100)
+            .map(|snapshot| snapshot.rows)
+            .map_err(|error| error.to_string())
+    };
+    assert_eq!(shown(&by_qty, &msft), Ok(5));
+    source.push(TableChange::new().remove([1]));
+    graph.run_cycle();
+    assert_eq!(shown(&plain, &msft), Ok(3));
+    for sorted in [&by_qty, &by_ex] {
+        let error = shown(sorted, &msft).unwrap_err();
+        assert!(error.contains("sort reverse lookup"), "{error}");
+        assert_eq!(shown(sorted, &never), Ok(3));
+        // a node under a contracted one is not looked at
+        assert_eq!(shown(sorted, &[(1, "", "", CONTRACT), msft[0]]), Ok(1));
+    }
+    // a viewport that is full before the node is reached does not look
+    let filled = view(&by_qty, &msft).snapshot(None, 0, 1).unwrap();
+    assert_eq!((filled.rows, filled.size), (1, 3));
+    assert!(view(&by_qty, &msft).snapshot(None, 0, 2).is_err());
+    // the group comes back with the row key it had
+    source.push(TableChange::new().add([5], vec![strings(["MSFT"]), strings(["Q"]), ints([99])]));
+    graph.run_cycle();
+    assert_eq!(
+        text(&view(&by_qty, &msft).snapshot(None, 0, 100).unwrap()),
+        [
+            "1|true|-|-|169|3",
+            "2|true|MSFT|-|99|1",
+            "3|-|MSFT|Q|99|1",
+            "2|false|GOOG|-|60|1",
+            "2|false|AAPL|-|10|1",
+        ]
+    );
 }

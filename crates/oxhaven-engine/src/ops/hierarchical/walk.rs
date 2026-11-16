@@ -140,9 +140,11 @@ fn link(
             let (parent, known) = match by_key.get(&parent_key) {
                 Some(&parent) => (parent, true),
                 None => {
-                    let located = hierarchy.locate(&parent_key)?.ok_or_else(|| {
-                        failure("a hierarchical table has a node without its parent")
-                    })?;
+                    // A node that is not there now may be known when its parent, which
+                    // is not there either, is not: then nothing leads to it.
+                    let Some(located) = hierarchy.locate(&parent_key)? else {
+                        break;
+                    };
                     arena.push(Linked {
                         key: parent_key.clone(),
                         node: located.node,
@@ -320,6 +322,12 @@ impl Walk<'_> {
             return Ok(());
         }
         let outer = self.expanding;
+        // Behavior: SnapshotStateImpl#filling, as it is when the visit starts
+        let filling = self
+            .visited
+            .min(self.first.saturating_add(self.count))
+            .saturating_sub(self.first)
+            < self.count;
         self.depth += 1;
         let rows = match self.hierarchy.order(self.depth, table.as_ref())? {
             Some(sorted) => Shown::Sorted(sorted),
@@ -359,8 +367,19 @@ impl Walk<'_> {
                 .collect();
             let keys: Vec<RowKey> = acting.iter().map(|&(_, row)| row).collect();
             for (&(child, _), position) in acting.iter().zip(rows.positions(&keys)) {
-                if let Some(position) = position {
-                    children.push((position, child));
+                match position {
+                    Some(position) => children.push((position, child)),
+                    // Java looks the row up in the sorted table while it still fills the
+                    // viewport, and takes a row that is not there for an inconsistency.
+                    // Behavior: HierarchicalTableImpl.LinkedDirective#setRowKeyInParentSorted
+                    None if filling && matches!(rows, Shown::Sorted(_)) => {
+                        return Err(failure(
+                            "Failed to perform sort reverse lookup: an expanded node has \
+                             no row in its sorted parent now",
+                        )
+                        .into());
+                    }
+                    None => {}
                 }
             }
             children.sort_unstable();

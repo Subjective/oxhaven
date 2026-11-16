@@ -590,9 +590,11 @@ impl Hierarchy for RollupTable {
         if key.len() >= self.group_by.len() {
             return Ok(None);
         }
+        // A key whose group has no rows now keeps its node, as in Java, whose lookup is
+        // the aggregation's and forgets no key.
         Ok(self.levels.indexes[key.len()]
-            .find(key)?
-            .map(|row| Located {
+            .known(key)?
+            .map(|(row, _)| Located {
                 node: NodeId {
                     depth: key.len() as u32 + 1,
                     row,
@@ -666,7 +668,9 @@ impl Hierarchy for RollupTable {
             .cloned()
             .collect();
         if sorts.is_empty() {
-            return Ok(None);
+            // Java sorts by the columns of nulls all the same: the order of the table,
+            // and a node that is sorted.
+            return Ok((!self.sorts.is_empty()).then(|| table.row_set().iter().collect()));
         }
         sorted_rows(table, &table.row_set(), &sorts)
             .map(Some)

@@ -175,6 +175,7 @@ impl Action {
 pub struct Located {
     pub node: NodeId,
     /// The row key of the node's row in its parent's child table; `None` for the root.
+    /// The row may be one the child table had and does not have now.
     pub row_in_parent: Option<RowKey>,
 }
 
@@ -215,8 +216,8 @@ pub trait Hierarchy: Send + Sync {
     /// The node key of each row of `key_table`, in the order of its rows.
     fn node_keys(&self, key_table: &dyn Table) -> Result<Vec<NodeKey>, HierarchicalError>;
 
-    /// The node of `key`, or `None` if the hierarchy has no such node now or the node
-    /// cannot be expanded.
+    /// The node of `key`, or `None` if the hierarchy knows no such node or the node
+    /// cannot be expanded. A node that was there and is not there now may be known.
     fn locate(&self, key: &NodeKey) -> Result<Option<Located>, HierarchicalError>;
 
     fn parent(&self, key: &NodeKey) -> Parent;
