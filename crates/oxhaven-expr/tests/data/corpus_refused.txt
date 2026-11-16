@@ -29,13 +29,12 @@ docs-python/how-to-guides.python-classes.L66.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call MyClass.change_value()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	method call String.split()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L223.5.0	java-accepts	static method call LocalDate.of()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	time literal 'WST'
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.3	java-accepts	static method call String.format()
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.4	java-accepts	setup: static method call String.format()
-docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	static method call LocalDate.of()
+docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	method call .atTime() on a value of type LocalDate
 grid-array/extra.72	java-fails	an index on a value of a vector type
 grid-array/extra.73	java-fails	an index on a value of a vector type
 grid-array/extra.85	java-accepts	a column array of type Vector(Boolean) as the value of a formula, which Java sends as strings (io.deephaven.engine.table.vectors.ColumnVectors#of)

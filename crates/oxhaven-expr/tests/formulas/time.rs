@@ -488,3 +488,48 @@ fn a_field_is_read_in_the_zone_of_each_row_and_of_a_date_or_time() {
         longs([Some(8 * 3_600_000_000_000), None, None, Some(0)]),
     );
 }
+
+/// Behavior: `java.time.LocalDate#of(int, int, int)`. The messages are those Java 42.9
+/// logged for the same formulas.
+#[test]
+fn a_date_is_made_of_its_year_month_and_day() {
+    let first = TestTable::new([("Y", ints([Some(2024)]))]);
+    first.assert(
+        "LocalDate.of(Y, 2, 29)",
+        (
+            ColumnType::LocalDate,
+            Arc::new(arrow::array::Date32Array::from(vec![19_782])),
+        ),
+    );
+    let table = TestTable::new([("Y", ints([Some(2023)]))]);
+    for (formula, message) in [
+        (
+            "LocalDate.of(Y, 2, 29)",
+            "Invalid date 'February 29' as '2023' is not a leap year",
+        ),
+        ("LocalDate.of(2023, 4, 31)", "Invalid date 'APRIL 31'"),
+        (
+            "LocalDate.of(Y, 1, 32)",
+            "Invalid value for DayOfMonth (valid values 1 - 28/31): 32",
+        ),
+        (
+            "LocalDate.of(2020, Y, 1)",
+            "Invalid value for MonthOfYear (valid values 1 - 12): 2023",
+        ),
+    ] {
+        let Err(failure) = table.evaluate(formula) else {
+            panic!("{formula} did not fail");
+        };
+        assert!(failure.message.contains(message), "{formula}: {failure}");
+    }
+    let nulls = TestTable::new([("Y", ints([None]))]);
+    let Err(failure) = nulls.evaluate("LocalDate.of(Y, 1, 1)") else {
+        panic!("a null year did not fail");
+    };
+    assert!(
+        failure
+            .message
+            .contains("(valid values -999999999 - 999999999): -2147483648"),
+        "{failure}"
+    );
+}

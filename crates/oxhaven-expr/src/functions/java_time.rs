@@ -64,6 +64,9 @@ pub(crate) enum TimeFn {
     /// `LocalDate.ofEpochDay(long)`, which throws for every value outside its range, the
     /// null `long` among them.
     LocalDateOfEpochDay,
+    /// `LocalDate.of(int, int, int)`, which throws for a field outside its range, the null
+    /// `int` among them, and for a day the month does not have.
+    LocalDateOf,
     /// `LocalTime.of(int, int)`, `(int, int, int)` and `(int, int, int, int)`, which
     /// throw for a field outside its range, the null `int` among them.
     LocalTimeOf,
@@ -220,7 +223,8 @@ impl TimeFn {
     }
 
     /// A static method of `java.time.LocalDate` or `java.time.LocalTime` called through
-    /// its class: `ofEpochDay(long)` and `of(int, int[, int[, int]])`. An argument of
+    /// its class: `ofEpochDay(long)`, `LocalDate.of(int, int, int)` and
+    /// `LocalTime.of(int, int[, int[, int]])`. An argument of
     /// another primitive type is converted by a cast, which keeps null.
     ///
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` and `#convertParameters`, and
@@ -245,6 +249,12 @@ impl TimeFn {
                     vec![T::Long],
                     T::LocalDate,
                 ))),
+                _ => refused(),
+            },
+            ("LocalDate", "of") => match types {
+                [_, _, _] if types.iter().all(int) => {
+                    Some(Ok((TimeFn::LocalDateOf, vec![T::Int; 3], T::LocalDate)))
+                }
                 _ => refused(),
             },
             ("LocalTime", "of") => match types.len() {
@@ -519,6 +529,25 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                              values -365243219162 - 365241780471): {days}"
                         )))
                     }
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            local_dates(days)
+        }
+        TimeFn::LocalDateOf => {
+            let fields: Vec<_> = arguments
+                .iter()
+                .map(|field| field.as_primitive::<Int32Type>())
+                .collect();
+            let days = (0..first.len())
+                .map(|row| {
+                    let [year, month, day] = [0, 1, 2].map(|at| {
+                        if fields[at].is_null(row) {
+                            i64::from(i32::MIN)
+                        } else {
+                            i64::from(fields[at].value(row))
+                        }
+                    });
+                    local_date_of(year, month, day).map(Some)
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             local_dates(days)
@@ -836,6 +865,63 @@ fn date_or_time_field(function: TimeFn, values: &dyn Array) -> ArrayRef {
             cells.into_iter().map(|cell| cell.map(|value| value as i32)),
         ))
     }
+}
+
+/// The epoch day of a year, month and day.
+///
+/// Behavior: `java.time.LocalDate#of(int, int, int)`: `ChronoField#checkValidValue` of
+/// each field, whose message names the field and its range, then `LocalDate#create`,
+/// which refuses a day the month does not have.
+fn local_date_of(year: i64, month: i64, day: i64) -> Result<i64, TableFailure> {
+    const MONTHS: [&str; 12] = [
+        "JANUARY",
+        "FEBRUARY",
+        "MARCH",
+        "APRIL",
+        "MAY",
+        "JUNE",
+        "JULY",
+        "AUGUST",
+        "SEPTEMBER",
+        "OCTOBER",
+        "NOVEMBER",
+        "DECEMBER",
+    ];
+    for (name, range, value, (low, high)) in [
+        (
+            "Year",
+            "-999999999 - 999999999",
+            year,
+            (-999_999_999, 999_999_999),
+        ),
+        ("MonthOfYear", "1 - 12", month, (1, 12)),
+        ("DayOfMonth", "1 - 28/31", day, (1, 31)),
+    ] {
+        if !(low..=high).contains(&value) {
+            return Err(failure(format!(
+                "java.time.DateTimeException: Invalid value for {name} (valid values \
+                 {range}): {value}"
+            )));
+        }
+    }
+    if day > crate::parse::instant::days_in_month(year, month) {
+        let name = MONTHS[(month - 1) as usize];
+        return Err(failure(if day == 29 {
+            format!(
+                "java.time.DateTimeException: Invalid date 'February 29' as '{year}' is not \
+                 a leap year"
+            )
+        } else {
+            format!("java.time.DateTimeException: Invalid date '{name} {day}'")
+        }));
+    }
+    let days = days_from_civil(year, month, day);
+    if i32::try_from(days).is_err() {
+        return Err(failure(
+            "a date outside the range of a 32-bit day count, which this server does not hold",
+        ));
+    }
+    Ok(days)
 }
 
 /// The years, months and days of each cell of a `Period` column.
