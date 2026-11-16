@@ -53,9 +53,10 @@ half a second and hands the records to a `KafkaStreamPublisher`, which fills chu
 arrived since the last. `append()` is `BlinkTableTools.blinkToAppendOnly` of that table
 and `ring(n)` is `RingTableTools.of` of it.
 
-## What exists after tasks 7.4.1, 7.4.3, 7.4.4, 7.4.7 and 7.4.8
+## What exists after tasks 7.4.1, 7.4.3, 7.4.4, 7.4.6, 7.4.7 and 7.4.8
 
-`deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` with:
+`deephaven.stream.kafka.topics`, and `deephaven.stream.kafka.consumer.consume` and
+`consume_to_partitioned_table` ("A table per partition") with:
 
 - `TableType.blink()`, `append()` and `ring(n)`;
 - `partitions`, and `offsets` that are `ALL_PARTITIONS_SEEK_TO_BEGINNING`,
@@ -255,6 +256,44 @@ Java's `NullPointerException` text (`Cannot invoke "java.lang.Integer.intValue()
 "value" is null`); a timestamp beyond `Instant`'s range fails with `DateTimeException`,
 one beyond a long of nanoseconds with `DateTimeOverflowException`.
 
+### A table per partition
+
+Since task 7.4.6 (`tasks/7.4.6-kafka-partitioned.md`).
+`consumer.consume_to_partitioned_table` takes the arguments of `consume` and makes the same
+checks; `oxhaven_kafka::consume_to_partitioned_table` is
+`KafkaTools#consumeToPartitionedTable`, and `consume_partitioned_from` the same over a
+scripted `RecordSource` (`src/partitioned.rs`).
+
+- **The table of tables** has the key column `Partition` (`int`) and the constituent
+  column `Table` (of class `io.deephaven.engine.table.Table`), unique keys, constituents
+  that may change, the columns of `consume`'s table as the constituents' definition, and
+  no consistent key columns. It is flat and refreshing, with no other attribute.
+- **One constituent per partition read**, made when the call is made for every partition
+  the consumer is assigned (Java's ingester registers one per partition in its
+  constructor), and shown by the table of tables from the next update cycle on: right
+  after the call it has no rows (probed: `(0, 0, 0)` for its size, its constituents and its
+  merge), whatever has arrived. A constituent is the stream table of its partition, or
+  `blink_to_append_only` or `ring_table` of it, as `consume`'s table is. Constituents are
+  never removed. Rows follow the order of the partitions: here their numbers; in Java the
+  order of the broker's metadata (owner's item 26).
+- **Records.** One thread polls every partition. The records of each partition of a poll go
+  to its constituent, decoded together, in the order of the partitions' numbers. A record
+  that cannot be read fails its own constituent and ends the consumption; the other
+  constituents keep their rows, do not fail and get nothing more, as Java's
+  `KafkaIngester#pollOnce` ends. A failed poll (no position and no policy, a broker error
+  that ends a consumption) fails every constituent (`notifyAllConsumersOnFailure`).
+- **No partition** to read (a `partitions` list the topic does not have, or a topic the
+  broker does not have) fails the call with Java's `NullPointerException: Cannot invoke
+  "io.deephaven.kafka.KafkaTools$StreamPartitionedQueryTable.toPartitionedTable()" ...`.
+- **The end.** A constituent that is dropped stops the reading of its partition, and the
+  consumer stops with the last (`KafkaIngester#shutdownPartition`); the table of tables
+  holds every constituent, so that is when the partitioned table is dropped.
+- It is a partitioned table of the engine like the others: `constituent_tables`, `keys`,
+  `get_constituent`, `merge`, `filter`, `sort`, `transform` and `proxy` were probed. A merge
+  fails, as in Java, when a constituent it would listen to has failed: made after, the call
+  fails with `TableAlreadyFailedException: Can not listen to failed table QueryTable`; made
+  before, the merge fails in the cycle that shows it (`ops/partitioned/merge.rs`).
+
 ### Failures
 
 A record that cannot become a row fails the table, with Java's exception text: invalid
@@ -271,7 +310,11 @@ are taken as such; every other code it reports is one it retries.
 
 A topic the broker does not have gives a table that never gets rows, also once the topic
 exists and has records; in Java too (probed). Like Java's consumer, the request asks the
-broker to create the topic unless `allow.auto.create.topics` is `false`.
+broker to create the topic unless `allow.auto.create.topics` is `false`. Java's one request
+answers that the topic has no partitions, where librdkafka asks again until the topic it
+had created has one; so the topics that exist are listed first, by a request that creates
+none, and a topic not among them has no partitions (since task 7.4.6, which found
+librdkafka's partition 0 for such a topic).
 
 ### Offsets and consumer groups
 
@@ -679,13 +722,14 @@ documented contents and off this machine, which has the same tools.
 | --- | --- | --- | --- |
 | JSON conversion, refusals, the translation of properties, Java's hash order, which errors end a consumption | unit tests in `src/` | nothing | `cargo test --workspace`: every pull request |
 | Tables from a scripted `RecordSource`, with the consistency checker | `tests/consume.rs` | nothing | every pull request |
+| Partitioned tables from a scripted `RecordSource`: the table of tables, constituents of each type, failures of a record and of a poll, merges, the end | `tests/partitioned.rs` | nothing | every pull request |
 | Avro: columns, mappings, records in another writer's schema, the wire format's failures, the registry's requests and errors | unit tests in `src/avro.rs`, `src/registry.rs`; `tests/avro.rs`, with a registry the test serves | nothing | every pull request |
 | Publishing to a scripted `RecordSink`: the records of each kind of change, `last_by`, blink tables, JSON and its failures, the checks | `tests/produce.rs` | nothing | every pull request |
 | Publishing Avro and the record columns to a scripted `RecordSink`, with a registry the test serves: the wire format, the registered schemas and their requests, published schemas, the writer's failures, removed rows, a topic without metadata | `tests/produce_avro.rs`; Java's `Schema#toString` in `src/avro_text.rs` | nothing | every pull request |
 | Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts, an Avro round trip through a registry the test serves, records whose topic, partition and timestamp come from columns | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
 | The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
-| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image) | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
-| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is task 7.4.6 |
+| The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts, an Avro round trip (a registry served by the test, no registry image), a partitioned table of a topic of two partitions and of records that arrive later, and a topic made by the request that has no partitions | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
+| The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1, 7.4.4, 7.4.6, 7.4.7, 7.5.1 and 7.5.2; a recorded corpus is a task of its own, not yet sized (it changes `oracle/`) |
 
 **A broker on this machine.** Docker is installed but no daemon runs. One started by hand
 (`dockerd` with its own socket and data root, no bridge and no iptables rules, the
@@ -706,7 +750,8 @@ pull request shows whether the runner's Docker takes `--network host` with a bro
 
 **Not verified anywhere:** brokers other than 3.9.1; more than one broker, so a
 partition that changes leader while its old leader stays up (a single broker that
-restarts is tested and probed); a topic with more than two partitions; aborted
+restarts is tested and probed); a topic with more than three partitions (three were
+probed in task 7.4.6, two are tested); aborted
 transactions under `read_committed`; `SEEK_TO_END` under `read_committed` while a
 transaction is open (librdkafka's last offset is the high watermark, Java's the last
 stable offset); SASL PLAIN; `group.instance.id`.
@@ -793,6 +838,18 @@ broker under the open tables of both.
   `DHError("text")` without a cause, whose `str()` Java writes as `text : text` (the
   Python package's `dherror.py`, not this task's). Failure texts of tables were compared
   from Java's log and are asserted in `tests/protobuf.rs` and the unit tests.
+- Task 7.4.6, partitioned tables: Java on 10898, Oxhaven on 10899, one broker, topics of
+  three and two partitions, 38 cases in three rounds (`tasks/7.4.6-kafka-partitioned.md`).
+  Same: the columns and their types, the key and constituent columns and the other facts,
+  no rows right after the call, each constituent's rows (append, blink, ring, a list of
+  partitions, offsets per partition), `get_constituent`, `filter`, `sort`, `transform`, a
+  proxy, merges, which constituent fails for a bad record and the failure of merges, and
+  the errors (no partition, a topic made by the request, `ring(0)`, `ring(-1)`, both specs
+  `IGNORE`). Different: the order of the rows of the table of tables, so of `keys` and of
+  the merge (Java `[1, 2, 0]`, the broker's metadata; here `[0, 1, 2]`); and, where a poll
+  held records of two partitions and one of them could not be read, Java had handed the
+  other partition's records to its constituent before it failed the bad one, Oxhaven had
+  not (it goes by partition number). Owner's items 26 and 27.
 - **Row order across partitions.** Within a partition both keep offset order. Where two
   partitions have records in one poll, Java delivers them in the order of a `HashMap` of
   partitions and Oxhaven by partition number, so the last rows of an append-only table,
@@ -920,6 +977,19 @@ broker under the open tables of both.
     (`java.time.Duration#toNanos`). An `Instant[]` element beyond a long of nanoseconds is
     refused the same way.
 
+26. **Partitioned tables, the order of the constituents.** Java adds them in the order of
+    `KafkaConsumer#partitionsFor`, which is the broker's metadata (a topic of three
+    partitions came as `[1, 2, 0]`, a list `[2, 0]` stayed `[2, 0]`). librdkafka sorts the
+    partitions of its metadata, so here they are by number. The keys, the rows of the
+    table of tables and the order of `merge` differ. Reproducing the broker's order needs a
+    metadata request of our own; is the order of the partition numbers acceptable?
+27. **Partitioned tables, a bad record among records of other partitions.** Java hands a
+    poll's records to the constituents partition by partition in an order of its own (the
+    fetch's) and stops at the first that cannot be read, so the partitions before it get
+    their records and those after do not. Here the order is the partitions' numbers. The
+    failed constituent is the same; which of the others got the last records may differ.
+    As item 4, this is an order Java does not define.
+
 ## Refused, by Java method
 
 | What | Named in the refusal |
@@ -933,7 +1003,6 @@ broker under the open tables of both.
 | Two fields of a JSON mapping that are one pointer, among fields of which eight or more fall in one bucket of Java's `HashMap` (Java makes the bucket a tree or resizes early, which is not reproduced) | `java.util.HashMap#treeifyBin` |
 | JSON text with a UTF-16 surrogate without its pair (`"\ud83d"`) where it would become a `String` cell, compact JSON or an `Instant`'s text (fails the table); Java keeps the lone surrogate, which a Rust string cannot hold | `java.lang.String` |
 | Text in an `Instant` column in a spelling the expression crate's `parseInstant` does not read yet (fails the table) | `io.deephaven.time.DateTimeUtils#parseInstant` |
-| `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
 | `object_processor_spec` | `io.deephaven.kafka.KafkaTools.Consume#objectProcessorSpec` |
 | Protobuf: `message_class` | `io.deephaven.kafka.protobuf.DescriptorMessageClass#of` |
 | Protobuf: a column of an enum, a map of one value column, a boxed array, an array of arrays, `Any` or `FieldMask` (Java's column holds Java objects) | `io.deephaven.kafka.ProtobufImpl.ProtobufConsumeImpl#getIngestData`, naming the field and Java's class |
@@ -1010,7 +1079,7 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.3 | JSON completely: the refused conversions (`NumberInput#parseAsInt` and friends, `BigDecimal#intValue`, Jackson's compact output), nested pointers and arrays, `char` and `Instant` columns; simple `byte[]`; raw spec | done (`tasks/7.4.3-kafka-json.md`); raw spec not reachable from Python | 7.4.1 |
 | 7.4.4 | Client: librdkafka as the record source and the translation of properties; committed offsets and `auto.offset.reset` (`DONT_SEEK`), snappy, lz4 and zstd, reconnects, `kafka.topics`; the `kafka-broker` CI job | done (`tasks/7.4.4-kafka-librdkafka.md`) | |
 | 7.4.5 | TLS and SASL: librdkafka's `ssl` and `gssapi` features and the translation of Java's `ssl.*` and `sasl.*` properties (keystores and JAAS have no counterpart in librdkafka); SASL PLAIN first, which needs no library; gzip if allowed | M | owner's rulings 2 and 3 |
-| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
+| 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | done without the corpus (`tasks/7.4.6-kafka-partitioned.md`): the corpus changes the protected `oracle/` and is a task of its own | 7.4.2 |
 | 7.4.7 | Avro specs and the schema registry client | done (`tasks/7.4.7-kafka-avro.md`); no new crate | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | done (`tasks/7.4.8-kafka-protobuf.md`); no new crate | 7.4.7 for the registry |
 | 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
