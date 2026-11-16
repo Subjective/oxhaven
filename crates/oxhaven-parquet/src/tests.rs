@@ -980,7 +980,17 @@ fn partition_directories_java_refuses_are_refused() {
             "kv/K=1/a.parquet>null/A=1/a.parquet",
             "kv/K=1/a.parquet>null/A=/a.parquet",
             "kv/K=1/a.parquet>last/A=/a.parquet",
+            "kv/K=1/a.parquet>shallow/A=1/a.parquet",
+            "kv/K=2/a.parquet>shallow/b.parquet",
         ],
+    );
+    let Err(ReadError::NotPorted { java, what }) = read_at("shallow") else {
+        panic!("a file above the partition directories of another is read");
+    };
+    assert!(java.ends_with("URIStreamKeyValuePartitionLayout#getPartitions"));
+    assert_eq!(
+        what,
+        "b.parquet has 0 partition directories and an earlier file has 1"
     );
     assert_eq!(
         invalid(read_at("plain")),

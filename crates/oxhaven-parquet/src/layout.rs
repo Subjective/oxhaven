@@ -327,6 +327,18 @@ fn key_value(root: &Path) -> Result<Files, ReadError> {
                 keys.len()
             ));
         }
+        if index > 0 && directories.len() < keys.len() {
+            // Java gives the CSV reader a short row, or meets this file first and says
+            // the deeper ones have too many levels: which one is up to its walk
+            return Err(crate::not_ported(
+                "io.deephaven.engine.table.impl.locations.local.URIStreamKeyValuePartitionLayout#getPartitions",
+                format!(
+                    "{shown} has {} partition directories and an earlier file has {}",
+                    directories.len(),
+                    keys.len()
+                ),
+            ));
+        }
         let mut values = Vec::with_capacity(directories.len());
         for (level, directory) in directories.iter().enumerate() {
             let Some((key, value)) = directory.split_once('=') else {
