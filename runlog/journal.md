@@ -827,3 +827,9 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Started 7.1b (Parquet read: more types, names, partitioned layouts). It may make an
   additive contracts change for the new column types and the partitioning flag, decided
   under the standing permission and labelled oracle-change for later review.
+- Pull request 100: `rules` failed with an empty label list although the label was set.
+  The run for the "opened" event started after the run for the "labeled" event and
+  cancelled it, carrying the labels as they were at opening. Not a fault of the change;
+  merging main into the branch starts a run that sees the label. If this repeats, the
+  `rules` job should read the labels from the API instead of the event payload (a change
+  to the workflow, for the owner to approve since it is the gate).
