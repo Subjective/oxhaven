@@ -18,18 +18,20 @@
 //!   through a context that only adds and modifies make).
 //! - A result made of an empty table, or of rows that all have one X value, has a bucket
 //!   width of zero and fails when a row arrives.
-//! - Once a modified row has moved to another bucket, the modified rows after it are not
-//!   looked at in that cycle (`DownsamplerListener#handleModified` returns).
 //! - When a removed or modified row has the bin `0`, the bucket of the row before it in
 //!   the same chunk is used.
 //! - A modify of an `Object` column (`String`, `Instant`, `Boolean`) to null leaves the
 //!   row an extreme of its bucket.
-//! - The buckets below and above a zoom range are not shifted, and no bucket forgets the
-//!   rows it last reported when it is shifted.
+//! - The buckets below and above a zoom range are not shifted and never read again: a
+//!   value of theirs that stops being an extreme stays one, and a removed row that was
+//!   one stays in the result. No bucket forgets the rows it last reported when it is
+//!   shifted.
 //!
-//! Where what Java then does cannot be reproduced, because it reads rows that are not in
-//! the table or reports a change that no row set can follow, the result fails here with a
-//! message that starts `not ported:` and names the Java method.
+//! Where what Java then does cannot be reproduced, the result fails here with a message
+//! that starts `not ported:` and names the Java method. That is so where Java reads rows
+//! that are not in the table or reports a change that no row set can follow, and where a
+//! modified row changes its bucket: what Java does with it depends on how the column is
+//! stored ([`State::handle_modified`]).
 
 use crate::table::{holds_values, QueryTable, TableSpec};
 use arrow::array::{ArrayRef, AsArray};
@@ -930,13 +932,31 @@ impl State {
         Ok(())
     }
 
+    /// The modified rows, each in the bucket it was in.
+    ///
+    /// Java reads the old and the new X values of a chunk through one context. Where the
+    /// column's source answers both reads from the context's buffer, the old values are
+    /// the new ones by the time they are compared, and a row whose X value changed is
+    /// updated in the bucket of its new value without being moved there. Where the source
+    /// answers one read with a slice of its own storage, which the sparse array sources do
+    /// for a run of row keys within one block, the row is moved and the rest of the
+    /// modified rows are skipped. Which of the two happens is a matter of how Java stores
+    /// the column and where the rows lie in it, so a row that changes its bucket is
+    /// refused here; without one the two agree.
+    ///
     /// Behavior: `DownsamplerListener#handleModified`
-    fn handle_modified(&mut self, parent: &dyn Table, upstream: &TableUpdate) -> Result<(), TableFailure> {
+    fn handle_modified(
+        &mut self,
+        parent: &dyn Table,
+        upstream: &TableUpdate,
+    ) -> Result<(), TableFailure> {
+        const METHOD: &str = "RunChartDownsample.DownsamplerListener#handleModified";
         // Java reads the old X values at the new row keys. That is the old value of some
         // other row where the rows were shifted, and nothing where there was no row.
-        if !upstream.shifted.is_empty() && !upstream.modified.is_subset_of(&parent.prev_row_set()) {
+        if !upstream.shifted.is_empty() && !upstream.modified.is_subset_of(&parent.prev_row_set())
+        {
             return Err(not_ported(
-                "RunChartDownsample.DownsamplerListener#handleModified",
+                METHOD,
                 "a modified row at a row key that held no row before the shift",
             ));
         }
@@ -947,21 +967,18 @@ impl State {
             let mut place = None;
             for (at, row) in chunk.iter().enumerate() {
                 let bin = lower_bin(old_xs[at], self.nanos_per_px)?;
-                let new_bin = lower_bin(new_xs[at], self.nanos_per_px)?;
+                if bin != lower_bin(new_xs[at], self.nanos_per_px)? {
+                    return Err(not_ported(
+                        METHOD,
+                        "a modified row whose X value moves it to another bucket",
+                    ));
+                }
+                // Java compares the bin with a last bin that it never sets, so a row of
+                // bin 0 takes the bucket of the row before it
                 let place = match place {
                     Some(place) if bin == 0 => place,
                     _ => *place.insert(self.existing(bin)?),
                 };
-                if bin != new_bin {
-                    if let Some((bucket, trackers)) = self.bucket(place) {
-                        bucket.remove(trackers, row);
-                    }
-                    let (bucket, trackers) = self.bucket_or_new(new_bin);
-                    bucket.append(trackers, row, &values, at)?;
-                    // Java returns here, and with that leaves the rest of the modified
-                    // rows as they were
-                    return Ok(());
-                }
                 if let Some((bucket, trackers)) = self.bucket(place) {
                     bucket.update(trackers, row, &values, at)?;
                 }
