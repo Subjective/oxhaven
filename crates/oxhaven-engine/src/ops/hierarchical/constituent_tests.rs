@@ -264,6 +264,10 @@ fn a_filter_filters_the_rows_of_the_source_too() {
 /// its rows of the source, in the source's order or sorted, and any viewport is a range
 /// of it.
 fn random_constituents(seed: u64) -> u64 {
+    /// The values of `K` and `G` of a group.
+    type Key = (String, String);
+    /// The rows of a group: the value of `V` and the row as the walk shows it.
+    type Rows = Vec<(Option<i32>, String)>;
     let graph = SteppedUpdateGraph::new();
     let mut random = RandomUpdates::new(seed);
     let columns = [
@@ -320,7 +324,7 @@ fn random_constituents(seed: u64) -> u64 {
             .map(|index| parent.column(index).chunk(&rows).unwrap())
             .collect();
         let numbers = values[2].as_any().downcast_ref::<Int32Array>().unwrap();
-        let mut by_group: Vec<((String, String), Vec<(Option<i32>, String)>)> = Vec::new();
+        let mut by_group: Vec<(Key, Rows)> = Vec::new();
         for row in 0..rows.size() as usize {
             let key = (cell(&values[0], row), cell(&values[1], row));
             let value = numbers.is_valid(row).then(|| numbers.value(row));
