@@ -482,3 +482,181 @@ fn a_table_goes_on_after_its_broker_restarts() {
     let expected = [Some("before".to_owned()), Some("after".to_owned())];
     assert_eq!(strings(table.as_ref(), "V"), expected);
 }
+
+/// A table of the JSON values of `topic` from its beginning, without the key.
+fn json_of(
+    graph: &Arc<SteppedUpdateGraph>,
+    topic: &str,
+    columns: &[(&str, ColumnType)],
+    mapping: &[(&str, &str)],
+) -> Arc<dyn Table> {
+    let owned = |(a, b): &(&str, &str)| ((*a).to_owned(), (*b).to_owned());
+    let value = Spec::Json {
+        columns: columns
+            .iter()
+            .map(|(name, column_type)| ((*name).to_owned(), column_type.clone()))
+            .collect(),
+        mapping: Some(mapping.iter().map(owned).collect()),
+    };
+    let mut options = options(topic, BEGINNING, value, TableType::Append);
+    options.key = Spec::Ignore;
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    consume(shared, &options).unwrap()
+}
+
+/// The values the Java reference gave for the same records (task 7.4.3).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn json_fields_are_found_by_pointers_and_coerced_as_java_does() {
+    use arrow::datatypes::{Float64Type, Int16Type, TimestampNanosecondType, UInt16Type};
+    let topic = fresh("json");
+    produce(
+        &topic,
+        "none",
+        &[
+            r#"{"a": {"b": [10, {"c": "12.9"}]}, "x/y": 2.9, "s": {"k": [1.50, -0, 1e3]}, "c": "xy", "t": 1700000000, "f": "1.5f"}"#,
+            r#"[7, "-3", {"a": 1}]"#,
+            r#"{"c": 65535, "t": "2024-01-02T03:04:05Z", "x/y": "Infinity", "s": "😀"}"#,
+        ],
+    );
+    let graph = SteppedUpdateGraph::new();
+    let table = json_of(
+        &graph,
+        &topic,
+        &[
+            ("Deep", ColumnType::Int),
+            ("Slash", ColumnType::Long),
+            ("s", ColumnType::String),
+            ("c", ColumnType::Char),
+            ("t", ColumnType::Instant),
+            ("f", ColumnType::Double),
+            ("First", ColumnType::Short),
+            ("Second", ColumnType::Int),
+        ],
+        &[
+            ("/a/b/1/c", "Deep"),
+            ("x/y", "Slash"),
+            ("/0", "First"),
+            ("/1", "Second"),
+        ],
+    );
+    wait_for(&graph, table.as_ref(), 3);
+    let column = |name: &str| {
+        let index = table.definition().index_of(name).unwrap();
+        table.column(index).chunk(&table.row_set()).unwrap()
+    };
+    let deep: Vec<_> = column("Deep").as_primitive::<Int32Type>().iter().collect();
+    assert_eq!(deep, [Some(12), None, None]);
+    assert_eq!(
+        longs(table.as_ref(), "Slash"),
+        [Some(2), None, Some(i64::MAX)]
+    );
+    let text = |text: &str| Some(text.to_owned());
+    assert_eq!(
+        strings(table.as_ref(), "s"),
+        [text(r#"{"k":[1.50,0,1E+3]}"#), None, text("\u{1f600}")]
+    );
+    let chars: Vec<_> = column("c").as_primitive::<UInt16Type>().iter().collect();
+    assert_eq!(chars, [Some(u16::from(b'x')), None, None]);
+    let times = column("t");
+    let times: Vec<_> = times
+        .as_primitive::<TimestampNanosecondType>()
+        .iter()
+        .collect();
+    assert_eq!(
+        times,
+        [
+            Some(1_700_000_000_000_000_000),
+            None,
+            Some(1_704_164_645_000_000_000)
+        ]
+    );
+    let doubles: Vec<_> = column("f").as_primitive::<Float64Type>().iter().collect();
+    assert_eq!(doubles, [Some(1.5), None, None]);
+    let first: Vec<_> = column("First").as_primitive::<Int16Type>().iter().collect();
+    assert_eq!(first, [None, Some(7), None]);
+    let second: Vec<_> = column("Second")
+        .as_primitive::<Int32Type>()
+        .iter()
+        .collect();
+    assert_eq!(second, [None, Some(-3), None]);
+}
+
+/// The failures the Java reference gave for the same records (task 7.4.3).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn json_records_java_cannot_store_fail_the_table() {
+    let graph = SteppedUpdateGraph::new();
+    let deep = format!("{{\"v\": {}1{}}}", "[".repeat(1000), "]".repeat(1000));
+    /// A record, its columns, its mapping and the failure Java gave.
+    type Case<'a> = (
+        &'a str,
+        &'a [(&'a str, ColumnType)],
+        &'a [(&'a str, &'a str)],
+        &'a str,
+    );
+    let cases: [Case; 4] = [
+        (
+            r#"{"a": 1, "b": 2}"#,
+            &[("X", ColumnType::Int), ("Y", ColumnType::Int)],
+            &[("a", "X"), ("b", "X")],
+            "java.lang.IllegalStateException: Publisher chunks have size mismatch: 1, 1, 1, 2, 1",
+        ),
+        (
+            r#"{"v": {"a": 1}}"#,
+            &[("B", ColumnType::Boolean)],
+            &[("/v", "B")],
+            r#"io.deephaven.UncheckedDeephavenException: value {"a":1} not recognized as Boolean for field /v"#,
+        ),
+        (
+            r#"{"t": 9223372036854775807}"#,
+            &[("t", ColumnType::Instant)],
+            &[],
+            "io.deephaven.time.DateTimeUtils$DateTimeOverflowException: Numeric overflow \
+             detected during conversion of 9223372036 to nanoseconds",
+        ),
+        (
+            &deep,
+            &[("w", ColumnType::Int)],
+            &[],
+            "Document nesting depth (1001) exceeds the maximum allowed (1000)",
+        ),
+    ];
+    for (record, columns, mapping, failure) in cases {
+        let topic = fresh("json_failure");
+        produce(&topic, "none", &[record]);
+        let table = json_of(&graph, &topic, columns, mapping);
+        let message = wait_for_failure(&graph, &table);
+        assert!(message.contains(failure), "{failure}: {message}");
+    }
+}
+
+/// Behavior: org.apache.kafka.common.serialization.ByteArrayDeserializer
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn a_simple_byte_array_column_holds_the_bytes_of_each_value() {
+    let topic = fresh("bytes");
+    produce(&topic, "none", &["ab", "", "\u{e9}"]);
+    let graph = SteppedUpdateGraph::new();
+    let value = Spec::Simple {
+        column: Some("V".to_owned()),
+        data_type: Some(ColumnType::array(ColumnType::Byte)),
+    };
+    let mut options = options(&topic, BEGINNING, value, TableType::Append);
+    options.key = Spec::Ignore;
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    let table = consume(shared, &options).unwrap();
+    wait_for(&graph, table.as_ref(), 3);
+    let index = table.definition().index_of("V").unwrap();
+    let column = table.column(index).chunk(&table.row_set()).unwrap();
+    let cells: Vec<Vec<i8>> = column
+        .as_list::<i32>()
+        .iter()
+        .map(|cell| {
+            let cell = cell.expect("a value is never null here");
+            let bytes = cell.as_primitive::<arrow::datatypes::Int8Type>();
+            bytes.values().to_vec()
+        })
+        .collect();
+    assert_eq!(cells, [vec![97, 98], vec![], vec![-61, -87]]);
+}

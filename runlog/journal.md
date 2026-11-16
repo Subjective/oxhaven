@@ -1042,3 +1042,7 @@ Task 7.4.3 (Kafka JSON) reported from Opus: built and compared with Java on 146 
 ## 2026-11-16T10:20Z
 
 Task 5.10 reported from Opus: Object, DayOfWeek and boolean[] columns; the formula gate fell from 48 to 24 differing cases. It ended at 358k tokens with piece 4 (sorting the time types) not started; verdict too large. Opened as pull request 123. Formula gate over the day: 294, 123, 48, 24.
+
+## 2026-11-16T10:25Z
+
+Pull request 122 (Kafka JSON) merged: CI ran the gates the agent could not finish locally and all passed. Launched 7.5.1 (Kafka producing) on Opus.
