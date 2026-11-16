@@ -2,8 +2,9 @@
 //!
 //! A [`TableLocation`] is a fixed number of rows somewhere else, a Parquet file for example,
 //! that can read a range of one column as an Arrow array. [`stored_table`] makes a static
-//! table from a definition and a list of locations. The engine knows nothing of the format:
-//! a format is a crate that implements the trait (`docs/STORAGE.md`).
+//! table from a definition and a list of locations, and [`following_table`] a table that
+//! grows by the locations a [`LocationProvider`] finds later. The engine knows nothing of
+//! the format: a format is a crate that implements the traits (`docs/STORAGE.md`).
 //!
 //! Each location that has rows is a *region* of the table, numbered in the order given, and
 //! the row key of row `r` of region `n` is `n << 43 | r`, as in Java. So a row key says
@@ -13,14 +14,16 @@
 #[cfg(test)]
 mod tests;
 
-use crate::table::{reads_through, QueryTable, TableSpec};
+use crate::table::{reads_through, QueryTable, RootSource, TableSpec};
 use arrow::array::{new_empty_array, Array, ArrayRef};
 use arrow::compute::concat;
+use oxhaven_contracts::graph::{UpdateGraph, UpdateSource};
 use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableDefinition};
-use oxhaven_contracts::table::{ColumnSource, TableAttributes, TableFailure};
+use oxhaven_contracts::table::{ColumnSource, Table, TableAttributes, TableFailure};
+use oxhaven_contracts::update::TableUpdate;
 use std::ops::Range;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock, Weak};
 
 /// The bits of a row key that say which row of its region it is.
 ///
@@ -57,10 +60,78 @@ pub trait TableLocation: Send + Sync {
     fn read(&self, column: usize, rows: Range<u64>) -> Result<ArrayRef, TableFailure>;
 }
 
+/// Where the locations of a table that grows come from.
+///
+/// Behavior: what io.deephaven.engine.table.impl.locations.impl.PollingTableLocationProvider
+/// and the `TableLocationKeyFinder` behind it offer a source table
+pub trait LocationProvider: Send + Sync {
+    /// The locations found since the provider was made or last asked, in the order of
+    /// their rows. Called once on each cycle of the update graph, under its exclusive
+    /// lock, so a provider that looks at a file system decides itself how often it looks.
+    ///
+    /// An error fails the table.
+    fn poll(&self) -> Result<Vec<Arc<dyn TableLocation>>, TableFailure>;
+}
+
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
         message: message.into(),
     }
+}
+
+/// The locations of a table that have rows, in the order of their regions. A table that
+/// grows adds to the end.
+#[derive(Default)]
+struct Regions(RwLock<Vec<Arc<dyn TableLocation>>>);
+
+impl Regions {
+    fn get(&self, region: usize) -> Option<Arc<dyn TableLocation>> {
+        let regions = self.0.read().unwrap_or_else(PoisonError::into_inner);
+        regions.get(region).cloned()
+    }
+
+    /// Makes regions of those of `locations` that have rows, and answers their row keys.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.sources.regioned.RegionedColumnSourceManager#refresh
+    fn add(&self, locations: Vec<Arc<dyn TableLocation>>) -> Result<RowSet, TableFailure> {
+        let mut regions = self.0.write().unwrap_or_else(PoisonError::into_inner);
+        let locations: Vec<_> = locations.into_iter().filter(|l| l.size() > 0).collect();
+        let count = regions.len() + locations.len();
+        if count > MAX_REGIONS {
+            return Err(failure(format!(
+                "a table can have {MAX_REGIONS} locations with rows, not {count}"
+            )));
+        }
+        let mut ranges = Vec::with_capacity(locations.len());
+        for (index, location) in locations.iter().enumerate() {
+            let size = location.size();
+            if size > MAX_LOCATION_ROWS {
+                return Err(failure(format!(
+                    "{} has {size} rows; a location can have {MAX_LOCATION_ROWS}",
+                    location.name()
+                )));
+            }
+            let first = first_row_key(regions.len() + index);
+            ranges.push(RowRange::new(first, first + (size - 1) as RowKey));
+        }
+        regions.extend(locations);
+        Ok(RowSet::from_ranges(ranges))
+    }
+}
+
+/// The table of the rows of `regions`, which are `rows`, before it is static or not.
+fn spec(definition: TableDefinition, regions: &Arc<Regions>, rows: RowSet) -> TableSpec {
+    let columns = definition.columns().iter().enumerate();
+    let sources = columns
+        .map(|(column, column_definition)| {
+            reads_through(RegionedSource {
+                column_type: column_definition.column_type.clone(),
+                column,
+                regions: regions.clone(),
+            })
+        })
+        .collect();
+    TableSpec::new(definition, rows, sources)
 }
 
 /// The first row key of region `region`.
@@ -84,43 +155,71 @@ pub fn stored_table(
     definition: TableDefinition,
     locations: Vec<Arc<dyn TableLocation>>,
 ) -> Result<Arc<QueryTable>, TableFailure> {
-    let regions: Arc<[Arc<dyn TableLocation>]> = locations
-        .into_iter()
-        .filter(|location| location.size() > 0)
-        .collect();
-    if regions.len() > MAX_REGIONS {
-        return Err(failure(format!(
-            "a table can have {MAX_REGIONS} locations with rows, not {}",
-            regions.len()
-        )));
-    }
-    let mut ranges = Vec::with_capacity(regions.len());
-    for (region, location) in regions.iter().enumerate() {
-        let size = location.size();
-        if size > MAX_LOCATION_ROWS {
-            return Err(failure(format!(
-                "{} has {size} rows; a location can have {MAX_LOCATION_ROWS}",
-                location.name()
-            )));
-        }
-        let first = first_row_key(region);
-        ranges.push(RowRange::new(first, first + (size - 1) as RowKey));
-    }
-    let rows = RowSet::from_ranges(ranges);
-    let columns = definition.columns().iter().enumerate();
-    let sources = columns
-        .map(|(column, column_definition)| {
-            reads_through(RegionedSource {
-                column_type: column_definition.column_type.clone(),
-                column,
-                regions: regions.clone(),
-            })
-        })
-        .collect();
+    let regions = Arc::new(Regions::default());
+    let rows = regions.add(locations)?;
     let mut attributes = TableAttributes::default();
     attributes.add_only = true;
-    let spec = TableSpec::new(definition, rows, sources).with_attributes(attributes);
+    let spec = spec(definition, &regions, rows).with_attributes(attributes);
     Ok(QueryTable::new_static(spec))
+}
+
+/// A table of the rows of `locations`, in that order, that grows on a cycle of `graph` by
+/// the rows of the locations `provider` then answers, in the order it answers them.
+///
+/// A location never changes and never leaves, so the table only gains rows after the ones
+/// it has: it is append-only. Java says so with that attribute alone, without the add-only
+/// one a table of locations that do not change has.
+///
+/// Behavior: io.deephaven.engine.table.impl.SourceTable#doCoalesce and its
+/// `LocationChangePoller`, io.deephaven.engine.table.impl.sources.regioned.RegionedColumnSourceManager#refresh
+/// and `#getTableAttributes`
+pub fn following_table(
+    graph: Arc<dyn UpdateGraph>,
+    definition: TableDefinition,
+    locations: Vec<Arc<dyn TableLocation>>,
+    provider: Arc<dyn LocationProvider>,
+) -> Result<Arc<QueryTable>, TableFailure> {
+    let regions = Arc::new(Regions::default());
+    let rows = regions.add(locations)?;
+    let mut attributes = TableAttributes::default();
+    attributes.append_only = true;
+    let spec = spec(definition, &regions, rows).with_attributes(attributes);
+    Ok(QueryTable::root(graph, spec, |table| RootSource {
+        source: Arc::new(Follower {
+            table,
+            regions,
+            provider,
+        }),
+        input: None,
+    }))
+}
+
+/// Adds the locations a provider finds to a table.
+struct Follower {
+    table: Weak<QueryTable>,
+    regions: Arc<Regions>,
+    provider: Arc<dyn LocationProvider>,
+}
+
+impl UpdateSource for Follower {
+    /// Behavior: io.deephaven.engine.table.impl.SourceTable.LocationChangePoller#instrumentedRefresh
+    fn refresh(&self) {
+        let Some(table) = self.table.upgrade() else {
+            return;
+        };
+        if table.is_failed() {
+            return;
+        }
+        let found = self.provider.poll();
+        match found.and_then(|locations| self.regions.add(locations)) {
+            Ok(added) if added.is_empty() => {}
+            Ok(added) => table.notify(TableUpdate {
+                added,
+                ..TableUpdate::empty()
+            }),
+            Err(failure) => table.fail(failure),
+        }
+    }
 }
 
 /// One column of a stored table: the same column of every region.
@@ -131,7 +230,7 @@ pub fn stored_table(
 struct RegionedSource {
     column_type: ColumnType,
     column: usize,
-    regions: Arc<[Arc<dyn TableLocation>]>,
+    regions: Arc<Regions>,
 }
 
 impl RegionedSource {
@@ -142,6 +241,7 @@ impl RegionedSource {
             .regions
             .get(region)
             .ok_or_else(|| failure(format!("row key {first} is in no location of the table")))?;
+        let location = location.as_ref();
         let offset = (first - first_row_key(region)) as u64;
         let rows = offset..offset + (last - first) as u64 + 1;
         if rows.end > location.size() {
