@@ -594,6 +594,121 @@ fn an_array_is_created_from_its_elements() {
     );
 }
 
+/// Each cell with its arrays in brackets, so that the dimensions show.
+fn bracketed(array: &ArrayRef) -> Vec<String> {
+    match array.data_type() {
+        DataType::List(_) => array
+            .as_list::<i32>()
+            .iter()
+            .map(|cell| match cell {
+                Some(cell) => format!("[{}]", bracketed(&cell).join(", ")),
+                None => "null".to_string(),
+            })
+            .collect(),
+        _ => render(array),
+    }
+}
+
+/// `new int[a][b]` and its relatives, and `new String` of a part of an array.
+///
+/// Behavior: `QueryLanguageParser#visit(ArrayCreationExpr)`;
+/// `java.lang.String#String(char[], int, int)`, `#String(int[], int, int)`,
+/// `#String(byte[], int, int)` and `#String(char[])`. Expected values seen on Java 42.9.
+#[test]
+fn arrays_of_arrays_and_strings_of_parts_of_arrays_are_created() {
+    let table = table();
+    let int = || ColumnType::Int;
+    for (formula, column_type, expected) in [
+        (
+            "new int[4][2]",
+            ColumnType::array(ColumnType::array(int())),
+            "[[0, 0], [0, 0], [0, 0], [0, 0]]",
+        ),
+        (
+            "new long[2][]",
+            ColumnType::array(ColumnType::array(ColumnType::Long)),
+            "[null, null]",
+        ),
+        (
+            "new String[2][3]",
+            ColumnType::array(ColumnType::array(ColumnType::String)),
+            "[[null, null, null], [null, null, null]]",
+        ),
+        (
+            "new double[2][2][1]",
+            ColumnType::array(ColumnType::array(ColumnType::array(ColumnType::Double))),
+            "[[[0.0], [0.0]], [[0.0], [0.0]]]",
+        ),
+        (
+            "new char[2][2]",
+            ColumnType::array(ColumnType::array(ColumnType::Char)),
+            "[[0, 0], [0, 0]]",
+        ),
+        (
+            "new int[2][][]",
+            ColumnType::array(ColumnType::array(ColumnType::array(int()))),
+            "[null, null]",
+        ),
+    ] {
+        let (actual_type, values) = table
+            .evaluate(formula)
+            .unwrap_or_else(|e| panic!("{formula}: {e}"));
+        assert_eq!(actual_type, column_type, "{formula}");
+        assert_eq!(bracketed(&values), vec![expected; 5], "{formula}");
+    }
+    let text = |value: &str| strings([Some(value); 5]);
+    let abcde = "new char[]{'a', 'b', 'c', 'd', 'e'}";
+    table.assert(&format!("new String({abcde}, 1, 4)"), text("bcde"));
+    table.assert("new String(new char[]{'a', 'b', 'c'}, 3, 0)", text(""));
+    table.assert("new String(new char[]{'a', 'b'})", text("ab"));
+    table.assert(
+        "new String(new char[]{'a', 'b', 'c'}, (short) 1, (byte) 1)",
+        text("b"),
+    );
+    table.assert("new String(new int[]{97, 98, 99}, 1, 2)", text("bc"));
+    table.assert("new String(new byte[]{97, 98, 99}, 1, 2)", text("bc"));
+    table.assert(
+        "new String(new char[]{'a', NULL_CHAR}, 0, 2)",
+        text("a\u{ffff}"),
+    );
+    table.assert(
+        "new String(new char[]{'a', 'b', 'c'}, (int) (ii % 3), 1)",
+        strings([Some("a"), Some("b"), Some("c"), Some("a"), Some("b")]),
+    );
+    for (formula, exception) in [
+        (
+            format!("new String({abcde}, 1, 5)"),
+            "StringIndexOutOfBounds",
+        ),
+        (
+            format!("new String({abcde}, -1, 2)"),
+            "StringIndexOutOfBounds",
+        ),
+        (
+            format!("new String({abcde}, NULL_INT, 1)"),
+            "StringIndexOutOfBounds",
+        ),
+        ("new String((char[]) null, 0, 1)".into(), "NullPointer"),
+        (
+            "new String(new int[]{-1}, 0, 1)".into(),
+            "IllegalArgumentException",
+        ),
+    ] {
+        let error = table.evaluate(&formula).expect_err(&formula);
+        assert!(error.message.contains(exception), "{formula}: {error:?}");
+    }
+    for formula in [
+        "new String(new char[]{'a', 'b', 'c'}, 1L, 1)",
+        "new String(new int[]{97})",
+    ] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula} gave {:?}",
+            table.compile_error(formula)
+        );
+    }
+}
+
 /// What javac refuses in an array creation, and the arrays whose type no column has.
 #[test]
 fn an_array_java_cannot_create_is_refused() {
@@ -616,16 +731,35 @@ fn an_array_java_cannot_create_is_refused() {
     }
     for (formula, construct) in [
         ("new boolean[]{true}", "array creation new boolean[]"),
-        ("new Boolean[]{Z}", "array creation new Boolean[]"),
-        ("new Integer[]{I}", "array creation new Integer[]"),
+        (
+            "new Boolean[]{Z}",
+            "array creation new Boolean[]: no column type is an array of a boxed java.lang class",
+        ),
+        (
+            "new Integer[]{I}",
+            "array creation new Integer[]: no column type is an array of a boxed java.lang class",
+        ),
+        (
+            "new Integer[5]",
+            "array creation new Integer[]: no column type is an array of a boxed java.lang class",
+        ),
         (
             "new Object[]{F, D}",
             "new Object[] of a float and a double, an array of objects of two classes",
         ),
-        ("new int[2][2]", "array creation new int[][], of arrays"),
+        (
+            "new int[][]{{1}}",
+            "array creation new int[][] {...}, of arrays",
+        ),
         (
             "new int[I]",
-            "array creation new int[n] with a length that is not a literal from 1 to 1024",
+            "array creation new int[n] with lengths that are not literals from 1 to 1024 \
+             or more than 1024 elements in all",
+        ),
+        (
+            "new int[64][32]",
+            "array creation new int[n][n] with lengths that are not literals from 1 to 1024 \
+             or more than 1024 elements in all",
         ),
     ] {
         assert_eq!(
@@ -705,10 +839,6 @@ fn a_boxed_value_is_constructed_from_its_primitive_or_from_text() {
         (
             "new Float(D)",
             "constructor new Float() with these arguments",
-        ),
-        (
-            "new String(new char[]{'a'})",
-            "constructor new String() with these arguments",
         ),
         ("new Object()", "constructor new Object()"),
         (

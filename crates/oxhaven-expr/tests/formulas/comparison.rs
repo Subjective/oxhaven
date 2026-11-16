@@ -382,3 +382,141 @@ fn the_null_literal_is_an_operand_where_java_finds_one_method() {
         );
     }
 }
+
+/// A struct column of `column_type` (`Period` or `ZonedDateTime`) from its field arrays,
+/// null where `valid` is false.
+fn struct_column(column_type: ColumnType, fields: Vec<ArrayRef>, valid: &[bool]) -> Column {
+    let DataType::Struct(names) = column_type.arrow_type() else {
+        panic!("{column_type:?} is no struct")
+    };
+    let nulls = arrow::buffer::NullBuffer::from(valid.to_vec());
+    let array = arrow::array::StructArray::new(names, fields, Some(nulls));
+    (column_type, Arc::new(array))
+}
+
+fn dates<const N: usize>(values: [Option<i32>; N]) -> Column {
+    let array = arrow::array::Date32Array::from(values.to_vec());
+    (ColumnType::LocalDate, Arc::new(array))
+}
+
+/// The table of the probes: a `LocalDate` `D`, a `Duration` `Dur`, a `Period` `P`, a
+/// `ZonedDateTime` `ZD`, a `ZoneId` `Z`, a `String` `S` and an `int` `I`, each null in the
+/// first row but `I`.
+fn time_objects() -> TestTable {
+    let valid = [false, true, true, true];
+    let ints32 = |values: [i32; 4]| -> ArrayRef { Arc::new(Int32Array::from(values.to_vec())) };
+    let march_10 = 19_792;
+    let durations = arrow::array::DurationNanosecondArray::from(vec![
+        None,
+        Some(1_000_000_000),
+        Some(2_000_000_000),
+        Some(3_000_000_000),
+    ]);
+    let zoned_instants: ArrayRef = Arc::new(
+        TimestampNanosecondArray::from(vec![0, 1_710_028_800_000_000_000, 0, 0])
+            .with_data_type(ColumnType::Instant.arrow_type()),
+    );
+    let zone_ids: ArrayRef = Arc::new(StringArray::from(vec!["", "UTC", "UTC", "UTC"]));
+    let zones = StringArray::from(vec![None, Some("UTC"), Some("UTC"), Some("UTC")]);
+    let text = Some("2024-03-10");
+    TestTable::new([
+        (
+            "D",
+            dates([None, Some(march_10), Some(march_10 + 1), Some(march_10 + 2)]),
+        ),
+        ("Dur", (ColumnType::Duration, Arc::new(durations))),
+        (
+            "P",
+            struct_column(
+                ColumnType::Period,
+                vec![ints32([0, 1, 0, 0]), ints32([0; 4]), ints32([0, 0, 2, 3])],
+                &valid,
+            ),
+        ),
+        (
+            "ZD",
+            struct_column(
+                ColumnType::ZonedDateTime,
+                vec![zoned_instants, zone_ids],
+                &valid,
+            ),
+        ),
+        ("Z", (ColumnType::ZoneId, Arc::new(zones))),
+        ("S", strings([None, text, text, text])),
+        ("I", ints([Some(0), Some(1), Some(2), Some(3)])),
+    ])
+}
+
+/// QLFU `#eq(Object, Object)` between a `java.time` value and a value of another class
+/// (equal only when both are null; a primitive is boxed, so never null) or of its own
+/// class (`equals`), and `#compareTo(Comparable, Comparable)` against `null` (null
+/// first). Expected values seen on Java 42.9 for the same formulas on the same columns.
+#[test]
+fn time_objects_compare_with_other_classes_and_null_as_java_does() {
+    let table = time_objects();
+    for (formula, expected) in [
+        // `2024-03-10` is the `int` 2011.
+        ("D == 2024-03-10", [false; 4]),
+        ("D != 2024-03-10", [true; 4]),
+        ("D == `2024-03-10`", [false; 4]),
+        ("D == S", [true, false, false, false]),
+        ("D == I", [false; 4]),
+        ("D == 3.5", [false; 4]),
+        ("D == true", [false; 4]),
+        ("D == 'PT1s'", [false; 4]),
+        ("D == '2024-03-10'", [false, true, false, false]),
+        ("Dur == P", [true, false, false, false]),
+        ("Z == `UTC`", [false; 4]),
+        ("ZD == ZD", [true; 4]),
+        ("Dur < null", [false; 4]),
+        ("Dur > null", [false, true, true, true]),
+        ("Dur <= null", [true, false, false, false]),
+        ("Dur >= null", [true; 4]),
+        ("null < Dur", [false, true, true, true]),
+        ("D > null", [false, true, true, true]),
+        ("ZD < null", [false; 4]),
+        ("null >= ZD", [true, false, false, false]),
+        ("P == 'P1Y'", [false, true, false, false]),
+        ("'P1Y' == P", [false, true, false, false]),
+        ("P != 'P1Y'", [true, false, true, true]),
+        ("P == 'P2D'", [false, false, true, false]),
+        ("P == 'P12M'", [false; 4]),
+        ("P == `P1Y`", [false; 4]),
+        ("P == P", [true; 4]),
+        ("P == 3", [false; 4]),
+    ] {
+        table.assert(formula, flags(expected));
+    }
+}
+
+/// QLFU `#compareTo(Comparable, Comparable)` of two classes: `compareTo` throws
+/// `ClassCastException` once two values that are not null meet, and the formula fails;
+/// `Period` and `ZoneId` are no `Comparable`, so Java finds no method. Seen on Java 42.9.
+#[test]
+fn ordering_two_classes_fails_where_two_values_meet() {
+    let table = time_objects();
+    for formula in ["D < S", "D < 2024-03-10", "Dur < 5", "S < I", "D < ZD"] {
+        let error = table.evaluate(formula).expect_err(formula);
+        assert!(
+            error.message.contains("ClassCastException"),
+            "{formula}: {error:?}"
+        );
+    }
+    for formula in ["P < null", "P < P", "Dur < P", "Z < null", "null >= Z"] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Type(_)),
+            "{formula} gave {:?}",
+            table.compile_error(formula)
+        );
+    }
+    // Where one side is null in every row, nothing is compared and null is first.
+    let nulls = TestTable::new([
+        ("D", dates([None, None])),
+        ("S", strings([None, Some("a")])),
+        ("I", ints([Some(0), None])),
+    ]);
+    nulls.assert("D < I", flags([true, true]));
+    nulls.assert("D < S", flags([false, true]));
+    nulls.assert("3 < D", flags([false, false]));
+    nulls.assert("D >= 3.5", flags([false, false]));
+}

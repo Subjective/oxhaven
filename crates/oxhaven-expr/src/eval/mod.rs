@@ -23,7 +23,7 @@ use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::sync::Arc;
-pub(crate) use text::java_strings;
+pub(crate) use text::{java_strings, new_string_of};
 
 fn failure(message: impl Into<String>) -> TableFailure {
     TableFailure {
@@ -488,7 +488,7 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 *domain,
                 left.as_ref(),
                 right.as_ref(),
-            )))
+            )?))
         }
         Node::Logical { op, left, right } => logical(*op, left, right, batch),
         Node::BooleanBitwise { op, left, right } => {

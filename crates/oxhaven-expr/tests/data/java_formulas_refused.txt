@@ -5,14 +5,6 @@ java-accepts	update	(Integer) I	cast to Integer
 java-accepts	update	(Double) D	cast to Double
 java-fails	update	(char) S	cast of String to char
 java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
-java-fails	update	I < S	ordering comparison of int with String
-java-fails	update	S < I	ordering comparison of String with int
-java-fails	update	S < T	ordering comparison of String with Instant
-java-fails	update	T < S	ordering comparison of Instant with String
-java-fails	update	B < I	ordering comparison of Boolean with int
-java-fails	update	B < S	ordering comparison of Boolean with String
-java-fails	update	T < L	ordering comparison of Instant with long
-java-fails	update	T > I	ordering comparison of Instant with int
 java-accepts	update	1.5F	float literal with an uppercase F suffix 1.5F
 java-accepts	update	1F	float literal with an uppercase F suffix 1F
 java-accepts	update	1e3F	float literal with an uppercase F suffix 1e3F
@@ -28,7 +20,6 @@ java-rejects	update	'2262-04-11T23:47:16.854775808 UTC'	time literal '2262-04-11
 java-accepts	update	'1677-09-21T00:12:43.145224192 UTC'	time literal '1677-09-21T00:12:43.145224192 UTC' outside the range of a 64-bit nanosecond timestamp
 java-rejects	update	'9999-01-01 UTC'	time literal '9999-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
 java-accepts	update	'0001-01-01 UTC'	time literal '0001-01-01 UTC' outside the range of a 64-bit nanosecond timestamp
-java-accepts	update	'1700000000'	time literal '1700000000'
 java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
 java-accepts	update	`'PT1H'`	time literal inside a string literal
 java-rejects	update	`'x y'`	time literal inside a string literal

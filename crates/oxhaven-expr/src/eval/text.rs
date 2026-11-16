@@ -6,9 +6,13 @@
 //! result would hold half of a surrogate pair fails, because no Arrow string can hold it.
 
 use super::failure;
+use crate::functions::StringSource;
 use crate::parse::instant::civil_from_days;
 use crate::types::StringMethod;
-use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, Int32Array, StringArray, UInt16Array};
+use arrow::array::{
+    Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, Int32Array, PrimitiveArray,
+    StringArray, UInt16Array,
+};
 use arrow::datatypes::{
     DataType, Date32Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
     Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
@@ -257,6 +261,114 @@ pub(crate) fn new_string(arrays: &dyn Array) -> Result<StringArray, TableFailure
                  which Java decodes with replacement characters",
             )
         })?;
+        texts.push(text);
+    }
+    Ok(StringArray::from_iter_values(texts))
+}
+
+/// The value at `at`, or `null`, the value Java reserves for null, where it is null.
+fn cell<T: ArrowPrimitiveType>(
+    values: &PrimitiveArray<T>,
+    at: usize,
+    null: T::Native,
+) -> T::Native {
+    if values.is_valid(at) {
+        values.value(at)
+    } else {
+        null
+    }
+}
+
+/// `new String(array, offset, count)`, or `new String(array)` of the whole array, of each
+/// row: the `count` elements of `array` from
+/// `offset` as text. A null array is a `NullPointerException`, and a range outside the
+/// array a `StringIndexOutOfBoundsException`; a null `offset` or `count` is the smallest
+/// `int` to Java, so outside. A null element is the value Java reserves for null: the
+/// `char` U+FFFF, the code point -2147483648 (which Java refuses) and the byte -128.
+///
+/// Text that a Rust string cannot hold is refused: a `char[]` with a surrogate that is not
+/// half of a pair, and an `int[]` with a surrogate code point. Bytes that are not UTF-8
+/// are refused as [`new_string`] refuses them.
+///
+/// Behavior: `java.lang.String#String(char[], int, int)`, `#String(int[], int, int)` and
+/// `#String(byte[], int, int)` with the default charset of the reference server, UTF-8;
+/// `String#checkBoundsOffCount`. Seen on Java 42.9: `new String(new char[]{'a', 'b', 'c',
+/// 'd', 'e'}, 1, 4)` is `bcde`, `(..., 1, 5)`, `(..., -1, 2)` and `(..., NULL_INT, 1)` fail,
+/// `(new char[]{'a', 'b', 'c'}, 3, 0)` is empty, `new String(new int[]{97, 98, 99}, 1, 2)`
+/// and `new String(new byte[]{97, 98, 99}, 1, 2)` are `bc`.
+pub(crate) fn new_string_of(
+    source: StringSource,
+    arguments: &[ArrayRef],
+) -> Result<StringArray, TableFailure> {
+    let arrays = arguments[0].as_list::<i32>();
+    let int = |argument: usize, row: usize| -> i64 {
+        let values = arguments[argument].as_primitive::<Int32Type>();
+        i64::from(cell(values, row, i32::MIN))
+    };
+    let mut texts = Vec::with_capacity(arrays.len());
+    for row in 0..arrays.len() {
+        if arrays.is_null(row) {
+            return Err(failure(
+                "java.lang.NullPointerException: new String() of a null array",
+            ));
+        }
+        let elements = arrays.value(row);
+        let length = elements.len() as i64;
+        // `new String(char[])` is the whole array.
+        let (offset, count) = if arguments.len() == 1 {
+            (0, length)
+        } else {
+            (int(1, row), int(2, row))
+        };
+        if offset < 0 || count < 0 || offset > length - count {
+            return Err(out_of_bounds(format_args!(
+                "offset {offset}, count {count}, length {length}"
+            )));
+        }
+        let range = offset as usize..(offset + count) as usize;
+        let text = match source {
+            StringSource::Chars => {
+                let units = elements.as_primitive::<UInt16Type>();
+                let units: Vec<u16> = range.map(|at| cell(units, at, u16::MAX)).collect();
+                String::from_utf16(&units).map_err(|_| {
+                    failure(
+                        "not ported: java.lang.String#String(char[], int, int) of a surrogate \
+                         that is not half of a pair, which a Rust string cannot hold",
+                    )
+                })?
+            }
+            StringSource::CodePoints => {
+                let points = elements.as_primitive::<Int32Type>();
+                let mut text = String::with_capacity(range.len());
+                for at in range {
+                    let point = cell(points, at, i32::MIN);
+                    let invalid = || {
+                        failure(format!(
+                            "java.lang.IllegalArgumentException: {point:#x} is not a code point"
+                        ))
+                    };
+                    let point = u32::try_from(point).map_err(|_| invalid())?;
+                    if (0xD800..=0xDFFF).contains(&point) {
+                        return Err(failure(
+                            "not ported: java.lang.String#String(int[], int, int) of a \
+                             surrogate code point, which a Rust string cannot hold",
+                        ));
+                    }
+                    text.push(char::from_u32(point).ok_or_else(invalid)?);
+                }
+                text
+            }
+            StringSource::Bytes => {
+                let bytes = elements.as_primitive::<Int8Type>();
+                let bytes: Vec<u8> = range.map(|at| cell(bytes, at, i8::MIN) as u8).collect();
+                String::from_utf8(bytes).map_err(|_| {
+                    failure(
+                        "not ported yet: java.lang.String#String(byte[], int, int): bytes that \
+                         are not UTF-8, which Java decodes with replacement characters",
+                    )
+                })?
+            }
+        };
         texts.push(text);
     }
     Ok(StringArray::from_iter_values(texts))

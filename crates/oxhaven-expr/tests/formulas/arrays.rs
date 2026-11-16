@@ -349,3 +349,81 @@ fn the_column_array_of_a_vector_column_holds_its_vectors() {
         ));
     }
 }
+
+/// The column array of a column of vectors of instants or booleans: Java holds its
+/// elements without an element type, but the calls that read only sizes and nulls are
+/// computed. Expected values seen on Java 42.9 for `group_by("K").update(...)` of five
+/// rows, `K = ii % 2`.
+#[test]
+fn sizes_are_read_from_the_column_array_of_vectors_of_instants_or_booleans() {
+    let instants = arrow::array::ListArray::new(
+        Arc::new(arrow::datatypes::Field::new(
+            "",
+            ColumnType::Instant.arrow_type(),
+            true,
+        )),
+        arrow::buffer::OffsetBuffer::from_lengths([3, 2]),
+        Arc::new(
+            TimestampNanosecondArray::from(vec![Some(0), None, Some(4), Some(1), Some(3)])
+                .with_data_type(ColumnType::Instant.arrow_type()),
+        ),
+        None,
+    );
+    let booleans = arrow::array::ListArray::new(
+        Arc::new(arrow::datatypes::Field::new("", DataType::Boolean, true)),
+        arrow::buffer::OffsetBuffer::from_lengths([3, 2]),
+        Arc::new(BooleanArray::from(vec![
+            Some(true),
+            Some(false),
+            Some(false),
+            Some(false),
+            None,
+        ])),
+        None,
+    );
+    let table = TestTable::new([
+        (
+            "T",
+            (
+                ColumnType::vector(ColumnType::Instant),
+                Arc::new(instants) as ArrayRef,
+            ),
+        ),
+        (
+            "B",
+            (
+                ColumnType::vector(ColumnType::Boolean),
+                Arc::new(booleans) as ArrayRef,
+            ),
+        ),
+    ]);
+    table.assert("T_[i].size()", longs([Some(3), Some(2)]));
+    table.assert("B_[i].size()", longs([Some(3), Some(2)]));
+    table.assert("T_.size()", longs([Some(2); 2]));
+    table.assert("T_.size() + 1", longs([Some(3); 2]));
+    table.assert("T_[i].size() * 2", longs([Some(6), Some(4)]));
+    table.assert("T_[i].isEmpty()", flags([false; 2]));
+    table.assert("len(T_[i])", longs([Some(3), Some(2)]));
+    table.assert("len(T_)", longs([Some(2); 2]));
+    table.assert("isNull(T_[i + 1])", flags([false, true]));
+    table.assert("T_[i + 1] == null", flags([false, true]));
+    // `T_[-1]` is null, and Java fails with a `NullPointerException` on its size.
+    assert!(table.evaluate("T_[i - 1].size()").is_err());
+    // An element, or a vector as a value, is a `java.lang.Object` Java sends as text.
+    for formula in [
+        "T_[i][0]",
+        "T_[i].get(0)",
+        "T_[i]",
+        "T_",
+        "B_[i][0]",
+        "T_[T_[i][0] == null ? 0 : 1].size()",
+        // Java computes it; not ported for any vector.
+        "T_[i].intSize()",
+    ] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
+            "{formula} gave {:?}",
+            table.compile_error(formula)
+        );
+    }
+}

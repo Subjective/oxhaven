@@ -358,18 +358,20 @@ fn a_column_of_vectors_can_be_read_at_a_distance() {
     // One of vectors of booleans is a column Java sends as strings.
     let flags = update(&flat(5), &["Z = B > 2"], &Compiler).unwrap();
     let grouped = group_by(&flags, &["Sym"]).unwrap();
-    for formula in ["P = Z_[i - 1]", "P = Z_[i - 1].size()"] {
-        assert!(
-            matches!(
-                update(&grouped, &[formula], &Compiler),
-                Err(SelectError::Formula {
-                    error: FormulaError::Unsupported(_),
-                    ..
-                })
-            ),
-            "{formula}"
-        );
-    }
+    assert!(matches!(
+        update(&grouped, &["P = Z_[i - 1]"], &Compiler),
+        Err(SelectError::Formula {
+            error: FormulaError::Unsupported(_),
+            ..
+        })
+    ));
+    // Its sizes compute, and the null before the first row fails as Java's `size()` of null.
+    let sizes = update(&grouped, &["N = Z_[i].size()"], &Compiler).unwrap();
+    assert_eq!(values(&*sizes, "N"), ["2", "2", "1"]);
+    assert!(matches!(
+        update(&grouped, &["P = Z_[i - 1].size()"], &Compiler),
+        Err(SelectError::Failed(f)) if f.message.contains("NullPointerException")
+    ));
 }
 
 #[test]
