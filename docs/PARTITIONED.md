@@ -4,7 +4,9 @@ How Oxhaven holds a table of tables, keeps its constituents up to date, and hand
 clients. Written by task 7.6 (`tasks/7.6-partitioned-tables.md`), which also built the first
 slice. The follow-on tasks, 7.6.1 to 7.6.6, are sized in that file; 7.6.1
 (`tasks/7.6.1-partitioned-transform.md`) wrote "Transforms"; 7.6.3
-(`tasks/7.6.3-partitioned-factories.md`) wrote "Made from tables".
+(`tasks/7.6.3-partitioned-factories.md`) wrote "Made from tables"; 7.6.4
+(`tasks/7.6.4-columns-of-tables.md`) wrote "Columns of tables in filters, aggregations and
+formulas".
 
 What Java does was read in `PartitionByChunkedOperator`, `PartitionedTableImpl`,
 `PartitionedTableServiceGrpcImpl` and `PartitionedTableTypePlugin`, and observed on Java 42.9
@@ -399,10 +401,10 @@ Each names the Java method in its error.
 | A transform function that compiles a formula inside an execution context it enters | `deephaven.execution_context` | 6.12 |
 | `update_graph` | `Table#getUpdateGraph` | 6.12 |
 | `partitioned_agg_by` and `agg_by` of a refreshing table with `initial_groups` it has no rows for, without `preserve_empty` | `ChunkedOperatorAggregationHelper#copyKeyColumns` | 4.18, needs a ruling |
-| `get_constituent` with a key value that is not of the key column's type | `PartitionedTableImpl#constituentFor` | 7.6.4 |
-| `where("C != null")` and other match filters on a column of tables | `MatchFilter.ColumnTypeConvertorFactory#getConvertor` | 7.6.4 |
-| `where_in` on a column of tables | `DynamicWhereFilter#beginOperation` | 7.6.4 |
-| A column of tables in a formula | the formula compiler: "unsupported in formulas" | 7.6.4 |
+| `get_constituent` with a key value of a class this package has no stand-in for (a `java.time` value for a column of numbers) | `PartitionedTableImpl#constituentFor` | none |
+| A match filter on a column of tables with a query scope variable (`C == t`) | `MatchFilter.ColumnTypeConvertor#convertValue` | 6.12 |
+| In a formula: a method of a table (`C.size()`), its text (`C + "x"`), a cast (`(Object) C`) | `BaseTable#toString`, the method's class | none |
+| `min`, `max`, `unique`, `distinct`, `count_distinct` of a column of tables: Java fails as well, with another text | `AggregationProcessor` | none |
 | `OpenMessageStream`, `NextMessageStream` | `ObjectServiceGrpcImpl#openMessageStream`, `#nextMessageStream` | 7.6.5 |
 
 Java refuses as well, and the text here is Java's: a second partition aggregation in one
@@ -416,6 +418,33 @@ naming `SortOperation#SortOperation`.
 A column of tables works as a group key (`count_by`, `agg_by`, `head_by` by it) and as the
 column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 
+## Columns of tables in filters, aggregations and formulas
+
+Task 7.6.4 (`tasks/7.6.4-columns-of-tables.md`, whose "Probes" hold every case run on
+Java 42.9).
+
+- **`get_constituent`** filters the underlying table by one match filter per key column,
+  given the Python values as jpy gives them to Java (`bool` a `Boolean`, `int` the narrowest
+  of `Byte` to `Long`, `float` a `Double`, `str` a `String`): a column of numbers takes any
+  number through Java's narrowing (`1.9` finds `1`, `257` finds the byte `1`), a NaN finds
+  nothing, a column of `char` takes no value but `None`, any other column compares with
+  `Objects.equals`, so a value of another class finds nothing. Anything else fails with
+  Java's `ClassCastException`, but only when rows are left for that filter: the filters
+  run in order and stop at the first that leaves no row. A Python value jpy cannot convert
+  fails as jpy does. All of it is in `deephaven/table.py` (`_match_value`).
+- **Match filters** on a column of tables hold only `null` (`C == null`, `C != null`,
+  `in null`, `icase in null`), as Java's convertor of a class without one of its own;
+  another literal fails to convert and the filter becomes its formula.
+- **`where_in` and `where_not_in`** compare tables by identity, that is by handle. A column
+  of `Table` against one of `QueryTable` is refused, as Java refuses it.
+- **Aggregations** `first`, `last`, `sorted_first` and `sorted_last` copy the cell; the
+  result's source keeps the table (`oxhaven_column::tables`). `group_by` makes a vector of
+  tables as before.
+- **Formulas** hold a cell as an object: `==` and `!=` compare by identity (a table equals
+  no value of another class, and `null` equals `null`), `isNull` tests it, a ternary and
+  `D = C` pass it on, and `update` and `select` store it. `view` and `update_view` refuse a
+  formula that makes tables, with Java's text (`ViewColumnLayer#checkResultType`).
+
 ## Differences from Java
 
 - Row keys of a merged table (PARITY A4).
@@ -424,7 +453,18 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 - The text of a constituent cell is `QueryTable` on both.
 - The bytes of the schema inside the `PartitionedTableDescriptor` are laid out differently
   by the two flatbuffer writers; the schema they decode to is the same.
-- The rows of the table above marked 7.6.4 work in Java and are refused here.
+- Columns of tables (task 7.6.4), none of these decided:
+  - Java answers the same partitioned table for `partition_by` of the same table and
+    columns twice, so `where_in` of the cells of one with the other matches; here the two
+    calls make other tables, and nothing matches.
+  - Java refuses `view` and `update_view` of a column of tables named on its own (`view("C")`)
+    when the column's source is one it does not preserve (that of a `natural_join`, or a
+    column an `update` passed on); here such a column is passed on. Which sources Java
+    preserves was not ported.
+  - A table in a `ClassCastException` text is `QueryTable` here; Java names its class
+    (`InMemoryTable` for `new_table`).
+  - A refused formula fails here with "unsupported in formulas"; Java computes it
+    (method calls, text, casts) or fails with a compilation error (`C > null`).
 - The texts of the factories name every table `QueryTable`; Java names some tables
   otherwise (`FilteredTable(null)` for a `where`).
 - When a transform is made, Java may call the function for several constituents at once,
@@ -491,6 +531,10 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 - Task 7.6.3: `crates/oxhaven-column` (`tables.rs`, the registry of handles, moved from
   `ops/partitioned/cells.rs`; `FlatSource` and `WritableSource` keep the tables of the
   handles they store).
+- Task 7.6.4: `ops/filter/` (the convertor and cells of a column of tables, a range filter
+  refused for it), `ops/distinct/where_in.rs` (the key class), `ops/agg/` (first, last and
+  sorted copy the cell), `ops/select/mod.rs` (the refusal of `view`), `crates/oxhaven-expr`
+  (a cell of tables as an object), `deephaven/table.py` (`get_constituent`).
 
 ## Gate
 
@@ -503,4 +547,6 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 `partitioned_proxy_*`, one for each family of operations and one for refreshing tables.
 Task 7.6.3 adds the engine tests `partitioned::factory_tests` and
 `cargo test -p oxhaven-server --features python console::python::partitioned`; it adds no
-scenario.
+scenario. Task 7.6.4 adds the engine tests `partitioned::column_tests` and the Python test
+`get_constituent_converts_key_values_as_java_does`; it adds no scenario either (`oracle/`
+is not its to change).
