@@ -129,3 +129,4 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 7.6.2-partitioned-proxy,1,agent,2026-11-16T06:32Z,65,246157,233,merged,0,116,right-sized,"PartitionedTableProxy: table operations as transforms, join key checks"
 7.8.2-formats-and-views,1,agent,2026-11-16T06:55Z,,,,running,,,,"Table formats (colour, number, date), then format and update views of rollups and trees"
 7.4.2-kafka-stream-adapter,1,agent (opus),2026-11-16T07:40Z,,,,running,,,,"Engine stream adapter, table_publisher, blink_to_append_only, then full JSON spec (7.4.3); ports 10986/10987"
+5.9-formula-column-types,1,agent (opus),2026-11-16T07:46Z,,,,running,,,,"Contract column types for formulas (Duration, Period, ZoneId, ZonedDateTime, Object, boolean[]), local date and time literals, object creation; ports 10988/10989"
