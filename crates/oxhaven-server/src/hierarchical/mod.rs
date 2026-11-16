@@ -373,33 +373,48 @@ impl HierarchicalTableService for HierarchicalTableGrpc {
         &self,
         request: Request<HierarchicalTableApplyRequest>,
     ) -> Result<Response<HierarchicalTableApplyResponse>, Status> {
-        current_session(&request)?;
+        let session = current_session(&request)?;
         let request = request.into_inner();
         let message = "HierarchicalTableApplyRequest";
-        ticket(
+        let result_id = ticket(
             &request.result_hierarchical_table_id,
             message,
             "result_hierarchical_table_id",
             1,
         )?;
-        ticket(
+        let input_id = ticket(
             &request.input_hierarchical_table_id,
             message,
             "input_hierarchical_table_id",
             2,
         )?;
-        if request.filters.is_empty()
-            && request.sorts.is_empty()
-            && request.format_views.is_empty()
-            && request.update_views.is_empty()
-        {
-            // Java says so once the input is resolved.
-            return Err(Status::invalid_argument("No operations specified"));
-        }
-        Err(not_ported(
-            "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
-            "filters, sorts, format views and update views of a hierarchical table",
-        ))
+        self.router
+            .log_name(&input_id, "inputHierarchicalTableId")?;
+        let input = self
+            .router
+            .resolve(Some(&session), &input_id, "inputHierarchicalTableId")?;
+        let reply = Reply::new();
+        let fail = reply.completer();
+        session
+            .new_export_for_ticket(&result_id, "resultHierarchicalTableId")?
+            .require([input])
+            .on_error(move |status| fail(Err(status)))
+            .submit(move |inputs| {
+                hierarchical_input(&inputs[0])?;
+                if request.filters.is_empty()
+                    && request.sorts.is_empty()
+                    && request.format_views.is_empty()
+                    && request.update_views.is_empty()
+                {
+                    return Err(Status::invalid_argument("No operations specified").into());
+                }
+                Err(not_ported(
+                    "io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
+                    "filters, sorts, format views and update views of a hierarchical table",
+                )
+                .into())
+            })?;
+        reply.wait().await
     }
 
     /// Behavior: `HierarchicalTableServiceGrpcImpl#view`
