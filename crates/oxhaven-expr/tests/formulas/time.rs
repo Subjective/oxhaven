@@ -119,9 +119,14 @@ fn text_is_parsed_as_an_instant() {
     ] {
         assert!(table.evaluate(formula).is_err(), "{formula}");
     }
-    // Java reads an offset; this server names the function and fails.
+    // An offset directly after the time, as `java.time.ZonedDateTime#parse` reads it.
+    table.assert(
+        "parseInstantQuiet(`2022-04-03T19:34:22+02:00`)",
+        instants([Some(1_649_007_262_000_000_000); 3]),
+    );
+    // Java reads a longer year after a sign; this server names the function and fails.
     let error = table
-        .evaluate("parseInstantQuiet(`2022-04-03T19:34:22+02:00`)")
+        .evaluate("parseInstantQuiet(`+12022-04-03T19:34:22 UTC`)")
         .unwrap_err();
     assert!(
         error.message.contains("DateTimeUtils#parseInstant"),
