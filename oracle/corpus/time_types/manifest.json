@@ -1,0 +1,164 @@
+{
+  "format": 2,
+  "scenario": "time_types",
+  "scenario_sha256": "5f4cf379e5c6d69c02e9bd64180237d91881ef3b8edb4cd32382c1ab57148d98",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "base",
+      "file": "step000.base.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_d",
+      "file": "step000.sort_d.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_lt",
+      "file": "step000.sort_lt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_dur",
+      "file": "step000.sort_dur.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_w",
+      "file": "step000.sort_w.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_z",
+      "file": "step000.sort_z.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "sort_z_desc",
+      "file": "step000.sort_z_desc.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "where_d",
+      "file": "step000.where_d.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "where_d_in",
+      "file": "step000.where_d_in.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "where_d_range",
+      "file": "step000.where_d_range.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "where_lt",
+      "file": "step000.where_lt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "where_dur",
+      "file": "step000.where_dur.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "where_w",
+      "file": "step000.where_w.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "where_w_ne",
+      "file": "step000.where_w_ne.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "where_z",
+      "file": "step000.where_z.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "where_z_le",
+      "file": "step000.where_z_le.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "where_z_gt",
+      "file": "step000.where_z_gt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "join_d",
+      "file": "step000.join_d.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "by_z",
+      "file": "step000.by_z.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "join_z",
+      "file": "step000.join_z.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "join_w",
+      "file": "step000.join_w.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "join_dur",
+      "file": "step000.join_dur.arrow",
+      "rows": 8
+    },
+    {
+      "step": 0,
+      "table": "distinct_w_dur",
+      "file": "step000.distinct_w_dur.arrow",
+      "rows": 6
+    },
+    {
+      "step": 0,
+      "table": "values_by_w",
+      "file": "step000.values_by_w.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "values_by_k",
+      "file": "step000.values_by_k.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "values_all",
+      "file": "step000.values_all.arrow",
+      "rows": 1
+    }
+  ]
+}

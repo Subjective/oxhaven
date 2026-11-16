@@ -1295,6 +1295,8 @@ name = "oxhaven-engine"
 version = "0.0.0"
 dependencies = [
  "arrow",
+ "chrono",
+ "chrono-tz",
  "oxhaven-column",
  "oxhaven-contracts",
  "oxhaven-expr",

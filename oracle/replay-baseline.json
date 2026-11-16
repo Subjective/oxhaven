@@ -76,6 +76,7 @@
   "ticking_update_by_append": {"state": "clean"},
   "ticking_update_by_full": {"state": "clean"},
   "ticking_where_sort": {"state": "clean"},
+  "time_types": {"state": "clean"},
   "timestamps": {"state": "clean"},
   "update_by_cum_sum": {"state": "clean"},
   "update_by_cumulative": {"state": "clean"},

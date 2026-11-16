@@ -27,3 +27,4 @@ pub mod sort;
 pub mod transpose;
 pub mod ungroup;
 pub mod update_by;
+pub(crate) mod zoned;

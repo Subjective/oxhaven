@@ -1,14 +1,15 @@
 //! Column values as the aggregation operators see them.
 //!
 //! Operators are written once for all column types. A chunk of an input column is decoded
-//! into one of five shapes ([`Values`]), and single values are carried as [`Scalar`]s.
+//! into one of the shapes of [`Values`], and single values are carried as [`Scalar`]s.
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,
-    Int64Array, Int8Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
+    Int64Array, Int8Array, ListArray, StringArray, StructArray, TimestampNanosecondArray,
+    UInt16Array,
 };
 use arrow::buffer::{NullBuffer, OffsetBuffer};
-use arrow::datatypes::{DataType, Float64Type, Int64Type};
+use arrow::datatypes::{DataType, Float64Type, Int32Type, Int64Type};
 use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
@@ -32,6 +33,8 @@ pub enum Shape {
     Str,
     /// A vector or an array, of elements of any shape.
     List,
+    /// `ZonedDateTime` and `Period`, held cell by cell.
+    Cells,
 }
 
 impl Shape {
@@ -42,6 +45,7 @@ impl Shape {
             ColumnType::Boolean => Shape::Bool,
             // A `ZoneId` is held as its id.
             ColumnType::String | ColumnType::ZoneId => Shape::Str,
+            ColumnType::ZonedDateTime | ColumnType::Period => Shape::Cells,
             _ => Shape::Long,
         }
     }
@@ -54,8 +58,9 @@ pub enum Values {
     Doubles(Float64Array),
     Bools(BooleanArray),
     Strings(StringArray),
-    /// The cells of a vector or array column: a [`Scalar::List`] or a null each.
-    Lists(Vec<Scalar>),
+    /// The cells of a vector, array, `ZonedDateTime` or `Period` column: a
+    /// [`Scalar::List`], [`Scalar::Zoned`] or [`Scalar::Period`] each, or a null.
+    Cells(Vec<Scalar>),
 }
 
 impl Values {
@@ -99,7 +104,7 @@ impl Values {
                 };
                 let elements = Values::decode(element, list.values())?;
                 let offsets = list.value_offsets();
-                Values::Lists(
+                Values::Cells(
                     (0..list.len())
                         .map(|row| {
                             if list.is_null(row) {
@@ -111,6 +116,10 @@ impl Values {
                         .collect(),
                 )
             }
+            Shape::Cells if *column_type == ColumnType::ZonedDateTime => {
+                Values::Cells(zoned_cells(array)?)
+            }
+            Shape::Cells => Values::Cells(period_cells(array)?),
         })
     }
 
@@ -120,7 +129,7 @@ impl Values {
             Values::Doubles(a) => a.len(),
             Values::Bools(a) => a.len(),
             Values::Strings(a) => a.len(),
-            Values::Lists(cells) => cells.len(),
+            Values::Cells(cells) => cells.len(),
         }
     }
 
@@ -154,7 +163,7 @@ impl Values {
             Values::Doubles(a) if a.is_valid(position) => Scalar::Double(a.value(position)),
             Values::Bools(a) if a.is_valid(position) => Scalar::Bool(a.value(position)),
             Values::Strings(a) if a.is_valid(position) => Scalar::Str(a.value(position).into()),
-            Values::Lists(cells) => cells[position].clone(),
+            Values::Cells(cells) => cells[position].clone(),
             _ => Scalar::Null,
         }
     }
@@ -308,6 +317,19 @@ pub enum Scalar {
     Str(Arc<str>),
     /// The elements of a vector or an array, each a value of the element type or a null.
     List(Arc<[Scalar]>),
+    /// A `ZonedDateTime`: its instant in nanoseconds, the offset from UTC of its zone at
+    /// that instant in seconds, and the zone's id.
+    Zoned {
+        nanos: i64,
+        offset: i32,
+        zone: Arc<str>,
+    },
+    /// A `Period`. Java gives it no order, so [`Scalar::compare`] is never asked for one.
+    Period {
+        years: i32,
+        months: i32,
+        days: i32,
+    },
 }
 
 /// Java's ordering of two values of one type of which either may be null: a null is less
@@ -347,6 +369,16 @@ impl Scalar {
             (Scalar::List(a), Scalar::List(b)) => {
                 a.len() == b.len() && a.iter().zip(b.iter()).all(|(a, b)| a.same(b))
             }
+            // The offset follows from the instant and the zone.
+            (
+                Scalar::Zoned {
+                    nanos: a, zone: x, ..
+                },
+                Scalar::Zoned {
+                    nanos: b, zone: y, ..
+                },
+            ) => a == b && x == y,
+            (Scalar::Period { .. }, Scalar::Period { .. }) => self.period() == other.period(),
             _ => false,
         }
     }
@@ -356,14 +388,15 @@ impl Scalar {
     /// and strings by UTF-16 code unit as `String#compareTo` does. A `char` is its code unit
     /// and an `Instant` its nanoseconds, which order as Java orders them. Vectors are
     /// ordered element by element, a null element first, and a vector that is the start of
-    /// another before it. Values of different shapes, or nulls, compare equal; callers
-    /// never pass them.
+    /// another before it. A `ZonedDateTime` orders by its instant, then by its offset (for
+    /// one instant, the order of the local dates and times), then by its zone's id. Values
+    /// of different shapes, nulls and periods compare equal; callers never pass them.
     ///
     /// Behavior: io.deephaven.util.compare.DoubleComparisons#compare,
     /// io.deephaven.util.compare.CharComparisons#compare,
-    /// io.deephaven.util.compare.ObjectComparisons#compare, and the `compareTo` of the
+    /// io.deephaven.util.compare.ObjectComparisons#compare, the `compareTo` of the
     /// vectors under io.deephaven.vector (`ShortVector#compareTo`, `ObjectVector#compareTo`
-    /// and the others)
+    /// and the others), and java.time.chrono.ChronoZonedDateTime#compareTo
     pub fn compare(&self, other: &Scalar) -> Ordering {
         match (self, other) {
             (Scalar::Long(a), Scalar::Long(b)) => a.cmp(b),
@@ -381,7 +414,37 @@ impl Scalar {
                 .map(|(a, b)| compare_nullable(a, b))
                 .find(|order| order.is_ne())
                 .unwrap_or_else(|| a.len().cmp(&b.len())),
+            (
+                Scalar::Zoned {
+                    nanos: a,
+                    offset: p,
+                    zone: x,
+                },
+                Scalar::Zoned {
+                    nanos: b,
+                    offset: q,
+                    zone: y,
+                },
+            ) => a
+                .cmp(b)
+                .then(p.cmp(q))
+                .then_with(|| x.encode_utf16().cmp(y.encode_utf16())),
             _ => Ordering::Equal,
+        }
+    }
+
+    pub fn is_period(&self) -> bool {
+        matches!(self, Scalar::Period { .. })
+    }
+
+    fn period(&self) -> Option<(i32, i32, i32)> {
+        match self {
+            Scalar::Period {
+                years,
+                months,
+                days,
+            } => Some((*years, *months, *days)),
+            _ => None,
         }
     }
 
@@ -400,12 +463,56 @@ impl Scalar {
     }
 }
 
-/// An array of `column_type` holding `values`. A value of another shape than the column's
-/// becomes null. Integers are narrowed as Java's casts narrow them.
+/// The cells of a chunk of a `ZonedDateTime` column, each with its zone's offset at its
+/// instant.
+fn zoned_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
+    let (cells, instants, zones) = crate::ops::zoned::parts(array)?;
+    (0..cells.len())
+        .map(|row| {
+            if cells.is_null(row) {
+                return Ok(Scalar::Null);
+            }
+            let zone = zones.value(row);
+            Ok(Scalar::Zoned {
+                nanos: instants[row],
+                offset: crate::ops::zoned::offset_seconds(zone, instants[row])?,
+                zone: zone.into(),
+            })
+        })
+        .collect()
+}
+
+/// The cells of a chunk of a `Period` column.
+fn period_cells(array: &ArrayRef) -> Result<Vec<Scalar>, TableFailure> {
+    let cells = array
+        .as_struct_opt()
+        .ok_or_else(|| failure("a Period column must hold a struct array"))?;
+    let field = |at: usize| {
+        cells
+            .column(at)
+            .as_primitive_opt::<Int32Type>()
+            .ok_or_else(|| failure("the fields of a Period column must be ints"))
+    };
+    let (years, months, days) = (field(0)?, field(1)?, field(2)?);
+    Ok((0..cells.len())
+        .map(|row| {
+            if cells.is_null(row) {
+                Scalar::Null
+            } else {
+                Scalar::Period {
+                    years: years.value(row),
+                    months: months.value(row),
+                    days: days.value(row),
+                }
+            }
+        })
+        .collect())
+}
+
 /// Whether `Values::decode` holds the values of `column_type`: the integers, `char` and the
-/// instants, dates, times of day and durations as numbers, the floating point numbers,
-/// `Boolean`, `String` and `ZoneId`, and lists of these. A `Period`, a `ZonedDateTime`,
-/// a `LocalDateTime`, a `BigDecimal` and a `BigInteger` are not held.
+/// instants, dates, times of day, dates and times, durations and days of the week as
+/// numbers, the floating point numbers, `Boolean`, `String`, `ZoneId`, `ZonedDateTime`
+/// and `Period`, and lists of these. A `BigDecimal` and a `BigInteger` are not held.
 fn decodes(column_type: &ColumnType) -> bool {
     match column_type.list_element() {
         Some(element) => decodes(element),
@@ -424,11 +531,17 @@ fn decodes(column_type: &ColumnType) -> bool {
                 | ColumnType::LocalDate
                 | ColumnType::LocalTime
                 | ColumnType::Duration
+                | ColumnType::LocalDateTime
+                | ColumnType::DayOfWeek
                 | ColumnType::ZoneId
+                | ColumnType::ZonedDateTime
+                | ColumnType::Period
         ),
     }
 }
 
+/// An array of `column_type` holding `values`. A value of another shape than the column's
+/// becomes null. Integers are narrowed as Java's casts narrow them.
 pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scalar>) -> ArrayRef {
     if let (Some(element), DataType::List(field)) =
         (column_type.list_element(), column_type.arrow_type())
@@ -504,10 +617,52 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
                 .collect::<StringArray>(),
         ),
         // Numbers of days and of nanoseconds, as `Values::decode` read them.
-        ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration => {
+        ColumnType::LocalDate
+        | ColumnType::LocalTime
+        | ColumnType::Duration
+        | ColumnType::LocalDateTime
+        | ColumnType::DayOfWeek => {
             let numbers: ArrayRef = Arc::new(values.map(Scalar::long).collect::<Int64Array>());
             arrow::compute::cast(&numbers, &column_type.arrow_type())
-                .expect("a number read from a date, a time of day or a duration")
+                .expect("a number read from a date, a time of day, a duration or a day")
+        }
+        ColumnType::ZonedDateTime | ColumnType::Period => {
+            let DataType::Struct(fields) = column_type.arrow_type() else {
+                unreachable!("a ZonedDateTime and a Period are structs");
+            };
+            let values: Vec<&Scalar> = values.collect();
+            let valid: Vec<bool> = values
+                .iter()
+                .map(|v| matches!(v, Scalar::Zoned { .. } | Scalar::Period { .. }))
+                .collect();
+            let columns: Vec<ArrayRef> = if *column_type == ColumnType::ZonedDateTime {
+                let instants: TimestampNanosecondArray = values
+                    .iter()
+                    .map(|v| match v {
+                        Scalar::Zoned { nanos, .. } => Some(*nanos),
+                        _ => Some(0),
+                    })
+                    .collect();
+                let zones: StringArray = values
+                    .iter()
+                    .map(|v| match v {
+                        Scalar::Zoned { zone, .. } => Some(&**zone),
+                        _ => Some("UTC"),
+                    })
+                    .collect();
+                vec![Arc::new(instants.with_timezone("UTC")), Arc::new(zones)]
+            } else {
+                let parts: Vec<(i32, i32, i32)> = values
+                    .iter()
+                    .map(|v| v.period().unwrap_or_default())
+                    .collect();
+                vec![
+                    Arc::new(Int32Array::from_iter_values(parts.iter().map(|p| p.0))),
+                    Arc::new(Int32Array::from_iter_values(parts.iter().map(|p| p.1))),
+                    Arc::new(Int32Array::from_iter_values(parts.iter().map(|p| p.2))),
+                ]
+            };
+            Arc::new(StructArray::new(fields, columns, Some(valid.into())))
         }
         // A column type `Values::decode` refuses: no operator reads one.
         _ => arrow::array::new_null_array(&column_type.arrow_type(), values.count()),
@@ -561,13 +716,70 @@ mod tests {
         }
     }
 
+    /// Behavior: the first and the last of a `ZonedDateTime` or a `Period` column are its
+    /// values, zone and fields included.
+    #[test]
+    fn a_zoned_date_time_and_a_period_are_kept() {
+        let zoned = crate::ops::zoned::tests::zoned(&[
+            Some((1_710_028_800_000_000_000, "America/New_York")),
+            None,
+            Some((-1, "Asia/Tokyo")),
+        ]);
+        assert_eq!(
+            round_trip(&ColumnType::ZonedDateTime, Arc::clone(&zoned)).as_ref(),
+            zoned.as_ref()
+        );
+        let DataType::Struct(fields) = ColumnType::Period.arrow_type() else {
+            unreachable!()
+        };
+        let period: ArrayRef = Arc::new(StructArray::new(
+            fields,
+            vec![
+                Arc::new(Int32Array::from(vec![1, 0, 0])),
+                Arc::new(Int32Array::from(vec![2, 0, -14])),
+                Arc::new(Int32Array::from(vec![3, 0, 5])),
+            ],
+            Some(vec![true, false, true].into()),
+        ));
+        assert_eq!(
+            round_trip(&ColumnType::Period, Arc::clone(&period)).as_ref(),
+            period.as_ref()
+        );
+    }
+
+    /// Seen on Java 42.9: for one instant, `America/New_York` is before `Asia/Tokyo`
+    /// (offsets -4 and +9 hours), and `Europe/London` before `UTC` (one offset, ids in
+    /// order).
+    #[test]
+    fn zoned_date_times_order_by_instant_offset_and_zone() {
+        let zoned = crate::ops::zoned::tests::zoned(&[
+            Some((1_710_154_800_000_000_000, "America/New_York")),
+            Some((1_710_154_800_000_000_000, "Asia/Tokyo")),
+            Some((1_704_067_200_000_000_000, "UTC")),
+            Some((1_704_067_200_000_000_000, "Europe/London")),
+            Some((1_704_067_199_000_000_000, "Asia/Tokyo")),
+        ]);
+        let values = Values::decode(&ColumnType::ZonedDateTime, &zoned).unwrap();
+        let at = |row| values.scalar(row);
+        assert_eq!(at(0).compare(&at(1)), Ordering::Less);
+        assert_eq!(at(3).compare(&at(2)), Ordering::Less);
+        assert_eq!(at(4).compare(&at(3)), Ordering::Less);
+        assert_eq!(at(1).compare(&at(1)), Ordering::Equal);
+        assert!(!at(0).same(&at(1)));
+        assert!(at(1).same(&at(1)));
+    }
+
     /// A type the operators do not hold is a failure, not a column of nulls.
     #[test]
-    fn a_period_is_refused() {
-        let period = arrow::array::new_null_array(&ColumnType::Period.arrow_type(), 2);
-        let Err(failure) = Values::decode(&ColumnType::Period, &period) else {
-            panic!("a period decoded");
+    fn a_big_decimal_is_refused() {
+        let big = arrow::array::new_null_array(&ColumnType::BigDecimal.arrow_type(), 2);
+        let Err(failure) = Values::decode(&ColumnType::BigDecimal, &big) else {
+            panic!("a big decimal decoded");
         };
-        assert!(failure.message.contains("Period"), "{}", failure.message);
+        assert!(
+            failure.message.contains("BigDecimal"),
+            "{}",
+            failure.message
+        );
     }
 }

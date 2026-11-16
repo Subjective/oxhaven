@@ -311,7 +311,28 @@ fn apply(operation: &Value, tables: &BTreeMap<String, Made>) -> Made {
         }
     };
     match result {
-        Ok(table) => Made::Result(table),
+        Ok(table) => {
+            // Java sends these types in another form than the engine stores them in
+            // (`oxhaven_server::wire_columns`), so the recorded tables are compared by
+            // the replay gate instead.
+            let sent_otherwise = table.definition().columns().iter().find(|column| {
+                matches!(
+                    column.column_type,
+                    ColumnType::LocalDate
+                        | ColumnType::LocalDateTime
+                        | ColumnType::Period
+                        | ColumnType::ZonedDateTime
+                        | ColumnType::DayOfWeek
+                )
+            });
+            match sent_otherwise {
+                Some(column) => Made::NotRun(format!(
+                    "column {} of type {:?}, sent in another form",
+                    column.name, column.column_type
+                )),
+                None => Made::Result(table),
+            }
+        }
         // What the formula compiler does not support yet is not a refusal of Java's.
         Err(SelectError::Formula {
             column,
@@ -461,7 +482,7 @@ fn replay(name: &str, scenario: &Value, outcome: &mut Outcome) {
 fn results_match_the_ones_recorded_from_java() {
     let mut outcome = Outcome::default();
     let scenarios = scenarios();
-    assert_eq!(scenarios.len(), 88);
+    assert_eq!(scenarios.len(), 89);
     for (name, scenario) in &scenarios {
         replay(name, scenario, &mut outcome);
     }
@@ -583,6 +604,32 @@ fn results_match_the_ones_recorded_from_java() {
             "ticking_column_arrays.blink_before: blink input",
             "ticking_column_arrays.blink_whole: blink input",
             "ticking_time_table.numbered: head",
+            "time_types.base: column D of type LocalDate, sent in another form",
+            "time_types.sort_d: sort",
+            "time_types.sort_lt: sort",
+            "time_types.sort_dur: sort",
+            "time_types.sort_w: sort",
+            "time_types.sort_z: sort",
+            "time_types.sort_z_desc: sort",
+            "time_types.where_d: where",
+            "time_types.where_d_in: where",
+            "time_types.where_d_range: where",
+            "time_types.where_lt: where",
+            "time_types.where_dur: where",
+            "time_types.where_w: where",
+            "time_types.where_w_ne: where",
+            "time_types.where_z: where",
+            "time_types.where_z_le: where",
+            "time_types.where_z_gt: where",
+            "time_types.join_d: natural_join",
+            "time_types.by_z: agg_by",
+            "time_types.join_z: natural_join",
+            "time_types.join_w: exact_join",
+            "time_types.join_dur: join",
+            "time_types.distinct_w_dur: select_distinct",
+            "time_types.values_by_w: agg_by",
+            "time_types.values_by_k: agg_by",
+            "time_types.values_all: agg_by",
         ],
         "not run"
     );

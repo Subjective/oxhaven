@@ -42,6 +42,7 @@ fn sort_code(error: &SortError) -> &'static str {
         }
         SortError::Unsupported(_) => "an unsupported operation, which has no recorded code",
         SortError::NotSortable(_) => "a restricted sort, which has no recorded code",
+        SortError::NotSortableColumn(_) => "an unsortable column, which has no recorded code",
         SortError::Table(_) => "a failed table, which has no recorded code",
     }
 }
@@ -342,7 +343,7 @@ fn results_match_the_recorded_java_results() {
         ("update", 39),
         ("update_by", 42),
         ("update_view", 16),
-        ("view", 14),
+        ("view", 40),
         ("where", 53),
         ("where_in", 20),
     ];

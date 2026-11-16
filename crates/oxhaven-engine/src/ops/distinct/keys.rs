@@ -2,8 +2,8 @@
 
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
-    TimestampNanosecondType, UInt16Type,
+    DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
+    Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
 use oxhaven_contracts::table::TableFailure;
 
@@ -90,6 +90,31 @@ fn append(values: &ArrayRef, keys: &mut [Vec<u8>]) -> Result<(), TableFailure> {
         DataType::Float64 => primitive!(Float64Type, |value| double(value).to_le_bytes()),
         DataType::Timestamp(TimeUnit::Nanosecond, _) => {
             primitive!(TimestampNanosecondType, i64::to_le_bytes)
+        }
+        DataType::Date32 => primitive!(Date32Type, i32::to_le_bytes),
+        DataType::Time64(TimeUnit::Nanosecond) => {
+            primitive!(Time64NanosecondType, i64::to_le_bytes)
+        }
+        DataType::Duration(TimeUnit::Nanosecond) => {
+            primitive!(DurationNanosecondType, i64::to_le_bytes)
+        }
+        // A `ZonedDateTime` or a `Period`: equal when every field is, which is
+        // java.time.ZonedDateTime#equals (the instant and the zone) and
+        // java.time.Period#equals (years, months and days).
+        DataType::Struct(_) => {
+            let values = values.as_struct();
+            let mut fields = vec![Vec::new(); keys.len()];
+            for child in values.columns() {
+                append(child, &mut fields)?;
+            }
+            for (row, (key, field)) in keys.iter_mut().zip(fields).enumerate() {
+                if values.is_null(row) {
+                    key.push(0);
+                } else {
+                    key.push(1);
+                    key.extend_from_slice(&field);
+                }
+            }
         }
         DataType::Utf8 => {
             let values = values.as_string::<i32>();

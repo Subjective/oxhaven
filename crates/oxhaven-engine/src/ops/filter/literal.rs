@@ -5,7 +5,8 @@ use oxhaven_contracts::expr::{Expr, FormulaCompiler, FormulaError, Literal};
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::unported;
 
-/// A value a filter compares cells with. Integer types, `char` and `Instant` (as nanoseconds)
+/// A value a filter compares cells with. Integer types, `char`, `Instant` (as nanoseconds),
+/// `LocalDate` (as days), `LocalTime` (as nanoseconds) and `DayOfWeek` (as its number)
 /// share `Int`; `float` values are widened to `Float`, which is exact.
 #[derive(Clone, PartialEq, Debug)]
 pub(super) enum Key {
@@ -14,7 +15,80 @@ pub(super) enum Key {
     Int(i64),
     Float(f64),
     Str(String),
+    /// A `ZonedDateTime`: its instant in nanoseconds and its zone's id.
+    Zoned {
+        nanos: i64,
+        zone: String,
+    },
 }
+
+/// The value of `function` (`parseLocalDate`, `parseLocalTime`, `parseZonedDateTime`) of
+/// the text `inner`, which the formula compiler computes: Java's convertor calls the same
+/// `DateTimeUtils` method. An exception of that method is an error.
+fn parse_time_value(
+    function: &str,
+    inner: &str,
+    column_type: &ColumnType,
+    compiler: &dyn FormulaCompiler,
+) -> Result<Key, String> {
+    use arrow::array::{Array, AsArray};
+    use arrow::datatypes::{Date32Type, Time64NanosecondType};
+    let bad = || format!("Text '{inner}' could not be parsed by {function}");
+    // The text is put in a string literal of a formula; text that would end it, or escape
+    // in it, is nothing these methods read.
+    if inner.contains(['"', '\\']) || inner.chars().any(char::is_control) {
+        return Err(bad());
+    }
+    let expr = compiler
+        .parse(&format!("{function}(\"{inner}\")"))
+        .map_err(|e| e.to_string())?;
+    let empty = TableDefinition::new(Vec::new()).map_err(|e| format!("{e:?}"))?;
+    let formula = compiler.compile(&expr, &empty).map_err(|e| e.to_string())?;
+    if formula.result_type() != column_type {
+        return Err(bad());
+    }
+    let table = crate::table::empty_table(1);
+    let rows = oxhaven_contracts::table::Table::row_set(&*table);
+    let values = formula
+        .evaluate(&*table, &rows, false)
+        .map_err(|e| e.message)?;
+    if values.len() != 1 || values.is_null(0) {
+        return Ok(Key::Null);
+    }
+    Ok(match column_type {
+        ColumnType::LocalDate => Key::Int(values.as_primitive::<Date32Type>().value(0).into()),
+        ColumnType::LocalTime => Key::Int(values.as_primitive::<Time64NanosecondType>().value(0)),
+        _ => {
+            let (_, instants, zones) = crate::ops::zoned::parts(&values).map_err(|e| e.message)?;
+            Key::Zoned {
+                nanos: instants[0],
+                zone: zones.value(0).to_string(),
+            }
+        }
+    })
+}
+
+/// The Java class of a column type that has no convertor of its own, for the message of
+/// the convertor every other class gets.
+fn class_name(column_type: &ColumnType) -> Option<&'static str> {
+    Some(match column_type {
+        ColumnType::Duration => "java.time.Duration",
+        ColumnType::Period => "java.time.Period",
+        ColumnType::ZoneId => "java.time.ZoneId",
+        _ => return None,
+    })
+}
+
+/// The days of the week as `java.time.DayOfWeek#name` gives them, Monday first.
+const DAYS: [&str; 7] = [
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+    "SUNDAY",
+];
 
 /// Behavior: java.lang.String#trim
 pub(super) fn java_trim(text: &str) -> &str {
@@ -476,6 +550,47 @@ fn convert_literal_with(
             } else {
                 Key::Int(nanos)
             })
+        }
+        // Behavior: the `LocalDate`, `LocalTime` and `ZonedDateTime` convertors, which
+        // read the quoted text with DateTimeUtils#parseLocalDate, #parseLocalTime and
+        // #parseZonedDateTime. (Java spells the last one's message "ZoneDateTime".)
+        ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::ZonedDateTime => {
+            if text == "null" {
+                return Ok(Key::Null);
+            }
+            let (class, function) = match column_type {
+                ColumnType::LocalDate => ("LocalDate", "parseLocalDate"),
+                ColumnType::LocalTime => ("LocalTime", "parseLocalTime"),
+                _ => ("ZoneDateTime", "parseZonedDateTime"),
+            };
+            if text.len() < 2 || !text.starts_with('\'') || !text.ends_with('\'') {
+                return Err(format!(
+                    "{class} literal not enclosed in single-quotes (\"{text}\")"
+                ));
+            }
+            let Some(compiler) = compiler else {
+                unported!(
+                    "io.deephaven.time.DateTimeUtils#parseLocalDate",
+                    "a {class} literal without the formula compiler"
+                );
+            };
+            parse_time_value(function, &text[1..text.len() - 1], column_type, compiler)
+        }
+        // Behavior: the convertor of an `Enum` class, `Enum.valueOf(cls, str)`, which takes
+        // the constant's exact name and not `null`.
+        ColumnType::DayOfWeek => match DAYS.iter().position(|day| *day == text) {
+            Some(index) => Ok(Key::Int(index as i64 + 1)),
+            None => Err(format!("No enum constant java.time.DayOfWeek.{text}")),
+        },
+        // Behavior: the convertor of every class without one of its own: `null` alone.
+        other if class_name(other).is_some() => {
+            if text == "null" {
+                return Ok(Key::Null);
+            }
+            Err(format!(
+                "Can't create {} from String Literal for value auto-conversion",
+                class_name(other).unwrap_or_default()
+            ))
         }
         // Java has no convertor for a vector or an array: only `null` is a value of one.
         other if other.list_element().is_some() => {
