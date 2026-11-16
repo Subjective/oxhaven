@@ -6,6 +6,9 @@
 //! facts Java keeps beside it.
 
 mod cells;
+mod factory;
+#[cfg(test)]
+mod factory_tests;
 mod merge;
 mod partition;
 #[cfg(test)]

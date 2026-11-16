@@ -11,6 +11,7 @@
 
 use super::cells::{TableCells, TableColumn};
 use super::{failure, tables_of, PartitionedError, PartitionedTable};
+use crate::ops::crossjoin::{cross_join, DEFAULT_RESERVE_BITS};
 use crate::ops::filter::filtered_update;
 use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
 use crate::table::{QueryTable, TableSpec};
@@ -147,7 +148,7 @@ impl Cells {
 
 /// Behavior: io.deephaven.engine.table.TableDefinition#checkMutualCompatibility with the
 /// names "expected" and "constituent", and #describeCompatibilityDifferences for the text
-fn check_mutual_compatibility(
+pub(super) fn check_mutual_compatibility(
     expected: &TableDefinition,
     constituent: &TableDefinition,
 ) -> Result<(), PartitionedError> {
@@ -163,9 +164,11 @@ fn check_mutual_compatibility(
                 if other.column_type != column.column_type {
                     differences.push(format!("column '{}' is different ...", column.name));
                     differences.push(format!(
-                        "    {}: expected dataType '{:?}' does not match constituent dataType \
-                         '{:?}'",
-                        column.name, column.column_type, other.column_type
+                        "    {}: expected dataType '{}' does not match constituent dataType \
+                         '{}'",
+                        column.name,
+                        java_type_name(&column.column_type),
+                        java_type_name(&other.column_type)
                     ));
                 }
             }
@@ -253,7 +256,7 @@ fn in_cycle(error: PartitionedError) -> TableFailure {
 
 /// When a transform of a table that is not refreshing has finished for a step: when the
 /// tables its function reads have. Nothing notifies its result.
-struct After(Vec<Arc<dyn Dependency>>);
+pub(super) struct After(pub(super) Vec<Arc<dyn Dependency>>);
 
 impl Dependency for After {
     fn satisfied(&self, step: u64) -> bool {
@@ -455,11 +458,10 @@ fn with_table_in(table: &Arc<dyn Table>, column: usize) -> Result<Arc<dyn Table>
     Ok(result)
 }
 
-/// Java's text for the type of a key column.
-///
-/// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
-fn describe(column: &ColumnDefinition) -> String {
-    let type_name = match &column.column_type {
+/// Java's text for the type of a column, as `Class#toString` writes it. Types not
+/// listed are written as this engine names them.
+pub(super) fn java_type_name(column_type: &ColumnType) -> String {
+    match column_type {
         ColumnType::Boolean => "class java.lang.Boolean".to_string(),
         ColumnType::Byte => "byte".to_string(),
         ColumnType::Char => "char".to_string(),
@@ -470,9 +472,21 @@ fn describe(column: &ColumnDefinition) -> String {
         ColumnType::Double => "double".to_string(),
         ColumnType::String => "class java.lang.String".to_string(),
         ColumnType::Instant => "class java.time.Instant".to_string(),
+        ColumnType::Table(TableClass::Table) => {
+            "interface io.deephaven.engine.table.Table".to_string()
+        }
+        ColumnType::Table(TableClass::QueryTable) => {
+            "class io.deephaven.engine.table.impl.QueryTable".to_string()
+        }
         other => format!("{other:?}"),
-    };
-    format!("[{}, {type_name}]", column.name)
+    }
+}
+
+/// Java's text for the type of a key column.
+///
+/// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
+fn describe(column: &ColumnDefinition) -> String {
+    format!("[{}, {}]", column.name, java_type_name(&column.column_type))
 }
 
 /// The key columns of `left` and `right` in pairs, or Java's refusal.
@@ -578,9 +592,12 @@ impl PartitionedTable {
     /// The key columns are matched by name when both have the same names, by position
     /// otherwise, and must have the same types.
     ///
-    /// Behavior: PartitionedTableImpl#partitionedTransform for a partitioned table with
-    /// unique keys: a natural join of the two underlying tables, less the rows that found
-    /// no constituent
+    /// When this partitioned table's keys are not unique, each of its rows is paired
+    /// with every row of `other` that has its key, in `other`'s order.
+    ///
+    /// Behavior: PartitionedTableImpl#partitionedTransform: for a partitioned table with
+    /// unique keys a natural join of the two underlying tables, less the rows that found
+    /// no constituent; for one without, the `join` of the two
     pub fn partitioned_transform(
         &self,
         other: &PartitionedTable,
@@ -588,30 +605,32 @@ impl PartitionedTable {
         dependencies: &[Arc<dyn Table>],
     ) -> Result<PartitionedTable, PartitionedError> {
         let on = match_key_columns(self, other)?;
-        if !self.unique_keys {
-            return Err(PartitionedError::Unsupported(
-                "unported: io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#\
-                 partitionedTransform: a partitioned table whose keys are not unique"
-                    .to_string(),
-            ));
-        }
         let add = [JoinAddition::renamed(
             RHS_CONSTITUENT,
             other.constituent_column(),
         )];
-        let joined = natural_join(
-            &self.table,
-            other.table(),
-            &on,
-            &add,
-            NaturalJoinType::ErrorOnDuplicate,
-        )
-        .map_err(|error| PartitionedError::IllegalArgument(error.to_string()))?;
+        // Keys that are not unique pair every row of a key with every row of the other's
+        // key: the `join` of the two, which has no row without a match.
+        let joined = match self.unique_keys {
+            true => natural_join(
+                &self.table,
+                other.table(),
+                &on,
+                &add,
+                NaturalJoinType::ErrorOnDuplicate,
+            )
+            .map_err(|error| PartitionedError::IllegalArgument(error.to_string()))?,
+            false => cross_join(&self.table, other.table(), &on, &add, DEFAULT_RESERVE_BITS)
+                .map_err(|error| PartitionedError::IllegalArgument(error.to_string()))?,
+        };
         let rhs = joined
             .definition()
             .index_of(RHS_CONSTITUENT)
             .expect("the join added it");
-        let matched = with_table_in(&joined, rhs)?;
+        let matched = match self.unique_keys {
+            true => with_table_in(&joined, rhs)?,
+            false => joined,
+        };
         let (table, definition) = transform_table(
             &matched,
             &[self.constituent_index(), rhs],
