@@ -974,3 +974,7 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   `e`, `t`, `f` change the formula gate counts, so gates run against a freshly started server.
 - Next in the free slot: table formats (`format_columns` and the like), then format and
   update views of rollups and trees (7.8.2).
+- Owner decision (06:58 UTC, relayed): new agents for the well-defined tasks (formats and
+  views, Kafka follow-ups, formula column types, the review summary) run on Opus to stretch
+  usage limits; the row set swap and fuzzer triage stay on the default model. Agents already
+  running finish as they are; the `who` column of tasks.csv records the model from now on.
