@@ -879,3 +879,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Started 7.9 (tree tables). 7.8.2 and 7.8.3 wait for it: all three change the same walk.
 - Pull request 104 merged (7.1b): script scenarios are 75 of 78 clean on main. Pull request
   105 merges cleanly with it and was updated to the new main.
+- Pull request 105 merged (7.8.1): a rollup view takes sorts and filters.
