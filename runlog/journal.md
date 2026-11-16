@@ -1062,3 +1062,7 @@ Task 7.8.4 (tree formats and filters, ColorUtil styles) reported from Opus; open
 ## 2026-11-16T11:21Z
 
 Task 4.20 (fixes for the second fuzzer findings) reported: D1 to D4, R2 and R3 fixed, four families clean over 1000 seeds, known entries removed. Opened as pull request 125. The remaining refusals R1, R4, R6, R7, R8 go to a follow-up.
+
+## 2026-11-16T11:22Z
+
+Pull request 124 (tree formats and filters) merged on green.
