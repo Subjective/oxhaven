@@ -784,3 +784,9 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   with a shifted column on a filtered table reads dropped rows; a user column named like
   a shifted column is dropped. The refusal for the second is wider than the defect.
 - Merged pull request 94 (6.18, script applications) on six green checks.
+- Pull request 95 failed `rules`: three commit subjects named two scopes (`expr, engine:`),
+  which the subject check refuses. A force push of the task branch to fix the subjects was
+  refused by the permission system, so the same tree went up as one commit on current main
+  in pull request 96 and 95 was closed. The brief now tells agents to run
+  `scripts/check-commit-subjects.sh` before reporting. Agents had no way to see this rule
+  fail locally except by running that script; it costs nothing to run.
