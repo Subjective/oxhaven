@@ -239,8 +239,118 @@ Java's text. A function that has to compile a formula enters an execution contex
 partitioned table of that result (`PartitionedTable::of_aggregation`), with
 `preserve_empty` and `initial_groups` as `agg_by` takes them.
 
-**The proxy** (`PartitionedTableProxy`) is a transform per table operation, with a key
-check for joins. It follows `transform` and is not in the first slice.
+**The proxy** (`PartitionedTableProxy`, from `PartitionedTable.proxy`) is a transform per
+table operation, with key checks for joins. See "The proxy" below.
+
+## The proxy
+
+`PartitionedTable.proxy(require_matching_keys=True, sanity_check_joins=True)` answers a
+`PartitionedTableProxy` with `target`, the two flags, `is_refreshing`, `update_graph` (the
+target's, refused as in the table below) and the 37 table operations of Java's Python
+class: `head`, `tail`, `reverse`, `snapshot`, `snapshot_when`, `sort`, `sort_descending`,
+`where`, `where_in`, `where_not_in`, `view`, `update_view`, `update`, `select`,
+`select_distinct`, `natural_join`, `exact_join`, `join`, `aj`, `raj`, `group_by`, `agg_by`,
+`agg_all_by`, `count_by`, `first_by`, `last_by`, `min_by`, `max_by`, `sum_by`,
+`abs_sum_by`, `weighted_sum_by`, `avg_by`, `weighted_avg_by`, `median_by`, `std_by`,
+`var_by` and `update_by`. Each answers a proxy with the flags of the one it was called on.
+Everything below was observed on Java 42.9 before it was written; the scenarios
+`partitioned_proxy_*` hold it.
+
+**An operation is a transform.** With no other table, or with a table, it is `transform`
+of the target (`PartitionedTableProxyImpl#basicTransform`); with another proxy it is
+`partitioned_transform` of the two targets (`#complexTransform`). The result has the key
+columns of the target, unique keys, and the constituent column `__CONSTITUENT__`. A
+refreshing table that the operation reads besides (the other table of a join, a filter
+table, a trigger) is a dependency of the transform: with one, the result of a partitioned
+table that does not refresh is refreshing, its constituents may not change, and the
+constituents themselves refresh.
+
+**How it runs here.** The Python method runs the `Table` method once, on a table without
+rows that has the columns of a constituent (two such tables for two proxies), and records
+the operations that the method sends to the engine (`deephaven/_engine.py`, `Recording`).
+The function of the transform is those operations run again on a constituent
+(`console/python/proxy.rs`): Rust, with no Python in the update cycle beyond what a
+formula calls. So the proxy does what `Table` does, operation by operation, and a method
+of `Table` that changes needs no second implementation.
+
+**The variables of a formula are those of the call.** Java's proxy runs in an execution
+context that has a query scope, so `where`, `update` and the others with formulas work,
+unlike in the function of `transform`. The variables are bound when the proxy operation
+is called: a constituent that appears in a later cycle is given the values of then, also
+of a local of a function that has returned, and a global that was assigned since has its
+old value there. Here the recording keeps a copy of the caller's variables
+(`_oxhaven_bootstrap.scope_snapshot`), and every run compiles its formulas with it.
+
+**Consistent key columns** (`PartitionedTableImpl#getConsistentKeyColumnNames`) are the key
+columns that every constituent is known to hold, with the key of its row in every row.
+`partition_by` without `drop_keys` and `partitioned_agg_by` make them; `filter` keeps
+them; `sort` of a partitioned table, `transform` and `partitioned_transform` leave none.
+A proxy operation keeps these:
+
+| Operation | Keeps |
+| --- | --- |
+| `head`, `tail`, `reverse`, `snapshot`, `snapshot_when`, `sort`, `sort_descending`, `where`, `where_in`, `where_not_in`, the joins, `select_distinct()` | all |
+| `view`, `select`, `select_distinct` with columns | those named as they are; `"K = K"` is not one |
+| `update`, `update_view` | those no formula assigns |
+| `update_by` | those no operator writes |
+| the aggregations, also `group_by` and `count_by`, also when they group by the key | none |
+
+`view([])` and `update_view([])` keep all.
+
+**A filter of key columns is a filter of the underlying table.** `where` applies each
+filter that reads nothing but consistent key columns to the underlying table, which
+leaves fewer constituents, and the others to every constituent
+(`PartitionedTableProxyImpl#where`, `#isValidAgainstKeyColumns`). A list is split filter by
+filter; `"K = 1 && V > 0"` is one filter, of the constituents. A filter that reads no
+column (`"true"`, `"1 > 2"`) goes to the underlying table. `where_in` and `where_not_in`
+whose columns are all consistent key columns filter the underlying table as well. Without
+consistent key columns a filter of a key column is one of the constituents, which fails
+where they have no such column (`drop_keys`).
+
+**The checks of two proxies.** Only the flags of the proxy the method is called on are
+read. The key columns of the two are matched by position, as `partitioned_transform`
+matches them.
+
+- `require_matching_keys`: the two have the same keys (`#matchingKeysValidation`). The
+  call fails if not. In a cycle after which they have not, the result fails: its
+  underlying table and its merge. The two partitioned tables go on. Without the flag the
+  result has the keys that both have.
+- `sanity_check_joins`, for `natural_join`, `exact_join`, `join`, `aj` and `raj`: no value
+  of the columns that the join matches exactly is in two constituents, in each of the two
+  (`#nonOverlappingJoinKeysValidation`). It fails the call, or in a cycle the result, in
+  the same way. A row that moves to another constituent in one cycle takes its value with
+  it and does not fail the check.
+
+Both are tables that follow the underlying tables (`ops/partitioned/validate.rs`): the
+underlying table of each side is replaced by a copy that fails in the cycle in which the
+check does, so what is made of it fails.
+
+**What Java does that looks like a defect, done here in the same way.** None of these is
+decided; they are listed in `tasks/7.6.2-partitioned-proxy.md` for the owner's ruling.
+
+- `sort` of the Python class does not make a sequence of one name: a string is read as
+  the sequence of its characters. `sort("V")` sorts by `V`, `sort("VV")` by `V` twice,
+  and `sort("Nope")` fails for the column `N`. `sort_descending` takes a string as one
+  name.
+- `select()`, `select(None)` and `update([])` fail with an `IndexError` inside `DHError`;
+  `view([])` and `update_view([])` work.
+- `weighted_avg_by(wcol)` without group columns is `avg_by(wcol)`: the average of every
+  other column for each value of the weight column.
+- The message of a failure names another method for `abs_sum_by` and `weighted_sum_by`
+  ("sum_by operation"), `weighted_avg_by` ("avg_by operation"), `group_by` ("group-by
+  operation"), `update_by` ("update-by operation"), `aj` ("as-of join operation") and
+  `raj` ("reverse as-of join operation").
+- A filter that reads a column as an array (`"V_[i - 1] > 0"`, `"K_[i] = 1"`) fails
+  through a proxy with "No ExecutionContext registered, or current ExecutionContext has
+  no QueryScope"; the same filter of a table works.
+- A filter that reads key columns and `i`, `ii` or `k` (`"K > i"`) is applied to the
+  underlying table, where the row number is that of the constituent's row in it.
+- `sanity_check_joins` with one match column fails with `NullPointerException` when a
+  constituent has a null in it; with two or more match columns nulls pass.
+- `sanity_check_joins` of a join without exact match columns (`join` with no `on`, `aj`
+  and `raj` on the as-of column alone) fails whenever two constituents have rows.
+- `natural_join` and the others with a partitioned table that is not a proxy fail with
+  "Unexpected TableOperations input null"; here the text names what it was given.
 
 ## Refused for now
 
@@ -248,7 +358,6 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `proxy` | `PartitionedTableImpl#proxy` | 7.6.2 |
 | `partitioned_transform` of a partitioned table whose keys are not unique | `PartitionedTableImpl#partitionedTransform` | 7.6.3, which makes the first such table |
 | A transform function that compiles a formula inside an execution context it enters | `deephaven.execution_context` | 6.12 |
 | `PartitionedTable.from_partitioned_table`, `from_constituent_tables` | `PartitionedTableFactory#of`, `#ofTables` | 7.6.3 |
@@ -295,6 +404,31 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 - A function that reads a refreshing table it did not name as a dependency is not safe in
   Java, which may call it before that table has finished. Here it is called in the same
   way, and what it makes then starts from that table's rows of the moment and follows it.
+- The proxy (task 7.6.2, none of these decided):
+  - Java calls the operation for several constituents at once when it makes the result,
+    so which constituent's failure is reported (the key in "no mappings for key" of an
+    `exact_join`) is not fixed there; here it is the first in row order.
+  - Java was seen to hang for good in a proxy aggregation of a refreshing partitioned
+    table (`agg_by` with `agg.formula`, which is slow to compile) when an update cycle fell
+    due during the call: the caller holds the update graph's lock and the threads that
+    make the constituents wait in `QueryTable#aggBy`. Here the operation is made under
+    the lock on the calling thread and does not wait for a cycle.
+  - Java's join key check keeps the owner of each key and takes the claims of a cycle as
+    the constituents report them. Read from
+    `PartitionedTableProxyImpl#validateConstituentJoinKeys`, and not observed: a key that
+    moves to a constituent that appears in the same cycle can fail the check depending on
+    the order of the reports. Here the check reads the keys of all constituents at the
+    end of the cycle, which is what Java was observed to do for a move between
+    constituents that exist.
+  - A result that failed in a cycle is as a transform that failed (PARITY Q11, above):
+    Java's `merge` of it answers a table and `constituent_tables` fails; here `merge`
+    fails and `constituent_tables` answers.
+  - Two proxies of the same partitioned table and flags are equal on both. In Java
+    `partition_by` of the same table and columns answers the same partitioned table
+    twice, so the proxies of two such calls are equal; here two calls make two
+    partitioned tables, and their proxies are not.
+  - The text of an error after "... operation on the PartitionedTableProxy failed." is
+    the engine's own here, not Java's exception.
 
 ## Outside the task's paths
 
@@ -313,6 +447,10 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
   missing query scope, the native functions.
 - `oracle/scenarios/python/partitioned_*.py`, their recordings and their baseline lines;
   `agg_by` in the baseline is narrowed to the one table that still differs.
+- Task 7.6.2: `deephaven/_engine.py` (`Recording`; `table_op` and `local_op` record
+  while one is entered), `_oxhaven_bootstrap.py` (`scope_snapshot`),
+  `console/python/ops.rs` (`local_operation`, a local operation by its name),
+  `console/python/mod.rs` (the module `proxy`).
 
 ## Gate
 
@@ -320,4 +458,6 @@ column a `natural_join` adds, as in Java; both are in `partitioned_static`.
 (with and without `--features python`), and the script scenarios `partitioned_*` and
 `agg_by` in the replay gate. Task 7.6.1 adds the full seed budget for the engine tests
 (`OXHAVEN_TEST_SEEDS=full`) and the scenarios `partitioned_transform_ticking*` and
-`partitioned_transform_pair*`.
+`partitioned_transform_pair*`. Task 7.6.2 adds
+`cargo test -p oxhaven-server --features python console::python::proxy` and the scenarios
+`partitioned_proxy_*`, one for each family of operations and one for refreshing tables.
