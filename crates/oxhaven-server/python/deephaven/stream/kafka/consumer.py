@@ -212,10 +212,10 @@ def json_spec(
     col_defs: Union[TableDefinition, dict, Sequence],
     mapping: Optional[dict] = None,
 ) -> KeyValueSpec:
-    """A spec for records that are JSON objects: a column per definition in `col_defs`,
-    each filled from the field of its name, or from the field that `mapping` pairs with
-    it. A field that starts with `/` is a JSON pointer; only pointers to a top-level field
-    are supported yet.
+    """A spec for records that are JSON: a column per definition in `col_defs`, each
+    filled from the field of its name, or from the field that `mapping` pairs with it. A
+    field that starts with `/` is a JSON pointer, which may name a nested field or an
+    element of an array (`/a/b/0`).
     """
     try:
         try:

@@ -39,7 +39,7 @@ use oxhaven_column::sentinel::nulls_to_sentinels;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 
-use crate::java_text::object_texts;
+use crate::java_text::{self, object_texts};
 
 /// Whether a vector of `element` is one of Java's primitive vectors (`IntVector`), and
 /// not an `ObjectVector`.
@@ -78,6 +78,8 @@ fn wire_type_at(column_type: &ColumnType, outermost: bool) -> DataType {
         // (`IntervalUnit.YEAR_MONTH`), and the instant of a `ZonedDateTime` without its zone
         ColumnType::Period => DataType::Interval(IntervalUnit::YearMonth),
         ColumnType::ZonedDateTime => ColumnType::Instant.arrow_type(),
+        // Behavior: `BarrageUtil#arrowTypeFor`: the text of a class it has no type for
+        ColumnType::DayOfWeek | ColumnType::Object(_) => DataType::Utf8,
         other => other.arrow_type(),
     }
 }
@@ -91,14 +93,17 @@ fn holds_decimal(column_type: &ColumnType) -> bool {
     }
 }
 
-/// The cells of a `BigDecimal`, `LocalDate`, `LocalDateTime`, `Period` or
-/// `ZonedDateTime` column as Java sends them; `None` for a column of any other type.
+/// The cells of a `BigDecimal`, `LocalDate`, `LocalDateTime`, `Period`, `ZonedDateTime`,
+/// `DayOfWeek` or `Object` column as Java sends them; `None` for a column of any other
+/// type.
 ///
 /// Behavior: `io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#binaryFromBigDecimal`
 /// (the scale and the unscaled integer of the number without the zeros at its end),
 /// `#dateFromLocalDate` (the milliseconds of the day's start), `#utf8FromObject`,
 /// `#intervalFromPeriod` (`getMonths() + getYears() * 12` in `int` arithmetic, which
-/// drops the days), `#timestampFromZonedDateTime` (the instant, without the zone)
+/// drops the days), `#timestampFromZonedDateTime` (the instant, without the zone),
+/// `#utf8FromObject` (the `toString` of a `DayOfWeek` and of the cells of an `Object`
+/// column, a boxed primitive printing the value Java reserves for null as a number)
 fn object_cells(
     column_type: &ColumnType,
     stored: &ArrayRef,
@@ -172,6 +177,17 @@ fn object_cells(
                     .with_data_type(ColumnType::Instant.arrow_type());
             Ok(Arc::new(sent) as ArrayRef)
         })(),
+        ColumnType::DayOfWeek | ColumnType::Object(Some(_)) => {
+            let class = match column_type {
+                ColumnType::Object(Some(class)) => class.as_ref(),
+                _ => column_type,
+            };
+            if !java_text::has_object_text(class) || *stored.data_type() != class.arrow_type() {
+                return Some(Err(unexpected()));
+            }
+            Ok(Arc::new(StringArray::from(object_texts(class, stored))) as ArrayRef)
+        }
+        ColumnType::Object(None) => Ok(arrow::array::new_null_array(&DataType::Utf8, stored.len())),
         _ => return None,
     })
 }
@@ -377,6 +393,44 @@ mod tests {
             .iter()
             .collect();
         assert_eq!(instants, [Some(1_635_901_323_000_000_000), None]);
+    }
+
+    /// Seen on Java 42.9: `(Object) I` of a null `int` is sent as `"-2147483648"`, a
+    /// `null` column as nulls of `string`, `dayOfWeek(...)` as the names of the days.
+    #[test]
+    fn an_object_column_and_a_day_of_week_are_sent_as_their_text() {
+        let texts = |column_type: &ColumnType, stored: ArrayRef| -> Vec<Option<String>> {
+            let column = WireColumn::described(column_type);
+            assert_eq!(column.arrow_type(), DataType::Utf8);
+            let cells = column.cells(stored).unwrap();
+            cells
+                .as_string::<i32>()
+                .iter()
+                .map(|cell| cell.map(str::to_string))
+                .collect()
+        };
+        let boxed = Int32Array::from(vec![Some(1), Some(i32::MIN), None]);
+        assert_eq!(
+            texts(&ColumnType::object(Some(ColumnType::Int)), Arc::new(boxed)),
+            [Some("1".into()), Some("-2147483648".into()), None]
+        );
+        assert_eq!(
+            texts(
+                &ColumnType::object(None),
+                arrow::array::new_null_array(&DataType::Utf8, 2)
+            ),
+            [None, None]
+        );
+        let days = Int8Array::from(vec![Some(1), None, Some(7)]);
+        assert_eq!(
+            texts(&ColumnType::DayOfWeek, Arc::new(days)),
+            [Some("MONDAY".into()), None, Some("SUNDAY".into())]
+        );
+        assert!(
+            WireColumn::described(&ColumnType::object(Some(ColumnType::Int)))
+                .cells(Arc::new(StringArray::from(vec!["1"])))
+                .is_err()
+        );
     }
 
     #[test]

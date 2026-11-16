@@ -235,6 +235,88 @@ pub(super) fn list_type(java_type: &str, column_type: ColumnType) -> ColumnType 
     }
 }
 
+/// Compares a column Java declares as `java.lang.Object` or `java.time.DayOfWeek`, which
+/// a client is sent as the text of each value, with Oxhaven's; `None` for a column of
+/// another Java type. Without `recorded` values only the type is compared.
+pub(super) fn object_outcome(
+    java_type: &str,
+    column_type: &ColumnType,
+    values: &ArrayRef,
+    recorded: Option<&[Value]>,
+) -> Option<Result<(), String>> {
+    if java_type == "java.lang.Object[]" {
+        let ColumnType::Array(element) = column_type else {
+            return Some(Err(format!(
+                "Java returns {java_type}; Oxhaven returns {column_type:?}"
+            )));
+        };
+        let lists = values.as_list::<i32>();
+        let mut differences = Vec::new();
+        for (row, cell) in recorded.unwrap_or_default().iter().enumerate() {
+            let inner = cell.as_array().map(Vec::as_slice);
+            let ours = lists.value(row);
+            let outcome = object_outcome("java.lang.Object", element, &ours, inner);
+            if let Some(Err(difference)) = outcome {
+                differences.push(format!("row {row}: {difference}"));
+            }
+        }
+        return Some(if differences.is_empty() {
+            Ok(())
+        } else {
+            Err(differences.join("; "))
+        });
+    }
+    let type_agrees = match java_type {
+        "java.lang.Object" => matches!(column_type, ColumnType::Object(_)),
+        "java.time.DayOfWeek" => *column_type == ColumnType::DayOfWeek,
+        _ => return None,
+    };
+    if !type_agrees {
+        return Some(Err(format!(
+            "Java returns {java_type}; Oxhaven returns {column_type:?}"
+        )));
+    }
+    let Some(recorded) = recorded else {
+        return Some(Ok(()));
+    };
+    let expected: Vec<Option<String>> = recorded
+        .iter()
+        .map(|cell| cell.as_str().map(str::to_string))
+        .collect();
+    let class = match column_type {
+        ColumnType::Object(class) => class.as_deref(),
+        other => Some(other),
+    };
+    let text = |row: usize| -> Option<String> {
+        if values.is_null(row) {
+            return None;
+        }
+        Some(match class.expect("a column of nulls has no valid cell") {
+            ColumnType::String => values.as_string::<i32>().value(row).to_string(),
+            ColumnType::Int => values.as_primitive::<Int32Type>().value(row).to_string(),
+            ColumnType::Long => values.as_primitive::<Int64Type>().value(row).to_string(),
+            ColumnType::Boolean => values.as_boolean().value(row).to_string(),
+            ColumnType::DayOfWeek => [
+                "MONDAY",
+                "TUESDAY",
+                "WEDNESDAY",
+                "THURSDAY",
+                "FRIDAY",
+                "SATURDAY",
+                "SUNDAY",
+            ][values.as_primitive::<Int8Type>().value(row) as usize - 1]
+                .to_string(),
+            other => panic!("no text of a {other:?} object in this test"),
+        })
+    };
+    let actual: Vec<Option<String>> = (0..values.len()).map(text).collect();
+    Some(if actual == expected {
+        Ok(())
+    } else {
+        Err(format!("Java returns {expected:?}, Oxhaven {actual:?}"))
+    })
+}
+
 /// The recording's type name for a Java column type, or `None` for a type Oxhaven has no
 /// column type for.
 pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
@@ -461,6 +543,13 @@ fn compare(compiler: &dyn FormulaCompiler, table: &TestTable, case: &Value) -> O
 
     let result = &case["result"];
     let java_type = result["java"].as_str().expect("a Java type");
+    let recorded = result["values"].as_array().map(Vec::as_slice);
+    if let Some(outcome) = object_outcome(java_type, &column_type, &values, recorded) {
+        return match outcome {
+            Ok(()) => Outcome::Agrees,
+            Err(difference) => Outcome::Differs(difference),
+        };
+    }
     // A list column is recorded with the type of its elements, which Java's type name
     // lacks for a vector or array of objects.
     let list = result["kind"]
