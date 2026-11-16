@@ -1,0 +1,188 @@
+{
+  "format": 2,
+  "scenario": "partitioned_transform_ticking_failures",
+  "scenario_sha256": "d2bbcd552edacabdb9cde2da600d9eba76e66a985f8c901bbfa9ec0c28d4f255",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "rows",
+      "file": "step000.rows.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "source_merged",
+      "file": "step000.source_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "good_merged",
+      "file": "step000.good_merged.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "rows",
+      "file": "step001.rows.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "source_merged",
+      "file": "step001.source_merged.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "good_merged",
+      "file": "step001.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "rows",
+      "file": "step002.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "source_merged",
+      "file": "step002.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 2,
+      "table": "good_merged",
+      "file": "step002.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "rows",
+      "file": "step003.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "source_merged",
+      "file": "step003.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 3,
+      "table": "good_merged",
+      "file": "step003.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "rows",
+      "file": "step004.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "source_merged",
+      "file": "step004.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 4,
+      "table": "good_merged",
+      "file": "step004.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "rows",
+      "file": "step005.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "source_merged",
+      "file": "step005.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 5,
+      "table": "good_merged",
+      "file": "step005.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "rows",
+      "file": "step006.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "source_merged",
+      "file": "step006.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 6,
+      "table": "good_merged",
+      "file": "step006.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "rows",
+      "file": "step007.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "source_merged",
+      "file": "step007.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 7,
+      "table": "good_merged",
+      "file": "step007.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 8,
+      "table": "rows",
+      "file": "step008.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 8,
+      "table": "source_merged",
+      "file": "step008.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 8,
+      "table": "good_merged",
+      "file": "step008.good_merged.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "rows",
+      "file": "step009.rows.arrow",
+      "rows": 6
+    },
+    {
+      "step": 9,
+      "table": "source_merged",
+      "file": "step009.source_merged.arrow",
+      "rows": 6
+    },
+    {
+      "step": 9,
+      "table": "good_merged",
+      "file": "step009.good_merged.arrow",
+      "rows": 4
+    }
+  ]
+}
