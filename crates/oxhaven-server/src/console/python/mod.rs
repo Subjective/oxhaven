@@ -43,6 +43,9 @@ mod listener;
 mod ops;
 mod parquet;
 mod partitioned;
+mod plugin;
+#[cfg(test)]
+mod plugin_tests;
 #[cfg(test)]
 mod tests;
 mod udf;
@@ -450,6 +453,7 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         input::register(&native)?;
         listener::register(&native)?;
         partitioned::register(&native)?;
+        plugin::register(&native)?;
         checks::register(&native)?;
         appmode::register(&native)?;
         modules.set_item("_oxhaven", &native)?;
@@ -845,6 +849,7 @@ pub fn start(state: &mut ServerState) -> Result<(), String> {
     };
     listener::install(state.graph.clone());
     let session = PythonSession::new(context, state.logs.clone())?;
+    plugin::register_plugins()?;
     let console = Console::new(Arc::new(session), state.applications.clone());
     state.scope.hold(console.clone());
     console.watch(CHECK_SCOPE_CHANGES_INTERVAL);

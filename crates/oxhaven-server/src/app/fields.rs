@@ -42,6 +42,8 @@ pub enum ApplicationError {
     InvalidFieldName(String),
     /// A description was given and is empty.
     EmptyDescription,
+    /// An object type failed to say whether the value of a field is its own.
+    TypeLookup(String),
 }
 
 impl fmt::Display for ApplicationError {
@@ -61,6 +63,7 @@ impl fmt::Display for ApplicationError {
             ApplicationError::EmptyDescription => {
                 f.write_str("a field description, when present, must not be empty")
             }
+            ApplicationError::TypeLookup(text) => f.write_str(text),
         }
     }
 }
@@ -432,6 +435,12 @@ impl Application {
         if description.is_some_and(str::is_empty) {
             return Err(ApplicationError::EmptyDescription);
         }
+        // Java asks its object type plugins about anything that is no table, and an object
+        // none of them knows has no type and is listed all the same. Asked before the lock:
+        // a type of a plugin runs Python to answer.
+        let type_name = type_name_if_displayable(&value)
+            .map_err(ApplicationError::TypeLookup)?
+            .unwrap_or_default();
         let mut state = self.applications.lock();
         let application = state
             .applications
@@ -442,11 +451,7 @@ impl Application {
                 ticket: Some(Ticket {
                     ticket: application_field_ticket(&self.id, name),
                 }),
-                // Java asks its object type plugins about anything that is no table, and an
-                // object none of them knows has no type and is listed all the same
-                r#type: type_name_if_displayable(&value)
-                    .unwrap_or_default()
-                    .to_string(),
+                r#type: type_name,
             }),
             field_name: name.to_string(),
             field_description: description.unwrap_or_default().to_string(),
