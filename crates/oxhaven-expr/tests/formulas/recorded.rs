@@ -394,7 +394,9 @@ fn compare(table: &TestTable, case: &Value) -> Outcome {
     }
     // The clock and the random numbers have no value to compare, as in the oracle's
     // harness (`oracle/harness/formulas/tags.py`, `nondeterministic`).
-    let changes = formula.contains("now(") || formula.contains("random");
+    let changes = ["now(", "nowSystem(", "random"]
+        .iter()
+        .any(|call| formula.contains(call));
     if changes || super::tagged::same_values(formula, &expected.1, &values) {
         Outcome::Agrees
     } else {

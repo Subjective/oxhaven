@@ -812,5 +812,3 @@ py-server/test_table.L1308.13.1	java-accepts	object creation (new)
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR
 py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()
-py-server/test_table_factory.L151.13.0	java-accepts	function nowSystem()
-py-server/test_table_factory.L558.12.0	java-accepts	function nowSystem()

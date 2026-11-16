@@ -521,8 +521,8 @@ pub(crate) fn resolve(
         }
     };
     match (name, types.len()) {
-        // `DateTimeUtils#now()`.
-        ("now", 0) => call(Kernel::Now, Vec::new(), ColumnType::Instant),
+        // `DateTimeUtils#now()` and `#nowSystem()`: the clock of `now` is the system clock.
+        ("now" | "nowSystem", 0) => call(Kernel::Now, Vec::new(), ColumnType::Instant),
         ("random", 0) => call(
             Kernel::Random(volatile::RandomFn::Uniform),
             Vec::new(),

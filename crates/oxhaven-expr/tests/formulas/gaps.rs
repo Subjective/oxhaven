@@ -373,6 +373,7 @@ fn the_clock_and_the_random_numbers_have_javas_types() {
     let table = times();
     for (formula, expected) in [
         ("now()", ColumnType::Instant),
+        ("nowSystem()", ColumnType::Instant),
         ("now() + i * SECOND", ColumnType::Instant),
         ("random()", ColumnType::Double),
         ("randomBool()", ColumnType::Boolean),
