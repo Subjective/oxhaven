@@ -14,6 +14,7 @@
 //!
 //! Behavior: `io.deephaven.server.jetty.JettyBackedGrpcServer`
 
+pub mod plugins;
 #[cfg(test)]
 mod tests;
 
@@ -118,8 +119,9 @@ fn add_cache_headers(response: &mut Response<Body>, caching: Caching, now: Syste
     }
 }
 
-/// The content type of a file by its extension, for the kinds of file the web IDE has. A
-/// file of another kind is sent without a content type, as Java sends a `.map` file.
+/// The content type of a file by its extension, for the kinds of file the web IDE and the JS
+/// plugins have: each was seen from Java. A file of another kind is sent without a content
+/// type, as Java sends a `.map`, `.ts`, `.cjs`, `.md` or `.yaml` file.
 fn content_type(path: &Path) -> Option<&'static str> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     Some(match extension.as_str() {
@@ -132,11 +134,22 @@ fn content_type(path: &Path) -> Option<&'static str> {
         "gif" => "image/gif",
         "jpg" | "jpeg" => "image/jpeg",
         "svg" => "image/svg+xml",
+        "webp" => "image/webp",
         "ico" => "image/vnd.microsoft.icon",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
         "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "eot" => "application/vnd.ms-fontobject",
         "txt" => "text/plain",
+        "csv" => "text/csv",
+        "xml" => "application/xml",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        "gz" => "application/gzip",
+        "tar" => "application/x-tar",
+        "bin" => "application/octet-stream",
+        "mp4" => "video/mp4",
         _ => return None,
     })
 }
@@ -147,7 +160,8 @@ enum Target {
     /// The path below the web root, with `.` and `..` resolved.
     Path(Vec<String>),
     /// A path Java refuses with `400`: an empty segment, a `..` above the root, an encoded
-    /// `.` or `..` segment, or a percent escape that is none.
+    /// `.` or `..` segment, an encoded slash, backslash, percent sign or control character,
+    /// a segment that is only a path parameter, or a percent escape that is none.
     Bad,
 }
 
@@ -176,7 +190,12 @@ fn resolve(path: &str) -> Target {
     };
     let mut resolved = Vec::new();
     let mut segments = path.split('/').peekable();
-    while let Some(segment) = segments.next() {
+    while let Some(whole) = segments.next() {
+        // a path parameter (`index.js;v=1`) is no part of the name
+        let segment = whole.split(';').next().unwrap_or(whole);
+        if segment.len() != whole.len() && matches!(segment, "" | "." | "..") {
+            return Target::Bad;
+        }
         match segment {
             // a trailing slash names a directory; an empty segment elsewhere is refused
             "" if segments.peek().is_none() => {}
@@ -191,7 +210,8 @@ fn resolve(path: &str) -> Target {
                 Some(decoded)
                     if decoded != "."
                         && decoded != ".."
-                        && !decoded.contains(['/', '\\', '\0']) =>
+                        && !decoded.contains(['/', '\\', '%'])
+                        && !decoded.chars().any(char::is_control) =>
                 {
                     resolved.push(decoded)
                 }
@@ -243,7 +263,7 @@ fn with_query(path: &str, query: Option<&str>) -> String {
 }
 
 /// An `ETag` that changes when the file does. It is weak, as Java's are.
-fn etag(metadata: &std::fs::Metadata) -> String {
+pub(super) fn etag(metadata: &std::fs::Metadata) -> String {
     let modified = metadata
         .modified()
         .ok()
@@ -253,20 +273,13 @@ fn etag(metadata: &std::fs::Metadata) -> String {
 }
 
 /// Whether an `If-None-Match` header names this `ETag`. The comparison is the weak one:
-/// the `W/` prefix does not count.
+/// the `W/` prefix does not count. `*` names none: Java answers it with the file.
 fn matches_etag(if_none_match: &str, etag: &str) -> bool {
     let opaque = |tag: &str| tag.trim().trim_start_matches("W/").to_string();
     if_none_match
         .split(',')
-        .any(|candidate| candidate.trim() == "*" || opaque(candidate) == opaque(etag))
+        .any(|candidate| opaque(candidate) == opaque(etag))
 }
-
-/// The list of JS plugins, which Java builds from the plugins installed in the server.
-/// This server has none.
-///
-/// Behavior: `io.deephaven.server.jetty.JsPlugins`
-const JS_PLUGINS_MANIFEST_PATH: &str = "/js-plugins/manifest.json";
-const JS_PLUGINS_MANIFEST: &str = "{\"plugins\":[]}";
 
 /// Answers a `GET` that is not a gRPC call.
 ///
@@ -276,37 +289,38 @@ const JS_PLUGINS_MANIFEST: &str = "{\"plugins\":[]}";
 ///   its `index.html` is served, or `403` if it has none.
 /// - A file is served with its content type, cache headers and an `ETag`; a request whose
 ///   `If-None-Match` names that `ETag` gets `304`. `If-Modified-Since` is ignored.
+/// - Below `/js-plugins/` the files are those of the registered JS plugins and their
+///   manifest, by the same rules; `/js-plugins` itself is `404`.
 /// - Anything else is `404`.
 ///
 /// Behavior: `io.deephaven.server.jetty.HomeFilter#doFilter`, `DropIfModifiedSinceHeader`,
 /// `JettyBackedGrpcServer` (`dirAllowed` is false)
-pub(crate) async fn get<B>(root: Option<&WebRoot>, request: &Request<B>) -> Response<Body> {
+pub(crate) async fn get<B>(
+    root: Option<&WebRoot>,
+    plugins: &plugins::JsPlugins,
+    request: &Request<B>,
+) -> Response<Body> {
     let path = request.uri().path();
     let query = request.uri().query();
     if path == "/" {
         return redirect(&with_query("/ide/", query));
     }
-    let caching = caching(path);
     let now = SystemTime::now();
-    let mut response = if path == JS_PLUGINS_MANIFEST_PATH {
-        let mut response = Response::new(Body::new(Full::new(Bytes::from_static(
-            JS_PLUGINS_MANIFEST.as_bytes(),
-        ))));
-        response
-            .headers_mut()
-            .insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-        response
+    let if_none_match = request
+        .headers()
+        .get(IF_NONE_MATCH)
+        .and_then(|value| value.to_str().ok());
+    let Target::Path(segments) = resolve(path) else {
+        return error(StatusCode::BAD_REQUEST);
+    };
+    // the caching rules see the path that is served: `/ide;v=1/x.js` is under `/ide/`
+    let caching = caching(&format!("/{}", segments.join("/")));
+    let mut response = if segments.first().is_some_and(|s| s == JS_PLUGINS) {
+        plugin_file(plugins, path, query, &segments[1..], if_none_match)
     } else {
-        let if_none_match = request
-            .headers()
-            .get(IF_NONE_MATCH)
-            .and_then(|value| value.to_str().ok());
-        match resolve(path) {
-            Target::Bad => return error(StatusCode::BAD_REQUEST),
-            Target::Path(segments) => match root {
-                None => error(StatusCode::NOT_FOUND),
-                Some(root) => file(root, path, query, &segments, if_none_match).await,
-            },
+        match root {
+            None => error(StatusCode::NOT_FOUND),
+            Some(root) => file(root, path, query, &segments, if_none_match).await,
         }
     };
     // 304 is among the redirections
@@ -347,23 +361,78 @@ async fn file(
         _ => return error(StatusCode::NOT_FOUND),
     }
     let etag = etag(&metadata);
-    let not_modified = if_none_match.is_some_and(|header| matches_etag(header, &etag));
-    let mut response = if not_modified {
-        empty_response(StatusCode::NOT_MODIFIED)
-    } else {
-        match tokio::fs::read(&path).await {
-            Ok(content) => Response::new(Body::new(Full::new(Bytes::from(content)))),
-            Err(_) => return error(StatusCode::NOT_FOUND),
-        }
-    };
-    let headers = response.headers_mut();
-    if let Ok(value) = HeaderValue::from_str(&etag) {
-        headers.insert(ETAG, value);
+    if if_none_match.is_some_and(|header| matches_etag(header, &etag)) {
+        return not_modified(&etag);
     }
-    if !not_modified {
-        if let Some(content_type) = content_type(&path) {
-            headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-        }
+    match tokio::fs::read(&path).await {
+        Ok(content) => content_response(Bytes::from(content), &etag, &path),
+        Err(_) => error(StatusCode::NOT_FOUND),
+    }
+}
+
+fn not_modified(etag: &str) -> Response<Body> {
+    let mut response = empty_response(StatusCode::NOT_MODIFIED);
+    if let Ok(value) = HeaderValue::from_str(etag) {
+        response.headers_mut().insert(ETAG, value);
     }
     response
+}
+
+/// A file's content with its `ETag` and the content type of its name.
+fn content_response(content: Bytes, etag: &str, name: &Path) -> Response<Body> {
+    let mut response = Response::new(Body::new(Full::new(content)));
+    let headers = response.headers_mut();
+    if let Ok(value) = HeaderValue::from_str(etag) {
+        headers.insert(ETAG, value);
+    }
+    if let Some(content_type) = content_type(name) {
+        headers.insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
+    }
+    response
+}
+
+/// The first segment of the paths of the JS plugins.
+const JS_PLUGINS: &str = "js-plugins";
+
+/// Answers for a path below `/js-plugins`, whose `segments` follow that one.
+///
+/// Behavior: `io.deephaven.server.jetty.JettyBackedGrpcServer#initResources` (the
+/// `PathPrefixResource` of the JS plugins), as its responses were seen
+fn plugin_file(
+    plugins: &plugins::JsPlugins,
+    url_path: &str,
+    query: Option<&str>,
+    segments: &[String],
+    if_none_match: Option<&str>,
+) -> Response<Body> {
+    let directory = url_path.ends_with('/');
+    if segments.is_empty() && !directory {
+        // the prefix without its slash is no resource
+        return error(StatusCode::NOT_FOUND);
+    }
+    let (content, etag, name) = match plugins.node(segments) {
+        None => return error(StatusCode::NOT_FOUND),
+        Some(plugins::Node::File { content, etag }) if !directory => {
+            (content, etag, segments.last().cloned().unwrap_or_default())
+        }
+        // a file is not a directory
+        Some(plugins::Node::File { .. }) => return error(StatusCode::NOT_FOUND),
+        Some(plugins::Node::Directory) if !directory => {
+            return redirect(&with_query(&format!("{url_path}/"), query));
+        }
+        Some(plugins::Node::Directory) => {
+            let mut index = segments.to_vec();
+            index.push("index.html".to_string());
+            match plugins.node(&index) {
+                Some(plugins::Node::File { content, etag }) => {
+                    (content, etag, "index.html".to_string())
+                }
+                _ => return error(StatusCode::FORBIDDEN),
+            }
+        }
+    };
+    if if_none_match.is_some_and(|header| matches_etag(header, &etag)) {
+        return not_modified(&etag);
+    }
+    content_response(content, &etag, Path::new(&name))
 }

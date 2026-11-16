@@ -39,6 +39,45 @@ impl FormulaCompiler for Compiler {
     }
 }
 
+/// The formula language as a table operation of a client may use it: [`Compiler`], without
+/// the calls Java's server refuses to run for a client.
+///
+/// Java computes `Math.sin(X)` in a script of the console and refuses it in an operation
+/// sent over gRPC, where every formula first passes the server's
+/// `ColumnExpressionValidator`. With the lists the server ships
+/// (`ColumnExpressionValidator.allowedMethods.*` in `dh-defaults.prop`) a formula may call
+/// the default imports and any method of the boxed classes and of `String`, and no method
+/// of `java.lang.Math` or `StrictMath`.
+///
+/// Behavior: `io.deephaven.server.table.validation.ParsingColumnExpressionValidator#validateInvocations`,
+/// whose message the error carries.
+#[derive(Clone, Copy, Default, Debug)]
+pub struct RequestCompiler;
+
+impl FormulaCompiler for RequestCompiler {
+    fn parse(&self, text: &str) -> Result<Expr, FormulaError> {
+        parse::parse_expression(text)
+    }
+
+    fn parse_assignment(&self, text: &str) -> Result<ColumnAssignment, FormulaError> {
+        parse::parse_assignment(text)
+    }
+
+    fn compile(
+        &self,
+        expr: &Expr,
+        definition: &TableDefinition,
+    ) -> Result<Arc<dyn Formula>, FormulaError> {
+        let checked = types::check(expr, definition, None)?;
+        if let Some(refusal) = &checked.refused_to_clients {
+            return Err(FormulaError::Type(format!(
+                "java.lang.IllegalStateException: {refusal}"
+            )));
+        }
+        Ok(Arc::new(eval::CompiledFormula::new(checked)))
+    }
+}
+
 impl Compiler {
     /// The formula language with the functions of `functions` beside its own: a call the
     /// function library cannot take is one of theirs, if they have the name.

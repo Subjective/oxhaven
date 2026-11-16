@@ -11,6 +11,7 @@ workspace = true
 arrow.workspace = true
 chrono.workspace = true
 chrono-tz.workspace = true
+oxhaven-column = { path = "../oxhaven-column" }
 oxhaven-contracts = { path = "../oxhaven-contracts" }
 
 [dev-dependencies]

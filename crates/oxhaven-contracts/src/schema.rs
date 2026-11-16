@@ -77,6 +77,32 @@ pub enum ColumnType {
     /// Two cells are the same table when their handles are equal. Nothing else may be
     /// computed from a handle: it has no order and no meaning as a number.
     Table(TableClass),
+    /// `java.math.BigDecimal`: an unscaled integer and a scale, the value being
+    /// `unscaled * 10^-scale`. Two cells with one value and two scales (`1.5`, `1.50`) are
+    /// two values, as in `java.math.BigDecimal#equals`.
+    ///
+    /// A cell is an Arrow `Binary` value: the scale as four bytes, least significant
+    /// first, then the unscaled integer as [`ColumnType::BigInteger`] holds one. It is
+    /// the layout Java sends a client
+    /// (`io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#binaryFromBigDecimal`),
+    /// except that Java first strips the trailing zeros and a cell here keeps its scale.
+    BigDecimal,
+    /// `java.math.BigInteger`.
+    ///
+    /// A cell is an Arrow `Binary` value: the bytes of `java.math.BigInteger#toByteArray`,
+    /// two's complement, most significant byte first, in the fewest bytes that hold the
+    /// sign (at least one). Equal integers are equal bytes.
+    BigInteger,
+    /// `java.time.LocalDate`. A cell is an Arrow `Date32`: days since 1970-01-01. Java's
+    /// type holds years to 999999999; a date outside the 32-bit range cannot be a cell.
+    LocalDate,
+    /// `java.time.LocalTime`. A cell is an Arrow `Time64` in nanoseconds since midnight.
+    LocalTime,
+    /// `java.time.LocalDateTime`. A cell is an Arrow `Timestamp` in nanoseconds without a
+    /// time zone: the nanoseconds from 1970-01-01T00:00 to the date and time, both read as
+    /// if in UTC. Java's type holds years to 999999999; a date and time outside the
+    /// 64-bit range (before 1677-09-21 or after 2262-04-11) cannot be a cell.
+    LocalDateTime,
 }
 
 /// The Java class of the cells of a [`ColumnType::Table`] column.
@@ -153,22 +179,48 @@ impl ColumnType {
                 DataType::List(Arc::new(Field::new("", element.arrow_type(), true)))
             }
             ColumnType::Table(_) => DataType::Int64,
+            ColumnType::BigDecimal | ColumnType::BigInteger => DataType::Binary,
+            ColumnType::LocalDate => DataType::Date32,
+            ColumnType::LocalTime => DataType::Time64(TimeUnit::Nanosecond),
+            ColumnType::LocalDateTime => DataType::Timestamp(TimeUnit::Nanosecond, None),
         }
     }
 }
 
-/// One column of a table: its name and type.
+/// One column of a table: its name and type, and whether it is a partitioning column.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ColumnDefinition {
     pub name: String,
     pub column_type: ColumnType,
+    /// Whether the column is a partitioning column: one whose value is the same for every
+    /// row of a location of a table read from storage, the `K` of a directory `K=1`. A
+    /// client is told so in the schema (`deephaven:isPartitioning`), and two definitions
+    /// that differ only in this are different definitions, as in Java.
+    ///
+    /// Behavior: `io.deephaven.engine.table.ColumnDefinition#isPartitioning`, which is
+    /// `ColumnDefinition.ColumnType.Partitioning` of the two kinds Java has; the other,
+    /// `Normal`, is `false`.
+    pub partitioning: bool,
 }
 
 impl ColumnDefinition {
+    /// A column that is not a partitioning column.
     pub fn new(name: impl Into<String>, column_type: ColumnType) -> Self {
         Self {
             name: name.into(),
             column_type,
+            partitioning: false,
+        }
+    }
+
+    /// A partitioning column.
+    ///
+    /// Behavior: `io.deephaven.engine.table.ColumnDefinition#withPartitioning`
+    pub fn partitioning(name: impl Into<String>, column_type: ColumnType) -> Self {
+        Self {
+            name: name.into(),
+            column_type,
+            partitioning: true,
         }
     }
 }
@@ -261,6 +313,39 @@ mod tests {
         assert_eq!(declared.arrow_type(), DataType::Int64);
         assert_ne!(made, declared);
         assert_eq!(made.list_element(), None);
+    }
+
+    #[test]
+    fn the_java_time_and_math_types_have_their_own_arrow_types() {
+        assert_eq!(ColumnType::BigDecimal.arrow_type(), DataType::Binary);
+        assert_eq!(ColumnType::BigInteger.arrow_type(), DataType::Binary);
+        assert_ne!(ColumnType::BigDecimal, ColumnType::BigInteger);
+        assert_eq!(ColumnType::LocalDate.arrow_type(), DataType::Date32);
+        assert_eq!(
+            ColumnType::LocalTime.arrow_type(),
+            DataType::Time64(TimeUnit::Nanosecond)
+        );
+        // no zone, where an instant has UTC
+        assert_eq!(
+            ColumnType::LocalDateTime.arrow_type(),
+            DataType::Timestamp(TimeUnit::Nanosecond, None)
+        );
+        assert_ne!(
+            ColumnType::LocalDateTime.arrow_type(),
+            ColumnType::Instant.arrow_type()
+        );
+        assert_eq!(ColumnType::LocalDate.list_element(), None);
+    }
+
+    #[test]
+    fn a_partitioning_column_is_another_column_than_a_normal_one() {
+        let normal = ColumnDefinition::new("K", ColumnType::Int);
+        let partitioning = ColumnDefinition::partitioning("K", ColumnType::Int);
+        assert!(!normal.partitioning);
+        assert!(partitioning.partitioning);
+        assert_ne!(normal, partitioning);
+        assert_eq!(partitioning.name, "K");
+        assert_eq!(partitioning.column_type, ColumnType::Int);
     }
 
     #[test]

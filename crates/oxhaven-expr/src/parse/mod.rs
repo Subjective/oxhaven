@@ -19,13 +19,21 @@ use oxhaven_contracts::schema::ColumnType;
 
 /// The method name given to `receiver[index]`, which is parsed as a method call on
 /// `receiver`. It is not an identifier, so no formula can spell it.
-pub(crate) use instant::{duration_nanos, period_days};
+pub(crate) use instant::{duration_nanos, instant_of_text, period_days};
 
 pub(crate) const INDEX_METHOD: &str = "[]";
+
+/// What the name of the call that stands for an object or array creation starts with. A
+/// name with a space is none a formula can write.
+pub(crate) const NEW: &str = "new ";
 
 /// The method name given to `receiver.length`, the length of a Java array, which is
 /// parsed as a method call on `receiver` without arguments. No formula can spell it.
 pub(crate) const LENGTH_FIELD: &str = ".length";
+
+/// The function name `new String(...)` is parsed as a call of. It has a space, so no
+/// function a formula can name collides with it.
+pub(crate) const NEW_STRING: &str = "new String";
 
 fn syntax(message: impl Into<String>) -> FormulaError {
     FormulaError::Syntax(message.into())
@@ -128,18 +136,18 @@ fn infix(symbol: &str) -> Option<(u8, Infix)> {
     Some((strength, Infix::Operator(op)))
 }
 
-/// The scope of a static field access the formula language reads: a simple name that may
-/// be one of the boxed numeric classes of `java.lang`.
+/// The scope of a field access that may name a class or a static field: a name, simple
+/// or already qualified.
 ///
-/// `Integer.MAX_VALUE` becomes the qualified name `Integer.MAX_VALUE`, and the type checker
-/// resolves it as it resolves a default-imported constant such as `NULL_INT`: a column of
-/// the scope's name comes first, as a variable comes before a class in
-/// `QueryLanguageParser#resolveName`, and otherwise the field is looked up on the class.
-/// Every other field access is refused here.
+/// `Integer.MAX_VALUE` becomes the qualified name `Integer.MAX_VALUE`, and
+/// `java.lang.Math.sin(X)` a call of `sin` on the qualified name `java.lang.Math`. The type
+/// checker resolves a qualified name: a column of the name of its first part comes first,
+/// as a variable comes before a class in `QueryLanguageParser#resolveName`, and otherwise
+/// the name is a class or a field of one. `.length` is the one field of a value the
+/// language reads, and stays a field of whatever stands before it.
 fn static_field_scope(expr: &Expr) -> Option<&str> {
-    const SCOPES: [&str; 6] = ["Byte", "Short", "Integer", "Long", "Float", "Double"];
     match expr {
-        Expr::Column(name) if SCOPES.contains(&name.as_str()) => Some(name),
+        Expr::Column(name) => Some(name),
         _ => None,
     }
 }
@@ -410,8 +418,11 @@ impl Parser {
                                 .and_then(|at| self.tokens.get(at)),
                             Some((Token::Identifier(_), _))
                         );
-                        expr = match static_field_scope(&expr).filter(|_| bare) {
-                            Some(scope) => Expr::Column(format!("{scope}.{name}")),
+                        let scope = static_field_scope(&expr)
+                            .filter(|_| bare && name != "length")
+                            .map(|scope| format!("{scope}.{name}"));
+                        expr = match scope {
+                            Some(qualified) => Expr::Column(qualified),
                             // The only field of a value the language reads: the type
                             // checker refuses it for anything but a Java array.
                             None if name == "length" => Expr::MethodCall {
@@ -498,12 +509,76 @@ impl Parser {
                     "i" => Expr::RowVariable(RowVariable::I),
                     "ii" => Expr::RowVariable(RowVariable::Ii),
                     "k" => Expr::RowVariable(RowVariable::K),
-                    "new" => return Err(unsupported("object creation (new)")),
+                    "new" => return self.creation(),
                     _ => Expr::Column(name),
                 })
             }
             _ => Err(self.unexpected()),
         }
+    }
+
+    /// What follows `new`: a class and its constructor's arguments, an array type and the
+    /// array's elements in braces, or an element type and the array's length.
+    ///
+    /// The tree has no node for either. Each becomes a call of a function no formula can
+    /// name, which the type checker knows: `new Integer`, `new int[]` and `new int[n]`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)` and
+    /// `#visit(ArrayCreationExpr)`.
+    fn creation(&mut self) -> Result<Expr, FormulaError> {
+        let mut name = String::new();
+        loop {
+            match self.advance() {
+                Some(Token::Identifier(part)) => name.push_str(&part),
+                _ => return Err(syntax("expected a type name after new")),
+            }
+            if !self.eat(".") {
+                break;
+            }
+            name.push('.');
+        }
+        if self.peek_symbol() == Some("(") {
+            return Ok(Expr::Call {
+                function: format!("{NEW}{name}"),
+                arguments: self.arguments()?,
+            });
+        }
+        let of_arrays =
+            |name: &str| unsupported(format!("array creation new {name}[][], of arrays"));
+        self.expect("[")?;
+        if !self.eat("]") {
+            let length = self.expression()?;
+            self.expect("]")?;
+            if self.peek_symbol() == Some("[") {
+                return Err(of_arrays(&name));
+            }
+            return Ok(Expr::Call {
+                function: format!("{NEW}{name}[n]"),
+                arguments: vec![length],
+            });
+        }
+        if self.peek_symbol() == Some("[") {
+            return Err(of_arrays(&name));
+        }
+        self.expect("{")?;
+        let mut elements = Vec::new();
+        if !self.eat("}") {
+            loop {
+                elements.push(self.expression()?);
+                if self.eat("}") {
+                    break;
+                }
+                self.expect(",")?;
+                // Java allows a comma after the last element.
+                if self.eat("}") {
+                    break;
+                }
+            }
+        }
+        Ok(Expr::Call {
+            function: format!("{NEW}{name}[]"),
+            arguments: elements,
+        })
     }
 
     /// Parses a parenthesized argument list.
@@ -1024,6 +1099,28 @@ mod tests {
                 arguments: vec![column("D")],
             })
         );
+        // A name of several parts is one qualified name, whatever it names: the type
+        // checker knows the classes and the columns.
+        for name in ["Math.PI", "Double.NaN.x", "java.lang.Double.NaN", "A.b"] {
+            assert_eq!(parse_expression(name), Ok(column(name)), "{name}");
+        }
+        assert_eq!(
+            parse_expression("java.lang.Math.sin(D)"),
+            Ok(Expr::MethodCall {
+                receiver: Box::new(column("java.lang.Math")),
+                method: "sin".into(),
+                arguments: vec![column("D")],
+            })
+        );
+        // `.length` stays the field of the value before it.
+        assert_eq!(
+            parse_expression("A.length"),
+            Ok(Expr::MethodCall {
+                receiver: Box::new(column("A")),
+                method: LENGTH_FIELD.into(),
+                arguments: Vec::new(),
+            })
+        );
     }
 
     #[test]
@@ -1032,11 +1129,9 @@ mod tests {
             ("(Integer) A", "cast to Integer"),
             ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
             ("(Integer[]) A", "cast to Integer[]"),
-            ("Math.PI", "field access .PI"),
             ("(Double).NaN", "field access .NaN"),
-            ("Double.NaN.x", "field access .x"),
-            ("java.lang.Double.NaN", "field access .lang"),
-            ("new String(`a`)", "object creation (new)"),
+            ("(A + B).x", "field access .x"),
+            ("new int[2][2]", "array creation new int[][], of arrays"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];
         for (text, construct) in cases {

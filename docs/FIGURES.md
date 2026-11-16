@@ -209,9 +209,57 @@ fixed but the first point.
 Only the imports were listed for the whole of each plugin (by reading its source); the
 calls it makes on what it imports were tried for the five plots above and no further.
 
+### After task 7.10.1
+
+JS plugins are served (`docs/JS_PLUGINS.md`), `deephaven.server.executors` and
+`deephaven.calendar` exist (`docs/CONSOLE.md`, "Executors and calendars"), and a liveness
+scope takes a partitioned table. The trial was repeated with the same two servers.
+
+- **The server does not start with `deephaven-plugin-plotly-express` installed.** The
+  plugin's `deephaven_figure/FigureCalendar.py` has `import jpy` at its top, and a plugin
+  that fails to register stops the server, as in Java. Nothing else stands in the way of
+  the import: every name it imports from `deephaven` is there.
+- What the plugin does with `jpy` (0.22.0, all of it):
+  - `deephaven_figure/FigureCalendar.py:21`,
+    `jpy.get_type("io.deephaven.time.DateTimeUtils")` when the module is imported; its
+    `timeZone` and `toLocalTime` are called (lines 89 to 91) only for a figure with
+    `calendar=`;
+  - `data/data_generators.py:232`,
+    `jpy.get_type("io.deephaven.engine.table.impl.util.ColumnsToRowsTransform")` and
+    `columnsToRows` of a table's `j_table`, in `dx.data.marketing`;
+  - `data/data_generators.py:912`, `jpy.array("java.lang.String", ...)` and
+    `jpy.array("long", ...)`, in the same example data.
+- With a stand-in `jpy` module in the scratch environment (a module with `get_type` and
+  `array` that fail when called; it is not in this repository), the server starts, the
+  manifest lists `@deephaven/js-plugin-plotly-express` and the bundle is served byte for
+  byte as by Java. Of 50 calls that made a figure on Java, each asked over
+  `MessageStream`, 42 are sent as Java sends them, JSON and references: line, scatter, `by` with one and two columns,
+  3D, polar, ternary, area, bar, timeline, frequency bar, violin, box, strip, pie, funnel,
+  OHLC, candlestick, indicator, the maps, `make_subplots`, `layer`, and ticking lines.
+- In the web client's widget page (`/iframe/widget/?name=...`), on both servers: the client
+  asks for the manifest and the plugin's bundle, and draws the same traces for a line, a
+  scatter with `by`, a bar, a pie, an OHLC, an area with `by` and subplots; a ticking line,
+  with and without `by`, grows.
+- Still failing here, and why:
+  - `dx.histogram`, `dx.density_heatmap` and what builds on them: formulas of the plugin
+    make and call a Java object (`new io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual(min, max, n)`,
+    its `index`, `binMin` and `binMax`; `preprocess/utilities.py`, `HistPreprocessor.py`);
+  - `calendar=`: refused by `Calendars#calendar`;
+  - of the example data, `iris`, `stocks` and `outages` (a formula that names a Python
+    `Instant` of the query scope), `jobs` (`String.valueOf`), `fish_market` (`Math.round`)
+    and `marketing` (`ColumnsToRowsTransform` through jpy). `tips`, `gapminder`, `wind` and
+    `election` work. `flights` fails on Java too.
+  The eight figures that fail are four histograms, a ticking histogram, `density_heatmap`
+  and two with `calendar=`.
+- `deephaven.ui` 0.43.2, its imports read from its source and looked up in a running
+  server: of 37 names, two are missing. `deephaven.table.TreeTable` is imported at the top
+  of `types/types.py` and `components/table.py` and stops the import;
+  `deephaven.configuration.get_configuration` is imported inside two functions
+  (`hooks/_transform.py`, `object_types/ElementType.py`). It does not import `jpy`; it reads
+  `j_type` of the `dtypes` (`_internal/utils.py`). Nothing of it was run.
+
 ## Not started
 
-- JS plugins: `CallbackAdapter#registerJsPlugin`, `/js-plugins/manifest.json` and the files
-  it lists (`docs/OBJECTS.md`, "Refused").
-- What the trial above lists as missing.
+- A `jpy` module, or another answer to a package that imports it: for the owner.
+- What the trial above lists as failing.
 - `OpenDoExchange` and `OpenHandshake` of `BrowserFlightService`.

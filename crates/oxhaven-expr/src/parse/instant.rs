@@ -17,6 +17,8 @@ pub(crate) enum TimeValue {
     Duration,
     /// A `java.time.Period`, which Java makes with `DateTimeUtils#parsePeriod`.
     Period,
+    /// A `java.time.ZoneId`, which Java makes with `DateTimeUtils#parseTimeZone`.
+    Zone,
 }
 
 /// A single-quoted span of the formula that Java treats as a time literal.
@@ -57,7 +59,8 @@ pub(crate) fn time_literals(text: &str) -> Vec<TimeLiteral> {
 const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
 /// A time zone of a time literal.
-enum Zone {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Zone {
     Utc,
     Region(chrono_tz::Tz),
 }
@@ -69,7 +72,7 @@ enum Zone {
 /// `et`. Only the aliases, `UTC`, `GMT` and names with a `/` are looked up here, case
 /// sensitively as in Java; an offset such as `+01:00` or `UTC+1`, which Java reads, is left
 /// unsupported.
-fn zone(name: &str) -> Option<Zone> {
+pub(crate) fn zone(name: &str) -> Option<Zone> {
     let region = match name {
         "UTC" => return Some(Zone::Utc),
         "ET" => "America/New_York",
@@ -91,7 +94,7 @@ fn zone(name: &str) -> Option<Zone> {
 /// Behavior: `java.time.LocalDateTime#atZone`: a time that occurs twice, when clocks are
 /// set back, is the earlier of the two, and a time that the clocks skip is moved later by
 /// the length of the gap.
-fn zoned_seconds(
+pub(crate) fn zoned_seconds(
     zone: &chrono_tz::Tz,
     date: (i64, i64, i64),
     time: (i64, i64, i64),
@@ -128,6 +131,10 @@ fn parse(content: &str) -> Result<TimeValue, FormulaError> {
                 Ok(TimeValue::Period)
             } else if duration_nanos(content).is_some() {
                 Ok(TimeValue::Duration)
+            } else if zone(content).is_some() {
+                // A date and a time of day come before a zone in Java's order, and no
+                // name of a zone is either.
+                Ok(TimeValue::Zone)
             } else {
                 Err(error)
             }
@@ -423,6 +430,45 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
             "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
         ))),
     }
+}
+
+/// Reads text as `DateTimeUtils#parseInstant` reads a `String` that is not null: an
+/// instant spelled as a time literal spells it, or a whole number of seconds,
+/// milliseconds, microseconds or nanoseconds since the epoch, told apart by its size. The
+/// smallest `long` is the null instant.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#epochAutoToEpochNanos`.
+/// A spelling [`parse_instant`] leaves unsupported is unsupported here when it starts as
+/// a date does, with four digits and a `-`, or with a sign; Java reads no other text.
+pub(crate) fn instant_of_text(text: &str) -> Result<i64, FormulaError> {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if !(1..=19).contains(&digits.len()) || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        let bytes = text.as_bytes();
+        let dated =
+            bytes.len() > 4 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
+        let signed = matches!(bytes.first(), Some(b'+' | b'-'));
+        return match parse_instant(text) {
+            Err(FormulaError::Unsupported(_)) if !dated && !signed => Err(FormulaError::Syntax(
+                format!("Cannot parse instant: {text}"),
+            )),
+            other => other,
+        };
+    }
+    // `TimeConstants#MICROTIME_THRESHOLD`.
+    const THRESHOLD: u64 = 9_309_341_000_000;
+    let offset: i64 = text
+        .parse()
+        .map_err(|_| FormulaError::Syntax(format!("Cannot parse instant: {text}")))?;
+    let magnitude = offset.unsigned_abs();
+    Ok(if magnitude > 1000 * THRESHOLD {
+        offset
+    } else if magnitude > THRESHOLD {
+        offset * 1_000
+    } else if magnitude > THRESHOLD / 1000 {
+        offset * 1_000_000
+    } else {
+        offset * 1_000_000_000
+    })
 }
 
 fn is_leap_year(year: i64) -> bool {

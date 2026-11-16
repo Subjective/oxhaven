@@ -1,9 +1,11 @@
 use super::*;
+use crate::graph::SteppedUpdateGraph;
 use crate::table::holds_values;
 use arrow::array::{Int32Array, Int64Array};
 use oxhaven_contracts::rowset::NULL_ROW_KEY;
 use oxhaven_contracts::schema::ColumnDefinition;
 use oxhaven_contracts::table::Table;
+use oxhaven_testkit::{ConsistencyChecker, Recorder};
 use std::sync::Mutex;
 
 /// A location of `size` rows with the columns `Row` (long: `base` plus the row) and `Odd`
@@ -226,4 +228,138 @@ fn a_location_can_have_no_more_rows_than_a_region_has_keys() {
     let too_many: Vec<Arc<dyn TableLocation>> = vec![Counted::new("big", 0, MAX_LOCATION_ROWS + 1)];
     let error = stored_table(definition(), too_many).err().unwrap();
     assert!(error.message.starts_with("big has "), "{}", error.message);
+}
+
+/// A provider that answers what a test hands it.
+#[derive(Default)]
+struct Handed(Mutex<Vec<Found>>);
+
+/// What one look of a provider finds.
+type Found = Result<Vec<Arc<dyn TableLocation>>, TableFailure>;
+
+impl Handed {
+    fn hand(&self, locations: Vec<Arc<dyn TableLocation>>) {
+        self.0.lock().unwrap().push(Ok(locations));
+    }
+}
+
+impl LocationProvider for Handed {
+    fn poll(&self) -> Result<Vec<Arc<dyn TableLocation>>, TableFailure> {
+        let mut handed = self.0.lock().unwrap();
+        if handed.is_empty() {
+            Ok(Vec::new())
+        } else {
+            handed.remove(0)
+        }
+    }
+}
+
+#[test]
+fn a_following_table_gains_the_rows_of_the_locations_found_later() {
+    let graph = SteppedUpdateGraph::new();
+    let provider = Arc::new(Handed::default());
+    let first: Vec<Arc<dyn TableLocation>> = vec![Counted::new("a", 100, 2)];
+    let table = following_table(graph.clone(), definition(), first, provider.clone()).unwrap();
+    let checker = ConsistencyChecker::attach(table.clone());
+    let recorder = Recorder::attach(table.clone());
+    // Java gives a source table that follows its locations this attribute alone
+    assert!(table.attributes().append_only && !table.attributes().add_only);
+    assert!(table.is_refreshing() && !table.is_flat());
+    assert!(!holds_values(&table.column(0)));
+    assert_eq!(*table.row_set(), RowSet::from_range(0, 1));
+
+    // nothing found: no update
+    graph.run_cycle();
+    assert!(recorder.events().is_empty());
+
+    // a location without rows gets no region, and the ones with rows come after the first
+    provider.hand(vec![
+        Counted::new("empty", 0, 0),
+        Counted::new("b", 200, 3),
+        Counted::new("c", 300, 1),
+    ]);
+    graph.run_cycle();
+    let added = RowSet::from_ranges([
+        RowRange::new(REGION, REGION + 2),
+        RowRange::new(2 * REGION, 2 * REGION),
+    ]);
+    let update = TableUpdate {
+        added,
+        ..TableUpdate::empty()
+    };
+    assert_eq!(recorder.events(), [Ok(update)]);
+    checker.assert_consistent();
+    let all = table.column(0).chunk(&table.row_set()).unwrap();
+    assert_eq!(longs(&all), [100, 101, 200, 201, 202, 300].map(Some));
+
+    graph.run_cycle();
+    assert_eq!(recorder.events().len(), 1);
+    checker.assert_consistent();
+}
+
+#[test]
+fn a_provider_that_fails_fails_the_table() {
+    let graph = SteppedUpdateGraph::new();
+    let provider = Arc::new(Handed::default());
+    let table = following_table(graph.clone(), definition(), Vec::new(), provider.clone()).unwrap();
+    let recorder = Recorder::attach(table.clone());
+    assert!(table.row_set().is_empty());
+    provider
+        .0
+        .lock()
+        .unwrap()
+        .push(Err(failure("the directory is gone")));
+    graph.run_cycle();
+    assert!(table.is_failed());
+    assert_eq!(recorder.events(), [Err(failure("the directory is gone"))]);
+    // and is not asked again
+    provider.hand(vec![Counted::new("late", 0, 1)]);
+    graph.run_cycle();
+    assert_eq!(provider.0.lock().unwrap().len(), 1);
+
+    // a location too large for a region fails it too
+    let provider = Arc::new(Handed::default());
+    let table = following_table(graph.clone(), definition(), Vec::new(), provider.clone()).unwrap();
+    provider.hand(vec![Counted::new("big", 0, MAX_LOCATION_ROWS + 1)]);
+    graph.run_cycle();
+    assert!(table.is_failed());
+}
+
+/// Which results Java 42.9 gives a partitioning column, of a table read from partition
+/// directories (`tasks/7.1b-parquet-read-more.md`).
+#[test]
+fn a_partitioning_column_stays_one_where_java_keeps_the_definition() {
+    use crate::ops::merge::{flatten, merge};
+    use crate::ops::select::drop_columns;
+    use crate::ops::sort::{head, reverse, sort, tail, SortColumn};
+    let definition = TableDefinition::new(vec![
+        ColumnDefinition::partitioning("Row", ColumnType::Long),
+        ColumnDefinition::new("Odd", ColumnType::Int),
+    ])
+    .unwrap();
+    let locations: Vec<Arc<dyn TableLocation>> =
+        vec![Counted::new("a", 100, 2), Counted::new("b", 200, 2)];
+    let table: Arc<dyn Table> = stored_table(definition, locations).unwrap();
+    let partitioning = |table: &Arc<dyn Table>| -> Vec<bool> {
+        let columns = table.definition().columns().iter();
+        columns.map(|column| column.partitioning).collect()
+    };
+    assert_eq!(partitioning(&table), [true, false]);
+    // the definition of the table, or the source of the column, goes into the result
+    assert_eq!(partitioning(&head(&table, 3).unwrap()), [true, false]);
+    assert_eq!(partitioning(&tail(&table, 3).unwrap()), [true, false]);
+    assert_eq!(partitioning(&reverse(&table).unwrap()), [true, false]);
+    assert_eq!(
+        partitioning(&drop_columns(&table, &["Odd"]).unwrap()),
+        [true]
+    );
+    // a sort that moves no row answers the table itself
+    let in_order = sort(&table, &[SortColumn::ascending("Row")]).unwrap();
+    assert_eq!(partitioning(&in_order), [true, false]);
+    // the result is made of new columns
+    let sorted = sort(&table, &[SortColumn::descending("Row")]).unwrap();
+    assert_eq!(partitioning(&sorted), [false, false]);
+    assert_eq!(partitioning(&flatten(&table).unwrap()), [false, false]);
+    let merged = merge(&[table.clone(), table.clone()]).unwrap();
+    assert_eq!(partitioning(&merged), [false, false]);
 }

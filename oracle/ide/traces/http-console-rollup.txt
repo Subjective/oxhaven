@@ -1,211 +1,378 @@
-   996ms WEBSOCKET ws://127.0.0.1:10970/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=1101 closed=None error=None
+   718ms WEBSOCKET ws://127.0.0.1:10970/io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> 101 offered='grpc-websockets-multiplex, grpc-websockets' chosen='grpc-websockets-multiplex' frames=3069 closed=None error=None
 
-  1009ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
+   733ms ws-multiplex [stream 0] io.deephaven.proto.backplane.grpc.ConfigService/GetAuthenticationConstants -> OK
          request headers: {'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: AuthenticationConstantsRequest{}
          response 0: AuthenticationConstantsResponse{config_values { key: "AuthHandlers" value { string_value: "io.deephaven.authentication.psk.PskAuthenticationHandler" } }}
-  1066ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+   775ms ws-multiplex [stream 1] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
          request headers: {'authorization': 'io.deephaven.authentication.psk.PskAuthenticationHandler <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ConfigurationConstantsRequest{}
          response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
-  1077ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
+   783ms ws-multiplex [stream 2] io.deephaven.proto.backplane.grpc.SessionService/TerminationNotification -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {}
          request 0: TerminationNotificationRequest{}
-  1077ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
+   783ms ws-multiplex [stream 3] io.deephaven.proto.backplane.grpc.TableService/ExportedTableUpdates -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ExportedTableUpdatesRequest{}
-         response 0: ExportedTableUpdateMessage{export_id { ticket: "e\003\000\000\000" }}
-         response 1: ExportedTableUpdateMessage{export_id { ticket: "e\006\000\000\000" } size: 1}
-         response 2: ExportedTableUpdateMessage{export_id { ticket: "e\t\000\000\000" } size: 2}
-  1083ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
+         response 0: ExportedTableUpdateMessage{export_id { ticket: "e\002\000\000\000" } size: 6}
+         response 1: ExportedTableUpdateMessage{export_id { ticket: "e\003\000\000\000" } size: 6}
+         response 2: ExportedTableUpdateMessage{export_id { ticket: "e\004\000\000\000" } size: 6}
+         response 3: ExportedTableUpdateMessage{export_id { ticket: "e\006\000\000\000" }}
+         response ... 2 more ...
+         response 6: ExportedTableUpdateMessage{export_id { ticket: "e\020\000\000\000" } size: 2}
+   787ms ws-multiplex [stream 4] io.deephaven.proto.backplane.grpc.ConfigService/GetConfigurationConstants -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ConfigurationConstantsRequest{}
          response 0: ConfigurationConstantsResponse{config_values { key: "barrage.version" value { string_value: "1.0.0" } } config_values { key: "deephaven.version" value { string_value: "42.9" } } config_values { key: "file.separator" value { string_value: "/" } } config_values { key: "groovy.version" value { string_value: "3.0.25" } } config_values { key: "http.session.durationMs" value { string_value: "300000" } } config_values { key: "java.version" value { string_value: "21.0.12.1" } } config_values { key: "python.version" value { string_value: "3.13.18" } } config_values { key: "web.flattenViewports" value { ... (950 chars)
-  1187ms ws-multiplex [stream 5] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetConsoleTypes -> OK
+   847ms ws-multiplex [stream 5] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetConsoleTypes -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: GetConsoleTypesRequest{}
          response 0: GetConsoleTypesResponse{console_types: "python"}
-  1189ms ws-multiplex [stream 6] io.deephaven.proto.backplane.script.grpc.ConsoleService/StartConsole -> OK
+   859ms ws-multiplex [stream 6] io.deephaven.proto.backplane.script.grpc.ConsoleService/StartConsole -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: StartConsoleRequest{result_id { ticket: "e\001\000\000\000" } session_type: "python"}
          response 0: StartConsoleResponse{result_id { ticket: "e\001\000\000\000" }}
-  1189ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
+   865ms ws-multiplex [stream 7] io.deephaven.proto.backplane.grpc.StorageService/ListItems -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ListItemsRequest{path: "/layouts" filter_glob: "*.json"}
          response 0: ListItemsResponse{canonical_path: "/layouts"}
-  1234ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
+   913ms ws-multiplex [stream 8] io.deephaven.proto.backplane.grpc.ApplicationService/ListFields -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ListFieldsRequest{}
-         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/ide_static" } type: "Table" } field_name: "ide_static" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_ticking" } type: "Table" } field_name: "ide_ticking" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/ide_rollup" } type: "HierarchicalTable" } field_name: "ide_rollup" field_description: "query scope variable" application_id: "scope" }}
-         response 1: FieldsChangeUpdate{updated { typed_ticket { ticket { ticket: "s/ide_rollup" } type: "HierarchicalTable" } field_name: "ide_rollup" field_description: "query scope variable" application_id: "scope" }}
-  1394ms ws-multiplex [stream 9] io.deephaven.proto.backplane.script.grpc.ConsoleService/SubscribeToLogs -> still open
+         response 0: FieldsChangeUpdate{created { typed_ticket { ticket { ticket: "s/p_src" } type: "Table" } field_name: "p_src" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/p_two" } type: "HierarchicalTable" } field_name: "p_two" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/p_all" } type: "Table" } field_name: "p_all" field_description: "query scope variable" application_id: "scope" } created { typed_ticket { ticket { ticket: "s/p_restricted" } type: "HierarchicalTable" } field_ ... (5883 chars)
+         response 1: FieldsChangeUpdate{updated { typed_ticket { ticket { ticket: "s/ide_rollup" } type: "Table" } field_name: "ide_rollup" field_description: "query scope variable" application_id: "scope" }}
+  1079ms ws-multiplex [stream 9] io.deephaven.proto.backplane.script.grpc.ConsoleService/SubscribeToLogs -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: LogSubscriptionRequest{}
-         response 0: LogSubscriptionData{micros: 1794786222772000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | Starting up io.deephaven.python.server.EmbeddedServer..."}
-         response 1: LogSubscriptionData{micros: 1794786222799000 log_level: "INFO" message: "main                 | i.d.c.ParsedProperties    | Loading dh-defaults.prop"}
-         response 2: LogSubscriptionData{micros: 1794786222841000 log_level: "INFO" message: "main                 | i.d.c.Configuration       | Configuration: configuration file is dh-defaults.prop"}
-         response 3: LogSubscriptionData{micros: 1794786222869000 log_level: "INFO" message: "main                 | i.d.p.s.EmbeddedServer    | io.deephaven.python.server.EmbeddedServer: starting up"}
-         response ... 160 more ...
-         response 164: LogSubscriptionData{micros: 1794786340567000 log_level: "STDERR" message: "23:45:40.567 INFO  .p.PythonDeephavenSession | Evaluating command: from deephaven import new_table, agg; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col(\'Sym\', [\'AAPL\', \'AAPL\', \'MSFT\', \'AAPL\', \'MSFT\', \'GOOG\']), string_col(\'Ex\', [\'N\', \'Q\', \'N\', \'N\', \'Q\', \'Q\']), int_col(\'Qty\', [10, 20, 30, 40, 50, 60])]).rollup(aggs=[agg.sum_(\'Qty\'), agg.count_(\'Rows\')], by=[\'Sym\', \'Ex\'])\n"}
-  1394ms ws-multiplex [stream 10] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetHeapInfo -> OK
+         response 0: LogSubscriptionData{micros: 1794798674071000 log_level: "STDERR" message: "\n"}
+         response 1: LogSubscriptionData{micros: 1794798674071000 log_level: "STDERR" message: "\n"}
+         response 2: LogSubscriptionData{micros: 1794798674071000 log_level: "STDERR" message: "\n"}
+         response 3: LogSubscriptionData{micros: 1794798674071000 log_level: "STDERR" message: "\n"}
+         response ... 2048 more ...
+         response 2052: LogSubscriptionData{micros: 1794799556151000 log_level: "STDERR" message: "03:25:56.151 INFO  .p.PythonDeephavenSession | Evaluating command: from deephaven import new_table; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col(\'Sym\', [\'AAPL\', \'AAPL\', \'MSFT\', \'AAPL\', \'MSFT\', \'GOOG\']), string_col(\'Ex\', [\'N\', \'Q\', \'N\', \'N\', \'Q\', \'Q\']), int_col(\'Qty\', [10, 20, 30, 40, 50, 60])])\n"}
+  1079ms ws-multiplex [stream 10] io.deephaven.proto.backplane.script.grpc.ConsoleService/GetHeapInfo -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: GetHeapInfoRequest{}
-         response 0: GetHeapInfoResponse{max_memory: 1073741824 total_memory: 167772160 free_memory: 39735896}
-  2338ms ws-multiplex [stream 11] io.deephaven.proto.backplane.script.grpc.ConsoleService/AutoCompleteStream -> still open
+         response 0: GetHeapInfoResponse{max_memory: 1073741824 total_memory: 476053504 free_memory: 74519008}
+  1833ms ws-multiplex [stream 11] io.deephaven.proto.backplane.script.grpc.ConsoleService/AutoCompleteStream -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {}
-         request 0: AutoCompleteRequest{open_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/rmfTmTd3Kt50McTJ44VVO" language_id: "python" version: 1 } } console_id { ticket: "e\001\000\000\000" }}
-         request 1: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/rmfTmTd3Kt50McTJ44VVO" version: 2 } content_changes { range { start { } end { } } text: "f" } } console_id { ticket: "e\001\000\000\000" }}
-         request 2: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/rmfTmTd3Kt50McTJ44VVO" version: 3 } content_changes { range { start { character: 1 } end { character: 1 } } text: "r" } } console_id { ticket: "e\001\000\000\000" }}
-         request 3: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/rmfTmTd3Kt50McTJ44VVO" version: 4 } content_changes { range { start { character: 2 } end { character: 2 } } text: "o" } } console_id { ticket: "e\001\000\000\000" }}
-         request ... 339 more ...
-         request 343: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/rmfTmTd3Kt50McTJ44VVO" version: 344 } content_changes { range { start { } end { character: 342 } } range_length: 342 } } console_id { ticket: "e\001\000\000\000" }}
+         request 0: AutoCompleteRequest{open_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/6IdMdznQ6_c7PUpJBAEcA" language_id: "python" version: 1 } } console_id { ticket: "e\001\000\000\000" }}
+         request 1: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/6IdMdznQ6_c7PUpJBAEcA" version: 2 } content_changes { range { start { } end { } } text: "f" } } console_id { ticket: "e\001\000\000\000" }}
+         request 2: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/6IdMdznQ6_c7PUpJBAEcA" version: 3 } content_changes { range { start { character: 1 } end { character: 1 } } text: "r" } } console_id { ticket: "e\001\000\000\000" }}
+         request 3: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/6IdMdznQ6_c7PUpJBAEcA" version: 4 } content_changes { range { start { character: 2 } end { character: 2 } } text: "o" } } console_id { ticket: "e\001\000\000\000" }}
+         request ... 265 more ...
+         request 269: AutoCompleteRequest{change_document { console_id { ticket: "e\001\000\000\000" } text_document { uri: "inmemory://dh-console/6IdMdznQ6_c7PUpJBAEcA" version: 270 } content_changes { range { start { } end { character: 268 } } range_length: 268 } } console_id { ticket: "e\001\000\000\000" }}
 
-==== run rollup (at 2451ms) ====
+==== create (at 2126ms) ====
 
-  2876ms ws-multiplex [stream 12] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
+  2710ms ws-multiplex [stream 12] io.deephaven.proto.backplane.script.grpc.ConsoleService/ExecuteCommand -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "from deephaven import new_table, agg; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col(\'Sym\', [\'AAPL\', \'AAPL\', \'MSFT\', \'AAPL\', \'MSFT\', \'GOOG\']), string_col(\'Ex\', [\'N\', \'Q\', \'N\', \'N\', \'Q\', \'Q\']), int_col(\'Qty\', [10, 20, 30, 40, 50, 60])]).rollup(aggs=[agg.sum_(\'Qty\'), agg.count_(\'Rows\')], by=[\'Sym\', \'Ex\'])"}
-         response 0: ExecuteCommandResponse{changes { created { typed_ticket { ticket { ticket: "s/ide_rollup" } type: "HierarchicalTable" } field_name: "ide_rollup" field_description: "query scope variable" application_id: "scope" } } start_timestamp: 1794786340567254667 end_timestamp: 1794786340579455123}
-  2937ms ws-multiplex [stream 13] io.deephaven.proto.backplane.grpc.SessionService/ExportFromTicket -> OK
+         request 0: ExecuteCommandRequest{console_id { ticket: "e\001\000\000\000" } code: "from deephaven import new_table; from deephaven.column import int_col, string_col; ide_rollup = new_table([string_col(\'Sym\', [\'AAPL\', \'AAPL\', \'MSFT\', \'AAPL\', \'MSFT\', \'GOOG\']), string_col(\'Ex\', [\'N\', \'Q\', \'N\', \'N\', \'Q\', \'Q\']), int_col(\'Qty\', [10, 20, 30, 40, 50, 60])])"}
+         response 0: ExecuteCommandResponse{changes { created { typed_ticket { ticket { ticket: "s/ide_rollup" } type: "Table" } field_name: "ide_rollup" field_description: "query scope variable" application_id: "scope" } } start_timestamp: 1794799556151397791 end_timestamp: 1794799556152662397}
+  2888ms ws-multiplex [stream 13] io.deephaven.proto.backplane.grpc.TableService/FetchTable -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: ExportRequest{source_id { ticket: "s/ide_rollup" } result_id { ticket: "e\002\000\000\000" }}
-         response 0: ExportResponse{}
-  2959ms ws-multiplex [stream 14] io.deephaven.proto.backplane.grpc.ObjectService/MessageStream -> OK
+         request 0: FetchTableRequest{source_id { ticket { ticket: "s/ide_rollup" } } result_id { ticket: "e\002\000\000\000" }}
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\002\000\000\000" } } success: true is_static: true size: 6} schema_header: arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={}
+  3009ms ws-multiplex [stream 14] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: StreamRequest{connect { source_id { ticket { ticket: "e\002\000\000\000" } type: "HierarchicalTable" } }}
-         response 0: StreamResponse{data { payload: "\n\270\023\377\377\377\377\260\t\000\000\020\000\000\000\000\000\n\000\016\000\006\000\r\000\010\000\n\000\000\000\000\000\004\000\020\000\000\000\000\001\n\000\014\000\000\000\010\000\004\000\n\000\000\000\010\000\000\000T\000\000\000\001\000\000\000\004\000\000\000\014\367\377\377\010\000\000\000\014\000\000\000\000\000\000\000\000\000\000\000-\000\000\000deephaven:unsent.attribute.ColumnDescriptions\000\000\000\006\000\000\000\204\007\000\000 \006\000\000\224\004\000\000\010\003\000\000\200\001\000\000\004\000\000\000\246\370\377\377\024\000\000\000T\001\000\ ... (6345 chars)
-  3095ms ws-multiplex [stream 15] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '4', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'3'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
-         response 0: {}
-  3095ms ws-multiplex [stream 16] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '4', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{arrow RecordBatch bodyLength=0 rows=0 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=0 bytes}
-         response 0: {}
-  3095ms ws-multiplex [stream 17] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '4', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{}
-         response 0: {}
-  3140ms ws-multiplex [stream 18] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\002\000\000\000" } } result_id { ticket: "e\003\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\003\000\000\000" } } success: true is_static: true size: 6} schema_header: arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={}
+  3034ms ws-multiplex [stream 15] arrow.flight.protocol.FlightService/DoExchange -> still open
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\005\000\000\000" } hierarchical_table_id { ticket: "e\002\000\000\000" }}
-         response 0: HierarchicalTableViewResponse{}
-  3163ms ws-multiplex [stream 19] arrow.flight.protocol.FlightService/DoExchange -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x05\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-52} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x05\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:long, Rows:long] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
-         response 1: FlightData{arrow RecordBatch bodyLength=168 rows=4 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-52} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=168 bytes}
-         response 2: FlightData{arrow RecordBatch bodyLength=168 rows=4 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-3} removed_rows={0-3} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=168 bytes}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x03\x00\x00\x00' columns=[0, 1, 2] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=120 rows=6 nodes=3 buffers=8; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2] added_rows={0-5} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=6; data_body=120 bytes}
 
-==== expand (at 3631ms) ====
+==== rollup (at 3084ms) ====
 
-  3727ms ws-multiplex [stream 20] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+  3612ms ws-multiplex [stream 16] io.deephaven.proto.backplane.grpc.TableService/ApplyPreviewColumns -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: ReleaseRequest{id { ticket: "e\005\000\000\000" }}
-         response 0: ReleaseResponse{}
-  3727ms ws-multiplex [stream 21] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'6'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
-         response 0: {}
-  3727ms ws-multiplex [stream 22] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{arrow RecordBatch bodyLength=48 rows=1 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={0} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=48 bytes}
-         response 0: {}
-  3727ms ws-multiplex [stream 23] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{}
-         response 0: {}
-  3727ms ws-multiplex [stream 24] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request 0: ApplyPreviewColumnsRequest{source_id { ticket { ticket: "e\002\000\000\000" } } result_id { ticket: "e\004\000\000\000" } convert_arrays: true unpreviewed_types: "byte" unpreviewed_types: "java.lang.Byte" unpreviewed_types: "char" unpreviewed_types: "java.lang.Character" unpreviewed_types: "short" unpreviewed_types: "java.lang.Short" unpreviewed_types: "int" unpreviewed_types: "java.lang.Integer" unpreviewed_types: "long" unpreviewed_types: "java.lang.Long" unpreviewed_types: "float" unpreviewed_types: "java.lang.Float" unpreviewed_types: "double" unpreviewed_types: "java.lang.Double" unprevie ... (948 chars)
+         response 0: ExportedTableCreationResponse{result_id { ticket { ticket: "e\004\000\000\000" } } success: true is_static: true size: 6} schema_header: arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={}
+  3613ms ws-multiplex [stream 17] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ReleaseRequest{id { ticket: "e\003\000\000\000" }}
          response 0: ReleaseResponse{}
-  3727ms ws-multiplex [stream 25] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+  3646ms ws-multiplex [stream 18] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x04\x00\x00\x00' columns=[0, 1, 2] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=0 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={}}
+         response 1: FlightData{arrow RecordBatch bodyLength=120 rows=6 nodes=3 buffers=8; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2] added_rows={0-5} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=['{}', '{}', '{}'] table_size=6; data_body=120 bytes}
+  3861ms ws-multiplex [stream 19] io.deephaven.proto.backplane.grpc.HierarchicalTableService/Rollup -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: RollupRequest{result_rollup_table_id { ticket: "e\005\000\000\000" } source_table_id { ticket: "e\002\000\000\000" } aggregations { columns { spec { first { } } match_pairs: "Ex" match_pairs: "Qty" } } group_by_columns: "Sym"}
+         response 0: RollupResponse{}
+  3861ms ws-multiplex [stream 20] io.deephaven.proto.backplane.grpc.ObjectService/MessageStream -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: StreamRequest{connect { source_id { ticket { ticket: "e\005\000\000\000" } type: "HierarchicalTable" } }}
+         response 0: StreamResponse{data { payload: "\n\300\020\377\377\377\3778\010\000\000\020\000\000\000\000\000\n\000\016\000\006\000\r\000\010\000\n\000\000\000\000\000\004\000\020\000\000\000\000\001\n\000\014\000\000\000\010\000\004\000\n\000\000\000\010\000\000\000T\000\000\000\001\000\000\000\004\000\000\000\204\370\377\377\010\000\000\000\014\000\000\000\000\000\000\000\000\000\000\000-\000\000\000deephaven:unsent.attribute.ColumnDescriptions\000\000\000\005\000\000\000\014\006\000\000\250\004\000\000\034\003\000\000\214\001\000\000\004\000\000\000\032\372\377\377\024\000\000\000d\001\000\000d\001\000\0 ... (5362 chars)
+  3861ms ws-multiplex [stream 21] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\004\000\000\000" }}
+         response 0: ReleaseResponse{}
+  3940ms ws-multiplex [stream 22] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'6'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
+         response 0: {}
+  3940ms ws-multiplex [stream 23] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{arrow RecordBatch bodyLength=0 rows=0 nodes=3 buffers=7; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=0 bytes}
+         response 0: {}
+  3940ms ws-multiplex [stream 24] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '7', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{}
+         response 0: {}
+  3948ms ws-multiplex [stream 25] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\010\000\000\000" } hierarchical_table_id { ticket: "e\005\000\000\000" }}
+         response 0: HierarchicalTableViewResponse{}
+  3953ms ws-multiplex [stream 26] arrow.flight.protocol.FlightService/DoExchange -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x08\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-52} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=128 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-52} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=128 bytes}
+  3993ms ws-multiplex [stream 27] io.deephaven.proto.backplane.grpc.HierarchicalTableService/Rollup -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: RollupRequest{result_rollup_table_id { ticket: "e\t\000\000\000" } source_table_id { ticket: "e\002\000\000\000" } aggregations { columns { spec { first { } } match_pairs: "Qty" } } group_by_columns: "Sym" group_by_columns: "Ex"}
+         response 0: RollupResponse{}
+  3993ms ws-multiplex [stream 28] io.deephaven.proto.backplane.grpc.ObjectService/MessageStream -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: StreamRequest{connect { source_id { ticket { ticket: "e\t\000\000\000" } type: "HierarchicalTable" } }}
+         response 0: StreamResponse{data { payload: "\n\270\020\377\377\377\3770\010\000\000\020\000\000\000\000\000\n\000\016\000\006\000\r\000\010\000\n\000\000\000\000\000\004\000\020\000\000\000\000\001\n\000\014\000\000\000\010\000\004\000\n\000\000\000\010\000\000\000T\000\000\000\001\000\000\000\004\000\000\000\210\370\377\377\010\000\000\000\014\000\000\000\000\000\000\000\000\000\000\000-\000\000\000deephaven:unsent.attribute.ColumnDescriptions\000\000\000\005\000\000\000\010\006\000\000\244\004\000\000\030\003\000\000\214\001\000\000\004\000\000\000\036\372\377\377\024\000\000\000d\001\000\000d\001\000\0 ... (5341 chars)
+  4026ms ws-multiplex [stream 29] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ReleaseRequest{id { ticket: "e\005\000\000\000" }}
          response 0: ReleaseResponse{}
-  3762ms ws-multiplex [stream 26] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\010\000\000\000" } hierarchical_table_id { ticket: "e\002\000\000\000" } expansions { key_table_id { ticket: "e\006\000\000\000" } key_table_action_column: "__action__" }}
-         response 0: HierarchicalTableViewResponse{}
-  3777ms ws-multiplex [stream 27] arrow.flight.protocol.FlightService/DoExchange -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x08\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x08\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:long, Rows:long] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
-         response 1: FlightData{arrow RecordBatch bodyLength=248 rows=6 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-5} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=6; data_body=248 bytes}
-         response 2: FlightData{arrow RecordBatch bodyLength=248 rows=6 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-5} removed_rows={0-5} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=6; data_body=248 bytes}
-
-==== collapse (at 4003ms) ====
-
-  4074ms ws-multiplex [stream 28] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+  4026ms ws-multiplex [stream 30] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: ReleaseRequest{id { ticket: "e\010\000\000\000" }}
          response 0: ReleaseResponse{}
-  4074ms ws-multiplex [stream 29] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '10', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+  4026ms ws-multiplex [stream 31] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'9'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
-         response 0: {}
-  4074ms ws-multiplex [stream 30] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '10', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         request 0: ReleaseRequest{id { ticket: "e\010\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4078ms ws-multiplex [stream 32] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '11', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{arrow RecordBatch bodyLength=64 rows=2 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={0-1} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=64 bytes}
+         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'10'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
          response 0: {}
-  4079ms ws-multiplex [stream 31] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '10', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+  4078ms ws-multiplex [stream 33] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '11', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{arrow RecordBatch bodyLength=0 rows=0 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=0 bytes}
+         response 0: {}
+  4078ms ws-multiplex [stream 34] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '11', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
          request 0: FlightData{}
          response 0: {}
-  4079ms ws-multiplex [stream 32] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+  4084ms ws-multiplex [stream 35] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: ReleaseRequest{id { ticket: "e\006\000\000\000" }}
-         response 0: ReleaseResponse{}
-  4079ms ws-multiplex [stream 33] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: ReleaseRequest{id { ticket: "e\010\000\000\000" }}
-         response 0: ReleaseResponse{}
-  4099ms ws-multiplex [stream 34] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
-         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
-         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\013\000\000\000" } hierarchical_table_id { ticket: "e\002\000\000\000" } expansions { key_table_id { ticket: "e\t\000\000\000" } key_table_action_column: "__action__" }}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\014\000\000\000" } hierarchical_table_id { ticket: "e\t\000\000\000" }}
          response 0: HierarchicalTableViewResponse{}
-  4107ms ws-multiplex [stream 35] arrow.flight.protocol.FlightService/DoExchange -> still open
+  4087ms ws-multiplex [stream 36] arrow.flight.protocol.FlightService/DoExchange -> OK
          request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
          response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
-         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0b\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0b\x00\x00\x00' columns=[0, 1, 2, 3, 4, 5] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
-         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:long, Rows:long] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
-         response 1: FlightData{arrow RecordBatch bodyLength=168 rows=4 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=168 bytes}
-         response 2: FlightData{arrow RecordBatch bodyLength=168 rows=4 nodes=6 buffers=14; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4, 5] added_rows={0-3} removed_rows={0-3} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=168 bytes}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0c\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-52} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0c\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-52} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+         response 2: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={0-3} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+
+==== expand (at 4353ms) ====
+
+  4373ms ws-multiplex [stream 37] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\014\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4373ms ws-multiplex [stream 38] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '14', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'13'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
+         response 0: {}
+  4373ms ws-multiplex [stream 39] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '14', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{arrow RecordBatch bodyLength=48 rows=1 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={0} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=48 bytes}
+         response 0: {}
+  4373ms ws-multiplex [stream 40] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '14', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{}
+         response 0: {}
+  4373ms ws-multiplex [stream 41] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\n\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4373ms ws-multiplex [stream 42] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\014\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4382ms ws-multiplex [stream 43] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\017\000\000\000" } hierarchical_table_id { ticket: "e\t\000\000\000" } expansions { key_table_id { ticket: "e\r\000\000\000" } key_table_action_column: "__action__" }}
+         response 0: HierarchicalTableViewResponse{}
+  4388ms ws-multiplex [stream 44] arrow.flight.protocol.FlightService/DoExchange -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0f\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x0f\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=176 rows=6 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-5} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=6; data_body=176 bytes}
+         response 2: FlightData{arrow RecordBatch bodyLength=176 rows=6 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-5} removed_rows={0-5} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=6; data_body=176 bytes}
+
+==== collapse (at 4648ms) ====
+
+  4669ms ws-multiplex [stream 45] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\017\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4669ms ws-multiplex [stream 46] io.deephaven.flightjs.protocol.BrowserFlightService/OpenDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '17', 'x-deephaven-stream-sequence': '0', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{flight_descriptor type=1 cmd=None path=b'16'; arrow Schema bodyLength=0 fields=[Sym:java.lang.String, Ex:java.lang.String, __DEPTH__:int, __action__:byte] metadata={}}
+         response 0: {}
+  4669ms ws-multiplex [stream 47] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '17', 'x-deephaven-stream-sequence': '1', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{arrow RecordBatch bodyLength=64 rows=2 nodes=4 buffers=10; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=False effective_viewport=absent effective_reverse_viewport=False effective_column_set=absent (all columns) added_rows={0-1} removed_rows=absent shift_data=202020 added_rows_included=absent mod_column_nodes=[] table_size=0; data_body=64 bytes}
+         response 0: {}
+  4669ms ws-multiplex [stream 48] io.deephaven.flightjs.protocol.BrowserFlightService/NextDoPut -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-deephaven-stream-ticket': '17', 'x-deephaven-stream-sequence': '2', 'x-deephaven-stream-halfclose': 'true', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{}
+         response 0: {}
+  4669ms ws-multiplex [stream 49] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\r\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4669ms ws-multiplex [stream 50] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\017\000\000\000" }}
+         response 0: ReleaseResponse{}
+  4677ms ws-multiplex [stream 51] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\022\000\000\000" } hierarchical_table_id { ticket: "e\t\000\000\000" } expansions { key_table_id { ticket: "e\020\000\000\000" } key_table_action_column: "__action__" }}
+         response 0: HierarchicalTableViewResponse{}
+  4682ms ws-multiplex [stream 52] arrow.flight.protocol.FlightService/DoExchange -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x12\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x12\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+         response 2: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={0-3} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+
+==== sort (at 4881ms) ====
+
+  5017ms ws-multiplex [stream 53] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\022\000\000\000" }}
+         response 0: ReleaseResponse{}
+  5017ms ws-multiplex [stream 54] io.deephaven.proto.backplane.grpc.HierarchicalTableService/Apply -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableApplyRequest{result_hierarchical_table_id { ticket: "e\023\000\000\000" } input_hierarchical_table_id { ticket: "e\t\000\000\000" } sorts { column_name: "Qty" direction: DESCENDING }}
+         response 0: HierarchicalTableApplyResponse{}
+  5017ms ws-multiplex [stream 55] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\022\000\000\000" }}
+         response 0: ReleaseResponse{}
+  5017ms ws-multiplex [stream 56] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\024\000\000\000" } hierarchical_table_id { ticket: "e\023\000\000\000" } expansions { key_table_id { ticket: "e\020\000\000\000" } key_table_action_column: "__action__" }}
+         response 0: HierarchicalTableViewResponse{}
+  5051ms ws-multiplex [stream 57] arrow.flight.protocol.FlightService/DoExchange -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x14\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x14\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 2: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x14\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+         response 2: FlightData{arrow RecordBatch bodyLength=120 rows=4 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-3} removed_rows={0-3} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=4; data_body=120 bytes}
+
+==== filter (at 5158ms) ====
+
+  5282ms ws-multiplex [stream 58] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\023\000\000\000" }}
+         response 0: ReleaseResponse{}
+  5282ms ws-multiplex [stream 59] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\024\000\000\000" }}
+         response 0: ReleaseResponse{}
+  5282ms ws-multiplex [stream 60] io.deephaven.proto.backplane.grpc.HierarchicalTableService/Apply -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableApplyRequest{result_hierarchical_table_id { ticket: "e\025\000\000\000" } input_hierarchical_table_id { ticket: "e\t\000\000\000" } filters { compare { operation: EQUALS lhs { reference { column_name: "Sym" } } rhs { literal { string_value: "AAPL" } } } }}
+         response 0: HierarchicalTableApplyResponse{}
+  5282ms ws-multiplex [stream 61] io.deephaven.proto.backplane.grpc.HierarchicalTableService/Apply -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableApplyRequest{result_hierarchical_table_id { ticket: "e\026\000\000\000" } input_hierarchical_table_id { ticket: "e\025\000\000\000" } sorts { column_name: "Qty" direction: DESCENDING }}
+         response 0: HierarchicalTableApplyResponse{}
+  5282ms ws-multiplex [stream 62] io.deephaven.proto.backplane.grpc.SessionService/Release -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: ReleaseRequest{id { ticket: "e\024\000\000\000" }}
+         response 0: ReleaseResponse{}
+  5282ms ws-multiplex [stream 63] io.deephaven.proto.backplane.grpc.HierarchicalTableService/View -> OK
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: HierarchicalTableViewRequest{result_view_id { ticket: "e\027\000\000\000" } hierarchical_table_id { ticket: "e\026\000\000\000" } expansions { key_table_id { ticket: "e\020\000\000\000" } key_table_action_column: "__action__" }}
+         response 0: HierarchicalTableViewResponse{}
+  5342ms ws-multiplex [stream 64] arrow.flight.protocol.FlightService/DoExchange -> still open
+         request headers: {'authorization': 'Bearer <...>', 'x-grpc-web': '1', 'content-type': 'application/grpc-web+proto'}
+         response headers: {'authorization': 'Bearer <...>', 'grpc-encoding': 'identity', 'grpc-accept-encoding': 'gzip'}
+         request 0: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x17\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 1: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x17\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         request 2: FlightData{BarrageMessageWrapper magic=0x6E687064 BarrageSubscriptionRequest ticket=b'e\x17\x00\x00\x00' columns=[0, 1, 2, 3, 4] viewport={0-50} reverse_viewport=False options{use_deephaven_nulls=True min_update_interval_ms=1000 batch_size=100000 max_message_size=10000000 columns_as_list=False preview_list_length_limit=0}}
+         response 0: FlightData{arrow Schema bodyLength=0 fields=[__DEPTH__:int, __EXPANDED__:java.lang.Boolean, Sym:java.lang.String, Ex:java.lang.String, Qty:int] metadata={'deephaven:unsent.attribute.ColumnDescriptions': ''}}
+         response 1: FlightData{arrow RecordBatch bodyLength=80 rows=2 nodes=5 buffers=12; BarrageMessageWrapper magic=0x6E687064 BarrageUpdateMetadata first_seq=-1 last_seq=-1 is_snapshot=True effective_viewport={0-50} effective_reverse_viewport=False effective_column_set=[0, 1, 2, 3, 4] added_rows={0-1} removed_rows={} shift_data=empty added_rows_included=absent mod_column_nodes=[] table_size=2; data_body=80 bytes}

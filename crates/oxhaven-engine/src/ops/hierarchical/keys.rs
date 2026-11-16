@@ -46,7 +46,8 @@ struct Indexed {
 /// Rows are indexed when a key is looked up, the rows not seen before in one bulk read;
 /// an update cycle does no work for it. Because a key keeps its row key, an entry is
 /// never wrong, only possibly of a row that is not there now, which [`KeyIndex::find`]
-/// checks.
+/// checks. A key whose row came and went between two lookups was never seen: Java's
+/// lookup, which is the aggregation's own, knows that key too.
 ///
 /// Behavior: the role of io.deephaven.engine.table.impl.by.AggregationRowLookup in
 /// io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#nodeKeyToNodeId and
@@ -69,6 +70,14 @@ impl KeyIndex {
     /// The row key of the row of `key` (one part per key column), if the table has it
     /// now.
     pub fn find(&self, key: &[Part]) -> Result<Option<RowKey>, TableFailure> {
+        Ok(self
+            .known(key)?
+            .and_then(|(row, there)| there.then_some(row)))
+    }
+
+    /// The row key that `key` has for good, if a lookup has seen its row, and whether
+    /// the table has the row now.
+    pub fn known(&self, key: &[Part]) -> Result<Option<(RowKey, bool)>, TableFailure> {
         let rows = self.table.row_set();
         let mut indexed = self.indexed.lock().unwrap_or_else(PoisonError::into_inner);
         let unseen = rows.minus(&indexed.rows);
@@ -90,7 +99,6 @@ impl KeyIndex {
         Ok(indexed
             .by_key
             .get(&joined(key))
-            .copied()
-            .filter(|&row| rows.contains(row)))
+            .map(|&row| (row, rows.contains(row))))
     }
 }

@@ -34,8 +34,8 @@ impl TableOp for Handler {
 }
 
 /// One row per column of `definition`: its `Name`, its Java `DataType`, its `ColumnType`
-/// and whether it `IsPartitioning`. No column of this engine is a partitioning column, so
-/// the last two are always `Normal` and `false`.
+/// and whether it `IsPartitioning`: `Partitioning` and `true` for a partitioning column,
+/// `Normal` and `false` for any other.
 ///
 /// The result is static and, as in Java, not marked flat.
 ///
@@ -47,8 +47,11 @@ pub fn meta_table(definition: &TableDefinition) -> Result<Arc<QueryTable>, Table
         .iter()
         .map(|c| Some(java_type_name(&c.column_type).into_owned()))
         .collect();
-    let column_types: StringArray = described.iter().map(|_| Some("Normal")).collect();
-    let partitioning: BooleanArray = described.iter().map(|_| Some(false)).collect();
+    let column_types: StringArray = described
+        .iter()
+        .map(|c| Some(if c.partitioning { "Partitioning" } else { "Normal" }))
+        .collect();
+    let partitioning: BooleanArray = described.iter().map(|c| Some(c.partitioning)).collect();
 
     let columns: [(&str, ColumnType, ArrayRef); 4] = [
         ("Name", ColumnType::String, Arc::new(names)),

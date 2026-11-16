@@ -67,9 +67,14 @@ class TableDefinition(Mapping):
             self._handle = table_definition
             columns = [
                 ColumnDefinition(
-                    name, dtypes._from_java_name(type_name), dtypes._from_java_name(component)
+                    name,
+                    dtypes._from_java_name(type_name),
+                    dtypes._from_java_name(component),
+                    ColumnType.PARTITIONING if partitioning else ColumnType.NORMAL,
                 )
-                for name, type_name, component in _engine.native.column_definitions(table_definition)
+                for name, type_name, component, partitioning in _engine.native.column_definitions(
+                    table_definition
+                )
             ]
         elif isinstance(table_definition, Mapping):
             for name in table_definition.keys():
@@ -117,16 +122,16 @@ class TableDefinition(Mapping):
         """
         handle = self._handle
         if handle is None:
-            for column in self.values():
-                if column.column_type is not ColumnType.NORMAL:
-                    raise dtypes._java_time.NotPorted(
-                        "io.deephaven.engine.table.ColumnDefinition#isPartitioning",
-                        f"the engine has no partitioning columns ({column.name})",
-                    )
             # the meta table of a table without rows that has these columns
-            handle = _engine.new_table(
-                [(column.name, dtypes._engine_type(column.data_type), []) for column in self.values()]
-            )
+            columns = [
+                (
+                    column.name,
+                    dtypes._engine_type(column.data_type),
+                    column.column_type is ColumnType.PARTITIONING,
+                )
+                for column in self.values()
+            ]
+            handle = _engine.native.defined_table(columns)
         return Table(_engine.table_op("meta_table", _engine.sourced({}), [handle]))
 
     def keys(self):
@@ -1306,6 +1311,72 @@ def _java_text(value) -> str:
     return str(value)
 
 
+class NodeType(Enum):
+    """The types of the nodes of a rollup.
+
+    Behavior: `deephaven.table.NodeType`; the values are the names of the constants of
+    `io.deephaven.engine.table.hierarchical.RollupTable.NodeType`
+    """
+
+    AGGREGATED = "Aggregated"
+    """The nodes of the levels that aggregate: their columns are the group-by columns
+    and the results of the aggregations."""
+    CONSTITUENT = "Constituent"
+    """The nodes of the rows of the source, in a rollup made with
+    `include_constituents`."""
+
+
+class RollupNodeOperationsRecorder:
+    """Records operations to apply to the nodes of a rollup when a client reads it:
+    sorts. `RollupTable.node_operation_recorder` makes one, and every operation returns
+    a new one.
+
+    Behavior: `deephaven.table.RollupNodeOperationsRecorder`
+    """
+
+    def __init__(self, j_node_ops_recorder):
+        self.j_node_ops_recorder = j_node_ops_recorder
+
+    @property
+    def j_object(self):
+        """The engine's recorder. In the reference package this is the Java recorder."""
+        return self.j_node_ops_recorder
+
+    def sort(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, ascending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, False))
+
+    def sort_descending(self, order_by: Union[str, Sequence[str]]):
+        """A recorder that also sorts the rows of a node by the columns, descending."""
+        order_by = _engine.to_sequence(order_by)
+        return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
+
+    def format_column(self, formulas: Union[str, Sequence[str]]):
+        """Not ported: a recorder that also formats columns of a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumns"
+        )
+
+    def format_row_where(self, cond: str, formula: str):
+        """Not ported: a recorder that also formats the rows of a node that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatRowWhere"
+        )
+
+    def format_column_where(self, col: str, cond: str, formula: str):
+        """Not ported: a recorder that also formats a column of the rows that pass."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumnWhere"
+        )
+
+    def update_view(self, formulas: Union[str, Sequence[str]]):
+        """Not ported: a recorder that also adds columns to a node."""
+        raise dtypes._java_time.NotPorted(
+            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView"
+        )
+
+
 class RollupTable:
     """The result of `Table.rollup`: a hierarchical table whose levels aggregate by one
     group-by column less each. A client reads it through a view; a script only makes it.
@@ -1328,23 +1399,56 @@ class RollupTable:
         """The engine's handle. In the reference package this is the Java rollup table."""
         return self.j_rollup_table
 
-    def node_operation_recorder(self, node_type):
-        """Not ported: a recorder of the operations to apply to the nodes."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeNodeOperationsRecorder"
-        )
+    def node_operation_recorder(self, node_type: "NodeType") -> "RollupNodeOperationsRecorder":
+        """A recorder of operations to apply to the nodes of `node_type` when a client
+        reads this rollup, with nothing recorded.
 
-    def with_node_operations(self, recorders) -> "RollupTable":
-        """Not ported: this rollup with recorded operations applied to its nodes."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withNodeOperations"
-        )
+        Behavior: `deephaven.table.RollupTable.node_operation_recorder`
+        """
+        try:
+            return RollupNodeOperationsRecorder(
+                j_node_ops_recorder=self.j_rollup_table.recorder(node_type.value)
+            )
+        except Exception as e:
+            raise DHError(e, "failed to create a RollupNodeOperationsRecorder.") from e
 
-    def with_filters(self, filters) -> "RollupTable":
-        """Not ported: this rollup with its group-by columns filtered."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withFilter"
-        )
+    def with_node_operations(
+        self, recorders: Sequence["RollupNodeOperationsRecorder"]
+    ) -> "RollupTable":
+        """This rollup with the recorded operations applied to its nodes.
+
+        Behavior: `deephaven.table.RollupTable.with_node_operations`
+        """
+        try:
+            return RollupTable(
+                j_rollup_table=self.j_rollup_table.with_node_operations(
+                    [op.j_node_ops_recorder for op in recorders]
+                ),
+                include_constituents=self.include_constituents,
+                aggs=self.aggs,
+                by=self.by,
+            )
+        except Exception as e:
+            raise DHError(e, "with_node_operations on RollupTable failed.") from e
+
+    def with_filters(self, filters: Union[str, Sequence[str]]) -> "RollupTable":
+        """This rollup of the rows of its source that pass every filter. A filter may
+        read the columns that no aggregation reads.
+
+        Behavior: `deephaven.table.RollupTable.with_filters`
+        """
+        try:
+            filters = _engine.to_sequence(filters)
+            if filters:
+                _engine.native.require_query_scope()
+            return RollupTable(
+                j_rollup_table=self.j_rollup_table.with_filters(filters),
+                include_constituents=self.include_constituents,
+                aggs=self.aggs,
+                by=self.by,
+            )
+        except Exception as e:
+            raise DHError(e, "with_filters operation on RollupTable failed.") from e
 
     def with_update_view(self, formulas) -> "RollupTable":
         """Not ported: this rollup with columns added to its nodes."""
@@ -1422,6 +1526,14 @@ class PartitionedTable:
     def is_refreshing(self) -> bool:
         """Whether the underlying table is refreshing."""
         return self.table.is_refreshing
+
+    def _liveness_release(self) -> bool:
+        """A liveness scope may be given a partitioned table (`manage`, `preserve`,
+        `unmanage`) and never releases it: the answer is that something else holds it.
+        On Java 42.9 a partitioned table, static or refreshing, was usable after every
+        scope that had managed it was released, also one that was made in the scope
+        (`deephaven.liveness_scope`)."""
+        return False
 
     @property
     def key_columns(self) -> List[str]:

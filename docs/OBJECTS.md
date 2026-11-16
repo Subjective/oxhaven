@@ -152,7 +152,7 @@ left alone.)
 | --- | --- |
 | `deephaven.plugin` | `Plugin`, `Callback`, `Registration`, the discovery functions, `__version__` |
 | `deephaven.plugin.object_type` | `ObjectType`, `FetchOnlyObjectType`, `BidirectionalObjectType`, `MessageStream`, `Exporter`, `Reference` |
-| `deephaven.plugin.js` | `JsPlugin`, so that a package that has one imports |
+| `deephaven.plugin.js` | `JsPlugin`; what the server does with one is `docs/JS_PLUGINS.md` |
 | `deephaven.plugin_authorization` | `transform`, the identity, as in Deephaven Community |
 | `deephaven.pandasplugin` | the type `pandas.DataFrame` |
 | `deephaven_internal.plugin` | what the server calls: `initialize_all_and_register_into`, the adapters |
@@ -195,7 +195,6 @@ before they touch the server. The registry's own lock is not held while a type i
 
 | What | Java method | Here |
 | --- | --- | --- |
-| A JS plugin | `io.deephaven.server.plugin.python.CallbackAdapter#registerJsPlugin` | left out with a warning in the server's log that names the method; the object types of its package are registered, and `/js-plugins/manifest.json` stays empty |
 | A reference to `None` | `io.deephaven.server.session.SessionState#newServerSideExport` of null, which makes an export that fails when a client uses it | the message that refers to it fails, with a `RuntimeError` that names the method |
 
 ## For the owner

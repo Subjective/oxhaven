@@ -105,3 +105,53 @@ pq.write_table(pa.table(one), os.path.join(D, "meta", "a.parquet"), compression=
 collected[0].set_file_path("a.parquet")
 pq.write_metadata(pa.table(one).schema, os.path.join(D, "meta", "_metadata"),
                   metadata_collector=collected)
+
+# The types Deephaven reads as objects of java.math and java.time, with the values that
+# are at an edge: before 1970, fractions of a second, the largest unsigned long, a
+# decimal whose bytes are all ones (-0.01 here), an empty byte string, the byte -128.
+D2 = decimal.Decimal
+write({
+    "Dec": pa.array([D2("1.50"), D2("-1.50"), D2("0.00"), None, D2("-0.01"), D2("12345.67")],
+                    pa.decimal128(9, 2)),
+    "Wide": pa.array([D2("1.0000000000"), D2("-12345678901234567890.0123456789"), D2("0E-10"), None,
+                      D2("0.0000000001"), D2("9999999999999999999999999999.9999999999")],
+                     pa.decimal128(38, 10)),
+    "Whole": pa.array([D2("15"), D2("-15"), D2("0"), None, D2("-1"), D2("255")], pa.decimal128(5, 0)),
+    "Date": pa.array([19724, -1, None, 0, -719529, 2932897], pa.date32()),
+    "TimeMs": pa.array([3723000, 0, None, 86399999, 3720500, 3720000], pa.time32("ms")),
+    "TimeUs": pa.array([3723000000, 0, None, 86399999999, 1, 3720000000], pa.time64("us")),
+    "TimeNs": pa.array([3723000000000, 0, None, 86399999999999, 1, 3720000000000], pa.time64("ns")),
+    "LocalMs": pa.array([0, -1, None, 1704157323000, 1704157323500, -86400000], pa.timestamp("ms")),
+    "LocalUs": pa.array([0, -1, None, 1704157323000000, 1704157323000001, -86400000000],
+                        pa.timestamp("us")),
+    "LocalNs": pa.array([0, -1, None, 1704157323000000000, 1704157323000000001, -86400000000000],
+                        pa.timestamp("ns")),
+    "U64": pa.array([0, 1, None, 2**63, 2**64 - 1, 2**63 - 1], pa.uint64()),
+    "Bin": pa.array([b"ab", b"", None, bytes([0x80, 0x00, 0xff]), "é".encode(), b"x"], pa.binary()),
+    "Fixed": pa.array([b"ab", bytes([0x80, 0x7f]), None, b"cd", b"\x00\x00", b"zz"], pa.binary(2)),
+}, "more_types.parquet", row_group_size=4)
+
+# Decimals stored as integers, of 32 and of 64 bits.
+write({
+    "D32": pa.array([D2("1.50"), D2("-1.50"), D2("0.00"), None, D2("-0.01"), D2("-9999999.99")],
+                    pa.decimal128(9, 2)),
+    "D64": pa.array([D2("1.500"), D2("-1.500"), D2("0.000"), None, D2("-0.001"),
+                     D2("-999999999999999.999")], pa.decimal128(18, 3)),
+}, "more_decimals_int.parquet", store_decimal_as_integer=True)
+
+# Structs with one field: where only one of the two levels can be left out, Deephaven
+# reads the field; where both can, it cannot read the column.
+inner = pa.field("a", pa.int32(), nullable=True)
+required_struct = pa.field("Outer", pa.struct([inner]), nullable=False)
+required_leaf = pa.field("Leaf", pa.struct([pa.field("a", pa.int32(), nullable=False)]), nullable=True)
+both = pa.field("Both", pa.struct([pa.field("a", pa.int32(), nullable=False)]), nullable=False)
+structs = pa.table(
+    [
+        pa.array([{"a": 1}, {"a": None}, {"a": 3}], required_struct.type),
+        pa.array([{"a": 1}, None, {"a": 3}], required_leaf.type),
+        pa.array([{"a": 1}, {"a": 2}, {"a": 3}], both.type),
+    ],
+    schema=pa.schema([required_struct, required_leaf, both]),
+)
+pq.write_table(structs, os.path.join(D, "more_structs.parquet"), compression="NONE",
+               write_statistics=False)

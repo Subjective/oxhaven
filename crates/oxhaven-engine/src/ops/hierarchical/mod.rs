@@ -20,6 +20,7 @@ pub use walk::Snapshot;
 
 use crate::ops::agg::AggregateError;
 use crate::ops::partitioned::PartitionedError;
+use crate::ops::sort::SortColumn;
 use arrow::array::ArrayRef;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
@@ -94,6 +95,24 @@ impl From<PartitionedError> for HierarchicalError {
     }
 }
 
+/// `sorts` in front of the `earlier` sorts of the nodes of a hierarchical table: the new
+/// ones decide first. A column named again, absolute or not as before, is taken where it
+/// is first named.
+///
+/// Behavior: io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder#mergeSortColumns,
+/// in which a sort by an absolute value has a column name of its own
+pub fn merged_sorts(sorts: &[SortColumn], earlier: &[SortColumn]) -> Vec<SortColumn> {
+    let mut merged: Vec<SortColumn> = Vec::new();
+    for sort in sorts.iter().chain(earlier) {
+        let named =
+            |kept: &SortColumn| kept.column == sort.column && kept.absolute == sort.absolute;
+        if !merged.iter().any(named) {
+            merged.push(sort.clone());
+        }
+    }
+    merged
+}
+
 /// What names a node, in a key table and between snapshots.
 ///
 /// Behavior: the node keys of HierarchicalTableImpl; for a rollup,
@@ -156,6 +175,7 @@ impl Action {
 pub struct Located {
     pub node: NodeId,
     /// The row key of the node's row in its parent's child table; `None` for the root.
+    /// The row may be one the child table had and does not have now.
     pub row_in_parent: Option<RowKey>,
 }
 
@@ -196,8 +216,8 @@ pub trait Hierarchy: Send + Sync {
     /// The node key of each row of `key_table`, in the order of its rows.
     fn node_keys(&self, key_table: &dyn Table) -> Result<Vec<NodeKey>, HierarchicalError>;
 
-    /// The node of `key`, or `None` if the hierarchy has no such node now or the node
-    /// cannot be expanded.
+    /// The node of `key`, or `None` if the hierarchy knows no such node or the node
+    /// cannot be expanded. A node that was there and is not there now may be known.
     fn locate(&self, key: &NodeKey) -> Result<Option<Located>, HierarchicalError>;
 
     fn parent(&self, key: &NodeKey) -> Parent;
@@ -206,6 +226,18 @@ pub trait Hierarchy: Send + Sync {
 
     /// The table of the child rows of `node`, or `None` if it has none.
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError>;
+
+    /// The rows of `table`, the child table of a node whose rows are at `depth`, in the
+    /// order they are shown, or `None` when that is the order of the table.
+    ///
+    /// Behavior: HierarchicalTableImpl#applyNodeSorts
+    fn order(
+        &self,
+        _depth: u32,
+        _table: &dyn Table,
+    ) -> Result<Option<Vec<RowKey>>, HierarchicalError> {
+        Ok(None)
+    }
 
     /// Whether the rows at `depth` (the rows of the root table are at 1) can be expanded.
     fn rows_expandable(&self, depth: u32) -> Expandable;
