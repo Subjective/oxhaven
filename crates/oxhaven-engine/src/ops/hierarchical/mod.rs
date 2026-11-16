@@ -8,6 +8,8 @@
 //! [`RollupTable`] and [`TreeTable`] are the hierarchies. The walk ([`walk`]) knows
 //! neither.
 
+#[cfg(test)]
+mod constituent_tests;
 mod keys;
 mod rollup;
 #[cfg(test)]
@@ -29,7 +31,7 @@ use crate::ops::sort::SortColumn;
 use arrow::array::ArrayRef;
 use oxhaven_contracts::graph::locked;
 use oxhaven_contracts::rowset::{RowKey, RowSet};
-use oxhaven_contracts::schema::TableDefinition;
+use oxhaven_contracts::schema::ColumnDefinition;
 use oxhaven_contracts::table::{Table, TableFailure};
 use std::fmt;
 use std::sync::Arc;
@@ -216,8 +218,11 @@ pub trait Hierarchy: Send + Sync {
     /// The columns of a snapshot: the depth, whether the row is expanded, then the
     /// columns of the nodes.
     ///
+    /// Two columns may have one name: a rollup with constituents has the group-by columns
+    /// of the aggregated nodes and of the source.
+    ///
     /// Behavior: HierarchicalTable#getAvailableColumnDefinitions
-    fn columns(&self) -> &TableDefinition;
+    fn columns(&self) -> &[ColumnDefinition];
 
     /// The nodes that are expanded before any row of a key table.
     fn default_expansions(&self) -> Vec<NodeKey>;
@@ -330,7 +335,7 @@ impl View {
         let columns = match columns {
             Some(columns) => columns,
             None => {
-                all = (0..self.hierarchy.columns().columns().len()).collect();
+                all = (0..self.hierarchy.columns().len()).collect();
                 &all
             }
         };

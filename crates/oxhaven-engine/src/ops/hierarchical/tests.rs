@@ -18,7 +18,7 @@ use oxhaven_testkit::{
 };
 use std::collections::BTreeMap;
 
-fn cell(column: &ArrayRef, row: usize) -> String {
+pub(super) fn cell(column: &ArrayRef, row: usize) -> String {
     if column.is_null(row) {
         "-".to_string()
     } else {
@@ -40,7 +40,7 @@ pub(super) fn text(snapshot: &Snapshot) -> Vec<String> {
         .collect()
 }
 
-fn aggregations() -> Vec<Aggregation> {
+pub(super) fn aggregations() -> Vec<Aggregation> {
     vec![
         Aggregation::columns(AggSpec::Sum, [Pair::of("Qty")]),
         Aggregation::count("Rows"),
@@ -48,7 +48,7 @@ fn aggregations() -> Vec<Aggregation> {
 }
 
 /// The table of the IDE's rollup route.
-fn trades() -> Arc<dyn Table> {
+pub(super) fn trades() -> Arc<dyn Table> {
     ReferenceTable::new_static(
         definition(&[
             ("Sym", ColumnType::String),
@@ -70,7 +70,7 @@ fn trades_rollup() -> Arc<dyn Hierarchy> {
 
 /// A key table of the rollup of [`trades`]: per row a depth, the key values and an
 /// action.
-fn keys(rows: &[(i32, &str, &str, i8)]) -> Arc<dyn Table> {
+pub(super) fn keys(rows: &[(i32, &str, &str, i8)]) -> Arc<dyn Table> {
     ReferenceTable::new_static(
         definition(&[
             ("Sym", ColumnType::String),
@@ -88,8 +88,8 @@ fn keys(rows: &[(i32, &str, &str, i8)]) -> Arc<dyn Table> {
     )
 }
 
-const EXPAND: i8 = 1;
-const EXPAND_ALL: i8 = 3;
+pub(super) const EXPAND: i8 = 1;
+pub(super) const EXPAND_ALL: i8 = 3;
 const CONTRACT: i8 = 4;
 
 fn view_of(rows: &[(i32, &str, &str, i8)]) -> Vec<String> {
@@ -128,7 +128,6 @@ fn without_a_key_table_the_grand_total_is_expanded() {
     assert_eq!(text(&snapshot), COLLAPSED);
     let names: Vec<&str> = view
         .hierarchy()
-        .columns()
         .columns()
         .iter()
         .map(|column| column.name.as_str())
@@ -318,17 +317,9 @@ fn java_refuses_some_aggregations() {
     assert_eq!(refused(AggSpec::Max), None);
 }
 
-#[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#makeRollup"
-)]
-fn constituents_are_not_ported() {
-    let _ = rollup(&trades(), &aggregations(), true, &["Sym"], None);
-}
-
 /// What a rollup of `source` by its columns `K` and `G` with the sum of `V` and a count
 /// must show with everything expanded: per key prefix, the sum and the count.
-fn expected_rows(source: &dyn Table) -> Vec<String> {
+pub(super) fn expected_rows(source: &dyn Table) -> Vec<String> {
     let rows = source.row_set();
     let columns: Vec<ArrayRef> = (0..3)
         .map(|index| source.column(index).chunk(&rows).unwrap())
@@ -709,7 +700,10 @@ fn sorts_are_checked_against_the_columns_of_the_nodes() {
         .is_err());
 }
 
-fn filtered(rollup: &RollupTable, filters: &[&str]) -> Result<RollupTable, HierarchicalError> {
+pub(super) fn filtered(
+    rollup: &RollupTable,
+    filters: &[&str],
+) -> Result<RollupTable, HierarchicalError> {
     let checked = CheckedFilters::parse(filters, rollup.source().definition(), &Compiler)
         .map_err(|error| HierarchicalError::IllegalArgument(error.to_string()))?;
     rollup.with_filters(&checked, &Compiler)
@@ -763,7 +757,7 @@ fn a_filter_of_group_by_columns_keeps_whole_groups() {
 
 /// A table like [`trades`] with a column that no aggregation reads and that is no
 /// group-by column.
-fn trades_with_venue() -> Arc<dyn Table> {
+pub(super) fn trades_with_venue() -> Arc<dyn Table> {
     ReferenceTable::new_static(
         definition(&[
             ("Sym", ColumnType::String),

@@ -490,13 +490,12 @@ pub(super) fn snapshot(
     let mut data = Vec::with_capacity(columns.len());
     for &column in columns {
         let column_type = definition
-            .columns()
             .get(column)
             .map(|column| column.column_type.arrow_type())
             .ok_or_else(|| {
                 HierarchicalError::IllegalArgument(format!(
                     "Requested column {column} of {} columns",
-                    definition.columns().len()
+                    definition.len()
                 ))
             })?;
         let mut parts: Vec<ArrayRef> = Vec::with_capacity(walk.segments.len());

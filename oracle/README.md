@@ -169,7 +169,7 @@ overall = source.agg_by([agg.sum_("Sum = NoSuchColumn")])
 | Line | Meaning |
 | --- | --- |
 | `# oracle: results a, b` | The variables to compare. Each is read through its `s/<name>` ticket after every step |
-| `# oracle: views v = r, w = r k A` | Views to compare, each under the name before the `=`: of the hierarchical table (a rollup) in the variable `r`, with its default expansions for `v`, and for `w` with those of the key table in the variable `k`, whose actions are in its column `A` (without `A` every row expands). Each is read after every step as a client reads it: `HierarchicalTableService/View`, then the first snapshot of a subscription to the first 2000 rows (`harness/views.py`) |
+| `# oracle: views v = r, w = r k A` | Views to compare, each under the name before the `=`: of the hierarchical table (a rollup) in the variable `r`, with its default expansions for `v`, and for `w` with those of the key table in the variable `k`, whose actions are in its column `A` (without `A` every row expands). Each is read after every step as a client reads it: `HierarchicalTableService/View`, then the first snapshot of a subscription to the first 2000 rows (`harness/views.py`). A view with two columns of one name, as a rollup with constituents has for its group-by columns, has the later one under `<name>#2` |
 | `# oracle: computed a.Col` | A float column under the tolerance of A1, as an aggregation's sum is in a table scenario |
 | `# oracle: step` | What follows is the script of the next step. A step without code only waits |
 | `# oracle: fails` | The script of this step must fail on the reference |
