@@ -15,10 +15,11 @@
 //! A column of tables, the constituent column of a partitioned table, is stored as handles
 //! and sent as strings: Java has no Arrow type for a table and sends the text of each.
 //!
-//! Three of the `java.math` and `java.time` types are sent otherwise than stored: a
+//! Five of the `java.math` and `java.time` types are sent otherwise than stored: a
 //! `BigDecimal` without the zeros at its end (`1.5` for `1.50`), a `LocalDate` as
-//! milliseconds where it is stored as days, and a `LocalDateTime` as its text, because
-//! Java has no Arrow type for one.
+//! milliseconds where it is stored as days, a `LocalDateTime` as its text, because
+//! Java has no Arrow type for one, a `Period` as its months alone and a `ZonedDateTime`
+//! as its instant alone.
 //!
 //! A table a client uploaded is sent back in the layout it was sent in, which for these
 //! types is the stored one: a client cannot upload a list whose elements are an
@@ -26,8 +27,13 @@
 
 use std::sync::Arc;
 
-use arrow::array::{Array, ArrayRef, AsArray, BinaryArray, Date64Array, ListArray, StringArray};
-use arrow::datatypes::{DataType, Date32Type, Field, Int8Type, TimestampNanosecondType};
+use arrow::array::{
+    Array, ArrayRef, AsArray, BinaryArray, Date64Array, IntervalYearMonthArray, ListArray,
+    StringArray, TimestampNanosecondArray,
+};
+use arrow::datatypes::{
+    DataType, Date32Type, Field, Int32Type, Int8Type, IntervalUnit, TimestampNanosecondType,
+};
 use oxhaven_column::java_values::{big_decimal_parts, local_date_time_text, strip_trailing_zeros};
 use oxhaven_column::sentinel::nulls_to_sentinels;
 use oxhaven_contracts::schema::ColumnType;
@@ -68,6 +74,10 @@ fn wire_type_at(column_type: &ColumnType, outermost: bool) -> DataType {
         // text of a class it has no type for
         ColumnType::LocalDate => DataType::Date64,
         ColumnType::LocalDateTime => DataType::Utf8,
+        // Behavior: `BarrageUtil#arrowTypeFor`: the months of a `Period`
+        // (`IntervalUnit.YEAR_MONTH`), and the instant of a `ZonedDateTime` without its zone
+        ColumnType::Period => DataType::Interval(IntervalUnit::YearMonth),
+        ColumnType::ZonedDateTime => ColumnType::Instant.arrow_type(),
         other => other.arrow_type(),
     }
 }
@@ -81,12 +91,14 @@ fn holds_decimal(column_type: &ColumnType) -> bool {
     }
 }
 
-/// The cells of a `BigDecimal`, `LocalDate` or `LocalDateTime` column as Java sends
-/// them; `None` for a column of any other type.
+/// The cells of a `BigDecimal`, `LocalDate`, `LocalDateTime`, `Period` or
+/// `ZonedDateTime` column as Java sends them; `None` for a column of any other type.
 ///
 /// Behavior: `io.deephaven.extensions.barrage.chunk.DefaultChunkWriterFactory#binaryFromBigDecimal`
 /// (the scale and the unscaled integer of the number without the zeros at its end),
-/// `#dateFromLocalDate` (the milliseconds of the day's start), `#utf8FromObject`
+/// `#dateFromLocalDate` (the milliseconds of the day's start), `#utf8FromObject`,
+/// `#intervalFromPeriod` (`getMonths() + getYears() * 12` in `int` arithmetic, which
+/// drops the days), `#timestampFromZonedDateTime` (the instant, without the zone)
 fn object_cells(
     column_type: &ColumnType,
     stored: &ArrayRef,
@@ -128,6 +140,37 @@ fn object_cells(
                 .map(|nanos| nanos.map(local_date_time_text))
                 .collect();
             Ok(Arc::new(texts) as ArrayRef)
+        })(),
+        ColumnType::Period => (|| {
+            let parts = stored.as_struct_opt().ok_or_else(unexpected)?;
+            let field = |at: usize| {
+                parts
+                    .column(at)
+                    .as_primitive_opt::<Int32Type>()
+                    .ok_or_else(unexpected)
+            };
+            let (years, months) = (field(0)?, field(1)?);
+            let sent: IntervalYearMonthArray = (0..parts.len())
+                .map(|row| {
+                    parts.is_valid(row).then(|| {
+                        months
+                            .value(row)
+                            .wrapping_add(years.value(row).wrapping_mul(12))
+                    })
+                })
+                .collect();
+            Ok(Arc::new(sent) as ArrayRef)
+        })(),
+        ColumnType::ZonedDateTime => (|| {
+            let parts = stored.as_struct_opt().ok_or_else(unexpected)?;
+            let instants = parts
+                .column(0)
+                .as_primitive_opt::<TimestampNanosecondType>()
+                .ok_or_else(unexpected)?;
+            let sent =
+                TimestampNanosecondArray::new(instants.values().clone(), parts.nulls().cloned())
+                    .with_data_type(ColumnType::Instant.arrow_type());
+            Ok(Arc::new(sent) as ArrayRef)
         })(),
         _ => return None,
     })
@@ -285,6 +328,57 @@ mod tests {
 
     /// What Java 42.9 sent for the same values, read from the Parquet files of
     /// `crates/oxhaven-parquet/tests/data` (`no_*.parquet`, `more_types.parquet`).
+    /// A period is sent as `getMonths() + getYears() * 12` (`P1Y2M3D` as 14) and a zoned
+    /// date and time as its instant, as Java 42.9 declared them for formula columns.
+    #[test]
+    fn a_period_is_sent_as_months_and_a_zoned_date_time_as_its_instant() {
+        use arrow::array::{IntervalYearMonthArray, StringArray, StructArray};
+        use arrow::datatypes::Fields;
+        let DataType::Struct(fields) = ColumnType::Period.arrow_type() else {
+            unreachable!()
+        };
+        let ints = |values: [i32; 3]| Arc::new(Int32Array::from(values.to_vec())) as ArrayRef;
+        let periods = StructArray::new(
+            fields,
+            vec![ints([1, 0, 0]), ints([2, 0, i32::MAX]), ints([3, 7, 0])],
+            Some(vec![true, false, true].into()),
+        );
+        let column = WireColumn::described(&ColumnType::Period);
+        let cells = column.cells(Arc::new(periods)).unwrap();
+        assert_eq!(cells.data_type(), &column.arrow_type());
+        let months: Vec<Option<i32>> = cells
+            .as_any()
+            .downcast_ref::<IntervalYearMonthArray>()
+            .unwrap()
+            .iter()
+            .collect();
+        assert_eq!(months, [Some(14), None, Some(i32::MAX)]);
+
+        let DataType::Struct(fields) = ColumnType::ZonedDateTime.arrow_type() else {
+            unreachable!()
+        };
+        let fields: Fields = fields;
+        let zoned = StructArray::new(
+            fields,
+            vec![
+                Arc::new(
+                    TimestampNanosecondArray::from(vec![1_635_901_323_000_000_000, 0])
+                        .with_timezone("UTC"),
+                ),
+                Arc::new(StringArray::from(vec!["GMT", "GMT"])),
+            ],
+            Some(vec![true, false].into()),
+        );
+        let column = WireColumn::described(&ColumnType::ZonedDateTime);
+        let cells = column.cells(Arc::new(zoned)).unwrap();
+        assert_eq!(cells.data_type(), &ColumnType::Instant.arrow_type());
+        let instants: Vec<Option<i64>> = cells
+            .as_primitive::<TimestampNanosecondType>()
+            .iter()
+            .collect();
+        assert_eq!(instants, [Some(1_635_901_323_000_000_000), None]);
+    }
+
     #[test]
     fn the_java_math_and_time_types_are_sent_as_java_sends_them() {
         use arrow::array::{Date32Array, Time64NanosecondArray};
