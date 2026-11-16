@@ -20,7 +20,7 @@ use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
 use oxhaven_kafka::{
-    consume, AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset,
+    consume, consume_to_partitioned_table, AvroMapping, AvroProduceSpec, AvroSchema, ConsumeOptions, InitialOffset,
     JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec, ProtobufProtocol, Spec, TableType,
 };
 use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
@@ -201,6 +201,70 @@ fn a_blink_table_empties_and_a_missing_topic_has_no_rows() {
     graph.run_cycle();
     assert_eq!(table.row_set().size(), 0);
     assert!(!table.is_failed());
+}
+
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn a_partitioned_table_has_a_constituent_per_partition() {
+    let graph = SteppedUpdateGraph::new();
+    let shared: Arc<dyn UpdateGraph> = graph.clone();
+    let text = Spec::Simple {
+        column: Some("V".to_owned()),
+        data_type: Some(ColumnType::String),
+    };
+    let all = options("oxhaven_two", BEGINNING, text.clone(), TableType::Append);
+    let partitioned = consume_to_partitioned_table(shared.clone(), &all).unwrap();
+    // The table of tables shows its constituents from the next cycle on, as in Java.
+    assert_eq!(partitioned.table().row_set().size(), 0);
+    let merged = partitioned.merge().unwrap();
+    wait_for(&graph, merged.as_ref(), 6);
+    let underlying = partitioned.table();
+    let index = underlying.definition().index_of("Partition").unwrap();
+    let keys = underlying.column(index).chunk(&underlying.row_set()).unwrap();
+    assert_eq!(keys.as_primitive::<Int32Type>().values(), &[0, 1]);
+    let mut total = 0;
+    for (key, constituent) in [0, 1].into_iter().zip(partitioned.constituents().unwrap()) {
+        let index = constituent.definition().index_of("KafkaPartition").unwrap();
+        let rows = constituent.row_set();
+        let partitions = constituent.column(index).chunk(&rows).unwrap();
+        assert!(partitions.as_primitive::<Int32Type>().values().iter().all(|p| *p == key));
+        let offsets = longs(constituent.as_ref(), "KafkaOffset");
+        let expected: Vec<Option<i64>> = (0..rows.size() as i64).map(Some).collect();
+        assert_eq!(offsets, expected, "partition {key}");
+        total += rows.size();
+    }
+    assert_eq!(total, 6);
+
+    // Records that arrive later reach their partition's constituent.
+    let topic = fresh("partitioned");
+    produce(&topic, "none", &["a"]);
+    let blink = options(&topic, BEGINNING, text, TableType::Blink);
+    let partitioned = consume_to_partitioned_table(shared.clone(), &blink).unwrap();
+    let merged = partitioned.merge().unwrap();
+    // A blink constituent shows each record for one cycle.
+    let seen = |count: usize| {
+        let mut seen = Vec::new();
+        let deadline = Instant::now() + Duration::from_secs(20);
+        while seen.len() < count && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(100));
+            graph.run_cycle();
+            seen.extend(strings(merged.as_ref(), "V").into_iter().flatten());
+        }
+        seen
+    };
+    assert_eq!(seen(1), ["a"]);
+    produce(&topic, "none", &["b", "c"]);
+    assert_eq!(seen(2), ["b", "c"]);
+    graph.run_cycle();
+    assert_eq!(merged.row_set().size(), 0);
+
+    // A topic the request makes the broker create has no partition yet, in Java's answer.
+    let missing = options(&fresh("missing"), BEGINNING, json(), TableType::Append);
+    let error = consume_to_partitioned_table(shared, &missing).err().unwrap();
+    assert!(
+        error.to_string().starts_with("java.lang.NullPointerException"),
+        "{error}"
+    );
 }
 
 /// A name no earlier run of these tests used.
