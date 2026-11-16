@@ -11,8 +11,9 @@ use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableD
 
 use crate::avro_spec::{self, AvroColumn, AvroSchema, AvroSide};
 use crate::json::{self, Node, Pointer};
+use crate::protobuf_spec::{self, ProtobufColumn};
 use crate::registry::Registry;
-use crate::{not_ported, property, KafkaError, Record, Spec};
+use crate::{not_ported, property, KafkaError, ProtobufProtocol, Record, Spec};
 
 /// The columns every table has unless a property names them away, in Java's order, each
 /// with the property that renames it and its name when the property is not set.
@@ -86,6 +87,8 @@ enum Cells {
     Json(Side, Vec<Pointer>),
     /// A field of the key's or value's Avro record.
     Avro(Side, AvroColumn),
+    /// A field, or the fields of a repeated field, of the key's or value's message.
+    Protobuf(Side, ProtobufColumn),
 }
 
 /// The definition of a consumed topic's table and the source of each column.
@@ -96,6 +99,8 @@ pub struct Plan {
     cells: Vec<Cells>,
     /// The Avro schemas of the key and of the value, for an Avro spec.
     avro: [Option<Arc<AvroSide>>; 2],
+    /// The messages of the key and of the value, for a Protobuf spec.
+    protobuf: [Option<(prost_reflect::MessageDescriptor, ProtobufProtocol)>; 2],
 }
 
 fn invalid(text: String) -> KafkaError {
@@ -420,17 +425,39 @@ impl Plan {
         }
         // Java makes the registry's client, then fetches the key's schema and the value's,
         // before any column is defined.
-        let avro_spec = |spec: &Spec| matches!(spec, Spec::Avro { .. });
-        let registry = if avro_spec(key) || avro_spec(value) {
+        let registry_spec = |spec: &Spec| matches!(spec, Spec::Avro { .. } | Spec::Protobuf { .. });
+        let registry = if registry_spec(key) || registry_spec(value) {
             Some(Arc::new(Registry::from_config(config)?))
         } else {
             None
         };
         let mut avro: [Option<Arc<AvroSide>>; 2] = [None, None];
-        for (slot, spec) in avro.iter_mut().zip([key, value]) {
+        // Java looks the message up when it fetches the schema, and fails on a missing
+        // one only when it makes the columns.
+        let mut fetched = [None, None];
+        for (index, spec) in [key, value].into_iter().enumerate() {
+            if let (
+                Spec::Protobuf {
+                    subject,
+                    version,
+                    message,
+                    ..
+                },
+                Some(registry),
+            ) = (spec, &registry)
+            {
+                fetched[index] = Some(protobuf_spec::fetch(
+                    registry,
+                    subject,
+                    *version,
+                    message.as_deref(),
+                )?);
+                continue;
+            }
             let (Spec::Avro { schema, .. }, Some(registry)) = (spec, &registry) else {
                 continue;
             };
+            let slot = &mut avro[index];
             // Behavior: io.deephaven.kafka.AvroImpl.AvroConsume#ensureSchema
             let schema = match schema {
                 AvroSchema::Text(text) => crate::avro::parse(text).map_err(KafkaError::Invalid)?,
@@ -445,6 +472,7 @@ impl Plan {
         }
         let mut definitions = Vec::new();
         let mut cells = Vec::new();
+        let mut protobuf = [None, None];
         for (common, name_property, default) in COMMON {
             // Behavior: KafkaTools.CommonColumn#getDefinition: an empty name removes the
             // column.
@@ -479,6 +507,22 @@ impl Plan {
                         cells.push(Cells::Avro(side, column));
                     }
                 }
+                Spec::Protobuf {
+                    include, protocol, ..
+                } => {
+                    let message = fetched[side as usize].take().expect("fetched above");
+                    // Behavior: ProtobufDescriptorParserImpl.DescriptorContext, given null
+                    // (probes nomsgs, nm_dot)
+                    let message = message
+                        .ok_or_else(|| invalid("java.lang.NullPointerException".to_owned()))?;
+                    protobuf[side as usize] = Some((message.clone(), *protocol));
+                    let message = &message;
+                    let include = include.as_deref();
+                    for (name, column_type, column) in protobuf_spec::columns(message, include)? {
+                        definitions.push(ColumnDefinition::new(name, column_type));
+                        cells.push(Cells::Protobuf(side, column));
+                    }
+                }
             }
         }
         // Behavior: io.deephaven.engine.table.TableDefinition#checkDuplicateNames
@@ -494,6 +538,7 @@ impl Plan {
             definition,
             cells,
             avro,
+            protobuf,
         })
     }
 
@@ -541,6 +586,41 @@ impl Plan {
         };
         let key_values = avro_values(Side::Key)?;
         let value_values = avro_values(Side::Value)?;
+        // Behavior: io.deephaven.kafka.protobuf.ProtobufDeserializers, wrapped by
+        // `CompletedFetch#parseRecord`; then KafkaStreamPublisher#consumeRecords, which
+        // refuses a null key or value, for a spec with no columns too (probe tombstone)
+        let mut key_messages = Vec::new();
+        let mut value_messages = Vec::new();
+        if self.protobuf.iter().any(Option::is_some) {
+            let mut sides = Vec::new();
+            for record in records {
+                for (side, out) in [
+                    (Side::Key, &mut key_messages),
+                    (Side::Value, &mut value_messages),
+                ] {
+                    let Some((message, protocol)) = &self.protobuf[side as usize] else {
+                        continue;
+                    };
+                    let Some(bytes) = side.bytes(record) else {
+                        sides.push(None);
+                        continue;
+                    };
+                    let decoded = protobuf_spec::decode(message, *protocol, bytes);
+                    out.push(decoded.map_err(|cause| {
+                        let text = deserializing(&self.topic, side, record);
+                        KafkaError::Record(format!("{text} (caused by {cause})"))
+                    })?);
+                    sides.push(Some(()));
+                }
+            }
+            if sides.contains(&None) {
+                return Err(KafkaError::Record(
+                    "io.deephaven.kafka.ingest.KafkaIngesterException: Null records are not \
+                     permitted"
+                        .to_owned(),
+                ));
+            }
+        }
 
         let mut columns = Vec::with_capacity(self.cells.len());
         // Java's chunk of each column has a row per record and pointer; they must agree.
@@ -558,6 +638,13 @@ impl Plan {
                         Side::Value => &value_values,
                     };
                     columns.push(avro_spec::cells(column, values)?)
+                }
+                Cells::Protobuf(side, column) => {
+                    let messages = match side {
+                        Side::Key => &key_messages,
+                        Side::Value => &value_messages,
+                    };
+                    columns.push(protobuf_spec::cells(column, messages)?)
                 }
                 Cells::Json(side, pointers) => {
                     let documents = match side {

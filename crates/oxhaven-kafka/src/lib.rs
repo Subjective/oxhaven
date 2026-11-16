@@ -25,6 +25,8 @@ pub mod json;
 mod plan;
 mod produce;
 pub mod producer;
+mod protobuf;
+mod protobuf_spec;
 mod registry;
 mod serialize;
 mod stream;
@@ -45,6 +47,7 @@ pub use produce::{
     produce, produce_to, JsonProduceSpec, OutRecord, ProduceOptions, ProduceSpec, Publication,
     RecordSink,
 };
+pub use protobuf_spec::ProtobufProtocol;
 pub use stream::consume_from;
 
 /// Why a topic cannot be consumed, or why its table failed.
@@ -175,6 +178,19 @@ pub enum Spec {
     Avro {
         schema: AvroSchema,
         mapping: AvroMapping,
+    },
+    /// The columns of a Protobuf message's fields, nested messages flattened, the schema
+    /// fetched from the registry of `schema.registry.url`: `subject` at `version`, the
+    /// latest for none. `message` names the message, the first of the schema for none;
+    /// `include` lists the field paths to make columns of, all for none.
+    ///
+    /// Behavior: `KafkaTools.Consume#protobufSpec`
+    Protobuf {
+        subject: String,
+        version: Option<i32>,
+        message: Option<String>,
+        include: Option<Vec<String>>,
+        protocol: ProtobufProtocol,
     },
 }
 
