@@ -48,6 +48,8 @@ type Operation = (
 
 /// The local operations.
 const OPERATIONS: &[Operation] = &[
+    ("format_column_where", format_column_where),
+    ("format_columns", format_columns),
     ("head_pct", head_pct),
     ("keyed_transpose", keyed_transpose),
     ("merge_sorted", merge_sorted),
@@ -164,6 +166,30 @@ fn move_columns_down(_: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) ->
     Ok(select::move_columns_down(
         &sources[0],
         &pairs(args, "cols")?,
+    )?)
+}
+
+/// Behavior: `io.deephaven.engine.table.impl.TableDefaults#formatColumns`
+fn format_columns(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let formats = strings(args, "formats")?;
+    Ok(select::format::format_columns(
+        &sources[0],
+        &formats,
+        context.compiler.as_ref(),
+    )?)
+}
+
+/// Behavior: `TableDefaults#formatColumnWhere`, and `#formatRowWhere` with the column `*`
+fn format_column_where(context: &OpContext, args: &Value, sources: &[Arc<dyn Table>]) -> Created {
+    let text = |name: &str| {
+        let value = args.get(name).and_then(Value::as_str);
+        value.ok_or_else(|| bad_argument(name, "a string"))
+    };
+    let format = select::format::conditional_format(text("col")?, text("cond")?, text("formula")?);
+    Ok(select::format::format_columns(
+        &sources[0],
+        &[format],
+        context.compiler.as_ref(),
     )?)
 }
 

@@ -573,6 +573,43 @@ class Table:
         when read."""
         return self._select_op("update_view", formulas, "table update_view operation failed.")
 
+    def format_columns(self, formulas: Union[str, Sequence[str]]) -> "Table":
+        """This table with the formats `formulas`, each `Column = format`: a colour or a
+        style for the cells of the column (`*` for the whole row), `Decimal(pattern)` for
+        its numbers or `Date(pattern)` for its instants. A format is a hidden column,
+        computed when read, that a client reads the format of each cell from.
+
+        Behavior: `deephaven.table.Table.format_columns`
+        """
+        failure = "failed to color format columns."
+        try:
+            formulas = _engine.to_sequence(formulas)
+        except Exception as e:
+            raise DHError(e, failure) from e
+        return self._local_op("format_columns", {"formats": formulas}, failure)
+
+    def format_column_where(self, col: str, cond: str, formula: str) -> "Table":
+        """This table with the format `formula` of `col` in the rows where `cond` holds.
+
+        Behavior: `deephaven.table.Table.format_column_where`
+        """
+        return self._local_op(
+            "format_column_where",
+            {"col": col, "cond": cond, "formula": formula},
+            "failed to color format column conditionally.",
+        )
+
+    def format_row_where(self, cond: str, formula: str) -> "Table":
+        """This table with the format `formula` of the rows where `cond` holds.
+
+        Behavior: `deephaven.table.Table.format_row_where`
+        """
+        return self._local_op(
+            "format_column_where",
+            {"col": "*", "cond": cond, "formula": formula},
+            "failed to color format rows conditionally.",
+        )
+
     def select(self, formulas: Union[str, Sequence[str], None] = None) -> "Table":
         """A new in-memory table with one column per formula, or with every column of this
         table if no formula is given."""
@@ -1370,28 +1407,24 @@ class RollupNodeOperationsRecorder:
         return self.__class__(self.j_node_ops_recorder.sort(order_by, True))
 
     def format_column(self, formulas: Union[str, Sequence[str]]):
-        """Not ported: a recorder that also formats columns of a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumns"
-        )
+        """A recorder that also formats columns of a node, as `Table.format_columns`
+        formats those of a table."""
+        formulas = _engine.to_sequence(formulas)
+        return self.__class__(self.j_node_ops_recorder.format_columns(formulas))
 
     def format_row_where(self, cond: str, formula: str):
-        """Not ported: a recorder that also formats the rows of a node that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatRowWhere"
-        )
+        """A recorder that also formats the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where("*", cond, formula))
 
     def format_column_where(self, col: str, cond: str, formula: str):
-        """Not ported: a recorder that also formats a column of the rows that pass."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#formatColumnWhere"
-        )
+        """A recorder that also formats `col` in the rows of a node where `cond` holds."""
+        return self.__class__(self.j_node_ops_recorder.format_where(col, cond, formula))
 
     def update_view(self, formulas: Union[str, Sequence[str]]):
-        """Not ported: a recorder that also adds columns to a node."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupNodeOperationsRecorder#updateView"
-        )
+        """A recorder that also adds a column per formula to a node, computed when read.
+        A format recorded before can read it."""
+        formulas = _engine.to_sequence(formulas)
+        return self.__class__(self.j_node_ops_recorder.update_view(formulas))
 
 
 class RollupTable:
@@ -1467,11 +1500,27 @@ class RollupTable:
         except Exception as e:
             raise DHError(e, "with_filters operation on RollupTable failed.") from e
 
-    def with_update_view(self, formulas) -> "RollupTable":
-        """Not ported: this rollup with columns added to its nodes."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withUpdateView"
-        )
+    def with_update_view(self, formulas: Union[str, Sequence[str]]) -> "RollupTable":
+        """This rollup with a column per formula added to its aggregated nodes, computed
+        when read.
+
+        Behavior: `deephaven.table.RollupTable.with_update_view`, which is
+        `io.deephaven.engine.table.impl.hierarchical.RollupTableImpl#withUpdateView`: the
+        update view of a recorder for aggregated nodes, applied to the rollup
+        """
+        try:
+            formulas = _engine.to_sequence(formulas)
+            recorder = self.j_rollup_table.recorder(NodeType.AGGREGATED.value)
+            return RollupTable(
+                j_rollup_table=self.j_rollup_table.with_node_operations(
+                    [recorder.update_view(formulas)]
+                ),
+                include_constituents=self.include_constituents,
+                aggs=self.aggs,
+                by=self.by,
+            )
+        except Exception as e:
+            raise DHError(e, "with_update_view operation on RollupTable failed.") from e
 
 
 class TreeNodeOperationsRecorder:
