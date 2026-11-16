@@ -501,3 +501,16 @@ fn records_that_cannot_be_read_fail_the_table_with_javas_texts() {
          \"value\" is null"
     );
 }
+
+/// Behavior: CachedSchemaRegistryClient, one per `consume`: a key and a value of one
+/// subject fetch it once (probe key_both)
+#[test]
+fn a_key_and_a_value_of_one_subject_fetch_it_once() {
+    let registry = registry();
+    let key = spec(Some("Holder"), None, ProtobufProtocol::Raw);
+    let value = spec(Some("M"), Some(&["/i"]), ProtobufProtocol::Raw);
+    let plan = Plan::new("t", &registry.config(), &key, &value).unwrap();
+    // in_x and in_s of the key, i of the value
+    assert_eq!(plan.definition().columns().len(), 3 + 3);
+    assert_eq!(registry.requests().len(), 3);
+}

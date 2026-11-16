@@ -26,6 +26,10 @@ pub(crate) struct Registry {
     by_id: Mutex<HashMap<i32, Arc<Schema>>>,
     /// The ids of the schemas registered so far, by subject and schema text.
     registered: Mutex<HashMap<(String, String), i32>>,
+    /// The answers to the Protobuf schema requests so far, by path: Confluent's client
+    /// caches the latest metadata of a subject, schemas by id and versions, so the key
+    /// and the value of one subject ask once (probe key_both).
+    protobuf_answers: Mutex<HashMap<String, Node>>,
 }
 
 /// Why a call to the registry failed: what the registry answered, or why it could not be
@@ -113,6 +117,7 @@ impl Registry {
             urls,
             by_id: Mutex::new(HashMap::new()),
             registered: Mutex::new(HashMap::new()),
+            protobuf_answers: Mutex::new(HashMap::new()),
         })
     }
 
@@ -247,7 +252,7 @@ impl Registry {
                 encode(subject)
             ),
         };
-        let metadata = self.get(&path).map_err(unchecked)?;
+        let metadata = self.cached(&path).map_err(unchecked)?;
         // Behavior: ProtobufConsumeImpl#descriptor checks the type of the metadata before
         // it fetches the schema (probe avro_subject); a missing type is Avro's.
         let kind = metadata
@@ -261,7 +266,7 @@ impl Registry {
         }
         let id = metadata.get("id").and_then(Node::exact_long).unwrap_or(0);
         let body = self
-            .get(&format!(
+            .cached(&format!(
                 "/schemas/ids/{id}?fetchMaxId=false&subject={}",
                 encode(subject)
             ))
@@ -277,6 +282,22 @@ impl Registry {
         self.protobuf_references(&body, &mut references, 0)
             .map_err(unchecked)?;
         Ok(ProtobufText { text, references })
+    }
+
+    /// GETs `path` once per registry.
+    fn cached(&self, path: &str) -> Result<Node, CallFailure> {
+        if let Some(node) = self
+            .protobuf_answers
+            .lock()
+            .expect("not poisoned")
+            .get(path)
+        {
+            return Ok(node.clone());
+        }
+        let node = self.get(path)?;
+        let mut answers = self.protobuf_answers.lock().expect("not poisoned");
+        answers.insert(path.to_owned(), node.clone());
+        Ok(node)
     }
 
     /// Adds the schemas `body` references, and theirs, to `out`, each once by name.
@@ -309,7 +330,7 @@ impl Registry {
             if out.iter().any(|(known, _)| known == name) {
                 continue;
             }
-            let found = self.get(&format!(
+            let found = self.cached(&format!(
                 "/subjects/{}/versions/{version}?deleted=true",
                 encode(subject)
             ))?;
