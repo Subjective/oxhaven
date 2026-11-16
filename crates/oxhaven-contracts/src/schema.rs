@@ -124,6 +124,24 @@ pub enum ColumnType {
     /// null. Java's type holds instants outside the 64-bit range of nanoseconds (before
     /// 1677-09-21 or after 2262-04-11); such a value cannot be a cell.
     ZonedDateTime,
+    /// `java.time.DayOfWeek`. A cell is an Arrow `Int8`: the day's number as
+    /// `java.time.DayOfWeek#getValue` gives it, Monday 1 to Sunday 7. The order of the
+    /// numbers is Java's order of the days (`Enum#compareTo`).
+    DayOfWeek,
+    /// `java.lang.Object`: a column Java declares only as `Object`, which a formula makes
+    /// of the `null` literal or of a cast to `Object`.
+    ///
+    /// The type holds the class of the cells, and every cell of the column has it: a cell
+    /// is stored as a cell of that type, and the value is kept exactly. A primitive class
+    /// stands for its box (`Int` for `java.lang.Integer`), whose value Java boxed from the
+    /// primitive as it is, so a cell may hold the value Java reserves for the primitive's
+    /// null (`Integer.MIN_VALUE`) as a value, which is not a null: a null cell is Java's
+    /// `null` reference, and only the validity says so.
+    ///
+    /// `None` is a column of nulls alone, which has no class: its cells are an Arrow `Utf8`
+    /// array of nulls. A column whose cells would have two classes, which Java allows
+    /// (`c ? (Object) 1 : (Object) "a"`), is no type here.
+    Object(Option<Box<ColumnType>>),
 }
 
 /// The Java class of the cells of a [`ColumnType::Table`] column.
@@ -147,6 +165,11 @@ impl ColumnType {
     /// [`ColumnType::Array`] of `element`.
     pub fn array(element: ColumnType) -> Self {
         ColumnType::Array(Box::new(element))
+    }
+
+    /// [`ColumnType::Object`] whose cells are of the class `class`, or of none.
+    pub fn object(class: Option<ColumnType>) -> Self {
+        ColumnType::Object(class.map(Box::new))
     }
 
     /// The element type of a list-valued column, which is a [`ColumnType::Vector`] or a
@@ -219,6 +242,9 @@ impl ColumnType {
                 ]
                 .into(),
             ),
+            ColumnType::DayOfWeek => DataType::Int8,
+            ColumnType::Object(Some(class)) => class.arrow_type(),
+            ColumnType::Object(None) => DataType::Utf8,
         }
     }
 }
@@ -395,6 +421,18 @@ mod tests {
         // a zone is its id, but not a string column
         assert_eq!(ColumnType::ZoneId.arrow_type(), DataType::Utf8);
         assert_ne!(ColumnType::ZoneId, ColumnType::String);
+    }
+
+    #[test]
+    fn an_object_column_is_stored_as_its_class_and_a_day_of_week_as_its_number() {
+        assert_eq!(ColumnType::DayOfWeek.arrow_type(), DataType::Int8);
+        let boxed = ColumnType::object(Some(ColumnType::Int));
+        assert_eq!(boxed.arrow_type(), DataType::Int32);
+        assert_ne!(boxed, ColumnType::Int);
+        assert_ne!(boxed, ColumnType::object(Some(ColumnType::Long)));
+        assert_eq!(ColumnType::object(None).arrow_type(), DataType::Utf8);
+        assert_ne!(ColumnType::object(None), ColumnType::String);
+        assert_eq!(boxed.list_element(), None);
     }
 
     #[test]
