@@ -7,6 +7,8 @@
 //! | [`consume_from`] | The same table over any [`RecordSource`]; tests script one |
 //! | [`client::ClientSource`] | The record source that talks to brokers, over librdkafka |
 //! | [`topics`] | The topics of a broker: `KafkaTools#listTopics` |
+//! | [`produce`] | Publishes a table to a topic: `KafkaTools#produceFromTable` |
+//! | [`produce_to`] | The same to any [`RecordSink`]; tests script one |
 //!
 //! A thread polls the source, turns each batch of records into columns and leaves them for
 //! the table, which shows what arrived since its last update cycle on the next one: as its
@@ -16,6 +18,9 @@ pub mod client;
 mod config;
 pub mod json;
 mod plan;
+mod produce;
+pub mod producer;
+mod serialize;
 mod stream;
 
 use std::fmt;
@@ -28,6 +33,10 @@ use oxhaven_contracts::table::Table;
 
 pub use client::topics;
 pub use plan::Plan;
+pub use produce::{
+    produce, produce_to, JsonProduceSpec, OutRecord, ProduceOptions, ProduceSpec, Publication,
+    RecordSink,
+};
 pub use stream::consume_from;
 
 /// Why a topic cannot be consumed, or why its table failed.

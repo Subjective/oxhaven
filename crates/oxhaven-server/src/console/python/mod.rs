@@ -510,6 +510,8 @@ fn bootstrap(py: Python<'_>) -> PyResult<Bound<'_, PyModule>> {
         native.add_function(wrap_pyfunction!(csv::write_csv, &native)?)?;
         native.add_function(wrap_pyfunction!(kafka::kafka_consume, &native)?)?;
         native.add_function(wrap_pyfunction!(kafka::kafka_topics, &native)?)?;
+        native.add_function(wrap_pyfunction!(kafka::kafka_produce, &native)?)?;
+        native.add_class::<kafka::KafkaPublication>()?;
         ops::register(&native)?;
         data::register(&native)?;
         generated::register(&native)?;

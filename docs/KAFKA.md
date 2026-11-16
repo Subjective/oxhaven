@@ -236,6 +236,125 @@ Java returns the key set of a `HashMap`, so its order is that of the names' hash
 came in the same order from both), except for a bucket of more than eight names, which Java reorders into
 a tree.
 
+## Producing
+
+Task 7.5.1. `deephaven.stream.kafka.producer.produce(table, kafka_config, topic,
+key_spec, value_spec, last_by_key_columns, publish_initial, partition)` over
+`oxhaven_kafka::produce`, with `simple_spec`, `json_spec` and `KeyValueSpec.IGNORE`.
+`produce_to` takes any `RecordSink` in place of librdkafka's producer, so that the tests
+can script what is sent. Each behaviour was probed on the reference with a real broker
+first; the probes and their comparison are under "Differences from Java seen in the
+probes".
+
+**What is published** (`PublishToKafka`):
+
+- Unless `publish_initial` is false, a record is sent for each row the table has, in row
+  order. That happens in the call, under the graph's shared lock.
+- Then, each cycle, a listener on the table acts on the cycle's update:
+  - It first checks the key columns. A modified key column fails the publication with
+    Java's `AssertionFailure` text, and nothing more is published.
+  - For a blink table, only the added rows are published.
+  - Otherwise each removed row is published first. Its record has the row's previous
+    key and no value. Then the added and modified rows are published together, in row
+    order, if a column of the value was modified; otherwise only the added rows.
+- Rows are sent in chunks of 2048. After each batch the producer is flushed, and the
+  first failed send fails the call (for the rows the table had) or the publication. Its
+  text is `KafkaPublisherException: KafkaProducer reported send failure: <cause>`.
+- `last_by_key_columns` publishes `last_by` of the table by the key's columns, through
+  the engine's aggregation. A key that leaves the table is a record with no value.
+- `partition` sets the partition of every record. A negative partition fails at the first
+  record, as `ProducerRecord` does. Without one, a key's partition is librdkafka's
+  `murmur2_random`, which is Java's `murmur2` of the key's bytes.
+- The callback that `produce` returns stops publishing, and a second call fails as in
+  Java. Dropping the callback also stops publishing; Java stops when it is garbage
+  collected.
+- A static table is published once and its producer is closed at once.
+
+The checks that Java makes in Python and in `produceFromTable` come first, in its order,
+with its texts:
+
+- both specs `IGNORE`;
+- `publish_initial=False` on a static table;
+- no topic (`None` or `''`; `partition=0` is ignored too, since the Python tests it as a
+  boolean);
+- a column the table lacks (Java's NullPointerException text);
+- `include_columns` names the table lacks.
+
+`topic_col`, `partition_col` and `timestamp_col` are refused by name; they belong to task
+7.5.2.
+
+### How a row becomes a record
+
+**Simple specs** use Kafka's serializers. `short`, `int`, `long`, `float` and `double` are
+written big-endian; floats and doubles as their raw bits, NaN as Java's canonical NaN.
+`String` columns are encoded in the charset that `key.serializer.encoding` or
+`value.serializer.encoding` names, else `serializer.encoding`, else UTF-8. The charsets
+are UTF-8, UTF-16 (big-endian, with a BOM), UTF-16BE, UTF-16LE, ISO-8859-1 and US-ASCII,
+written in any case. A character the charset cannot hold becomes `?`. `byte[]` columns
+are sent as they are. A null cell is a record without that key or value. Any other
+column type fails the call with Java's `Serializer not found for column X, type
+<qst type>`.
+
+**JSON specs** (`JsonKeyOrValueSerializer`) write one object per row:
+
+- The fields are the columns of `include_columns` in that order, or every column. A
+  repeated field keeps its first place and takes the last value.
+- `mapping` renames fields. With `nested_delim`, a field name is split with Java's
+  `String.split` and becomes nested objects, which stay when empty. The rules are
+  Java's: trailing empty strings are dropped, and a name that is only delimiters fails
+  with Java's `Unknown column name X for table`, caused by an
+  `ArrayIndexOutOfBoundsException`. A field under a name that already holds a value
+  fails with Jackson's `ClassCastException` text.
+- A null cell leaves its field out, or is written as `null` with `output_nulls`.
+- `timestamp_field` adds the time the record was made, in nanoseconds since the epoch,
+  as text. There is one value per chunk of 2048 rows, as in Java.
+- Values are written as Jackson writes its nodes:
+  - integers as numbers;
+  - `float` and `double` in Java's shortest `toString`, NaN and the infinities as
+    quoted text;
+  - `char` as a one-character string, where half of a surrogate pair is `?`;
+  - `BigDecimal` with its scale (`1E+2`), `BigInteger` as it is;
+  - `Instant` in `ISO_INSTANT`, `LocalDate` and `LocalTime` in Java's `toString`, and a
+    time zone as its id;
+  - text with Jackson's escapes.
+- Other column types fail by name; see "Refused, by Java method". Java writes their
+  `toString`, which for an array is an identity hash.
+
+### Producer properties
+
+The properties are read as `KafkaProducer` reads them. Those librdkafka has go to it,
+under its name where the name differs:
+
+- under the same name: `bootstrap.servers`, `client.id`, `linger.ms`, `retries`,
+  `retry.backoff.ms`, `retry.backoff.max.ms`, `max.in.flight.requests.per.connection`,
+  `metadata.max.age.ms`, `reconnect.backoff.ms`, `reconnect.backoff.max.ms`,
+  `connections.max.idle.ms`, `socket.connection.setup.timeout.ms`, `request.timeout.ms`
+  and `batch.size` (where 0, which turns batching off in Java, becomes librdkafka's 1);
+- renamed: `delivery.timeout.ms` becomes `message.timeout.ms`, `max.request.size`
+  becomes `message.max.bytes`, and `receive.buffer.bytes` and `send.buffer.bytes` become
+  `socket.receive.buffer.bytes` and `socket.send.buffer.bytes`.
+
+Java's defaults are set where librdkafka's differ: `message.timeout.ms` 120000,
+`message.max.bytes` 1048576, `batch.size` 16384, and the partitioner `murmur2_random`.
+
+- `acks` takes `all`, `-1`, `0` and `1`. Anything else fails with Java's
+  `ConfigException`.
+- `compression.type` takes `none`, `snappy`, `lz4` and `zstd`. `gzip` is refused, for
+  want of zlib (see "The client library").
+- `enable.idempotence` follows `ProducerConfig`:
+  - left unset, it is on unless `acks` is not `all`, `retries` is 0, or more than five
+    requests may be in flight;
+  - set to true with `acks` other than `all`, it fails as in Java.
+- `max.block.ms` (default 60000) bounds the wait for the topic's metadata. When the
+  metadata does not come in time, the records fail with Java's `TimeoutException` text.
+  That happens when the broker does not answer, or when the topic has no partition
+  `partition`.
+- Refused by name: `partitioner.class` and `interceptor.classes`, which load Java
+  classes; `transactional.id`, with which every send in the reference fails, since it
+  never calls `initTransactions`; and any `security.protocol` other than `PLAINTEXT`.
+- `key.serializer` and `value.serializer` are ignored, as in Java, where the specs choose
+  the serializers. Other properties are ignored in silence, as for the consumer.
+
 ## The engine side
 
 Since task 7.4.2 (`tasks/7.4.2-stream-adapter.md`) the engine has Java's stream adapter,
@@ -392,6 +511,8 @@ documented contents and off this machine, which has the same tools.
 | --- | --- | --- | --- |
 | JSON conversion, refusals, the translation of properties, Java's hash order, which errors end a consumption | unit tests in `src/` | nothing | `cargo test --workspace`: every pull request |
 | Tables from a scripted `RecordSource`, with the consistency checker | `tests/consume.rs` | nothing | every pull request |
+| Publishing to a scripted `RecordSink`: the records of each kind of change, `last_by`, blink tables, JSON and its failures, the checks | `tests/produce.rs` | nothing | every pull request |
+| Publishing to a broker: a round trip through `consume`, the partitions of keys on a topic of two, `partition`, the metadata timeouts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh` |
 | The Python modules: specs, checks, refusals, an unreachable broker | `console::python::kafka` | Python | the `python-console-on` job |
 | The client against a broker: offsets, groups and what is committed, snappy, lz4, zstd, the gzip refusal, the listing of topics, a broker that restarts | `tests/broker.rs`, ignored unless asked for | Docker | `tests/broker.sh`: the `kafka-broker` job |
 | The same rows as Java | probes of both servers on one broker | Docker, the Java reference | by hand, in tasks 7.4.1 and 7.4.4; a recorded corpus is task 7.4.6 |
@@ -519,6 +640,23 @@ broker under the open tables of both.
 10. **A value Java accepts and librdkafka does not** fails the call (the ranges under
     "Consumer properties"). The alternative is to clamp, which would be a silent change
     of what was asked.
+11. **Producing, `ModifiedColumnSet.ALL`.** Java's publish listener calls
+    `containsAny(ALL)` and throws a NullPointerException. The publication then stops, after
+    the cycle's removes when the key is `IGNORE`. Oxhaven refuses by name at the same
+    point, so what is published is the same; only the text differs. No engine operation
+    probed here reports `ALL` for a table one would publish. Should this be reproduced as
+    the NullPointerException, or kept as a refusal?
+12. **Producing, metadata that never comes.** Java waits `max.block.ms` for each record and
+    fails each one. Oxhaven waits once per batch and fails the rest of the batch at once.
+    The call fails with the same text, sooner. Reproducing Java's wait would hold the
+    update graph for `max.block.ms` times the number of rows.
+13. **Producing, records without a key** (a key spec of `IGNORE`, or a null key): Java's
+    sticky partitioner and librdkafka's `murmur2_random` both choose a partition at
+    random and stay on it for a while, but not the same one. Records with a key go to the
+    same partition in both.
+14. **Producing, the callback.** Dropping the Python callback stops publishing, as its
+    garbage collection does in Java. CPython drops it at once; Java collects it whenever
+    it next collects.
 
 ## Refused, by Java method
 
@@ -536,6 +674,16 @@ broker under the open tables of both.
 | `consume_to_partitioned_table` | `io.deephaven.kafka.KafkaTools#consumeToPartitionedTable` |
 | `avro_spec`, `protobuf_spec`, `object_processor_spec`, `ProtobufProtocol` | `io.deephaven.kafka.KafkaTools.Consume#avroSpec`, `#protobufSpec`, `#objectProcessorSpec`, `io.deephaven.kafka.protobuf.Protocol` |
 | `deephaven.stream.add_only_to_blink` | `io.deephaven.engine.table.impl.AddOnlyToBlinkTableAdapter#toBlink` |
+| Producing: an update whose modified columns are `ModifiedColumnSet.ALL` (Java's listener throws a NullPointerException and stops; here the publication fails at the same point) | `io.deephaven.engine.table.ModifiedColumnSet#containsAny` |
+| Producing: `compression.type=gzip` | `org.apache.kafka.common.compress.GzipCompression` |
+| Producing: `transactional.id` | `org.apache.kafka.clients.producer.KafkaProducer#initTransactions` |
+| Producing: `partitioner.class`, `interceptor.classes` | `org.apache.kafka.clients.producer.Partitioner`, `ProducerInterceptor` |
+| Producing: a `nested_delim` with a regular-expression character other than an escaped one | `java.lang.String#split` |
+| Producing: a `*.serializer.encoding` other than the six charsets above | `java.nio.charset.Charset#forName` |
+| Producing: a JSON `char` that is half of a surrogate pair, under a charset other than UTF-8 | `java.lang.String#getBytes` |
+| Producing: JSON columns of `Duration`, `Period`, `LocalDateTime`, `ZonedDateTime`, arrays, vectors and other objects | `java.util.Objects#toString` |
+| `produce` with `topic_col`, `partition_col` or `timestamp_col` (task 7.5.2) | `io.deephaven.kafka.KafkaPublishOptions#topicColumn`, `#partitionColumn`, `#timestampColumn` |
+| `producer.avro_spec` (task 7.5.2) | `io.deephaven.kafka.KafkaTools.Produce#avroSpec` |
 
 No longer refused since task 7.4.3: JSON columns of `char` and `Instant`, nested
 pointers and records that are arrays, fractions and text in numeric columns, objects and
@@ -552,7 +700,8 @@ other than gzip, `isolation.level=read_committed`, record batches older than for
 (librdkafka reads them; not probed, the broker writes none), `deephaven.stream.kafka.
 topics`.
 
-`deephaven.stream.kafka.producer` and `cdc` do not exist yet: importing them fails.
+`deephaven.stream.kafka.producer` exists since task 7.5.1. `cdc` does not exist yet:
+importing it fails.
 `deephaven.stream.blink_to_append_only` and `deephaven.stream.table_publisher` exist since
 task 7.4.2.
 
@@ -570,6 +719,6 @@ These replace 7.4 and 7.5. Sizes: S is a day of one implementer, M two to three,
 | 7.4.6 | `consume_to_partitioned_table`; a recorded Java corpus for consumption in `oracle/corpus` and a replay of it through a scripted source | M | 7.4.2 |
 | 7.4.7 | Avro specs and the schema registry client (a licence check of the Avro crate first) | L | 7.4.3 |
 | 7.4.8 | Protobuf specs (`prost-reflect` is in the tree), both protocols | M | 7.4.7 for the registry |
-| 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | M | 7.4.4 |
+| 7.5.1 | Produce: librdkafka's producer, simple and JSON specs, `publish_initial`, `last_by_key_columns`, how removes and modifies are published; `deephaven.stream.kafka.producer` | done (`tasks/7.5.1-kafka-produce.md`) | 7.4.4 |
 | 7.5.2 | Produce: Avro and raw specs, topic, partition and timestamp columns | M | 7.5.1, 7.4.7 |
 | 7.5.3 | `deephaven.stream.kafka.cdc` | M | 7.4.7 |

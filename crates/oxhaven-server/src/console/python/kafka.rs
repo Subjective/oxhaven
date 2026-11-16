@@ -9,7 +9,10 @@ use std::sync::Arc;
 
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
-use oxhaven_kafka::{ConsumeOptions, InitialOffset, KafkaError, Offsets, Spec, TableType};
+use oxhaven_kafka::{
+    ConsumeOptions, InitialOffset, JsonProduceSpec, KafkaError, Offsets, ProduceOptions,
+    ProduceSpec, Publication, Spec, TableType,
+};
 use pyo3::exceptions::{PyNotImplementedError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use serde_json::Value;
@@ -102,6 +105,104 @@ pub(super) fn kafka_consume(
         .detach(|| oxhaven_kafka::consume(graph, &options))
         .map_err(exception)?;
     Ok(TableHandle { table })
+}
+
+/// A key or value spec of `deephaven.stream.kafka.producer.KeyValueSpec`:
+/// `{"kind": "ignore"}`, `{"kind": "simple", "column": name}` or `{"kind": "json",
+/// "include": [names] or null, "mapping": [[column, field]] or null, "nested_delim": text
+/// or null, "output_nulls": bool, "timestamp_field": text or null}`.
+fn produce_spec(json: &str) -> PyResult<ProduceSpec> {
+    let bad = || PyValueError::new_err(format!("not a key or value spec: {json}"));
+    let value: Value = serde_json::from_str(json).map_err(|_| bad())?;
+    let text = |value: &Value| value.as_str().map(str::to_owned).ok_or_else(bad);
+    let optional = |value: &Value| match value {
+        Value::Null => Ok(None),
+        value => text(value).map(Some),
+    };
+    match value["kind"].as_str() {
+        Some("ignore") => Ok(ProduceSpec::Ignore),
+        Some("simple") => Ok(ProduceSpec::Simple(text(&value["column"])?)),
+        Some("json") => {
+            let include = match &value["include"] {
+                Value::Null => None,
+                names => Some(
+                    names
+                        .as_array()
+                        .ok_or_else(bad)?
+                        .iter()
+                        .map(text)
+                        .collect::<PyResult<_>>()?,
+                ),
+            };
+            let mapping = match &value["mapping"] {
+                Value::Null => Vec::new(),
+                pairs => pairs
+                    .as_array()
+                    .ok_or_else(bad)?
+                    .iter()
+                    .map(|pair| Ok((text(&pair[0])?, text(&pair[1])?)))
+                    .collect::<PyResult<_>>()?,
+            };
+            Ok(ProduceSpec::Json(JsonProduceSpec {
+                include,
+                exclude: None,
+                mapping,
+                nested_delimiter: optional(&value["nested_delim"])?,
+                output_nulls: value["output_nulls"].as_bool().ok_or_else(bad)?,
+                timestamp_field: optional(&value["timestamp_field"])?,
+            }))
+        }
+        _ => Err(bad()),
+    }
+}
+
+/// A table being published; `stop` is the callback `produce` returns.
+#[pyclass(frozen, module = "_oxhaven")]
+pub(super) struct KafkaPublication {
+    publication: Publication,
+}
+
+#[pymethods]
+impl KafkaPublication {
+    fn stop(&self, py: Python<'_>) -> PyResult<()> {
+        py.detach(|| self.publication.stop()).map_err(exception)
+    }
+
+    /// Why publishing stopped by itself, if it did.
+    fn failure(&self) -> Option<String> {
+        self.publication.failure()
+    }
+}
+
+/// Publishes `table` to `topic` with the arguments of
+/// `deephaven.stream.kafka.producer.produce`.
+#[pyfunction]
+#[allow(clippy::too_many_arguments)]
+pub(super) fn kafka_produce(
+    py: Python<'_>,
+    table: &TableHandle,
+    config: Vec<(String, String)>,
+    topic: &str,
+    partition: Option<i32>,
+    key_spec: &str,
+    value_spec: &str,
+    last_by: bool,
+    publish_initial: bool,
+) -> PyResult<KafkaPublication> {
+    let options = ProduceOptions {
+        config,
+        topic: topic.to_owned(),
+        partition,
+        key: produce_spec(key_spec)?,
+        value: produce_spec(value_spec)?,
+        last_by,
+        publish_initial,
+    };
+    let table = table.table.clone();
+    let publication = py
+        .detach(|| oxhaven_kafka::produce(table, &options))
+        .map_err(exception)?;
+    Ok(KafkaPublication { publication })
 }
 
 /// The names of the topics of the broker `config` names.
@@ -257,5 +358,120 @@ mod tests {
             let last = error.trim_end().lines().last().unwrap().to_string();
             assert!(last.ends_with(&format!("not ported: {java}")), "{last}");
         }
+    }
+
+    /// No broker is needed: a table without rows sends nothing, and the one call that
+    /// sends names a closed port of this machine. The texts are the reference's.
+    #[tokio::test]
+    async fn deephaven_kafka_producer_checks_refuses_and_raises_dherror() {
+        let _turn = ONE_INTERPRETER.lock().await;
+        let server = TestServer::start_with(|state| super::super::start(state).unwrap()).await;
+        let console = server.state.console.clone().unwrap();
+        const SETUP: &str = "from deephaven import empty_table, time_table\n\
+            from deephaven.stream.kafka import producer as kp\n\
+            CFG = {'bootstrap.servers': '127.0.0.1:1', 'max.block.ms': '500'}\n\
+            EMPTY = empty_table(0).update(['K = `k`', 'V = i'])\n\
+            V = kp.simple_spec('V')\n\
+            IGNORE = kp.KeyValueSpec.IGNORE\n";
+        let failure = |code: &str, message: &str| {
+            let error = console.evaluate(&format!("{SETUP}{code}")).error;
+            let error = error.expect("the call fails");
+            let last = error.trim_end().lines().last().unwrap().to_string();
+            let prefix = format!("deephaven.dherror.DHError: {message} : ");
+            let text = last.strip_prefix(&prefix);
+            text.unwrap_or_else(|| panic!("not a DHError of {message}: {last}"))
+                .to_string()
+        };
+        const PRODUCE: &str = "failed to start producing Kafka messages.";
+        const SPEC: &str = "failed to create a Kafka key/value spec.";
+
+        let checked = console.evaluate(&format!(
+            "{SETUP}\
+             assert IGNORE.j_object == {{'kind': 'ignore'}}\n\
+             assert V.j_object == {{'kind': 'simple', 'column': 'V'}}\n\
+             spec = kp.json_spec(['V', 'K'], mapping={{'V': 'a.b'}}, nested_delim='.', \
+             output_nulls=True, timestamp_field='ts')\n\
+             assert spec.j_object == {{'kind': 'json', 'include': ['V', 'K'], \
+             'mapping': [['V', 'a.b']], 'nested_delim': '.', 'output_nulls': True, \
+             'timestamp_field': 'ts'}}, spec.j_object\n\
+             assert kp.json_spec().j_object['include'] is None\n\
+             stop = kp.produce(EMPTY, CFG, 't', key_spec=kp.simple_spec('K'), value_spec=V)\n\
+             stop()\n\
+             try:\n    stop()\n    raise AssertionError('stopped twice')\n\
+             except Exception as e:\n    assert 'failed to stop publishing to Kafka' in str(e), e\n"
+        ));
+        assert_eq!(checked.error, None);
+
+        for (code, refusal) in [
+            (
+                "kp.produce(EMPTY, CFG, 't', key_spec=IGNORE, value_spec=IGNORE)",
+                "at least one argument for 'key_spec' or 'value_spec' must be different from \
+                 KeyValueSpec.IGNORE",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, publish_initial=False)",
+                "publish_initial == False and table.is_refreshing == False",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, '', IGNORE, V)",
+                "java.lang.IllegalArgumentException: Must set topic or topicColumn (or both)",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, topic_col='K')",
+                "not ported: io.deephaven.kafka.KafkaPublishOptions#topicColumn",
+            ),
+            (
+                "kp.produce(EMPTY, CFG, 't', IGNORE, V, timestamp_col='K')",
+                "not ported: io.deephaven.kafka.KafkaPublishOptions#timestampColumn",
+            ),
+            (
+                "kp.produce(EMPTY, {}, 't', IGNORE, V)",
+                "org.apache.kafka.common.config.ConfigException: Missing required \
+                 configuration \"bootstrap.servers\" which has no default value.",
+            ),
+            (
+                "kp.produce(EMPTY, {**CFG, 'acks': '2'}, 't', IGNORE, V)",
+                "org.apache.kafka.common.config.ConfigException: Invalid value 2 for \
+                 configuration acks: String must be one of: all, -1, 0, 1",
+            ),
+        ] {
+            assert_eq!(failure(code, PRODUCE), refusal, "{code}");
+        }
+        let missing = failure(
+            "kp.produce(EMPTY, CFG, 't', IGNORE, kp.simple_spec('X'))",
+            PRODUCE,
+        );
+        assert!(missing.contains("because \"cd\" is null"), "{missing}");
+        let gzip = failure(
+            "kp.produce(EMPTY, {**CFG, 'compression.type': 'gzip'}, 't', IGNORE, V)",
+            PRODUCE,
+        );
+        assert!(
+            gzip.starts_with("not ported yet: org.apache.kafka.common.compress.GzipCompression"),
+            "{gzip}"
+        );
+        let unreachable = failure(
+            "kp.produce(empty_table(2).update('V = i'), CFG, 't', IGNORE, V)",
+            PRODUCE,
+        );
+        assert_eq!(
+            unreachable,
+            "io.deephaven.kafka.publish.KafkaPublisherException: KafkaProducer reported send \
+             failure: org.apache.kafka.common.errors.TimeoutException: Topic t not present in \
+             metadata after 500 ms."
+        );
+
+        assert_eq!(
+            failure("kp.json_spec(['V'], exclude_columns=['K'])", SPEC),
+            "One of include_columns and exclude_columns must be None."
+        );
+        assert_eq!(
+            failure("kp.json_spec(exclude_columns=['K'])", SPEC),
+            "no matching Java method overloads found"
+        );
+        assert_eq!(
+            failure("kp.avro_spec('schema')", SPEC),
+            "not ported: io.deephaven.kafka.KafkaTools.Produce#avroSpec"
+        );
     }
 }

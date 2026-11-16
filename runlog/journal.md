@@ -1074,3 +1074,9 @@ Pull request 125 (fuzz fixes) merged on green.
 ## 2026-11-16T11:46Z
 
 Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the merged tree and records match Java byte for byte. Opened as pull request 126. Resuming the same agent after the disk incident worked well: it had 103k tokens of context and finished at 254k.
+
+- 2026-11-16T11:47Z: started task 4.23 (remaining fuzzer refusals R1, R4, R6, R7, R8) on the default model, as fuzzer fixes stay there. Pull request 126 (Kafka producing) is waiting on checks. Two building agents are running (4.22, 4.23).
+
+- 2026-11-16T11:54Z: merged pull request 126 (publishing tables to Kafka) on seven green checks. Its four rulings (11 to 14 in docs/KAFKA.md) and the untested JSON tombstone on the consume side go to the owner review list. Still two building agents, so nothing new started.
+
+- 2026-11-16T12:02Z: task 4.22 came back partial after 40 minutes and 355k tokens: the agent hit its context limit with sort, filters and keys built but no recorded scenario, no zoned date time aggregations and the oracle gates not run. Verdict: too large as one task (three engine areas plus scenario plus fuzzer). Re-split: a fresh agent continues from the written handover on the same branch, with the fuzzer piece made optional and likely its own task. Resuming the old agent was rejected because its context was full.

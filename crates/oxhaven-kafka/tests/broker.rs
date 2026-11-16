@@ -10,16 +10,23 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use arrow::array::AsArray;
+use arrow::array::{ArrayRef, Int64Array, StringArray};
 use arrow::datatypes::{Int32Type, Int64Type};
 use oxhaven_contracts::graph::{Dependency, UpdateGraph};
+use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_contracts::schema::{ColumnDefinition, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure, UpdateListener};
 use oxhaven_contracts::update::TableUpdate;
 use oxhaven_engine::graph::SteppedUpdateGraph;
-use oxhaven_kafka::{consume, ConsumeOptions, InitialOffset, Offsets, Spec, TableType};
+use oxhaven_kafka::{
+    consume, ConsumeOptions, InitialOffset, JsonProduceSpec, Offsets, ProduceOptions, ProduceSpec,
+    Spec, TableType,
+};
+use oxhaven_testkit::{ReferenceTable, ScriptedTable, TableChange};
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
-use rdkafka::{ClientConfig, Offset, TopicPartitionList};
+use rdkafka::{ClientConfig, Message, Offset, TopicPartitionList};
 
 fn broker() -> String {
     let address = std::env::var("OXHAVEN_KAFKA_BROKER")
@@ -659,4 +666,214 @@ fn a_simple_byte_array_column_holds_the_bytes_of_each_value() {
         })
         .collect();
     assert_eq!(cells, [vec![97, 98], vec![], vec![-61, -87]]);
+}
+
+// Producing. Every record expected here is what the Java reference published to a broker
+// for the same table (docs/KAFKA.md, "Producing").
+
+fn produce_options(topic: &str, key: ProduceSpec, value: ProduceSpec) -> ProduceOptions {
+    ProduceOptions {
+        config: vec![("bootstrap.servers".to_owned(), broker())],
+        topic: topic.to_owned(),
+        partition: None,
+        key,
+        value,
+        last_by: false,
+        publish_initial: true,
+    }
+}
+
+fn simple(column: &str) -> ProduceSpec {
+    ProduceSpec::Simple(column.to_owned())
+}
+
+fn definition(columns: &[(&str, ColumnType)]) -> TableDefinition {
+    let columns = columns
+        .iter()
+        .map(|(name, column_type)| ColumnDefinition::new(*name, column_type.clone()))
+        .collect();
+    TableDefinition::new(columns).unwrap()
+}
+
+fn texts(values: &[Option<&str>]) -> ArrayRef {
+    Arc::new(StringArray::from(values.to_vec()))
+}
+
+/// A static table of keys `K` and values `V`: `v` and the key.
+fn keyed(keys: &[&str]) -> Arc<dyn Table> {
+    let values: Vec<String> = keys.iter().map(|key| format!("v{key}")).collect();
+    let values: Vec<Option<&str>> = values.iter().map(|value| Some(value.as_str())).collect();
+    let keys: Vec<Option<&str>> = keys.iter().map(|key| Some(*key)).collect();
+    ReferenceTable::new_static(
+        definition(&[("K", ColumnType::String), ("V", ColumnType::String)]),
+        RowSet::flat(keys.len() as u64),
+        vec![texts(&keys), texts(&values)],
+    )
+}
+
+type Record = (i32, Option<String>, Option<String>);
+
+/// The partition, key and value of the records of `topic` from its beginning, until
+/// `count` have been read or nothing more came for two seconds; at most twenty seconds.
+fn records_of(topic: &str, count: usize) -> Vec<Record> {
+    let consumer: BaseConsumer = ClientConfig::new()
+        .set("bootstrap.servers", broker())
+        .set("group.id", fresh("reader"))
+        .set("auto.offset.reset", "earliest")
+        .set("enable.auto.commit", "false")
+        .create()
+        .unwrap();
+    consumer.subscribe(&[topic]).unwrap();
+    let text = |bytes: Option<&[u8]>| bytes.map(|b| String::from_utf8(b.to_vec()).unwrap());
+    let mut records = Vec::new();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut last = Instant::now();
+    while records.len() < count && Instant::now() < deadline {
+        match consumer.poll(Duration::from_millis(200)) {
+            Some(message) => {
+                let message = message.unwrap();
+                let record = (
+                    message.partition(),
+                    text(message.key()),
+                    text(message.payload()),
+                );
+                records.push(record);
+                last = Instant::now();
+            }
+            None if !records.is_empty() && last.elapsed() > Duration::from_secs(2) => break,
+            None => {}
+        }
+    }
+    records
+}
+
+/// A table's rows go to a topic and come back as they were; a removed row comes back as a
+/// record of its key and no value (`PublishToKafka`; probes `p1`, `r4`).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn a_table_published_to_a_topic_is_consumed_back() {
+    let topic = fresh("round_trip");
+    let graph = SteppedUpdateGraph::new();
+    let script = ScriptedTable::new(
+        graph.clone(),
+        definition(&[
+            ("K", ColumnType::String),
+            ("N", ColumnType::Long),
+            ("S", ColumnType::String),
+        ]),
+        RowSet::flat(2),
+        vec![
+            texts(&[Some("k1"), Some("k2")]),
+            Arc::new(Int64Array::from(vec![Some(1), Some(2)])),
+            texts(&[Some("a"), None]),
+        ],
+    );
+    let value = ProduceSpec::Json(JsonProduceSpec {
+        include: Some(vec!["N".to_owned(), "S".to_owned()]),
+        ..JsonProduceSpec::default()
+    });
+    let published = produce_options(&topic, simple("K"), value);
+    let publication = oxhaven_kafka::produce(script.table(), &published).unwrap();
+    script.push(TableChange::new().remove([0]));
+    graph.run_cycle();
+    assert_eq!(publication.failure(), None);
+
+    let consumed = SteppedUpdateGraph::new();
+    let text = Spec::Simple {
+        column: Some("V".to_owned()),
+        data_type: Some(ColumnType::String),
+    };
+    let shared: Arc<dyn UpdateGraph> = consumed.clone();
+    let back = consume(shared, &options(&topic, BEGINNING, text, TableType::Append)).unwrap();
+    wait_for(&consumed, back.as_ref(), 3);
+    let some = |text: &str| Some(text.to_owned());
+    assert_eq!(
+        strings(back.as_ref(), "K"),
+        [some("k1"), some("k2"), some("k1")]
+    );
+    assert_eq!(
+        strings(back.as_ref(), "V"),
+        [some(r#"{"N":1,"S":"a"}"#), some(r#"{"N":2}"#), None]
+    );
+    publication.stop().unwrap();
+}
+
+/// A key's partition is Java's: `murmur2` of its bytes (probe `p3`: of a topic of two
+/// partitions, keys `a`, `b`, `c` and `e` go to partition 0, `d` and `f` to 1), unless
+/// `partition` chooses one for every record.
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn records_go_to_the_partition_of_their_key_or_the_one_chosen() {
+    // tests/broker.sh creates this topic with two partitions; a run finds its own records
+    // by their values.
+    let topic = "oxhaven_produce_two";
+    let keys = ["a", "b", "c", "d", "e", "f"];
+    let options = produce_options(topic, simple("K"), simple("V"));
+    oxhaven_kafka::produce(keyed(&keys), &options).unwrap();
+    let run = fresh("run");
+    let chosen: Vec<String> = keys.iter().map(|key| format!("{run}_{key}")).collect();
+    let chosen: Vec<&str> = chosen.iter().map(String::as_str).collect();
+    let mut one = produce_options(topic, simple("K"), simple("V"));
+    one.partition = Some(1);
+    oxhaven_kafka::produce(keyed(&chosen), &one).unwrap();
+
+    let records = records_of(topic, usize::MAX);
+    // The last record of each key: earlier runs published the same keys.
+    let partition_of = |key: &str| {
+        let record = records
+            .iter()
+            .rev()
+            .find(|(_, k, _)| k.as_deref() == Some(key));
+        let record = record.unwrap_or_else(|| panic!("{key} was not read: {records:?}"));
+        assert_eq!(record.2, Some(format!("v{key}")));
+        record.0
+    };
+    let partitions: Vec<i32> = keys.iter().map(|key| partition_of(key)).collect();
+    assert_eq!(partitions, [0, 0, 0, 1, 0, 1]);
+    for key in &chosen {
+        assert_eq!(partition_of(key), 1, "{key}");
+    }
+}
+
+/// A partition the topic does not have, or a broker that does not answer: the records
+/// fail after `max.block.ms` with Java's `TimeoutException`, and so does the call (probes
+/// `p4`, `cbx`).
+#[test]
+#[ignore = "needs a broker: crates/oxhaven-kafka/tests/broker.sh"]
+fn a_partition_or_a_broker_that_is_not_there_times_out() {
+    let mut options = produce_options("oxhaven_produce_two", simple("K"), simple("V"));
+    options.partition = Some(5);
+    options
+        .config
+        .push(("max.block.ms".to_owned(), "500".to_owned()));
+    let started = Instant::now();
+    let error = oxhaven_kafka::produce(keyed(&["a", "b"]), &options)
+        .err()
+        .unwrap();
+    assert!(started.elapsed() >= Duration::from_millis(500));
+    assert_eq!(
+        error.to_string(),
+        "io.deephaven.kafka.publish.KafkaPublisherException: KafkaProducer reported send \
+         failure: org.apache.kafka.common.errors.TimeoutException: Partition 5 of topic \
+         oxhaven_produce_two with partition count 2 is not present in metadata after 500 ms."
+    );
+
+    let topic = fresh("unreachable");
+    let mut options = produce_options(&topic, ProduceSpec::Ignore, simple("V"));
+    // Nothing listens on port 1 of this machine.
+    options.config = vec![
+        ("bootstrap.servers".to_owned(), "127.0.0.1:1".to_owned()),
+        ("max.block.ms".to_owned(), "500".to_owned()),
+    ];
+    let error = oxhaven_kafka::produce(keyed(&["a"]), &options)
+        .err()
+        .unwrap();
+    assert_eq!(
+        error.to_string(),
+        format!(
+            "io.deephaven.kafka.publish.KafkaPublisherException: KafkaProducer reported send \
+             failure: org.apache.kafka.common.errors.TimeoutException: Topic {topic} not \
+             present in metadata after 500 ms."
+        )
+    );
 }
