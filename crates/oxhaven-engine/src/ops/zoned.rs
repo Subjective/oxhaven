@@ -82,9 +82,9 @@ fn sort_key_fields() -> Fields {
 pub(crate) fn sort_key(values: &ArrayRef) -> Result<ArrayRef, TableFailure> {
     let (cells, instants, zones) = parts(values)?;
     let mut offsets = Vec::with_capacity(cells.len());
-    for row in 0..cells.len() {
+    for (row, &nanos) in instants.iter().enumerate() {
         offsets.push(if cells.is_valid(row) && zones.is_valid(row) {
-            offset_seconds(zones.value(row), instants[row])?
+            offset_seconds(zones.value(row), nanos)?
         } else {
             0
         });
