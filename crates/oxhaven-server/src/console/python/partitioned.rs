@@ -132,8 +132,10 @@ impl PartitionedHandle {
         function: Py<PyAny>,
         dependencies: Vec<PyRef<'_, TableHandle>>,
     ) -> PyResult<PartitionedHandle> {
-        let dependencies: Vec<Arc<dyn Table>> =
-            dependencies.iter().map(|table| table.table.clone()).collect();
+        let dependencies: Vec<Arc<dyn Table>> = dependencies
+            .iter()
+            .map(|table| table.table.clone())
+            .collect();
         let (partitioned, function) = (&self.partitioned, transformer(function));
         py.detach(|| {
             let mut locked = vec![partitioned.table()];
@@ -158,8 +160,10 @@ impl PartitionedHandle {
         function: Py<PyAny>,
         dependencies: Vec<PyRef<'_, TableHandle>>,
     ) -> PyResult<PartitionedHandle> {
-        let dependencies: Vec<Arc<dyn Table>> =
-            dependencies.iter().map(|table| table.table.clone()).collect();
+        let dependencies: Vec<Arc<dyn Table>> = dependencies
+            .iter()
+            .map(|table| table.table.clone())
+            .collect();
         let (partitioned, other) = (&self.partitioned, &other.partitioned);
         let function = transformer(function);
         py.detach(|| {
