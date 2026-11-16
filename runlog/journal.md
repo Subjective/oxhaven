@@ -938,3 +938,9 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   from the console ends Java's server.
 - Pull request 109 merged (7.9, tree tables). Start times of 7.2b run 2, 7.4.1 and 5.8 in
   tasks.csv corrected: they had been written from an estimate, not the clock.
+- Pull request 111 opened (7.2b, Parquet writes). The replay gate passes after the scenario's
+  partitioned step was re-recorded with a `base_name`; the baseline line got stricter. Gap
+  for a follow-up: a directory whose partitioning columns only `_common_metadata` knows
+  cannot be read, so partitioned output with metadata files is not read back as a directory.
+- Next in the free slot: rollup update and format views with constituents (7.8.2 and 7.8.3),
+  now that tree tables are on main.

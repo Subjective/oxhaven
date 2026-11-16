@@ -557,6 +557,54 @@ message for the failure and the name of its method of `io.deephaven.time.calenda
 (`calendar`, `calendarName`, `calendarNames`, `setCalendar`, `removeCalendar`,
 `addCalendar`, `addCalendarFromFile`): this server has no business calendars.
 
+### The jpy module
+
+Task 7.10.2. The reference's Python reaches Java through the module `jpy`, and packages
+written for it import the module: `deephaven.plot.express` has `import jpy` and a
+`jpy.get_type(...)` in a module body, so without a module of that name the plugin does not
+load and the server does not start. The binary holds a module `jpy` (`python/jpy.py`) that
+has the names of jpy 2.2.0 and no Java behind them. The owner decided this on 2026-11-16,
+over Python versions of the Java calls and over no module: **every use of a Java class
+fails by that class's name.**
+
+| Call | jpy 2.2.0 in the reference | Here |
+| --- | --- | --- |
+| `import jpy` | the module | the module, from the binary; a `jpy` installed in the environment is not used |
+| `jpy.get_type(name, resolve=True)` | the Java class as a Python class, `<class 'a.b.C'>`; `ValueError: Java class 'a.b.C' not found` for a name without a class | a class of that text, `__name__`, `__module__` and `jclassname`, the same one for the same name, **for any name**: no class is looked up. `/` in a name is `.`, an empty name and a name that is no `str` fail with jpy's texts |
+| Calling a type | a Java object | `NotImplementedError: not ported: a.b.C#<init>` |
+| An attribute of a type: a static method or field, `jclass` | the method, the value | `not ported: a.b.C#<name>`, when the attribute is read, called or not. `hasattr` and `getattr` with a default raise it too |
+| An attribute named `__x__` that a class does not have | `AttributeError` | the same, with jpy's text: Python asks every class for such names |
+| Setting or deleting an attribute | `TypeError: cannot set 'x' attribute of immutable type 'a.b.C'` | the same |
+| `isinstance(x, T)` | whether `x` is a Java object of the class | `False`: there are no Java objects |
+| `issubclass(T, U)` of two Java types | by the superclasses of the Java class | `not ported: a.b.T#getSuperclass: whether it extends a.b.U`; `True` for a type and itself, and for `jpy.JType` |
+| `jpy.array(type, init)` | a Java array | `not ported: a.b.C[]: jpy.array` |
+| `jpy.cast(obj, type)` | the object as that type; `None` for `None`, whatever the type | `None` for `None`; else `not ported: a.b.C: jpy.cast` |
+| `jpy.convert(obj, type)` | a Java object | `not ported: a.b.C: jpy.convert` |
+| `jpy.byte_buffer(obj)` | a `java.nio.ByteBuffer` | `not ported: java.nio.ByteBuffer: jpy.byte_buffer` |
+| `jpy.has_jvm()` | `True` | `False` |
+| `jpy.create_jvm(options)` | nothing, with a Java VM running | `not ported: jpy.create_jvm: this server has no Java VM` |
+| `jpy.destroy_jvm()` | **destroys the server's Java VM** (the reference stopped when the probe called it) | nothing, as jpy does in a process without a Java VM |
+| `jpy.types` | the 686 classes loaded so far | the types handed out so far |
+| `jpy.diag`, `jpy.VerboseExceptions`, `jpy.type_callbacks`, `jpy.type_translations` | settings of the bridge | objects with the same attributes and jpy's values in a process without a Java VM (`flags` 0, `enabled` false); nothing reads them |
+| `jpy.JType`, `JField`, `JMethod`, `JOverloadedMethod`, `JException` | the classes of jpy's wrappers | classes of those names; `JType` is a base of every type, `JException` is an `Exception` that nothing raises |
+
+The refusal is `deephaven._java_time.NotPorted`, the error of this package for what Java
+does and it does not: a `NotImplementedError`, and so a `RuntimeError`, which is what jpy
+raises for a Java exception and what code written for jpy catches.
+
+A type that is only held is no use: `_JFoo = jpy.get_type("a.b.Foo")` in a module body, a
+type as an annotation or a default, in a collection, compared or printed. A package that
+reads a member of a type in a module body (`LIMIT = _JDouble.MAX_VALUE`) fails there, by
+the name, and does not import; when the import is part of a plugin's registration the
+server does not start, as for any plugin that fails to register. Of
+`deephaven-plugin-plotly-express` 0.22.0, `deephaven-plugin-utilities` 0.1.0 and
+`deephaven-plugin-ui` 0.43.2, none does: plotly-express holds one type at import
+(`deephaven_figure/FigureCalendar.py:21`) and uses it in a function, the other two do not
+import `jpy`.
+
+Not here: the module `jpyutil` of the same distribution (it finds and starts a Java VM),
+and jpy's own texts for a wrong number of arguments (Python's are given).
+
 ## Completion
 
 Task 6.13. Java completes Python with the library `jedi`, which runs in the session's
