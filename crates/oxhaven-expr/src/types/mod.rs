@@ -12,6 +12,7 @@
 mod methods;
 
 use crate::external::{ExternalArgument, ExternalFunctions};
+use crate::functions::range::{self, RangeFn};
 use crate::functions::{self, vectors, Kernel, Resolved};
 use methods::Parameter;
 pub(crate) use methods::StringMethod;
@@ -1505,6 +1506,11 @@ impl Checker<'_> {
             }
         }
         let receiver = self.check(receiver)?;
+        if receiver.column_type == range::column_type() {
+            if let Some(function) = RangeFn::method(method) {
+                return self.range_call(function, Some(receiver), arguments);
+            }
+        }
         if is_list(&receiver) {
             return self.vector_method(receiver, method, arguments);
         }
@@ -1722,8 +1728,78 @@ impl Checker<'_> {
             ("Boolean" | "Character" | "Double" | "Float" | "Integer" | "Long" | "String", _) => {
                 self.static_call(class, functions::statics::CONSTRUCTOR, arguments)
             }
+            _ if created == range::CLASS => self.range_call(RangeFn::New, None, arguments),
             _ => Err(unsupported(format!("constructor new {created}()"))),
         }
+    }
+
+    /// The constructor of `DiscretizedRangeEqual`, or a method of it called on `receiver`.
+    /// The class has one constructor and one method of each name, which takes the
+    /// arguments that widen to its parameters; each is converted as a cast converts it,
+    /// so a null stays the null of the parameter's type.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)`, `#visit(MethodCallExpr)`,
+    /// `#dhqlIsAssignableFrom` and `#convertParameters`. Java 42.9 was run for each form.
+    fn range_call(
+        &mut self,
+        function: RangeFn,
+        receiver: Option<Typed>,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        use ColumnType as C;
+        let parameters = function.parameters();
+        let mut checked = Vec::with_capacity(arguments.len() + 1);
+        let mut found = Vec::with_capacity(arguments.len());
+        let mut fits = arguments.len() == parameters.len();
+        for (at, argument) in arguments.iter().enumerate() {
+            if is_null_literal(argument) {
+                found.push("null".to_string());
+                fits = false;
+                continue;
+            }
+            let argument = self.check(argument)?;
+            found.push(java_name(&argument.column_type));
+            let from = &argument.column_type;
+            fits &= match parameters.get(at) {
+                Some(C::Int) => matches!(from, C::Byte | C::Short | C::Char | C::Int),
+                Some(C::Long) => matches!(from, C::Byte | C::Short | C::Char | C::Int | C::Long),
+                Some(C::Double) => Numeric::of(from).is_some(),
+                _ => false,
+            };
+            checked.push(argument);
+        }
+        if !fits {
+            let found = found.join(", ");
+            return Err(type_error(if function == RangeFn::New {
+                format!(
+                    "Cannot find constructor for {class}({found}) in class {class}",
+                    class = range::CLASS
+                )
+            } else {
+                format!(
+                    "Cannot find method {}({found}) in class {}",
+                    function.name(),
+                    range::CLASS
+                )
+            }));
+        }
+        if self.refused_to_clients.is_none() {
+            self.refused_to_clients = Some(function.refusal());
+        }
+        let mut converted: Vec<Typed> = receiver.into_iter().collect();
+        converted.extend(
+            checked
+                .into_iter()
+                .zip(parameters)
+                .map(|(argument, parameter)| convert(argument, parameter)),
+        );
+        Ok(typed(
+            function.result_type(),
+            Node::Call {
+                kernel: Kernel::Range(function),
+                arguments: converted,
+            },
+        ))
     }
 
     /// One element of `new name[] { ... }`, converted to the element type as javac
