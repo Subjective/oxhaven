@@ -116,13 +116,12 @@ owner".
 
 ## For the owner
 
-Not decided here:
+Decided: the first item, with its consequence in the second. Not decided here: the rest.
 
 - **Java lets a link escape.** A JS plugin with a link to any file the server's user can read
   has that file served to whoever can reach the port; the files of a plugin need no login.
-  The link has to be in an installed package, so it is the package's author who chooses.
-  This implementation serves nothing outside the directory. If the ruling is to do as Java
-  does, the check is one condition in `plugins.rs` (`copy`).
+  Decided by the owner on 2026-11-16: this implementation serves nothing outside the
+  directory, as allowed difference A9 of `PARITY.md`.
 - A plugin whose `main` is a link out of its directory is listed in the manifest and its
   main file is 404, so the web client fails to load it. Refusing the registration would be
   the other choice; Java has no such refusal to name.
