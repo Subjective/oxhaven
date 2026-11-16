@@ -694,9 +694,6 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
     let not_run = [
         "group_by_ungroup/uneven: group_by",
         "pipeline/located: update",
-        "time_types/join_d: update",
-        "time_types/join_z: update",
-        "time_types/join_w: update",
     ];
     assert_eq!(tally.not_run, not_run, "not run");
     // The results of every other operation, none of which is built here.
@@ -707,7 +704,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         .collect();
     let expected = [
         ("agg_all_by", 43),
-        ("agg_by", 78),
+        ("agg_by", 74),
         ("aj", 12),
         ("column_statistics", 19),
         ("drop_columns", 8),
@@ -717,7 +714,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         ("group_by", 11),
         ("head", 29),
         ("head_by", 14),
-        ("join", 8),
+        ("join", 7),
         ("keyed_transpose", 5),
         ("lazy_update", 13),
         ("left_join", 2),
@@ -731,20 +728,20 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         ("reverse", 10),
         ("ring_table", 6),
         ("select", 6),
-        ("select_distinct", 19),
+        ("select_distinct", 18),
         ("slice", 24),
         ("snapshot", 4),
         ("snapshot_when", 20),
-        ("sort", 63),
+        ("sort", 57),
         ("tail", 26),
         ("tail_by", 10),
         ("time_table", 2),
         ("ungroup", 15),
-        ("update", 40),
+        ("update", 39),
         ("update_by", 42),
         ("update_view", 16),
-        ("view", 14),
-        ("where", 63),
+        ("view", 40),
+        ("where", 53),
         ("where_in", 20),
     ];
     assert_eq!(others, expected, "results of other operations");
