@@ -6,6 +6,9 @@
 //! facts Java keeps beside it.
 
 mod cells;
+mod factory;
+#[cfg(test)]
+mod factory_tests;
 mod merge;
 mod partition;
 #[cfg(test)]
@@ -342,7 +345,8 @@ impl PartitionedTable {
 }
 
 /// The tables of the cells of `handles`, a chunk of a table column; `None` for a null
-/// cell. An error names a cell whose table is gone.
+/// cell. A cell keeps its table (`oxhaven_column::tables`), so one that names nothing is
+/// a broken invariant, reported as a failure of the read.
 pub fn tables_of(handles: &ArrayRef) -> Result<Vec<Option<Arc<dyn Table>>>, TableFailure> {
     let handles = handles
         .as_primitive_opt::<Int64Type>()
@@ -351,13 +355,9 @@ pub fn tables_of(handles: &ArrayRef) -> Result<Vec<Option<Arc<dyn Table>>>, Tabl
         .iter()
         .map(|handle| match handle {
             None => Ok(None),
-            Some(handle) => resolve(handle).map(Some).ok_or_else(|| {
-                failure(
-                    "unported: io.deephaven.engine.table.impl.sources.ObjectArraySource#get: \
-                     a constituent read from a copy of a partitioned table's cells, after \
-                     the partitioned table it was made by is gone",
-                )
-            }),
+            Some(handle) => resolve(handle)
+                .map(Some)
+                .ok_or_else(|| failure(format!("the table of cell {handle} is gone"))),
         })
         .collect()
 }

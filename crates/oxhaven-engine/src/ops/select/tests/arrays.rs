@@ -355,6 +355,21 @@ fn a_column_of_vectors_can_be_read_at_a_distance() {
         result.definition().columns()[column].column_type,
         ColumnType::vector(ColumnType::Long)
     );
+    // One of vectors of booleans is a column Java sends as strings.
+    let flags = update(&flat(5), &["Z = B > 2"], &Compiler).unwrap();
+    let grouped = group_by(&flags, &["Sym"]).unwrap();
+    for formula in ["P = Z_[i - 1]", "P = Z_[i - 1].size()"] {
+        assert!(
+            matches!(
+                update(&grouped, &[formula], &Compiler),
+                Err(SelectError::Formula {
+                    error: FormulaError::Unsupported(_),
+                    ..
+                })
+            ),
+            "{formula}"
+        );
+    }
 }
 
 #[test]

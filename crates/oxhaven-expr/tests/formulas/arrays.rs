@@ -267,15 +267,85 @@ fn column_arrays_that_do_not_compile() {
         FormulaError::Unsupported(_)
     ));
     table.assert("Z_.size() + (isNull(Z_[0]) ? 1 : 0)", longs([Some(5); 4]));
-    // The column array of a column of vectors is a vector of vectors.
-    let grouped = TableDefinition::new(vec![ColumnDefinition::new(
-        "V",
-        ColumnType::vector(ColumnType::Int),
-    )])
-    .unwrap();
-    let expr = Compiler.parse("V_[i - 1]").unwrap();
+}
+
+/// Three rows of a column of vectors, as `group_by` makes them: `[1, 3, 6]`, `[2, 5]`, `[4]`.
+fn grouped() -> TestTable {
+    let cells = [vec![1, 3, 6], vec![2, 5], vec![4]];
+    let lists = arrow::array::ListArray::from_iter_primitive::<Int32Type, _, _>(
+        cells
+            .iter()
+            .map(|cell| Some(cell.iter().copied().map(Some).collect::<Vec<_>>())),
+    );
+    let vectors: ArrayRef = Arc::new(lists);
+    TestTable::new([
+        ("V", (ColumnType::vector(ColumnType::Int), vectors)),
+        ("N", ints([Some(2), None, Some(0)])),
+    ])
+}
+
+/// The column array of a column of vectors is a vector of its vectors: Java's
+/// `ObjectVector<IntVector>`, whose elements have the methods of an `IntVector`. Seen on
+/// Java 42.9 for `group_by("K").update(...)`.
+#[test]
+fn the_column_array_of_a_vector_column_holds_its_vectors() {
+    let table = grouped();
+    table.assert("V_.size()", longs([Some(3); 3]));
+    table.assert("len(V_)", longs([Some(3); 3]));
+    table.assert("V_.size() + V.size()", longs([Some(6), Some(5), Some(4)]));
+    table.assert("V_.isEmpty()", flags([false; 3]));
+    let cells = |formula: &str| {
+        let (column_type, values) = table.evaluate(formula).unwrap();
+        // Arithmetic on a vector gives an array, as in Java.
+        let expected = if formula.contains('+') {
+            ColumnType::array(ColumnType::Int)
+        } else {
+            ColumnType::vector(ColumnType::Int)
+        };
+        assert_eq!(column_type, expected, "{formula}");
+        let cells = values.as_list::<i32>();
+        (0..cells.len())
+            .map(|row| {
+                if cells.is_null(row) {
+                    "null".to_string()
+                } else {
+                    render(&cells.value(row)).join(", ")
+                }
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(cells("V_[0]"), ["1, 3, 6"; 3]);
+    assert_eq!(cells("V_[i]"), ["1, 3, 6", "2, 5", "4"]);
+    assert_eq!(cells("V_.get(ii)"), ["1, 3, 6", "2, 5", "4"]);
+    assert_eq!(cells("V_[i - 1]"), ["null", "1, 3, 6", "2, 5"]);
+    assert_eq!(cells("V_[2 - i]"), ["4", "2, 5", "1, 3, 6"]);
+    assert_eq!(cells("V_[5]"), ["null"; 3]);
+    assert_eq!(cells("V_[N]"), ["4", "null", "1, 3, 6"]);
+    assert_eq!(cells("V_[0] + 1"), ["2, 4, 7"; 3]);
+    assert_eq!(cells("V_.size() > 2 ? V_[0] : V_[1]"), ["1, 3, 6"; 3]);
+    assert_eq!(cells("i == 0 ? V_[1] : V"), ["2, 5", "2, 5", "4"]);
+    table.assert("V_[i].size()", longs([Some(3), Some(2), Some(1)]));
+    table.assert("sum(V_[0])", longs([Some(10); 3]));
+    table.assert("V_[i][0] + 1", ints([Some(2), Some(3), Some(5)]));
+    table.assert("isNull(V_[i - 1])", flags([true, false, false]));
+    table.assert("isNull(V_[5])", flags([true; 3]));
+    table.assert("V_ == null", flags([false; 3]));
+    // As the value of a formula it is a column Java sends as strings.
     assert!(matches!(
-        Compiler.compile(&expr, &grouped),
-        Err(FormulaError::Unsupported(_))
+        table.compile_error("V_"),
+        FormulaError::Unsupported(_)
     ));
+    // So are the elements of the one of a column of vectors of instants or booleans.
+    for element in [ColumnType::Instant, ColumnType::Boolean] {
+        let objects = TableDefinition::new(vec![ColumnDefinition::new(
+            "V",
+            ColumnType::vector(element),
+        )])
+        .unwrap();
+        let expr = Compiler.parse("V_[i]").unwrap();
+        assert!(matches!(
+            Compiler.compile(&expr, &objects),
+            Err(FormulaError::Unsupported(_))
+        ));
+    }
 }

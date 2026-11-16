@@ -34,10 +34,13 @@ limits). For the operations of this module those are:
   append-only by construction get one;
 - a `keyed_transpose` of a refreshing table with the new-column behaviour `fail`;
 - a `multi_join` without match columns of a refreshing table that can come to hold more
-  than one row.
+  than one row;
+- a period of months or years added to a timestamp of a refreshing table: the reference
+  fails when a row has a timestamp that is not null.
 
-Restrictions that exist only because of a finding of `tasks/4.20-fuzz-findings-2.md` are
-marked with the finding's number where they are made (`RESTRICTIONS` lists them).
+Restrictions that exist only because of a finding of `tasks/4.20-fuzz-findings-2.md` or
+`tasks/4.23-fuzz-refusals.md` are marked with the finding's number where they are made
+(`RESTRICTIONS` lists them).
 
 Not generated, each for a stated reason:
 
@@ -60,7 +63,8 @@ from typing import Any
 from .fuzz import FLOATS, INT_BITS, NUMERIC, _Table, _promote
 from .fuzz_wide import LIST, _Wide, _list
 
-# Findings of tasks/4.20-fuzz-findings-2.md that the generator steps around, and where.
+# Findings of tasks/4.20-fuzz-findings-2.md and tasks/4.23-fuzz-refusals.md that the generator
+# steps around, and where.
 RESTRICTIONS: dict[str, str] = {
     "J1": "stops_reference: no count where of update_by that compares two columns (with a "
           "boolean or timestamp column among those it reads, the reference shuts down)",
@@ -70,13 +74,12 @@ RESTRICTIONS: dict[str, str] = {
     "J5": "build_agg: no distinct of a timestamp column with preserve_empty on a refreshing "
           "table (the reference cannot write a group that lost its rows)",
     "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
-    "R1": "second_formula: no row variable and no column array in a lazy_update, but for "
-          "a fixed-distance read outside a call",
-    "R4": "build_agg: initial groups of a refreshing aggregation only with preserve_empty",
+    "J7": "build_agg: initial groups of a refreshing aggregation with first, last, "
+          "sorted_first or sorted_last before any count only with preserve_empty (on an "
+          "add-only table the reference's result fails when a group gets its first row)",
     "R5": "filter: one distance for the fixed-distance reads of a refreshing where",
-    "R6": "second_formula, filter: no column array of an array column",
-    "R7": "build_keyed_transpose: no float32 or timestamp column to name columns after",
-    "R8": "_DURATIONS: no period of months or years",
+    "R6": "with_arrays: no column array of an array column of booleans or timestamps (the "
+          "reference sends its elements as strings) or of one a formula made (a Java array)",
 }
 _COLUMN_COMPARISON = re.compile(r"^([A-Za-z_]\w*) (?:<|<=|>|>=|==|!=) ([A-Za-z_]\w*)$")
 
@@ -84,14 +87,22 @@ _INTEGERS = tuple(INT_BITS)
 # Zones the reference knows (`TimeZoneAliases`, default_time_zone_aliases.csv) and a few it
 # does not, which it refuses.
 _ZONES = ("UTC", "GMT", "ET", "CT", "MT", "PT", "HK", "JP", "LON", "America/New_York",
-          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney", "+01:00", "UTC-5")
-_NO_ZONES = ("NY", "EST", "et")
+          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney", "+01:00", "UTC-5",
+          "SystemV/EST5", "SystemV/PST8PDT")
+_NO_ZONES = ("NY", "EST", "et", "Europe/Nowhere")
+# What follows the time directly: an offset, and now and then a zone in brackets after it.
+_OFFSETS = ("Z", "z", "+01:00", "-05", "+05:30:00", "Z[UTC]", "+05:00[Europe/Paris]",
+            "-05:00[America/New_York]", "+01:00[SystemV/EST5]", "+0100", "[Europe/Paris]")
 # Instants around `fuzz.T0` (2023-11-14T22:13:20Z), and two that a clock change of the
 # eastern United States skips or repeats.
 _LOCAL_TIMES = ("2023-11-14T22:13:20", "2023-11-14T22:13:21", "2023-11-14T17:13:22",
                 "2023-11-14T17:13:19.5", "2023-11-15T07:13:20", "2023-11-14T22:13:23.000000001",
                 "2024-03-10T02:30:00", "2024-11-03T01:30:00", "2023-11-14")
-_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s")  # R8: no "P1m"
+_DURATIONS = ("PT1s", "PT0.5s", "PT1m", "PT1h", "PT24h", "P1d", "P1w", "PT0s")
+# Periods of months and years, which the reference fails to add to an instant that is not
+# null: a refusal for a static table that has such a row, and a failure in a later cycle
+# for a refreshing one, so only a static table gets one.
+_CALENDAR_PERIODS = ("P1m", "P1y", "P1y2m")
 # Operations whose result adds rows to an append-only table and never changes or moves one.
 _FORMULA_OPERATIONS = ("view", "select", "update", "update_view", "lazy_update")
 _APPENDING = frozenset({"where", "update", "update_view", "view", "select", "lazy_update",
@@ -182,9 +193,13 @@ class _Second(_Wide):
         return super().pick_table()
 
     @staticmethod
-    def scalars(table: _Table) -> list[str]:
-        """R6: the columns a column array is made of; none of an array column."""
-        return [c for c in table.usable() if not table.type_of(c).startswith(LIST)]
+    def with_arrays(table: _Table) -> list[str]:
+        """The columns a column array is made of: array columns too, but for those of
+        booleans and timestamps and those a formula made, which are Java arrays (R6)."""
+        return table.usable() + [name for name, kind in table.columns
+                                 if kind.startswith(LIST) and name not in table.computed
+                                 and kind[len(LIST):] not in ("bool", "timestamp")
+                                 and not re.fullmatch(r"X\d+", name)]
 
     # ------------------------------------------------------------ formulas and filters
 
@@ -195,17 +210,15 @@ class _Second(_Wide):
 
     def second_formula(self, table: _Table) -> tuple[str, str] | None:
         rng = self.rng
-        columns = self.scalars(table)
+        columns = self.with_arrays(table)
         numeric = table.usable(NUMERIC)
         stamps = table.usable(("timestamp",))
         arrays = [name for name, kind in table.columns
                   if kind.startswith(LIST) and kind[len(LIST):] in NUMERIC
                   and name not in table.computed]
-        lazy = self.kind == "lazy_update"  # R1
-        shapes = [] if lazy else ["row"]
+        shapes = ["row"]
         if columns:
-            if not lazy:
-                shapes += ["column_array"]
+            shapes += ["column_array"]
             if self.kind != "select" or table.name in self.input_names:  # J2
                 shapes += ["shift", "shift"]
         if stamps:
@@ -231,7 +244,7 @@ class _Second(_Wide):
             read = f"{a}_[{index}]"
             if kind in NUMERIC and self.chance(0.4):
                 return f"{a} - {read}", _promote(kind, kind)
-            if self.chance(0.15) and not lazy:  # R1: a read inside a call is not rewritten
+            if self.chance(0.15):
                 return f"isNull({read})", "bool"
             return read, kind
         if shape == "column_array":
@@ -249,11 +262,11 @@ class _Second(_Wide):
         if shape == "time":
             a = rng.choice(stamps)
             form = rng.choice(["plus", "plus", "scaled", "compare", "literal"])
-            duration = rng.choice(_DURATIONS)
+            duration = self.duration(table)
             if form == "plus":
                 return f"{a} {rng.choice(['+', '-'])} '{duration}'", "timestamp"
             if form == "scaled":
-                factor = rng.choice(["2", "3"] if lazy else ["ii", "2", "i", "3"])
+                factor = rng.choice(["ii", "2", "i", "3"])
                 return (f"{a} + '{duration}' {rng.choice(['*', '*', '/'])} {factor}"
                         if factor not in ("ii", "i") else f"{a} + '{duration}' * {factor}",
                         "timestamp")
@@ -285,9 +298,17 @@ class _Second(_Wide):
             return f"{literal} {operator} {a}", _list(_promote(element, other))
         return f"{a} {operator} {literal}", _list(_promote(element, other))
 
+    def duration(self, table: _Table) -> str:
+        """A duration or a period; for a static table now and then one of months or years."""
+        if not table.live and self.chance(0.12):
+            return self.rng.choice(_CALENDAR_PERIODS)
+        return self.rng.choice(_DURATIONS)
+
     def instant(self) -> str:
         """A time literal with a zone; now and then one the reference refuses."""
         rng = self.rng
+        if self.chance(0.15):
+            return f"'{rng.choice(_LOCAL_TIMES)}{rng.choice(_OFFSETS)}'"
         zone = rng.choice(_NO_ZONES) if self.chance(0.05) else rng.choice(_ZONES)
         return f"'{rng.choice(_LOCAL_TIMES)} {zone}'"
 
@@ -296,11 +317,11 @@ class _Second(_Wide):
         if self.chance(0.45):
             return super().filter(table)
         stamps = table.usable(("timestamp",))
-        columns = self.scalars(table)
+        columns = self.with_arrays(table)
         if stamps and self.chance(0.5):
             a = rng.choice(stamps)
             if self.chance(0.4):
-                return f"{a} + '{rng.choice(_DURATIONS)}' > {self.instant()}"
+                return f"{a} + '{self.duration(table)}' > {self.instant()}"
             # The comparison of a column with a literal is a filter of its own, which reads
             # the literal with another parser than a formula does.
             return f"{a} {rng.choice(['<', '<=', '>', '>=', '==', '!='])} {self.instant()}"
@@ -312,7 +333,8 @@ class _Second(_Wide):
                 index = self.distance = self.distance or index
             if kind == "bool":
                 return f"{a}_[{index}] == {a}"
-            if self.chance(0.3):
+            # A comparison of arrays is an array of booleans, which is no filter.
+            if self.chance(0.3) or kind.startswith(LIST):
                 return f"isNull({a}_[{index}])"
             return f"{a}_[{index}] {rng.choice(['<', '<=', '>', '!=', '=='])} {a}"
         return rng.choice(["i % 2 == 0", "ii < 3", "i > 1", "k >= 2", "ii % 3 != 1", "i == ii"])
@@ -349,8 +371,8 @@ class _Second(_Wide):
         kinds = {agg["agg"] for agg in op["aggs"]}
         if live and {"first", "last"} <= kinds:
             op.pop("initial_groups", None)  # J6
-        if "initial_groups" in op and live:
-            op["preserve_empty"] = True  # R4
+        if "initial_groups" in op and live and self.never_records(op["aggs"]):
+            op["preserve_empty"] = True  # J7
         if live and op.get("preserve_empty") and any(
                 agg["agg"] == "distinct" and source.type_of(
                     pair.split("=")[-1].strip()) == "timestamp"
@@ -358,6 +380,17 @@ class _Second(_Wide):
             op.pop("initial_groups", None)  # J5
             op["preserve_empty"] = False
         return True
+
+    @staticmethod
+    def never_records(aggs: list[dict[str, Any]]) -> bool:
+        """J7: whether the first of the aggregations that tells the reference when a group
+        appears is a first or last, which on an add-only table tells it nothing."""
+        for agg in aggs:
+            if agg["agg"] == "count":
+                return False
+            if agg["agg"] in ("first", "last", "sorted_first", "sorted_last"):
+                return True
+        return False
 
     # ------------------------------------------------------------ partitioned tables
 
@@ -423,8 +456,7 @@ class _Second(_Wide):
         if len(usable) < 2:
             return False
         row_by = self.keys(source, 1, 2)
-        named = [c for c in usable if c not in row_by
-                 and source.type_of(c) not in ("float32", "timestamp")]  # R7
+        named = [c for c in usable if c not in row_by]
         if not named:
             return False
         col_by = rng.sample(named, 1 if self.chance(0.85) else min(2, len(named)))

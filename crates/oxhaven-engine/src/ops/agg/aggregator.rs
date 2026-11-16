@@ -359,6 +359,7 @@ impl Aggregator {
         self.recompute()?;
         let all: Vec<usize> = (0..self.slots).collect();
         self.write(&all, |_| true)?;
+        self.forget_keys_of_absent_groups()?;
         self.end_cycle();
         Ok(RowSet::from_keys(
             all.into_iter()
@@ -370,6 +371,42 @@ impl Aggregator {
     /// Whether some group has no rows.
     pub fn has_empty_group(&self) -> bool {
         self.keys.is_some() && self.row_counts.contains(&0)
+    }
+
+    /// Makes null the keys the result shows for the initial groups that are not in it at
+    /// the start: those a refreshing parent has no row for, without `preserve_empty`. The
+    /// slot keeps its key in the key table, so the group's rows still find it, and the
+    /// result shows the group with null keys from its first row on, for as long as it
+    /// lives. A formula that reads a key column reads that null too.
+    ///
+    /// Behavior: ChunkedOperatorAggregationHelper#aggregation, which for a refreshing
+    /// parent copies the keys into the result's own columns: #copyKeyColumns for the
+    /// initial row set, and in KeyedUpdateContext#computeDownstreamIndicesAndCopyKeys for
+    /// the states made in a cycle (`newStates`). A state that
+    /// #initialKeyTableAddition made and that gets its first row later is neither, so
+    /// its keys are never copied. Observed on 42.9 for every aggregation, with one and
+    /// two key columns, on append-only and keyed tables, and after the group lost its
+    /// rows and got rows again.
+    fn forget_keys_of_absent_groups(&mut self) -> Result<(), TableFailure> {
+        let Some(keys) = &self.keys else {
+            return Ok(());
+        };
+        if self.preserve_empty || !self.parent.is_refreshing() {
+            return Ok(());
+        }
+        let absent: Vec<RowKey> = (0..self.slots)
+            .filter(|&slot| self.row_counts[slot] == 0)
+            .map(|slot| slot as RowKey)
+            .collect();
+        if absent.is_empty() {
+            return Ok(());
+        }
+        for result in &keys.results {
+            let nulls =
+                arrow::array::new_null_array(&result.column_type().arrow_type(), absent.len());
+            result.fill_by_keys(&absent, &nulls)?;
+        }
+        Ok(())
     }
 
     fn present(&self, slot: usize) -> bool {

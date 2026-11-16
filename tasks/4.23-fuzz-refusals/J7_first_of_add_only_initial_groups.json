@@ -1,0 +1,118 @@
+{
+ "format": 1,
+ "name": "J7_first_of_add_only_initial_groups",
+ "description": "agg_by first of an append-only table with an initial group it has no rows for, without preserve_empty: Java fails the result in the cycle that brings the group its first row; with a count before the first it computes.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     "b",
+     1
+    ],
+    [
+     "a",
+     2
+    ],
+    [
+     "b",
+     3
+    ]
+   ],
+   "ticking": {
+    "key_columns": []
+   }
+  },
+  {
+   "name": "keys",
+   "columns": [
+    {
+     "name": "K",
+     "type": "string"
+    }
+   ],
+   "rows": [
+    [
+     "a"
+    ],
+    [
+     "c"
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "first",
+   "op": "agg_by",
+   "source": "t",
+   "by": [
+    "K"
+   ],
+   "initial_groups": "keys",
+   "aggs": [
+    {
+     "agg": "first",
+     "columns": [
+      "A = V"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "counted",
+   "op": "agg_by",
+   "source": "t",
+   "by": [
+    "K"
+   ],
+   "initial_groups": "keys",
+   "aggs": [
+    {
+     "agg": "count",
+     "column": "N"
+    },
+    {
+     "agg": "first",
+     "columns": [
+      "A = V"
+     ]
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "first"
+  },
+  {
+   "table": "counted"
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       "c",
+       5
+      ]
+     ]
+    }
+   ]
+  }
+ ]
+}

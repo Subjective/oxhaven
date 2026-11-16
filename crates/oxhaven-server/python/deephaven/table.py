@@ -1695,6 +1695,20 @@ def _refreshing_dependencies(dependencies) -> list:
     return tables
 
 
+def _without_rows(definition) -> "_oxhaven.TableHandle":
+    """The handle of a table without rows that has the columns of `definition`, a
+    `TableDefinitionLike`: how a definition is handed to the engine."""
+    columns = [
+        (
+            column.name,
+            dtypes._engine_type(column.data_type),
+            column.column_type is ColumnType.PARTITIONING,
+        )
+        for column in TableDefinition(definition).values()
+    ]
+    return _engine.native.defined_table(columns)
+
+
 class PartitionedTable:
     """A table of tables. Its underlying table has one row for each constituent table: the
     key columns, which say which constituent it is, and one column that holds the
@@ -1730,17 +1744,64 @@ class PartitionedTable:
         constituent_table_columns=None,
         constituent_changes_permitted=None,
     ) -> "PartitionedTable":
-        """Not ported: a partitioned table made from a table that has a column of tables."""
-        raise dtypes._java_time.NotPorted("io.deephaven.engine.table.PartitionedTableFactory#of")
+        """A partitioned table of `table`, whose column `constituent_column` holds the
+        constituents. The other arguments are all given or all `None`: with none, the key
+        columns are the columns that do not hold tables, the keys are not unique, the
+        constituent column is the one column of tables, the constituents have the columns
+        of the first one, and they can change when `table` refreshes.
+
+        Behavior: `deephaven.table.PartitionedTable.from_partitioned_table`,
+        `io.deephaven.engine.table.PartitionedTableFactory#of`
+        """
+        none_args = [
+            key_cols,
+            unique_keys,
+            constituent_column,
+            constituent_table_columns,
+            constituent_changes_permitted,
+        ]
+        try:
+            if all(arg is None for arg in none_args):
+                return PartitionedTable(_oxhaven.partitioned_of_table(table.j_table))
+            if all(arg is not None for arg in none_args):
+                handle = _oxhaven.partitioned_of(
+                    table.j_table,
+                    list(_engine.to_sequence(key_cols)),
+                    unique_keys,
+                    constituent_column,
+                    _without_rows(constituent_table_columns),
+                    constituent_changes_permitted,
+                )
+                return PartitionedTable(handle)
+        except Exception as e:
+            raise DHError(e, "failed to build a PartitionedTable.") from e
+        missing_value_args = [arg for arg in none_args if arg is None]
+        raise DHError(
+            message=f"invalid argument values, must specify non-None values for {missing_value_args}."
+        )
 
     @classmethod
     def from_constituent_tables(
         cls, tables: List[Table], constituent_table_columns=None
     ) -> "PartitionedTable":
-        """Not ported: a partitioned table made from tables."""
-        raise dtypes._java_time.NotPorted(
-            "io.deephaven.engine.table.PartitionedTableFactory#ofTables"
-        )
+        """A partitioned table without key columns whose constituents are `tables`, in
+        the column `__CONSTITUENT__`; they have the columns of `constituent_table_columns`
+        or, without it, of the first table.
+
+        Behavior: `deephaven.table.PartitionedTable.from_constituent_tables`,
+        `io.deephaven.engine.table.PartitionedTableFactory#ofTables`
+        """
+        try:
+            handles = [
+                None if table is None else table.j_table
+                for table in _engine.to_sequence(tables)
+            ]
+            if not constituent_table_columns:
+                return PartitionedTable(_oxhaven.partitioned_of_tables(handles))
+            definition = _without_rows(constituent_table_columns)
+            return PartitionedTable(_oxhaven.partitioned_of_tables(handles, definition))
+        except Exception as e:
+            raise DHError(e, "failed to create a PartitionedTable from constituent tables.") from e
 
     @property
     def table(self) -> Table:
@@ -1866,6 +1927,9 @@ class PartitionedTable:
                     f"column value for each key column name in [{', '.join(names)}], instead "
                     f"received [{', '.join(map(_java_text, key_values))}]"
                 )
+            if not names:
+                handle = self.j_partitioned_table.constituent_for(None)
+                return Table(handle) if handle is not None else None
             definition = self.table.definition
             try:
                 keys = _engine.new_table(

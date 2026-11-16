@@ -515,14 +515,105 @@ fn initial_groups_that_all_have_rows_order_a_changing_table_without_preserve_emp
     assert_eq!(rows(&*result), ["2|5|1", "0|3|2", "1|1|1"]);
 }
 
+/// What Java 42.9 printed for the same steps of a keyed input table with
+/// `agg_by([sum, count, formula], by="K", initial_groups=...)`: an initial group that has
+/// no rows at the start shows null keys once it has rows, and a formula reads that null.
+#[test]
+fn an_initial_group_without_rows_of_a_changing_table_shows_null_keys() {
+    let ticking = Ticking::new(&[0, 1, 2, 3]);
+    let aggregations = [
+        agg(AggSpec::Sum, &["I"]),
+        count("N"),
+        Aggregation::Formula {
+            column: "F".to_string(),
+            expression: "isNull(K) ? -1 : K".to_string(),
+        },
+    ];
+    let initial = keys(&[Some(7), Some(1), Some(9)]);
+    let result = seeded(&ticking.parent, &aggregations, false, &initial, &["K"]).expect("seeded");
+    let checker = ConsistencyChecker::attach(result.clone());
+    let recorder = Recorder::attach(result.clone());
+    let step = |change| ticking.step(change, &recorder, &checker);
+    assert_eq!(rows(&*result), ["1|1|1|1", "0|3|2|0", "2|2|1|2"]);
+    assert!(!result.is_flat());
+
+    // The first row of an initial group that had none, and a group that is new.
+    assert_eq!(
+        step(add(&[5, 6], |i| i + 2)),
+        "added [0, 5] removed [] modified []"
+    );
+    assert_eq!(
+        rows(&*result),
+        ["null|5|1|-1", "1|1|1|1", "0|3|2|0", "2|2|1|2", "8|6|1|8"]
+    );
+
+    // The group loses its row and gets another: its key stays null. A group that had
+    // rows at the start keeps its key through the same.
+    assert_eq!(
+        step(TableChange::new().remove([5, 1])),
+        "added [] removed [0, 1] modified []"
+    );
+    assert_eq!(
+        step(add(&[4, 7, 10], |i| match i {
+            4 => 7,
+            7 => 1,
+            _ => 9,
+        })),
+        "added [0, 1, 2] removed [] modified []"
+    );
+    assert_eq!(
+        rows(&*result),
+        [
+            "null|4|1|-1",
+            "1|7|1|1",
+            "null|10|1|-1",
+            "0|3|2|0",
+            "2|2|1|2",
+            "8|6|1|8"
+        ]
+    );
+}
+
+fn append_only(rows: &[i32]) -> (Arc<SteppedUpdateGraph>, Arc<dyn Table>) {
+    let graph = SteppedUpdateGraph::new();
+    let (definition, initial) = batch(&source_rows(rows, |i| i % 3));
+    let parent: Arc<dyn Table> =
+        crate::table::append_only_input_table(graph.clone(), definition, Some(&initial))
+            .expect("an input");
+    (graph, parent)
+}
+
+/// Java accepts these and its result fails when the group gets its first row: the first
+/// and last operators of an add-only table never record that a group appeared.
 #[test]
 #[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper#copyKeyColumns"
+    expected = "unported: io.deephaven.engine.table.impl.by.BaseAddOnlyFirstOrLastChunkedOperator"
 )]
-fn an_initial_group_without_rows_of_a_changing_table_needs_preserve_empty() {
-    let ticking = Ticking::new(&[0, 1, 2, 3]);
-    let sum = [agg(AggSpec::Sum, &["I"])];
-    let _ = seeded(&ticking.parent, &sum, false, &keys(&[Some(7)]), &["K"]);
+fn a_first_of_an_add_only_table_with_an_initial_group_without_rows_is_refused() {
+    let (_graph, parent) = append_only(&[0, 1, 2, 3]);
+    let first = [agg(AggSpec::Sum, &["I"]), agg(AggSpec::First, &["D"])];
+    let _ = seeded(&parent, &first, false, &keys(&[Some(7)]), &["K"]);
+}
+
+/// With a count before it Java computes, and so with any other aggregation alone.
+#[test]
+fn an_add_only_table_shows_null_keys_for_an_initial_group_without_rows() {
+    for (aggregations, first_row) in [
+        (vec![count("N"), agg(AggSpec::Last, &["I"])], "null|1|5"),
+        (vec![agg(AggSpec::Max, &["M = I"]), count("N")], "null|5|1"),
+    ] {
+        let (graph, parent) = append_only(&[0, 1, 2, 3]);
+        let result =
+            seeded(&parent, &aggregations, false, &keys(&[Some(7)]), &["K"]).expect("seeded");
+        let checker = ConsistencyChecker::attach(result.clone());
+        assert!(!result.is_flat());
+        let (_, more) = batch(&source_rows(&[5, 6], |i| i + 2));
+        let writer = parent.input_table().expect("an input table");
+        writer.add(more).expect("an add");
+        graph.run_cycle();
+        checker.assert_consistent();
+        assert_eq!(rows(&*result)[0], first_row);
+    }
 }
 
 #[test]
