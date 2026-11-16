@@ -219,13 +219,17 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
 /// Behavior: `BarrageUtil#columnDefinitionsToFields` (the `deephaven:componentType` entry);
 /// every element type here is one `BarrageUtil#isTypeNativelySupported` accepts
 ///
-/// An array of a class Java does not send natively, `Object[]` or `DayOfWeek[]`, has
-/// none: `BarrageUtil#isTypeNativelySupported` refuses its class.
+/// An array of a class Java does not send natively, `Object[]`, `DayOfWeek[]`,
+/// `LocalDateTime[]` or `ZoneId[]`, has none: `BarrageUtil#isTypeNativelySupported`
+/// refuses its class. A vector of such a class is declared as one of strings.
 pub fn java_component_type_name(column_type: &ColumnType) -> Option<Cow<'static, str>> {
     fn native(column_type: &ColumnType) -> bool {
         match column_type {
             ColumnType::Array(element) => native(element),
-            ColumnType::Object(_) | ColumnType::DayOfWeek => false,
+            ColumnType::Object(_)
+            | ColumnType::DayOfWeek
+            | ColumnType::LocalDateTime
+            | ColumnType::ZoneId => false,
             _ => true,
         }
     }
@@ -628,6 +632,31 @@ mod tests {
 
     /// What Java 42.9 declared for `update("O = (Object) I", "N = null",
     /// "W = dayOfWeek(T, 'UTC')")`: an `Object` column has no `isSortable`.
+    /// Seen on Java 42.9 for `agg_by` with `distinct` of a `LocalDateTime` and of a
+    /// `ZoneId` column: `deephaven:componentType` is `java.lang.String`, and the class
+    /// itself for a `LocalDate`.
+    ///
+    /// Behavior: `BarrageUtil#columnDefinitionsToFields`, `#isTypeNativelySupported`
+    #[test]
+    fn a_vector_of_a_class_java_sends_as_text_is_declared_as_one_of_strings() {
+        for element in [
+            ColumnType::LocalDateTime,
+            ColumnType::ZoneId,
+            ColumnType::DayOfWeek,
+        ] {
+            assert_eq!(
+                java_component_type_name(&ColumnType::vector(element.clone())).as_deref(),
+                Some("java.lang.String"),
+                "{element:?}"
+            );
+            assert_eq!(java_component_type_name(&ColumnType::array(element)), None);
+        }
+        assert_eq!(
+            java_component_type_name(&ColumnType::vector(ColumnType::LocalDate)).as_deref(),
+            Some("java.time.LocalDate")
+        );
+    }
+
     #[test]
     fn an_object_column_and_a_day_of_week_are_declared_as_in_java() {
         let definition = definition(&[
