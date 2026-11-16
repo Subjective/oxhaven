@@ -20,7 +20,6 @@ use pyo3::prelude::*;
 use super::ops::{failure, guarded};
 use super::TableHandle;
 use crate::schema::column_type_for_java_names;
-use crate::table::support::validate_column_name;
 
 /// The Python exception of a failed read; `deephaven.parquet.read` wraps it in a `DHError`.
 fn exception(error: ReadError) -> PyErr {
@@ -94,15 +93,6 @@ pub(super) fn read_parquet(
     let table = py
         .detach(|| oxhaven_parquet::read(path, &options))
         .map_err(exception)?;
-    for column in table.definition().columns() {
-        // a reserved word is a name Java changes; the reader does not know the words
-        if validate_column_name(&column.name).is_err() {
-            return Err(exception(ReadError::NotPorted {
-                java: "io.deephaven.api.util.NameValidator#legalizeColumnName",
-                what: format!("column name '{}'", column.name),
-            }));
-        }
-    }
     Ok(TableHandle { table })
 }
 
@@ -268,6 +258,7 @@ signed = read("{DATA}/uint64_big.parquet", col_instructions=[ColumnInstruction(
 )])
 snappy = read("{DATA}/types_snappy.parquet")
 zstd = read("{DATA}/codec_zstd.parquet")
+reserved = read("{DATA}/reserved.parquet")
 "#
         ));
         assert_eq!(changes.error, None);
@@ -279,6 +270,11 @@ zstd = read("{DATA}/codec_zstd.parquet")
         assert_eq!(snappy[4..], expected[3..]);
         let expected: Vec<_> = (0..20).map(Some).collect();
         assert_eq!(ints(&*table("zstd"), "X"), expected);
+        // a reserved word is a column name Java changes
+        let reserved = table("reserved");
+        let names = reserved.definition().columns().iter();
+        let names: Vec<_> = names.map(|column| column.name.as_str()).collect();
+        assert_eq!(names, ["column_int", "ok"]);
         assert_eq!(table("flat").row_set().size(), 12);
         assert_eq!(ints(&*table("doubled"), "Y"), [0, 2, 4, 6].map(Some));
         assert_eq!(ints(&*table("one"), "X"), [0, 1, 2, 3, 4].map(Some));
@@ -308,11 +304,6 @@ zstd = read("{DATA}/codec_zstd.parquet")
                 r#"read("{DATA}/flat", col_instructions=[ColumnInstruction(column_name="Q")])"#
             )),
             "must specify the parquet column name for read."
-        );
-        // a reserved word is a column name Java changes, which only the server can tell
-        assert_eq!(
-            failure(&format!(r#"read("{DATA}/reserved.parquet")"#)),
-            "not ported yet: io.deephaven.api.util.NameValidator#legalizeColumnName: column name 'int'"
         );
         let brotli = failure(&format!(r#"read("{DATA}/codec_brotli.parquet")"#));
         assert!(
