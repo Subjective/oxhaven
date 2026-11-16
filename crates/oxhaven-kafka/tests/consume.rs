@@ -423,3 +423,32 @@ fn what_is_not_built_is_refused_by_the_name_of_what_java_does() {
     };
     assert!(refused(&Spec::Ignore, &duplicate, &[]).contains("duplicate names [KafkaOffset]"));
 }
+
+/// Behavior: io.deephaven.kafka.ingest.KafkaIngester, which stops when the table's
+/// publisher is shut down because the table is no longer used
+#[test]
+fn the_polling_thread_ends_when_the_table_is_dropped() {
+    use std::sync::mpsc::RecvTimeoutError;
+    for table_type in [TableType::Blink, TableType::Append, TableType::Ring(3)] {
+        let plan = Plan::new("test", &[], &Spec::Ignore, &simple("V", ColumnType::String));
+        let topic = Topic::new(plan.unwrap(), table_type);
+        topic.cycle(Ok(vec![record(0, None, Some(b"a"))]));
+        let Topic {
+            table,
+            checker,
+            polled,
+            ..
+        } = topic;
+        assert_eq!(table.row_set().size(), 1);
+        drop((table, checker));
+        // The source is dropped with the thread, and with it the sender of `polled`.
+        let ended = loop {
+            match polled.recv_timeout(Duration::from_secs(10)) {
+                Ok(()) => continue,
+                Err(RecvTimeoutError::Disconnected) => break true,
+                Err(RecvTimeoutError::Timeout) => break false,
+            }
+        };
+        assert!(ended, "the thread of a {table_type:?} table still polls");
+    }
+}
