@@ -36,12 +36,14 @@ mod completer_tests;
 mod csv;
 mod data;
 pub mod env;
+mod figure;
+#[cfg(test)]
+mod figure_tests;
 mod input;
 pub mod interrupt;
 mod listener;
 mod ops;
 mod parquet;
-mod figure;
 mod partitioned;
 mod plugin;
 #[cfg(test)]

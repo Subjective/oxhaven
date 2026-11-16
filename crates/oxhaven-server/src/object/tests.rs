@@ -498,8 +498,9 @@ fn a_type_is_registered_under_a_name_java_would_take() {
     for name in ["var", "record", "non-sealed"] {
         assert_eq!(register(name), Ok(()));
     }
-    // a name is taken whatever its case; so are those of the types Java has built in
-    for name in ["my.type", "MY.TYPE", "Figure", "HierarchicalTable"] {
+    // a name is taken whatever its case; so is that of the type Java has built in and
+    // Oxhaven has not
+    for name in ["my.type", "MY.TYPE", "HierarchicalTable"] {
         assert_eq!(
             register(name),
             Err(format!(
@@ -522,6 +523,12 @@ fn a_type_is_registered_under_a_name_java_would_take() {
     assert_eq!(
         registry().register(Arc::new(Named("partitionedtable", true))),
         Err("Unable to register type, type name already registered: partitionedtable".to_string())
+    );
+    // and the figure, under the name Java gives it
+    assert!(registry().names().contains(&"Figure".to_string()));
+    assert_eq!(
+        registry().register(Arc::new(Named("FIGURE", true))),
+        Err("Unable to register type, type name already registered: FIGURE".to_string())
     );
 }
 

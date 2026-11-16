@@ -160,8 +160,8 @@ impl ObjectType for FigureType {
         value: &ExportValue,
         connection: Arc<dyn MessageStream>,
     ) -> Result<Arc<dyn MessageStream>, ExportError> {
-        let figure = figure_of(value)
-            .ok_or_else(|| ExportError::Internal("not a figure".to_string()))?;
+        let figure =
+            figure_of(value).ok_or_else(|| ExportError::Internal("not a figure".to_string()))?;
         let tables = figure.tables.iter().cloned().map(ExportValue::Table);
         let partitioned = figure
             .partitioned
