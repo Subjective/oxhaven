@@ -1,6 +1,7 @@
 //! A tree: the rows of a table under the rows their parent column names.
 
 use super::keys::{parts, KeyIndex};
+use super::node_ops::{filtered_node, node_table, NodeColumns, NodeOperations};
 use super::{
     failure, merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey,
     Parent, Part, DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
@@ -174,10 +175,12 @@ pub struct TreeTable {
     lookup: Arc<RowLookup>,
     /// The identifier that names the root: null.
     root_key: Part,
-    /// The columns of a snapshot.
+    /// The columns of a snapshot: the structural ones, then those of the nodes.
     columns: TableDefinition,
     /// What the rows of every node are sorted by, the column that decides first.
     sorts: Vec<SortColumn>,
+    /// The formats of the rows of every node, and the filters they pass.
+    node_columns: NodeColumns,
     /// The columns a client may sort by, when the source's sorting was restricted.
     sortable: Option<Vec<String>>,
 }
@@ -274,6 +277,7 @@ pub fn tree(
         root_key,
         columns,
         sorts: Vec::new(),
+        node_columns: NodeColumns::default(),
         // Behavior: TreeTableImpl#makeTreeInternal, which copies the restriction whole
         sortable: sortable_columns(source.as_ref()),
     })
@@ -361,8 +365,81 @@ impl TreeTable {
             root_key: self.root_key.clone(),
             columns: self.columns.clone(),
             sorts: self.sorts.clone(),
+            node_columns: self.node_columns.clone(),
             sortable: self.sortable.clone(),
         }
+    }
+
+    /// The columns of the nodes: those of the source, then the formatting columns.
+    ///
+    /// Behavior: TreeTableImpl#getNodeDefinition
+    pub fn node_definition(&self) -> &[ColumnDefinition] {
+        &self.columns.columns()[2..]
+    }
+
+    /// A recorder of operations on the nodes of this tree, with nothing recorded.
+    ///
+    /// Behavior: TreeTableImpl#makeNodeOperationsRecorder
+    pub fn node_operations(&self) -> NodeOperations {
+        NodeOperations::new(self.node_definition().to_vec())
+    }
+
+    /// Whether the nodes have operations: Java keeps a recorder for them then.
+    fn operated(&self) -> bool {
+        !self.sorts.is_empty()
+            || !self.node_columns.is_empty()
+            || !self.node_columns.filters.is_empty()
+    }
+
+    /// This tree with what `operations` recorded for its nodes: the formats after those
+    /// the nodes have, the filters after theirs, and the sorts in front of theirs. The
+    /// tree itself when nothing was recorded. The sorts were checked when they were
+    /// recorded.
+    ///
+    /// Java keeps one recorder for the nodes and merges a second into it only when both
+    /// give the nodes the same columns: so a recorder with formats is refused for nodes
+    /// that have operations of any kind, unless it was made of a tree whose nodes have
+    /// those formats already.
+    ///
+    /// Behavior: TreeTableImpl#withNodeOperations and #accumulateOperations, which is
+    /// TreeNodeOperationsRecorder#withOperations
+    pub fn with_node_operations(
+        &self,
+        operations: &NodeOperations,
+    ) -> Result<TreeTable, HierarchicalError> {
+        if operations.is_empty() {
+            return Ok(self.with_source(self.source.clone(), self.nodes.clone()));
+        }
+        if self.operated() && operations.definition() != self.node_definition() {
+            return Err(HierarchicalError::IllegalArgument(
+                "Incompatible operation recorders; compatible recorders must be created from \
+                 the same table"
+                    .to_string(),
+            ));
+        }
+        let mut result = self.with_source(self.source.clone(), self.nodes.clone());
+        let mut columns = self.columns.columns()[..2].to_vec();
+        columns.extend(operations.definition().iter().cloned());
+        result.columns = TableDefinition::new(columns).map_err(|duplicate| {
+            HierarchicalError::IllegalArgument(format!("Duplicate column name {}", duplicate.0))
+        })?;
+        result.sorts = merged_sorts(operations.sorts(), &self.sorts);
+        result.node_columns = self.node_columns.with(operations);
+        Ok(result)
+    }
+
+    /// The table of the rows of a node as a snapshot reads them: `base`, the rows whose
+    /// parent is the node, with the formatting columns, and of those the rows that pass
+    /// the filters.
+    ///
+    /// Behavior: TreeTableImpl#applyNodeFormatsAndFilters
+    fn node(&self, base: Arc<dyn Table>) -> Result<Arc<dyn Table>, HierarchicalError> {
+        let formatted = if self.node_columns.is_empty() {
+            base
+        } else {
+            node_table(&base, &[], &self.node_columns)?
+        };
+        filtered_node(formatted, &self.node_columns.filters)
     }
 
     /// Whether the nodes of this tree can be sorted by `sorts`.
@@ -372,7 +449,11 @@ impl TreeTable {
     pub fn check_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
         check_sort_columns(self.source.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
-                let available: Vec<&str> = self.columns.columns()[2..]
+                // the formatting columns are not named
+                let available: Vec<&str> = self
+                    .source
+                    .definition()
+                    .columns()
                     .iter()
                     .map(|column| column.name.as_str())
                     .collect();
@@ -442,6 +523,38 @@ impl TreeTable {
         self.lookup
             .get(identifier)
             .filter(|&row| self.source.row_set().contains(row))
+    }
+
+    /// The children of the root are the rows without a parent; those of another node the
+    /// rows whose parent is the identifier of the node's row, `node.row` of the source.
+    ///
+    /// # Panics
+    /// With `unported!` for a row without an identifier, which only an expansion of
+    /// every row or to a depth reaches. In Java its children are the rows of the root,
+    /// itself among them: expanded to a depth, the rows of the root that follow it show
+    /// the depth of the deepest visit, and with every row expanded Java's stack
+    /// overflows and the process ends.
+    ///
+    /// Behavior: TreeTableImpl#makeChildNodeIdLookup and #nodeIdToNodeBaseTable
+    fn base_children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
+        if node.depth == 0 {
+            return self.nodes.children(&self.root_key);
+        }
+        let identifiers = self
+            .source
+            .column(self.id_column)
+            .chunk(&RowSet::from_range(node.row, node.row))?;
+        if identifiers.is_null(0) {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeChildNodeIdLookup",
+                "the expansion of a row without an identifier, whose children are the rows \
+                 of the root"
+            );
+        }
+        match parts(&identifiers)?.pop() {
+            Some(identifier) => self.nodes.children(&identifier),
+            None => Ok(None),
+        }
     }
 
     fn identifier(key: &NodeKey) -> Result<&Part, HierarchicalError> {
@@ -546,36 +659,14 @@ impl Hierarchy for TreeTable {
         NodeId { depth: 0, row: 0 }
     }
 
-    /// The children of the root are the rows without a parent; those of another node the
-    /// rows whose parent is the identifier of the node's row, `node.row` of the source.
+    /// The rows of the node of `node` with its formats, that pass its filters.
     ///
-    /// # Panics
-    /// With `unported!` for a row without an identifier, which only an expansion of
-    /// every row or to a depth reaches. In Java its children are the rows of the root,
-    /// itself among them: expanded to a depth, the rows of the root that follow it show
-    /// the depth of the deepest visit, and with every row expanded Java's stack
-    /// overflows and the process ends.
-    ///
-    /// Behavior: TreeTableImpl#makeChildNodeIdLookup and #nodeIdToNodeBaseTable
+    /// Behavior: TreeTableImpl#nodeIdToNodeBaseTable and #applyNodeFormatsAndFilters
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
-        if node.depth == 0 {
-            return self.nodes.children(&self.root_key);
-        }
-        let identifiers = self
-            .source
-            .column(self.id_column)
-            .chunk(&RowSet::from_range(node.row, node.row))?;
-        if identifiers.is_null(0) {
-            oxhaven_contracts::unported!(
-                "io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeChildNodeIdLookup",
-                "the expansion of a row without an identifier, whose children are the rows \
-                 of the root"
-            );
-        }
-        match parts(&identifiers)?.pop() {
-            Some(identifier) => self.nodes.children(&identifier),
-            None => Ok(None),
-        }
+        let Some(base) = self.base_children(node)? else {
+            return Ok(None);
+        };
+        self.node(base).map(Some)
     }
 
     /// Behavior: TreeTableImpl#applyNodeSorts, which is
@@ -601,22 +692,30 @@ impl Hierarchy for TreeTable {
         Expandable::ByRow
     }
 
-    /// A row can be expanded if a row has its identifier for parent now.
+    /// A row can be expanded if a row has its identifier for parent now, and passes the
+    /// filters of the nodes when they have some.
     ///
-    /// Behavior: TreeTableImpl#nodeIdExpandable
+    /// Behavior: TreeTableImpl#nodeIdExpandable, which reads the traversal table: the
+    /// node's table filtered when the nodes have filters (#hasNodeFiltersToApply)
     fn expandable_rows(
         &self,
         table: &dyn Table,
         rows: &RowSet,
     ) -> Result<Vec<bool>, HierarchicalError> {
         let identifiers = parts(&table.column(self.id_column).chunk(rows)?)?;
+        let filtered = !self.node_columns.filters.is_empty();
         identifiers
             .iter()
             .map(|identifier| {
-                Ok(self
-                    .nodes
-                    .children(identifier)?
-                    .is_some_and(|children| !children.row_set().is_empty()))
+                let Some(children) = self.nodes.children(identifier)? else {
+                    return Ok(false);
+                };
+                let children = if filtered {
+                    self.node(children)?
+                } else {
+                    children
+                };
+                Ok(!children.row_set().is_empty())
             })
             .collect()
     }

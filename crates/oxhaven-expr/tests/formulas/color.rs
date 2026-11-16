@@ -200,6 +200,51 @@ fn java_s_refusals_are_refusals() {
     }
 }
 
+/// The fields of `ColorUtil` are styles; as Java 42.9 answered (task 7.8.4).
+#[test]
+fn the_colours_of_color_util_are_styles() {
+    let table = table();
+    let util = "io.deephaven.engine.util.ColorUtil";
+    table.assert(&format!("{util}.RED"), all(RED));
+    table.assert(&format!("{util}.PINK"), all(144026879270060032));
+    table.assert(&format!("{util}.GREEN"), all(72337969519788032));
+    table.assert("toLong(GREEN)", all(72198331557798112));
+    table.assert(&format!("{util}.ORANGE + 1"), all(144053615441477633));
+    table.assert(&format!("{util}.NO_FORMATTING"), all(0));
+    table.assert(&format!("{util}.VIVID_RED"), all(137130158239834336));
+    table.assert(&format!("{util}.COLOR_SET_BIT"), all(1));
+    table.assert(&format!("{util}Impl.FOREGROUND_SET_BIT"), all(4));
+    for formula in [
+        format!("{util}.DB_PINK"),
+        format!("{util}.LEGACY_PINK"),
+        format!("{util}.VIVID_PINK"),
+        format!("{util}Impl.RED"),
+        "ColorUtil.RED".to_string(),
+    ] {
+        assert!(
+            matches!(table.compile_error(&formula), FormulaError::Unsupported(_)),
+            "{formula}"
+        );
+    }
+}
+
+/// `colorRGB(int, boolean)` keeps an alpha, which a style does not read; as Java 42.9
+/// answered (task 7.8.4).
+#[test]
+fn a_colour_with_alpha_has_the_style_of_its_red_green_and_blue() {
+    let table = table();
+    table.assert("bg(colorRGB(0x102030, true))", all(76596584195817472));
+    table.assert("bg(colorRGB(0x102030))", all(76596584195817472));
+    table.assert(
+        "bgfg(colorRGB(0x7F102030, true), colorRGB(-1, false))",
+        all(76596584296480767),
+    );
+    assert!(matches!(
+        table.compile_error("bg(colorRGB(0x102030, X > 2))"),
+        FormulaError::Unsupported(_)
+    ));
+}
+
 /// Java makes a column of `Color` objects of these; no column here has that type.
 #[test]
 fn a_colour_is_not_the_value_of_a_formula() {
@@ -208,7 +253,9 @@ fn a_colour_is_not_the_value_of_a_formula() {
         "RED",
         "X > 2 ? RED : BLUE",
         "colorRGB(1, 2, 3)",
+        "colorRGB(1, true)",
         "RED.toHex()",
+        "new io.deephaven.gui.color.Color(1, 2, 3)",
     ] {
         assert!(
             matches!(table.compile_error(formula), FormulaError::Unsupported(_)),

@@ -1,0 +1,849 @@
+{
+  "format": 2,
+  "scenario": "tree_formatted",
+  "scenario_sha256": "d8da2a1e1da347271e7152925627bf94fa0881c286f389ee22ef14a2bb13cdbd",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "v_fmt",
+      "file": "step000.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "v_rows",
+      "file": "step000.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "v_cols",
+      "file": "step000.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "v_where",
+      "file": "step000.v_where.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "v_two",
+      "file": "step000.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "v_pos",
+      "file": "step000.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 0,
+      "table": "v_by_fmt",
+      "file": "step000.v_by_fmt.arrow",
+      "rows": 4
+    },
+    {
+      "step": 0,
+      "table": "v_refmt",
+      "file": "step000.v_refmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 0,
+      "table": "v_src",
+      "file": "step000.v_src.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "v_sorted",
+      "file": "step000.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 0,
+      "table": "v_chosen",
+      "file": "step000.v_chosen.arrow",
+      "rows": 3
+    },
+    {
+      "step": 0,
+      "table": "v_default",
+      "file": "step000.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 0,
+      "table": "v_hidden_sorted",
+      "failure": {
+        "code": "INVALID_ARGUMENT"
+      }
+    },
+    {
+      "step": 0,
+      "table": "v_static_hidden_sorted",
+      "file": "step000.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "v_fmt",
+      "file": "step001.v_fmt.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "v_rows",
+      "file": "step001.v_rows.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "v_cols",
+      "file": "step001.v_cols.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "v_where",
+      "file": "step001.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "v_two",
+      "file": "step001.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "v_pos",
+      "file": "step001.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 1,
+      "table": "v_by_fmt",
+      "file": "step001.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "v_refmt",
+      "file": "step001.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 1,
+      "table": "v_src",
+      "file": "step001.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "v_sorted",
+      "file": "step001.v_sorted.arrow",
+      "rows": 8
+    },
+    {
+      "step": 1,
+      "table": "v_chosen",
+      "file": "step001.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "v_default",
+      "file": "step001.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 1,
+      "table": "v_hidden_sorted",
+      "file": "step001.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 1,
+      "table": "v_static_hidden_sorted",
+      "file": "step001.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "v_fmt",
+      "file": "step002.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "v_rows",
+      "file": "step002.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "v_cols",
+      "file": "step002.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "v_where",
+      "file": "step002.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "v_two",
+      "file": "step002.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "v_pos",
+      "file": "step002.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 2,
+      "table": "v_by_fmt",
+      "file": "step002.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "v_refmt",
+      "file": "step002.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 2,
+      "table": "v_src",
+      "file": "step002.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "v_sorted",
+      "file": "step002.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 2,
+      "table": "v_chosen",
+      "file": "step002.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "v_default",
+      "file": "step002.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 2,
+      "table": "v_hidden_sorted",
+      "file": "step002.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 2,
+      "table": "v_static_hidden_sorted",
+      "file": "step002.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "v_fmt",
+      "file": "step003.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "v_rows",
+      "file": "step003.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "v_cols",
+      "file": "step003.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "v_where",
+      "file": "step003.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "v_two",
+      "file": "step003.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "v_pos",
+      "file": "step003.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 3,
+      "table": "v_by_fmt",
+      "file": "step003.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "v_refmt",
+      "file": "step003.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 3,
+      "table": "v_src",
+      "file": "step003.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "v_sorted",
+      "file": "step003.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 3,
+      "table": "v_chosen",
+      "file": "step003.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "v_default",
+      "file": "step003.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 3,
+      "table": "v_hidden_sorted",
+      "file": "step003.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 3,
+      "table": "v_static_hidden_sorted",
+      "file": "step003.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "v_fmt",
+      "file": "step004.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "v_rows",
+      "file": "step004.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "v_cols",
+      "file": "step004.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "v_where",
+      "file": "step004.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "v_two",
+      "file": "step004.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "v_pos",
+      "file": "step004.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 4,
+      "table": "v_by_fmt",
+      "file": "step004.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "v_refmt",
+      "file": "step004.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 4,
+      "table": "v_src",
+      "file": "step004.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "v_sorted",
+      "file": "step004.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 4,
+      "table": "v_chosen",
+      "file": "step004.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "v_default",
+      "file": "step004.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 4,
+      "table": "v_hidden_sorted",
+      "file": "step004.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 4,
+      "table": "v_static_hidden_sorted",
+      "file": "step004.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "v_fmt",
+      "file": "step005.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "v_rows",
+      "file": "step005.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "v_cols",
+      "file": "step005.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "v_where",
+      "file": "step005.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "v_two",
+      "file": "step005.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "v_pos",
+      "file": "step005.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 5,
+      "table": "v_by_fmt",
+      "file": "step005.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "v_refmt",
+      "file": "step005.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 5,
+      "table": "v_src",
+      "file": "step005.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "v_sorted",
+      "file": "step005.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 5,
+      "table": "v_chosen",
+      "file": "step005.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "v_default",
+      "file": "step005.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 5,
+      "table": "v_hidden_sorted",
+      "file": "step005.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 5,
+      "table": "v_static_hidden_sorted",
+      "file": "step005.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "v_fmt",
+      "file": "step006.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "v_rows",
+      "file": "step006.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "v_cols",
+      "file": "step006.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "v_where",
+      "file": "step006.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "v_two",
+      "file": "step006.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "v_pos",
+      "file": "step006.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 6,
+      "table": "v_by_fmt",
+      "file": "step006.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "v_refmt",
+      "file": "step006.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 6,
+      "table": "v_src",
+      "file": "step006.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "v_sorted",
+      "file": "step006.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 6,
+      "table": "v_chosen",
+      "file": "step006.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "v_default",
+      "file": "step006.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 6,
+      "table": "v_hidden_sorted",
+      "file": "step006.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 6,
+      "table": "v_static_hidden_sorted",
+      "file": "step006.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "v_fmt",
+      "file": "step007.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "v_rows",
+      "file": "step007.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "v_cols",
+      "file": "step007.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "v_where",
+      "file": "step007.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "v_two",
+      "file": "step007.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "v_pos",
+      "file": "step007.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 7,
+      "table": "v_by_fmt",
+      "file": "step007.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "v_refmt",
+      "file": "step007.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 7,
+      "table": "v_src",
+      "file": "step007.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "v_sorted",
+      "file": "step007.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 7,
+      "table": "v_chosen",
+      "file": "step007.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "v_default",
+      "file": "step007.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 7,
+      "table": "v_hidden_sorted",
+      "file": "step007.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 7,
+      "table": "v_static_hidden_sorted",
+      "file": "step007.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "v_fmt",
+      "file": "step008.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 8,
+      "table": "v_rows",
+      "file": "step008.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 8,
+      "table": "v_cols",
+      "file": "step008.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 8,
+      "table": "v_where",
+      "file": "step008.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "v_two",
+      "file": "step008.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "v_pos",
+      "file": "step008.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 8,
+      "table": "v_by_fmt",
+      "file": "step008.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "v_refmt",
+      "file": "step008.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 8,
+      "table": "v_src",
+      "file": "step008.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "v_sorted",
+      "file": "step008.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 8,
+      "table": "v_chosen",
+      "file": "step008.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 8,
+      "table": "v_default",
+      "file": "step008.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 8,
+      "table": "v_hidden_sorted",
+      "file": "step008.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 8,
+      "table": "v_static_hidden_sorted",
+      "file": "step008.v_static_hidden_sorted.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "v_fmt",
+      "file": "step009.v_fmt.arrow",
+      "rows": 7
+    },
+    {
+      "step": 9,
+      "table": "v_rows",
+      "file": "step009.v_rows.arrow",
+      "rows": 7
+    },
+    {
+      "step": 9,
+      "table": "v_cols",
+      "file": "step009.v_cols.arrow",
+      "rows": 7
+    },
+    {
+      "step": 9,
+      "table": "v_where",
+      "file": "step009.v_where.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "v_two",
+      "file": "step009.v_two.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "v_pos",
+      "file": "step009.v_pos.arrow",
+      "rows": 1
+    },
+    {
+      "step": 9,
+      "table": "v_by_fmt",
+      "file": "step009.v_by_fmt.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "v_refmt",
+      "file": "step009.v_refmt.arrow",
+      "rows": 3
+    },
+    {
+      "step": 9,
+      "table": "v_src",
+      "file": "step009.v_src.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "v_sorted",
+      "file": "step009.v_sorted.arrow",
+      "rows": 7
+    },
+    {
+      "step": 9,
+      "table": "v_chosen",
+      "file": "step009.v_chosen.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "v_default",
+      "file": "step009.v_default.arrow",
+      "rows": 2
+    },
+    {
+      "step": 9,
+      "table": "v_hidden_sorted",
+      "file": "step009.v_hidden_sorted.arrow",
+      "rows": 4
+    },
+    {
+      "step": 9,
+      "table": "v_static_hidden_sorted",
+      "file": "step009.v_static_hidden_sorted.arrow",
+      "rows": 3
+    }
+  ]
+}
