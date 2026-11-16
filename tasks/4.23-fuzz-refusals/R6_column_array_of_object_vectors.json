@@ -1,0 +1,26 @@
+{
+ "format": 1,
+ "name": "R6_column_array_of_object_vectors",
+ "description": "The column array of a column of vectors of timestamps: the reference sends its elements as strings, Oxhaven refuses it by name.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {"name": "K", "type": "int64"},
+    {"name": "T", "type": "timestamp"}
+   ],
+   "rows": [
+    [1, 1700000000000000000],
+    [2, 1700000001000000000],
+    [1, null]
+   ]
+  }
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "o", "op": "view", "source": "g", "formulas": ["X = T_[i]"]}
+ ],
+ "results": [
+  {"table": "o"}
+ ]
+}

@@ -1,0 +1,27 @@
+{
+ "format": 1,
+ "name": "R6_column_array_of_java_arrays",
+ "description": "The column array of an array column a formula made (a Java array, not a vector): the reference computes, Oxhaven refuses it by name.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {"name": "K", "type": "int64"},
+    {"name": "F", "type": "float32"}
+   ],
+   "rows": [
+    [1, 1.5],
+    [2, 2.5],
+    [1, null]
+   ]
+  }
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "u", "op": "update", "source": "g", "formulas": ["A = 1 - F"]},
+  {"name": "o", "op": "where", "source": "u", "filters": ["isNull(A_[i+1])"]}
+ ],
+ "results": [
+  {"table": "o"}
+ ]
+}

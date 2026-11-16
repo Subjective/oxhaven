@@ -772,9 +772,13 @@ mod tests {
             Ok(Literal::Instant(1_700_000_000_000_000_000))
         );
         assert_eq!(
-            literal("'2024-01-01T00:00:00 America/Nowhere'"),
+            literal("'2024-01-01T10:00+01:00'"),
+            Ok(Literal::Instant(1_704_099_600_000_000_000))
+        );
+        assert_eq!(
+            literal("'+12024-01-01T00:00:00 UTC'"),
             Err(FormulaError::Unsupported(
-                "time literal '2024-01-01T00:00:00 America/Nowhere'".into()
+                "time literal '+12024-01-01T00:00:00 UTC'".into()
             ))
         );
         // Java knows no zone `NY`.

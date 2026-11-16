@@ -1,9 +1,8 @@
 //! Time literals: single-quoted text that Java replaces before it parses the formula.
 //!
-//! Instants in UTC, in a time zone Java has an alias for or in a region of the IANA
-//! database, durations and periods are read. Java accepts more spellings (offsets from UTC,
-//! epoch numbers, local dates and times, time zone names); those are reported as
-//! unsupported, by their text.
+//! Instants with a year of four digits, in any zone Java reads, durations, periods, dates,
+//! times of day and zones are read. Java accepts more spellings (longer years after a
+//! sign, some dates and times); those are reported as unsupported, by their text.
 
 use chrono::{LocalResult, NaiveDate, Offset, TimeZone};
 use oxhaven_contracts::expr::FormulaError;
@@ -511,13 +510,10 @@ pub(crate) fn duration_nanos(content: &str) -> Option<Option<i64>> {
 /// Reads the content of a time literal as an instant.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#parseZonedDateTime`, for
-/// these spellings only: `yyyy-MM-ddTHH:mm[:ss[.f]] ZONE` with a zone [`zone`] knows or an
-/// offset [`zone_offset`] reads, the
-/// same with `Z` directly after the time in place of the zone
-/// (`java.time.ZonedDateTime#parse`), and `yyyy-MM-dd ZONE` or `yyyy-MM-ddT ZONE`, which is
-/// midnight. Fields have exactly the widths shown and `f` is one to nine digits. `Z` after
-/// a space is not a time zone to `io.deephaven.time.TimeZoneAliases#zoneId`, so Java
-/// rejects it.
+/// a year of four digits without a sign: the date and time with the zone after a space
+/// ([`spaced`]), or with an offset directly after the time (`java.time.ZonedDateTime#parse`,
+/// [`iso`]). `Z` after a space is not a time zone to
+/// `io.deephaven.time.TimeZoneAliases#zoneId`, so Java rejects it.
 ///
 /// An instant that Java cannot store in a column is unsupported: Java can still compare
 /// with it. `DateTimeUtils#epochNanos` refuses every instant from epoch second
@@ -527,9 +523,10 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
     parse_zoned(content).map(|(nanos, _)| nanos)
 }
 
-/// [`parse_instant`], with the id of the zone the text names: `Z` where the time ends
-/// with `Z`, and otherwise the id of the zone after the space. A zone written as an
-/// offset is unsupported here: no column of this server holds its id.
+/// [`parse_instant`], with the id of the zone the text names: `Z` where the offset after
+/// the time is none, the zone in brackets, and otherwise the id of the zone after the
+/// space. A zone written as another offset, or one of Java's `SystemV` zones, is
+/// unsupported here: no column of this server holds its id.
 ///
 /// Behavior: `io.deephaven.time.DateTimeUtils#parseZonedDateTime`, which keeps the zone
 /// that `java.time.ZonedDateTime#parse` or `DateTimeUtils#parseTimeZoneQuiet` gives.
@@ -547,9 +544,192 @@ enum Placed {
     In(Zone),
     /// Seconds east of UTC.
     Offset(i64),
+    /// One of Java's `SystemV` zones with daylight time: its standard seconds east of UTC.
+    SystemV(i64),
 }
 
-/// The instant of a time literal, and the id of its zone unless that is an offset.
+/// The zone `SystemV/...` names: its standard time in seconds east of UTC, and whether it
+/// has daylight time. These thirteen are the ids of `java.time.ZoneId#getAvailableZoneIds`
+/// on Java 42.9 that the database compiled in here lacks; every other id of Java's is in
+/// it.
+fn system_v(name: &str) -> Option<(i64, bool)> {
+    let (hours_west, daylight) = match name.strip_prefix("SystemV/")? {
+        "AST4" => (4, false),
+        "AST4ADT" => (4, true),
+        "CST6" => (6, false),
+        "CST6CDT" => (6, true),
+        "EST5" => (5, false),
+        "EST5EDT" => (5, true),
+        "HST10" => (10, false),
+        "MST7" => (7, false),
+        "MST7MDT" => (7, true),
+        "PST8" => (8, false),
+        "PST8PDT" => (8, true),
+        "YST9" => (9, false),
+        "YST9YDT" => (9, true),
+        _ => return None,
+    };
+    Some((-hours_west * 3_600, daylight))
+}
+
+/// The seconds since the epoch of the local second `local` (counted as if in UTC) of
+/// `year` in a `SystemV` zone with daylight time.
+///
+/// Behavior: the `SystemV` rule of the time zone database Java ships: daylight time from
+/// the last Sunday of April to the last Sunday of October, at two in the morning of the
+/// clock, in every year but 1974 (from January 6 to the last Sunday of November) and 1975
+/// (from February 23). Seen on Java 42.9 for `SystemV/EST5EDT` and `SystemV/PST8PDT`
+/// around each of these days and in 1900: a time the clocks skip is moved later by the
+/// hour, and one that occurs twice is the earlier.
+fn system_v_seconds(standard: i64, year: i64, local: i64) -> i64 {
+    let last_sunday = |month: i64| {
+        let last = days_in_month(year, month);
+        // 1970-01-01 was a Thursday.
+        last - (days_from_civil(year, month, last) + 4).rem_euclid(7)
+    };
+    let (start_month, start_day) = match year {
+        1974 => (1, 6),
+        1975 => (2, 23),
+        _ => (4, last_sunday(4)),
+    };
+    let end_month = if year == 1974 { 11 } else { 10 };
+    // The first second of daylight time on the clock, and the first that is standard again.
+    let start = days_from_civil(year, start_month, start_day) * 86_400 + 3 * 3_600;
+    let end = days_from_civil(year, end_month, last_sunday(end_month)) * 86_400 + 2 * 3_600;
+    if (start..end).contains(&local) {
+        local - standard - 3_600
+    } else {
+        local - standard
+    }
+}
+
+/// The seconds east of UTC of an offset as `java.time.ZonedDateTime#parse` reads one after
+/// a time (`+HH`, `+HH:mm` or `+HH:mm:ss`) or, with `minutes`, in brackets, where the
+/// minutes are needed; `None` for any other text.
+///
+/// Seen on Java 42.9: `+01`, `+01:00:30`, `-18:00` and `-00:00` after a time and `[+02:00]`
+/// and `[-02:00:30]` are read; `+0100`, `+1`, `+18:01`, `+19:00`, `+01:60`, `[+02]` and
+/// `[+0200]` are not.
+fn iso_offset(text: &str, minutes: bool) -> Option<i64> {
+    let bytes = text.as_bytes();
+    let negative = match bytes.first()? {
+        b'+' => false,
+        b'-' => true,
+        _ => return None,
+    };
+    let two = |at: usize| -> Option<i64> {
+        let field = bytes.get(at..at + 2)?;
+        field
+            .iter()
+            .all(u8::is_ascii_digit)
+            .then(|| i64::from(field[0] - b'0') * 10 + i64::from(field[1] - b'0'))
+    };
+    let colon = |at: usize| bytes.get(at) == Some(&b':');
+    let (hours, minute, second) = match bytes.len() {
+        3 if !minutes => (two(1)?, 0, 0),
+        6 if colon(3) => (two(1)?, two(4)?, 0),
+        9 if colon(3) && colon(6) => (two(1)?, two(4)?, two(7)?),
+        _ => return None,
+    };
+    let total = hours * 3_600 + minute * 60 + second;
+    if minute > 59 || second > 59 || total > 18 * 3_600 {
+        return None;
+    }
+    Some(if negative { -total } else { total })
+}
+
+/// Whether Java reads `name` as the zone in brackets after an offset (`None` when it does
+/// not), and the id of the zone when that is one a column of this server holds.
+///
+/// Behavior: `java.time.format.DateTimeFormatterBuilder#appendZoneRegionId`: `Z`, a
+/// region of the time zone database case sensitively, or an offset with its minutes,
+/// alone or after `UTC`, `GMT` or `UT`. Deephaven's aliases are no regions. Seen on Java
+/// 42.9: `[UTC]`, `[GMT]`, `[UT]`, `[Z]`, `[Europe/Paris]`, `[US/Eastern]`, `[EST5EDT]`,
+/// `[SystemV/EST5]`, `[+02:00]`, `[UTC+02:00]` and `[UT-02:00]` are read; `[ET]`, `[EST]`,
+/// `[z]`, `[europe/paris]`, `[Europe/Nowhere]`, `[GMT+2]`, `[GMT+02]`, `[UTC+02]` and `[]`
+/// are not.
+fn bracket_zone(name: &str) -> Option<Option<&'static str>> {
+    match name {
+        "Z" => return Some(Some("Z")),
+        "UTC" => return Some(Some("UTC")),
+        // Java's own, which the database compiled in here lacks.
+        "UT" => return Some(None),
+        // Regions of the database compiled in here that Java does not have.
+        "EST" | "HST" | "MST" | "ROC" | "GMT+0" | "GMT-0" => return None,
+        _ => {}
+    }
+    if let Ok(region) = name.parse::<chrono_tz::Tz>() {
+        return Some(Some(region.name()));
+    }
+    if system_v(name).is_some() {
+        return Some(None);
+    }
+    let offset = ["UTC", "GMT", "UT"]
+        .iter()
+        .find_map(|prefix| name.strip_prefix(prefix))
+        .unwrap_or(name);
+    iso_offset(offset, true).map(|_| None)
+}
+
+/// A field of digits: of exactly two when `exact`, and else of one or two.
+fn clock_field(field: &str, exact: bool) -> Option<i64> {
+    let wide = if exact {
+        field.len() == 2
+    } else {
+        (1..=2).contains(&field.len())
+    };
+    if wide && field.bytes().all(|b| b.is_ascii_digit()) {
+        field.parse().ok()
+    } else {
+        None
+    }
+}
+
+/// The hour, minute, second and nanoseconds of `HH:mm[:ss[.f]]`, the fraction of zero to
+/// nine digits; the fields of exactly two digits when `exact` and else of one or two.
+/// `None` for other text. The ranges of the fields are the caller's to check.
+fn clock(text: &str, exact: bool) -> Option<(i64, i64, i64, i64)> {
+    let (whole, fraction) = match text.split_once('.') {
+        Some((whole, fraction)) => (whole, Some(fraction)),
+        None => (text, None),
+    };
+    let mut fields = whole.split(':');
+    let hour = clock_field(fields.next()?, exact)?;
+    let minute = clock_field(fields.next()?, exact)?;
+    let second = match fields.next() {
+        Some(field) => Some(clock_field(field, exact)?),
+        None => None,
+    };
+    if fields.next().is_some() {
+        return None;
+    }
+    let nanos = match fraction {
+        // A fraction follows seconds only.
+        Some(digits) => {
+            second?;
+            if digits.len() > 9 || !digits.bytes().all(|b| b.is_ascii_digit()) {
+                return None;
+            }
+            let mut nanos = 0_i64;
+            for place in 0..9 {
+                let digit = digits
+                    .as_bytes()
+                    .get(place)
+                    .map_or(0, |d| i64::from(d - b'0'));
+                nanos = nanos * 10 + digit;
+            }
+            nanos
+        }
+        None => 0,
+    };
+    Some((hour, minute, second.unwrap_or(0), nanos))
+}
+
+/// The instant of a time literal, and the id of its zone when a column of this server
+/// holds that.
+///
+/// Read only when the text starts with a year of four digits and a `-`: Java reads longer
+/// years after a sign, and wraps around for years far from 1970.
 fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaError> {
     let unsupported = || FormulaError::Unsupported(format!("time literal '{content}'"));
     let invalid = || {
@@ -563,125 +743,31 @@ fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaErro
     if !content.chars().all(plausible) {
         return Err(invalid());
     }
-    let bytes = content.as_bytes();
-    let digits = |range: std::ops::Range<usize>| -> Option<i64> {
-        let field = bytes.get(range)?;
-        if field.is_empty() || !field.iter().all(u8::is_ascii_digit) {
-            return None;
+    let year = match content.as_bytes().get(..5) {
+        Some([digits @ .., b'-']) if digits.iter().all(u8::is_ascii_digit) => {
+            content[..4].parse::<i64>().map_err(|_| unsupported())?
         }
-        std::str::from_utf8(field).ok()?.parse().ok()
+        _ => return Err(unsupported()),
     };
-    let is = |at: usize, wanted: u8| bytes.get(at) == Some(&wanted);
-
-    let (Some(year), Some(month), Some(day)) = (digits(0..4), digits(5..7), digits(8..10)) else {
-        return Err(unsupported());
+    let rest = &content[5..];
+    let read = match rest.split_once(' ') {
+        // Java takes the zone from the first space on.
+        Some((local, name)) => spaced(year, local, name),
+        None => iso(year, rest),
     };
-    if !(is(4, b'-') && is(7, b'-')) {
-        return Err(unsupported());
-    }
+    let ((month, day), (hour, minute, second, nanos), placed, id) = read.ok_or_else(invalid)?;
 
-    let rest = &content[10..];
-    if rest.ends_with(" Z") {
-        return Err(invalid());
-    }
-    // Java takes the zone from the first space on.
-    let (clock, placed, id) = match rest.split_once(' ') {
-        Some((clock, name)) => match (zone(name), zone_offset(name)) {
-            (Some(zone), _) => (clock, Placed::In(zone), Some(zone_id(&zone))),
-            (None, Some(Some(offset))) => (clock, Placed::Offset(offset), None),
-            (None, Some(None)) => return Err(invalid()),
-            // A region is named with a `/`, but for the few names [`zone`] knows: no
-            // other text without one is a zone to Java. A region with a `/` that the
-            // database compiled in here lacks may still be one of Java's (`SystemV/EST5`).
-            (None, None) if !name.contains('/') => return Err(invalid()),
-            (None, None) => return Err(unsupported()),
-        },
-        None => match rest.strip_suffix('Z') {
-            Some(clock) if clock.len() > 1 => (clock, Placed::In(Zone::Utc), Some("Z")),
-            // Without a space Java reads only what `java.time.ZonedDateTime#parse` does,
-            // which ends with an offset, `Z` or a zone in brackets: a local date and time
-            // alone has "No time zone provided".
-            _ if !rest.contains(['+', '-', 'Z', '[']) => return Err(invalid()),
-            _ => return Err(unsupported()),
-        },
-    };
-    let (hour, minute, second, nanos) = if matches!(clock, "" | "T") {
-        // Behavior: `DateTimeUtils.DATE_TZ_PATTERN`, whose zone is letters, `_` and `/`
-        // only; any other zone leaves a date without a time, which Java does not read.
-        let name = rest.split_once(' ').map_or("", |(_, name)| name);
-        if !name
-            .bytes()
-            .all(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'/')
-        {
-            return Err(invalid());
-        }
-        (0, 0, 0, 0)
-    } else {
-        let Some(time) = clock.strip_prefix('T') else {
-            return Err(unsupported());
-        };
-        let time = time.as_bytes();
-        let field = |at: usize| -> Option<i64> {
-            let field = time.get(at..at + 2)?;
-            field
-                .iter()
-                .all(u8::is_ascii_digit)
-                .then(|| i64::from(field[0] - b'0') * 10 + i64::from(field[1] - b'0'))
-        };
-        let (Some(hour), Some(minute)) = (field(0), field(3)) else {
-            return Err(unsupported());
-        };
-        if time.get(2) != Some(&b':') {
-            return Err(unsupported());
-        }
-        let (second, nanos) = match time.len() {
-            5 => (0, 0),
-            8.. if time[5] == b':' => {
-                let Some(second) = field(6) else {
-                    return Err(unsupported());
-                };
-                let fraction = &time[8..];
-                let nanos = match fraction {
-                    [] => 0,
-                    [b'.', digits @ ..]
-                        if (1..=9).contains(&digits.len())
-                            && digits.iter().all(u8::is_ascii_digit) =>
-                    {
-                        let mut nanos = 0_i64;
-                        for place in 0..9 {
-                            let digit = digits.get(place).map_or(0, |d| i64::from(d - b'0'));
-                            nanos = nanos * 10 + digit;
-                        }
-                        nanos
-                    }
-                    _ => return Err(unsupported()),
-                };
-                (second, nanos)
-            }
-            _ => return Err(unsupported()),
-        };
-        (hour, minute, second, nanos)
-    };
-
-    // `java.time` rejects a field outside its range, and then no other kind of time literal
-    // matches text of this shape.
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) || minute > 59 || second > 59 {
-        return Err(invalid());
-    }
-    if hour > 24 {
-        return Err(invalid());
-    }
-    // Java's parser resolves a day past the end of the month and hour 24 by its own rules.
-    if hour == 24 || day > days_in_month(year, month) {
-        return Err(unsupported());
-    }
-
+    // Hour 24 is midnight of the next day.
     let local = days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60 + second;
+    let (year, month, day) = civil_from_days(local.div_euclid(86_400));
     let seconds = match &placed {
         Placed::In(Zone::Utc) => local,
         Placed::Offset(offset) => local - offset,
+        Placed::SystemV(standard) => system_v_seconds(*standard, year, local),
         Placed::In(Zone::Region(region)) => {
-            match zoned_seconds(region, (year, month, day), (hour, minute, second)) {
+            let of_day = local.rem_euclid(86_400);
+            let time = (of_day / 3_600, of_day % 3_600 / 60, of_day % 60);
+            match zoned_seconds(region, (year, month, day), time) {
                 Some(seconds) => seconds,
                 None => return Err(unsupported()),
             }
@@ -695,6 +781,120 @@ fn parse_zoned(content: &str) -> Result<(i64, Option<&'static str>), FormulaErro
             "time literal '{content}' outside the range of a 64-bit nanosecond timestamp"
         ))),
     }
+}
+
+/// The month and day, the time, the placement and the zone id of a time literal.
+type Local = (
+    (i64, i64),
+    (i64, i64, i64, i64),
+    Placed,
+    Option<&'static str>,
+);
+
+/// A time literal with a space, after its year and the `-`: `local` before the first
+/// space and the zone `name` after it. `None` for text Java does not read.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseZonedDateTime` where
+/// `java.time.ZonedDateTime#parse` has failed. The zone is one of
+/// `io.deephaven.time.TimeZoneAliases#zoneId`: an alias, a region ([`zone`]), an offset
+/// ([`zone_offset`]) or one of Java's `SystemV` zones ([`system_v`]). `yyyy-MM-dd` or
+/// `yyyy-MM-ddT` and a zone of letters, `_` and `/` is midnight (`DATE_TZ_PATTERN`), and
+/// any other text is read with `FORMATTER_ISO_LOCAL_DATE_TIME`: the month, day, hour,
+/// minute and second in one or two digits each, `T` in either case, the seconds optional
+/// and after them a `.` and zero to nine digits. Both resolve as `ResolverStyle.SMART`
+/// does: a day up to 31 that is past the end of its month is the last day of the month,
+/// and `24:00` with nothing but zeros after it is midnight of the next day. Seen on Java
+/// 42.9: `2023-1-4T2:3:4 UTC`, `2023-11-14t22:13:20. UTC`, `2023-02-30 UTC` (February 28)
+/// and `2023-12-31T24:00:00 America/New_York` (2024-01-01T05:00:00Z) are read;
+/// `2023-11-14T24:00:01 UTC`, `2023-02-32T22:13:20 UTC`, `2023-11-14T22:13:20 Etc/GMT-15`
+/// and `2023-11-14 SystemV/EST5` are not.
+fn spaced(year: i64, local: &str, name: &str) -> Option<Local> {
+    let (placed, id) = match (zone(name), zone_offset(name), system_v(name)) {
+        (Some(zone), _, _) => (Placed::In(zone), Some(zone_id(&zone))),
+        (None, Some(offset), _) => (Placed::Offset(offset?), None),
+        (None, None, Some((standard, false))) => (Placed::Offset(standard), None),
+        (None, None, Some((standard, true))) => (Placed::SystemV(standard), None),
+        (None, None, None) => return None,
+    };
+    let (date, time) = match local.split_once(['T', 't']) {
+        Some((date, time)) => (date, time),
+        None => (local, ""),
+    };
+    let (month, day) = date.split_once('-')?;
+    let midnight = time.is_empty();
+    if midnight {
+        let lettered = name
+            .bytes()
+            .all(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'/');
+        if !lettered {
+            return None;
+        }
+    }
+    let month = clock_field(month, midnight)?;
+    let day = clock_field(day, midnight)?;
+    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return None;
+    }
+    let day = day.min(days_in_month(year, month));
+    let (hour, minute, second, nanos) = if midnight {
+        (0, 0, 0, 0)
+    } else {
+        clock(time, false)?
+    };
+    if minute > 59 || second > 59 || hour > 24 {
+        return None;
+    }
+    if hour == 24 && (minute, second, nanos) != (0, 0, 0) {
+        return None;
+    }
+    Some(((month, day), (hour, minute, second, nanos), placed, id))
+}
+
+/// A time literal without a space, after its year and the `-`. `None` for text Java does
+/// not read.
+///
+/// Behavior: `java.time.ZonedDateTime#parse`, which is
+/// `DateTimeFormatter.ISO_ZONED_DATE_TIME`: `MM-ddTHH:mm[:ss[.f]]` with fields of two
+/// digits and a fraction of zero to nine, `T` in either case, then `Z` in either case or
+/// an offset ([`iso_offset`]), then optionally a zone in brackets ([`bracket_zone`]). The
+/// date and the time are those of the calendar and the clock (`ResolverStyle.STRICT`), and
+/// the instant is the one of the offset whatever the zone in brackets is. An offset of
+/// nothing is the zone `Z`. Seen on Java 42.9: `2023-11-14T22:13:20+05:00[Europe/Paris]`
+/// is 17:13:20Z, and `2023-11-14t22:13:20.z` and `2023-11-14T22:13+01` are read;
+/// `2023-11-14T22+01:00`, `2023-02-29T22:13:20Z`, `2023-11-14T24:00:00Z`,
+/// `2023-11-14T22:13:20[Europe/Paris]`, `2023-11-14T22:13:20` and `2023-11-14+01:00` are
+/// not.
+fn iso(year: i64, rest: &str) -> Option<Local> {
+    let (date, after) = rest.split_once(['T', 't'])?;
+    let (time, zone) = after.split_at(after.find(['Z', 'z', '+', '-', '['])?);
+    let (month, day) = date.split_once('-')?;
+    let (month, day) = (clock_field(month, true)?, clock_field(day, true)?);
+    let (hour, minute, second, nanos) = clock(time, true)?;
+    if !(1..=12).contains(&month) || day < 1 || day > days_in_month(year, month) {
+        return None;
+    }
+    if hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    let (offset, bracket) = match zone.split_once('[') {
+        Some((offset, bracket)) => (offset, Some(bracket.strip_suffix(']')?)),
+        None => (zone, None),
+    };
+    let seconds = match offset {
+        "Z" | "z" => 0,
+        other => iso_offset(other, false)?,
+    };
+    let id = match bracket {
+        Some(name) => bracket_zone(name)?,
+        None if seconds == 0 => Some("Z"),
+        None => None,
+    };
+    Some((
+        (month, day),
+        (hour, minute, second, nanos),
+        Placed::Offset(seconds),
+        id,
+    ))
 }
 
 /// Reads text as `DateTimeUtils#parseInstant` reads a `String` that is not null: an
@@ -998,24 +1198,330 @@ mod tests {
         }
     }
 
+    /// Expected values are those Java 42.9 gave for `update("X = '...'")`.
+    #[test]
+    fn an_offset_or_a_zone_in_brackets_directly_after_the_time_is_read() {
+        let base = 1_700_000_000_000_000_000_i64;
+        let hour = 3_600_000_000_000_i64;
+        let cases = [
+            ("2023-11-14T22:13:20+01:00", base - hour),
+            ("2023-11-14T22:13:20-05:00", base + 5 * hour),
+            ("2023-11-14T22:13:20+01", base - hour),
+            ("2023-11-14T22:13:20+01:00:30", base - hour - 30_000_000_000),
+            ("2023-11-14T22:13:20+18:00", base - 18 * hour),
+            ("2023-11-14T22:13:20-18:00", base + 18 * hour),
+            ("2023-11-14T22:13:20-00:00", base),
+            ("2023-11-14T22:13+01:00", base - hour - 20_000_000_000),
+            ("2023-11-14T22:13:20.5+01:00", base - hour + 500_000_000),
+            (
+                "2023-11-14T22:13:20.123456789+01:00",
+                base - hour + 123_456_789,
+            ),
+            ("2023-11-14T22:13:20.+01:00", base - hour),
+            ("2023-11-14T22:13:20.Z", base),
+            ("2023-11-14T22:13:20z", base),
+            ("2023-11-14t22:13:20Z", base),
+            ("2024-02-29T22:13:20Z", base + 107 * 24 * hour),
+            // The offset places the time, whatever the zone in brackets is.
+            ("2023-11-14T22:13:20Z[UTC]", base),
+            ("2023-11-14T22:13:20Z[Europe/Paris]", base),
+            ("2023-11-14T22:13:20+01:00[Europe/Paris]", base - hour),
+            ("2023-11-14T22:13:20+05:00[Europe/Paris]", base - 5 * hour),
+            ("2023-11-14T22:13:20+01:00[Z]", base - hour),
+            ("2023-11-14T22:13:20+01:00[GMT]", base - hour),
+            ("2023-11-14T22:13:20+01:00[UT]", base - hour),
+            ("2023-11-14T22:13:20+01:00[EST5EDT]", base - hour),
+            ("2023-11-14T22:13:20+01:00[US/Eastern]", base - hour),
+            ("2023-11-14T22:13:20+01:00[SystemV/EST5]", base - hour),
+            ("2023-11-14T22:13:20+01:00[+02:00]", base - hour),
+            ("2023-11-14T22:13:20+01:00[-02:00:30]", base - hour),
+            ("2023-11-14T22:13:20+01:00[UTC+02:00]", base - hour),
+            ("2023-11-14T22:13:20+01:00[UT-02:00]", base - hour),
+            // A time the clocks of the zone skip, and one they show twice.
+            (
+                "2024-03-10T02:30:00-05:00[America/New_York]",
+                1_710_055_800_000_000_000,
+            ),
+            (
+                "2024-11-03T01:30:00-05:00[America/New_York]",
+                1_730_615_400_000_000_000,
+            ),
+            (
+                "2024-11-03T01:30:00-04:00[America/New_York]",
+                1_730_611_800_000_000_000,
+            ),
+        ];
+        for (content, expected) in cases {
+            assert_eq!(value(content), Ok(expected), "{content}");
+        }
+        for content in [
+            "2023-11-14T22:13:20+0100",
+            "2023-11-14T22:13:20+1",
+            "2023-11-14T22:13:20+18:01",
+            "2023-11-14T22:13:20+19:00",
+            "2023-11-14T22:13:20-18:00:01",
+            "2023-11-14T22:13:20+01:60",
+            "2023-11-14T22:13:20+01:",
+            "2023-11-14T22:13:20+",
+            "2023-11-14T22+01:00",
+            "2023-11-14T22:13.5Z",
+            "2023-11-14T22:13:20.1234567891+01:00",
+            "2023-11-14T22:13:20,5Z",
+            "2023-11-14T22:13:20[Europe/Paris]",
+            "2023-11-14T22:13:20+01:00[ET]",
+            "2023-11-14T22:13:20+01:00[EST]",
+            "2023-11-14T22:13:20+01:00[z]",
+            "2023-11-14T22:13:20+01:00[europe/paris]",
+            "2023-11-14T22:13:20+01:00[Europe/Nowhere]",
+            "2023-11-14T22:13:20+01:00[GMT+2]",
+            "2023-11-14T22:13:20+01:00[GMT+02]",
+            "2023-11-14T22:13:20+01:00[UTC+02]",
+            "2023-11-14T22:13:20+01:00[+02]",
+            "2023-11-14T22:13:20+01:00[+0200]",
+            "2023-11-14T22:13:20+01:00[]",
+            "2023-11-14T22:13:20+01:00[Europe/Paris",
+            "2023-11-14T22:13:20+01:00[Europe/Paris]x",
+            "2023-11-14T22:13:20+01:00 UTC",
+            "2023-11-14T22:13:20Z UTC",
+            "2023-11-14+01:00",
+            "2023-11-14Z",
+            "2023-11-14T+01:00",
+            // The calendar and the clock are strict here.
+            "2023-02-30T22:13:20+01:00",
+            "2023-02-29T22:13:20Z",
+            "2023-11-14T24:00:00Z",
+            "2023-11-14T23:59:60Z",
+            "2023-11-14T2:13:20Z",
+            "2023-11-14T22:13:2Z",
+            "2023-1-14T22:13:20Z",
+        ] {
+            assert!(
+                matches!(value(content), Err(FormulaError::Syntax(_))),
+                "{content}"
+            );
+        }
+        assert_eq!(zoned_of_text("2023-11-14T22:13:20+00:00"), Ok((base, "Z")));
+        assert_eq!(
+            zoned_of_text("2023-11-14T22:13:20+05:00[Europe/Paris]"),
+            Ok((base - 5 * hour, "Europe/Paris"))
+        );
+        assert!(matches!(
+            zoned_of_text("2023-11-14T22:13:20+05:00"),
+            Err(FormulaError::Unsupported(_))
+        ));
+    }
+
+    /// Expected values are those Java 42.9 gave for `update("X = '...'")`.
+    #[test]
+    fn the_system_v_zones_of_java_are_read() {
+        let second = 1_000_000_000_i64;
+        let at = |year: i64, month: i64, day: i64, hour: i64, minute: i64| {
+            (days_from_civil(year, month, day) * 86_400 + hour * 3_600 + minute * 60) * second
+        };
+        let cases = [
+            ("2023-11-14T22:13:00 SystemV/EST5", at(2023, 11, 15, 3, 13)),
+            ("2023-07-14T22:13:00 SystemV/EST5", at(2023, 7, 15, 3, 13)),
+            ("2023-07-14T22:13:00 SystemV/AST4", at(2023, 7, 15, 2, 13)),
+            (
+                "2023-07-14T22:13:00 SystemV/AST4ADT",
+                at(2023, 7, 15, 1, 13),
+            ),
+            ("2023-07-14T22:13:00 SystemV/CST6", at(2023, 7, 15, 4, 13)),
+            (
+                "2023-07-14T22:13:00 SystemV/CST6CDT",
+                at(2023, 7, 15, 3, 13),
+            ),
+            ("2023-07-14T22:13:00 SystemV/HST10", at(2023, 7, 15, 8, 13)),
+            ("2023-07-14T22:13:00 SystemV/MST7", at(2023, 7, 15, 5, 13)),
+            (
+                "2023-07-14T22:13:00 SystemV/MST7MDT",
+                at(2023, 7, 15, 4, 13),
+            ),
+            ("2023-07-14T22:13:00 SystemV/PST8", at(2023, 7, 15, 6, 13)),
+            (
+                "2023-07-14T22:13:00 SystemV/PST8PDT",
+                at(2023, 7, 15, 5, 13),
+            ),
+            ("2023-07-14T22:13:00 SystemV/YST9", at(2023, 7, 15, 7, 13)),
+            (
+                "2023-07-14T22:13:00 SystemV/YST9YDT",
+                at(2023, 7, 15, 6, 13),
+            ),
+            // Daylight time from the last Sunday of April to the last of October.
+            (
+                "2023-03-20T12:00:00 SystemV/EST5EDT",
+                at(2023, 3, 20, 17, 0),
+            ),
+            (
+                "2023-04-29T12:00:00 SystemV/EST5EDT",
+                at(2023, 4, 29, 17, 0),
+            ),
+            (
+                "2023-04-30T01:59:00 SystemV/EST5EDT",
+                at(2023, 4, 30, 6, 59),
+            ),
+            ("2023-04-30T02:00:00 SystemV/EST5EDT", at(2023, 4, 30, 7, 0)),
+            (
+                "2023-04-30T02:30:00 SystemV/EST5EDT",
+                at(2023, 4, 30, 7, 30),
+            ),
+            ("2023-04-30T03:00:00 SystemV/EST5EDT", at(2023, 4, 30, 7, 0)),
+            (
+                "2023-10-29T00:59:00 SystemV/EST5EDT",
+                at(2023, 10, 29, 4, 59),
+            ),
+            (
+                "2023-10-29T01:00:00 SystemV/EST5EDT",
+                at(2023, 10, 29, 5, 0),
+            ),
+            (
+                "2023-10-29T01:30:00 SystemV/EST5EDT",
+                at(2023, 10, 29, 5, 30),
+            ),
+            (
+                "2023-10-29T02:00:00 SystemV/EST5EDT",
+                at(2023, 10, 29, 7, 0),
+            ),
+            (
+                "2023-11-01T12:00:00 SystemV/EST5EDT",
+                at(2023, 11, 1, 17, 0),
+            ),
+            // The years with days of their own, and those before them.
+            (
+                "1976-04-25T12:00:00 SystemV/PST8PDT",
+                at(1976, 4, 25, 19, 0),
+            ),
+            (
+                "1976-04-24T12:00:00 SystemV/PST8PDT",
+                at(1976, 4, 24, 20, 0),
+            ),
+            ("1975-03-01T12:00:00 SystemV/PST8PDT", at(1975, 3, 1, 19, 0)),
+            (
+                "1975-02-22T12:00:00 SystemV/PST8PDT",
+                at(1975, 2, 22, 20, 0),
+            ),
+            (
+                "1974-01-10T12:00:00 SystemV/PST8PDT",
+                at(1974, 1, 10, 19, 0),
+            ),
+            ("1974-01-05T12:00:00 SystemV/PST8PDT", at(1974, 1, 5, 20, 0)),
+            (
+                "1974-11-20T12:00:00 SystemV/PST8PDT",
+                at(1974, 11, 20, 19, 0),
+            ),
+            (
+                "1974-11-25T12:00:00 SystemV/PST8PDT",
+                at(1974, 11, 25, 20, 0),
+            ),
+            (
+                "1973-04-28T12:00:00 SystemV/PST8PDT",
+                at(1973, 4, 28, 20, 0),
+            ),
+            (
+                "1973-04-30T12:00:00 SystemV/PST8PDT",
+                at(1973, 4, 30, 19, 0),
+            ),
+            ("1900-07-01T12:00:00 SystemV/PST8PDT", at(1900, 7, 1, 19, 0)),
+            ("1900-01-01T12:00:00 SystemV/PST8PDT", at(1900, 1, 1, 20, 0)),
+        ];
+        for (content, expected) in cases {
+            assert_eq!(value(content), Ok(expected), "{content}");
+        }
+        for content in [
+            "2023-07-14T22:13:20 SystemV/EST",
+            "2023-11-14T22:13:20 SystemV/EST5 ",
+            "2023-11-14 SystemV/EST5",
+            "2023-11-14T SystemV/PST8",
+            "2023-11-14T22:13:20 America/Nowhere",
+            "2023-11-14T22:13:20 Europe/paris",
+            "2023-11-14T22:13:20 Etc/GMT-15",
+            "2023-11-14T22:13:20 Etc/Unknown",
+            "2023-11-14T22:13:20 A/B",
+            "2023-11-14T22:13:20 /",
+            "2023-11-14T22:13:20 Europe/Paris/",
+        ] {
+            assert!(
+                matches!(value(content), Err(FormulaError::Syntax(_))),
+                "{content}"
+            );
+        }
+        assert!(matches!(
+            zoned_of_text("2023-11-14T22:13:20 SystemV/EST5"),
+            Err(FormulaError::Unsupported(_))
+        ));
+    }
+
+    /// Expected values are those Java 42.9 gave for `update("X = '...'")`.
+    #[test]
+    fn a_date_and_time_before_a_zone_are_read_as_leniently_as_java_reads_them() {
+        let second = 1_000_000_000_i64;
+        let at = |month: i64, day: i64, hour: i64, minute: i64, seconds: i64| {
+            (days_from_civil(2023, month, day) * 86_400 + hour * 3_600 + minute * 60 + seconds)
+                * second
+        };
+        let cases = [
+            ("2023-1-4T2:3:4 UTC", at(1, 4, 2, 3, 4)),
+            ("2023-11-14T2:13:20 UTC", at(11, 14, 2, 13, 20)),
+            ("2023-11-14T22:3 UTC", at(11, 14, 22, 3, 0)),
+            ("2023-11-14T22:13:2 UTC", at(11, 14, 22, 13, 2)),
+            ("2023-11-14T22:13:20. UTC", at(11, 14, 22, 13, 20)),
+            (
+                "2023-11-14T22:13:2.5 UTC",
+                at(11, 14, 22, 13, 2) + second / 2,
+            ),
+            ("2023-11-14t22:13:20 UTC", at(11, 14, 22, 13, 20)),
+            ("2023-11-14t UTC", at(11, 14, 0, 0, 0)),
+            // Hour 24 is midnight of the next day.
+            ("2023-11-14T24:00:00 UTC", at(11, 15, 0, 0, 0)),
+            ("2023-11-14T24:00:00.0 UTC", at(11, 15, 0, 0, 0)),
+            ("2023-11-14T24:00 UTC", at(11, 15, 0, 0, 0)),
+            ("2023-12-31T24:00:00 America/New_York", at(12, 32, 5, 0, 0)),
+            // A day past the end of its month is the last day of the month.
+            ("2023-02-30T22:13:20 UTC", at(2, 28, 22, 13, 20)),
+            ("2023-02-31T22:13:20 UTC", at(2, 28, 22, 13, 20)),
+            ("2023-04-31T22:13:20 UTC", at(4, 30, 22, 13, 20)),
+            ("2023-02-30 UTC", at(2, 28, 0, 0, 0)),
+            ("2023-02-30T UTC", at(2, 28, 0, 0, 0)),
+        ];
+        for (content, expected) in cases {
+            assert_eq!(value(content), Ok(expected), "{content}");
+        }
+        assert_eq!(
+            value("2024-02-30T22:13:20 UTC"),
+            Ok((days_from_civil(2024, 2, 29) * 86_400 + 22 * 3_600 + 13 * 60 + 20) * second)
+        );
+        for content in [
+            "2023-11-14T24:00:01 UTC",
+            "2023-11-14T24:01 UTC",
+            "2023-11-14T24:00:00.1 UTC",
+            "2023-02-32T22:13:20 UTC",
+            "2023-00-14T22:13:20 UTC",
+            "2023-11-00T22:13:20 UTC",
+            "2023-11-14T22:60:20 UTC",
+            "2023-11-14T22:13:20.1234567890 UTC",
+            "2023-11-14T22:13:20,5 UTC",
+            "2023-1-4 UTC",
+            "2023-11-14T22:13:20  UTC",
+            "2023-11-14T22:13:20 UTC ",
+        ] {
+            assert!(
+                matches!(value(content), Err(FormulaError::Syntax(_))),
+                "{content}"
+            );
+        }
+    }
+
     #[test]
     fn other_time_literals_are_named() {
         for content in [
-            "2023-11-14T22:13:20 America/Nowhere",
-            "2023-11-14T22:13:20 SystemV/EST5",
-            "2023-11-14T22:13:20+01:00",
-            "2023-11-14T22:13:20Z[UTC]",
-            "2023-1-4T22:13:20 UTC",
-            "2023-11-14T2:13:20 UTC",
-            "2023-11-14T22:13:20. UTC",
-            "2023-11-14T22:13:20.1234567890 UTC",
-            "2023-11-14t22:13:20 UTC",
+            // Java reads a year of more digits after a sign only, and one before the
+            // year 1 as an instant far in the future.
+            "+12023-11-14T22:13:20 UTC",
+            "12023-11-14T22:13:20Z",
+            "-2023-11-14T22:13:20Z",
             "1700000000",
             "12:30",
             "UTC",
-            // Java's resolver adjusts these instead of rejecting them.
-            "2023-02-30T00:00:00 UTC",
-            "2023-11-14T24:00:00 UTC",
         ] {
             assert_eq!(
                 value(content),

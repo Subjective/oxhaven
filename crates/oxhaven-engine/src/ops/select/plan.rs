@@ -58,6 +58,28 @@ pub(super) struct Step {
     pub parent_columns: BTreeSet<usize>,
     /// Whether the step reads a column made by an earlier step.
     pub reads_steps: bool,
+    /// Which of `i`, `ii` and `k` the step's expression uses.
+    pub row_variables: RowVariables,
+}
+
+/// The row variables an expression uses: `i` and `ii`, which are the row's position, and
+/// `k`, its row key.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub(super) struct RowVariables {
+    pub position: bool,
+    pub key: bool,
+}
+
+impl RowVariables {
+    pub(super) fn of(expr: &Expr) -> RowVariables {
+        let mut found = RowVariables::default();
+        visit(expr, &mut |node| match node {
+            Expr::RowVariable(RowVariable::I | RowVariable::Ii) => found.position = true,
+            Expr::RowVariable(RowVariable::K) => found.key = true,
+            _ => {}
+        });
+        found
+    }
 }
 
 impl Step {
@@ -315,12 +337,7 @@ fn validate_safe_for_refresh(
     if !parent.is_refreshing() {
         return Ok(());
     }
-    let (mut position, mut key) = (false, false);
-    visit(expr, &mut |node| match node {
-        Expr::RowVariable(RowVariable::I | RowVariable::Ii) => position = true,
-        Expr::RowVariable(RowVariable::K) => key = true,
-        _ => {}
-    });
+    let RowVariables { position, key } = RowVariables::of(expr);
     let changes = Changes::of(parent);
     let unsafe_to_refresh = (position && !changes.append_only && !changes.blink)
         || (key && !changes.add_only && !changes.blink)
@@ -423,6 +440,7 @@ pub(super) fn analyze<S: AsRef<str>>(
             (parent_columns, reads_steps)
         };
 
+        let row_variables = RowVariables::of(&assignment.expr);
         let (column_type, kind, (parent_columns, reads_steps)) = match source {
             Some(source) => {
                 if let Origin::Parent(index) = source.origin {
@@ -483,6 +501,7 @@ pub(super) fn analyze<S: AsRef<str>>(
             scope: scope.clone(),
             parent_columns,
             reads_steps,
+            row_variables,
         });
         put(&mut scope, named.clone());
         put(&mut published, named);

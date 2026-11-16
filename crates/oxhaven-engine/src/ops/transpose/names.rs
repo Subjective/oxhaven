@@ -116,8 +116,7 @@ pub(super) fn legalize(names: &[String]) -> Result<Vec<String>, String> {
 /// The text of each value of a column-by column, as Java's `String.valueOf` of the boxed
 /// value gives it; `null` for a null.
 ///
-/// Not ported: the text of a `float` (`java.lang.Float#toString`) and of an `Instant`
-/// (`java.time.Instant#toString`), and that of a vector or an array.
+/// Not ported: the text of a vector or an array.
 ///
 /// Behavior: the `String.valueOf(s.get(rowKey))` of
 /// io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose
@@ -171,6 +170,14 @@ pub(super) fn value_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<St
             let numbers = values.as_primitive::<arrow::datatypes::Float64Type>();
             each(values, |row| java_double_to_string(numbers.value(row)))
         }
+        ColumnType::Float => {
+            let numbers = values.as_primitive::<arrow::datatypes::Float32Type>();
+            each(values, |row| java_float_to_string(numbers.value(row)))
+        }
+        ColumnType::Instant => {
+            let nanos = values.as_primitive::<arrow::datatypes::TimestampNanosecondType>();
+            each(values, |row| instant_to_string(nanos.value(row)))
+        }
         other => unported!(
             "io.deephaven.engine.table.impl.util.KeyedTranspose#keyedTranspose",
             "a column-by column of type {other:?}, whose values Java names columns after \
@@ -179,9 +186,166 @@ pub(super) fn value_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<St
     }
 }
 
+/// Behavior: java.lang.Float#toString(float), as specified since JDK 19: the shortest
+/// decimal that reads back as the value, but no fewer than two digits. Where one digit
+/// would do, Java takes the two-digit decimal closest to the value, which differs from
+/// that digit and a zero only for the smallest subnormal values (`1.4E-45`). Without an
+/// exponent from 0.001 up to ten million.
+fn java_float_to_string(value: f32) -> String {
+    if value.is_nan() {
+        return "NaN".to_string();
+    }
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    let size = value.abs();
+    if size.is_infinite() {
+        return format!("{sign}Infinity");
+    }
+    if size == 0.0 {
+        return format!("{sign}0.0");
+    }
+    // Rust's exponent notation prints the shortest digits that read back as the value.
+    let digits_of = |text: String| -> (String, i32) {
+        let (mantissa, exponent) = text.split_once('e').unwrap_or((&text, "0"));
+        let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+        let kept = digits.trim_end_matches('0');
+        let digits = if kept.is_empty() { "0" } else { kept };
+        (digits.to_string(), exponent.parse().unwrap_or(0))
+    };
+    let (mut digits, mut exponent) = digits_of(format!("{size:e}"));
+    if digits.len() == 1 {
+        (digits, exponent) = digits_of(format!("{size:.1e}"));
+    }
+    if !(1e-3..1e7).contains(&size) {
+        let rest = if digits.len() == 1 { "0" } else { &digits[1..] };
+        return format!("{sign}{}.{rest}E{exponent}", &digits[..1]);
+    }
+    if exponent < 0 {
+        let zeros = "0".repeat((-exponent - 1) as usize);
+        return format!("{sign}0.{zeros}{digits}");
+    }
+    let whole = exponent as usize + 1;
+    if digits.len() <= whole {
+        let zeros = "0".repeat(whole - digits.len());
+        format!("{sign}{digits}{zeros}.0")
+    } else {
+        format!("{sign}{}.{}", &digits[..whole], &digits[whole..])
+    }
+}
+
+/// Behavior: `java.time.Instant#toString`, which is `DateTimeFormatter.ISO_INSTANT`: UTC,
+/// seconds always present, and the fraction in zero, three, six or nine digits. Every
+/// instant a column can hold lies in the years 1677 to 2262, which print in four digits.
+fn instant_to_string(nanos: i64) -> String {
+    let seconds = nanos.div_euclid(1_000_000_000);
+    let fraction = nanos.rem_euclid(1_000_000_000);
+    // The day counted from 1970-01-01 as a date of the proleptic Gregorian calendar.
+    let shifted = seconds.div_euclid(86_400) + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    let time = seconds.rem_euclid(86_400);
+    let (hour, minute, second) = (time / 3_600, time / 60 % 60, time % 60);
+    let fraction = if fraction == 0 {
+        String::new()
+    } else if fraction % 1_000_000 == 0 {
+        format!(".{:03}", fraction / 1_000_000)
+    } else if fraction % 1_000 == 0 {
+        format!(".{:06}", fraction / 1_000)
+    } else {
+        format!(".{fraction:09}")
+    };
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}{fraction}Z")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Observed: the columns of `keyed_transpose` by a `float` column and by a timestamp
+    /// column with these values, on Java 42.9 (the names keep the digits and letters).
+    #[test]
+    fn floats_and_instants_have_the_text_java_gives_them() {
+        use arrow::array::{Float32Array, TimestampNanosecondArray};
+        let floats: ArrayRef = std::sync::Arc::new(Float32Array::from(vec![
+            Some(0.5),
+            None,
+            Some(f32::NAN),
+            Some(1.0e10),
+            Some(1.4e-45),
+            Some(f32::MAX),
+            Some(-0.0),
+            Some(0.001),
+            Some(1.0e7),
+            Some(9_999_999.0),
+            Some(f32::INFINITY),
+            Some(f32::MIN_POSITIVE),
+            Some(0.1),
+            Some(-2.5e-4),
+            Some(123.456),
+            Some(1200.0),
+            Some(0.012),
+        ]));
+        assert_eq!(
+            value_texts(&ColumnType::Float, &floats),
+            [
+                "0.5",
+                "null",
+                "NaN",
+                "1.0E10",
+                "1.4E-45",
+                "3.4028235E38",
+                "-0.0",
+                "0.001",
+                "1.0E7",
+                "9999999.0",
+                "Infinity",
+                "1.1754944E-38",
+                "0.1",
+                "-2.5E-4",
+                "123.456",
+                "1200.0",
+                "0.012"
+            ]
+        );
+        let instants: ArrayRef = std::sync::Arc::new(
+            TimestampNanosecondArray::from(vec![
+                Some(1_700_000_000_000_000_000),
+                Some(1_700_000_000_500_000_000),
+                None,
+                Some(1_700_000_000_000_001_000),
+                Some(1_700_000_000_000_000_001),
+                Some(-1_000_000),
+                Some(9_223_372_035_000_000_000),
+                Some(-9_223_372_035_000_000_000),
+                Some(-6_213_559_680_000_000_000),
+            ])
+            .with_timezone("UTC"),
+        );
+        assert_eq!(
+            value_texts(&ColumnType::Instant, &instants),
+            [
+                "2023-11-14T22:13:20Z",
+                "2023-11-14T22:13:20.500Z",
+                "null",
+                "2023-11-14T22:13:20.000001Z",
+                "2023-11-14T22:13:20.000000001Z",
+                "1969-12-31T23:59:59.999Z",
+                "2262-04-11T23:47:15Z",
+                "1677-09-21T00:12:45Z",
+                "1773-02-05T19:12:00Z"
+            ]
+        );
+    }
 
     fn legal(names: &[&str]) -> Result<Vec<String>, String> {
         legalize(

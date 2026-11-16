@@ -112,16 +112,16 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "5e77dee2784b36b0"),
-    ("partitions", "506155a6fb7783fb"),
-    ("all2", "d9643651e877f7f3"),
+    ("formulas2", "49b0676940c36df9"),
+    ("partitions", "db68ef58997a5a66"),
+    ("all2", "0e835d19c52212d1"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
-    """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.20
-    lifted the restrictions D4, R2 and R3: filters draw time literals in any zone, and
-    zones may be offsets. The seeds named in the findings of
-    `tasks/4.20-fuzz-findings-2.md` were recorded before that and mean other scenarios
-    now; each finding has its scenario file in `tasks/4.20-fuzz-findings-2/`."""
+    """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.23
+    lifted the restrictions R1, R4, R6, R7 and R8 (task 4.20 had lifted D4, R2 and R3).
+    The seeds named in the findings of `tasks/4.20-fuzz-findings-2.md` were recorded
+    before either and mean other scenarios now; each finding has its scenario file in
+    `tasks/4.20-fuzz-findings-2/` or `tasks/4.23-fuzz-refusals/`."""
     assert _digest(100, fuzz.SECOND_FAMILIES[family], "second") == digest
 
 
@@ -259,14 +259,14 @@ def test_what_a_finding_restricts_is_not_drawn():
             for formula in op["formulas"]:
                 text = _expression(formula)
                 for column in re.findall(r"([A-Za-z_]\w*)_(?:\[|\.|\))", text):
-                    seen["R6"] += 1
-                    assert not types[column].startswith("list:"), (doc["name"], op)
-                if kind == "lazy_update":
-                    seen["R1"] += 1
-                    rest = SHIFT.sub("", text)
-                    assert not re.search(r"\(\w+_\[", text), (doc["name"], op)
-                    assert not ROW_VARIABLE.search(rest) and "_[" not in rest and (
-                        "_." not in text), (doc["name"], op)
+                    seen["R6"] += types[column].startswith("list:")
+                    assert types[column] not in ("list:bool", "list:timestamp"), (
+                        doc["name"], op)
+                    assert not (types[column].startswith("list:")
+                                and re.fullmatch(r"X\d+", column)), (doc["name"], op)
+                if re.search(r"'-?P\d+[ymYM]", text):
+                    seen["calendar period"] += 1
+                    assert op["source"] not in live, (doc["name"], op)
                 if kind == "select" and SHIFT.search(text):
                     seen["J2"] += 1
                     assert op["source"] in inputs, (doc["name"], op)
@@ -274,6 +274,9 @@ def test_what_a_finding_restricts_is_not_drawn():
             distances = set()
             for text in op["filters"]:
                 distances |= set(re.findall(r"_\[(i[^\]]*)\]", text))
+                if re.search(r"'-?P\d+[ymYM]", text):
+                    seen["calendar period"] += 1
+                    assert op["source"] not in live, (doc["name"], op)
             if op["source"] in live and distances:
                 seen["R5"] += 1
                 assert len(distances) == 1, (doc["name"], op)
@@ -281,8 +284,9 @@ def test_what_a_finding_restricts_is_not_drawn():
                 "initial_groups" in op or op.get("preserve_empty")):
             types = dict(predicted[op["source"]])
             if "initial_groups" in op:
-                seen["R4"] += 1
-                assert op["preserve_empty"] is True, (doc["name"], op)
+                if fuzz_second._Second.never_records(op["aggs"]):
+                    seen["J7"] += 1
+                    assert op["preserve_empty"] is True, (doc["name"], op)
                 seen["J6"] += 1
                 assert not {"first", "last"} <= {agg["agg"] for agg in op["aggs"]}, (
                     doc["name"], op)
@@ -291,11 +295,6 @@ def test_what_a_finding_restricts_is_not_drawn():
                 assert not any(
                     agg["agg"] == "distinct" and types[pair.split("=")[-1].strip()] == "timestamp"
                     for agg in op["aggs"] for pair in agg.get("columns", ())), (doc["name"], op)
-        elif kind == "keyed_transpose":
-            types = dict(predicted[op["source"]])
-            seen["R7"] += 1
-            assert not {types[c] for c in op["col_by"]} & {"float32", "timestamp"}, (
-                doc["name"], op)
         elif kind == "update_by":
             types = dict(predicted[op["source"]])
             for operator in op["ops"]:
@@ -303,12 +302,13 @@ def test_what_a_finding_restricts_is_not_drawn():
                     seen["J1"] += 1  # and J4
                     found = fuzz_second._COLUMN_COMPARISON.match(text)
                     assert not found or found.group(2) not in types, (doc["name"], op)
-    for name in ("J1", "J2", "J5", "J6", "R1", "R4", "R5", "R6", "R7"):
+    for name in ("J1", "J2", "J5", "J6", "J7", "R5", "R6", "calendar period"):
         assert seen[name] > 5, (name, seen[name])
 
 
 def test_every_restriction_names_a_finding_that_is_written_up():
-    text = (ORACLE.parent / "tasks" / "4.20-fuzz-findings-2.md").read_text()
+    text = "\n".join((ORACLE.parent / "tasks" / name).read_text()
+                     for name in ("4.20-fuzz-findings-2.md", "4.23-fuzz-refusals.md"))
     for finding in fuzz_second.RESTRICTIONS:
         assert re.search(rf"^### {finding}\. ", text, re.MULTILINE), finding
     known = json.loads((ORACLE / "fuzz-known-findings.json").read_text())["findings"]

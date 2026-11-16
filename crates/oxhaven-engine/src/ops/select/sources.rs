@@ -2,8 +2,10 @@
 //! and remembered by input value, and constants; and the table a formula is evaluated against.
 
 use super::failure;
+use super::plan::RowVariables;
 use crate::table::{forget_reads_through, register_reads_through};
-use arrow::array::{new_empty_array, ArrayRef, UInt32Array};
+use arrow::array::{new_empty_array, ArrayRef, Int64Array, UInt32Array};
+use arrow::datatypes::DataType;
 use arrow::row::{RowConverter, SortField};
 use oxhaven_column::RowRedirection;
 use oxhaven_contracts::expr::Formula;
@@ -161,7 +163,8 @@ impl ColumnSource for FormulaSource {
 /// What a [`LazySource`] has computed so far: one result per distinct tuple of input values.
 struct Remembered {
     /// Encodes a tuple of input values as bytes that are equal exactly when the values are.
-    /// `None` for a formula that reads no column, whose only tuple is the empty one.
+    /// `None` for a formula that reads no column and uses no row variable, whose only
+    /// tuple is the empty one.
     encoder: Option<RowConverter>,
     /// Where the result for each encoded tuple is: an array of `results` and an index in it.
     places: BTreeMap<Vec<u8>, (usize, usize)>,
@@ -177,11 +180,22 @@ struct Remembered {
 /// io.deephaven.engine.table.impl.select.DhFormulaColumn#generateClassBody writes. Java keys
 /// its cache by the boxed input values, so every NaN is one key; here NaNs with different
 /// bit patterns are different keys, which costs a recomputation and changes no result.
+///
+/// The key is what Java passes to `applyFormulaPerItem`
+/// (`DhFormulaColumn#generateFillChunkHelper` and `#generateAppropriateGetMethod`, with
+/// `#visitFormulaParameters`): the row variables the formula uses and the values of the
+/// columns it reads at the row. The column arrays it reads and the query scope are fields
+/// of Java's formula and no part of the key, so a result is remembered through a change of
+/// a column array; `validate_safe_for_refresh` lets a column array through only for a
+/// static or a blink table. `i` is the `int` of `ii`, so the row's position stands for
+/// both here.
 pub(super) struct LazySource {
     formula: Arc<dyn Formula>,
     input: FormulaInput,
     /// The input's columns that the formula reads at the current row.
     reads: Vec<Arc<dyn ColumnSource>>,
+    /// The row variables the formula uses.
+    row_variables: RowVariables,
     remembered: Mutex<Remembered>,
 }
 
@@ -189,6 +203,7 @@ impl LazySource {
     pub(super) fn shared(
         formula: Arc<dyn Formula>,
         input: FormulaInput,
+        row_variables: RowVariables,
     ) -> Result<Arc<dyn ColumnSource>, TableFailure> {
         let reads = formula
             .columns()
@@ -201,19 +216,25 @@ impl LazySource {
                     .ok_or_else(|| failure(format!("the formula reads a missing column {name}")))
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let encoder = if reads.is_empty() {
+        let variables = usize::from(row_variables.position) + usize::from(row_variables.key);
+        let fields: Vec<SortField> = reads
+            .iter()
+            .map(|source| SortField::new(source.column_type().arrow_type()))
+            .chain(std::iter::repeat_n(
+                SortField::new(DataType::Int64),
+                variables,
+            ))
+            .collect();
+        let encoder = if fields.is_empty() {
             None
         } else {
-            let fields = reads
-                .iter()
-                .map(|source| SortField::new(source.column_type().arrow_type()))
-                .collect();
             Some(RowConverter::new(fields).map_err(|e| failure(e.to_string()))?)
         };
         Ok(register_reads_through(Self {
             formula,
             input,
             reads,
+            row_variables,
             remembered: Mutex::new(Remembered {
                 encoder,
                 places: BTreeMap::new(),
@@ -227,7 +248,7 @@ impl LazySource {
         if size == 0 {
             return Ok(new_empty_array(&self.column_type().arrow_type()));
         }
-        let inputs = self
+        let mut inputs = self
             .reads
             .iter()
             .map(|source| {
@@ -238,6 +259,18 @@ impl LazySource {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if self.row_variables.position {
+            let all = if use_prev {
+                self.input.prev_row_set()
+            } else {
+                self.input.row_set()
+            };
+            let positions = all.invert(rows).map_err(|e| failure(e.to_string()))?;
+            inputs.push(Arc::new(Int64Array::from_iter_values(positions.iter())));
+        }
+        if self.row_variables.key {
+            inputs.push(Arc::new(Int64Array::from_iter_values(rows.iter())));
+        }
 
         let mut remembered = self
             .remembered
