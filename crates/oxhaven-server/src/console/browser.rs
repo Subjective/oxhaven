@@ -33,10 +33,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use tokio::sync::mpsc;
 use tonic::metadata::MetadataMap;
-use tonic::Status;
+use tonic::{Request, Response, Status};
 
 use super::completer::logged;
-use crate::session::{Export, ExportValue, OnCloseId, Session};
+use crate::session::{
+    current_session, is_terminal, Export, ExportError, ExportValue, OnCloseId, Reply, Session,
+};
 
 const TICKET_HEADER: &str = "x-deephaven-stream-ticket";
 const SEQUENCE_HEADER: &str = "x-deephaven-stream-sequence";
@@ -276,6 +278,88 @@ impl<T: Send + Sync + 'static> BrowserStream<T> {
     pub fn failed(&self) {
         self.end();
     }
+}
+
+/// The stream headers of a call that opens a stream, which must have them and be the
+/// first message.
+///
+/// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeOpen`
+pub fn open_headers(data: Option<StreamData>) -> Result<StreamData, Status> {
+    let Some(data) = data else {
+        return Err(Status::invalid_argument(
+            "no x-deephaven-stream headers, cannot handle open request",
+        ));
+    };
+    if data.sequence != 0 {
+        // the messages are delivered in order from 0, so the stream would wait for
+        // ever for a message that cannot come
+        return Err(Status::invalid_argument(format!(
+            "open request must have sequence 0, received {}",
+            data.sequence
+        )));
+    }
+    Ok(data)
+}
+
+/// Takes a later message of a stream of messages `T` that an `Open` call started, named
+/// by the stream headers of the call. Answered, with the empty message `N` of the
+/// service, when the message has been taken, which for one that arrives before the
+/// messages it follows is before it is handled.
+///
+/// Behavior: `GrpcServiceOverrideBuilder.BrowserStreamMethod#invokeNext`
+pub async fn next<T, N>(request: Request<T>) -> Result<Response<N>, Status>
+where
+    T: Send + Sync + 'static,
+    N: Default + Send + 'static,
+{
+    let no_stream_headers =
+        || Status::invalid_argument("no x-deephaven-stream headers, cannot handle next request");
+    let data = stream_data(request.metadata())?.ok_or_else(no_stream_headers)?;
+    let export_id = data.export_id.ok_or_else(no_stream_headers)?;
+    if data.sequence <= 0 {
+        // sequence 0 is the message of the open call
+        return Err(Status::invalid_argument(format!(
+            "next request must have a positive sequence, received {}",
+            data.sequence
+        )));
+    }
+    let session = current_session(&request)?;
+    let stream = session.get_export(export_id)?;
+    if is_terminal(stream.state()) {
+        // The stream has ended, most often because the client gave up its open call
+        // and this call was on its way. A half close has nothing to deliver; a message
+        // has, and the client is told that it was not.
+        if data.half_close {
+            return Ok(Response::new(N::default()));
+        }
+        return Err(Status::cancelled(format!(
+            "stream ended before this message arrived; sequence {} was not delivered",
+            data.sequence
+        )));
+    }
+    let message = request.into_inner();
+    let reply = Reply::new();
+    let (on_error, on_success) = (reply.completer(), reply.completer());
+    session
+        .non_export()?
+        .require([stream])
+        .on_error(move |status| on_error(Err(status)))
+        .submit(move |inputs| {
+            // Java casts and fails with a ClassCastException
+            let stream = inputs[0]
+                .downcast_ref::<Arc<BrowserStream<T>>>()
+                .ok_or_else(|| {
+                    ExportError::Internal(
+                        "the stream ticket does not name a browser stream".to_string(),
+                    )
+                })?;
+            stream
+                .on_message(message, &data)
+                .map_err(ExportError::Status)?;
+            on_success(Ok(N::default()));
+            Ok(ExportValue::unit())
+        })?;
+    reply.wait().await
 }
 
 #[cfg(test)]
