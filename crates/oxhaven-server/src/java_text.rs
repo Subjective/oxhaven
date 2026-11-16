@@ -5,9 +5,10 @@
 
 use arrow::array::{Array, ArrayRef, AsArray};
 use arrow::datatypes::{
-    Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimestampNanosecondType,
-    UInt16Type,
+    Date32Type, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
+    Time64NanosecondType, TimestampNanosecondType, UInt16Type,
 };
+use oxhaven_column::java_values;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::unported;
 
@@ -187,6 +188,27 @@ pub fn object_texts(column_type: &ColumnType, values: &ArrayRef) -> Vec<Option<S
         ColumnType::Vector(element) => each(v.as_list::<i32>().iter(), |cell| {
             vector_text(element, &cell, VECTOR_TEXT_LENGTH)
         }),
+        ColumnType::BigInteger => each(v.as_binary::<i32>().iter(), java_values::big_integer_text),
+        ColumnType::BigDecimal => {
+            each(
+                v.as_binary::<i32>().iter(),
+                |cell| match java_values::big_decimal_parts(cell) {
+                    Some((scale, unscaled)) => java_values::big_decimal_text(scale, unscaled),
+                    None => unreachable!("a BigDecimal cell holds a scale and a number"),
+                },
+            )
+        }
+        ColumnType::LocalDate => each(v.as_primitive::<Date32Type>().iter(), |days| {
+            java_values::local_date_text(days.into())
+        }),
+        ColumnType::LocalTime => each(
+            v.as_primitive::<Time64NanosecondType>().iter(),
+            java_values::local_time_text,
+        ),
+        ColumnType::LocalDateTime => each(
+            v.as_primitive::<TimestampNanosecondType>().iter(),
+            java_values::local_date_time_text,
+        ),
         ColumnType::Array(_) => unported!(
             "java.lang.Object#toString",
             "the text of an array of type {column_type:?}, which holds its identity hash"

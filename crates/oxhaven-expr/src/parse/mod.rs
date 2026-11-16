@@ -27,6 +27,10 @@ pub(crate) const INDEX_METHOD: &str = "[]";
 /// parsed as a method call on `receiver` without arguments. No formula can spell it.
 pub(crate) const LENGTH_FIELD: &str = ".length";
 
+/// The function name `new String(...)` is parsed as a call of. It has a space, so no
+/// function a formula can name collides with it.
+pub(crate) const NEW_STRING: &str = "new String";
+
 fn syntax(message: impl Into<String>) -> FormulaError {
     FormulaError::Syntax(message.into())
 }
@@ -498,7 +502,20 @@ impl Parser {
                     "i" => Expr::RowVariable(RowVariable::I),
                     "ii" => Expr::RowVariable(RowVariable::Ii),
                     "k" => Expr::RowVariable(RowVariable::K),
-                    "new" => return Err(unsupported("object creation (new)")),
+                    "new" => {
+                        // `new String(bytes)` is the one object a formula can make
+                        let string = matches!(self.peek(), Some(Token::Identifier(class)) if class == "String");
+                        if string {
+                            self.advance();
+                            if self.peek_symbol() == Some("(") {
+                                return Ok(Expr::Call {
+                                    function: NEW_STRING.to_string(),
+                                    arguments: self.arguments()?,
+                                });
+                            }
+                        }
+                        return Err(unsupported("object creation (new)"));
+                    }
                     _ => Expr::Column(name),
                 })
             }
@@ -1036,7 +1053,8 @@ mod tests {
             ("(Double).NaN", "field access .NaN"),
             ("Double.NaN.x", "field access .x"),
             ("java.lang.Double.NaN", "field access .lang"),
-            ("new String(`a`)", "object creation (new)"),
+            ("new Object()", "object creation (new)"),
+            ("new String", "object creation (new)"),
             ("A == '2024-01-01'", "time literal '2024-01-01'"),
         ];
         for (text, construct) in cases {

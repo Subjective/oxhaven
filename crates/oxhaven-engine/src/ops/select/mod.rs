@@ -315,7 +315,42 @@ fn drop_columns_as<S: AsRef<str>>(
     Ok(memoized(parent, CopyType::DropColumns, false, table)?)
 }
 
-/// A result that has the parent's rows.
+/// The definition of a result with the columns `definition` and their sources `columns`:
+/// a column is a partitioning column when its source is the source of a partitioning
+/// column of the parent, under whatever name.
+///
+/// Behavior: io.deephaven.engine.table.TableDefinition#inferFrom(Table, Map)
+fn inferred(
+    parent: &Arc<dyn Table>,
+    definition: TableDefinition,
+    columns: &[Arc<dyn ColumnSource>],
+) -> TableDefinition {
+    let partitioning: Vec<Arc<dyn ColumnSource>> = parent
+        .definition()
+        .columns()
+        .iter()
+        .enumerate()
+        .filter(|(_, column)| column.partitioning)
+        .map(|(index, _)| parent.column(index))
+        .collect();
+    let same = |a: &Arc<dyn ColumnSource>, b: &Arc<dyn ColumnSource>| {
+        std::ptr::addr_eq(Arc::as_ptr(a), Arc::as_ptr(b))
+    };
+    if partitioning.is_empty() {
+        return definition;
+    }
+    let declared = definition.columns().iter().zip(columns);
+    let declared = declared.map(|(column, source)| ColumnDefinition {
+        partitioning: partitioning.iter().any(|kept| same(kept, source)),
+        ..column.clone()
+    });
+    match TableDefinition::new(declared.collect()) {
+        Ok(definition) => definition,
+        Err(duplicate) => unreachable!("{duplicate}: the names were a definition's"),
+    }
+}
+
+/// A result that has the parent's rows, and the partitioning columns of [`inferred`].
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#propagateFlatness
 fn spec(
@@ -324,7 +359,9 @@ fn spec(
     columns: Vec<Arc<dyn ColumnSource>>,
     attributes: TableAttributes,
 ) -> TableSpec {
+    let definition = inferred(parent, definition, &columns);
     let spec = TableSpec::new(definition, (*parent.row_set()).clone(), columns)
+        .keeping_partitioning()
         .with_attributes(attributes);
     if parent.is_flat() {
         spec.flat()
