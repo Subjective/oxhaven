@@ -1,0 +1,167 @@
+{
+ "format": 1,
+ "name": "J1_ordering_of_zone_ids",
+ "description": "Task 4.24, J1. A ZoneId is not a Comparable. Java fails min, max, median, percentile, count_distinct, unique, distinct and sorted first or last by it once two zones meet in a group, also two equal ones, and answers a group with one. Oxhaven refuses min, max, median and percentile by name and computes the others.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     1700000000000000000
+    ],
+    [
+     0,
+     3,
+     1700000000000000001
+    ],
+    [
+     1,
+     1,
+     null
+    ],
+    [
+     1,
+     null,
+     1700086400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "N = isNull(V) ? null : timeZone(V % 3 == 0 ? `America/New_York` : `Asia/Tokyo`)"
+   ]
+  },
+  {
+   "name": "min_by_v",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "min",
+     "columns": [
+      "A = N"
+     ]
+    }
+   ],
+   "by": [
+    "V"
+   ]
+  },
+  {
+   "name": "min_all",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "min",
+     "columns": [
+      "A = N"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "count_distinct_all",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "count_distinct",
+     "columns": [
+      "A = N"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "unique_by_k",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "unique",
+     "columns": [
+      "A = N"
+     ]
+    }
+   ],
+   "by": [
+    "K"
+   ]
+  },
+  {
+   "name": "distinct_all",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "distinct",
+     "columns": [
+      "A = N"
+     ]
+    }
+   ],
+   "by": []
+  },
+  {
+   "name": "sorted_first_all",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "sorted_first",
+     "columns": [
+      "A = V"
+     ],
+     "args": {
+      "order_by": "N"
+     }
+    }
+   ],
+   "by": []
+  }
+ ],
+ "results": [
+  {
+   "table": "min_by_v"
+  },
+  {
+   "table": "min_all"
+  },
+  {
+   "table": "count_distinct_all"
+  },
+  {
+   "table": "unique_by_k"
+  },
+  {
+   "table": "distinct_all"
+  },
+  {
+   "table": "sorted_first_all"
+  }
+ ]
+}

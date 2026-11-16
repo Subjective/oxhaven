@@ -1,0 +1,105 @@
+{
+ "format": 1,
+ "name": "R6_asof_join_on_time_types",
+ "description": "Task 4.24, R6. Java computes an as-of join on a LocalDate, LocalTime, LocalDateTime, Duration, DayOfWeek or ZonedDateTime column and refuses one on a Period or ZoneId column; Oxhaven refuses all eight by name.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     1700000000000000000
+    ],
+    [
+     0,
+     3,
+     1700000000000000001
+    ],
+    [
+     1,
+     1,
+     null
+    ],
+    [
+     1,
+     null,
+     1700086400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "D = toLocalDate(T, 'UTC')",
+    "W = dayOfWeek(T, 'UTC')",
+    "N = isNull(V) ? null : timeZone(V % 3 == 0 ? `America/New_York` : `Asia/Tokyo`)"
+   ]
+  },
+  {
+   "name": "aj_date",
+   "op": "aj",
+   "left": "b",
+   "right": "b",
+   "on": [
+    "D >= D"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  },
+  {
+   "name": "aj_day",
+   "op": "aj",
+   "left": "b",
+   "right": "b",
+   "on": [
+    "W >= W"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  },
+  {
+   "name": "aj_zone",
+   "op": "aj",
+   "left": "b",
+   "right": "b",
+   "on": [
+    "N >= N"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "aj_date"
+  },
+  {
+   "table": "aj_day"
+  },
+  {
+   "table": "aj_zone"
+  }
+ ]
+}
