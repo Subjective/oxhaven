@@ -62,11 +62,11 @@ from .fuzz_wide import LIST, _Wide, _list
 
 # Findings of tasks/4.20-fuzz-findings-2.md that the generator steps around, and where.
 RESTRICTIONS: dict[str, str] = {
-    "J1": "stops_reference: no count where of update_by that compares a boolean or "
-          "timestamp column with a column (the reference shuts down)",
+    "J1": "stops_reference: no count where of update_by that compares two columns (with a "
+          "boolean or timestamp column among those it reads, the reference shuts down)",
     "J2": "second_formula: no fixed-distance read in a select of anything but an input table",
-    "J4": "stops_reference: no count where of update_by that compares two columns, on a "
-          "refreshing table (the reference fails it when the first row is read)",
+    "J4": "stops_reference: no count where of update_by that compares two columns (the "
+          "reference fails it when the first row is read)",
     "J5": "build_agg: no distinct of a timestamp column with preserve_empty on a refreshing "
           "table (the reference cannot write a group that lost its rows)",
     "J6": "build_agg: no initial groups of a refreshing aggregation with first and last",
@@ -567,19 +567,17 @@ class _Second(_Wide):
 
     @staticmethod
     def stops_reference(source: _Table, text: str) -> bool:
-        """J1: a count where of `update_by` whose filter compares a boolean or timestamp
-        column with a column. The reference's operator fails when it is made
-        (CountWhereOperator$Context: "originalFillContexts" is null), the failure is taken
-        for an "Unexpected iteration job error", and the server process shuts down."""
+        """J1: a count where of `update_by` with a filter that compares a column with a
+        column, when that filter or another one of the operator reads a boolean or timestamp
+        column. The reference's operator fails when it is made (CountWhereOperator$Context:
+        "originalFillContexts" is null), the failure is taken for an "Unexpected iteration
+        job error", and the server process shuts down. J4: with other columns only, the
+        reference fails when the first row is read ('"keys" is null'), which on a refreshing
+        table without rows is in a later cycle. So no filter compares two columns."""
         found = _COLUMN_COMPARISON.match(text)
         if not found or found.group(2) in ("null", "true", "false"):
             return False
-        kinds = dict(source.columns)
-        if any(kinds.get(found.group(n)) in ("bool", "timestamp") for n in (1, 2)):
-            return True
-        # J4: with any other two columns the reference fails when the first row is read
-        # ('"keys" is null'), which on a refreshing table without rows is in a later cycle.
-        return source.live and found.group(2) in kinds
+        return found.group(2) in dict(source.columns)
 
     # ------------------------------------------------------------ statistics
 

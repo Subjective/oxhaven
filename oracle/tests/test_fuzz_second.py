@@ -114,7 +114,7 @@ def test_generation_is_the_same_in_another_process():
 @pytest.mark.parametrize("family, digest", [
     ("formulas2", "5a8c3347f5ea23dc"),
     ("partitions", "b939f8aa7befc1ff"),
-    ("all2", "c4fdb60aee6f34f3"),
+    ("all2", "4e2de0b640faa39e"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator was when the seeds of
@@ -302,15 +302,10 @@ def test_what_a_finding_restricts_is_not_drawn():
             types = dict(predicted[op["source"]])
             for operator in op["ops"]:
                 for text in operator.get("args", {}).get("filters", []):
-                    seen["J1"] += 1
+                    seen["J1"] += 1  # and J4
                     found = fuzz_second._COLUMN_COMPARISON.match(text)
-                    if found and found.group(2) not in ("null", "true", "false"):
-                        assert not {types.get(found.group(1)), types.get(found.group(2))} & {
-                            "bool", "timestamp"}, (doc["name"], op)
-                        if found.group(2) in types:
-                            seen["J4"] += 1
-                            assert op["source"] not in live, (doc["name"], op)
-    for name in ("J1", "J2", "J4", "J5", "J6", "R1", "R2", "R4", "R5", "R6", "R7"):
+                    assert not found or found.group(2) not in types, (doc["name"], op)
+    for name in ("J1", "J2", "J5", "J6", "R1", "R2", "R4", "R5", "R6", "R7"):
         assert seen[name] > 5, (name, seen[name])
 
 
