@@ -366,13 +366,18 @@ fn create_input_table_checks_the_request_and_says_what_is_not_ported() {
     let unknown_key = refused(request(keyed(&["Nope"])));
     assert_eq!(unknown_key.code(), Code::InvalidArgument);
 
-    for not_ported in [
-        refused(request(keyed(&[]))),
-        refused(request(keyed(&["V"]))),
-    ] {
-        assert_eq!(not_ported.code(), Code::Unimplemented, "{not_ported:?}");
-        assert!(not_ported.message().starts_with("not ported yet: "));
-    }
+    let not_ported = refused(request(keyed(&[])));
+    assert_eq!(not_ported.code(), Code::Unimplemented, "{not_ported:?}");
+    assert!(not_ported.message().starts_with("not ported yet: "));
+
+    // a key column of doubles: a row per value, NaN among them
+    let table = create_input_table(graph(), &request(keyed(&["V"])), None).unwrap();
+    assert_eq!(table.input_table().unwrap().key_columns(), ["V"]);
+    let values = [Some(1.5), Some(f64::NAN), Some(1.5), Some(f64::NAN)];
+    let rows = rows(&[1, 2, 3, 4], &[None; 4], &values);
+    add_table(&value(&table), &value(&rows)).unwrap();
+    let kept: Vec<i32> = contents(&table).into_iter().map(|(k, _)| k).collect();
+    assert_eq!(kept, [3, 4]);
 }
 
 /// What Java answers is recorded from Java 42.9 with a client that sends the requests raw:

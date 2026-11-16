@@ -56,7 +56,7 @@ pub fn validate_create_input_table(request: &CreateInputTableRequest) -> Result<
 /// no rows and reports `Table::input_table`.
 ///
 /// Answers `UNIMPLEMENTED` for what the engine's input tables lack: a keyed table without
-/// key columns, and a `float` or `double` key column.
+/// key columns.
 ///
 /// Behavior: `io.deephaven.server.table.ops.CreateInputTableGrpcImpl#create`
 pub fn create_input_table(
@@ -85,15 +85,6 @@ pub fn create_input_table(
                     MAKE_KEYED,
                     "a keyed input table without key columns",
                 ));
-            }
-            for column in definition.columns() {
-                let floating = matches!(column.column_type, ColumnType::Float | ColumnType::Double);
-                if floating && keyed.key_columns.contains(&column.name) {
-                    return Err(not_ported(
-                        MAKE_KEYED,
-                        format_args!("floating point key column {}", column.name),
-                    ));
-                }
             }
             let keys: Vec<&str> = keyed.key_columns.iter().map(String::as_str).collect();
             keyed_input_table(graph, definition, &keys, None)
