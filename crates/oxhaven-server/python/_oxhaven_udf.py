@@ -10,6 +10,7 @@ because that is how the engine and the messages name them.
 import collections.abc
 import datetime
 import inspect
+import operator
 import sys
 import types
 import typing
@@ -401,6 +402,51 @@ def _runner(function, converters, convert):
                 given = [c(value) if c else value for c, value in zip(converters, row)]
                 cells.append(convert(function(*given)))
             return cells
+    return run
+
+
+def item_reader(container, kind, cast):
+    """`run(rows, columns)` for the items of `container`, a list or a dict (`kind`), read
+    by the keys of the one column and converted as jpy converts a `PyObject` for a cast to
+    `cast`: `PyLong_AsLong` for `int` and `long` (the caller narrows an `int`),
+    `PyFloat_AsDouble` for `double`, `PyUnicode_AsUTF8` for `String`. `None` stays `None`,
+    which Java holds as a null `PyObject`. The texts of the errors are CPython's.
+
+    Behavior: `org.jpy.PyObject#getIntValue`, `#getLongValue`, `#getDoubleValue`,
+    `#getStringValue`
+    """
+    if kind == "list":
+        read = container.__getitem__
+    else:
+        read = container.get
+    if cast == "String":
+        def convert(value):
+            if not isinstance(value, str):
+                raise TypeError("bad argument type for built-in operation")
+            return value
+    elif cast == "double":
+        def convert(value):
+            if isinstance(value, float):
+                return float(value)
+            if hasattr(type(value), "__float__"):
+                return float(value)
+            if hasattr(type(value), "__index__"):
+                return float(operator.index(value))
+            raise TypeError(f"must be real number, not {type(value).__name__}")
+    else:
+        def convert(value):
+            value = operator.index(value)
+            if not -(2**63) <= value < 2**63:
+                raise OverflowError("Python int too large to convert to C long")
+            return value
+
+    def run(rows, columns):
+        cells = []
+        for key in columns[0]:
+            value = read(key)
+            cells.append(None if value is None else convert(value))
+        return cells
+
     return run
 
 

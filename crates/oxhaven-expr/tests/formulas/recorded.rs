@@ -245,9 +245,20 @@ pub(super) enum Ours {
 /// The recordings were made with table operations of a client, so the compiler is the one
 /// those run with: Java's server refuses a client some calls that it computes in a script.
 pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
-    let compiled = oxhaven_expr::RequestCompiler
+    ours_with(&oxhaven_expr::RequestCompiler, table, formula, filter)
+}
+
+/// [`ours`] with the compiler named: [`Compiler`] for a recording made by scripts of the
+/// console.
+fn ours_with(
+    compiler: &dyn FormulaCompiler,
+    table: &TestTable,
+    formula: &str,
+    filter: bool,
+) -> Ours {
+    let compiled = compiler
         .parse(formula)
-        .and_then(|expr| oxhaven_expr::RequestCompiler.compile(&expr, &table.definition));
+        .and_then(|expr| compiler.compile(&expr, &table.definition));
     let compiled = match compiled {
         Ok(compiled) => compiled,
         Err(error) => return Ours::Rejected(error),
@@ -291,10 +302,10 @@ pub(super) fn ours(table: &TestTable, formula: &str, filter: bool) -> Ours {
     }
 }
 
-fn compare(table: &TestTable, case: &Value) -> Outcome {
+fn compare(compiler: &dyn FormulaCompiler, table: &TestTable, case: &Value) -> Outcome {
     let formula = case["formula"].as_str().expect("a formula");
     let filter = case["op"] == "where";
-    let ours = ours(table, formula, filter);
+    let ours = ours_with(compiler, table, formula, filter);
     match &ours {
         Ours::Rejected(FormulaError::Unsupported(construct)) => {
             return Outcome::Refused(construct.clone())
@@ -432,8 +443,32 @@ fn every_recorded_vector_formula_does_what_java_did_or_is_refused_by_name() {
     check_recording("java_vectors", 500);
 }
 
+/// `tests/data/java_range.txt`, recorded by `tests/data/record_java_range.py` from scripts of
+/// the console: the constructor and the three methods of
+/// `io.deephaven.plot.datasets.histogram.DiscretizedRangeEqual` over every type of number,
+/// with nulls, NaN, infinities, values outside the range, ranges without bins or without
+/// width, and what Java does not compile.
+#[test]
+fn every_recorded_range_formula_does_what_java_did_or_is_refused_by_name() {
+    check_recording_with(&Compiler, "java_range", 250);
+}
+
+/// `tests/data/java_random.txt`, recorded by the same script: `new Random(seed).nextInt(bound)`
+/// of `java.util.Random` over seeds of every integer type with nulls, bounds that are and
+/// are not powers of two up to the largest `int`, the bounds Java fails for, and the other
+/// methods and constructors, which are refused.
+#[test]
+fn every_recorded_random_formula_does_what_java_did_or_is_refused_by_name() {
+    check_recording_with(&Compiler, "java_random", 50);
+}
+
 /// Compares the recording `name` with the compiler; at least `least` formulas must agree.
 fn check_recording(name: &str, least: usize) {
+    check_recording_with(&oxhaven_expr::RequestCompiler, name, least);
+}
+
+/// [`check_recording`] with the compiler named.
+fn check_recording_with(compiler: &dyn FormulaCompiler, name: &str, least: usize) {
     let text = fs::read_to_string(data(&format!("{name}.json"))).expect("the recording");
     let document: Value = serde_json::from_str(&text).expect("JSON");
     let table = input(&document);
@@ -453,7 +488,7 @@ fn check_recording(name: &str, least: usize) {
             );
             continue;
         }
-        match compare(&table, case) {
+        match compare(compiler, &table, case) {
             Outcome::Agrees => agreed += 1,
             Outcome::Refused(construct) => {
                 let java = match case.get("error").map(|error| &error["when"]) {

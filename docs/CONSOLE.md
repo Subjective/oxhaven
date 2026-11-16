@@ -304,6 +304,30 @@ Added by task 6.2. What Java does was observed on Java 42.9 with the formulas in
 | `float` | `double` |
 | `str` | `String` |
 | `bool` | `Boolean` |
+| `java.time.Instant` of the package (`to_j_instant`) | `Instant`, as an instant literal is (task 5.8) |
+| `list`, `dict` | none; an item under a cast is a value, see below (task 5.8) |
+
+**Items of a list and a dict** (task 5.8). Java holds a list as `org.jpy.PyListWrapper` and
+a dict as `org.jpy.PyDictWrapper`; `name[index]` and `name.get(index)` are an
+`org.jpy.PyObject`, and a cast of that is a value. `(int)`, `(long)`, `(double)` and
+`(String)` of an item are computed here, by the Python side of the functions
+(`_oxhaven_udf.item_reader`), from the object itself at the time a row is computed, as in
+Java: a list by Python's rules for an index (`-1` is the last item, an index outside the
+list or a null one fails with `IndexError`), with an index of `byte`, `short`, `char` or
+`int`; a dict with `get`, so that a key it has not is null, with a key of any primitive
+type, `String` or `Boolean`, where a null `String` or `Boolean` is the key `None` and a
+null number the number Java reserves for null. `None` is null. Any other item is converted
+as jpy converts it, with CPython's errors: `(int)` and `(long)` take what has `__index__`
+(a `bool` is 0 or 1, a `float` fails) up to 64 bits, and `(int)` keeps the low 32 bits;
+`(double)` takes a real number; `(String)` takes a `str` only. Refused though Java computes
+them: a cast to another type (`(float)`, `(short)`, `(byte)`, `(char)`, `(Boolean)`), an
+item without a cast (a column of `org.jpy.PyObject`), `isNull` of an item, the other
+methods of the wrappers (`size`, `containsKey`), and a tuple (Java fails for one too, when
+a row is computed). A client's formula is refused the variable, as Java's validator refuses
+the method (`get(int) on class org.jpy.PyListWrapper`).
+
+An `Instant` outside the years 1677 to 2262 is refused: see `tasks/5.8-plot-formulas.md`,
+"For the owner's ruling".
 
 Java holds these as boxed objects, and its parser treats a boxed variable unlike a
 primitive in places. Those that were observed are kept: the negation of a numeric variable
@@ -315,7 +339,8 @@ as in Java.
 
 Refused here though Java computes a result (`FormulaError::Unsupported` unless noted):
 
-- A variable that holds `None`, a list, a dict, a callable or any other object.
+- A variable that holds `None`, a callable or any other object, and a list or a dict
+  where it is not an item under a cast.
 - A variable whose value is the null value of its type (`-128`, `-32768`, `-2**31`,
   `-2**63`, the most negative `double`): Java treats it as null in some places and as a
   number in others.
@@ -771,5 +796,5 @@ list.
 | `FetchTable` of `s/<name>` | none: a variable that is not a table resolves and is refused with `INVALID_ARGUMENT` |
 | `ExportFromTicket` and `PublishFromTicket` with `s/<name>` | none in the cases tried: a number is exported and published as the same Python object, a table is published as the package's `Table` |
 | `FetchTable` of a table with columns made from scope variables | the same columns and types; the encoded schema of the probe's table `r` is 16 bytes longer here and decodes to the same schema. Not looked into: it is the schema encoding, not the scope. |
-| A formula that names a list | Java makes a column of `org.jpy.PyListWrapper`; refused here |
+| A formula that names a list | Java makes a column of `org.jpy.PyListWrapper`; refused here, except an item under a cast (task 5.8) |
 | The IDE | the same 20 calls in the same order with the same statuses on both servers for the console route |
