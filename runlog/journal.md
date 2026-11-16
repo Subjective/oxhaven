@@ -850,3 +850,4 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   window. A resumed agent carries its whole history, so reuse has a ceiling: after one
   large task plus one follow-up message, start fresh and hand over notes instead.
 - Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
+- Merged pull request 102 (5.6, formula gaps) on six green checks. Started 5.7 (formula functions and static calls) with a fresh agent and the 5.6 notes as handover.
