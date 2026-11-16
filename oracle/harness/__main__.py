@@ -295,7 +295,11 @@ def _write_scenario(directory: Path, doc: dict, name: str) -> Path:
 
 
 _ARROW_NAMES = {"bool": "bool", "float32": "float", "float64": "double",
-                "timestamp": "timestamp[ns, tz=UTC]"}
+                "timestamp": "timestamp[ns, tz=UTC]",
+                # the kinds of `fuzz_times`, as the wire carries them
+                "date": "date64[ms]", "time": "time64[ns]", "datetime": "string",
+                "duration": "duration[ns]", "dow": "string",
+                "zoned": "timestamp[ns, tz=UTC]", "period": "month_interval", "zone": "string"}
 
 
 def _arrow_name(kind: str) -> str:

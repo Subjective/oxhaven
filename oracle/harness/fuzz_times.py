@@ -36,11 +36,17 @@ from .fuzz_second import _Second
 
 # Findings of tasks/4.24-fuzz-time-types.md that the generator steps around, and where.
 RESTRICTIONS: dict[str, str] = {
-    "R2": "time_filter: no match or range filter with a literal on a LocalDateTime column",
+    "R2": "time_filter: no filter on a LocalDateTime column, the null forms neither",
     "R3": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
           "a Period column",
-    "R4": "time_agg: no sorted first or last by a Period column of a refreshing table",
+    "R4": "time_agg: no sorted first or last by a Period column",
+    "J1": "time_agg: no min, max, median, percentile, count_distinct, unique or distinct of "
+          "a ZoneId column, and no sorted first or last by one (the reference fails when "
+          "two zones meet in a group)",
+    "R7": "time_filter: no range comparison with null of a DayOfWeek, Duration, Period or "
+          "ZoneId column (the reference computes it as a formula)",
     "R5": "time_filter: no comparison of a Period column with a period literal",
+    "R6": "time_aj: no as-of join on a column of these types",
 }
 
 DATE, TIME, DATETIME, DURATION, DOW, ZONED, PERIOD, ZONE = (
@@ -176,8 +182,9 @@ class _Times(_Second):
                 names.append(op["name"])
             elif keep:
                 names.append(op["name"] + "v")
-                self.operations.append({"name": names[-1], "op": "view",
-                                        "source": op["name"], "formulas": keep})
+                self.add({"name": names[-1], "op": "view", "source": op["name"],
+                          "formulas": keep}, [c for c in columns if c[0] in keep],
+                         self.tables[op["name"]].rows)
         return names
 
     # ------------------------------------------------------------ operations
@@ -212,24 +219,32 @@ class _Times(_Second):
                   list(source.columns))
         return True
 
-    def time_filter(self, source: _Table) -> str:
+    def time_filter(self, source: _Table) -> str | None:
         rng = self.rng
-        column = rng.choice(self.timed(source))
+        columns = [c for c in self.timed(source) if source.type_of(c) != DATETIME]  # R2
+        if not columns:
+            return None
+        column = rng.choice(columns)
         kind = source.type_of(column)
         literal = lambda: "null" if self.chance(0.12) else rng.choice(_LITERALS[kind])  # noqa: E731
         shape = rng.choice(["match", "match", "in", "range", "range", "null"])
-        if shape == "null" or kind == DATETIME or (kind == PERIOD and shape != "range"):
-            # R2, R5: a LocalDateTime or a Period is compared with null alone.
+        if shape == "null" or (kind == PERIOD and shape != "range"):
+            # R5: a Period is compared with null alone.
             return rng.choice([f"{column} == null", f"{column} != null", f"isNull({column})",
                                f"{column} in null", f"{column} not in null"])
         if shape == "match":
             return f"{column} {rng.choice(['==', '!=', '=', '=='])} {literal()}"
         if shape == "in":
             return f"{column} {rng.choice(['in', 'not in'])} {literal()}, {literal()}"
-        return f"{column} {rng.choice(['<', '<=', '>', '>='])} {literal()}"
+        value = literal()
+        if value == "null" and kind in (DOW, DURATION, PERIOD, ZONE):  # R7
+            value = rng.choice(_LITERALS[kind])
+        return f"{column} {rng.choice(['<', '<=', '>', '>='])} {value}"
 
     def time_where(self, name: str, source: _Table) -> bool:
         filters = [self.time_filter(source) for _ in range(1 if self.chance(0.8) else 2)]
+        if None in filters:
+            return False
         self.keep({"name": name, "op": "where", "source": source.name, "filters": filters},
                   source, list(source.columns))
         return True
@@ -274,7 +289,7 @@ class _Times(_Second):
             column = rng.choice(timed)
             kind = source.type_of(column)
             agg = rng.choice(_AGGS)
-            if kind == PERIOD and agg in _ORDERED_AGGS:  # R3
+            if kind in (PERIOD, ZONE) and agg in _ORDERED_AGGS:  # R3, J1
                 agg = rng.choice(["first", "last"])
             out = self.fresh("A")
             spec: dict[str, Any] = {"agg": agg, "columns": [f"{out} = {column}"]}
@@ -288,8 +303,8 @@ class _Times(_Second):
             elif agg in ("distinct", "unique") and self.chance(0.5):
                 spec["args"] = {"include_nulls": self.chance(0.5)}
             elif agg in ("sorted_first", "sorted_last"):
-                order = [c for c in source.usable() if c != column and not (
-                    source.live and source.type_of(c) == PERIOD)]  # R4
+                order = [c for c in source.usable() if c != column
+                         and source.type_of(c) not in (PERIOD, ZONE)]  # R4, J1
                 if not order:
                     continue
                 spec["args"] = {"order_by": rng.choice(order)}
@@ -366,6 +381,8 @@ class _Times(_Second):
 
     def time_aj(self, name: str, left: _Table) -> bool:
         """An as-of join on a time column of the other parent, whatever its type."""
+        if "R6" in RESTRICTIONS:
+            return False
         rng = self.rng
         right = self.tables["c" if self.parent.get(left.name) == "b" else "b"]
         stamps = [c for c in self.timed(left) if c in dict(right.columns)]
