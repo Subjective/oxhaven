@@ -16,8 +16,7 @@ class Color:
     def __init__(self, r: int, g: int, b: int, alpha: int = 255):
         for part in (r, g, b, alpha):
             if not 0 <= part <= 255:
-                # Behavior: `java.awt.Color#testColorValueRange`
-                raise ValueError("java.lang.IllegalArgumentException: Color parameter outside of expected range")
+                raise ValueError(f"a color has parts from 0 to 255, not {part}")
         self._rgba = (int(r), int(g), int(b), int(alpha))
 
     def to_hex(self) -> str:
@@ -71,11 +70,11 @@ class Color:
         100) and an alpha from 0.0 to 1.0."""
         try:
             if not 0 <= s <= 100:
-                raise ValueError("java.lang.IllegalArgumentException: Color parameter outside of expected range: Saturation")
+                raise ValueError(f"a saturation is from 0 to 100, not {s}")
             if not 0 <= l <= 100:
-                raise ValueError("java.lang.IllegalArgumentException: Color parameter outside of expected range: Luminance")
+                raise ValueError(f"a lightness is from 0 to 100, not {l}")
             if not 0 <= alpha <= 1:
-                raise ValueError("java.lang.IllegalArgumentException: Color parameter outside of expected range: Alpha")
+                raise ValueError(f"an alpha is from 0.0 to 1.0, not {alpha}")
             r, g, b = colorsys.hls_to_rgb((h % 360) / 360, l / 100, s / 100)
             return Color(*(int(part * 255 + 0.5) for part in (r, g, b, alpha)))
         except Exception as e:
@@ -91,7 +90,8 @@ def _parse(text: str) -> Color:
         try:
             value = int(text.strip().lstrip("#"), 16)
         except ValueError:
-            raise ValueError(f'java.lang.NumberFormatException: For input string: "{text}"') from None
+            digits = text.strip().lstrip("#")
+            raise ValueError(f'java.lang.NumberFormatException: For input string: "{digits}" under radix 16') from None
         return Color((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
     digits = NAMED.get(text.upper())
     if digits is None:
@@ -113,8 +113,7 @@ def _css_of(color) -> str:
         raise TypeError(f"not a color: {color!r}")
     if isinstance(color, int):
         if color < 0:
-            # Java makes no color of it, and then fails to set it
-            raise ValueError("java.lang.NullPointerException: no color for a negative number")
+            raise ValueError(f"no color for the negative number {color}")
         return "#" + _PALETTE[color % len(_PALETTE)]
     if isinstance(color, str):
         return _parse(color)._css()
