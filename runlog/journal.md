@@ -986,3 +986,7 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   The new `kafka-broker` CI job pulls a broker image from Docker Hub and has not run on
   GitHub yet; its first run is on this pull request. Disk fell to 1.3 GB twice during the C
   build with four agents building.
+
+## 2026-11-16T07:46Z
+
+Pull request 115 (Kafka consumer on librdkafka) merged; the new kafka-broker job passed on its first run on GitHub. Task 7.6.2 (partitioned table proxy) reported: all 37 operations, five recorded scenarios clean, 14 items for the owner in its task file, among them a hang in Java when a proxy aggregation with a formula meets an update cycle. Merged as pull request 116. Launched 7.4.2 with 7.4.3 on Opus at 07:40, the first task under the model split. A tool check failed for some minutes, so this entry was written after the merges.
