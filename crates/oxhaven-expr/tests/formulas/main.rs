@@ -16,6 +16,7 @@ mod logic;
 mod recorded;
 mod statics;
 mod tagged;
+mod time;
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,

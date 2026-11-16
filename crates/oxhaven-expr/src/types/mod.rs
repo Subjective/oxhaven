@@ -918,6 +918,58 @@ impl Checker<'_> {
         }
     }
 
+    /// `lowerBin` or `upperBin` of an instant with the interval, and the offset if there
+    /// is one, as durations; `None` when neither is a duration or a period.
+    ///
+    /// Behavior: `DateTimeUtils#lowerBin(Instant, Duration)`, `#lowerBin(Instant,
+    /// Duration, Duration)` and the same of `#upperBin`, which bin by the durations'
+    /// nanoseconds. No overload takes a period, or a duration beside a number.
+    fn bin_by_duration(
+        &mut self,
+        function: &str,
+        instant: &Expr,
+        amounts: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        if !(1..=2).contains(&amounts.len()) {
+            return Ok(None);
+        }
+        let mut nanos = Vec::with_capacity(amounts.len());
+        for amount in amounts {
+            nanos.push(self.amount(amount)?);
+        }
+        if nanos.iter().all(Option::is_none) {
+            return Ok(None);
+        }
+        let no_method = || {
+            type_error(format!(
+                "Cannot find method {function}() of these arguments"
+            ))
+        };
+        if is_null_literal(instant) {
+            return Err(no_method());
+        }
+        let instant = self.check(instant)?;
+        let mut arguments = vec![instant];
+        for amount in nanos {
+            match amount {
+                Some(amount) if !amount.period => arguments.push(amount.nanos),
+                _ => return Err(no_method()),
+            }
+        }
+        if arguments[0].column_type != ColumnType::Instant {
+            return Err(no_method());
+        }
+        let kernel = if function == "lowerBin" {
+            Kernel::InstantLowerBin
+        } else {
+            Kernel::InstantUpperBin
+        };
+        Ok(Some(typed(
+            ColumnType::Instant,
+            Node::Call { kernel, arguments },
+        )))
+    }
+
     /// `left op right` when one side is a duration or a period; `None` when neither is.
     ///
     /// Behavior: `DateTimeUtils#plus(Instant, Duration)`, `#plus(Instant, Period)` and the
@@ -1357,6 +1409,19 @@ impl Checker<'_> {
                 java_name(&receiver.column_type)
             )));
         }
+        // Behavior: `QueryLanguageParser#visit(MethodCallExpr)` with a value as the scope:
+        // the method of the value's class, here `java.time.Instant`.
+        if receiver.column_type == ColumnType::Instant && arguments.is_empty() {
+            if let Some(instant_method) = functions::InstantMethod::named(method) {
+                return Ok(typed(
+                    instant_method.result_type(),
+                    Node::Call {
+                        kernel: Kernel::InstantMethod(instant_method),
+                        arguments: vec![receiver],
+                    },
+                ));
+            }
+        }
         if receiver.column_type != ColumnType::String {
             return Err(unsupported(format!(
                 "method call .{method}() on a value of type {}",
@@ -1393,6 +1458,24 @@ impl Checker<'_> {
             }
             let argument = self.check(argument)?;
             let accepted = match (parameter, &argument.column_type) {
+                // `replace(char, char)` beside `replace(CharSequence, CharSequence)`:
+                // both arguments are a `char`, or both are text.
+                (_, ColumnType::Char)
+                    if string_method == StringMethod::Replace
+                        && checked
+                            .iter()
+                            .all(|c: &Typed| c.column_type == ColumnType::Char) =>
+                {
+                    argument
+                }
+                (_, ColumnType::String)
+                    if string_method == StringMethod::Replace
+                        && checked.iter().any(|c| c.column_type == ColumnType::Char) =>
+                {
+                    return Err(type_error(
+                        "String.replace() does not take a char and a String",
+                    ))
+                }
                 (Parameter::Int, ColumnType::Int) | (Parameter::String, ColumnType::String) => {
                     argument
                 }
@@ -1601,6 +1684,23 @@ impl Checker<'_> {
     ) -> Result<Typed, FormulaError> {
         if let Some(created) = function.strip_prefix(crate::parse::NEW) {
             return self.creation(created, arguments);
+        }
+        // Behavior: `DateTimeUtils#plus(Instant, Duration)`, `#plus(Instant, Period)` and
+        // the two `minus`, called by name as the operators call them.
+        if let ("plus" | "minus", [left, right]) = (function, arguments) {
+            let op = if function == "plus" {
+                BinaryOp::Add
+            } else {
+                BinaryOp::Subtract
+            };
+            if let Some(result) = self.with_time_amount(op, left, right)? {
+                return Ok(result);
+            }
+        }
+        if let ("lowerBin" | "upperBin", [instant, amounts @ ..]) = (function, arguments) {
+            if let Some(result) = self.bin_by_duration(function, instant, amounts)? {
+                return Ok(result);
+            }
         }
         if function == "isNull" {
             let [argument] = arguments else {

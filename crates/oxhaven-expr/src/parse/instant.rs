@@ -425,6 +425,45 @@ fn parse_instant(content: &str) -> Result<i64, FormulaError> {
     }
 }
 
+/// Reads text as `DateTimeUtils#parseInstant` reads a `String` that is not null: an
+/// instant spelled as a time literal spells it, or a whole number of seconds,
+/// milliseconds, microseconds or nanoseconds since the epoch, told apart by its size. The
+/// smallest `long` is the null instant.
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant` and `#epochAutoToEpochNanos`.
+/// A spelling [`parse_instant`] leaves unsupported is unsupported here when it starts as
+/// a date does, with four digits and a `-`, or with a sign; Java reads no other text.
+pub(crate) fn instant_of_text(text: &str) -> Result<i64, FormulaError> {
+    let digits = text.strip_prefix('-').unwrap_or(text);
+    if !(1..=19).contains(&digits.len()) || !digits.bytes().all(|b| b.is_ascii_digit()) {
+        let bytes = text.as_bytes();
+        let dated =
+            bytes.len() > 4 && bytes[..4].iter().all(u8::is_ascii_digit) && bytes[4] == b'-';
+        let signed = matches!(bytes.first(), Some(b'+' | b'-'));
+        return match parse_instant(text) {
+            Err(FormulaError::Unsupported(_)) if !dated && !signed => Err(FormulaError::Syntax(
+                format!("Cannot parse instant: {text}"),
+            )),
+            other => other,
+        };
+    }
+    // `TimeConstants#MICROTIME_THRESHOLD`.
+    const THRESHOLD: u64 = 9_309_341_000_000;
+    let offset: i64 = text
+        .parse()
+        .map_err(|_| FormulaError::Syntax(format!("Cannot parse instant: {text}")))?;
+    let magnitude = offset.unsigned_abs();
+    Ok(if magnitude > 1000 * THRESHOLD {
+        offset
+    } else if magnitude > THRESHOLD {
+        offset * 1_000
+    } else if magnitude > THRESHOLD / 1000 {
+        offset * 1_000_000
+    } else {
+        offset * 1_000_000_000
+    })
+}
+
 fn is_leap_year(year: i64) -> bool {
     (year % 4 == 0 && year % 100 != 0) || year % 400 == 0
 }

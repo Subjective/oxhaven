@@ -322,6 +322,42 @@ pub(crate) enum Parsed {
     Int,
     Long,
     Boolean,
+    Float,
+    Double,
+}
+
+/// A method of `java.time.Instant` a formula calls on a value.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum InstantMethod {
+    GetEpochSecond,
+    ToEpochMilli,
+    ToString,
+}
+
+impl InstantMethod {
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Some(match name {
+            "getEpochSecond" => InstantMethod::GetEpochSecond,
+            "toEpochMilli" => InstantMethod::ToEpochMilli,
+            "toString" => InstantMethod::ToString,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn result_type(self) -> ColumnType {
+        match self {
+            InstantMethod::ToString => ColumnType::String,
+            _ => ColumnType::Long,
+        }
+    }
+}
+
+/// The unit of a count of time since the epoch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EpochUnit {
+    Seconds,
+    Millis,
+    Micros,
 }
 
 /// A function as it is evaluated: the algorithm, for whatever types its arguments have.
@@ -378,6 +414,17 @@ pub(crate) enum Kernel {
     Static(&'static statics::Method),
     /// `new T[] { a, b }`: an array of the arguments, which all have the element type.
     ArrayOf,
+    /// `epochSeconds(Instant)`, `epochMillis(Instant)` and `epochMicros(Instant)`.
+    Epoch(EpochUnit),
+    /// `epochSecondsToInstant(long)` and its two relatives.
+    EpochToInstant(EpochUnit),
+    /// `parseInstant(String)`, or `parseInstantQuiet(String)`, which is null where the
+    /// other throws.
+    ParseInstant {
+        quiet: bool,
+    },
+    /// A method called on an `Instant`, which throws for null.
+    InstantMethod(InstantMethod),
 }
 
 impl Kernel {
@@ -573,6 +620,15 @@ pub(crate) fn resolve(
         }
     };
     let starts_with_instant = types.first() == Some(&ColumnType::Instant);
+    let unit = |name: &str| {
+        if name.starts_with("epochSeconds") {
+            EpochUnit::Seconds
+        } else if name.starts_with("epochMillis") {
+            EpochUnit::Millis
+        } else {
+            EpochUnit::Micros
+        }
+    };
 
     if let Some(math) = Math::named(name) {
         return match types.as_slice() {
@@ -685,6 +741,35 @@ pub(crate) fn resolve(
                 _ => (Parsed::Boolean, ColumnType::Boolean),
             };
             call(Kernel::Parse(parsed), types.clone(), result)
+        }
+        ("parseFloat", 1) if types[0] == ColumnType::String => call(
+            Kernel::Parse(Parsed::Float),
+            types.clone(),
+            ColumnType::Float,
+        ),
+        ("parseDouble", 1) if types[0] == ColumnType::String => call(
+            Kernel::Parse(Parsed::Double),
+            types.clone(),
+            ColumnType::Double,
+        ),
+        ("parseInstant" | "parseInstantQuiet", 1) if types[0] == ColumnType::String => call(
+            Kernel::ParseInstant {
+                quiet: name == "parseInstantQuiet",
+            },
+            types.clone(),
+            ColumnType::Instant,
+        ),
+        ("epochSeconds" | "epochMillis" | "epochMicros", 1) if starts_with_instant => {
+            call(Kernel::Epoch(unit(name)), types.clone(), ColumnType::Long)
+        }
+        ("epochSecondsToInstant" | "epochMillisToInstant" | "epochMicrosToInstant", 1)
+            if is_integral(&types[0]) =>
+        {
+            call(
+                Kernel::EpochToInstant(unit(name)),
+                vec![ColumnType::Long],
+                ColumnType::Instant,
+            )
         }
         ("epochNanos", 1) if starts_with_instant => {
             call(Kernel::EpochNanos, types.clone(), ColumnType::Long)

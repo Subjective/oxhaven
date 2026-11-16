@@ -175,10 +175,10 @@ fn expression_trees_outside_the_subset_do_not_compile() {
     assert_eq!(
         compile(Expr::MethodCall {
             receiver: Box::new(Expr::Column("S".into())),
-            method: "hashCode".into(),
+            method: "intern".into(),
             arguments: vec![],
         }),
-        FormulaError::Unsupported("method call String.hashCode()".into())
+        FormulaError::Unsupported("method call String.intern()".into())
     );
     assert_eq!(
         compile(Expr::Call {

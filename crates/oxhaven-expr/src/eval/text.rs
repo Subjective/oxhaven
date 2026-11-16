@@ -358,6 +358,46 @@ pub(crate) fn string_method(
             text(row)?,
             string(row)?
         ))),
+        // `String#hashCode`, over the UTF-16 code units. The hash that is the value Java
+        // reserves for a null `int` is null in the column.
+        StringMethod::HashCode => each_row!(Int32Array, |row| {
+            let hash = text(row)?.encode_utf16().fold(0_i32, |hash, unit| {
+                hash.wrapping_mul(31).wrapping_add(i32::from(unit))
+            });
+            Ok(Some(hash).filter(|hash| *hash != i32::MIN))
+        }),
+        // `String#replace(char, char)`: every occurrence of the one code unit.
+        StringMethod::Replace if *arguments[0].data_type() == DataType::UInt16 => {
+            let unit = |index: usize, row: usize| {
+                let argument = arguments[index].as_primitive::<UInt16Type>();
+                if argument.is_valid(row) {
+                    argument.value(row)
+                } else {
+                    u16::MAX
+                }
+            };
+            each_row!(StringArray, |row| {
+                let (old, new) = (unit(0, row), unit(1, row));
+                let units: Vec<u16> = text(row)?
+                    .encode_utf16()
+                    .map(|unit| if unit == old { new } else { unit })
+                    .collect();
+                String::from_utf16(&units).map_err(|_| unpaired_surrogate())
+            })
+        }
+        // `String#replace(CharSequence, CharSequence)`: every occurrence of the text, read
+        // from the start. An empty target matches before every code unit and at the end,
+        // which is between the halves of a surrogate pair too.
+        StringMethod::Replace => each_row!(StringArray, |row| {
+            let text = text(row)?;
+            let null = || failure("java.lang.NullPointerException: null String argument");
+            let target = optional_string(0, row).ok_or_else(null)?;
+            let replacement = optional_string(1, row).ok_or_else(null)?;
+            if target.is_empty() && text.chars().any(|c| c.len_utf16() > 1) {
+                return Err(unpaired_surrogate());
+            }
+            Ok(text.replace(target, replacement))
+        }),
     })
 }
 

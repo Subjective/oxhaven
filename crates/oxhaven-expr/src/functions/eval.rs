@@ -4,7 +4,7 @@
 //! primitive type its arguments have, so a `float` function computes in `f32` as Java does.
 //! The arguments arrive already converted to the parameter types [`super::resolve`] chose.
 
-use super::{Kernel, Math, Parsed, TimeOrder};
+use super::{EpochUnit, InstantMethod, Kernel, Math, Parsed, TimeOrder};
 use crate::eval::numeric::{self, JavaPrimitive};
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int32Array, Int64Array, ListArray,
@@ -526,6 +526,41 @@ fn time(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure
         Kernel::EpochNanos => Ok(Arc::new(
             (0..rows).map(|row| stamp(0, row)).collect::<Int64Array>(),
         )),
+        // Behavior: `DateTimeUtils#epochSeconds(Instant)` and `#epochMillis(Instant)`, which
+        // are `Instant#getEpochSecond` and `Instant#toEpochMilli` and round toward the
+        // past, and `#epochMicros(Instant)`, which divides the nanoseconds and so rounds
+        // toward the epoch. Null for null.
+        Kernel::Epoch(unit) => Ok(Arc::new(
+            (0..rows)
+                .map(|row| {
+                    stamp(0, row).map(|nanos| match unit {
+                        EpochUnit::Seconds => nanos.div_euclid(1_000_000_000),
+                        EpochUnit::Millis => nanos.div_euclid(1_000_000),
+                        EpochUnit::Micros => nanos / 1_000,
+                    })
+                })
+                .collect::<Int64Array>(),
+        )),
+        // Behavior: `DateTimeUtils#epochSecondsToInstant(long)`, `#epochMillisToInstant`
+        // and `#epochMicrosToInstant`: null for null, otherwise the instant, which a
+        // column holds only as a `long` of nanoseconds.
+        Kernel::EpochToInstant(unit) => instants((0..rows).map(|row| {
+            let Some(count) = long(0, row) else {
+                return Ok(None);
+            };
+            let nanos = i128::from(count)
+                * match unit {
+                    EpochUnit::Seconds => 1_000_000_000,
+                    EpochUnit::Millis => 1_000_000,
+                    EpochUnit::Micros => 1_000,
+                };
+            if nanos < i128::from(i64::MIN) {
+                return Err(failure(format!(
+                    "java.lang.ArithmeticException: long overflow storing the instant of {count}"
+                )));
+            }
+            store_instant(nanos).map(Some)
+        })),
         // Behavior: `DateTimeUtils#epochNanosToInstant(long)`: null for null.
         Kernel::EpochNanosToInstant => instants((0..rows).map(|row| {
             long(0, row)
@@ -709,6 +744,29 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         // `Parse#parseBoolean(String)`: whether the text is `true`, in any case.
         Kernel::Parse(parsed) => {
             let texts = arguments[0].as_string::<i32>();
+            // Behavior: `Parse#parseDouble(String)` and `#parseFloat(String)`: null for
+            // null, otherwise `Double.parseDouble`. The value that stands for null parses,
+            // and is then null.
+            if parsed == Parsed::Double {
+                let values = texts
+                    .iter()
+                    .map(|text| {
+                        let value = text.map(super::statics::parse_double).transpose()?;
+                        Ok(value.filter(|value| *value != -f64::MAX))
+                    })
+                    .collect::<Result<Float64Array, TableFailure>>()?;
+                return Ok(Arc::new(values));
+            }
+            if parsed == Parsed::Float {
+                let values = texts
+                    .iter()
+                    .map(|text| {
+                        let value = text.map(super::statics::parse_float).transpose()?;
+                        Ok(value.filter(|value| *value != -f32::MAX))
+                    })
+                    .collect::<Result<arrow::array::Float32Array, TableFailure>>()?;
+                return Ok(Arc::new(values));
+            }
             if parsed == Parsed::Boolean {
                 return Ok(Arc::new(
                     texts
@@ -735,7 +793,11 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
                 _ => Arc::new(numeric::cast::<i64>(&values)),
             })
         }
+        Kernel::ParseInstant { quiet } => parse_instants(arguments[0].as_ref(), quiet),
+        Kernel::InstantMethod(method) => instant_method(method, arguments[0].as_ref()),
         Kernel::EpochNanos
+        | Kernel::Epoch(_)
+        | Kernel::EpochToInstant(_)
         | Kernel::EpochNanosToInstant
         | Kernel::InstantPlus
         | Kernel::InstantMinus
@@ -749,6 +811,86 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         Kernel::ArrayOf => array_of(arguments),
         _ => in_number_type!(arguments[0], |T| numeric::<T>(kernel, arguments, None)),
     }
+}
+
+/// Behavior: `DateTimeUtils#parseInstant(String)`, which throws for null and for text it
+/// cannot read, and `#parseInstantQuiet(String)`, which is null for both and for text of
+/// one character or none. Text Java reads in a spelling this server does not is a
+/// failure for both.
+fn parse_instants(texts: &dyn Array, quiet: bool) -> Result<ArrayRef, TableFailure> {
+    let texts = texts.as_string::<i32>();
+    instants(texts.iter().map(|text| {
+        let Some(text) = text else {
+            return if quiet {
+                Ok(None)
+            } else {
+                Err(failure(
+                    "io.deephaven.time.DateTimeUtils$DateTimeParseException: Cannot parse \
+                     instant (null): null",
+                ))
+            };
+        };
+        if quiet && text.chars().count() <= 1 {
+            return Ok(None);
+        }
+        match crate::parse::instant_of_text(text) {
+            Ok(nanos) => store_instant(nanos.into()).map(Some),
+            Err(oxhaven_contracts::expr::FormulaError::Unsupported(_)) => Err(failure(format!(
+                "parseInstant of \"{text}\", a spelling of an instant this server does not \
+                 read (io.deephaven.time.DateTimeUtils#parseInstant)"
+            ))),
+            Err(_) if quiet => Ok(None),
+            Err(_) => Err(failure(format!(
+                "io.deephaven.time.DateTimeUtils$DateTimeParseException: Cannot parse \
+                 instant: {text}"
+            ))),
+        }
+    }))
+}
+
+/// Behavior: `java.time.Instant#getEpochSecond`, `#toEpochMilli` and `#toString`, called
+/// on the value, so a null value is a `NullPointerException`. The text is ISO-8601 in UTC
+/// with the fraction of a second in no, three, six or nine digits.
+fn instant_method(method: InstantMethod, instants: &dyn Array) -> Result<ArrayRef, TableFailure> {
+    let instants = instants.as_primitive::<TimestampNanosecondType>();
+    if instants.null_count() > 0 {
+        return Err(failure(
+            "java.lang.NullPointerException: method call on a null Instant",
+        ));
+    }
+    let values = instants.values().iter();
+    Ok(match method {
+        InstantMethod::GetEpochSecond => Arc::new(Int64Array::from_iter_values(
+            values.map(|nanos| nanos.div_euclid(1_000_000_000)),
+        )),
+        InstantMethod::ToEpochMilli => Arc::new(Int64Array::from_iter_values(
+            values.map(|nanos| nanos.div_euclid(1_000_000)),
+        )),
+        InstantMethod::ToString => Arc::new(arrow::array::StringArray::from_iter_values(
+            values.map(|nanos| {
+                let seconds = nanos.div_euclid(1_000_000_000);
+                let fraction = nanos.rem_euclid(1_000_000_000);
+                let (year, month, day) =
+                    crate::parse::instant::civil_from_days(seconds.div_euclid(86_400));
+                let clock = seconds.rem_euclid(86_400);
+                let fraction = if fraction == 0 {
+                    String::new()
+                } else if fraction % 1_000_000 == 0 {
+                    format!(".{:03}", fraction / 1_000_000)
+                } else if fraction % 1_000 == 0 {
+                    format!(".{:06}", fraction / 1_000)
+                } else {
+                    format!(".{fraction:09}")
+                };
+                format!(
+                    "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}{fraction}Z",
+                    clock / 3_600,
+                    clock / 60 % 60,
+                    clock % 60
+                )
+            }),
+        )),
+    })
 }
 
 /// One array per row, of that row's value of each argument in order.

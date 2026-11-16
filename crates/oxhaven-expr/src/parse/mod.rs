@@ -19,7 +19,7 @@ use oxhaven_contracts::schema::ColumnType;
 
 /// The method name given to `receiver[index]`, which is parsed as a method call on
 /// `receiver`. It is not an identifier, so no formula can spell it.
-pub(crate) use instant::{duration_nanos, period_days};
+pub(crate) use instant::{duration_nanos, instant_of_text, period_days};
 
 pub(crate) const INDEX_METHOD: &str = "[]";
 

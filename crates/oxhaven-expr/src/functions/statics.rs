@@ -833,8 +833,8 @@ fn number_format(text: &str) -> TableFailure {
 /// Behavior: `jdk.internal.math.FloatingDecimal#readJavaFormatString`, which
 /// `Double#parseDouble` and `Float#parseFloat` call: leading and trailing characters up to
 /// a space are dropped, then a sign, then `NaN`, `Infinity`, or digits with an optional
-/// point, exponent and one of the suffixes `f`, `F`, `d` and `D`. Java also reads a
-/// hexadecimal form (`0x1.8p1`), which is refused here by name.
+/// point, exponent and one of the suffixes `f`, `F`, `d` and `D`. The hexadecimal form
+/// (`0x1.8p1`) is [`java_hex`]'s.
 fn java_decimal(text: &str) -> Result<String, TableFailure> {
     let trimmed = text.trim_matches(|c: char| c <= ' ');
     if trimmed.is_empty() {
@@ -849,12 +849,6 @@ fn java_decimal(text: &str) -> Result<String, TableFailure> {
     }
     if body == "Infinity" {
         return Ok(format!("{sign}inf"));
-    }
-    if body.starts_with("0x") || body.starts_with("0X") {
-        return Err(failure(format!(
-            "a hexadecimal floating point number is not read \
-             (jdk.internal.math.FloatingDecimal#parseHexString): \"{text}\""
-        )));
     }
     let body = body.strip_suffix(['f', 'F', 'd', 'D']).unwrap_or(body);
     let (mantissa, exponent) = match body.find(['e', 'E']) {
@@ -875,8 +869,113 @@ fn java_decimal(text: &str) -> Result<String, TableFailure> {
     Ok(format!("{sign}{body}"))
 }
 
+/// A hexadecimal floating point number, rounded to the nearest number of `precision`
+/// bits whose smallest normal exponent is `min_exponent`; `None` when the text does not
+/// start as one does, with `0x` after the sign.
+///
+/// Behavior: `jdk.internal.math.FloatingDecimal#parseHexString`: hexadecimal digits with
+/// an optional point, then `p` and a decimal exponent of two, which is required, and one
+/// of the suffixes. The result is correctly rounded, ties to even.
+fn java_hex(text: &str, precision: i64, min_exponent: i64) -> Option<Result<f64, TableFailure>> {
+    let trimmed = text.trim_matches(|c: char| c <= ' ');
+    let (negative, body) = match trimmed.strip_prefix(['+', '-']) {
+        Some(body) => (trimmed.starts_with('-'), body),
+        None => (false, trimmed),
+    };
+    let body = body
+        .strip_prefix("0x")
+        .or_else(|| body.strip_prefix("0X"))?;
+    let read = || {
+        let at = body.find(['p', 'P'])?;
+        let (mantissa, exponent) = (&body[..at], &body[at + 1..]);
+        let exponent = exponent
+            .strip_suffix(['f', 'F', 'd', 'D'])
+            .unwrap_or(exponent);
+        let (whole, fraction) = mantissa.split_once('.').unwrap_or((mantissa, ""));
+        let hex = |part: &str| part.bytes().all(|byte| byte.is_ascii_hexdigit());
+        let unsigned = exponent.strip_prefix(['+', '-']).unwrap_or(exponent);
+        if !hex(whole)
+            || !hex(fraction)
+            || (whole.is_empty() && fraction.is_empty())
+            || unsigned.is_empty()
+            || !unsigned.bytes().all(|byte| byte.is_ascii_digit())
+        {
+            return None;
+        }
+        // An exponent no `long` holds is beyond every number either way.
+        let limit = 1_000_000_000_i64;
+        let written = exponent
+            .parse::<i64>()
+            .unwrap_or(if exponent.starts_with('-') {
+                -limit
+            } else {
+                limit
+            })
+            .clamp(-limit, limit);
+        let mut significand = 0_u128;
+        let mut scale = written - 4 * fraction.len() as i64;
+        let mut sticky = false;
+        for digit in whole.bytes().chain(fraction.bytes()) {
+            let digit = u128::from((digit as char).to_digit(16)?);
+            if significand >> 120 == 0 {
+                significand = significand << 4 | digit;
+            } else {
+                scale += 4;
+                sticky |= digit != 0;
+            }
+        }
+        let magnitude = round_binary(significand, scale, sticky, precision, min_exponent);
+        Some(if negative { -magnitude } else { magnitude })
+    };
+    Some(read().ok_or_else(|| number_format(text)))
+}
+
+/// `significand * 2^scale`, and a little more when `sticky`, rounded to `precision` bits,
+/// or to as many as a number below `2^min_exponent` has, ties to even.
+fn round_binary(
+    significand: u128,
+    scale: i64,
+    sticky: bool,
+    precision: i64,
+    min_exponent: i64,
+) -> f64 {
+    let scaled = |value: u128, mut by: i64| {
+        let mut value = value as f64;
+        while by > 1000 && value.is_finite() {
+            value *= 2f64.powi(1000);
+            by -= 1000;
+        }
+        while by < -1000 && value != 0.0 {
+            value *= 2f64.powi(-1000);
+            by += 1000;
+        }
+        value * 2f64.powi(by.clamp(-1000, 1000) as i32)
+    };
+    if significand == 0 {
+        return 0.0;
+    }
+    let bits = 128 - i64::from(significand.leading_zeros());
+    let exponent = bits - 1 + scale;
+    let kept = precision - (min_exponent - exponent).max(0);
+    let dropped = bits - kept;
+    if dropped <= 0 {
+        return scaled(significand, scale);
+    }
+    if dropped > bits {
+        return 0.0;
+    }
+    let mantissa = significand >> dropped;
+    let rest = significand & ((1_u128 << dropped) - 1);
+    let half = 1_u128 << (dropped - 1);
+    let up = rest > half || (rest == half && (sticky || mantissa & 1 == 1));
+    scaled(mantissa + u128::from(up), scale + dropped)
+}
+
 /// `java.lang.Double#parseDouble` of text that is not null.
 pub(crate) fn parse_double(text: &str) -> Result<f64, TableFailure> {
+    if let Some(hex) = java_hex(text, 53, -1022) {
+        return hex;
+    }
     let decimal = java_decimal(text)?;
     if decimal == "NaN" {
         return Ok(f64::NAN);
@@ -887,6 +986,9 @@ pub(crate) fn parse_double(text: &str) -> Result<f64, TableFailure> {
 /// `java.lang.Float#parseFloat` of text that is not null: the nearest `float` to the
 /// decimal, not the nearest `double` narrowed.
 pub(crate) fn parse_float(text: &str) -> Result<f32, TableFailure> {
+    if let Some(hex) = java_hex(text, 24, -126) {
+        return hex.map(|value| value as f32);
+    }
     let decimal = java_decimal(text)?;
     if decimal == "NaN" {
         return Ok(f32::NAN);
@@ -1269,10 +1371,60 @@ mod tests {
         assert!(parse_double("NaN").unwrap().is_nan());
         assert_eq!(parse_float("0.1").unwrap(), 0.1f32);
         for refused in [
-            "", " ", "nan", "inf", "infinity", "1e", ".", "1.5x", "e5", "1_0", "0x1p3",
+            "", " ", "nan", "inf", "infinity", "1e", ".", "1.5x", "e5", "1_0", "0x1", "0x.p1",
+            "0xgp1", "0x1p", "0x1p1.5",
         ] {
             assert!(parse_double(refused).is_err(), "{refused:?}");
         }
+    }
+
+    /// The values are those of IEEE 754 round-to-nearest-even, which
+    /// `FloatingDecimal#parseHexString` promises; Java 42.9 returned 8.0 for the first.
+    #[test]
+    fn hexadecimal_floating_point_text_is_rounded_to_the_nearest_number() {
+        assert_eq!(parse_double("0x1p3").unwrap(), 8.0);
+        assert_eq!(parse_double(" -0X1.8P1d ").unwrap(), -3.0);
+        assert_eq!(parse_double("0x.8p0").unwrap(), 0.5);
+        assert_eq!(parse_double("0xap-1").unwrap(), 5.0);
+        assert_eq!(parse_double("0x0.0p0").unwrap(), 0.0);
+        assert_eq!(parse_double("0x1.fffffffffffffp1023").unwrap(), f64::MAX);
+        assert_eq!(
+            parse_double("0x1.fffffffffffff8p1023").unwrap(),
+            f64::INFINITY
+        );
+        assert_eq!(parse_double("0x1p1024").unwrap(), f64::INFINITY);
+        assert_eq!(
+            parse_double("0x1p99999999999999999999").unwrap(),
+            f64::INFINITY
+        );
+        assert_eq!(parse_double("0x1p-99999999999999999999").unwrap(), 0.0);
+        assert_eq!(parse_double("0x1p-1074").unwrap(), f64::from_bits(1));
+        // Half of the smallest number is a tie, and zero is even.
+        assert_eq!(parse_double("0x1p-1075").unwrap(), 0.0);
+        assert_eq!(
+            parse_double("0x1.0000000000001p-1075").unwrap(),
+            f64::from_bits(1)
+        );
+        assert_eq!(parse_double("0x1.8p-1074").unwrap(), f64::from_bits(2));
+        assert_eq!(parse_double("0x1p-1022").unwrap(), f64::MIN_POSITIVE);
+        // Ties go to the even neighbour, and anything past the tie goes up.
+        assert_eq!(parse_double("0x1.00000000000008p0").unwrap(), 1.0);
+        assert_eq!(
+            parse_double("0x1.00000000000018p0").unwrap(),
+            1.0 + 2.0 * f64::EPSILON
+        );
+        assert_eq!(
+            parse_double("0x1.000000000000080000000000000000000001p0").unwrap(),
+            1.0 + f64::EPSILON
+        );
+        assert_eq!(parse_float("0x1.000001p0").unwrap(), 1.0);
+        assert_eq!(
+            parse_float("0x1.000003p0").unwrap(),
+            1.0 + 2.0 * f32::EPSILON
+        );
+        assert_eq!(parse_float("0x1p128").unwrap(), f32::INFINITY);
+        assert_eq!(parse_float("0x1.ffffffp127").unwrap(), f32::INFINITY);
+        assert_eq!(parse_float("0x1p-149").unwrap(), f32::from_bits(1));
     }
 
     #[test]

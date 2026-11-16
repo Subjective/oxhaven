@@ -9,7 +9,6 @@ docs-python/conceptual.column-types.L278.6.1	java-accepts	function timeZone()
 docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function timeZone()
-docs-python/conceptual.column-types.L488.6.3	java-accepts	function parseDouble()
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
 docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	function epochDaysToLocalDate()
 docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	setup: function epochDaysToLocalDate()
@@ -28,7 +27,6 @@ docs-python/conceptual.time-in-deephaven.L203.5.0	java-accepts	time literal '202
 docs-python/conceptual.time-in-deephaven.L203.5.1	java-accepts	setup: time literal '2022-03-28'
 docs-python/conceptual.time-in-deephaven.L209.5.0	java-accepts	time literal '10:15:30.46'
 docs-python/conceptual.time-in-deephaven.L209.5.1	java-accepts	setup: time literal '10:15:30.46'
-docs-python/conceptual.time-in-deephaven.L215.5.1	java-accepts	function parseInstant()
 docs-python/conceptual.time-in-deephaven.L226.5.0	java-accepts	function parseZonedDateTime()
 docs-python/conceptual.time-in-deephaven.L226.5.1	java-accepts	setup: function parseZonedDateTime()
 docs-python/conceptual.time-in-deephaven.L236.5.0	java-accepts	function parseDuration()
@@ -56,22 +54,15 @@ docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	ti
 docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: time literal 'ET'
 docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: time literal 'ET'
 docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: time literal 'ET'
-docs-python/getting-started.crash-course.query-strings.L249.23.0	java-accepts	function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L249.23.1	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L249.23.2	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L249.23.3	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L249.23.4	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L300.15.0	java-accepts	method call .getEpochSecond() on a value of type Instant
-docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
-docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
+docs-python/getting-started.crash-course.query-strings.L249.23.1	java-accepts	function parseLocalDate()
+docs-python/getting-started.crash-course.query-strings.L249.23.2	java-accepts	setup: function parseLocalDate()
+docs-python/getting-started.crash-course.query-strings.L249.23.3	java-accepts	setup: function parseLocalDate()
+docs-python/getting-started.crash-course.query-strings.L249.23.4	java-accepts	setup: function parseLocalDate()
+docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	setup: function parseLocalDate()
+docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	time literal 'Asia/Tokyo'
+docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: time literal 'Asia/Tokyo'
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	constructor new java.net.URL()
 docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
-docs-python/getting-started.crash-course.time-calendars.L73.24.1	java-accepts	function epochMillis()
-docs-python/getting-started.crash-course.time-calendars.L73.24.2	java-accepts	setup: function epochMillis()
-docs-python/getting-started.crash-course.time-calendars.L73.24.3	java-accepts	setup: function epochMillis()
-docs-python/getting-started.crash-course.time-calendars.L73.24.4	java-accepts	setup: function epochMillis()
-docs-python/getting-started.crash-course.time-calendars.L73.24.5	java-accepts	setup: function epochMillis()
 docs-python/getting-started.crash-course.time-calendars.L102.29.1	java-accepts	time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L102.29.2	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L102.29.3	java-accepts	setup: time literal 'PT'
@@ -97,11 +88,6 @@ docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	function pars
 docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	function parsePeriod()
 docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: where
 docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	static method call org.codehaus.plexus.util.StringUtils.abbreviate()
-docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	function parseDuration()
-docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: function parseDuration()
-docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: function parseDuration()
-docs-python/how-to-guides.java-classes.L88.9.4	java-accepts	setup: function parseDuration()
-docs-python/how-to-guides.keyed-transpose.L229.10.0	java-accepts	method call String.replace()
 docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: where
 docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	static method call java.lang.Thread.currentThread()
 docs-python/how-to-guides.python-classes.L45.9.0	java-fails	field access .a
@@ -110,12 +96,6 @@ docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call 
 docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
 docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
 docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	function absAvg()
-docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
-docs-python/how-to-guides.work-with-strings.L113.9.2	java-accepts	setup: function parseFloat()
-docs-python/how-to-guides.work-with-strings.L113.9.3	java-accepts	setup: function parseFloat()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.3	java-accepts	function parseInstant()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.4	java-accepts	setup: function parseInstant()
-docs-python/reference.cheat-sheets.cheat-sheet.L41.18.3	java-accepts	function parseInstant()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.1	java-accepts	time literal '2000-06-30'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.2	java-accepts	setup: time literal '2000-06-30'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.3	java-accepts	setup: time literal '2000-06-30'
@@ -123,13 +103,10 @@ docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.4	java-accepts	setup:
 docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.5	java-accepts	setup: time literal '2000-06-30'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.6	java-accepts	setup: time literal '2000-06-30'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L75.16.0	java-fails	function parseDuration()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L115.5.0	java-accepts	function parseInstant()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.0	java-accepts	function parseInstant()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	setup: function parseInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	function parseLocalDate()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L223.5.0	java-accepts	time literal 'CT'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L241.5.0	java-accepts	function parseLocalDate()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L293.5.0	java-accepts	function parseLocalTime()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L340.12.0	java-accepts	function epochSecondsToInstant()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.0	java-accepts	time literal 'ET'
@@ -139,8 +116,6 @@ docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	setup: t
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.3	java-accepts	static method call String.format()
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.4	java-accepts	setup: static method call String.format()
 docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	time literal 'ET'
-docs-python/reference.community-questions.python-vs-query-language-time-ops.L38.9.0	java-accepts	function parseInstant()
-docs-python/reference.community-questions.python-vs-query-language-time-ops.L39.9.0	java-accepts	setup: function parseInstant()
 grid-array/extra.72	java-fails	an index on a value of a vector type
 grid-array/extra.73	java-fails	an index on a value of a vector type
 grid-array/extra.85	java-accepts	a column array of type Vector(Boolean) as the value of a formula, which Java sends as strings (io.deephaven.engine.table.vectors.ColumnVectors#of)
@@ -276,10 +251,6 @@ grid-function/inRange.boolean	java-fails	function inRange() on values that are n
 grid-function/inRange.string	java-fails	function inRange() on values that are not numbers
 grid-function/operator-name.10	java-accepts	function compareTo()
 grid-function/operator-name.11	java-accepts	function compareTo()
-grid-function/java.14	java-fails	method call String.replace()
-grid-function/java-guarded.14	java-accepts	method call String.replace()
-grid-function/java.16	java-fails	method call String.hashCode()
-grid-function/java-guarded.16	java-accepts	method call String.hashCode()
 grid-literal/band.string.null	java-fails	null literal as an operand of &
 grid-literal/band.null.string	java-fails	null literal as an operand of &
 grid-literal/bor.string.null	java-fails	null literal as an operand of |
@@ -438,8 +409,6 @@ grid-where/columns.ge.string.double	java-fails	ordering comparison of String wit
 grid-where/columns.ge.string.char	java-fails	ordering comparison of String with char
 grid-where/columns.ge.string.boolean	java-fails	ordering comparison of String with Boolean
 grid-where/extra.018	java-fails	null literal outside ==, !=, ?:, a cast and string concatenation
-java-engine/QueryTableAggregationTest.L231.1.1	java-accepts	method call String.hashCode()
-java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: method call String.hashCode()
 java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
 java-engine/QueryTableSelectUpdateTest.L1000.0.0	java-accepts	setup: where
