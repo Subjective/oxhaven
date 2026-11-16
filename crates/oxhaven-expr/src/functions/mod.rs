@@ -23,6 +23,7 @@
 
 mod classes;
 pub(crate) mod eval;
+pub(crate) mod java_time;
 mod names;
 pub(crate) mod random;
 pub(crate) mod range;
@@ -506,6 +507,10 @@ pub(crate) enum Kernel {
     Range(range::RangeFn),
     /// `new Random(seed).nextInt(bound)` of `java.util.Random`, of the seed and the bound.
     RandomNextInt,
+    /// A function that makes or converts a `java.time` value of a column type that is no
+    /// number: a `LocalDate`, `LocalTime`, `Duration`, `Period`, `ZoneId` or
+    /// `ZonedDateTime`.
+    JavaTime(java_time::TimeFn),
 }
 
 impl Kernel {
@@ -700,6 +705,10 @@ pub(crate) fn resolve(
             Ok(Resolved::Binary(op))
         }
     };
+    if let Some(found) = java_time::TimeFn::resolve(name, &types) {
+        let (function, parameters, result) = found?;
+        return call(Kernel::JavaTime(function), parameters, result);
+    }
     let starts_with_instant = types.first() == Some(&ColumnType::Instant);
     let unit = |name: &str| {
         if name.starts_with("epochSeconds") {

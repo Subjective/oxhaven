@@ -12,6 +12,7 @@
 mod methods;
 
 use crate::external::{ExternalArgument, ExternalFunctions};
+use crate::functions::java_time;
 use crate::functions::random;
 use crate::functions::range::{self, RangeFn};
 use crate::functions::{self, vectors, Kernel, Resolved};
@@ -390,6 +391,12 @@ fn java_name(column_type: &ColumnType) -> String {
         ColumnType::Double => "double".into(),
         ColumnType::String => "String".into(),
         ColumnType::Instant => "Instant".into(),
+        ColumnType::LocalDate => "LocalDate".into(),
+        ColumnType::LocalTime => "LocalTime".into(),
+        ColumnType::Duration => "Duration".into(),
+        ColumnType::Period => "Period".into(),
+        ColumnType::ZoneId => "ZoneId".into(),
+        ColumnType::ZonedDateTime => "ZonedDateTime".into(),
         other => format!("{other:?}"),
     }
 }
@@ -544,7 +551,8 @@ impl Checker<'_> {
                 | ColumnType::Double
                 | ColumnType::String
                 | ColumnType::Instant
-        ) || vectors::is_supported_list(&column_type);
+        ) || vectors::is_supported_list(&column_type)
+            || java_time::is_time_object(&column_type);
         if !known {
             return Err(unsupported(format!(
                 "column {name} of type {column_type:?}"
@@ -707,6 +715,9 @@ impl Checker<'_> {
                 };
             }
         }
+        if let Some(result) = self.time_static_call(class, method, arguments)? {
+            return Ok(result);
+        }
         if !functions::statics::is_class(class) {
             return Err(refused());
         }
@@ -737,6 +748,42 @@ impl Checker<'_> {
             },
             checked,
         ))
+    }
+
+    /// `LocalDate.ofEpochDay(days)` and `LocalTime.of(hour, minute, ...)`, by the simple or
+    /// the full name of the class; `None` for any other static call.
+    fn time_static_call(
+        &mut self,
+        class: &str,
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        if java_time::TimeFn::static_method(class, method, &[ColumnType::Int]).is_none() {
+            return Ok(None);
+        }
+        let mut checked = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            if is_null_literal(argument) {
+                return Err(unsupported(format!(
+                    "static method call {class}.{method}() with a null literal as an argument"
+                )));
+            }
+            checked.push(self.check(argument)?);
+        }
+        let types: Vec<ColumnType> = checked.iter().map(|c| c.column_type.clone()).collect();
+        let Some(found) = java_time::TimeFn::static_method(class, method, &types) else {
+            return Ok(None);
+        };
+        let (function, parameters, result) = found?;
+        Ok(Some(library_call(
+            functions::Call {
+                kernel: Kernel::JavaTime(function),
+                parameters,
+                result,
+                exchanged: false,
+            },
+            checked,
+        )))
     }
 
     /// Behavior: `QueryLanguageParser#visit(UnaryExpr)`: `-` resolves to
@@ -835,6 +882,11 @@ impl Checker<'_> {
         // `lessArray` and their relatives, which compare element by element.
         if is_list(&left) || is_list(&right) {
             return self.elementwise(op, left, right);
+        }
+        if java_time::is_time_object(&left.column_type)
+            || java_time::is_time_object(&right.column_type)
+        {
+            return time_object_operator(op, family, left, right);
         }
         match family {
             Family::Arithmetic(arithmetic) => self.arithmetic(op, arithmetic, left, right),
@@ -1554,6 +1606,29 @@ impl Checker<'_> {
                 ));
             }
         }
+        // Behavior: `java.time.Instant#atZone(ZoneId)`, which throws for a null instant or
+        // zone.
+        if let (ColumnType::Instant, "atZone", [zone]) =
+            (&receiver.column_type, method, arguments)
+        {
+            if is_null_literal(zone) {
+                return Err(unsupported("null literal as an argument of Instant.atZone()"));
+            }
+            let zone = self.check(zone)?;
+            if zone.column_type != ColumnType::ZoneId {
+                return Err(type_error(format!(
+                    "java.time.Instant has no method atZone({})",
+                    java_name(&zone.column_type)
+                )));
+            }
+            return Ok(typed(
+                ColumnType::ZonedDateTime,
+                Node::Call {
+                    kernel: Kernel::JavaTime(java_time::TimeFn::AtZone),
+                    arguments: vec![receiver, zone],
+                },
+            ));
+        }
         if receiver.column_type != ColumnType::String {
             return Err(unsupported(format!(
                 "method call .{method}() on a value of type {}",
@@ -2222,6 +2297,76 @@ fn operands_error(op: BinaryOp, left: &Typed, right: &Typed) -> FormulaError {
         java_name(&left.column_type),
         java_name(&right.column_type)
     ))
+}
+
+/// An operator with a `java.time` value that is no number on one side: a `LocalDate`,
+/// `LocalTime`, `Duration`, `Period`, `ZoneId` or `ZonedDateTime`.
+///
+/// Behavior: `QueryLanguageParser#visit(BinaryExpr)`: `+` beside a `String` is string
+/// concatenation, which prints the value with `toString`; `==` and `!=` are
+/// `QueryLanguageFunctionUtils#eq(Object, Object)`, which is `equals`; `<` and its
+/// relatives are `#less(Comparable, Comparable)` and its relatives, null first. Seen on
+/// Java 42.9: `'2020-01-02' == '2020-01-02'` is true, `'2020-01-02' < '2020-01-03'` is
+/// true, and `` `a` + '2020-01-02' `` is `a2020-01-02`. Here: concatenation of a date,
+/// a time of day and a zone, comparison of two dates, two times of day or two durations,
+/// and `==` and `!=` of two zones; every other operator with these values is refused.
+fn time_object_operator(
+    op: BinaryOp,
+    family: Family,
+    left: Typed,
+    right: Typed,
+) -> Result<Typed, FormulaError> {
+    let printable = |t: &ColumnType| {
+        matches!(
+            t,
+            ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::ZoneId
+        )
+    };
+    let same = left.column_type == right.column_type;
+    match family {
+        Family::Arithmetic(ArithmeticOp::Add)
+            if (left.column_type == ColumnType::String && printable(&right.column_type))
+                || (right.column_type == ColumnType::String && printable(&left.column_type)) =>
+        {
+            Ok(concat(left, right))
+        }
+        Family::Compare(compare)
+            if same
+                && matches!(
+                    left.column_type,
+                    ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration
+                ) =>
+        {
+            Ok(typed(
+                ColumnType::Boolean,
+                Node::Compare {
+                    op: compare,
+                    domain: CompareDomain::Integral,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+            ))
+        }
+        Family::Compare(compare)
+            if same && compare.is_equality() && left.column_type == ColumnType::ZoneId =>
+        {
+            Ok(typed(
+                ColumnType::Boolean,
+                Node::Compare {
+                    op: compare,
+                    domain: CompareDomain::String,
+                    left: Box::new(left),
+                    right: Box::new(right),
+                },
+            ))
+        }
+        _ => Err(unsupported(format!(
+            "operator {} on values of type {} and {}",
+            symbol(op),
+            java_name(&left.column_type),
+            java_name(&right.column_type)
+        ))),
+    }
 }
 
 fn concat(left: Typed, right: Typed) -> Typed {

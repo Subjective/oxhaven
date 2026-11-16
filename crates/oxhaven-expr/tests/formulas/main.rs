@@ -24,8 +24,8 @@ use arrow::array::{
     Int64Array, Int8Array, StringArray, TimestampNanosecondArray, UInt16Array, UInt64Array,
 };
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
-    TimestampNanosecondType, UInt16Type,
+    DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
+    Int64Type, Int8Type, Time64NanosecondType, TimestampNanosecondType, UInt16Type,
 };
 use oxhaven_contracts::expr::{FormulaCompiler, FormulaError};
 use oxhaven_contracts::graph::{Dependency, UpdateGraph};
@@ -308,6 +308,25 @@ fn render(array: &ArrayRef) -> Vec<String> {
         DataType::Float64 => each(array.as_primitive::<Float64Type>().iter()),
         DataType::Utf8 => each(array.as_string::<i32>().iter()),
         DataType::Timestamp(_, _) => each(array.as_primitive::<TimestampNanosecondType>().iter()),
+        DataType::Date32 => each(array.as_primitive::<Date32Type>().iter()),
+        DataType::Time64(_) => each(array.as_primitive::<Time64NanosecondType>().iter()),
+        DataType::Duration(_) => each(array.as_primitive::<DurationNanosecondType>().iter()),
+        DataType::Struct(_) => {
+            let fields = array.as_struct();
+            (0..array.len())
+                .map(|row| {
+                    if array.is_null(row) {
+                        return "null".to_string();
+                    }
+                    let parts: Vec<String> = fields
+                        .columns()
+                        .iter()
+                        .map(|child| render(&child.slice(row, 1)).remove(0))
+                        .collect();
+                    format!("{{{}}}", parts.join(", "))
+                })
+                .collect()
+        }
         DataType::List(_) => each(
             array
                 .as_list::<i32>()

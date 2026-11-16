@@ -120,7 +120,76 @@ pub(super) fn column_of(kind: &str, cells: &[Value]) -> Column {
                     .with_data_type(ColumnType::Instant.arrow_type()),
             ),
         ),
+        // A date is recorded as its text, and a time of day and a duration as nanoseconds.
+        "date" => (
+            ColumnType::LocalDate,
+            Arc::new(
+                cells
+                    .map(|cell| cell.as_str().map(epoch_day))
+                    .collect::<arrow::array::Date32Array>(),
+            ),
+        ),
+        "time" => (
+            ColumnType::LocalTime,
+            Arc::new(
+                cells
+                    .map(int_cell)
+                    .collect::<arrow::array::Time64NanosecondArray>(),
+            ),
+        ),
+        "duration" => (
+            ColumnType::Duration,
+            Arc::new(
+                cells
+                    .map(int_cell)
+                    .collect::<arrow::array::DurationNanosecondArray>(),
+            ),
+        ),
+        "zone" => (
+            ColumnType::ZoneId,
+            Arc::new(cells.map(Value::as_str).collect::<StringArray>()),
+        ),
+        // A client is sent the instant of a zoned date and time; see [`as_sent`].
+        "zoned" => (
+            ColumnType::ZonedDateTime,
+            Arc::new(
+                cells
+                    .map(int_cell)
+                    .collect::<TimestampNanosecondArray>()
+                    .with_data_type(ColumnType::Instant.arrow_type()),
+            ),
+        ),
+        // The pinned pyarrow cannot read a period: only its type is recorded.
+        "period" if cells.len() == 0 => (
+            ColumnType::Period,
+            arrow::array::new_empty_array(&ColumnType::Period.arrow_type()),
+        ),
         other => panic!("no column of type {other}"),
+    }
+}
+
+/// The days since 1970-01-01 of a date recorded as `yyyy-mm-dd`.
+fn epoch_day(text: &str) -> i32 {
+    let date = chrono::NaiveDate::parse_from_str(text, "%Y-%m-%d").expect("a date");
+    let epoch = chrono::NaiveDate::from_ymd_opt(1970, 1, 1).expect("a date");
+    (date - epoch).num_days() as i32
+}
+
+/// The cells of a column as a client is sent them, where that is not as they are stored:
+/// a zoned date and time is sent as its instant.
+pub(super) fn as_sent(column_type: &ColumnType, values: ArrayRef) -> ArrayRef {
+    match column_type {
+        ColumnType::ZonedDateTime => {
+            let parts = values.as_struct();
+            let instants = parts
+                .column(0)
+                .as_primitive::<arrow::datatypes::TimestampNanosecondType>();
+            Arc::new(
+                TimestampNanosecondArray::new(instants.values().clone(), parts.nulls().cloned())
+                    .with_data_type(ColumnType::Instant.arrow_type()),
+            )
+        }
+        _ => values,
     }
 }
 
@@ -198,6 +267,12 @@ pub(super) fn kind_of(java_type: &str) -> Option<&'static str> {
         "float[]" => "list<float32>",
         "double[]" => "list<float64>",
         "java.lang.String[]" => "list<string>",
+        "java.time.LocalDate" => "date",
+        "java.time.LocalTime" => "time",
+        "java.time.Duration" => "duration",
+        "java.time.Period" => "period",
+        "java.time.ZoneId" => "zone",
+        "java.time.ZonedDateTime" => "zoned",
         _ => return None,
     })
 }
@@ -392,6 +467,17 @@ fn compare(compiler: &dyn FormulaCompiler, table: &TestTable, case: &Value) -> O
         .as_str()
         .filter(|kind| kind.starts_with("list<"));
     let expected = match list.or_else(|| kind_of(java_type)) {
+        // The pinned pyarrow could not read the column: its type is what Java recorded.
+        Some(kind @ ("date" | "time" | "duration" | "period")) if result["values"].is_null() => {
+            let expected = column_of(kind, &[]).0;
+            return if column_type == expected {
+                Outcome::Agrees
+            } else {
+                Outcome::Differs(format!(
+                    "Java returns {java_type}; Oxhaven returns {column_type:?}"
+                ))
+            };
+        }
         Some(kind) if !result["values"].is_null() => {
             let (column_type, values) = column_of(kind, cells(&result["values"]));
             (list_type(java_type, column_type), values)
@@ -412,6 +498,7 @@ fn compare(compiler: &dyn FormulaCompiler, table: &TestTable, case: &Value) -> O
     let changes = ["now(", "nowSystem(", "random"]
         .iter()
         .any(|call| formula.contains(call));
+    let values = as_sent(&column_type, values);
     if changes || super::tagged::same_values(formula, &expected.1, &values) {
         Outcome::Agrees
     } else {
