@@ -1010,3 +1010,7 @@ The second parity pass reported after five hours: all 13 existing fuzz families 
 ## 2026-11-16T08:46Z
 
 Pull request 118 (stream tables, table publisher) merged on green. Launched 7.4.3 (full JSON spec) on Opus with a fresh agent from the written handover.
+
+## 2026-11-16T08:50Z
+
+Pull request 119 (second fuzzer and findings) merged on green. The fixes for its findings (task 4.20, Fable) wait for a build slot: three agents are building and the disk has about 5 GB free.
