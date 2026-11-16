@@ -137,7 +137,44 @@ fn constituents_and_merge_of_a_static_table_keep_its_attributes() {
         let merged = partitioned.merge().unwrap().attributes();
         assert_eq!(merged.add_only, expected.add_only);
         assert_eq!(merged.append_only, expected.append_only);
+        // The merge of the constituents a static key table asks for keeps them too:
+        // constituent changes are permitted only where the underlying table refreshes.
+        let asked = partitioned
+            .with_table(partitioned.table().clone())
+            .unwrap()
+            .with_constituent_changes_permitted();
+        assert!(!asked.constituent_changes_permitted());
+        let asked = asked.merge().unwrap().attributes();
+        assert_eq!(asked.add_only, expected.add_only);
+        assert_eq!(asked.append_only, expected.append_only);
     }
+}
+
+/// The merge of the constituents a refreshing key table asks for takes no attribute from
+/// them, as Java 42.9 was seen to answer (`partitions` seeds 413, 606 and 967 of the
+/// second generator, tasks/4.20-fuzz-findings-2.md, D2).
+#[test]
+fn a_merge_for_a_refreshing_key_table_takes_no_attribute_of_the_constituents() {
+    let first = crate::ops::sort::head(&seven_rows(), 5).unwrap();
+    let partitioned = partition_by(&first, &["K"], false).unwrap();
+    let graph = SteppedUpdateGraph::new();
+    let keys = ScriptedTable::new(
+        graph.clone(),
+        definition(&[("K", ColumnType::Int)]),
+        RowSet::flat(2),
+        vec![ints([0, 1])],
+    );
+    let key_table: Arc<dyn Table> = keys.table();
+    let rows = partitioned.rows_for_keys(&key_table).unwrap();
+    assert!(rows.is_refreshing());
+    let kept = partitioned.with_table(rows.clone()).unwrap();
+    assert!(kept.merge().unwrap().attributes().append_only);
+    let asked = partitioned
+        .with_table(rows)
+        .unwrap()
+        .with_constituent_changes_permitted();
+    assert!(asked.constituent_changes_permitted());
+    assert!(!asked.merge().unwrap().attributes().append_only);
 }
 
 #[test]
