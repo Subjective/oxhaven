@@ -112,7 +112,11 @@ impl ObjectType for PartitionedTableType {
         let partitioned = partitioned_of(value)
             .ok_or_else(|| ExportError::Internal("not a partitioned table".to_string()))?;
         let (payload, table) = describe(partitioned)?;
-        send_once(connection.as_ref(), payload, vec![ExportValue::Table(table)])
+        send_once(
+            connection.as_ref(),
+            payload,
+            vec![ExportValue::Table(table)],
+        )
     }
 }
 
@@ -277,10 +281,10 @@ impl ObjectTypes {
         value: &ExportValue,
     ) -> Result<Arc<dyn ObjectType>, ExportError> {
         let Some(object_type) = self.find(value)? else {
-            return Err(
-                Status::not_found(format!("No ObjectType found, expected type '{expected}'"))
-                    .into(),
-            );
+            return Err(Status::not_found(format!(
+                "No ObjectType found, expected type '{expected}'"
+            ))
+            .into());
         };
         if object_type.name() != expected {
             return Err(Status::failed_precondition(format!(

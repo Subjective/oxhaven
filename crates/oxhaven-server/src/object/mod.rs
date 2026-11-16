@@ -122,7 +122,10 @@ impl Conversation {
                 let mut references = Vec::with_capacity(data.references.len());
                 for reference in data.references {
                     let ticket = reference.ticket.unwrap_or_default().ticket;
-                    references.push(self.router.resolve(Some(&self.session), &ticket, "ticket")?);
+                    references.push(
+                        self.router
+                            .resolve(Some(&self.session), &ticket, "ticket")?,
+                    );
                 }
                 let opened = self.opened.clone();
                 let work: Work = Box::new(move |inputs| {
@@ -143,7 +146,9 @@ impl Conversation {
 
     /// Runs the work of one message when its exports have values, and waits for it, so
     /// that the messages of a stream are handled one after the other in their order.
-    /// Returns early, with the work still waiting, when the client has gone.
+    /// That holds when the client has gone too: a message that waits for an export that
+    /// never comes keeps the stream, and the object is not told of the end, until the
+    /// session ends, as observed of Java.
     ///
     /// Behavior: `SendMessageObserver#runOrEnqueue`, `EnqueuedStreamOperation#run`
     async fn run(&self, dependencies: Vec<Export>, work: Work) -> Result<(), Status> {
@@ -162,21 +167,7 @@ impl Conversation {
                 done(Ok(()));
                 Ok(ExportValue::unit())
             })?;
-        let finished = reply.wait();
-        tokio::pin!(finished);
-        loop {
-            tokio::select! {
-                result = &mut finished => return result.map(|_| ()),
-                ended = self.outlet.over() => {
-                    if ended == Ended::Gone {
-                        return Ok(());
-                    }
-                    // the object ended the stream from inside this work, or the session
-                    // ended and fails the work: either way it finishes
-                    return finished.await.map(|_| ());
-                }
-            }
-        }
+        reply.wait().await.map(|_| ())
     }
 
     /// Tells the object that its stream is over, if the stream was opened. What the
@@ -308,11 +299,14 @@ impl ObjectGrpc {
             opened: Opened::default(),
             seen_connect: false,
         };
+        let stream = outlet.clone();
         tokio::spawn(async move {
             conversation.converse(requests).await;
             session.remove_on_close(on_close);
-            if let Some(browser) = browser {
-                // the stream is no longer an export, and a later message for it is refused
+            if let (Some(browser), Some(Ended::Gone)) = (browser, stream.ended()) {
+                // Only the client's giving up the call ends its side of the stream. When
+                // the server ended the stream, the client's side stays an export, and a
+                // later message for it is taken and dropped, as observed of Java.
                 browser.cancelled();
             }
         });
