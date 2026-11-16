@@ -1046,3 +1046,7 @@ Task 5.10 reported from Opus: Object, DayOfWeek and boolean[] columns; the formu
 ## 2026-11-16T10:25Z
 
 Pull request 122 (Kafka JSON) merged: CI ran the gates the agent could not finish locally and all passed. Launched 7.5.1 (Kafka producing) on Opus.
+
+## 2026-11-16T10:32Z
+
+Pull request 123 (Object, DayOfWeek and boolean[] columns) merged on green, after a second CI run on top of pull request 122.
