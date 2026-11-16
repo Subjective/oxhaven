@@ -249,10 +249,17 @@ mod tests {
              \x20       assert java in str(e), str(e)\n\
              \x20   else:\n\
              \x20       raise AssertionError('must be refused: ' + java)\n\
-             refused(lambda: r.with_filters('K > 0'), 'RollupTableImpl#withFilter')\n\
+             from deephaven.table import NodeType\n\
+             recorder = r.node_operation_recorder(NodeType.AGGREGATED)\n\
              refused(lambda: r.with_update_view('W = V'), 'RollupTableImpl#withUpdateView')\n\
-             refused(lambda: r.node_operation_recorder(None), 'RollupTableImpl#makeNodeOperationsRecorder')\n\
-             refused(lambda: r.with_node_operations([]), 'RollupTableImpl#withNodeOperations')\n\
+             refused(lambda: recorder.update_view('W = V'), 'RollupNodeOperationsRecorder#updateView')\n\
+             refused(lambda: recorder.format_column('V = RED'), 'RollupNodeOperationsRecorder#formatColumns')\n\
+             refused(lambda: recorder.format_row_where('V > 1', 'RED'), 'RollupNodeOperationsRecorder#formatRowWhere')\n\
+             refused(lambda: recorder.format_column_where('V', 'V > 1', 'RED'), 'RollupNodeOperationsRecorder#formatColumnWhere')\n\
+             # Java takes a filter by the position of a row for one of group-by columns\n\
+             refused(lambda: r.with_filters('i > 2'), 'RollupTableImpl#withFilter')\n\
+             assert r.with_filters('K > 0').by == r.by\n\
+             assert r.with_node_operations([recorder.sort_descending('V')]).by == r.by\n\
              refused(lambda: source.rollup(aggs=[agg.sum_('V')], by='K', include_constituents=True), 'RollupTableImpl#makeRollup')\n\
              refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n\
              refused(lambda: source.tree('K', 'V'), 'QueryTable#tree')\n",
