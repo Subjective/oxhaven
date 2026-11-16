@@ -20,8 +20,9 @@ const TIMEOUT: Duration = Duration::from_secs(60);
 /// Where a schema registry is, and the writers' schemas read from it so far.
 #[derive(Debug)]
 pub(crate) struct Registry {
-    /// `host:port` and the path prefix of each URL, in the order given.
-    urls: Vec<(String, String)>,
+    /// `host:port` and the path prefix of each URL, in the order given, or the text of
+    /// a URL without a scheme, which Java's `java.net.URL` refuses when it is asked.
+    urls: Vec<Result<(String, String), String>>,
     by_id: Mutex<HashMap<i32, Arc<Schema>>>,
 }
 
@@ -67,17 +68,24 @@ impl Registry {
         let mut urls = Vec::new();
         for url in list.split(',').map(str::trim).filter(|url| !url.is_empty()) {
             let Some(rest) = url.strip_prefix("http://") else {
-                return Err(if url.starts_with("https://") {
-                    not_ported(
+                if url.starts_with("https://") {
+                    return Err(not_ported(
                         "io.confluent.kafka.schemaregistry.client.rest.RestService#setSslSocketFactory",
                         &format!("a schema registry over TLS ({url})"),
-                    )
-                } else {
-                    KafkaError::Invalid(format!(
-                        "org.apache.kafka.common.config.ConfigException: Invalid value {url} \
-                         for configuration {URL_PROPERTY}"
-                    ))
-                });
+                    ));
+                }
+                if url.contains("://") {
+                    // Java opens the scheme's own connection and fails to use it as HTTP
+                    // (probe url_ftp: a ClassCastException), or knows no such scheme.
+                    return Err(not_ported(
+                        "java.net.URL#openConnection",
+                        &format!("a schema registry URL other than http:// ({url})"),
+                    ));
+                }
+                // Behavior: java.net.URL#URL(String), when the request is made (probe
+                // url_noscheme).
+                urls.push(Err(url.to_owned()));
+                continue;
             };
             let (authority, path) = match rest.find('/') {
                 Some(slash) => (&rest[..slash], rest[slash..].trim_end_matches('/')),
@@ -88,7 +96,16 @@ impl Registry {
             } else {
                 format!("{authority}:80")
             };
-            urls.push((authority, path.to_owned()));
+            urls.push(Ok((authority, path.to_owned())));
+        }
+        // Behavior: io.confluent.kafka.schemaregistry.client.rest.RestService#RestService,
+        // via UrlList (probe url_empty)
+        if urls.is_empty() {
+            return Err(KafkaError::Invalid(
+                "java.lang.IllegalArgumentException: Expected at least one URL to be passed in \
+                 constructor"
+                    .to_owned(),
+            ));
         }
         Ok(Self {
             urls,
@@ -102,7 +119,16 @@ impl Registry {
     /// Behavior: io.confluent.kafka.schemaregistry.client.rest.RestService#httpRequest
     fn get(&self, path: &str) -> Result<Node, CallFailure> {
         let mut last = CallFailure("java.net.ConnectException: no URL".to_owned());
-        for (authority, prefix) in &self.urls {
+        for url in &self.urls {
+            let (authority, prefix) = match url {
+                Ok(http) => http,
+                Err(text) => {
+                    last = CallFailure(format!(
+                        "java.net.MalformedURLException: no protocol: {text}{path}"
+                    ));
+                    continue;
+                }
+            };
             match http_get(authority, &format!("{prefix}{path}")) {
                 Ok((status, body)) => return answer(status, &body),
                 Err(failure) => last = failure,
@@ -371,7 +397,25 @@ mod tests {
         let registry = Registry::from_config(&config("http://h:1/, http://g/x/")).unwrap();
         assert_eq!(
             registry.urls,
-            [("h:1".into(), "".into()), ("g:80".into(), "/x".into())]
+            [
+                Ok(("h:1".into(), "".into())),
+                Ok(("g:80".into(), "/x".into()))
+            ]
+        );
+        assert_eq!(
+            Registry::from_config(&config(" ")).unwrap_err().to_string(),
+            "java.lang.IllegalArgumentException: Expected at least one URL to be passed in \
+             constructor"
+        );
+        assert!(matches!(
+            Registry::from_config(&config("ftp://h:1")),
+            Err(KafkaError::NotPorted { .. })
+        ));
+        let bare = Registry::from_config(&config("127.0.0.1:1")).unwrap();
+        assert_eq!(
+            bare.get("/subjects/s-value/versions/latest").unwrap_err().0,
+            "java.net.MalformedURLException: no protocol: \
+             127.0.0.1:1/subjects/s-value/versions/latest"
         );
         assert!(matches!(
             Registry::from_config(&config("https://h:1")),
