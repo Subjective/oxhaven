@@ -13,8 +13,11 @@ mod external;
 mod formula;
 mod gaps;
 mod logic;
+mod objects;
 mod recorded;
+mod statics;
 mod tagged;
+mod time;
 
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array,

@@ -21,8 +21,10 @@
 //! - An argument of another type is converted as a cast converts it: null stays null.
 //! - The `null` literal is not an argument of any primitive overload.
 
+mod classes;
 pub(crate) mod eval;
 mod names;
+pub(crate) mod statics;
 pub(crate) mod vectors;
 pub(crate) mod volatile;
 
@@ -113,8 +115,61 @@ pub(crate) fn constant(name: &str) -> Option<(ColumnType, Literal)> {
     })
 }
 
-/// The value and type of the static field `class.field` of a boxed numeric class of
-/// `java.lang`, given as [`constant`] gives a constant.
+/// A class of the default static imports that a formula names as `name`: by its full name,
+/// or for `DateTimeUtils` by its simple name too.
+///
+/// Behavior: `QueryLibraryImportsDefaults#classes`, which lists `DateTimeUtils` among the
+/// classes a formula names without a package, and `QueryLanguageParser#visit(NameExpr)`
+/// and `#visit(FieldAccessExpr)`, which find any class by its full name.
+fn library_class(name: &str) -> Option<&'static classes::LibraryClass> {
+    classes::CLASSES.iter().find(|class| {
+        class.name == name || (class.simple && class.name.rsplit('.').next() == Some(name))
+    })
+}
+
+/// What `class.function(...)` means when `class` is a class of the default static imports.
+pub(crate) enum LibraryMember {
+    /// The class is not one of them.
+    NotLibrary,
+    /// The class has no public static member of that name.
+    Missing,
+    /// The member is the default import of the same name, of this class alone.
+    Import,
+    /// The member is a default import that another class has too (`plus`, `lowerBin`).
+    /// `time` says whether the class is `DateTimeUtils`.
+    Shared { time: bool },
+}
+
+/// How a formula reaches the static method `class.function`.
+pub(crate) fn library_function(class: &str, function: &str) -> LibraryMember {
+    let Some(class) = library_class(class) else {
+        return LibraryMember::NotLibrary;
+    };
+    if class.functions.binary_search(&function).is_err() {
+        return LibraryMember::Missing;
+    }
+    let shared = classes::CLASSES
+        .iter()
+        .filter(|other| other.functions.binary_search(&function).is_ok())
+        .count()
+        > 1;
+    if shared {
+        LibraryMember::Shared {
+            time: class.name == "io.deephaven.time.DateTimeUtils",
+        }
+    } else {
+        LibraryMember::Import
+    }
+}
+
+/// Whether `class.field` is a constant of a class of the default static imports, and so
+/// the constant a formula names as `field` alone.
+pub(crate) fn is_library_constant(class: &str, field: &str) -> bool {
+    library_class(class).is_some_and(|class| class.constants.binary_search(&field).is_ok())
+}
+
+/// The value and type of the static field `class.field` of a class of `java.lang`, given
+/// as [`constant`] gives a constant.
 ///
 /// `java.lang` is a default-imported package, so a formula names these classes by their
 /// simple names, and the field keeps its declared primitive type: `Long.MIN_VALUE` is a
@@ -123,9 +178,11 @@ pub(crate) fn constant(name: &str) -> Option<(ColumnType, Literal)> {
 /// `PRECISION`, which exists only from JDK 19 on.
 ///
 /// Behavior: the `public static final` fields of `java.lang.Byte`, `Short`, `Integer`,
-/// `Long`, `Float` and `Double`, resolved by `QueryLanguageParser#visit(FieldAccessExpr)`
-/// through `QueryLibraryImportsDefaults#packages`.
+/// `Long`, `Float`, `Double`, `Boolean`, `Math` and `StrictMath`, resolved by
+/// `QueryLanguageParser#visit(FieldAccessExpr)` through
+/// `QueryLibraryImportsDefaults#packages`, or by the class's full name.
 pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Literal)> {
+    let class = class.strip_prefix("java.lang.").unwrap_or(class);
     let byte = |value: i8| (ColumnType::Byte, Literal::Int(value.into()));
     let short = |value: i16| (ColumnType::Short, Literal::Int(value.into()));
     let int = |value: i32| (ColumnType::Int, Literal::Int(value));
@@ -133,6 +190,12 @@ pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Lite
     let float = |value: f32| (ColumnType::Float, Literal::Float(value));
     let double = |value: f64| (ColumnType::Double, Literal::Double(value));
     Some(match (class, field) {
+        ("Math" | "StrictMath", "PI") => double(std::f64::consts::PI),
+        ("Math" | "StrictMath", "E") => double(std::f64::consts::E),
+        // `java.util` is imported: `java.util.Calendar#JANUARY`.
+        ("Calendar" | "java.util.Calendar", "JANUARY") => int(0),
+        ("Boolean", "TRUE") => (ColumnType::Boolean, Literal::Boolean(true)),
+        ("Boolean", "FALSE") => (ColumnType::Boolean, Literal::Boolean(false)),
         ("Byte", "MIN_VALUE") => byte(i8::MIN),
         ("Byte", "MAX_VALUE") => byte(i8::MAX),
         ("Byte", "SIZE") => int(8),
@@ -261,6 +324,109 @@ pub(crate) enum Parsed {
     Int,
     Long,
     Boolean,
+    Float,
+    Double,
+}
+
+/// A method of `java.time.Instant` a formula calls on a value.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum InstantMethod {
+    GetEpochSecond,
+    ToEpochMilli,
+    ToString,
+}
+
+impl InstantMethod {
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Some(match name {
+            "getEpochSecond" => InstantMethod::GetEpochSecond,
+            "toEpochMilli" => InstantMethod::ToEpochMilli,
+            "toString" => InstantMethod::ToString,
+            _ => return None,
+        })
+    }
+
+    pub(crate) fn result_type(self) -> ColumnType {
+        match self {
+            InstantMethod::ToString => ColumnType::String,
+            _ => ColumnType::Long,
+        }
+    }
+}
+
+/// A field of the date and time an instant is in a time zone.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ZonedField {
+    SecondOfDay,
+    MinuteOfDay,
+    HourOfDay,
+    MillisOfDay,
+    NanosOfDay,
+    Year,
+    YearOfCentury,
+    MonthOfYear,
+    DayOfYear,
+    DayOfMonth,
+    DayOfWeekValue,
+    MinuteOfHour,
+    SecondOfMinute,
+    MillisOfSecond,
+    MicrosOfSecond,
+    NanosOfSecond,
+}
+
+impl ZonedField {
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Some(match name {
+            "secondOfDay" => ZonedField::SecondOfDay,
+            "minuteOfDay" => ZonedField::MinuteOfDay,
+            "hourOfDay" => ZonedField::HourOfDay,
+            "millisOfDay" => ZonedField::MillisOfDay,
+            "nanosOfDay" => ZonedField::NanosOfDay,
+            "year" => ZonedField::Year,
+            "yearOfCentury" => ZonedField::YearOfCentury,
+            "monthOfYear" => ZonedField::MonthOfYear,
+            "dayOfYear" => ZonedField::DayOfYear,
+            "dayOfMonth" => ZonedField::DayOfMonth,
+            "dayOfWeekValue" => ZonedField::DayOfWeekValue,
+            "minuteOfHour" => ZonedField::MinuteOfHour,
+            "secondOfMinute" => ZonedField::SecondOfMinute,
+            "millisOfSecond" => ZonedField::MillisOfSecond,
+            "microsOfSecond" => ZonedField::MicrosOfSecond,
+            "nanosOfSecond" => ZonedField::NanosOfSecond,
+            _ => return None,
+        })
+    }
+
+    /// Whether the function counts from the start of the day, and so takes the flag that
+    /// says which start: midnight on the clock, or the instant the day began.
+    pub(crate) fn of_day(self) -> bool {
+        matches!(
+            self,
+            ZonedField::SecondOfDay
+                | ZonedField::MinuteOfDay
+                | ZonedField::HourOfDay
+                | ZonedField::MillisOfDay
+                | ZonedField::NanosOfDay
+        )
+    }
+
+    pub(crate) fn result_type(self) -> ColumnType {
+        match self {
+            ZonedField::NanosOfDay | ZonedField::MicrosOfSecond | ZonedField::NanosOfSecond => {
+                ColumnType::Long
+            }
+            _ => ColumnType::Int,
+        }
+    }
+}
+
+/// The unit of a count of time since the epoch.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum EpochUnit {
+    Seconds,
+    Millis,
+    Micros,
 }
 
 /// A function as it is evaluated: the algorithm, for whatever types its arguments have.
@@ -312,12 +478,52 @@ pub(crate) enum Kernel {
     /// A function of `io.deephaven.function.Random`; the evaluator supplies the number of
     /// rows, and the arguments are widened as Java widens them, without regard to null.
     Random(volatile::RandomFn),
+    /// A static method of a class of `java.lang`, called through the class. The evaluator
+    /// supplies the number of rows and makes null what holds the null value of its type.
+    Static(&'static statics::Method),
+    /// `new T[] { a, b }`: an array of the arguments, which all have the element type.
+    ArrayOf,
+    /// `epochSeconds(Instant)`, `epochMillis(Instant)` and `epochMicros(Instant)`.
+    Epoch(EpochUnit),
+    /// `epochSecondsToInstant(long)` and its two relatives.
+    EpochToInstant(EpochUnit),
+    /// `parseInstant(String)`, or `parseInstantQuiet(String)`, which is null where the
+    /// other throws.
+    ParseInstant {
+        quiet: bool,
+    },
+    /// A method called on an `Instant`, which throws for null.
+    InstantMethod(InstantMethod),
+    /// `hourOfDay(Instant, ZoneId, boolean)`, `dayOfYear(Instant, ZoneId)` and their
+    /// relatives, for a zone the formula names.
+    Zoned(ZonedField, crate::parse::instant::Zone),
+    /// `compareTo` of two numbers.
+    CompareTo,
 }
 
 impl Kernel {
     /// Whether two calls with the same arguments may return different values.
     pub(crate) fn is_volatile(self) -> bool {
-        matches!(self, Kernel::Now | Kernel::Random(_))
+        match self {
+            Kernel::Now | Kernel::Random(_) => true,
+            Kernel::Static(method) => method.function == statics::StaticFn::Random,
+            _ => false,
+        }
+    }
+
+    /// Whether the kernel is a method of `DateTimeUtils` that shares its name with a
+    /// method of another class of the default imports.
+    pub(crate) fn is_shared_time(self) -> bool {
+        matches!(
+            self,
+            Kernel::InstantPlus
+                | Kernel::InstantMinus
+                | Kernel::InstantDifference
+                | Kernel::InstantLowerBin
+                | Kernel::InstantUpperBin
+                | Kernel::DurationMultiply
+                | Kernel::DurationDivide
+        )
     }
 }
 
@@ -488,6 +694,15 @@ pub(crate) fn resolve(
         }
     };
     let starts_with_instant = types.first() == Some(&ColumnType::Instant);
+    let unit = |name: &str| {
+        if name.starts_with("epochSeconds") {
+            EpochUnit::Seconds
+        } else if name.starts_with("epochMillis") {
+            EpochUnit::Millis
+        } else {
+            EpochUnit::Micros
+        }
+    };
 
     if let Some(math) = Math::named(name) {
         return match types.as_slice() {
@@ -600,6 +815,57 @@ pub(crate) fn resolve(
                 _ => (Parsed::Boolean, ColumnType::Boolean),
             };
             call(Kernel::Parse(parsed), types.clone(), result)
+        }
+        // `QueryLanguageFunctionUtils#compareTo`, one overload per pair of primitive
+        // types. A `long` beside a floating point number has rules of its own.
+        ("compareTo", 2) if types.iter().all(is_numeric) => {
+            let has = |wanted: ColumnType| types.contains(&wanted);
+            let floating = has(ColumnType::Float) || has(ColumnType::Double);
+            let parameter = if !floating {
+                ColumnType::Long
+            } else if has(ColumnType::Long) {
+                return Err(unsupported(
+                    "function compareTo() of a long and a floating point number",
+                ));
+            } else if has(ColumnType::Double) {
+                ColumnType::Double
+            } else {
+                ColumnType::Float
+            };
+            call(
+                Kernel::CompareTo,
+                vec![parameter.clone(), parameter],
+                ColumnType::Int,
+            )
+        }
+        ("parseFloat", 1) if types[0] == ColumnType::String => call(
+            Kernel::Parse(Parsed::Float),
+            types.clone(),
+            ColumnType::Float,
+        ),
+        ("parseDouble", 1) if types[0] == ColumnType::String => call(
+            Kernel::Parse(Parsed::Double),
+            types.clone(),
+            ColumnType::Double,
+        ),
+        ("parseInstant" | "parseInstantQuiet", 1) if types[0] == ColumnType::String => call(
+            Kernel::ParseInstant {
+                quiet: name == "parseInstantQuiet",
+            },
+            types.clone(),
+            ColumnType::Instant,
+        ),
+        ("epochSeconds" | "epochMillis" | "epochMicros", 1) if starts_with_instant => {
+            call(Kernel::Epoch(unit(name)), types.clone(), ColumnType::Long)
+        }
+        ("epochSecondsToInstant" | "epochMillisToInstant" | "epochMicrosToInstant", 1)
+            if is_integral(&types[0]) =>
+        {
+            call(
+                Kernel::EpochToInstant(unit(name)),
+                vec![ColumnType::Long],
+                ColumnType::Instant,
+            )
         }
         ("epochNanos", 1) if starts_with_instant => {
             call(Kernel::EpochNanos, types.clone(), ColumnType::Long)

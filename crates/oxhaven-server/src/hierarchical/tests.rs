@@ -21,6 +21,7 @@ use oxhaven_proto::barrage::{
     BarrageUpdateMetadata, MAGIC,
 };
 use oxhaven_proto::flight::FlightData;
+use oxhaven_proto::grpc as proto;
 use oxhaven_proto::grpc::agg_spec::{AggSpecSum, Type as SpecType};
 use oxhaven_proto::grpc::aggregation::{AggregationColumns, AggregationCount, Type};
 use oxhaven_proto::grpc::hierarchical_table_service_client::HierarchicalTableServiceClient;
@@ -434,7 +435,7 @@ async fn view_and_export_source_answer_what_java_answers() {
 }
 
 #[tokio::test]
-async fn apply_and_tree_are_refused_by_name() {
+async fn apply_reads_its_request_and_tree_is_refused_by_name() {
     let server = &server().await;
     let service = || HierarchicalTableServiceClient::new(server.channel.clone());
     let apply = |request: HierarchicalTableApplyRequest| async move {
@@ -486,18 +487,6 @@ async fn apply_and_tree_are_refused_by_name() {
         "Could not resolve 'inputHierarchicalTableId: variable 'nope' not found",
     );
     // what Java does and this server does not yet
-    refused(
-        apply(HierarchicalTableApplyRequest {
-            sorts: vec![SortDescriptor {
-                column_name: "Qty".to_string(),
-                ..Default::default()
-            }],
-            ..request()
-        })
-        .await,
-        Code::Unimplemented,
-        "not ported: io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply",
-    );
     let tree = service()
         .tree(server.authorized(TreeRequest {
             result_tree_table_id: Some(export_id_to_ticket(40)),
@@ -511,6 +500,423 @@ async fn apply_and_tree_are_refused_by_name() {
         tree,
         Code::Unimplemented,
         "not ported: io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#tree",
+    );
+}
+
+fn sort_by(column: &str, direction: proto::sort_descriptor::SortDirection) -> SortDescriptor {
+    SortDescriptor {
+        column_name: column.to_string(),
+        is_absolute: false,
+        direction: direction as i32,
+    }
+}
+
+/// `column <operation> value`, as the IDE sends a filter.
+fn compared(
+    column: &str,
+    operation: proto::compare_condition::CompareOperation,
+    value: proto::literal::Value,
+) -> proto::Condition {
+    let reference = proto::Value {
+        data: Some(proto::value::Data::Reference(proto::Reference {
+            column_name: column.to_string(),
+        })),
+    };
+    let literal = proto::Value {
+        data: Some(proto::value::Data::Literal(proto::Literal {
+            value: Some(value),
+        })),
+    };
+    proto::Condition {
+        data: Some(proto::condition::Data::Compare(proto::CompareCondition {
+            operation: operation as i32,
+            case_sensitivity: 0,
+            lhs: Some(reference),
+            rhs: Some(literal),
+        })),
+    }
+}
+
+fn update_view(formula: &str) -> proto::UpdateViewRequest {
+    proto::UpdateViewRequest {
+        column_spec: Some(proto::Selectable {
+            r#type: Some(proto::selectable::Type::Raw(formula.to_string())),
+        }),
+        node_type: proto::RollupNodeType::Aggregated as i32,
+    }
+}
+
+fn text_value(value: &str) -> proto::literal::Value {
+    proto::literal::Value::StringValue(value.to_string())
+}
+
+/// The statuses are those Java 42.9 answered to the same calls; the texts that are not
+/// Java's own are of errors that Java logs and does not send.
+///
+/// Behavior: `io.deephaven.server.hierarchicaltable.HierarchicalTableServiceGrpcImpl#apply`
+#[tokio::test]
+async fn apply_sorts_and_filters_a_rollup_and_refuses_what_java_refuses() {
+    use proto::compare_condition::CompareOperation;
+    use proto::sort_descriptor::SortDirection;
+    let server = &server().await;
+    let service = || HierarchicalTableServiceClient::new(server.channel.clone());
+    // the rollup by `Sym` alone, in which `Ex` is a column no aggregation reads
+    service()
+        .rollup(server.authorized(rollup_request(1, 15, &["Sym"])))
+        .await
+        .unwrap();
+    let apply = |request: HierarchicalTableApplyRequest| async move {
+        service()
+            .apply(server.authorized(request))
+            .await
+            .map(tonic::Response::into_inner)
+    };
+    let request = |input: i32, result: i32| HierarchicalTableApplyRequest {
+        result_hierarchical_table_id: Some(export_id_to_ticket(result)),
+        input_hierarchical_table_id: Some(export_id_to_ticket(input)),
+        ..Default::default()
+    };
+    let sorted =
+        |input: i32, result: i32, sorts: Vec<SortDescriptor>| HierarchicalTableApplyRequest {
+            sorts,
+            ..request(input, result)
+        };
+    let filtered =
+        |input: i32, result: i32, filters: Vec<proto::Condition>| HierarchicalTableApplyRequest {
+            filters,
+            ..request(input, result)
+        };
+    // the node of AAPL expanded: the key column and the sum of each row
+    let rows = |id: i32| {
+        let value = server.session().get_export(id).unwrap().value().unwrap();
+        let view = View::new(
+            hierarchical_of(&value).unwrap().hierarchy(),
+            Some(expand("AAPL", true)),
+            Some("Action".to_string()),
+        );
+        let snapshot = view.snapshot(None, 0, 100).unwrap();
+        let names = arrow::array::AsArray::as_string::<i32>(snapshot.columns[2].as_ref());
+        let column = snapshot.columns.len() - 2;
+        let sums = arrow::array::AsArray::as_primitive::<arrow::datatypes::Int64Type>(
+            snapshot.columns[column].as_ref(),
+        );
+        (0..snapshot.rows as usize)
+            .map(|row| {
+                let name = if arrow::array::Array::is_null(names, row) {
+                    "-"
+                } else {
+                    names.value(row)
+                };
+                format!("{name} {}", sums.value(row))
+            })
+            .collect::<Vec<_>>()
+    };
+    let source_size = |table: i32, result: i32| async move {
+        let request = HierarchicalTableSourceExportRequest {
+            result_table_id: Some(export_id_to_ticket(result)),
+            hierarchical_table_id: Some(export_id_to_ticket(table)),
+        };
+        let exported = service()
+            .export_source(server.authorized(request))
+            .await
+            .unwrap();
+        exported.into_inner().size
+    };
+
+    assert_eq!(
+        rows(10),
+        ["- 210", "AAPL 70", "AAPL 50", "AAPL 20", "MSFT 80", "GOOG 60"]
+    );
+    // a sort orders the rows of every node
+    assert_eq!(
+        apply(sorted(
+            10,
+            20,
+            vec![sort_by("Qty", SortDirection::Descending)]
+        ))
+        .await
+        .unwrap(),
+        HierarchicalTableApplyResponse {}
+    );
+    assert_eq!(
+        rows(20),
+        ["- 210", "MSFT 80", "AAPL 70", "AAPL 50", "AAPL 20", "GOOG 60"]
+    );
+    assert_eq!(rows(10)[1], "AAPL 70", "the input is as it was");
+    // a later sort decides first, and what was sorted by before decides among its equals
+    apply(sorted(
+        20,
+        21,
+        vec![sort_by("Rows", SortDirection::Ascending)],
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        rows(21),
+        ["- 210", "GOOG 60", "MSFT 80", "AAPL 70", "AAPL 20", "AAPL 50"]
+    );
+    let absolute = SortDescriptor {
+        is_absolute: true,
+        ..sort_by("Qty", SortDirection::Ascending)
+    };
+    apply(sorted(10, 22, vec![absolute.clone()])).await.unwrap();
+    assert_eq!(rows(22)[1], "GOOG 60");
+
+    // a filter by a group-by column leaves the source as it is
+    let not_msft = compared("Sym", CompareOperation::NotEquals, text_value("MSFT"));
+    apply(filtered(10, 23, vec![not_msft.clone()]))
+        .await
+        .unwrap();
+    assert_eq!(
+        rows(23),
+        ["- 130", "AAPL 70", "AAPL 50", "AAPL 20", "GOOG 60"]
+    );
+    assert_eq!(source_size(23, 40).await, 6);
+    // a filter by a column that is neither grouped by nor aggregated filters the source
+    let on_n = compared("Ex", CompareOperation::Equals, text_value("N"));
+    apply(filtered(15, 24, vec![on_n.clone()])).await.unwrap();
+    assert_eq!(rows(24), ["- 80", "AAPL 50", "MSFT 30"]);
+    assert_eq!(source_size(24, 41).await, 3);
+    // filters first, then sorts
+    apply(HierarchicalTableApplyRequest {
+        filters: vec![not_msft.clone()],
+        sorts: vec![sort_by("Qty", SortDirection::Ascending)],
+        ..request(10, 25)
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        rows(25),
+        ["- 130", "GOOG 60", "AAPL 70", "AAPL 20", "AAPL 50"]
+    );
+
+    // what Java refuses
+    let next = std::cell::Cell::new(50);
+    let fresh = || next.replace(next.get() + 1);
+    let positive = compared(
+        "Qty",
+        CompareOperation::GreaterThan,
+        proto::literal::Value::DoubleValue(0.0),
+    );
+    let unknown = "Unsupported or unknown sort direction:";
+    for (request, code, text) in [
+        (
+            sorted(10, fresh(), vec![sort_by("Qty", SortDirection::Unknown)]),
+            Code::InvalidArgument,
+            format!("{unknown} UNKNOWN"),
+        ),
+        (
+            sorted(10, fresh(), vec![sort_by("Qty", SortDirection::Reverse)]),
+            Code::InvalidArgument,
+            format!("{unknown} REVERSE"),
+        ),
+        (
+            sorted(
+                10,
+                fresh(),
+                vec![SortDescriptor {
+                    direction: 7,
+                    ..sort_by("Qty", SortDirection::Ascending)
+                }],
+            ),
+            Code::InvalidArgument,
+            format!("{unknown} UNRECOGNIZED"),
+        ),
+        // a direction is read before a column is looked for
+        (
+            sorted(
+                10,
+                fresh(),
+                vec![
+                    sort_by("Nope", SortDirection::Ascending),
+                    sort_by("Qty", SortDirection::Unknown),
+                ],
+            ),
+            Code::InvalidArgument,
+            format!("{unknown} UNKNOWN"),
+        ),
+        // a column the nodes do not have, a structural column, the absolute value of text
+        (
+            sorted(10, fresh(), vec![sort_by("Nope", SortDirection::Ascending)]),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        (
+            sorted(
+                10,
+                fresh(),
+                vec![sort_by("__DEPTH__", SortDirection::Ascending)],
+            ),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        (
+            sorted(
+                10,
+                fresh(),
+                vec![SortDescriptor {
+                    column_name: "Sym".to_string(),
+                    ..absolute
+                }],
+            ),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        // a filter reads no column that an aggregation reads
+        (
+            filtered(10, fresh(), vec![positive.clone()]),
+            Code::InvalidArgument,
+            "Invalid filter found:".to_string(),
+        ),
+        (
+            filtered(10, fresh(), vec![not_msft.clone(), positive]),
+            Code::InvalidArgument,
+            "Invalid filter found:".to_string(),
+        ),
+        // nor a result of the rollup, which the source does not have, nor no column
+        (
+            filtered(
+                10,
+                fresh(),
+                vec![compared(
+                    "Rows",
+                    CompareOperation::GreaterThan,
+                    proto::literal::Value::DoubleValue(1.0),
+                )],
+            ),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        (
+            filtered(10, fresh(), vec![proto::Condition { data: None }]),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        // a table and a view are no hierarchical table, and the result is there
+        (
+            sorted(1, fresh(), vec![sort_by("Qty", SortDirection::Ascending)]),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        (
+            sorted(10, 20, vec![sort_by("Qty", SortDirection::Ascending)]),
+            Code::InvalidArgument,
+            LOGGED.to_string(),
+        ),
+        // what Java does and this server does not yet
+        (
+            HierarchicalTableApplyRequest {
+                update_views: vec![update_view("Twice = Qty * 2")],
+                ..request(10, fresh())
+            },
+            Code::Unimplemented,
+            "not ported: io.deephaven.engine.table.impl.hierarchical.\
+             RollupNodeOperationsRecorder#updateView"
+                .to_string(),
+        ),
+        (
+            HierarchicalTableApplyRequest {
+                format_views: vec![update_view("Qty = RED")],
+                ..request(10, fresh())
+            },
+            Code::Unimplemented,
+            "not ported: io.deephaven.engine.table.impl.hierarchical.\
+             RollupNodeOperationsRecorder#formatColumns"
+                .to_string(),
+        ),
+    ] {
+        refused(apply(request).await, code, &text);
+    }
+}
+
+/// A rollup of a table whose sorts are restricted says so where a client reads it, and
+/// `Apply` refuses a sort by another column.
+///
+/// Behavior: `HierarchicalTableGrpcHelper#translateAndValidateSorts` and
+/// `io.deephaven.engine.table.impl.BaseGridAttributes#restrictSortTo`
+#[tokio::test]
+async fn a_rollup_of_a_table_with_restricted_sorts_sorts_by_those_columns() {
+    use proto::sort_descriptor::SortDirection;
+    let server = &server().await;
+    let service = || HierarchicalTableServiceClient::new(server.channel.clone());
+    let restricted =
+        oxhaven_engine::ops::sort::restrict_sort_to(&trades(), &["Sym", "Qty"]).unwrap();
+    server.export(4, restricted);
+    service()
+        .rollup(server.authorized(rollup_request(4, 16, &["Sym", "Ex"])))
+        .await
+        .unwrap();
+    let fetched = ObjectServiceClient::new(server.channel.clone())
+        .fetch_object(server.authorized(FetchObjectRequest {
+            source_id: Some(TypedTicket {
+                ticket: Some(export_id_to_ticket(16)),
+                r#type: "HierarchicalTable".to_string(),
+            }),
+        }))
+        .await
+        .unwrap()
+        .into_inner();
+    let descriptor = HierarchicalTableDescriptor::decode(fetched.data.as_ref()).unwrap();
+    let schema = schema_of_ipc(&descriptor.snapshot_schema);
+    let attribute = |key: &str| schema.metadata().get(key).map(String::as_str);
+    assert_eq!(
+        attribute("deephaven:attribute.SortableColumns"),
+        Some("Sym,Qty")
+    );
+    assert_eq!(
+        attribute("deephaven:attribute_type.SortableColumns"),
+        Some("java.lang.String")
+    );
+    let sortable: Vec<&str> = schema
+        .fields()
+        .iter()
+        .filter(|field| field.metadata().contains_key("deephaven:isSortable"))
+        .map(|field| field.name().as_str())
+        .collect();
+    assert_eq!(sortable, ["Sym", "Qty"]);
+
+    let apply = |result: i32, column: &str| {
+        let request = HierarchicalTableApplyRequest {
+            result_hierarchical_table_id: Some(export_id_to_ticket(result)),
+            input_hierarchical_table_id: Some(export_id_to_ticket(16)),
+            sorts: vec![sort_by(column, SortDirection::Descending)],
+            ..Default::default()
+        };
+        async move {
+            service()
+                .apply(server.authorized(request))
+                .await
+                .map(tonic::Response::into_inner)
+        }
+    };
+    apply(20, "Qty").await.unwrap();
+    refused(
+        apply(21, "Rows").await,
+        Code::InvalidArgument,
+        "Sorting attempted on restricted column(s): [Rows], available column(s) for sorting \
+         are: [Sym, Qty]",
+    );
+    // the restriction is read before the column is looked for
+    refused(
+        apply(22, "Nope").await,
+        Code::InvalidArgument,
+        "Sorting attempted on restricted column(s): [Nope]",
+    );
+    // and what is made of the rollup keeps it
+    refused(
+        async {
+            service()
+                .apply(server.authorized(HierarchicalTableApplyRequest {
+                    result_hierarchical_table_id: Some(export_id_to_ticket(23)),
+                    input_hierarchical_table_id: Some(export_id_to_ticket(20)),
+                    sorts: vec![sort_by("Rows", SortDirection::Ascending)],
+                    ..Default::default()
+                }))
+                .await
+        }
+        .await,
+        Code::InvalidArgument,
+        "Sorting attempted on restricted column(s): [Rows]",
     );
 }
 

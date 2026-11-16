@@ -30,18 +30,21 @@ impl TableOp for Handler {
         request: &FilterTableRequest,
         sources: &[Arc<dyn Table>],
     ) -> Result<Arc<dyn Table>, ExportError> {
-        let conditions = request
-            .filters
-            .iter()
-            .map(condition)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(ExportError::Internal)?;
+        let conditions = conditions(&request.filters).map_err(ExportError::Internal)?;
         Ok(engine::filter(
             &sources[0],
             &conditions,
             context.compiler.as_ref(),
         )?)
     }
+}
+
+/// The conditions of a request as the engine has them, or why one cannot be read.
+///
+/// Behavior: `io.deephaven.server.table.ops.FilterTableGrpcImpl#finishConditions`, whose
+/// normalization is the engine's (`oxhaven_engine::ops::filter::normalize`)
+pub(crate) fn conditions(filters: &[proto::Condition]) -> Result<Vec<engine::Condition>, String> {
+    filters.iter().map(condition).collect()
 }
 
 /// The name of a column reference. A reference that is not set names the empty string, as

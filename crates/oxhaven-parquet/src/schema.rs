@@ -2,6 +2,7 @@
 
 use crate::{not_ported, ReadError, ReadOptions, UnsignedLongTarget};
 use oxhaven_contracts::schema::ColumnType;
+use oxhaven_csv::is_reserved;
 use parquet::basic::{ConvertedType, LogicalType, Type as PhysicalType};
 use parquet::file::metadata::KeyValue;
 use parquet::schema::types::{ColumnDescriptor, SchemaDescriptor};
@@ -14,13 +15,17 @@ pub(crate) struct FileColumn {
     pub name: String,
     /// The index of the column among the fields of the file's schema.
     pub root: usize,
+    /// The index of the column among the leaves of the file's schema.
+    pub leaf: usize,
+    /// Whether the column is the one leaf of a group that is not a list, a struct with one
+    /// field.
+    pub nested: bool,
     pub column_type: ColumnType,
     /// How an unsigned 64-bit column becomes a `long`.
     pub unsigned_long: Option<UnsignedLongTarget>,
 }
 
 const READ_SCHEMA: &str = "io.deephaven.parquet.table.ParquetSchemaReader#readParquetSchema";
-const LEGALIZE: &str = "io.deephaven.api.util.NameValidator#legalizeColumnName";
 
 /// The key of the footer entry Deephaven writes.
 ///
@@ -70,15 +75,51 @@ fn column_infos(
     Ok(columns)
 }
 
-/// Whether a column name needs no change to be a legal one. Java renames the others; a
-/// name that is a reserved word passes here and is left to the caller, which knows the
-/// reserved words.
-fn is_plain_identifier(name: &str) -> bool {
-    let mut characters = name.chars();
-    characters
-        .next()
-        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c == '$')
-        && characters.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$')
+/// The column name Java makes of the name `parquet_name` of a file column: a space
+/// becomes an underscore; a reserved word gets the prefix `column_`; every character that
+/// is not an ASCII letter, a digit, `_` or `$` is dropped; a name that then starts with a
+/// digit gets the prefix too; and a name in `taken` gets the first number from 2 on that
+/// makes it new. A name with nothing left, or left with a reserved word, is an error.
+///
+/// Behavior: `io.deephaven.api.util.NameValidator#legalizeColumnName(String, Function, Set)`
+/// with the replacement of `ParquetSchemaReader#convertSchema`; the key of a partition
+/// directory is made a name without that replacement (`space_to_underscore`), so a space
+/// in it is dropped
+pub(crate) fn legalize(
+    parquet_name: &str,
+    space_to_underscore: bool,
+    taken: &[String],
+) -> Result<String, ReadError> {
+    let error = || {
+        // Java: a `NameValidator.LegalizeNameException` with this text
+        ReadError::Invalid(format!("Can not legalize column name {parquet_name}"))
+    };
+    let mut name = if space_to_underscore {
+        parquet_name.replace(' ', "_")
+    } else {
+        parquet_name.to_string()
+    };
+    if is_reserved(&name) {
+        name = format!("column_{name}");
+    }
+    name.retain(|c| c.is_ascii_alphanumeric() || c == '_' || c == '$');
+    if name.is_empty() {
+        return Err(error());
+    }
+    if name.starts_with(|c: char| c.is_ascii_digit()) {
+        name = format!("column_{name}");
+    }
+    let mut unique = name.clone();
+    let mut next = 2;
+    while taken.contains(&unique) {
+        unique = format!("{name}{next}");
+        next += 1;
+    }
+    // what is left is ASCII, so it is a column name unless it is a reserved word
+    if is_reserved(&name) {
+        return Err(error());
+    }
+    Ok(unique)
 }
 
 /// The logical type of a column, from its logical type or, in a file that has none, from
@@ -86,7 +127,7 @@ fn is_plain_identifier(name: &str) -> bool {
 ///
 /// Behavior: `org.apache.parquet.schema.LogicalTypeAnnotation#fromOriginalType`, through
 /// which parquet-mr gives Java one annotation for both
-fn annotation(column: &ColumnDescriptor) -> Option<LogicalType> {
+pub(crate) fn annotation(column: &ColumnDescriptor) -> Option<LogicalType> {
     if let Some(logical) = column.logical_type_ref() {
         return Some(logical.clone());
     }
@@ -166,7 +207,8 @@ fn value_type(
                     "java.lang.String, decoded from bytes by UTF8StringAsByteArrayCodec",
                     name,
                 )),
-                None => Err(no_column_type("byte[]", name)),
+                // a `byte[]`, which `columns` knows by the array of bytes that is no list
+                None => Ok(ColumnType::array(ColumnType::Byte)),
             },
         };
     };
@@ -185,23 +227,19 @@ fn value_type(
         LogicalType::Uuid => Err(refused("UUIDLogicalType")),
         LogicalType::Decimal(decimal) => {
             // Java writes a `BigInteger` as a decimal of precision 1 and scale 0
-            let big_integer = decimal.precision == 1 && decimal.scale == 0;
-            Err(no_column_type(
-                if big_integer {
-                    "java.math.BigInteger"
-                } else {
-                    "java.math.BigDecimal"
-                },
-                name,
-            ))
+            if decimal.precision == 1 && decimal.scale == 0 {
+                Ok(ColumnType::BigInteger)
+            } else {
+                Ok(ColumnType::BigDecimal)
+            }
         }
-        LogicalType::Date => Err(no_column_type("java.time.LocalDate", name)),
-        LogicalType::Time(_) => Err(no_column_type("java.time.LocalTime", name)),
+        LogicalType::Date => Ok(ColumnType::LocalDate),
+        LogicalType::Time(_) => Ok(ColumnType::LocalTime),
         LogicalType::Timestamp(timestamp) => {
             if timestamp.is_adjusted_to_u_t_c {
                 Ok(ColumnType::Instant)
             } else {
-                Err(no_column_type("java.time.LocalDateTime", name))
+                Ok(ColumnType::LocalDateTime)
             }
         }
         LogicalType::Integer(integer) => match (integer.is_signed, integer.bit_width) {
@@ -215,7 +253,7 @@ fn value_type(
             (false, 32) => Ok(ColumnType::Long),
             (false, 64) => match unsigned_long {
                 Some(_) => Ok(ColumnType::Long),
-                None => Err(no_column_type("java.math.BigInteger", name)),
+                None => Ok(ColumnType::BigInteger),
             },
             (signed, width) => Err(refused(&format!(
                 "IntLogicalType, isSigned={signed}, bitWidth={width}"
@@ -230,9 +268,9 @@ fn value_type(
 /// The columns of a file with the Parquet schema `schema` and the footer entries
 /// `key_values`, named as `options` say.
 ///
-/// A column Java reads as a type that has no [`ColumnType`] yet, or under a name it would
-/// first make legal, is refused as not ported; a column Java refuses is refused with
-/// Java's reason.
+/// A column no instruction names gets the name Java makes of its name in the file
+/// ([`legalize`]). A column Java reads as a type that has no [`ColumnType`] yet is refused
+/// as not ported; a column Java refuses is refused with Java's reason.
 ///
 /// Behavior: `io.deephaven.parquet.table.ParquetSchemaReader#readParquetSchema` and the
 /// consumer of `#convertSchema` that turns each column into a column definition
@@ -245,6 +283,16 @@ pub(crate) fn columns(
     let no_info = ColumnInfo::default();
     let mut columns: Vec<FileColumn> = Vec::new();
     let mut previous: Option<(usize, String)> = None;
+    // The names a changed name must differ from: none until the first name is changed,
+    // then the names the instructions give and the changed names. A name read as it is in
+    // the file is not among them, so a changed name can repeat one, and the table
+    // definition then refuses the two columns of one name. The first changed name can be
+    // the name of an instruction, which the mapping then refuses.
+    //
+    // Behavior: `ParquetInstructions.Builder#getTakenNames` of the builder that
+    // `ParquetSchemaReader#readParquetSchema` makes when it first adds a name mapping,
+    // `ParquetInstructions.Builder#addColumnNameMapping`
+    let mut taken: Option<Vec<String>> = None;
     for (leaf, column) in schema.columns().iter().enumerate() {
         let path = column.path().parts();
         if column.max_rep_level() > 1 {
@@ -267,12 +315,23 @@ pub(crate) fn columns(
 
         let name = match options.name_of(parquet_name) {
             Some(name) => name.to_string(),
-            None if is_plain_identifier(parquet_name) => parquet_name.clone(),
             None => {
-                return Err(not_ported(
-                    LEGALIZE,
-                    format_args!("column name '{parquet_name}'"),
-                ))
+                let legal = legalize(parquet_name, true, taken.as_deref().unwrap_or(&[]))?;
+                if legal != *parquet_name {
+                    let named = |c: &&crate::ColumnInstruction| c.name.as_ref() == Some(&legal);
+                    let instructed = options.columns.iter().find(named);
+                    if let Some(instructed) = instructed {
+                        return Err(ReadError::Invalid(format!(
+                            "Cannot add a mapping from parquetColumnName={parquet_name}: \
+                             columnName={legal} already mapped to parquetColumnName={}",
+                            instructed.parquet_name
+                        )));
+                    }
+                    let instructed = options.columns.iter().filter_map(|c| c.name.clone());
+                    let taken = taken.get_or_insert_with(|| instructed.collect());
+                    taken.push(legal.clone());
+                }
+                legal
             }
         };
         let info = infos.get(&name).unwrap_or(&no_info);
@@ -285,6 +344,23 @@ pub(crate) fn columns(
         let unsigned_long = options.unsigned_long_of(&name);
         let values = value_type(column, &name, info, unsigned_long, options.legacy)?;
         let is_list = column.max_rep_level() > 0;
+        // Java has these as objects, and a list of them as an array of objects
+        let object = match &values {
+            ColumnType::BigDecimal => Some("java.math.BigDecimal"),
+            ColumnType::BigInteger => Some("java.math.BigInteger"),
+            ColumnType::LocalDate => Some("java.time.LocalDate"),
+            ColumnType::LocalTime => Some("java.time.LocalTime"),
+            ColumnType::LocalDateTime => Some("java.time.LocalDateTime"),
+            ColumnType::Array(_) => Some("byte[]"),
+            _ => None,
+        };
+        if let Some(java_type) = object.filter(|_| is_list) {
+            return Err(not_ported(
+                "io.deephaven.parquet.table.pagestore.topage.ToArrayPage#create",
+                format_args!("column {name}, a list of {java_type}"),
+            ));
+        }
+        let nested = !is_list && path.len() > 1;
         let column_type = match (info.special.as_deref(), is_list) {
             (Some("Vector"), true) => ColumnType::vector(values),
             (Some("Vector"), false) => {
@@ -294,21 +370,14 @@ pub(crate) fn columns(
                 ))
             }
             (_, true) => ColumnType::array(values),
-            (_, false) if path.len() > 1 => {
-                // Java reads the one leaf of the struct as the column
-                return Err(not_ported(
-                    READ_SCHEMA,
-                    format_args!(
-                        "column {name}, a struct with the one field {}",
-                        path[1..].join("/")
-                    ),
-                ));
-            }
+            // of a struct with one field, Java reads the field
             (_, false) => values,
         };
         columns.push(FileColumn {
             name,
             root,
+            leaf,
+            nested,
             column_type,
             unsigned_long,
         });
@@ -376,21 +445,159 @@ mod tests {
         // the descriptors really have no logical type, so the converted type was used
         assert!(schema(old).column(0).logical_type_ref().is_none());
 
-        for (declared, java_type) in [
-            ("int32 V (DATE)", "java.time.LocalDate"),
-            ("int32 V (TIME_MILLIS)", "java.time.LocalTime"),
-            ("int64 V (UINT_64)", "java.math.BigInteger"),
-            ("int32 V (DECIMAL(9,2))", "java.math.BigDecimal"),
-            (
-                "fixed_len_byte_array(1) V (DECIMAL(1,0))",
-                "java.math.BigInteger",
-            ),
+        for (declared, column_type) in [
+            ("int32 V (DATE)", LocalDate),
+            ("int32 V (TIME_MILLIS)", LocalTime),
+            ("int64 V (TIME_MICROS)", LocalTime),
+            ("int64 V (UINT_64)", BigInteger),
+            ("int32 V (DECIMAL(9,2))", BigDecimal),
+            ("int32 V (DECIMAL(1,0))", BigInteger),
+            ("fixed_len_byte_array(1) V (DECIMAL(1,0))", BigInteger),
+            ("fixed_len_byte_array(1) V (DECIMAL(1,1))", BigDecimal),
+            ("fixed_len_byte_array(1) V (DECIMAL(2,0))", BigDecimal),
         ] {
-            let refused = types(&format!("message m {{ optional {declared}; }}"));
-            let Err(ReadError::NotPorted { what, .. }) = refused else {
-                panic!("{declared} was not refused as not ported: {refused:?}");
+            let read = types(&format!("message m {{ optional {declared}; }}"));
+            assert_eq!(read, Ok(vec![("V".to_string(), column_type)]), "{declared}");
+        }
+    }
+
+    #[test]
+    fn the_types_java_holds_as_objects_are_read_one_to_a_row_only() {
+        use ColumnType::*;
+        let plain = "message m {
+            optional binary Bytes;
+            optional fixed_len_byte_array(3) Fixed;
+            optional int64 Local (TIMESTAMP(MICROS,false));
+            optional int64 Stamp (TIMESTAMP(MICROS,true));
+            optional int64 Nanos (TIME(NANOS,true));
+            optional group Pair { optional int32 only; }
+        }";
+        let expected = [
+            ("Bytes", ColumnType::array(Byte)),
+            ("Fixed", ColumnType::array(Byte)),
+            ("Local", LocalDateTime),
+            ("Stamp", Instant),
+            ("Nanos", LocalTime),
+            ("Pair", Int),
+        ];
+        let expected: Vec<_> = expected
+            .into_iter()
+            .map(|(n, t)| (n.to_string(), t))
+            .collect();
+        assert_eq!(types(plain).unwrap(), expected);
+        let read = columns(&schema(plain), None, &ReadOptions::default()).unwrap();
+        let nested: Vec<bool> = read.iter().map(|column| column.nested).collect();
+        assert_eq!(nested, [false, false, false, false, false, true]);
+        assert_eq!(read[5].leaf, 5);
+
+        for (element, java_type) in [
+            ("binary element", "byte[]"),
+            ("int32 element (DATE)", "java.time.LocalDate"),
+            ("int64 element (TIME(NANOS,true))", "java.time.LocalTime"),
+            (
+                "int64 element (TIMESTAMP(NANOS,false))",
+                "java.time.LocalDateTime",
+            ),
+            ("int64 element (INTEGER(64,false))", "java.math.BigInteger"),
+            ("int64 element (DECIMAL(18,2))", "java.math.BigDecimal"),
+        ] {
+            let list = format!(
+                "message m {{ optional group V (LIST) {{ repeated group list {{ optional {element}; }} }} }}"
+            );
+            let Err(ReadError::NotPorted { java, what }) = types(&list) else {
+                panic!("a list of {java_type} was read");
             };
-            assert_eq!(what, format!("column V of type {java_type}"));
+            assert!(java.ends_with("ToArrayPage#create"), "{java}");
+            assert_eq!(what, format!("column V, a list of {java_type}"));
+        }
+    }
+
+    /// The names are the ones Java 42.9 gave the columns of `tests/data/names.parquet` and
+    /// `reserved.parquet`, and of files written for the probe of task 7.1b.
+    #[test]
+    fn a_name_that_is_not_legal_is_changed_as_java_changes_it() {
+        let names = |fields: &[&str], options: &ReadOptions| {
+            let fields: Vec<_> = fields
+                .iter()
+                .map(|name| {
+                    parquet::schema::types::Type::primitive_type_builder(name, PhysicalType::INT32)
+                        .build()
+                })
+                .map(|field| Arc::new(field.unwrap()))
+                .collect();
+            let message = parquet::schema::types::Type::group_type_builder("m").with_fields(fields);
+            let schema = SchemaDescriptor::new(Arc::new(message.build().unwrap()));
+            let columns = columns(&schema, None, options)?;
+            Ok::<_, ReadError>(columns.into_iter().map(|c| c.name).collect::<Vec<_>>())
+        };
+        let plain = ReadOptions::default();
+        assert_eq!(
+            names(
+                &["a b", "2x", "ok", "int", "a-b", "ünï", "i", "$x", "_"],
+                &plain
+            )
+            .unwrap(),
+            [
+                "a_b",
+                "column_2x",
+                "ok",
+                "column_int",
+                "ab",
+                "n",
+                "column_i",
+                "$x",
+                "column__"
+            ]
+        );
+        // a changed name differs from the changed names before it, by a number
+        assert_eq!(
+            names(&["a b", "a.b", "a_b!", "a,b"], &plain).unwrap(),
+            ["a_b", "ab", "a_b2", "ab2"]
+        );
+        assert_eq!(
+            names(&["a b", "x", "a  b", "a_b2", "a!b", "ab"], &plain).unwrap(),
+            ["a_b", "x", "a__b", "a_b2", "ab", "ab2"]
+        );
+        // and from the names of the instructions, but for the first name that is changed
+        let instructed = |parquet_name: &str, name: &str| ReadOptions {
+            columns: vec![ColumnInstruction {
+                parquet_name: parquet_name.to_string(),
+                name: Some(name.to_string()),
+                ..ColumnInstruction::default()
+            }],
+            ..ReadOptions::default()
+        };
+        assert_eq!(
+            names(&["c d", "a b"], &instructed("other", "a_b")).unwrap(),
+            ["c_d", "a_b2"]
+        );
+        let refused = "Cannot add a mapping from parquetColumnName=a b: columnName=a_b already \
+                       mapped to parquetColumnName=";
+        assert_eq!(
+            names(&["a b"], &instructed("other", "a_b")),
+            Err(ReadError::Invalid(format!("{refused}other")))
+        );
+        assert_eq!(
+            names(&["a b", "a_b"], &instructed("a_b", "a_b")),
+            Err(ReadError::Invalid(format!("{refused}a_b")))
+        );
+        // an instruction's name is taken as it is
+        let mapped = ReadOptions {
+            columns: vec![ColumnInstruction {
+                parquet_name: "a b".to_string(),
+                name: Some("Q".to_string()),
+                ..ColumnInstruction::default()
+            }],
+            ..ReadOptions::default()
+        };
+        assert_eq!(names(&["a b", "c d"], &mapped).unwrap(), ["Q", "c_d"]);
+        // a name that needed no change is not among the taken ones, so a later column
+        // can get it again; a changed name is, and changes a legal name after it
+        assert_eq!(names(&["a_b", "a b"], &plain).unwrap(), ["a_b", "a_b"]);
+        assert_eq!(names(&["a b", "a_b"], &plain).unwrap(), ["a_b", "a_b2"]);
+        for name in ["", "!!", "ü"] {
+            let expected = format!("Can not legalize column name {name}");
+            assert_eq!(names(&[name], &plain), Err(ReadError::Invalid(expected)));
         }
     }
 

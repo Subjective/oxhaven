@@ -284,20 +284,30 @@ async fn a_table_definition_is_a_mapping_of_column_definitions() {
         ]
     );
 
-    // Java answers with a row that says so; the contracts have no partitioning columns
-    let refused = error(
-        &python,
+    // a partitioning column has a row that says so (the reference, 42.9)
+    python.run(
         "from deephaven.column import ColumnType\n\
-         TableDefinition([col_def('P', d.string, column_type=ColumnType.PARTITIONING)]).table",
+         partitioned = TableDefinition([\n\
+         \x20   col_def('P', d.string, column_type=ColumnType.PARTITIONING),\n\
+         \x20   col_def('V', d.long),\n\
+         ]).table",
     );
-    assert!(
-        refused.contains(
-            "deephaven._java_time.NotPorted: not ported: \
-             io.deephaven.engine.table.ColumnDefinition#isPartitioning: the engine has no \
-             partitioning columns (P)"
-        ),
-        "{refused}"
+    assert_eq!(
+        described(&python, "partitioned"),
+        [
+            "Name: String = P, V",
+            "DataType: String = java.lang.String, long",
+            "ColumnType: String = Partitioning, Normal",
+            "IsPartitioning: Boolean = true, false"
+        ]
     );
+    // and the definition of a table read from partition directories says which they are
+    python.run(&format!(
+        "from deephaven.parquet import read\n\
+         kinds = [c.column_type for c in read('{}/../oxhaven-parquet/tests/data/kv').definition.values()]\n\
+         assert kinds == [ColumnType.PARTITIONING, ColumnType.NORMAL], kinds",
+        env!("CARGO_MANIFEST_DIR")
+    ));
 }
 
 #[tokio::test]

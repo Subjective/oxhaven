@@ -7,7 +7,6 @@ java-accepts	update	(Double) D	cast to Double
 java-fails	update	(char) S	cast of String to char
 java-accepts	update	BN ? null : null	null in both branches of ?:
 java-accepts	update	S + '2262-04-11T23:47:16.854775807 UTC'	time literal '2262-04-11T23:47:16.854775807 UTC' outside the range of a 64-bit nanosecond timestamp
-java-accepts	update	B & null	null literal as an operand of &
 java-fails	update	I < S	ordering comparison of int with String
 java-fails	update	S < I	ordering comparison of String with int
 java-fails	update	S < T	ordering comparison of String with Instant
@@ -16,9 +15,6 @@ java-fails	update	B < I	ordering comparison of Boolean with int
 java-fails	update	B < S	ordering comparison of Boolean with String
 java-fails	update	T < L	ordering comparison of Instant with long
 java-fails	update	T > I	ordering comparison of Instant with int
-java-accepts	update	S < null	null literal as an operand of <
-java-accepts	update	null == null	comparison of null with null
-java-accepts	update	null != null	comparison of null with null
 java-accepts	update	1.5F	float literal with an uppercase F suffix 1.5F
 java-accepts	update	1F	float literal with an uppercase F suffix 1F
 java-accepts	update	1e3F	float literal with an uppercase F suffix 1e3F
@@ -51,7 +47,7 @@ java-accepts	update	'1700000000'	time literal '1700000000'
 java-accepts	update	'PT1H'	function parseDuration()
 java-accepts	update	'P1D'	function parsePeriod()
 java-accepts	update	'12:30'	time literal '12:30'
-java-accepts	update	'UTC'	time literal 'UTC'
+java-accepts	update	'UTC'	function parseTimeZone()
 java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
 java-accepts	update	`'PT1H'`	time literal inside a string literal
 java-rejects	update	`'x y'`	time literal inside a string literal
@@ -63,9 +59,6 @@ java-accepts	update	SN.indexOf('l')	method call String.indexOf() with an argumen
 java-accepts	update	SN.indexOf(`l`, 3)	method call String.indexOf() with 2 arguments
 java-accepts	update	SN.equals(I)	method call String.equals() with an argument of type int
 java-accepts	update	SN.equals(B)	method call String.equals() with an argument of type Boolean
-java-accepts	update	SN.replace(`a`, `b`)	method call String.replace()
-java-accepts	update	SN.replace('a', 'b')	method call String.replace()
-java-accepts	update	SN.hashCode()	method call String.hashCode()
 java-accepts	update	SN.toString()	method call String.toString()
 java-accepts	update	SN.isBlank()	method call String.isBlank()
 java-accepts	update	SN.strip()	method call String.strip()
@@ -82,13 +75,7 @@ java-accepts	update	SN.chars()	method call String.chars()
 java-accepts	update	SN.getBytes()	method call String.getBytes()
 java-accepts	update	`a😀b`.substring(2)	the result holds an unpaired UTF-16 surrogate, which a UTF-8 string cannot
 java-fails	update	B.booleanValue()	method call .booleanValue() on a value of type Boolean
-java-fails	update	T.toString()	method call .toString() on a value of type Instant
 java-fails	update	T.getNano()	method call .getNano() on a value of type Instant
-java-rejects	update	Math.abs(I)	static method call Math.abs()
-java-accepts	update	String.valueOf(I)	static method call String.valueOf()
-java-accepts	update	Integer.toString(I)	static method call Integer.toString()
-java-accepts	update	Math.PI	field access .PI
-java-accepts	update	new String(`a`)	object creation (new)
 java-rejects	where	null	null literal outside ==, !=, ?:, a cast and string concatenation
 java-accepts	update	0x1p-1023	hexadecimal floating point literal 0x1p-1023
 java-accepts	update	0x1p-1074	hexadecimal floating point literal 0x1p-1074
@@ -102,8 +89,4 @@ java-fails	update	S.join(S, S)	method call String.join()
 java-fails	update	S.startsWith(S, 1)	method call String.startsWith() with 2 arguments
 java-rejects	update	S.toUpperCase(S)	method call String.toUpperCase() with 1 arguments
 java-fails	update	S.indexOf(S, 1)	method call String.indexOf() with 2 arguments
-java-fails	update	S.hashCode()	method call String.hashCode()
 java-rejects	update	null - null	null literal as an operand of -
-java-accepts	update	BN & null	null literal as an operand of &
-java-accepts	update	SN < null	null literal as an operand of <
-java-rejects	update	null < null	null literal as an operand of <

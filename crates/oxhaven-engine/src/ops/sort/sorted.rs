@@ -51,6 +51,36 @@ fn sorted_entries(
     Ok(entries)
 }
 
+/// `rows` of `parent` in the order a sort by `columns` gives them: rows that compare
+/// equal keep their order. For an operation that shows the rows of a table in a sorted
+/// order without making the sorted table, as a hierarchical table shows a node's rows.
+/// The restriction of a table's sorting is not asked: such an operation has its own.
+///
+/// Behavior: io.deephaven.engine.table.impl.SortHelpers#getSortedKeys (a stable sort), with
+/// the checks of io.deephaven.engine.table.impl.SortOperation#SortOperation
+pub(crate) fn sorted_rows(
+    parent: &dyn Table,
+    rows: &RowSet,
+    columns: &[SortColumn],
+) -> Result<Vec<RowKey>, SortError> {
+    let encoder = KeyEncoder::new(parent, columns)?;
+    Ok(sorted_entries(&encoder, parent, rows)?
+        .into_iter()
+        .map(|entry| entry.parent_key)
+        .collect())
+}
+
+/// Whether `parent` can be sorted by `columns`: it has them, of types that sort, and the
+/// absolute ones of types that have an absolute value.
+///
+/// Behavior: the checks of io.deephaven.engine.table.impl.SortOperation#SortOperation
+pub(crate) fn check_sort_columns(
+    parent: &dyn Table,
+    columns: &[SortColumn],
+) -> Result<(), SortError> {
+    KeyEncoder::new(parent, columns).map(|_| ())
+}
+
 /// The parent's columns read through `redirection`.
 fn redirected_columns(
     parent: &Arc<dyn Table>,

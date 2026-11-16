@@ -7,6 +7,7 @@
 //! - [`sentinel`]: Java's sentinel null values and conversion to and from validity bits.
 
 mod flat;
+pub mod java_values;
 mod redirect;
 pub mod sentinel;
 mod tracked;
