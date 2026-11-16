@@ -1106,3 +1106,5 @@ Task 7.5.1 (Kafka producing) reported after its resume: all gates passed on the 
 - 2026-11-16T15:53Z: merged pull request 131 (Kafka Avro produce and column options) on seven green checks; started task 7.4.8 (Kafka Protobuf specs) from the merged main.
 
 - 2026-11-16T15:57Z: merged pull request 132 (four formula gaps) on seven green checks. PR 131 merged between its CI run and its merge, but 131 touched only Kafka files and the merge was clean.
+
+- 2026-11-16T16:35Z: task 7.6.4 came back complete in 50 minutes; opened pull request 133. It used 390k tokens although the brief said to hand over at 180k: the threshold is not being honoured when an agent judges itself close to done, so the next briefs state it more firmly. Its work passed every gate. Started task 4.24 (fuzzing the time column types) on the default model, as fuzzer triage stays there.
