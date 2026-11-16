@@ -100,6 +100,68 @@ pub fn parse(text: &str) -> Result<Node, KafkaError> {
     parser.value()
 }
 
+/// Reads one JSON value from the start of `text`, as Jackson's `ObjectMapper#readTree`
+/// does, and returns it with the text that follows it. The error is the parser's detail.
+/// Text without a value is `Node::Missing`.
+pub(crate) fn parse_prefix(text: &str) -> Result<(Node, &str), String> {
+    let mut parser = Parser {
+        bytes: text.as_bytes(),
+        text,
+        at: 0,
+        depth: 0,
+    };
+    parser.skip_whitespace();
+    if parser.at == parser.bytes.len() {
+        return Ok((Node::Missing, ""));
+    }
+    match parser.value() {
+        Ok(node) => Ok((node, &text[parser.at..])),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Jackson's compact JSON of `node`; a lone surrogate is written as U+FFFD.
+pub(crate) fn compact(node: &Node) -> String {
+    let mut out = String::new();
+    // Only a lone surrogate fails, and none is kept here.
+    if write_json(node, &mut out).is_err() {
+        out.clear();
+        out.push('?');
+    }
+    out
+}
+
+impl Node {
+    /// The text of a text node.
+    pub(crate) fn as_str(&self) -> Option<&str> {
+        match self {
+            Node::Text(text) => Some(&text.value),
+            _ => None,
+        }
+    }
+
+    /// The value of an integer node that fits an `i64`: Jackson's `canConvertToLong`.
+    pub(crate) fn exact_long(&self) -> Option<i64> {
+        match self {
+            Node::Integer(value) => value.as_long(),
+            _ => None,
+        }
+    }
+
+    /// Whether this is a number, integral or not: Jackson's `isNumber`.
+    pub(crate) fn is_number(&self) -> bool {
+        matches!(self, Node::Integer(_) | Node::Decimal(_))
+    }
+
+    /// The field `name` of an object node.
+    pub(crate) fn get(&self, name: &str) -> Option<&Node> {
+        match self {
+            Node::Object(fields) => fields.iter().find(|(field, _)| field == name).map(|f| &f.1),
+            _ => None,
+        }
+    }
+}
+
 struct Parser<'a> {
     bytes: &'a [u8],
     text: &'a str,

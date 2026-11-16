@@ -6,6 +6,7 @@
 //! | [`Plan`] | The columns of that table and how a record becomes a row |
 //! | [`consume_from`] | The same table over any [`RecordSource`]; tests script one |
 //! | [`client::ClientSource`] | The record source that talks to brokers, over librdkafka |
+//! | [`check_avro_schema`] | Reads an Avro schema as `KafkaTools#getAvroSchema` does |
 //! | [`topics`] | The topics of a broker: `KafkaTools#listTopics` |
 //! | [`produce`] | Publishes a table to a topic: `KafkaTools#produceFromTable` |
 //! | [`produce_to`] | The same to any [`RecordSink`]; tests script one |
@@ -14,12 +15,15 @@
 //! the table, which shows what arrived since its last update cycle on the next one: as its
 //! only rows if it is a blink table, after the rows it has if it is append-only.
 
+mod avro;
+mod avro_spec;
 pub mod client;
 mod config;
 pub mod json;
 mod plan;
 mod produce;
 pub mod producer;
+mod registry;
 mod serialize;
 mod stream;
 
@@ -31,6 +35,7 @@ use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 
+pub use avro_spec::{AvroMapping, AvroSchema};
 pub use client::topics;
 pub use plan::Plan;
 pub use produce::{
@@ -159,6 +164,23 @@ pub enum Spec {
         columns: Vec<(String, ColumnType)>,
         mapping: Option<Vec<(String, String)>>,
     },
+    /// The columns of an Avro schema's fields, nested records flattened, from records in
+    /// Confluent's wire format: a magic byte, the id of the writer's schema in the
+    /// registry of `schema.registry.url`, then the value, read as the spec's schema.
+    ///
+    /// Behavior: `KafkaTools.Consume#avroSpec`
+    Avro {
+        schema: AvroSchema,
+        mapping: AvroMapping,
+    },
+}
+
+/// Reads an Avro schema from its JSON text, as `avro_spec` does before anything else; the
+/// error is Java's `SchemaParseException` or `AvroTypeException`.
+///
+/// Behavior: io.deephaven.kafka.KafkaTools#getAvroSchema
+pub fn check_avro_schema(text: &str) -> Result<(), KafkaError> {
+    avro::parse(text).map(|_| ()).map_err(KafkaError::Invalid)
 }
 
 /// Behavior: `io.deephaven.kafka.KafkaTools.TableType`

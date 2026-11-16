@@ -9,7 +9,9 @@ use arrow::array::{
 use arrow::datatypes::Field;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableClass, TableDefinition};
 
+use crate::avro_spec::{self, AvroColumn, AvroSchema, AvroSide};
 use crate::json::{self, Node, Pointer};
+use crate::registry::Registry;
 use crate::{not_ported, property, KafkaError, Record, Spec};
 
 /// The columns every table has unless a property names them away, in Java's order, each
@@ -53,8 +55,8 @@ enum Common {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Side {
-    Key,
-    Value,
+    Key = 0,
+    Value = 1,
 }
 
 impl Side {
@@ -82,6 +84,8 @@ enum Cells {
     /// once per pointer, so a column with none or with several fails the table when
     /// records arrive.
     Json(Side, Vec<Pointer>),
+    /// A field of the key's or value's Avro record.
+    Avro(Side, AvroColumn),
 }
 
 /// The definition of a consumed topic's table and the source of each column.
@@ -90,6 +94,8 @@ pub struct Plan {
     topic: String,
     definition: TableDefinition,
     cells: Vec<Cells>,
+    /// The Avro schemas of the key and of the value, for an Avro spec.
+    avro: [Option<Arc<AvroSide>>; 2],
 }
 
 fn invalid(text: String) -> KafkaError {
@@ -378,15 +384,21 @@ fn fixed<const N: usize>(
     side: Side,
     record: &Record,
 ) -> Result<[u8; N], KafkaError> {
-    bytes.try_into().map_err(|_| {
-        let side = side.name().to_uppercase();
-        let (partition, offset) = (record.partition, record.offset);
-        KafkaError::Record(format!(
-            "org.apache.kafka.common.errors.RecordDeserializationException: Error \
-             deserializing {side} for partition {topic}-{partition} at offset {offset}. If \
-             needed, please seek past the record to continue consumption."
-        ))
-    })
+    bytes
+        .try_into()
+        .map_err(|_| KafkaError::Record(deserializing(topic, side, record)))
+}
+
+/// Behavior: org.apache.kafka.common.errors.RecordDeserializationException, as
+/// `CompletedFetch#parseRecord` makes it
+fn deserializing(topic: &str, side: Side, record: &Record) -> String {
+    let side = side.name().to_uppercase();
+    let (partition, offset) = (record.partition, record.offset);
+    format!(
+        "org.apache.kafka.common.errors.RecordDeserializationException: Error deserializing \
+         {side} for partition {topic}-{partition} at offset {offset}. If needed, please seek \
+         past the record to continue consumption."
+    )
 }
 
 impl Plan {
@@ -405,6 +417,31 @@ impl Plan {
                  and valueSpec can't both be ignore specs"
                     .to_owned(),
             ));
+        }
+        // Java makes the registry's client, then fetches the key's schema and the value's,
+        // before any column is defined.
+        let avro_spec = |spec: &Spec| matches!(spec, Spec::Avro { .. });
+        let registry = if avro_spec(key) || avro_spec(value) {
+            Some(Arc::new(Registry::from_config(config)?))
+        } else {
+            None
+        };
+        let mut avro: [Option<Arc<AvroSide>>; 2] = [None, None];
+        for (slot, spec) in avro.iter_mut().zip([key, value]) {
+            let (Spec::Avro { schema, .. }, Some(registry)) = (spec, &registry) else {
+                continue;
+            };
+            // Behavior: io.deephaven.kafka.AvroImpl.AvroConsume#ensureSchema
+            let schema = match schema {
+                AvroSchema::Text(text) => crate::avro::parse(text).map_err(KafkaError::Invalid)?,
+                AvroSchema::Registry { subject, version } => {
+                    registry.subject_schema(subject, version.as_deref())?
+                }
+            };
+            *slot = Some(Arc::new(AvroSide {
+                schema,
+                registry: registry.clone(),
+            }));
         }
         let mut definitions = Vec::new();
         let mut cells = Vec::new();
@@ -435,6 +472,13 @@ impl Plan {
                     let mapping = mapping.as_deref();
                     json_columns(side, columns, mapping, &mut definitions, &mut cells)?;
                 }
+                Spec::Avro { mapping, .. } => {
+                    let schema = &avro[side as usize].as_ref().expect("fetched above").schema;
+                    for (name, column_type, column) in avro_spec::columns(schema, mapping)? {
+                        definitions.push(ColumnDefinition::new(name, column_type));
+                        cells.push(Cells::Avro(side, column));
+                    }
+                }
             }
         }
         // Behavior: io.deephaven.engine.table.TableDefinition#checkDuplicateNames
@@ -449,6 +493,7 @@ impl Plan {
             topic: topic.to_owned(),
             definition,
             cells,
+            avro,
         })
     }
 
@@ -479,6 +524,23 @@ impl Plan {
         };
         let key_documents = documents(Side::Key)?;
         let value_documents = documents(Side::Value)?;
+        // Behavior: org.apache.kafka.clients.consumer.internals.CompletedFetch#parseRecord,
+        // which wraps what the deserializer throws
+        let avro_values = |side: Side| -> Result<Vec<Option<crate::avro::Value>>, KafkaError> {
+            let Some(avro) = &self.avro[side as usize] else {
+                return Ok(Vec::new());
+            };
+            let subject = format!("{}-{}", self.topic, side.name());
+            let decode = |record: &Record| {
+                avro_spec::decode(avro, &subject, side.bytes(record)).map_err(|cause| {
+                    let text = deserializing(&self.topic, side, record);
+                    KafkaError::Record(format!("{text} (caused by {cause})"))
+                })
+            };
+            records.iter().map(decode).collect()
+        };
+        let key_values = avro_values(Side::Key)?;
+        let value_values = avro_values(Side::Value)?;
 
         let mut columns = Vec::with_capacity(self.cells.len());
         // Java's chunk of each column has a row per record and pointer; they must agree.
@@ -489,6 +551,13 @@ impl Plan {
                 Cells::Common(common) => columns.push(common_column(*common, records, received)?),
                 Cells::Simple(side) => {
                     columns.push(simple_cells(&self.topic, *side, column_type, records)?)
+                }
+                Cells::Avro(side, column) => {
+                    let values = match side {
+                        Side::Key => &key_values,
+                        Side::Value => &value_values,
+                    };
+                    columns.push(avro_spec::cells(column, values)?)
                 }
                 Cells::Json(side, pointers) => {
                     let documents = match side {
