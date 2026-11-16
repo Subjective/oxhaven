@@ -87,8 +87,12 @@ _INTEGERS = tuple(INT_BITS)
 # Zones the reference knows (`TimeZoneAliases`, default_time_zone_aliases.csv) and a few it
 # does not, which it refuses.
 _ZONES = ("UTC", "GMT", "ET", "CT", "MT", "PT", "HK", "JP", "LON", "America/New_York",
-          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney", "+01:00", "UTC-5")
-_NO_ZONES = ("NY", "EST", "et")
+          "Europe/Paris", "Asia/Tokyo", "Australia/Sydney", "+01:00", "UTC-5",
+          "SystemV/EST5", "SystemV/PST8PDT")
+_NO_ZONES = ("NY", "EST", "et", "Europe/Nowhere")
+# What follows the time directly: an offset, and now and then a zone in brackets after it.
+_OFFSETS = ("Z", "z", "+01:00", "-05", "+05:30:00", "Z[UTC]", "+05:00[Europe/Paris]",
+            "-05:00[America/New_York]", "+01:00[SystemV/EST5]", "+0100", "[Europe/Paris]")
 # Instants around `fuzz.T0` (2023-11-14T22:13:20Z), and two that a clock change of the
 # eastern United States skips or repeats.
 _LOCAL_TIMES = ("2023-11-14T22:13:20", "2023-11-14T22:13:21", "2023-11-14T17:13:22",
@@ -303,6 +307,8 @@ class _Second(_Wide):
     def instant(self) -> str:
         """A time literal with a zone; now and then one the reference refuses."""
         rng = self.rng
+        if self.chance(0.15):
+            return f"'{rng.choice(_LOCAL_TIMES)}{rng.choice(_OFFSETS)}'"
         zone = rng.choice(_NO_ZONES) if self.chance(0.05) else rng.choice(_ZONES)
         return f"'{rng.choice(_LOCAL_TIMES)} {zone}'"
 

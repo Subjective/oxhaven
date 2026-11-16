@@ -112,9 +112,9 @@ def test_generation_is_the_same_in_another_process():
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("formulas2", "03d65bbea8a020de"),
-    ("partitions", "3331fec9112a44b5"),
-    ("all2", "da77bed390447691"),
+    ("formulas2", "49b0676940c36df9"),
+    ("partitions", "db68ef58997a5a66"),
+    ("all2", "0e835d19c52212d1"),
 ])
 def test_a_seed_of_the_second_generator_is_the_scenario_it_was(family, digest):
     """Digests over the scenarios of seeds 0 to 99 as the generator is since task 4.23
