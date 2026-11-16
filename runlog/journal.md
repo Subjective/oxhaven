@@ -898,3 +898,5 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
 - Owner ruling (04:24 UTC): add a minimal `jpy` module whose every use of a Java class fails
   by name, so plotly-express can load. Queued behind the four building agents (disk and
   cores); the JS plugins author already has a stand-in to start from.
+- Owner ruling (04:24 UTC): links out of a JS plugin directory are refused. Added as allowed
+  difference A9 on pull request 106, which merges on green.
