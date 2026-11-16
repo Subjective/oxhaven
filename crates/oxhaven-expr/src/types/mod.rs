@@ -282,6 +282,9 @@ pub(crate) struct Checked {
     pub(crate) positions: bool,
     /// Whether the formula uses `k`.
     pub(crate) keys: bool,
+    /// Why Java refuses the formula in a table operation of a client, when it does: the
+    /// message of its `ColumnExpressionValidator` for the first call it does not allow.
+    pub(crate) refused_to_clients: Option<String>,
 }
 
 /// Refuses a formula whose value is a column array of a column that is neither primitive
@@ -329,6 +332,7 @@ pub(crate) fn check(
         arrays: Vec::new(),
         positions: false,
         keys: false,
+        refused_to_clients: None,
     };
     let root = checker.check(expr)?;
     refuse_object_column_array(&root)?;
@@ -338,6 +342,7 @@ pub(crate) fn check(
         arrays: checker.arrays,
         positions: checker.positions,
         keys: checker.keys,
+        refused_to_clients: checker.refused_to_clients,
     })
 }
 
@@ -445,6 +450,7 @@ struct Checker<'a> {
     arrays: Vec<String>,
     positions: bool,
     keys: bool,
+    refused_to_clients: Option<String>,
 }
 
 impl Checker<'_> {
@@ -506,7 +512,7 @@ impl Checker<'_> {
 
     fn column(&mut self, name: &str) -> Result<Typed, FormulaError> {
         // The parser writes `Class.FIELD` as one qualified name; a column name has no `.`.
-        if let Some((scope, field)) = name.split_once('.') {
+        if let Some((scope, field)) = name.rsplit_once('.') {
             return self.static_field(scope, field);
         }
         let Some(index) = self.definition.index_of(name) else {
@@ -624,19 +630,111 @@ impl Checker<'_> {
         Ok(typed(ColumnType::vector(element), Node::ColumnArray(slot)))
     }
 
-    /// `scope.field`, where `scope` is a simple name.
+    /// Whether the qualified name `scope` starts with the name of a column, and so is a
+    /// field of that column's value and no class.
+    fn is_column_scope(&self, scope: &str) -> bool {
+        let first = scope.split('.').next().unwrap_or(scope);
+        self.definition.index_of(first).is_some()
+    }
+
+    /// `scope.field`, where `scope` is a name, simple or qualified.
     ///
     /// Behavior: `QueryLanguageParser#visit(FieldAccessExpr)`, which types the scope with
     /// `#resolveName`, where a column comes before a class, and then takes the type of the
     /// field `Class#getField` finds on it. No column type has a field the language reads,
     /// so a column scope stays refused, as does every field [`functions::static_field`]
-    /// does not give.
+    /// does not give. A constant of a class of the default static imports is the constant
+    /// a formula names without the class.
     fn static_field(&self, scope: &str, field: &str) -> Result<Typed, FormulaError> {
-        let class = self.definition.index_of(scope).is_none();
-        match functions::static_field(scope, field).filter(|_| class) {
-            Some((column_type, literal)) => Ok(constant(column_type, literal)),
-            None => Err(unsupported(format!("field access .{field}"))),
+        let refused = || unsupported(format!("field access .{field}"));
+        if self.is_column_scope(scope) {
+            return Err(refused());
         }
+        if functions::is_library_constant(scope, field) {
+            return match functions::constant(field) {
+                Some((column_type, literal)) => Ok(constant(column_type, literal)),
+                None => Err(unsupported(format!("constant {field}"))),
+            };
+        }
+        match functions::static_field(scope, field) {
+            Some((column_type, literal)) => Ok(constant(column_type, literal)),
+            None => Err(refused()),
+        }
+    }
+
+    /// `class.method(arguments)`, where `class` is a name, simple or qualified, that is no
+    /// column.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` with a class as the scope. A
+    /// method of a class of the default static imports is the function a formula calls
+    /// without the class. A method of a class of `java.lang` is the raw Java method
+    /// ([`functions::statics`]): `#convertParameters` wraps an argument of another
+    /// primitive type in the cast function of the parameter's type, and nothing else looks
+    /// for null.
+    fn static_call(
+        &mut self,
+        class: &str,
+        method: &str,
+        arguments: &[Expr],
+    ) -> Result<Typed, FormulaError> {
+        if class.contains('.') && self.is_column_scope(class) {
+            let field = class.split('.').nth(1).unwrap_or(class);
+            return Err(unsupported(format!("field access .{field}")));
+        }
+        let refused = || unsupported(format!("static method call {class}.{method}()"));
+        match functions::library_function(class, method) {
+            functions::LibraryMember::NotLibrary => {}
+            functions::LibraryMember::Missing => {
+                return Err(type_error(format!(
+                    "Cannot find method {method}() in class {class}"
+                )))
+            }
+            functions::LibraryMember::Import => return self.import_call(method, arguments),
+            // The call is that class's method only where the function a formula calls
+            // without the class is.
+            functions::LibraryMember::Shared { time } => {
+                let call = self.import_call(method, arguments)?;
+                let of_time = matches!(
+                    &call.node,
+                    Node::Call { kernel, .. } if kernel.is_shared_time()
+                );
+                return if of_time == time {
+                    Ok(call)
+                } else {
+                    Err(refused())
+                };
+            }
+        }
+        if !functions::statics::is_class(class) {
+            return Err(refused());
+        }
+        let mut checked = Vec::with_capacity(arguments.len());
+        for argument in arguments {
+            checked.push(if is_null_literal(argument) {
+                None
+            } else {
+                Some(self.check(argument)?)
+            });
+        }
+        let types: Vec<Option<ColumnType>> = checked
+            .iter()
+            .map(|argument| argument.as_ref().map(|typed| typed.column_type.clone()))
+            .collect();
+        let resolved = functions::statics::resolve(class, method, &types)?;
+        if self.refused_to_clients.is_none() {
+            self.refused_to_clients = resolved.refusal();
+        }
+        let checked: Vec<Typed> = checked.into_iter().flatten().collect();
+        let types: Vec<ColumnType> = types.into_iter().flatten().collect();
+        Ok(library_call(
+            functions::Call {
+                kernel: Kernel::Static(resolved),
+                parameters: functions::statics::parameter_types(resolved, &types),
+                result: resolved.result_type(),
+                exchanged: false,
+            },
+            checked,
+        ))
     }
 
     /// Behavior: `QueryLanguageParser#visit(UnaryExpr)`: `-` resolves to
@@ -723,11 +821,10 @@ impl Checker<'_> {
                 (true, false) => Numeric::of(&self.check(right)?.column_type).is_some(),
                 _ => Numeric::of(&self.check(left)?.column_type).is_some(),
             };
-            return Err(if rejected {
-                type_error(format!("cannot apply {} to null", symbol(op)))
-            } else {
-                unsupported(format!("null literal as an operand of {}", symbol(op)))
-            });
+            if rejected {
+                return Err(type_error(format!("cannot apply {} to null", symbol(op))));
+            }
+            return self.null_operand(op, family, left, right);
         }
 
         let left = self.check(left)?;
@@ -857,6 +954,124 @@ impl Checker<'_> {
             }
             _ => Ok(None),
         }
+    }
+
+    /// A field of an instant's date and time in a zone: `hourOfDay(Instant, ZoneId,
+    /// boolean)`, `dayOfYear(Instant, ZoneId)` and their relatives; `None` for another
+    /// number of arguments.
+    ///
+    /// A `ZoneId` is no column's type, so the zone is known here only where the formula
+    /// names it: a time literal (`'ET'`), or `timeZone` or `parseTimeZone` of a string
+    /// literal, which are `TimeZoneAliases#zoneId` of the name.
+    fn zoned(
+        &mut self,
+        function: &str,
+        field: functions::ZonedField,
+        arguments: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        let (instant, zone, flag) = match (arguments, field.of_day()) {
+            ([instant, zone], false) => (instant, zone, None),
+            ([instant, zone, flag], true) => (instant, zone, Some(flag)),
+            _ => return Ok(None),
+        };
+        let name = match zone {
+            Expr::Call {
+                function: maker,
+                arguments,
+            } if maker == "parseTimeZone" || maker == "timeZone" => match arguments.as_slice() {
+                [Expr::Literal(Literal::String(name))] => Some(name),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(name) = name else {
+            return Err(unsupported(format!(
+                "function {function}() with a time zone that is not a literal"
+            )));
+        };
+        let zone = crate::parse::instant::zone(name)
+            .ok_or_else(|| unsupported(format!("time zone '{name}'")))?;
+        if is_null_literal(instant) || flag.is_some_and(is_null_literal) {
+            return Err(unsupported(format!(
+                "null literal as an argument of {function}()"
+            )));
+        }
+        let instant = self.check(instant)?;
+        if instant.column_type != ColumnType::Instant {
+            return Err(unsupported(format!(
+                "function {function}() of a value of type {}",
+                java_name(&instant.column_type)
+            )));
+        }
+        let mut checked = vec![instant];
+        if let Some(flag) = flag {
+            let flag = self.check(flag)?;
+            if flag.column_type != ColumnType::Boolean {
+                return Err(type_error(format!(
+                    "Cannot find method {function}() of these arguments"
+                )));
+            }
+            checked.push(flag);
+        }
+        Ok(Some(typed(
+            field.result_type(),
+            Node::Call {
+                kernel: Kernel::Zoned(field, zone),
+                arguments: checked,
+            },
+        )))
+    }
+
+    /// `lowerBin` or `upperBin` of an instant with the interval, and the offset if there
+    /// is one, as durations; `None` when neither is a duration or a period.
+    ///
+    /// Behavior: `DateTimeUtils#lowerBin(Instant, Duration)`, `#lowerBin(Instant,
+    /// Duration, Duration)` and the same of `#upperBin`, which bin by the durations'
+    /// nanoseconds. No overload takes a period, or a duration beside a number.
+    fn bin_by_duration(
+        &mut self,
+        function: &str,
+        instant: &Expr,
+        amounts: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        if !(1..=2).contains(&amounts.len()) {
+            return Ok(None);
+        }
+        let mut nanos = Vec::with_capacity(amounts.len());
+        for amount in amounts {
+            nanos.push(self.amount(amount)?);
+        }
+        if nanos.iter().all(Option::is_none) {
+            return Ok(None);
+        }
+        let no_method = || {
+            type_error(format!(
+                "Cannot find method {function}() of these arguments"
+            ))
+        };
+        if is_null_literal(instant) {
+            return Err(no_method());
+        }
+        let instant = self.check(instant)?;
+        let mut arguments = vec![instant];
+        for amount in nanos {
+            match amount {
+                Some(amount) if !amount.period => arguments.push(amount.nanos),
+                _ => return Err(no_method()),
+            }
+        }
+        if arguments[0].column_type != ColumnType::Instant {
+            return Err(no_method());
+        }
+        let kernel = if function == "lowerBin" {
+            Kernel::InstantLowerBin
+        } else {
+            Kernel::InstantUpperBin
+        };
+        Ok(Some(typed(
+            ColumnType::Instant,
+            Node::Call { kernel, arguments },
+        )))
     }
 
     /// `left op right` when one side is a duration or a period; `None` when neither is.
@@ -1024,8 +1239,88 @@ impl Checker<'_> {
         ))
     }
 
+    /// An operator with the null literal on one side or both, where the other side is no
+    /// number and the operator is neither `==` nor `!=`.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` looks the operator's method up
+    /// with the null as an argument that any reference parameter takes. Java 42.9 was run
+    /// for each form here:
+    ///
+    /// - `&`, `|` and `^` reach `QueryLanguageFunctionUtils#binaryAnd(Boolean, Boolean)` and
+    ///   its relatives, which answer null when either side is null, whatever the other is:
+    ///   `false & null` and `true | null` are null.
+    /// - `<`, `<=`, `>` and `>=` beside a `String`, `Boolean` or `Instant` reach
+    ///   `QueryLanguageFunctionUtils#less(Comparable, Comparable)` and its relatives, which
+    ///   order null before every value.
+    /// - `null - Instant` is `DateTimeUtils#minus(Instant, Instant)`, a null `long`.
+    ///
+    /// Java finds no method, or more than one, for the rest, and fails.
+    fn null_operand(
+        &mut self,
+        op: BinaryOp,
+        family: Family,
+        left: &Expr,
+        right: &Expr,
+    ) -> Result<Typed, FormulaError> {
+        let refused = || type_error(format!("cannot apply {} to null", symbol(op)));
+        let null_left = is_null_literal(left);
+        let other = match (null_left, is_null_literal(right)) {
+            (true, true) => None,
+            (true, false) => Some(self.check(right)?),
+            _ => Some(self.check(left)?),
+        };
+        let beside = other.as_ref().map(|other| &other.column_type);
+        let null_as = |column_type: ColumnType, other: Option<Typed>| {
+            let null = typed(column_type.clone(), Node::Null);
+            match other {
+                None => (null, typed(column_type, Node::Null)),
+                Some(other) if null_left => (null, other),
+                Some(other) => (other, null),
+            }
+        };
+        match family {
+            Family::Bitwise(bitwise) if matches!(beside, None | Some(ColumnType::Boolean)) => {
+                let (left, right) = null_as(ColumnType::Boolean, other);
+                bitwise_operator(op, bitwise, left, right)
+            }
+            Family::Compare(compare) => match beside {
+                Some(ColumnType::String | ColumnType::Boolean | ColumnType::Instant) => {
+                    let column_type = beside.cloned().expect("matched above");
+                    let (left, right) = null_as(column_type, other);
+                    comparison(compare, left, right)
+                }
+                None => Err(refused()),
+                Some(_) => Err(unsupported(format!(
+                    "null literal as an operand of {}",
+                    symbol(op)
+                ))),
+            },
+            Family::Arithmetic(arithmetic)
+                if op == BinaryOp::Subtract
+                    && null_left
+                    && beside == Some(&ColumnType::Instant) =>
+            {
+                let (left, right) = null_as(ColumnType::Instant, other);
+                self.arithmetic(op, arithmetic, left, right)
+            }
+            Family::Arithmetic(_)
+                if matches!(
+                    beside,
+                    Some(ColumnType::String | ColumnType::Boolean | ColumnType::Instant)
+                ) =>
+            {
+                Err(refused())
+            }
+            _ => Err(unsupported(format!(
+                "null literal as an operand of {}",
+                symbol(op)
+            ))),
+        }
+    }
+
     /// Behavior: `QueryLanguageParser#visit(BinaryExpr)` rewrites `x == null` to `isNull(x)`,
-    /// and `x != null` to `!(x == null)` first.
+    /// and `x != null` to `!(x == null)` first. Of `null == null` that is `isNull(null)`,
+    /// which is true.
     fn null_comparison(
         &mut self,
         op: BinaryOp,
@@ -1034,7 +1329,10 @@ impl Checker<'_> {
     ) -> Result<Typed, FormulaError> {
         let operand = match (left, right) {
             (Expr::Literal(Literal::Null), Expr::Literal(Literal::Null)) => {
-                return Err(unsupported("comparison of null with null"))
+                return Ok(typed(
+                    ColumnType::Boolean,
+                    Node::Literal(Literal::Boolean(op == BinaryOp::Equal)),
+                ))
             }
             (Expr::Literal(Literal::Null), operand) | (operand, _) => operand,
         };
@@ -1203,7 +1501,7 @@ impl Checker<'_> {
                     .strip_suffix('_')
                     .is_some_and(|base| self.definition.index_of(base).is_some());
             if !column {
-                return Err(unsupported(format!("static method call {name}.{method}()")));
+                return self.static_call(name, method, arguments);
             }
         }
         let receiver = self.check(receiver)?;
@@ -1225,6 +1523,19 @@ impl Checker<'_> {
                 "cannot call .{method}() on a value of the primitive type {}",
                 java_name(&receiver.column_type)
             )));
+        }
+        // Behavior: `QueryLanguageParser#visit(MethodCallExpr)` with a value as the scope:
+        // the method of the value's class, here `java.time.Instant`.
+        if receiver.column_type == ColumnType::Instant && arguments.is_empty() {
+            if let Some(instant_method) = functions::InstantMethod::named(method) {
+                return Ok(typed(
+                    instant_method.result_type(),
+                    Node::Call {
+                        kernel: Kernel::InstantMethod(instant_method),
+                        arguments: vec![receiver],
+                    },
+                ));
+            }
         }
         if receiver.column_type != ColumnType::String {
             return Err(unsupported(format!(
@@ -1262,6 +1573,24 @@ impl Checker<'_> {
             }
             let argument = self.check(argument)?;
             let accepted = match (parameter, &argument.column_type) {
+                // `replace(char, char)` beside `replace(CharSequence, CharSequence)`:
+                // both arguments are a `char`, or both are text.
+                (_, ColumnType::Char)
+                    if string_method == StringMethod::Replace
+                        && checked
+                            .iter()
+                            .all(|c: &Typed| c.column_type == ColumnType::Char) =>
+                {
+                    argument
+                }
+                (_, ColumnType::String)
+                    if string_method == StringMethod::Replace
+                        && checked.iter().any(|c| c.column_type == ColumnType::Char) =>
+                {
+                    return Err(type_error(
+                        "String.replace() does not take a char and a String",
+                    ))
+                }
                 (Parameter::Int, ColumnType::Int) | (Parameter::String, ColumnType::String) => {
                     argument
                 }
@@ -1321,9 +1650,190 @@ impl Checker<'_> {
         }
     }
 
+    /// `new` and what follows it, as [`crate::parse`] names it: `Integer` with the
+    /// constructor's arguments, `int[]` with the elements, or `int[n]` with the length.
+    ///
+    /// Behavior: `QueryLanguageParser#visit(ObjectCreationExpr)` chooses the constructor
+    /// as `#visit(MethodCallExpr)` chooses a static method, and converts the arguments
+    /// the same way; a formula's value of a boxed type is a column of the primitive type.
+    /// `#visit(ArrayCreationExpr)` prints the creation with each element as the parser
+    /// has it, and javac converts the elements by assignment: plain widening, which does
+    /// not know null, and an `int` literal to a narrower type that holds it. Java 42.9
+    /// was run for each form.
+    fn creation(&mut self, created: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        if let Some(name) = created.strip_suffix("[]") {
+            let element = array_element(name)?;
+            if arguments.is_empty() {
+                return Err(type_error(format!(
+                    "new {name}[] {{}}: Java cannot tell the type of an array without elements"
+                )));
+            }
+            let elements = arguments
+                .iter()
+                .map(|argument| self.array_element(name, &element, argument))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(array_of(element, elements));
+        }
+        if let Some(name) = created.strip_suffix("[n]") {
+            let element = array_element(name)?;
+            // Java fills the array with zeros, or with nulls where the elements are
+            // objects.
+            let length = match arguments {
+                [Expr::Literal(Literal::Int(length))] if (1..=1024).contains(length) => *length,
+                _ => {
+                    return Err(unsupported(format!(
+                        "array creation new {name}[n] with a length that is not a literal \
+                         from 1 to 1024"
+                    )))
+                }
+            };
+            let filler = match element {
+                ColumnType::String | ColumnType::Instant => typed(element.clone(), Node::Null),
+                _ => convert(
+                    typed(ColumnType::Int, Node::Literal(Literal::Int(0))),
+                    &element,
+                ),
+            };
+            return Ok(array_of(element, vec![filler; length as usize]));
+        }
+        let class = created.strip_prefix("java.lang.").unwrap_or(created);
+        match (class, arguments) {
+            ("String", []) => Ok(typed(
+                ColumnType::String,
+                Node::Literal(Literal::String(String::new())),
+            )),
+            // `new Byte(byte)` and `new Short(short)` take their own type only, and the
+            // formula's value is the argument.
+            ("Byte" | "Short", [argument]) if !is_null_literal(argument) => {
+                let argument = self.check(argument)?;
+                let own = if class == "Byte" {
+                    ColumnType::Byte
+                } else {
+                    ColumnType::Short
+                };
+                if argument.column_type == own {
+                    Ok(argument)
+                } else {
+                    Err(unsupported(format!(
+                        "constructor new {class}() with these arguments"
+                    )))
+                }
+            }
+            ("Boolean" | "Character" | "Double" | "Float" | "Integer" | "Long" | "String", _) => {
+                self.static_call(class, functions::statics::CONSTRUCTOR, arguments)
+            }
+            _ => Err(unsupported(format!("constructor new {created}()"))),
+        }
+    }
+
+    /// One element of `new name[] { ... }`, converted to the element type as javac
+    /// converts it.
+    fn array_element(
+        &mut self,
+        name: &str,
+        element: &ColumnType,
+        argument: &Expr,
+    ) -> Result<Typed, FormulaError> {
+        use ColumnType as C;
+        let of_objects = matches!(element, C::String | C::Instant);
+        if is_null_literal(argument) {
+            return if of_objects {
+                Ok(typed(element.clone(), Node::Null))
+            } else {
+                Err(type_error(format!(
+                    "incompatible types: null cannot be an element of {name}[]"
+                )))
+            };
+        }
+        let checked = self.check(argument)?;
+        let from = &checked.column_type;
+        if from == element {
+            return Ok(checked);
+        }
+        let widens = match element {
+            C::Short => *from == C::Byte,
+            C::Int => matches!(from, C::Byte | C::Short | C::Char),
+            C::Long => matches!(from, C::Byte | C::Short | C::Char | C::Int),
+            C::Float => matches!(from, C::Byte | C::Short | C::Char | C::Int | C::Long),
+            C::Double => matches!(
+                from,
+                C::Byte | C::Short | C::Char | C::Int | C::Long | C::Float
+            ),
+            _ => false,
+        };
+        if widens {
+            return Ok(typed(element.clone(), Node::Widen(Box::new(checked))));
+        }
+        let holds = |value: i32| match element {
+            C::Byte => i8::try_from(value).is_ok(),
+            C::Short => i16::try_from(value).is_ok(),
+            C::Char => u16::try_from(value).is_ok(),
+            _ => false,
+        };
+        match argument {
+            Expr::Literal(Literal::Int(value)) if holds(*value) => Ok(convert(checked, element)),
+            _ => Err(type_error(format!(
+                "incompatible types: {} cannot be an element of {name}[]",
+                java_name(from)
+            ))),
+        }
+    }
+
     /// Behavior: `QueryLanguageParser#visit(MethodCallExpr)` for a call without a scope:
     /// a static method of the default imports. [`functions::resolve`] chooses the overload.
     fn call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        self.call_of(function, arguments, true)
+    }
+
+    /// A call of a default import through its class, which no function of the embedder
+    /// can stand in for.
+    fn import_call(&mut self, function: &str, arguments: &[Expr]) -> Result<Typed, FormulaError> {
+        self.call_of(function, arguments, false)
+    }
+
+    fn call_of(
+        &mut self,
+        function: &str,
+        arguments: &[Expr],
+        externals: bool,
+    ) -> Result<Typed, FormulaError> {
+        if let Some(created) = function.strip_prefix(crate::parse::NEW) {
+            // Behavior: `java.lang.String#String(byte[])`.
+            if let (true, [argument]) = (function == crate::parse::NEW_STRING, arguments) {
+                if !is_null_literal(argument) {
+                    let argument = self.check(argument)?;
+                    if argument.column_type == ColumnType::array(ColumnType::Byte) {
+                        return Ok(typed(
+                            ColumnType::String,
+                            Node::NewString(Box::new(argument)),
+                        ));
+                    }
+                }
+            }
+            return self.creation(created, arguments);
+        }
+        // Behavior: `DateTimeUtils#plus(Instant, Duration)`, `#plus(Instant, Period)` and
+        // the two `minus`, called by name as the operators call them.
+        if let ("plus" | "minus", [left, right]) = (function, arguments) {
+            let op = if function == "plus" {
+                BinaryOp::Add
+            } else {
+                BinaryOp::Subtract
+            };
+            if let Some(result) = self.with_time_amount(op, left, right)? {
+                return Ok(result);
+            }
+        }
+        if let Some(field) = functions::ZonedField::named(function) {
+            if let Some(result) = self.zoned(function, field, arguments)? {
+                return Ok(result);
+            }
+        }
+        if let ("lowerBin" | "upperBin", [instant, amounts @ ..]) = (function, arguments) {
+            if let Some(result) = self.bin_by_duration(function, instant, amounts)? {
+                return Ok(result);
+            }
+        }
         if function == "isNull" {
             let [argument] = arguments else {
                 return Err(type_error(format!(
@@ -1344,27 +1854,6 @@ impl Checker<'_> {
             };
             return Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))));
         }
-        if function == crate::parse::NEW_STRING {
-            // Behavior: `java.lang.String#String(byte[])`. The other constructors of
-            // `String`, and of every other class, are not ported.
-            let [argument] = arguments else {
-                return Err(unsupported("object creation (new)"));
-            };
-            if is_null_literal(argument) {
-                return Err(unsupported("object creation (new)"));
-            }
-            let argument = self.check(argument)?;
-            if argument.column_type != ColumnType::array(ColumnType::Byte) {
-                return Err(unsupported(format!(
-                    "new String() of a value of type {}",
-                    java_name(&argument.column_type)
-                )));
-            }
-            return Ok(typed(
-                ColumnType::String,
-                Node::NewString(Box::new(argument)),
-            ));
-        }
         let mut checked = Vec::with_capacity(arguments.len());
         for argument in arguments {
             checked.push(if is_null_literal(argument) {
@@ -1383,7 +1872,7 @@ impl Checker<'_> {
             // call, a variable of that name that can be called does. A column of the
             // name is a variable that cannot.
             Err(FormulaError::Type(message)) => {
-                let external = match self.functions {
+                let external = match self.functions.filter(|_| externals) {
                     Some(functions) if self.definition.index_of(function).is_none() => {
                         let described: Vec<ExternalArgument<'_>> = checked
                             .iter()
@@ -1412,7 +1901,40 @@ impl Checker<'_> {
                     },
                 ));
             }
-            Err(other) => return Err(other),
+            Err(other) => {
+                // Behavior: a method declared with a variable number of arguments, such
+                // as `Numeric#median(double...)`, is called with an array of them. The
+                // arguments here all have the element type; Java converts others.
+                const VARIABLE: [&str; 11] = [
+                    "absAvg",
+                    "avg",
+                    "count",
+                    "countDistinct",
+                    "first",
+                    "last",
+                    "median",
+                    "product",
+                    "std",
+                    "sum",
+                    "var",
+                ];
+                let element = match types.as_slice() {
+                    [Some(first), rest @ ..]
+                        if VARIABLE.contains(&function)
+                            && Numeric::of(first).is_some()
+                            && rest.iter().all(|other| other.as_ref() == Some(first)) =>
+                    {
+                        first.clone()
+                    }
+                    _ => return Err(other),
+                };
+                let array_type = Some(ColumnType::Array(Box::new(element.clone())));
+                let Ok(Resolved::Call(call)) = functions::resolve(function, &[array_type]) else {
+                    return Err(other);
+                };
+                let elements = checked.into_iter().flatten().collect();
+                return Ok(library_call(call, vec![array_of(element, elements)]));
+            }
         };
         match resolved {
             Resolved::Call(call) => {
@@ -1442,6 +1964,34 @@ impl Checker<'_> {
             Resolved::Cast(to) => self.cast(&to, &arguments[0]),
         }
     }
+}
+
+/// The element type of the array `new name[]` creates. `boolean[]` and the arrays of boxed
+/// values and of other objects are types no column has.
+fn array_element(name: &str) -> Result<ColumnType, FormulaError> {
+    Ok(match name {
+        "byte" => ColumnType::Byte,
+        "char" => ColumnType::Char,
+        "short" => ColumnType::Short,
+        "int" => ColumnType::Int,
+        "long" => ColumnType::Long,
+        "float" => ColumnType::Float,
+        "double" => ColumnType::Double,
+        "String" | "java.lang.String" => ColumnType::String,
+        "Instant" | "java.time.Instant" => ColumnType::Instant,
+        other => return Err(unsupported(format!("array creation new {other}[]"))),
+    })
+}
+
+/// The array of `elements`, which have the type `element`.
+fn array_of(element: ColumnType, elements: Vec<Typed>) -> Typed {
+    typed(
+        ColumnType::Array(Box::new(element)),
+        Node::Call {
+            kernel: Kernel::ArrayOf,
+            arguments: elements,
+        },
+    )
 }
 
 /// `operand` converted to `to` as a cast converts it.

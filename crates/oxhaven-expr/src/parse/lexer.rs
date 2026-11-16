@@ -93,6 +93,9 @@ pub(crate) fn tokenize(text: &str) -> Result<Vec<Spanned>, FormulaError> {
                     TimeValue::Period => {
                         tokens.extend(call("parsePeriod").map(|token| (token, offset)));
                     }
+                    TimeValue::Zone => {
+                        tokens.extend(call("parseTimeZone").map(|token| (token, offset)));
+                    }
                 }
                 rest = &text[literal.end..];
                 continue;
