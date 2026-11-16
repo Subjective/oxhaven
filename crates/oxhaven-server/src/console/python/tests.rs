@@ -588,7 +588,10 @@ async fn a_formula_names_python_variables_with_the_types_java_gives_them() {
             "none = None\nbad = b.update('Y = none')",
             "which holds None",
         ),
-        ("bad = b.where('X >= xf')", "Failed to convert value <xf>"),
+        (
+            "bad = b.where('X >= xf')",
+            "Failed to convert literal value <xf>",
+        ),
     ] {
         let error = python.console.evaluate(code).error.unwrap_or_default();
         assert!(error.contains(expected), "{code}: {error}");

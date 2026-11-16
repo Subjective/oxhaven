@@ -777,9 +777,10 @@ fn make_operator(
                 FirstLastMode::Tracked => (0..definition.columns().len()).collect(),
                 _ => vec![input],
             };
-            if input_type.list_element().is_some() {
+            if input_type.list_element().is_some() || matches!(input_type, ColumnType::Table(_)) {
                 // The cells are read by row key, so the framework need not decode the
-                // column.
+                // column. A cell of a column of tables is copied as its handle, and the
+                // result's source keeps the table it names.
                 let op = FirstLastCell::new(
                     parent.column(input),
                     input_type.clone(),

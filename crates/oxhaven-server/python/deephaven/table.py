@@ -1,6 +1,8 @@
 """The `Table` class."""
 
+import decimal
 import json
+import struct
 from collections import namedtuple
 from collections.abc import Iterable, Mapping
 from enum import Enum, auto
@@ -1363,7 +1365,165 @@ def _java_text(value) -> str:
         return "null"
     if isinstance(value, bool):
         return "true" if value else "false"
+    if isinstance(value, float):
+        return _java_double_text(value)
+    if isinstance(value, Table):
+        return "QueryTable"
     return str(value)
+
+
+def _java_double_text(value: float) -> str:
+    """Behavior: `java.lang.Double#toString`: the shortest digits that read back as the
+    value, plainly from 10^-3 up to 10^7 and otherwise as `d.dddE<exponent>`."""
+    if value != value:
+        return "NaN"
+    if value in (float("inf"), float("-inf")):
+        return "Infinity" if value > 0 else "-Infinity"
+    if value == 0:
+        return "-0.0" if str(value).startswith("-") else "0.0"
+    sign = "-" if value < 0 else ""
+    # the shortest digits are those of `repr`
+    shortest = decimal.Decimal(repr(abs(value)))
+    digits = "".join(map(str, shortest.as_tuple().digits)).rstrip("0") or "0"
+    point = shortest.adjusted() + 1
+    if 1e-3 <= abs(value) < 1e7:
+        if point <= 0:
+            return f"{sign}0.{'0' * -point}{digits}"
+        whole, fraction = digits[:point].ljust(point, "0"), digits[point:]
+        return f"{sign}{whole}.{fraction or '0'}"
+    return f"{sign}{digits[0]}.{digits[1:] or '0'}E{point - 1}"
+
+
+# The Java classes jpy gives a Python value as, when a method takes an `Object`.
+_JAVA_BASE = "is in module java.base of loader 'bootstrap'"
+
+
+def _java_class_of(value) -> str:
+    """Behavior: jpy's conversion of a Python value to `java.lang.Object`: a bool is a
+    `Boolean`, an int the narrowest of `Byte`, `Short`, `Integer` and `Long` that holds it,
+    a float a `Double`, a str a `String`"""
+    if isinstance(value, bool):
+        return "java.lang.Boolean"
+    if isinstance(value, int):
+        for bits, name in ((8, "Byte"), (16, "Short"), (32, "Integer")):
+            if -(2 ** (bits - 1)) <= value < 2 ** (bits - 1):
+                return f"java.lang.{name}"
+        return "java.lang.Long"
+    if isinstance(value, float):
+        return "java.lang.Double"
+    if isinstance(value, str):
+        return "java.lang.String"
+    if isinstance(value, Table):
+        return "io.deephaven.engine.table.impl.QueryTable"
+    raise dtypes._java_time.NotPorted(
+        "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#constituentFor",
+        f"a key value of type {type(value).__name__}",
+    )
+
+
+def _check_java_object(value) -> None:
+    """Fails as jpy does for a value it cannot hand to Java as an `Object`.
+
+    Behavior: jpy's conversion of a Python value to `java.lang.Object`"""
+    if value is None or isinstance(value, (bool, int, float, str, Table)):
+        if isinstance(value, int) and not -(2**63) <= value < 2**63:
+            raise OverflowError("int too big to convert")
+        return
+    if isinstance(value, dtypes._java_time._Value):
+        # the stand-ins of this package for Java's time values
+        return
+    raise ValueError(
+        f"cannot convert a Python '{_python_type_name(value)}' to a Java 'java.lang.Object'"
+    )
+
+
+def _python_type_name(value) -> str:
+    kind = type(value)
+    module = kind.__module__
+    return kind.__qualname__ if module == "builtins" else f"{module}.{kind.__qualname__}"
+
+
+class _ClassCast(Exception):
+    """Java's `ClassCastException` of a key value cast to the class a column needs."""
+
+    def __init__(self, value, wanted: str):
+        given = _java_class_of(value)
+        if given.startswith("java."):
+            where = f"({given} and {wanted} are in module java.base of loader 'bootstrap')"
+        else:
+            where = f"({given} is in unnamed module of loader 'app'; {wanted} {_JAVA_BASE})"
+        super().__init__(
+            f"java.lang.ClassCastException: class {given} cannot be cast to class {wanted} "
+            + where
+        )
+
+
+_NO_MATCH = object()
+_INTEGER_BITS = {"byte": 8, "short": 16, "int": 32, "long": 64}
+
+
+def _match_value(data_type, value):
+    """The value of a key column of `data_type` that a match filter given the Python
+    value `value` looks for, or `_NO_MATCH` when it can match no row. Raises `_ClassCast`
+    where Java's filter fails.
+
+    Behavior: `io.deephaven.engine.table.impl.chunkfilter.ChunkMatchFilterFactory#getChunkFilter`
+    with `ArrayTypeUtils#getUnboxedLongArray` and the like: a primitive column takes any
+    `Number` through `Number#longValue` and the like, and casts anything else; a `char`
+    column casts to `Character`, which no value jpy makes is; every other column compares
+    with `Objects#equals`, under which a value of another class is never equal. A NaN
+    matches nothing (`DoubleChunkMatchFilterFactory#makeFilter` without `nanMatch`).
+    """
+    if value is None:
+        return None
+    name = data_type.j_name
+    is_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if name in _INTEGER_BITS:
+        if not is_number:
+            raise _ClassCast(value, "java.lang.Number")
+        if isinstance(value, float):
+            # Java's cast of a double: toward zero, NaN is 0, out of range the nearest
+            # long (for `long`) or int (for the narrower types, which then drop bits)
+            limit = 64 if name == "long" else 32
+            low, high = -(2 ** (limit - 1)), 2 ** (limit - 1) - 1
+            value = 0 if value != value else int(max(low, min(high, value)))
+        bits = _INTEGER_BITS[name]
+        value &= 2**bits - 1
+        return value - 2**bits if value >= 2 ** (bits - 1) else value
+    if name in ("float", "double"):
+        if not is_number:
+            raise _ClassCast(value, "java.lang.Number")
+        value = _to_float32(value) if name == "float" else float(value)
+        return _NO_MATCH if value != value else value
+    if name == "char":
+        raise _ClassCast(value, "java.lang.Character")
+    if name == "java.lang.String":
+        return value if isinstance(value, str) else _NO_MATCH
+    if name == "java.lang.Boolean":
+        return value if isinstance(value, bool) else _NO_MATCH
+    if isinstance(value, (bool, int, float, str, Table)):
+        # no column of this engine holds Java's Boolean, Byte to Long, Double, String
+        # or a table besides those above
+        return _NO_MATCH
+    return value
+
+
+def _to_float32(value) -> float:
+    """Behavior: `Number#floatValue` of a `Byte` to `Long` or a `Double`: one rounding to
+    the nearest float, ties to even."""
+    if isinstance(value, int) and abs(value) >= 2**53:
+        # through a double would round twice
+        sign, value = (-1 if value < 0 else 1), abs(value)
+        drop = value.bit_length() - 24
+        kept, rest = value >> drop, value & ((1 << drop) - 1)
+        half = 1 << (drop - 1)
+        if rest > half or (rest == half and kept & 1):
+            kept += 1
+        value = sign * float(kept << drop)
+    try:
+        return struct.unpack("f", struct.pack("f", float(value)))[0]
+    except OverflowError:
+        return float("inf") if value > 0 else float("-inf")
 
 
 class NodeType(Enum):
@@ -1919,6 +2079,8 @@ class PartitionedTable:
         or `None` if there is none. More than one is an error."""
         try:
             key_values = _engine.to_sequence(key_values)
+            for value in key_values:
+                _check_java_object(value)
             names = self.key_columns
             if len(key_values) != len(names):
                 # Behavior: `PartitionedTableImpl#constituentFor`
@@ -1931,22 +2093,57 @@ class PartitionedTable:
                 handle = self.j_partitioned_table.constituent_for(None)
                 return Table(handle) if handle is not None else None
             definition = self.table.definition
-            try:
-                keys = _engine.new_table(
-                    [
-                        (name, dtypes._engine_type(definition[name].data_type), [value])
+            types = [definition[name].data_type for name in names]
+            # Java filters the underlying table by one match filter per key column, in
+            # order, and skips the filters after one that left no row: a value that
+            # fails to convert fails only when rows are left for it.
+            matched = []
+            for i, (data_type, value) in enumerate(zip(types, key_values)):
+                try:
+                    match = _match_value(data_type, value)
+                except _ClassCast as cast:
+                    if self._rows_for(names[:i], types[:i], matched) == 0:
+                        return None
+                    filters = ", ".join(
+                        f"{name} in [{_java_text(value)}]"
                         for name, value in zip(names, key_values)
-                    ]
-                )
-            except Exception as e:
-                raise dtypes._java_time.NotPorted(
-                    "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#constituentFor",
-                    f"a key value that is not a value of its key column's type ({e})",
-                ) from e
+                    )
+                    raise RuntimeError(
+                        "io.deephaven.engine.exceptions.TableInitializationException: Error "
+                        f"while initializing where([{filters}]): an exception occurred while "
+                        f"performing the initial filter\ncaused by {cast}"
+                    ) from None
+                if match is _NO_MATCH:
+                    return None
+                matched.append(match)
+            keys = self._key_table(names, types, matched)
             handle = self.j_partitioned_table.constituent_for(keys)
             return Table(handle) if handle is not None else None
         except Exception as e:
             raise DHError(e, "unable to get constituent table.") from e
+
+    @staticmethod
+    def _key_table(names, types, values):
+        try:
+            return _engine.new_table(
+                [
+                    (name, dtypes._engine_type(data_type), [value])
+                    for name, data_type, value in zip(names, types, values)
+                ]
+            )
+        except Exception as e:
+            raise dtypes._java_time.NotPorted(
+                "io.deephaven.engine.table.impl.partitioned.PartitionedTableImpl#constituentFor",
+                f"a key value that is not a value of its key column's type ({e})",
+            ) from e
+
+    def _rows_for(self, names, types, values) -> int:
+        """The number of rows of the underlying table with these values in these key
+        columns."""
+        if not names:
+            return self.table.size
+        keys = Table(self._key_table(names, types, values))
+        return self.table.where_in(keys, list(names)).size
 
     @property
     def constituent_tables(self) -> List[Table]:
