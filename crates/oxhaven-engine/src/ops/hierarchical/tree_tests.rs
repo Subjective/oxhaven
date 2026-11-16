@@ -201,11 +201,15 @@ fn rows_in_a_cycle_are_not_reached() {
     }
 }
 
-/// Observed on Java 42.9: the children of a row without an identifier are the rows of
-/// the root. Expanded two levels below the root that is eight rows; with every level
-/// expanded Java's stack overflows and the server stops.
+/// Observed on Java 42.9: a row without an identifier can be expanded, and its children
+/// are the rows of the root. Expanded to a depth Java shows the root's rows again with
+/// depths that are not theirs, and with every level expanded its stack overflows and
+/// the server stops. Neither is reproduced.
 #[test]
-fn a_row_without_an_identifier_has_the_children_of_the_root() {
+#[should_panic(
+    expected = "unported: io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeChildNodeIdLookup"
+)]
+fn the_expansion_of_a_row_without_an_identifier_is_not_ported() {
     let source: Arc<dyn Table> = ReferenceTable::new_static(
         definition(&COLUMNS),
         RowSet::flat(3),
@@ -217,12 +221,24 @@ fn a_row_without_an_identifier_has_the_children_of_the_root() {
     );
     let tree = tree_of(&source);
     assert_eq!(shown(&tree, &[]), "1-- 1-1");
-    assert_eq!(
-        shown(&tree, &[(0, 0x72)]),
-        "1+- 2+- 3-- 3-1 2+1 3.2 1+1 2.2"
+    assert_eq!(shown(&tree, &[(1, 1)]), "1-- 1+1 2.2");
+    let _ = snapshot_of(&tree, &[(0, 0x71)]);
+}
+
+/// A chain of rows deeper than the walk goes fails the snapshot and not the process.
+#[test]
+fn a_tree_deeper_than_the_walk_goes_fails_the_snapshot() {
+    let ids: Vec<Option<i32>> = (1..=300).map(Some).collect();
+    let parents: Vec<Option<i32>> = (0..300).map(|id| (id > 0).then_some(id)).collect();
+    let source: Arc<dyn Table> = ReferenceTable::new_static(
+        definition(&COLUMNS),
+        RowSet::flat(300),
+        vec![numbers(&ids), numbers(&parents), strings(vec!["x"; 300])],
     );
+    let tree = tree_of(&source);
+    assert_eq!(shown(&tree, &[(0, 0x73)]), "1+1 2+2 3+3 4-4");
     let error = snapshot_of(&tree, &[(0, EXPAND_ALL)]).unwrap_err();
-    assert!(error.to_string().contains("unported: "), "{error}");
+    assert!(error.to_string().contains("levels deep"), "{error}");
 }
 
 #[test]

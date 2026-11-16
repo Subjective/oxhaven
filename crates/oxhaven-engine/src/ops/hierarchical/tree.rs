@@ -536,7 +536,13 @@ impl Hierarchy for TreeTable {
 
     /// The children of the root are the rows without a parent; those of another node the
     /// rows whose parent is the identifier of the node's row, `node.row` of the source.
-    /// A row without an identifier has the children of the root.
+    ///
+    /// # Panics
+    /// With `unported!` for a row without an identifier, which only an expansion of
+    /// every row or to a depth reaches. In Java its children are the rows of the root,
+    /// itself among them: expanded to a depth, the rows of the root that follow it show
+    /// the depth of the deepest visit, and with every row expanded Java's stack
+    /// overflows and the process ends.
     ///
     /// Behavior: TreeTableImpl#makeChildNodeIdLookup and #nodeIdToNodeBaseTable
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
@@ -547,6 +553,13 @@ impl Hierarchy for TreeTable {
             .source
             .column(self.id_column)
             .chunk(&RowSet::from_range(node.row, node.row))?;
+        if identifiers.is_null(0) {
+            oxhaven_contracts::unported!(
+                "io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeChildNodeIdLookup",
+                "the expansion of a row without an identifier, whose children are the rows \
+                 of the root"
+            );
+        }
         match parts(&identifiers)?.pop() {
             Some(identifier) => self.nodes.children(&identifier),
             None => Ok(None),

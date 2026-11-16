@@ -274,9 +274,8 @@ struct Segment {
 }
 
 /// The deepest the walk goes. Java has no limit and visits a node from the visit of its
-/// parent: its stack overflows on a deep tree, and on a tree with a row without an
-/// identifier, whose children are the root's rows and so itself, when every level is
-/// expanded; the process then ends. Here such a snapshot fails.
+/// parent: on a tree that is deep enough its stack overflows and the process ends.
+/// Here such a snapshot fails.
 const MAX_DEPTH: u32 = 200;
 
 struct Walk<'a> {
