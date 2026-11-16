@@ -55,6 +55,8 @@ mod plugin;
 mod plugin_tests;
 mod proxy;
 #[cfg(test)]
+mod proxy_tests;
+#[cfg(test)]
 mod tests;
 mod udf;
 
