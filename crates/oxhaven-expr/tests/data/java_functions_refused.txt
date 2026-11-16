@@ -1731,9 +1731,6 @@ java-fails	update	parseDouble(``)	function parseDouble()
 java-accepts	update	epochMillisToInstant(1700000000000L)	function epochMillisToInstant()
 java-accepts	update	epochSecondsToInstant(1700000000)	function epochSecondsToInstant()
 java-accepts	update	epochSecondsToInstant(1700000000L)	function epochSecondsToInstant()
-java-accepts	update	T - 'PT1S'	time literal 'PT1S'
-java-accepts	update	T + 'PT1S'	time literal 'PT1S'
 java-accepts	update	nanosToMillis(epochNanos(T))	function nanosToMillis()
-java-accepts	update	now()	function now()
 java-accepts	update	today()	function today()
 java-rejects	update	isNull(I).length()	method call .length() on a value of type Boolean

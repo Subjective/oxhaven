@@ -1,27 +1,17 @@
 docs-python/conceptual.arrays-vs-vectors.L26.9.0	java-accepts	object creation (new)
 docs-python/conceptual.arrays-vs-vectors.L26.9.1	java-accepts	setup: object creation (new)
 docs-python/conceptual.arrays-vs-vectors.L26.9.2	java-accepts	setup: object creation (new)
-docs-python/conceptual.column-types.L206.5.0	java-accepts	function now()
-docs-python/conceptual.column-types.L206.5.1	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L206.5.2	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L222.5.0	java-accepts	function now()
-docs-python/conceptual.column-types.L222.5.1	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L222.5.2	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L222.5.3	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L239.6.0	java-accepts	function now()
-docs-python/conceptual.column-types.L239.6.1	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L239.6.2	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L239.6.3	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L239.6.4	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L257.6.1	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L257.6.2	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L257.6.3	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L257.6.4	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L278.6.0	java-accepts	function now()
-docs-python/conceptual.column-types.L278.6.1	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function now()
-docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function now()
+docs-python/conceptual.column-types.L222.5.1	java-accepts	function timeZone()
+docs-python/conceptual.column-types.L222.5.2	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L222.5.3	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L239.6.1	java-accepts	function timeZone()
+docs-python/conceptual.column-types.L239.6.2	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L239.6.3	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L239.6.4	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L278.6.1	java-accepts	function timeZone()
+docs-python/conceptual.column-types.L278.6.2	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L278.6.3	java-accepts	setup: function timeZone()
+docs-python/conceptual.column-types.L278.6.4	java-accepts	setup: function timeZone()
 docs-python/conceptual.column-types.L395.6.1	java-accepts	object creation (new)
 docs-python/conceptual.column-types.L395.6.2	java-accepts	setup: object creation (new)
 docs-python/conceptual.column-types.L395.6.3	java-accepts	setup: object creation (new)
@@ -40,32 +30,19 @@ docs-python/conceptual.column-types.L447.6.4	java-accepts	setup: object creation
 docs-python/conceptual.column-types.L447.6.5	java-accepts	setup: object creation (new)
 docs-python/conceptual.column-types.L488.6.3	java-accepts	function parseDouble()
 docs-python/conceptual.column-types.L505.6.2	java-accepts	static method call String.format()
-docs-python/conceptual.column-types.L612.6.2	java-accepts	function now()
-docs-python/conceptual.column-types.L612.6.3	java-accepts	setup: function now()
-docs-python/conceptual.ninja.L42.9.0	java-accepts	time literal '2019-01-23T12:15 ET'
-docs-python/conceptual.ninja.L42.9.1	java-accepts	setup: time literal '2019-01-23T12:15 ET'
-docs-python/conceptual.ninja.L42.9.2	java-accepts	setup: time literal '2019-01-23T12:15 ET'
-docs-python/conceptual.ninja.L42.9.3	java-accepts	setup: time literal '2019-01-23T12:15 ET'
 docs-python/conceptual.ninja.L192.5.0	java-fails	field access .lang
 docs-python/conceptual.time-in-deephaven.L39.4.2	java-fails	static method call Math.sin()
-docs-python/conceptual.time-in-deephaven.L70.4.0	java-accepts	function now()
 docs-python/conceptual.time-in-deephaven.L81.4.1	java-accepts	function epochDaysToLocalDate()
-docs-python/conceptual.time-in-deephaven.L91.4.0	java-accepts	function now()
-docs-python/conceptual.time-in-deephaven.L91.4.1	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L91.4.2	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L91.4.3	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L91.4.4	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L91.4.5	java-accepts	setup: function now()
 docs-python/conceptual.time-in-deephaven.L110.4.2	java-accepts	setup: function epochDaysToLocalDate()
-docs-python/conceptual.time-in-deephaven.L135.4.1	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L135.4.2	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L135.4.3	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L135.4.4	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L135.4.5	java-accepts	setup: function now()
-docs-python/conceptual.time-in-deephaven.L162.4.0	java-accepts	time literal 'PT24h'
-docs-python/conceptual.time-in-deephaven.L162.4.1	java-accepts	setup: time literal 'PT24h'
+docs-python/conceptual.time-in-deephaven.L135.4.1	java-accepts	function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L135.4.2	java-accepts	setup: function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L135.4.3	java-accepts	setup: function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L135.4.4	java-accepts	setup: function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L135.4.5	java-accepts	setup: function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L162.4.0	java-accepts	function parseDuration()
+docs-python/conceptual.time-in-deephaven.L162.4.1	java-accepts	setup: function parseDuration()
 docs-python/conceptual.time-in-deephaven.L177.5.0	java-accepts	function parseDuration()
-docs-python/conceptual.time-in-deephaven.L181.5.0	java-accepts	time literal 'PT24h'
+docs-python/conceptual.time-in-deephaven.L181.5.0	java-accepts	function parseDuration()
 docs-python/conceptual.time-in-deephaven.L197.5.0	java-accepts	time literal 'GMT'
 docs-python/conceptual.time-in-deephaven.L197.5.1	java-accepts	setup: time literal 'GMT'
 docs-python/conceptual.time-in-deephaven.L203.5.0	java-accepts	time literal '2022-03-28'
@@ -75,20 +52,13 @@ docs-python/conceptual.time-in-deephaven.L209.5.1	java-accepts	setup: time liter
 docs-python/conceptual.time-in-deephaven.L215.5.1	java-accepts	function parseInstant()
 docs-python/conceptual.time-in-deephaven.L226.5.0	java-accepts	function parseZonedDateTime()
 docs-python/conceptual.time-in-deephaven.L226.5.1	java-accepts	setup: function parseZonedDateTime()
-docs-python/conceptual.time-in-deephaven.L236.5.0	java-accepts	time literal 'PT6H30M30S'
-docs-python/conceptual.time-in-deephaven.L236.5.1	java-accepts	setup: time literal 'PT6H30M30S'
-docs-python/conceptual.time-in-deephaven.L243.5.0	java-accepts	time literal 'P2Y3M10D'
-docs-python/conceptual.time-in-deephaven.L243.5.1	java-accepts	setup: time literal 'P2Y3M10D'
-docs-python/conceptual.time-in-deephaven.L256.4.0	java-accepts	time literal '2025-10-15T13:23 ET'
-docs-python/conceptual.time-in-deephaven.L256.4.1	java-fails	setup: time literal '2025-10-15T13:23 ET'
-docs-python/conceptual.time-in-deephaven.L612.4.0	java-accepts	time literal '2017-04-29T10:30:00 America/Chicago'
-docs-python/conceptual.time-in-deephaven.L612.4.1	java-accepts	setup: time literal '2017-04-29T10:30:00 America/Chicago'
+docs-python/conceptual.time-in-deephaven.L236.5.0	java-accepts	function parseDuration()
+docs-python/conceptual.time-in-deephaven.L236.5.1	java-accepts	setup: function parseDuration()
+docs-python/conceptual.time-in-deephaven.L243.5.0	java-accepts	function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L243.5.1	java-accepts	setup: function parsePeriod()
+docs-python/conceptual.time-in-deephaven.L256.4.1	java-fails	function parseDuration()
 docs-python/conceptual.time-in-deephaven.L627.4.0	java-fails	time literal '2017-04-29T10:30:00 IST'
-docs-python/getting-started.crash-course.export-data.L267.11.0	java-accepts	function randomInt()
-docs-python/getting-started.crash-course.export-data.L267.11.1	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.export-data.L267.11.2	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.export-data.L267.11.3	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.py-integrations.L16.4.0	java-fails	time literal '2015-01-01T00:00:00 ET'
+docs-python/getting-started.crash-course.py-integrations.L16.4.0	java-fails	function parseDuration()
 docs-python/getting-started.crash-course.query-strings.L29.11.6	java-accepts	time literal '2020-01-01'
 docs-python/getting-started.crash-course.query-strings.L29.11.7	java-accepts	setup: time literal '2020-01-01'
 docs-python/getting-started.crash-course.query-strings.L29.11.8	java-accepts	setup: time literal '2020-01-01'
@@ -103,58 +73,21 @@ docs-python/getting-started.crash-course.query-strings.L77.14.5	java-accepts	set
 docs-python/getting-started.crash-course.query-strings.L77.14.6	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.7	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
 docs-python/getting-started.crash-course.query-strings.L77.14.8	java-accepts	setup: null literal outside ==, !=, ?:, a cast and string concatenation
-docs-python/getting-started.crash-course.query-strings.L121.11.1	java-accepts	time literal 'P365d'
-docs-python/getting-started.crash-course.query-strings.L121.11.2	java-accepts	setup: time literal 'P365d'
-docs-python/getting-started.crash-course.query-strings.L121.11.3	java-accepts	setup: time literal 'P365d'
-docs-python/getting-started.crash-course.query-strings.L151.14.2	java-accepts	function randomGaussian()
-docs-python/getting-started.crash-course.query-strings.L151.14.3	java-accepts	setup: function randomGaussian()
-docs-python/getting-started.crash-course.query-strings.L188.17.6	java-accepts	function randomInt()
-docs-python/getting-started.crash-course.query-strings.L188.17.7	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.query-strings.L207.12.0	java-accepts	function randomInt()
-docs-python/getting-started.crash-course.query-strings.L207.12.1	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.query-strings.L207.12.2	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.query-strings.L207.12.3	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.query-strings.L207.12.4	java-accepts	setup: function randomInt()
-docs-python/getting-started.crash-course.query-strings.L221.17.0	java-accepts	function now()
-docs-python/getting-started.crash-course.query-strings.L221.17.1	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.query-strings.L221.17.2	java-accepts	time literal 'ET'
+docs-python/getting-started.crash-course.query-strings.L221.17.3	java-accepts	setup: time literal 'ET'
+docs-python/getting-started.crash-course.query-strings.L221.17.4	java-accepts	setup: time literal 'ET'
+docs-python/getting-started.crash-course.query-strings.L221.17.5	java-accepts	setup: time literal 'ET'
 docs-python/getting-started.crash-course.query-strings.L249.23.0	java-accepts	function parseInstant()
 docs-python/getting-started.crash-course.query-strings.L249.23.1	java-accepts	setup: function parseInstant()
 docs-python/getting-started.crash-course.query-strings.L249.23.2	java-accepts	setup: function parseInstant()
 docs-python/getting-started.crash-course.query-strings.L249.23.3	java-accepts	setup: function parseInstant()
 docs-python/getting-started.crash-course.query-strings.L249.23.4	java-accepts	setup: function parseInstant()
 docs-python/getting-started.crash-course.query-strings.L249.23.5	java-accepts	setup: function parseInstant()
-docs-python/getting-started.crash-course.query-strings.L267.20.0	java-accepts	function now()
-docs-python/getting-started.crash-course.query-strings.L267.20.1	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L267.20.2	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.query-strings.L267.20.3	java-accepts	setup: function now()
 docs-python/getting-started.crash-course.query-strings.L300.15.0	java-accepts	method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L300.15.1	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L300.15.2	java-accepts	setup: method call .getEpochSecond() on a value of type Instant
 docs-python/getting-started.crash-course.query-strings.L317.5.0	java-fails	object creation (new)
-docs-python/getting-started.crash-course.table-ops.L23.4.0	java-accepts	time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L37.12.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L37.12.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L37.12.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L53.18.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L66.17.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L66.17.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L78.13.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L86.11.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L115.13.0	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L211.4.1	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L211.4.2	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L211.4.3	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L211.4.4	java-accepts	setup: time literal '2015-01-01T00:00:00 ET'
-docs-python/getting-started.crash-course.table-ops.L365.5.1	java-accepts	function randomDouble()
-docs-python/getting-started.crash-course.table-ops.L365.5.2	java-accepts	setup: function randomDouble()
-docs-python/getting-started.crash-course.table-ops.L368.5.2	java-accepts	function randomBool()
-docs-python/getting-started.crash-course.time-calendars.L57.22.1	java-accepts	setup: function now()
-docs-python/getting-started.crash-course.time-calendars.L57.22.2	java-accepts	setup: function now()
+docs-python/getting-started.crash-course.table-ops.L121.15.1	java-accepts	setup: where
 docs-python/getting-started.crash-course.time-calendars.L73.24.1	java-accepts	function epochMillis()
 docs-python/getting-started.crash-course.time-calendars.L73.24.2	java-accepts	setup: function epochMillis()
 docs-python/getting-started.crash-course.time-calendars.L73.24.3	java-accepts	setup: function epochMillis()
@@ -174,172 +107,56 @@ docs-python/getting-started.crash-course.time-calendars.L121.4.5	java-accepts	se
 docs-python/getting-started.crash-course.time-calendars.L121.4.6	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L121.4.7	java-accepts	setup: time literal 'PT'
 docs-python/getting-started.crash-course.time-calendars.L121.4.8	java-accepts	setup: time literal 'PT'
-docs-python/getting-started.crash-course.time-calendars.L231.14.0	java-accepts	time literal '2024-01-01T09:00:00 ET'
-docs-python/getting-started.crash-course.time-calendars.L231.14.1	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
-docs-python/getting-started.crash-course.time-calendars.L231.14.2	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
-docs-python/getting-started.crash-course.time-calendars.L231.14.3	java-accepts	setup: time literal '2024-01-01T09:00:00 ET'
 docs-python/getting-started.docker-install.L304.8.0	java-fails	field access .example
 docs-python/how-to-guides.built-in-functions.L80.9.0	java-fails	object creation (new)
-docs-python/how-to-guides.built-in-functions.L103.9.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.built-in-functions.L103.9.1	java-fails	setup: function randomDouble()
-docs-python/how-to-guides.business-calendar.L52.9.0	java-accepts	time literal '2024-01-01T00:00:00 ET'
+docs-python/how-to-guides.built-in-functions.L103.9.1	java-fails	static method call StrictMath.acos()
 docs-python/how-to-guides.casting.L122.9.0	java-fails	static method call MyClass.change_value()
-docs-python/how-to-guides.data-import-export.iceberg.L188.14.3	java-accepts	function randomDouble()
-docs-python/how-to-guides.data-import-export.iceberg.L191.14.3	java-accepts	function randomDouble()
-docs-python/how-to-guides.data-indexes.L77.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.data-indexes.L77.9.1	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	time literal 'PT5H2M1.2S'
-docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: time literal 'PT5H2M1.2S'
-docs-python/how-to-guides.date-time-literals.L55.9.1	java-accepts	time literal '2025-01-23T15:21:48 ET'
+docs-python/how-to-guides.date-time-literals.L19.9.1	java-accepts	function parseDuration()
+docs-python/how-to-guides.date-time-literals.L19.9.2	java-accepts	setup: function parseDuration()
 docs-python/how-to-guides.date-time-literals.L85.9.0	java-accepts	time literal '2025-04-01'
 docs-python/how-to-guides.date-time-literals.L106.9.0	java-accepts	time literal '14:30:00.12345'
-docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	time literal 'PT5H2M1.2S'
-docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	time literal 'P1Y4M5D'
+docs-python/how-to-guides.date-time-literals.L129.9.0	java-accepts	function parseDuration()
+docs-python/how-to-guides.date-time-literals.L151.9.0	java-accepts	function parsePeriod()
 docs-python/how-to-guides.dedicated-aggregations.L119.4.0	java-accepts	static method call Long.toString()
 docs-python/how-to-guides.dedicated-aggregations.L119.4.1	java-accepts	setup: static method call Long.toString()
 docs-python/how-to-guides.dedicated-aggregations.L130.4.1	java-accepts	setup: static method call Long.toString()
 docs-python/how-to-guides.dedicated-aggregations.L130.4.2	java-accepts	setup: static method call Long.toString()
-docs-python/how-to-guides.deephaven-python-package.L112.4.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.deephaven-python-package.L112.4.2	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.deephaven-python-package.L131.4.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.deephaven-python-package.L131.4.2	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.deephaven-python-package.L198.4.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.filters.L23.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.filters.L25.15.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.filters.L26.14.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.filters.L226.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.filters.L229.18.0	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.filters.L244.9.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.filters.L244.9.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.filters.L262.9.1	java-accepts	function randomInt()
-docs-python/how-to-guides.filters.L277.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.filters.L285.18.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.formulas.L90.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.formulas.L91.9.0	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.function-generated-tables.L34.11.0	java-accepts	function randomInt()
-docs-python/how-to-guides.function-generated-tables.L34.11.1	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.generate-query-strings.L87.9.0	java-accepts	time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L87.9.1	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L87.9.2	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.0	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.1	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.2	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.3	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.4	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.5	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.6	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.7	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
-docs-python/how-to-guides.generate-query-strings.L95.9.8	java-accepts	setup: time literal '2024-03-15T09:30:00 ET'
+docs-python/how-to-guides.filters.L282.18.1	java-accepts	setup: where
 docs-python/how-to-guides.grouping-data.L120.4.1	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.grouping-data.L147.4.1	java-accepts	setup: object creation (new)
-docs-python/how-to-guides.grouping-data.L185.4.0	java-accepts	cast to int[]
 docs-python/how-to-guides.install-and-use-java-packages.L140.9.1	java-fails	field access .codehaus
-docs-python/how-to-guides.iterate-table-data.L28.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.iterate-table-data.L28.9.1	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.iterate-table-data.L74.9.1	java-accepts	function randomBool()
-docs-python/how-to-guides.iterate-table-data.L74.9.2	java-accepts	setup: function randomBool()
-docs-python/how-to-guides.iterate-table-data.L87.9.2	java-accepts	setup: function randomInt()
 docs-python/how-to-guides.java-classes.L37.9.1	java-accepts	object creation (new)
 docs-python/how-to-guides.java-classes.L37.9.2	java-accepts	setup: object creation (new)
 docs-python/how-to-guides.java-classes.L66.9.0	java-fails	static method call Math.random()
-docs-python/how-to-guides.java-classes.L88.9.0	java-accepts	time literal '2025-09-01T09:30:00 ET'
-docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
-docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
-docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
-docs-python/how-to-guides.java-classes.L88.9.4	java-accepts	setup: time literal '2025-09-01T09:30:00 ET'
+docs-python/how-to-guides.java-classes.L88.9.1	java-accepts	function parseDuration()
+docs-python/how-to-guides.java-classes.L88.9.2	java-accepts	setup: function parseDuration()
+docs-python/how-to-guides.java-classes.L88.9.3	java-accepts	setup: function parseDuration()
+docs-python/how-to-guides.java-classes.L88.9.4	java-accepts	setup: function parseDuration()
 docs-python/how-to-guides.joins-exact-relational.L263.8.2	java-fails	static method call Math.sin()
-docs-python/how-to-guides.joins-timeseries-range.L108.7.1	java-accepts	function randomInt()
-docs-python/how-to-guides.joins-timeseries-range.L109.8.1	java-accepts	function randomInt()
-docs-python/how-to-guides.joins-timeseries-range.L285.7.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
-docs-python/how-to-guides.joins-timeseries-range.L285.7.1	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
-docs-python/how-to-guides.joins-timeseries-range.L285.7.2	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
-docs-python/how-to-guides.joins-timeseries-range.L285.7.3	java-accepts	setup: time literal '2024-01-01T08:00:00 ET'
-docs-python/how-to-guides.joins-timeseries-range.L294.8.0	java-accepts	time literal '2024-01-01T08:00:03 ET'
-docs-python/how-to-guides.joins-timeseries-range.L294.8.1	java-accepts	setup: time literal '2024-01-01T08:00:03 ET'
-docs-python/how-to-guides.joins-timeseries-range.L294.8.2	java-accepts	setup: time literal '2024-01-01T08:00:03 ET'
 docs-python/how-to-guides.keyed-transpose.L229.10.0	java-accepts	method call String.replace()
-docs-python/how-to-guides.ml-ai-no-learn.L34.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.2	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.3	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.4	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.5	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.6	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L167.9.7	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L188.9.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L195.18.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L196.17.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L225.9.2	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.null-inf-nan.L225.9.3	java-accepts	setup: function randomDouble()
+docs-python/how-to-guides.null-inf-nan.L197.23.1	java-accepts	setup: where
 docs-python/how-to-guides.performance.formula-threads.L28.14.0	java-fails	field access .lang
-docs-python/how-to-guides.plotting.api-plotting.L72.15.2	java-accepts	function randomDouble()
-docs-python/how-to-guides.plotting.api-plotting.L261.9.1	java-accepts	function randomInt()
-docs-python/how-to-guides.plotting.api-plotting.L261.9.2	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.plotting.api-plotting.L261.9.3	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.predicate-pushdown.L55.9.1	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.predicate-pushdown.L81.9.1	java-accepts	function randomDouble()
-docs-python/how-to-guides.predicate-pushdown.L120.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.predicate-pushdown.L120.9.1	java-accepts	setup: function randomInt()
 docs-python/how-to-guides.python-classes.L45.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L66.9.0	java-fails	field access .a
 docs-python/how-to-guides.python-classes.L113.9.0	java-fails	static method call MyClass.change_value()
-docs-python/how-to-guides.query-string-overview.L40.9.3	java-accepts	function randomDouble()
-docs-python/how-to-guides.query-string-overview.L40.9.4	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L62.21.0	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L102.9.2	java-accepts	function randomDouble()
-docs-python/how-to-guides.query-string-overview.L102.9.3	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L102.9.4	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L102.9.5	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.query-string-overview.L102.9.6	java-accepts	setup: function randomDouble()
 docs-python/how-to-guides.read-javadocs.L119.9.0	java-accepts	function median()
-docs-python/how-to-guides.read-javadocs.L136.9.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	setup: function randomDouble()
-docs-python/how-to-guides.replay-data.L96.11.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L83.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.rolling-aggregations.L97.9.1	java-accepts	function randomInt()
-docs-python/how-to-guides.rolling-aggregations.L115.9.1	java-accepts	function randomBool()
-docs-python/how-to-guides.rolling-aggregations.L115.9.2	java-accepts	setup: function randomBool()
-docs-python/how-to-guides.rolling-aggregations.L115.9.3	java-accepts	setup: function randomBool()
-docs-python/how-to-guides.rolling-aggregations.L499.9.0	java-accepts	time literal '2023-01-13T12:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L499.9.1	java-accepts	setup: time literal '2023-01-13T12:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L499.9.2	java-accepts	setup: time literal '2023-01-13T12:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L757.9.1	java-accepts	function randomInt()
-docs-python/how-to-guides.rolling-aggregations.L778.9.0	java-accepts	time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L778.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L778.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L810.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L826.9.1	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L826.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.rolling-aggregations.L933.9.2	java-accepts	setup: time literal '2023-01-01T00:00:00 ET'
-docs-python/how-to-guides.triage-errors.L351.9.0	java-accepts	function randomInt()
-docs-python/how-to-guides.triage-errors.L353.9.0	java-accepts	setup: function randomInt()
-docs-python/how-to-guides.use-numpy.L30.9.0	java-accepts	function randomDouble()
-docs-python/how-to-guides.use-numpy.L30.9.1	java-accepts	setup: function randomDouble()
+docs-python/how-to-guides.read-javadocs.L136.9.1	java-accepts	function randomDouble()
 docs-python/how-to-guides.use-numpy.L136.9.0	java-accepts	field access .PI
 docs-python/how-to-guides.use-select-view-update.L62.9.3	java-accepts	function absAvg()
-docs-python/how-to-guides.work-with-arrays.L166.9.1	java-accepts	function randomDouble()
 docs-python/how-to-guides.work-with-arrays.L280.9.0	java-accepts	object creation (new)
 docs-python/how-to-guides.work-with-strings.L113.9.1	java-accepts	function parseFloat()
 docs-python/how-to-guides.work-with-strings.L113.9.2	java-accepts	setup: function parseFloat()
 docs-python/how-to-guides.work-with-strings.L113.9.3	java-accepts	setup: function parseFloat()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.1	java-accepts	function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.2	java-accepts	setup: function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.3	java-accepts	setup: function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L29.18.4	java-accepts	setup: function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L41.18.1	java-accepts	function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L41.18.2	java-accepts	setup: function randomDouble()
-docs-python/reference.cheat-sheets.cheat-sheet.L41.18.3	java-accepts	setup: function randomDouble()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.0	java-accepts	time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.1	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.2	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.3	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.4	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.5	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.6	java-accepts	setup: time literal '2021-01-01T12:30:01.123 ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L75.16.0	java-fails	time literal 'PT24h'
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.3	java-accepts	function parseInstant()
+docs-python/reference.cheat-sheets.cheat-sheet.L29.18.4	java-accepts	setup: function parseInstant()
+docs-python/reference.cheat-sheets.cheat-sheet.L41.18.3	java-accepts	function parseInstant()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.1	java-accepts	time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.2	java-accepts	setup: time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.3	java-accepts	setup: time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.4	java-accepts	setup: time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.5	java-accepts	setup: time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L15.16.6	java-accepts	setup: time literal '2000-06-30'
+docs-python/reference.cheat-sheets.time-cheat-sheet.L75.16.0	java-fails	function parseDuration()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L115.5.0	java-accepts	function parseInstant()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.0	java-accepts	function parseInstant()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L192.5.1	java-accepts	setup: function parseInstant()
@@ -347,95 +164,24 @@ docs-python/reference.cheat-sheets.time-cheat-sheet.L223.5.0	java-accepts	time l
 docs-python/reference.cheat-sheets.time-cheat-sheet.L241.5.0	java-accepts	function parseLocalDate()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L293.5.0	java-accepts	function parseLocalTime()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L340.12.0	java-accepts	function epochSecondsToInstant()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L350.5.0	java-accepts	time literal 'P1d'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	setup: function now()
-docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function now()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.1	java-accepts	function today()
+docs-python/reference.cheat-sheets.time-cheat-sheet.L377.4.2	java-accepts	setup: function today()
 docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.0	java-accepts	time literal 'ET'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L407.9.1	java-accepts	setup: time literal 'ET'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.2	java-accepts	setup: time literal 'ET'
 docs-python/reference.cheat-sheets.time-cheat-sheet.L419.9.3	java-fails	setup: time literal 'ET'
-docs-python/reference.cheat-sheets.time-cheat-sheet.L716.4.1	java-accepts	setup: function now()
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.3	java-accepts	static method call String.format()
 docs-python/reference.community-questions.convert-integer-date-to-formatted-string.L18.9.4	java-accepts	setup: static method call String.format()
 docs-python/reference.community-questions.convert-year-day-minute-instant.L18.9.0	java-fails	time literal 'ET'
-docs-python/reference.community-questions.extract-values-from-tables.L26.9.0	java-accepts	function randomInt()
-docs-python/reference.community-questions.extract-values-from-tables.L46.9.1	java-accepts	function randomDouble()
-docs-python/reference.community-questions.extract-values-from-tables.L92.9.1	java-accepts	function randomInt()
-docs-python/reference.community-questions.hash-table-exceeds-maximum-size.L16.4.0	java-accepts	function randomInt()
-docs-python/reference.community-questions.hash-table-exceeds-maximum-size.L31.4.0	java-accepts	setup: function randomInt()
 docs-python/reference.community-questions.python-vs-query-language-time-ops.L38.9.0	java-accepts	function parseInstant()
 docs-python/reference.community-questions.python-vs-query-language-time-ops.L39.9.0	java-accepts	setup: function parseInstant()
-docs-python/reference.community-questions.why-table-ops-producing-incorrect-results.L16.5.0	java-accepts	setup: function randomInt()
-docs-python/reference.data-import-export.iterate.iter-chunk-dict.L41.9.0	java-accepts	function randomInt()
-docs-python/reference.data-import-export.iterate.iter-chunk-dict.L41.9.1	java-accepts	setup: function randomInt()
-docs-python/reference.data-import-export.iterate.iter-chunk-dict.L55.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.engine.data-index.L68.9.0	java-accepts	function randomInt()
-docs-python/reference.engine.data-index.L68.9.1	java-accepts	setup: function randomInt()
 docs-python/reference.query-language.types.NaNs.L29.9.0	java-fails	field access .lang
-docs-python/reference.query-language.types.periods.L28.9.0	java-accepts	time literal 'P1d'
-docs-python/reference.table-operations.create.Replayer.L81.11.0	java-accepts	time literal '2024-01-01T08:00:00 ET'
-docs-python/reference.table-operations.create.TableDefinitionLike.L38.9.3	java-accepts	function randomBool()
 docs-python/reference.table-operations.join.full-outer-join.L70.8.2	java-fails	static method call Math.sin()
 docs-python/reference.table-operations.join.full-outer-join.L93.7.1	java-fails	static method call Math.sin()
 docs-python/reference.table-operations.join.full-outer-join.L94.8.1	java-fails	static method call Math.cos()
-docs-python/reference.table-operations.partitioned-tables.keys.L26.9.1	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.partitioned-tables.keys.L26.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.partitioned-tables.partitioned-table-sort.L46.9.0	java-accepts	function randomInt()
-docs-python/reference.table-operations.partitioned-tables.partitioned-table-sort.L46.9.1	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.partitioned-tables.partitioned-transform.L54.5.1	java-accepts	function randomDouble()
-docs-python/reference.table-operations.partitioned-tables.partitioned-transform.L55.5.1	java-accepts	function randomDouble()
-docs-python/reference.table-operations.update-by-operations.OperationControl.L73.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-count-where.L48.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-max.L35.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-max.L61.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.1	java-accepts	function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-max.L78.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-min.L61.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-min.L78.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-prod.L57.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.1	java-accepts	function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-prod.L70.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-sum.L57.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.cum-sum.L70.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.cum-sum.L70.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.delta.L42.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.delta.L72.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.delta.L72.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.ema-tick.L90.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.ema-tick.L90.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.0	java-accepts	time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.1	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.ema-time.L71.9.2	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.2	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.3	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.ema-time.L114.9.4	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.emmax-tick.L64.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.emmax-tick.L96.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.emmax-tick.L96.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.emmax-time.L72.9.0	java-accepts	time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.emmax-time.L72.9.1	java-accepts	setup: time literal '2023-05-01T00:00:00 ET'
-docs-python/reference.table-operations.update-by-operations.forward-fill.L78.9.2	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.forward-fill.L78.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.table-operations.update-by-operations.rolling-avg-tick.L54.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-count-where-tick.L67.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L79.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L79.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.0	java-accepts	time literal '2024-02-23T09:30:00 ET'
-docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.1	java-accepts	setup: time literal '2024-02-23T09:30:00 ET'
-docs-python/reference.table-operations.update-by-operations.rolling-formula-tick.L103.9.2	java-accepts	setup: time literal '2024-02-23T09:30:00 ET'
-docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-formula-time.L86.9.3	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L50.9.1	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.rolling-wavg-tick.L50.9.2	java-accepts	setup: function randomInt()
-docs-python/reference.table-operations.update-by-operations.updateBy.L107.9.2	java-accepts	function randomInt()
-docs-python/reference.table-operations.update-by-operations.updateBy.L139.9.3	java-accepts	setup: function randomBool()
-docs-python/reference.time.calendar.calendar.L55.9.0	java-accepts	time literal '2024-01-05T00:08:00 ET'
 grid-array/extra.72	java-fails	an index on a value of a vector type
 grid-array/extra.73	java-fails	an index on a value of a vector type
 grid-array/extra.85	java-accepts	a column array of type Vector(Boolean) as the value of a formula, which Java sends as strings (io.deephaven.engine.table.vectors.ColumnVectors#of)
-grid-array/extra.94	java-accepts	operator + on a vector or array
 grid-binary/lt.byte.boolean	java-fails	ordering comparison of byte with Boolean
 grid-binary/lt.byte.string	java-fails	ordering comparison of byte with String
 grid-binary/lt.short.boolean	java-fails	ordering comparison of short with Boolean
@@ -793,7 +539,6 @@ java-engine/QueryTableAggregationTest.L231.1.2	java-accepts	setup: static method
 java-engine/QueryTableAggregationTest.L424.0.0	java-accepts	static method call Long.toString()
 java-engine/QueryTableAggregationTest.L424.0.1	java-accepts	setup: static method call Long.toString()
 java-engine/QueryTableAggregationTest.L3132.0.0	java-fails	time literal '2020-03-14T00:00:00 NY'
-java-engine/QueryTableAggregationTest.L4244.0.0	java-accepts	function random()
 java-engine/QueryTableRangeJoinTest.L160.0.0	java-accepts	static method call Long.toString()
 java-engine/QueryTableRangeJoinTest.L161.0.0	java-accepts	cast to CharSequence
 java-engine/QueryTableRangeJoinTest.L185.0.0	java-accepts	object creation (new)
@@ -817,7 +562,7 @@ java-engine/QueryTableSelectUpdateTest.L1196.0.0	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.1	java-fails	setup: where
 java-engine/QueryTableSelectUpdateTest.L1196.0.2	java-accepts	setup: where
 java-engine/QueryTableSelectUpdateTest.L1675.0.2	java-accepts	static method call String.valueOf()
-java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on a vector or array
+java-engine/QueryTableWhereTest.L1170.0.0	java-fails	operator == on int and Vector(Int)
 java-engine/QueryTableWhereTest.L1296.0.0	java-fails	static method call BigInteger.valueOf()
 java-engine/QueryTableWhereTest.L1322.0.0	java-fails	static method call BigDecimal.valueOf()
 java-engine/QueryTableWhereTest.L3130.0.0	java-accepts	static method call Long.toString()
@@ -834,9 +579,6 @@ java-engine/TestAggBy.L1458.0.2	java-accepts	setup: static method call Long.toHe
 java-engine/TestAggBy.L1458.0.3	java-accepts	setup: static method call Long.toHexString()
 java-engine/TestAggBy.L1458.0.4	java-accepts	setup: static method call Long.toHexString()
 java-engine/TestAggBy.L1458.0.5	java-accepts	setup: static method call Long.toHexString()
-java-engine/TestClockFilterParallelism.L78.0.0	java-accepts	time literal '2026-01-20T09:30:00 America/New_York'
-java-engine/TestClockFilterParallelism.L78.0.1	java-accepts	setup: time literal '2026-01-20T09:30:00 America/New_York'
-java-engine/TestClockFilterParallelism.L78.0.2	java-accepts	setup: time literal '2026-01-20T09:30:00 America/New_York'
 java-engine/TestTreeTable.L118.0.1	java-accepts	static method call Long.numberOfLeadingZeros()
 java-engine/TestWindowCheck.L308.0.0	java-fails	time literal '2022-07-01T00:00 NY'
 java-formula-column/L94.0	java-fails	time literal '2019-04-11T09:30 NY'
@@ -1048,10 +790,8 @@ java-parser/L3096.0	java-fails	fixture column of type int32[]
 java-parser/L3099.0	java-fails	fixture column of type int32[]
 java-parser/L3103.0	java-fails	fixture column of type int32[]
 py-server/test_calendar.L126.17.0	java-accepts	function isBusinessDay()
-py-server/test_data_index.L15.21.0	java-accepts	function now()
-py-server/test_data_index.L15.21.1	java-accepts	setup: function now()
-py-server/test_data_index.L15.21.2	java-accepts	setup: function now()
-py-server/test_data_index.L15.21.3	java-accepts	setup: function now()
+py-server/test_data_index.L15.21.2	java-accepts	static method call String.valueOf()
+py-server/test_data_index.L15.21.3	java-accepts	setup: static method call String.valueOf()
 py-server/test_filters.L46.25.0	java-accepts	static method call String.valueOf()
 py-server/test_filters.L54.25.0	java-accepts	setup: static method call String.valueOf()
 py-server/test_filters.L111.12.1	java-accepts	static method call String.valueOf()
@@ -1067,15 +807,8 @@ py-server/test_parquet.L466.19.1	java-accepts	setup: field access .time
 py-server/test_parquet.L466.19.2	java-accepts	setup: field access .time
 py-server/test_parquet.L466.19.3	java-accepts	setup: field access .time
 py-server/test_parquet.L520.19.0	java-accepts	field access .time
-py-server/test_table.L1278.12.1	java-accepts	function random()
-py-server/test_table.L1289.12.1	java-accepts	function random()
-py-server/test_table.L1300.12.1	java-accepts	function random()
 py-server/test_table.L1307.13.1	java-accepts	object creation (new)
 py-server/test_table.L1308.13.1	java-accepts	object creation (new)
 py-server/test_table.L1354.13.0	java-fails	field access .ATTR
 py-server/test_table.L1357.13.0	java-fails	field access .ATTR
 py-server/test_table.L1364.13.0	java-fails	static method call Foo.do_something_cls()
-py-server/test_table_factory.L151.13.0	java-accepts	function nowSystem()
-py-server/test_table_factory.L558.12.0	java-accepts	function nowSystem()
-py-server/test_udf_array_args.L203.16.1	java-accepts	function now()
-py-server/test_updateby.L61.28.0	java-accepts	function now()

@@ -544,6 +544,37 @@ fn time(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure
             };
             store_instant(i128::from(instant) + nanos).map(Some)
         })),
+        // Behavior: `DateTimeUtils#multiply(Duration, long)`, `#multiply(Period, int)` and
+        // `#divide(Duration, long)`: null when either is null, otherwise
+        // `Duration#multipliedBy`, `Period#multipliedBy` and `Duration#dividedBy`, which are
+        // exact and fail on overflow and on a zero divisor. An amount is held here as a
+        // `long` of nanoseconds; Java can hold a longer one, but cannot add it to an
+        // `Instant` that a column holds, so an amount that overflows the `long` fails here.
+        Kernel::DurationMultiply | Kernel::DurationDivide => {
+            let values = (0..rows)
+                .map(|row| {
+                    let (Some(amount), Some(scalar)) = (long(0, row), long(1, row)) else {
+                        return Ok(None);
+                    };
+                    let result = if kernel == Kernel::DurationMultiply {
+                        amount.checked_mul(scalar)
+                    } else if scalar == 0 {
+                        return Err(failure(
+                            "java.lang.ArithmeticException: Cannot divide by zero",
+                        ));
+                    } else {
+                        amount.checked_div(scalar)
+                    };
+                    match result {
+                        Some(nanos) if nanos != i64::MIN => Ok(Some(nanos)),
+                        _ => Err(failure(
+                            "java.lang.ArithmeticException: long overflow in a duration or period",
+                        )),
+                    }
+                })
+                .collect::<Result<Int64Array, TableFailure>>()?;
+            Ok(Arc::new(values))
+        }
         // Behavior: `DateTimeUtils#minus(Instant, Instant)`: null when either is null.
         Kernel::InstantDifference => {
             let values = (0..rows)
@@ -708,6 +739,8 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         | Kernel::InstantPlus
         | Kernel::InstantMinus
         | Kernel::InstantDifference
+        | Kernel::DurationMultiply
+        | Kernel::DurationDivide
         | Kernel::TimeOrder(_)
         | Kernel::InstantLowerBin
         | Kernel::InstantUpperBin => time(kernel, arguments),

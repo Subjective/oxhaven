@@ -20,9 +20,9 @@
 //! half close.
 //!
 //! What a client is answered in each case was observed on Java 42.9 and is in the tests.
-//! Only the mode of delivery that the console uses is here: Java's other mode, in which
-//! a message that is overtaken is dropped, is the one of `BrowserFlightService`, which
-//! this server does not have (`tasks/2.6-config-grpc-web.md`).
+//! Only the mode of delivery that Java's services use is here, the console's, the object
+//! service's and `BrowserFlightService`'s (`flight::browser`) alike: Java's other mode, in
+//! which a message that is overtaken is dropped, is used by none of them.
 //!
 //! Behavior: `io.deephaven.server.browserstreaming.BrowserStream` (mode `IN_ORDER`),
 //! `BrowserStreamInterceptor`, and

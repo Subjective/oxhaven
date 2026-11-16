@@ -7,7 +7,9 @@ redirection in `io.deephaven.engine.util.PythonEvaluatorJpy`.
 """
 
 import importlib.abc
+import importlib.machinery
 import importlib.util
+import os
 import sys
 import traceback
 
@@ -18,7 +20,8 @@ class _EmbeddedImporter(importlib.abc.MetaPathFinder, importlib.abc.InspectLoade
     """Imports the modules whose source the server binary holds.
 
     `sources` maps a module name to `(source text, is package)`. The importer comes first on
-    `sys.meta_path`, so a `deephaven` package installed in the environment is not used.
+    `sys.meta_path`, so a `deephaven` package installed in the environment is not used,
+    but for the modules it has and the binary has not (`_find_added`).
     """
 
     def __init__(self, sources):
@@ -31,11 +34,27 @@ class _EmbeddedImporter(importlib.abc.MetaPathFinder, importlib.abc.InspectLoade
 
     def find_spec(self, name, path=None, target=None):
         if name not in self._sources:
-            return None
+            return self._find_added(name)
         is_package = self._sources[name][1]
         return importlib.util.spec_from_loader(
             name, self, origin=self._filename(name, is_package), is_package=is_package
         )
+
+    def _find_added(self, name):
+        """A module that a distribution of the environment adds to a package of the binary,
+        as the plugins `deephaven.plot.express` and `deephaven.ui` add theirs to the package
+        of the reference: it is looked for in the directories of the package's name on
+        `sys.path`. A module the binary holds is never looked for there.
+        """
+        parent = name.rpartition(".")[0]
+        if not self._sources.get(parent, ("", False))[1]:
+            return None
+        relative = parent.replace(".", os.sep)
+        directories = [os.path.join(entry, relative) for entry in sys.path if entry]
+        directories = [directory for directory in directories if os.path.isdir(directory)]
+        if not directories:
+            return None
+        return importlib.machinery.PathFinder.find_spec(name, directories)
 
     def is_package(self, name):
         return self._sources[name][1]
@@ -110,7 +129,12 @@ def unwrap(value):
 
     Behavior: `deephaven._wrapper.javaify`, without the wrapping of other Python objects
     """
-    handles = (_oxhaven.TableHandle, _oxhaven.PartitionedHandle, _oxhaven.HierarchicalHandle)
+    handles = (
+        _oxhaven.TableHandle,
+        _oxhaven.PartitionedHandle,
+        _oxhaven.HierarchicalHandle,
+        _oxhaven.FigureHandle,
+    )
     if isinstance(value, handles):
         return value
     try:

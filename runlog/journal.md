@@ -850,3 +850,16 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   window. A resumed agent carries its whole history, so reuse has a ceiling: after one
   large task plus one follow-up message, start fresh and hand over notes instead.
 - Merged pull request 101 (7.8, rollup first slice) on six green checks. Pull request 102 gets main merged in before its checks count.
+- Merged pull request 102 (5.6, formula gaps) on six green checks. Started 5.7 (formula functions and static calls) with a fresh agent and the 5.6 notes as handover.
+- Pull request 103 opened (7.11, figures). Two agents built the browser DoPut pair at the
+  same time (rollup and figures both needed it); main's copy won in the merge. The cost
+  was one agent's hour on duplicate work: when two running tasks can need the same
+  missing piece, name it in both briefs and give it to one. For the owner: the embedded
+  importer now also looks on `sys.path` for modules of the `deephaven` package it does not
+  hold (needed for plugin distributions; it would also pick up the reference wheel's
+  modules if that wheel is installed); `jpy` use inside third-party plugins has no
+  principled answer yet.
+- Started 7.10.1 (JS plugins, plotly-express needs) with a fresh agent and docs/FIGURES.md
+  as handover. File serving follows the storage ruling (nothing outside the plugin's
+  directory); if Java differs, it comes back as a question, not as a PARITY.md entry.
+- Merged pull request 103 (7.11, figures) on six green checks.

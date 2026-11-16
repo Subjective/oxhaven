@@ -141,7 +141,7 @@ impl ColumnArray {
 
 /// Refuses `rows` vectors of `length` elements, which a list array cannot hold. Java holds
 /// one vector and a reference to it per row.
-fn too_many_elements(length: usize, rows: usize) -> Result<(), TableFailure> {
+pub(super) fn too_many_elements(length: usize, rows: usize) -> Result<(), TableFailure> {
     if length
         .checked_mul(rows)
         .is_none_or(|elements| elements > i32::MAX as usize)
@@ -176,13 +176,16 @@ fn same_in_every_row(expr: &Typed) -> bool {
             | Node::BooleanBitwise { left, right, .. }
             | Node::Compare { left, right, .. }
             | Node::Logical { left, right, .. }
-            | Node::Concat { left, right } => all(&[left, right]),
+            | Node::Concat { left, right }
+            | Node::Elementwise { left, right, .. } => all(&[left, right]),
             Node::Ternary {
                 condition,
                 if_true,
                 if_false,
             } => all(&[condition, if_true, if_false]),
-            Node::Call { arguments, .. } => arguments.iter().all(|part| walk(part, arrays)),
+            Node::Call { kernel, arguments } => {
+                !kernel.is_volatile() && arguments.iter().all(|part| walk(part, arrays))
+            }
             Node::StringMethod {
                 receiver,
                 arguments,

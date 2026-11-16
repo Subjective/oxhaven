@@ -19,6 +19,8 @@ use oxhaven_contracts::schema::ColumnType;
 
 /// The method name given to `receiver[index]`, which is parsed as a method call on
 /// `receiver`. It is not an identifier, so no formula can spell it.
+pub(crate) use instant::{duration_nanos, period_days};
+
 pub(crate) const INDEX_METHOD: &str = "[]";
 
 /// The method name given to `receiver.length`, the length of a Java array, which is
@@ -333,12 +335,36 @@ impl Parser {
             }
             name.push('.');
         }
+        let mut dimensions = 0_usize;
         while self.eat("[") {
             self.expect("]")?;
-            name.push_str("[]");
+            dimensions += 1;
         }
         self.expect(")")?;
         let operand = Box::new(self.unary()?);
+        if dimensions > 0 {
+            // An array type. `Boolean[]` is not `boolean[]`, and no column type is it.
+            let element = match name.as_str() {
+                "boolean" => ColumnType::Boolean,
+                "byte" => ColumnType::Byte,
+                "char" => ColumnType::Char,
+                "short" => ColumnType::Short,
+                "int" => ColumnType::Int,
+                "long" => ColumnType::Long,
+                "float" => ColumnType::Float,
+                "double" => ColumnType::Double,
+                "String" | "java.lang.String" => ColumnType::String,
+                "Instant" | "java.time.Instant" => ColumnType::Instant,
+                other => {
+                    return Err(unsupported(format!(
+                        "cast to {other}{}",
+                        "[]".repeat(dimensions)
+                    )))
+                }
+            };
+            let to = (0..dimensions).fold(element, |inner, _| ColumnType::Array(Box::new(inner)));
+            return Ok(Expr::Cast { to, operand });
+        }
         let to = match name.as_str() {
             "boolean" => {
                 return Ok(Expr::Ternary {
@@ -1005,7 +1031,7 @@ mod tests {
         let cases = [
             ("(Integer) A", "cast to Integer"),
             ("(java.math.BigDecimal) A", "cast to java.math.BigDecimal"),
-            ("(int[]) A", "cast to int[]"),
+            ("(Integer[]) A", "cast to Integer[]"),
             ("Math.PI", "field access .PI"),
             ("(Double).NaN", "field access .NaN"),
             ("Double.NaN.x", "field access .x"),
