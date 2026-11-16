@@ -467,7 +467,7 @@ const MAX_CONVERTIBLE_SECONDS: i128 = (i64::MAX / 1_000_000_000) as i128;
 /// Behavior: `DateTimeUtils#epochNanos(Instant)`, which every instant passes through on its
 /// way into a column: it refuses an instant from epoch second `Long.MAX_VALUE / 10^9` on,
 /// and lets one before the range of a `long` wrap.
-fn store_instant(nanos: i128) -> Result<i64, TableFailure> {
+pub(super) fn store_instant(nanos: i128) -> Result<i64, TableFailure> {
     let seconds = nanos.div_euclid(1_000_000_000);
     if seconds >= MAX_CONVERTIBLE_SECONDS {
         return Err(failure(format!(
@@ -499,7 +499,7 @@ fn checked_minus(a: i64, b: i64) -> Result<i64, TableFailure> {
     Ok(a.wrapping_sub(b))
 }
 
-fn instants(
+pub(super) fn instants(
     values: impl Iterator<Item = Result<Option<i64>, TableFailure>>,
 ) -> Result<ArrayRef, TableFailure> {
     let values = values
@@ -797,6 +797,7 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         Kernel::ParseInstant { quiet } => parse_instants(arguments[0].as_ref(), quiet),
         Kernel::InstantMethod(method) => instant_method(method, arguments[0].as_ref()),
         Kernel::Zoned(field, zone) => zoned(field, zone, arguments),
+        Kernel::ZonedByColumn(field) => zoned_by_column(field, arguments),
         Kernel::CompareTo => compare_to(arguments),
         Kernel::Range(function) => super::range::evaluate(function, arguments),
         Kernel::RandomNextInt => super::random::evaluate(arguments),
@@ -814,6 +815,7 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         | Kernel::InstantUpperBin => time(kernel, arguments),
         Kernel::Vector(function) => super::vectors::evaluate(function, arguments),
         Kernel::ArrayOf => array_of(arguments),
+        Kernel::JavaTime(function) => super::java_time::evaluate(function, arguments),
         _ => in_number_type!(arguments[0], |T| numeric::<T>(kernel, arguments, None)),
     }
 }
@@ -916,8 +918,56 @@ fn compare_to(arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
 /// began (`DateTimeUtils#atMidnight`), which differs on a day the clocks change. A null
 /// flag is unboxed, and that throws.
 fn zoned(field: ZonedField, zone: Zone, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
-    let instants = arguments[0].as_primitive::<TimestampNanosecondType>();
-    let on_the_clock = arguments.get(1).map(|flags| flags.as_boolean());
+    zoned_in(field, |_| Ok(Some(zone)), &arguments[0], arguments.get(1))
+}
+
+/// `zoned` with the zone of each row a cell of a `ZoneId` column: null where the zone is.
+///
+/// Behavior: the same functions of `DateTimeUtils`, which are null when the zone is null.
+/// The arguments are an instant, the zone and the flag of a field of the day, if it has
+/// one; or a `ZonedDateTime`, which holds both, and the flag.
+///
+/// Behavior: `DateTimeUtils#hourOfDay(Instant, ZoneId, boolean)` and its relatives are
+/// the same function of `toZonedDateTime(instant, timeZone)`.
+pub(super) fn zoned_by_column(
+    field: ZonedField,
+    arguments: &[ArrayRef],
+) -> Result<ArrayRef, TableFailure> {
+    if let DataType::Struct(_) = arguments[0].data_type() {
+        let parts = arguments[0].as_struct();
+        let stamps = parts.column(0).as_primitive::<TimestampNanosecondType>();
+        let instants: ArrayRef = Arc::new(
+            TimestampNanosecondArray::new(stamps.values().clone(), parts.nulls().cloned())
+                .with_data_type(ColumnType::Instant.arrow_type()),
+        );
+        let mut split = vec![instants, Arc::clone(parts.column(1))];
+        split.extend(arguments.get(1).cloned());
+        return zoned_by_column(field, &split);
+    }
+    let ids = arguments[1].as_string::<i32>();
+    zoned_in(
+        field,
+        |row| {
+            if ids.is_null(row) {
+                return Ok(None);
+            }
+            crate::parse::instant::zone_of_id(ids.value(row))
+                .map(Some)
+                .ok_or_else(|| failure(format!("time zone '{}'", ids.value(row))))
+        },
+        &arguments[0],
+        arguments.get(2),
+    )
+}
+
+fn zoned_in(
+    field: ZonedField,
+    zone_at: impl Fn(usize) -> Result<Option<Zone>, TableFailure>,
+    instants: &ArrayRef,
+    flags: Option<&ArrayRef>,
+) -> Result<ArrayRef, TableFailure> {
+    let instants = instants.as_primitive::<TimestampNanosecondType>();
+    let on_the_clock = flags.map(|flags| flags.as_boolean());
     if on_the_clock.is_some_and(|flags| flags.null_count() > 0) {
         return Err(failure(
             "java.lang.NullPointerException: Cannot invoke \
@@ -930,6 +980,9 @@ fn zoned(field: ZonedField, zone: Zone, arguments: &[ArrayRef]) -> Result<ArrayR
             if instants.is_null(row) {
                 return Ok(None);
             }
+            let Some(zone) = zone_at(row)? else {
+                return Ok(None);
+            };
             let nanos = instants.value(row);
             let seconds = nanos.div_euclid(1_000_000_000);
             let fraction = nanos.rem_euclid(1_000_000_000);

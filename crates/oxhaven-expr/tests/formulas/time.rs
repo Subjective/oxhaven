@@ -416,12 +416,11 @@ fn a_date_and_time_have_their_fields_in_a_zone() {
     for (formula, construct) in [
         (
             "secondOfDay(TS, null, true)",
-            "function secondOfDay() with a time zone that is not a literal",
+            "null literal as an argument of secondOfDay()",
         ),
         ("dayOfYear(TS, 'NY')", "time literal 'NY'"),
         ("dayOfYear(TS, timeZone(`NY`))", "time zone 'NY'"),
         ("dayOfYear(TS)", "function dayOfYear()"),
-        ("'ET'", "function parseTimeZone()"),
     ] {
         assert_eq!(
             table.compile_error(formula),
@@ -429,4 +428,108 @@ fn a_date_and_time_have_their_fields_in_a_zone() {
             "{formula}"
         );
     }
+}
+
+/// Behavior: `DateTimeUtils#hourOfDay(Instant, ZoneId, boolean)` and its relatives, which
+/// are those of `toZonedDateTime(instant, timeZone)` and null when either is null;
+/// `#year(LocalDate)`, `#dayOfWeekValue(LocalDate)`, `#yearOfCentury(LocalDate)`
+/// (`year % 100`), `#minuteOfDay(LocalTime)` and `#nanosOfDay(LocalTime)`.
+#[test]
+fn a_field_is_read_in_the_zone_of_each_row_and_of_a_date_or_time() {
+    let table = TestTable::new([
+        (
+            "T",
+            // 2024-03-10T12:00Z, the day New York moved its clocks on.
+            instants([Some(1_710_072_000_000_000_000), None, Some(0), Some(0)]),
+        ),
+        (
+            "Name",
+            strings([Some("America/New_York"), Some("UTC"), None, Some("UTC")]),
+        ),
+    ]);
+    let int = |values: [Option<i32>; 4]| ints(values);
+    table.assert(
+        "hourOfDay(T, timeZone(Name), true)",
+        int([Some(8), None, None, Some(0)]),
+    );
+    table.assert(
+        "hourOfDay(T, timeZone(Name), false)",
+        int([Some(7), None, None, Some(0)]),
+    );
+    let zoned = "toZonedDateTime(T, timeZone(Name))";
+    table.assert(
+        &format!("hourOfDay({zoned}, true)"),
+        int([Some(8), None, None, Some(0)]),
+    );
+    table.assert(
+        &format!("year({zoned})"),
+        int([Some(2024), None, None, Some(1970)]),
+    );
+    let date = "toLocalDate(T, timeZone(Name))";
+    table.assert(
+        &format!("dayOfWeekValue({date})"),
+        int([Some(7), None, None, Some(4)]),
+    );
+    table.assert(
+        &format!("dayOfYear({date})"),
+        int([Some(70), None, None, Some(1)]),
+    );
+    table.assert(
+        "yearOfCentury(parseLocalDate(`-0005-01-01`))",
+        int([Some(-5); 4]),
+    );
+    let time = "toLocalTime(T, timeZone(Name))";
+    table.assert(
+        &format!("minuteOfDay({time})"),
+        int([Some(480), None, None, Some(0)]),
+    );
+    table.assert(
+        &format!("nanosOfDay({time})"),
+        longs([Some(8 * 3_600_000_000_000), None, None, Some(0)]),
+    );
+}
+
+/// Behavior: `java.time.LocalDate#of(int, int, int)`. The messages are those Java 42.9
+/// logged for the same formulas.
+#[test]
+fn a_date_is_made_of_its_year_month_and_day() {
+    let first = TestTable::new([("Y", ints([Some(2024)]))]);
+    first.assert(
+        "LocalDate.of(Y, 2, 29)",
+        (
+            ColumnType::LocalDate,
+            Arc::new(arrow::array::Date32Array::from(vec![19_782])),
+        ),
+    );
+    let table = TestTable::new([("Y", ints([Some(2023)]))]);
+    for (formula, message) in [
+        (
+            "LocalDate.of(Y, 2, 29)",
+            "Invalid date 'February 29' as '2023' is not a leap year",
+        ),
+        ("LocalDate.of(2023, 4, 31)", "Invalid date 'APRIL 31'"),
+        (
+            "LocalDate.of(Y, 1, 32)",
+            "Invalid value for DayOfMonth (valid values 1 - 28/31): 32",
+        ),
+        (
+            "LocalDate.of(2020, Y, 1)",
+            "Invalid value for MonthOfYear (valid values 1 - 12): 2023",
+        ),
+    ] {
+        let Err(failure) = table.evaluate(formula) else {
+            panic!("{formula} did not fail");
+        };
+        assert!(failure.message.contains(message), "{formula}: {failure}");
+    }
+    let nulls = TestTable::new([("Y", ints([None]))]);
+    let Err(failure) = nulls.evaluate("LocalDate.of(Y, 1, 1)") else {
+        panic!("a null year did not fail");
+    };
+    assert!(
+        failure
+            .message
+            .contains("(valid values -999999999 - 999999999): -2147483648"),
+        "{failure}"
+    );
 }
