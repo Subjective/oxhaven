@@ -21,7 +21,7 @@ docker run -d --name "$name" --network host \
   -e KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER \
   -e KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT \
   -e "KAFKA_CONTROLLER_QUORUM_VOTERS=1@127.0.0.1:$controller" \
-  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 \
+  -e KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1 -e KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS=0 \
   -e KAFKA_HEAP_OPTS="-Xmx384m -Xms128m" "$image" >/dev/null
 trap 'docker rm -f "$name" >/dev/null' EXIT
 
@@ -31,12 +31,17 @@ kafka() {
   docker exec -i "$name" "/opt/kafka/bin/$tool" --bootstrap-server "127.0.0.1:$port" "$@"
 }
 
-for _ in $(seq 60); do
-  if kafka kafka-topics.sh --list >/dev/null 2>&1; then
-    break
-  fi
-  sleep 1
-done
+await_broker() {
+  for _ in $(seq 60); do
+    if kafka kafka-topics.sh --list >/dev/null 2>&1; then
+      return
+    fi
+    sleep 1
+  done
+  echo "the broker in container $name does not answer" >&2
+  return 1
+}
+await_broker
 
 kafka kafka-topics.sh --create --topic oxhaven_one --partitions 1 >/dev/null
 kafka kafka-topics.sh --create --topic oxhaven_two --partitions 2 >/dev/null
@@ -55,6 +60,16 @@ d|v4
 e|v5
 f|v6
 RECORDS
+# The build of librdkafka in the tests has no zlib, so it cannot write this topic itself.
+kafka kafka-console-producer.sh --topic oxhaven_gzip --compression-codec gzip <<'RECORDS'
+a record in a batch compressed with gzip
+RECORDS
 
 cd "$repo"
-OXHAVEN_KAFKA_BROKER="127.0.0.1:$port" cargo test -p oxhaven-kafka --test broker -- --ignored
+export OXHAVEN_KAFKA_BROKER="127.0.0.1:$port"
+restarted=a_table_goes_on_after_its_broker_restarts
+cargo test -p oxhaven-kafka --test broker -- --ignored --skip "$restarted"
+# Alone, because the other tests would lose their broker: the container is restarted
+# while a table reads from it.
+OXHAVEN_KAFKA_RESTART="docker restart $name" \
+  cargo test -p oxhaven-kafka --test broker -- --ignored --exact "$restarted"
