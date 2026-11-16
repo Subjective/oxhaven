@@ -1,0 +1,51 @@
+{
+  "format": 1,
+  "outcomes": [
+    {
+      "step": 0,
+      "outcome": "ok"
+    },
+    {
+      "step": 1,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format columns. : RuntimeError: java.lang.RuntimeException: Unknown columns: [Nope], available columns = [S, X, Y, N]",
+      "operation": "failed to color format columns."
+    },
+    {
+      "step": 2,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format columns. : RuntimeError: java.lang.IllegalArgumentException: Illegal format specification: X RED",
+      "operation": "failed to color format columns."
+    },
+    {
+      "step": 3,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format columns. : Cannot find variable or class NoSuchColour",
+      "operation": "failed to color format columns."
+    },
+    {
+      "step": 4,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format column conditionally. : Cannot find variable or class Nope",
+      "operation": "failed to color format column conditionally."
+    },
+    {
+      "step": 5,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format rows conditionally. : Cannot find method toLong(double) in class io.deephaven.engine.util.ColorUtil",
+      "operation": "failed to color format rows conditionally."
+    },
+    {
+      "step": 6,
+      "outcome": "error",
+      "type": "deephaven.dherror.DHError",
+      "text": "failed to color format columns. : RuntimeError: java.lang.RuntimeException: Unknown columns: [X__TABLE_STYLE_FORMAT], available columns = [S, X, Y, N]",
+      "operation": "failed to color format columns."
+    }
+  ]
+}

@@ -1,0 +1,536 @@
+{
+  "format": 2,
+  "scenario": "rollup_update_view",
+  "scenario_sha256": "171ecaa1e22c9763726897df2fb5f7338dd0567c3e95753e43e1941cdb2d11ab",
+  "reference": "42.9",
+  "entries": [
+    {
+      "step": 0,
+      "table": "v_uv",
+      "file": "step000.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_cons",
+      "file": "step000.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_wuv",
+      "file": "step000.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_sorted",
+      "file": "step000.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_later",
+      "file": "step000.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_chain",
+      "file": "step000.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 0,
+      "table": "v_filtered",
+      "file": "step000.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 0,
+      "table": "v_default",
+      "file": "step000.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 1,
+      "table": "v_uv",
+      "file": "step001.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_cons",
+      "file": "step001.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_wuv",
+      "file": "step001.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_sorted",
+      "file": "step001.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_later",
+      "file": "step001.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_chain",
+      "file": "step001.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 1,
+      "table": "v_filtered",
+      "file": "step001.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 1,
+      "table": "v_default",
+      "file": "step001.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 2,
+      "table": "v_uv",
+      "file": "step002.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_cons",
+      "file": "step002.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_wuv",
+      "file": "step002.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_sorted",
+      "file": "step002.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_later",
+      "file": "step002.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_chain",
+      "file": "step002.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 2,
+      "table": "v_filtered",
+      "file": "step002.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 2,
+      "table": "v_default",
+      "file": "step002.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 3,
+      "table": "v_uv",
+      "file": "step003.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_cons",
+      "file": "step003.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_wuv",
+      "file": "step003.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_sorted",
+      "file": "step003.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_later",
+      "file": "step003.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_chain",
+      "file": "step003.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 3,
+      "table": "v_filtered",
+      "file": "step003.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 3,
+      "table": "v_default",
+      "file": "step003.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 4,
+      "table": "v_uv",
+      "file": "step004.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_cons",
+      "file": "step004.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_wuv",
+      "file": "step004.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_sorted",
+      "file": "step004.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_later",
+      "file": "step004.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_chain",
+      "file": "step004.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 4,
+      "table": "v_filtered",
+      "file": "step004.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 4,
+      "table": "v_default",
+      "file": "step004.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 5,
+      "table": "v_uv",
+      "file": "step005.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_cons",
+      "file": "step005.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_wuv",
+      "file": "step005.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_sorted",
+      "file": "step005.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_later",
+      "file": "step005.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_chain",
+      "file": "step005.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 5,
+      "table": "v_filtered",
+      "file": "step005.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 5,
+      "table": "v_default",
+      "file": "step005.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 6,
+      "table": "v_uv",
+      "file": "step006.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_cons",
+      "file": "step006.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_wuv",
+      "file": "step006.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_sorted",
+      "file": "step006.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_later",
+      "file": "step006.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_chain",
+      "file": "step006.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 6,
+      "table": "v_filtered",
+      "file": "step006.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 6,
+      "table": "v_default",
+      "file": "step006.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 7,
+      "table": "v_uv",
+      "file": "step007.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_cons",
+      "file": "step007.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_wuv",
+      "file": "step007.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_sorted",
+      "file": "step007.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_later",
+      "file": "step007.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_chain",
+      "file": "step007.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 7,
+      "table": "v_filtered",
+      "file": "step007.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 7,
+      "table": "v_default",
+      "file": "step007.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 8,
+      "table": "v_uv",
+      "file": "step008.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_cons",
+      "file": "step008.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_wuv",
+      "file": "step008.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_sorted",
+      "file": "step008.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_later",
+      "file": "step008.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_chain",
+      "file": "step008.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 8,
+      "table": "v_filtered",
+      "file": "step008.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 8,
+      "table": "v_default",
+      "file": "step008.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 9,
+      "table": "v_uv",
+      "file": "step009.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_cons",
+      "file": "step009.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_wuv",
+      "file": "step009.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_sorted",
+      "file": "step009.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_later",
+      "file": "step009.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_chain",
+      "file": "step009.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 9,
+      "table": "v_filtered",
+      "file": "step009.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 9,
+      "table": "v_default",
+      "file": "step009.v_default.arrow",
+      "rows": 5
+    },
+    {
+      "step": 10,
+      "table": "v_uv",
+      "file": "step010.v_uv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_cons",
+      "file": "step010.v_cons.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_wuv",
+      "file": "step010.v_wuv.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_sorted",
+      "file": "step010.v_sorted.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_later",
+      "file": "step010.v_later.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_chain",
+      "file": "step010.v_chain.arrow",
+      "rows": 17
+    },
+    {
+      "step": 10,
+      "table": "v_filtered",
+      "file": "step010.v_filtered.arrow",
+      "rows": 13
+    },
+    {
+      "step": 10,
+      "table": "v_default",
+      "file": "step010.v_default.arrow",
+      "rows": 5
+    }
+  ]
+}
