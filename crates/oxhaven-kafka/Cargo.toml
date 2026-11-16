@@ -1,0 +1,25 @@
+[package]
+name = "oxhaven-kafka"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+arrow.workspace = true
+bytes.workspace = true
+# The Kafka wire messages and the record batch format, and nothing else: no connection, no
+# compression codec, no C library. The client around it is `src/wire.rs`. docs/KAFKA.md,
+# "The client library".
+kafka-protocol = { version = "0.18", default-features = false, features = ["client"] }
+oxhaven-column = { path = "../oxhaven-column" }
+oxhaven-contracts = { path = "../oxhaven-contracts" }
+oxhaven-engine = { path = "../oxhaven-engine" }
+serde = "1"
+# `raw_value` keeps a number's text, which Java's conversions depend on (`src/json.rs`).
+serde_json = { workspace = true, features = ["raw_value"] }
+
+[dev-dependencies]
+oxhaven-testkit = { path = "../oxhaven-testkit" }
