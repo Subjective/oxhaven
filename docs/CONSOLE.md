@@ -532,6 +532,31 @@ Not observable here, so not built: the reference counts themselves (`LivenessSco
 `j_scope`, `tryManage` on a dead referent), and anything of an `ExecutionContext` but its
 update graph.
 
+A partitioned table is taken by a scope and never released (task 7.10.1). On Java 42.9 one
+of a static or a ticking table stayed usable (`table`, `constituent_tables`, `merge`, `keys`)
+after `manage` and `release`, twice over, after `unmanage`, after `preserve`, and when it
+was made inside a `liveness_scope` block that ended; so it does here. Not the same: a table
+that `merge()` or `keys()` returned inside a block is released with the block here, as any
+table is, and stayed usable in Java.
+
+### Executors and calendars
+
+`deephaven.server.executors` (task 7.10.1) has Java's two names, `serial` and `concurrent`,
+and one thread behind both, as Java 42.9 was seen to have
+(`PythonDeephavenSession#registerJavaExecutor` is given the same single-threaded executor
+under both names): tasks run one at a time in the order they were submitted, whichever
+name took them. What a task raises is seen by no one, and what is no function is taken and
+fails unseen, as in Java. An unknown name is a `KeyError`. The thread is a Python thread
+made by this package; in Java it is a Java thread, which Python shows as a `_DummyThread`.
+A task has no `ExecutionContext` in Java, so a formula in it is refused there and runs here
+(the row of the table above). `_register_named_java_executor` of a new name is refused by
+the name of `PythonDeephavenSession#registerJavaExecutor`.
+
+`deephaven.calendar` has its six functions, and each is refused with the reference's
+message for the failure and the name of its method of `io.deephaven.time.calendar.Calendars`
+(`calendar`, `calendarName`, `calendarNames`, `setCalendar`, `removeCalendar`,
+`addCalendar`, `addCalendarFromFile`): this server has no business calendars.
+
 ## Completion
 
 Task 6.13. Java completes Python with the library `jedi`, which runs in the session's
