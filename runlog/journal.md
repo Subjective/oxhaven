@@ -833,3 +833,12 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   merging main into the branch starts a run that sees the label. If this repeats, the
   `rules` job should read the labels from the API instead of the event payload (a change
   to the workflow, for the owner to approve since it is the gate).
+- Merged pull request 100 (4.19, table sources) on six green checks after the label race.
+- Pull request 101 opened (7.8, rollup first slice); it conflicts with main after 100, so
+  its author was resumed to merge main, and continues with 7.8.1 afterwards. Design
+  decision taken by the architect agent and recorded in docs/HIERARCHICAL.md: every level
+  of a rollup aggregates the source rather than the level below (simple and correct; cost
+  n+1 aggregations per change; re-aggregation is 7.8.5 after a measurement). For the
+  owner: SortedFirst/SortedLast in a rollup with group-by columns (Java fails or sorts
+  results, not rows); key table row order changes the expansion result in Java
+  (reproduced).
