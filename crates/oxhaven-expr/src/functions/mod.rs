@@ -22,6 +22,8 @@
 //! - The `null` literal is not an argument of any primitive overload.
 
 mod classes;
+pub(crate) mod color;
+mod color_table;
 pub(crate) mod eval;
 pub(crate) mod java_time;
 mod names;
@@ -502,6 +504,9 @@ pub(crate) enum Kernel {
     Zoned(ZonedField, crate::parse::instant::Zone),
     /// `compareTo` of two numbers.
     CompareTo,
+    /// A function of colours and styles, which computes with the values Java reserves
+    /// for null.
+    Color(color::ColorFn),
     /// The constructor or a method of `DiscretizedRangeEqual`; a method's first argument
     /// is the range.
     Range(range::RangeFn),

@@ -221,8 +221,9 @@ values when a cycle is running, and retries. The result is the same.
   internal error); the sorts (a direction that is not ascending or descending is
   `INVALID_ARGUMENT`, `Unsupported or unknown sort direction: <name>`; a column outside
   the source's `SortableColumns`, where it has that attribute, is `INVALID_ARGUMENT`,
-  `Sorting attempted on restricted column(s): ...`); the update views and format views
-  (refused as not ported, 7.8.2); then it applies the filters, then the sorts.
+  `Sorting attempted on restricted column(s): ...`); the update views, then the format
+  views; then it applies the update views, the format views, the filters, then the
+  sorts. See "Update views and formats of nodes".
   - **Filters.** A filter is checked against the columns of the source and may read any
     of them that no aggregation reads; one that reads an aggregated column or a column
     array is `INVALID_ARGUMENT`, `Invalid filter found: ...`, and one that reads a column
@@ -281,9 +282,50 @@ applies them, later recorders after earlier ones; `with_filters(filters)` filter
 the checks of `Apply`. A recorder for `NodeType.CONSTITUENT` records sorts of the rows of
 the source, checked against the source's columns; it is refused for a rollup without
 constituents, and so is applying one to such a rollup, as in Java. `with_node_operations` does not check that a
-recorder was made by this rollup; neither does Java. The recorder's `format_column`,
-`format_row_where`, `format_column_where` and `update_view`, and
-`RollupTable.with_update_view`, are refused by name (7.8.2).
+recorder was made by this rollup; neither does Java. The recorder's `update_view`,
+`format_column`, `format_row_where` and `format_column_where` record update views and
+formats, and `RollupTable.with_update_view` is the update view of a recorder for the
+aggregated nodes, applied (`RollupTableImpl#withUpdateView`). A recorder's errors are
+Java's `RuntimeError`; those of `with_node_operations` and `with_update_view` are
+`DHError`s with Java's messages.
+
+## Update views and formats of nodes
+
+Task 7.8.2. `ops::hierarchical::NodeOperations` is the recorder: the columns of the
+nodes of one type (without `__DEPTH__` and `__EXPANDED__`), and in the order recorded
+the update views, the formats and the sorts (`BaseNodeOperationsRecorder`). An update
+view and a format are compiled when they are recorded, against the columns of the nodes
+and what the recorder added before them: so a format can read a column an update view of
+the same recorder adds, and a later update view cannot name a column the recorder has.
+A format is `Column = format` of `ops::select::format`, as `Table.format_columns` takes
+it: a hidden column `<Column>__TABLE_STYLE_FORMAT`, `__TABLE_NUMBER_FORMAT` or
+`__TABLE_DATE_FORMAT` (`__ROW__TABLE_STYLE_FORMAT` for `*`).
+
+`RollupTable::with_node_operations(constituents, recorder)` gives a rollup whose nodes
+of that type have the recorder's columns after their own, and its sorts in front of
+theirs. A node's table is then a table that computes the added columns when they are read
+(`node_ops::node_table`, no listener and no stored values): its update views, then its
+formats, a format of a column that has one replacing it in place. A row of a level has
+null in the group-by columns that level does not group by, as Java's update view reads
+them. The snapshot schema has the added columns after the columns of their node type,
+with the metadata of `HierarchicalTableSchemaUtil` (an aggregated node's column has
+`rollupTable.aggregationInputColumnName` empty, a constituent's has none) and the format
+links of `schema.rs` (`styleColumn`, `isStyle`, ...).
+
+Java keeps one recorder per node type and merges a second one into it only when both
+give the nodes the same columns (`RollupNodeOperationsRecorder#withOperations`). So a
+recorder that adds columns is refused for nodes that have operations of any kind, sorts
+included (`Incompatible operation recorders; ...`), and taken for nodes that have none;
+one that adds none (sorts, or formats again by a recorder made of the rollup that has
+them) is always taken. The same here.
+
+`Apply` checks every update view and every format view against the columns of the
+rollup's source before it reads its node type (`translateAndValidateUpdateViews`): an
+expression that reads a result of an aggregation that is not a column of the source is
+refused, and so are a pattern (`Decimal(..)`, `Date(..)`) and the row (`*`). A node type
+that is neither is `INVALID_ARGUMENT`, `Unsupported or unknown node type: <name>`. The
+views of the constituent nodes of a rollup without them are dropped. Every other refusal
+is an internal error with an error id, as in Java.
 
 ## What a tree reuses
 
@@ -369,7 +411,6 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| `Apply`: format and update views; the recorder's `format_column`, `format_row_where`, `format_column_where`, `update_view` | `RollupNodeOperationsRecorder#formatColumns`, `#formatRowWhere`, `#formatColumnWhere`, `#updateView` | 7.8.2 |
 | A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | needs a ruling |
 | A sort by a column of vectors or arrays (the result of `Distinct`), the absolute value of a `char` column | `SortOperation#SortOperation`, `QueryLanguageParser#visit(MethodCallExpr)`: the refusals of the engine's sort | none yet |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
@@ -377,11 +418,10 @@ Each names the Java method in its error.
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
 | The expansion of a row of a tree that has no identifier | `TreeTableImpl#makeChildNodeIdLookup` | needs a ruling |
 | A walk of a tree more than 200 levels deep | `HierarchicalTableImpl#visitExpandedNode` | needs a ruling |
-| `Apply` to a tree with update views or format views, which Java does not read | `HierarchicalTableServiceGrpcImpl#apply` | needs a ruling |
 | The tree recorder's `where`, `format_column`, `format_row_where`, `format_column_where` | `TreeNodeOperationsRecorder#where`, `#formatColumns`, `#formatRowWhere`, `#formatColumnWhere` | none yet |
+| A colour as the value of a formula (`AK = RED`, `new Color(..)`), the colours of `io.deephaven.engine.util.ColorUtil.RED`, `colorRGB(int, boolean)` | `io.deephaven.gui.color.Color`, `ColorUtilImpl` | 4.21 |
 | A tree of a blink table | `TreeTableImpl#makeTree` | none yet |
 | The refusal of an identifier and a parent of two types when one is of a type whose Java description is not written here | `ColumnDefinition#describeForCompatibility` | none yet |
-| Python `with_update_view` | `RollupTableImpl#withUpdateView` | 7.8.2 |
 | The browser streams of `Handshake` and `DoExchange` | `BrowserFlightServiceGrpcBinding#bindService` | 2.6 |
 
 ## Where Java does otherwise
@@ -416,8 +456,13 @@ Each names the Java method in its error.
   enough; here a walk more than 200 levels deep fails the snapshot, by name. Needs a
   ruling on the limit.
 - Java's `Apply` does not read the update views and format views of a request for a
-  tree: a request with only those gives the tree back. Here they are refused by name, as
-  a rollup's are. Needs a ruling.
+  tree: a request with only those gives the tree back, whatever they say (one that does
+  not compile too). Reproduced: they are not read here either. Listed for a ruling, as a
+  client is told nothing of the views it asked for.
+- Java refuses a second set of operations that add columns for the nodes of a rollup
+  that have operations (`RollupNodeOperationsRecorder#withOperations`): two update views
+  in a row, `with_update_view` twice, formats after a sort, update views and formats of
+  one node type in one `Apply`. Reproduced. Listed for a ruling.
 - Java's Python `TreeNodeOperationsRecorder` has `where` (a filter of the rows of a
   node); it is refused by name here, and `TreeTable#withNodeFilterColumns` is not
   offered.

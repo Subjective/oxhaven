@@ -9,6 +9,7 @@
 //! (the function library registers names in [`crate::functions`]), row variables and column
 //! arrays in [`Checker::check`] and [`Checker::column`].
 
+mod color;
 mod methods;
 
 use crate::external::{ExternalArgument, ExternalFunctions};
@@ -535,6 +536,7 @@ impl Checker<'_> {
             } else if functions::is_other_constant(name) {
                 Err(unsupported(format!("constant {name}")))
             } else {
+                self.refuse_color_name(name)?;
                 Err(type_error(format!("cannot find column {name}")))
             };
         };
@@ -666,6 +668,7 @@ impl Checker<'_> {
                 None => Err(unsupported(format!("constant {field}"))),
             };
         }
+        self.refuse_color_name(&format!("{scope}.{field}"))?;
         match functions::static_field(scope, field) {
             Some((column_type, literal)) => Ok(constant(column_type, literal)),
             None => Err(refused()),
@@ -692,7 +695,13 @@ impl Checker<'_> {
             return Err(unsupported(format!("field access .{field}")));
         }
         let refused = || unsupported(format!("static method call {class}.{method}()"));
-        match functions::library_function(class, method) {
+        // `io.deephaven.engine.util.ColorUtil`, the class a table format names, has the
+        // methods of `ColorUtilImpl`, which it extends.
+        let library = match class {
+            "io.deephaven.engine.util.ColorUtil" => "io.deephaven.engine.util.ColorUtilImpl",
+            other => other,
+        };
+        match functions::library_function(library, method) {
             functions::LibraryMember::NotLibrary => {}
             functions::LibraryMember::Missing => {
                 return Err(type_error(format!(
@@ -2100,6 +2109,9 @@ impl Checker<'_> {
                 None => self.check(argument)?,
             };
             return Ok(typed(ColumnType::Boolean, Node::IsNull(Box::new(argument))));
+        }
+        if let Some(result) = self.style_call(function, arguments)? {
+            return Ok(result);
         }
         let mut checked = Vec::with_capacity(arguments.len());
         for argument in arguments {

@@ -787,27 +787,6 @@ async fn apply_sorts_and_filters_a_rollup_and_refuses_what_java_refuses() {
             Code::InvalidArgument,
             LOGGED.to_string(),
         ),
-        // what Java does and this server does not yet
-        (
-            HierarchicalTableApplyRequest {
-                update_views: vec![update_view("Twice = Qty * 2")],
-                ..request(10, fresh())
-            },
-            Code::Unimplemented,
-            "not ported: io.deephaven.engine.table.impl.hierarchical.\
-             RollupNodeOperationsRecorder#updateView"
-                .to_string(),
-        ),
-        (
-            HierarchicalTableApplyRequest {
-                format_views: vec![update_view("Qty = RED")],
-                ..request(10, fresh())
-            },
-            Code::Unimplemented,
-            "not ported: io.deephaven.engine.table.impl.hierarchical.\
-             RollupNodeOperationsRecorder#formatColumns"
-                .to_string(),
-        ),
     ] {
         refused(apply(request).await, code, &text);
     }

@@ -1,6 +1,7 @@
 //! A rollup: the aggregations of a table at every level of a key hierarchy.
 
 use super::keys::{parts, KeyIndex};
+use super::node_ops::{node_table, NodeColumns, NodeOperations};
 use super::{
     merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey, Parent, Part,
     DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
@@ -74,6 +75,14 @@ pub struct RollupTable {
     constituent_sorts: Vec<SortColumn>,
     /// The columns a client may sort by, when the source's sorting was restricted.
     sortable: Option<Vec<String>>,
+    /// The columns of the constituent nodes, in a rollup that has them: the source's, then
+    /// those that node operations added.
+    constituent: Option<TableDefinition>,
+    /// The update views and formats of the aggregated nodes, whose columns are the last
+    /// of `aggregated`.
+    aggregated_columns: NodeColumns,
+    /// Those of the constituent nodes, whose columns are the last of `constituent`.
+    constituent_columns: NodeColumns,
 }
 
 /// The name Java refuses `aggregation` in a rollup by, if it does.
@@ -226,11 +235,14 @@ pub fn rollup(
         group_by: group_by.iter().map(|name| name.to_string()).collect(),
         include_constituents,
         levels: Arc::new(finest.0),
-        columns: snapshot_columns(&finest.1, include_constituents.then_some(source)),
+        columns: snapshot_columns(&finest.1, include_constituents.then(|| source.definition())),
         aggregated: finest.1,
         sorts: Vec::new(),
         constituent_sorts: Vec::new(),
         sortable,
+        constituent: include_constituents.then(|| source.definition().clone()),
+        aggregated_columns: NodeColumns::default(),
+        constituent_columns: NodeColumns::default(),
     })
 }
 
@@ -240,11 +252,11 @@ pub fn rollup(
 /// Behavior: RollupTableImpl#computeAvailableColumnDefinitions
 fn snapshot_columns(
     aggregated: &TableDefinition,
-    constituents: Option<&Arc<dyn Table>>,
+    constituents: Option<&TableDefinition>,
 ) -> Vec<ColumnDefinition> {
     let mut columns = aggregated.columns().to_vec();
-    if let Some(source) = constituents {
-        columns.extend(source.definition().columns().iter().cloned());
+    if let Some(constituents) = constituents {
+        columns.extend(constituents.columns().iter().cloned());
     }
     columns
 }
@@ -358,7 +370,140 @@ impl RollupTable {
     ///
     /// Behavior: RollupTable#getNodeDefinition(Constituent)
     pub fn constituent_definition(&self) -> Option<&TableDefinition> {
-        self.include_constituents.then(|| self.base.definition())
+        self.constituent.as_ref()
+    }
+
+    /// The columns of the nodes of one type, without the structural ones: of the
+    /// constituent nodes with `constituents`, which the rollup must have, of the
+    /// aggregated ones without.
+    fn node_columns(&self, constituents: bool) -> Result<&[ColumnDefinition], HierarchicalError> {
+        if constituents {
+            self.assert_includes_constituents()?;
+            Ok(self
+                .constituent
+                .as_ref()
+                .map_or(&[], |definition| definition.columns()))
+        } else {
+            Ok(&self.aggregated.columns()[2..])
+        }
+    }
+
+    /// A recorder of operations on the nodes of one type, with nothing recorded.
+    ///
+    /// Behavior: RollupTableImpl#makeNodeOperationsRecorder
+    pub fn node_operations(&self, constituents: bool) -> Result<NodeOperations, HierarchicalError> {
+        Ok(NodeOperations::new(
+            self.node_columns(constituents)?.to_vec(),
+        ))
+    }
+
+    /// Whether the nodes that `operations` was recorded for can be sorted by `sorts`, as
+    /// [`RollupTable::check_sorts`] says it of the nodes of this rollup: a column an
+    /// update view of `operations` adds can be sorted by, a formatting column cannot.
+    ///
+    /// Behavior: BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort, on the
+    /// recorder's result definition
+    pub fn check_recorded_sorts(
+        &self,
+        constituents: bool,
+        operations: &NodeOperations,
+        sorts: &[SortColumn],
+    ) -> Result<(), HierarchicalError> {
+        let existing = if constituents {
+            &self.constituent_columns
+        } else {
+            &self.aggregated_columns
+        };
+        if !operations.adds_columns() && existing.is_empty() {
+            return if constituents {
+                self.check_constituent_sorts(sorts)
+            } else {
+                self.check_sorts(sorts)
+            };
+        }
+        let visible = operations.visible_names();
+        let missing: Vec<&str> = sorts
+            .iter()
+            .map(|sort| sort.column.as_str())
+            .filter(|name| !visible.contains(name))
+            .collect();
+        if !missing.is_empty() {
+            return Err(HierarchicalError::IllegalArgument(format!(
+                "Unknown column names [{}], available column names are [{}]",
+                missing.join(", "),
+                visible.join(", ")
+            )));
+        }
+        let base = if constituents {
+            self.assert_includes_constituents()?;
+            &self.base
+        } else {
+            &self.levels.tables[self.group_by.len()]
+        };
+        let columns = existing.with(operations);
+        let table = node_table(base, &[], &columns)?;
+        check_sort_columns(table.as_ref(), sorts).map_err(|error| match error {
+            SortError::Table(failure) => HierarchicalError::Table(failure),
+            other => HierarchicalError::IllegalArgument(other.to_string()),
+        })
+    }
+
+    /// This rollup with what `operations` recorded for the nodes of one type: its update
+    /// views and formats after those the nodes have, and its sorts in front of theirs.
+    /// The rollup itself when nothing was recorded.
+    ///
+    /// Java keeps one recorder per node type and merges a second into it only when both
+    /// give the nodes the same columns. So operations that add a column are refused for
+    /// nodes that already have operations of any kind, sorts included, and accepted for
+    /// nodes that have none; operations that add none are always accepted.
+    ///
+    /// Behavior: RollupTableImpl#withNodeOperations and #accumulateOperations, which is
+    /// RollupNodeOperationsRecorder#withOperations
+    pub fn with_node_operations(
+        &self,
+        constituents: bool,
+        operations: &NodeOperations,
+    ) -> Result<RollupTable, HierarchicalError> {
+        if operations.is_empty() {
+            return Ok(self.clone());
+        }
+        let current = self.node_columns(constituents)?;
+        let (sorts, columns) = if constituents {
+            (&self.constituent_sorts, &self.constituent_columns)
+        } else {
+            (&self.sorts, &self.aggregated_columns)
+        };
+        let operated = !sorts.is_empty() || !columns.is_empty();
+        if operated && operations.definition() != current {
+            return Err(HierarchicalError::IllegalArgument(
+                "Incompatible operation recorders; compatible recorders must be created from \
+                 the same table, with the same node type"
+                    .to_string(),
+            ));
+        }
+        let duplicate = |error| HierarchicalError::IllegalArgument(format!("{error:?}"));
+        let mut result = self.clone();
+        let merged = merged_sorts(operations.sorts(), sorts);
+        let columns = columns.with(operations);
+        if constituents {
+            if !operated {
+                result.constituent = Some(
+                    TableDefinition::new(operations.definition().to_vec()).map_err(duplicate)?,
+                );
+            }
+            result.constituent_sorts = merged;
+            result.constituent_columns = columns;
+        } else {
+            if !operated {
+                let mut all = self.aggregated.columns()[..2].to_vec();
+                all.extend(operations.definition().iter().cloned());
+                result.aggregated = TableDefinition::new(all).map_err(duplicate)?;
+            }
+            result.sorts = merged;
+            result.aggregated_columns = columns;
+        }
+        result.columns = snapshot_columns(&result.aggregated, result.constituent.as_ref());
+        Ok(result)
     }
 
     /// What the rows of every aggregated node are sorted by, the column that decides
@@ -391,6 +536,9 @@ impl RollupTable {
     /// Behavior: io.deephaven.engine.table.impl.hierarchical.BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
     /// and #absoluteSelectColumns
     pub fn check_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
+        if !self.aggregated_columns.is_empty() {
+            return self.check_recorded_sorts(false, &self.node_operations(false)?, sorts);
+        }
         let finest = &self.levels.tables[self.group_by.len()];
         check_sort_columns(finest.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
@@ -432,6 +580,9 @@ impl RollupTable {
     /// BaseNodeOperationsRecorder.SortRecordingTableAdapter#sort
     pub fn check_constituent_sorts(&self, sorts: &[SortColumn]) -> Result<(), HierarchicalError> {
         self.assert_includes_constituents()?;
+        if !self.constituent_columns.is_empty() {
+            return self.check_recorded_sorts(true, &self.node_operations(true)?, sorts);
+        }
         check_sort_columns(self.base.as_ref(), sorts).map_err(|error| match error {
             SortError::NoSuchColumn(missing) => {
                 let definition = self.base.definition();
@@ -614,6 +765,11 @@ impl RollupTable {
             self.include_constituents,
             Some(compiler),
         )?;
+        // the columns node operations added stay where they are, after those of the levels
+        let mut all = aggregated.columns().to_vec();
+        all.extend(self.aggregated.columns()[all.len()..].iter().cloned());
+        let aggregated = TableDefinition::new(all)
+            .map_err(|error| HierarchicalError::IllegalArgument(format!("{error:?}")))?;
         Ok(RollupTable {
             source: if only_group_by {
                 self.source.clone()
@@ -630,6 +786,37 @@ impl RollupTable {
     /// The source aggregated by the first `depth` group-by columns.
     pub fn level(&self, depth: usize) -> Option<&Arc<dyn Table>> {
         self.levels.tables.get(depth)
+    }
+
+    /// The table of the child rows of `node` as the levels have it.
+    ///
+    /// Behavior: RollupTableImpl#nodeIdToNodeBaseTable
+    fn base_children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
+        let depth = node.depth as usize;
+        if depth == 1 && self.group_by.is_empty() {
+            // the grand total is the last level: its children are the rows of the source
+            return Ok(self.levels.constituents.clone());
+        }
+        if depth <= 1 {
+            // the root's child is the grand total, whose children are all of level 1
+            return Ok(self.levels.tables.get(depth).cloned());
+        }
+        let Some(Some(parts)) = self.levels.children.get(depth - 1) else {
+            return Ok(None);
+        };
+        let key = self.key_of(depth - 1, node.row)?;
+        let Some(row) = parts.index.find(&key)? else {
+            return Ok(None);
+        };
+        let underlying = parts.partitioned.table();
+        let cell = underlying
+            .definition()
+            .index_of(parts.partitioned.constituent_column())
+            .ok_or_else(|| super::failure("a partition without its constituent column"))?;
+        let handles = underlying
+            .column(cell)
+            .chunk(&RowSet::from_range(row, row))?;
+        Ok(tables_of(&handles)?.pop().flatten())
     }
 
     /// The key values of row `row` of level `width`, which has `width` key columns.
@@ -771,33 +958,25 @@ impl Hierarchy for RollupTable {
         NodeId { depth: 0, row: 0 }
     }
 
-    /// Behavior: RollupTableImpl#nodeIdToNodeBaseTable
+    /// Behavior: RollupTableImpl#nodeIdToNodeBaseTable, and for nodes with update views
+    /// or formats #applyNodeFormatsAndFilters
     fn children(&self, node: NodeId) -> Result<Option<Arc<dyn Table>>, HierarchicalError> {
-        let depth = node.depth as usize;
-        if depth == 1 && self.group_by.is_empty() {
-            // the grand total is the last level: its children are the rows of the source
-            return Ok(self.levels.constituents.clone());
-        }
-        if depth <= 1 {
-            // the root's child is the grand total, whose children are all of level 1
-            return Ok(self.levels.tables.get(depth).cloned());
-        }
-        let Some(Some(parts)) = self.levels.children.get(depth - 1) else {
+        let Some(base) = self.base_children(node)? else {
             return Ok(None);
         };
-        let key = self.key_of(depth - 1, node.row)?;
-        let Some(row) = parts.index.find(&key)? else {
-            return Ok(None);
-        };
-        let underlying = parts.partitioned.table();
-        let cell = underlying
-            .definition()
-            .index_of(parts.partitioned.constituent_column())
-            .ok_or_else(|| super::failure("a partition without its constituent column"))?;
-        let handles = underlying
-            .column(cell)
-            .chunk(&RowSet::from_range(row, row))?;
-        Ok(tables_of(&handles)?.pop().flatten())
+        // the children of `node` are at the depth below it
+        if node.depth as usize + 1 == self.group_by.len() + 2 {
+            if self.constituent_columns.is_empty() {
+                return Ok(Some(base));
+            }
+            return node_table(&base, &[], &self.constituent_columns).map(Some);
+        }
+        if self.aggregated_columns.is_empty() {
+            return Ok(Some(base));
+        }
+        // a level has null in the group-by columns it does not group by
+        let keys = &self.aggregated.columns()[2..2 + self.group_by.len()];
+        node_table(&base, keys, &self.aggregated_columns).map(Some)
     }
 
     /// A coarser level does not have the group-by columns below its own; Java has them
@@ -882,6 +1061,19 @@ impl Hierarchy for RollupTable {
         let constituent_rows = depth as usize == all_keys + 2;
         if (column >= first_constituent) != constituent_rows {
             return null();
+        }
+        let added = if constituent_rows {
+            &self.constituent_columns
+        } else {
+            &self.aggregated_columns
+        };
+        if !added.is_empty() {
+            // `table` is the node's table with the added columns, each under its name
+            let name = &self.columns[column].name;
+            let index = table.definition().index_of(name).ok_or_else(|| {
+                super::failure(format!("a node of a rollup has no column {name}"))
+            })?;
+            return Ok(table.column(index).chunk(rows)?);
         }
         if constituent_rows {
             return Ok(table.column(column - first_constituent).chunk(rows)?);

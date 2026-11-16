@@ -37,7 +37,7 @@ const faults = require('./lib/faults');
 const { routeRollup, routeTree } = require('./lib/rollup');
 
 const PSK_HANDLER = 'io.deephaven.authentication.psk.PskAuthenticationHandler';
-const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup', 'tree', 'notebook', 'log', 'grid', 'errors', 'reconnect'];
+const ALL_ROUTES = ['panels', 'iframe', 'jsapi', 'console', 'rollup', 'tree', 'notebook', 'log', 'grid', 'errors', 'reconnect', 'format'];
 
 function usage(message) {
   if (message) console.error(`error: ${message}`);
@@ -120,7 +120,7 @@ function gridHook() {
   const fillText = proto.fillText;
   proto.fillText = function (text, x, y, ...rest) {
     const m = this.getTransform();
-    record(this.canvas).frame.push({ text: String(text), x: m.e + x * m.a, y: m.f + y * m.d });
+    record(this.canvas).frame.push({ text: String(text), x: m.e + x * m.a, y: m.f + y * m.d, fill: String(this.fillStyle) });
     return fillText.call(this, text, x, y, ...rest);
   };
   const fillRect = proto.fillRect;
@@ -498,6 +498,7 @@ const ROUTES = Object.assign(
     console: routeConsole,
     rollup: (ctx) => routeRollup(ctx, { waitForIde, poll, Failure, locateGrid }),
     tree: (ctx) => routeTree(ctx, { waitForIde, poll, Failure, locateGrid }),
+    format: (ctx) => require('./lib/format')(ctx, { waitForIde, poll, Failure }),
   },
   require('./lib/flows')({ Failure, poll, readGrid, locateGrid, expectStaticGrid, waitForIde, same }),
 );
