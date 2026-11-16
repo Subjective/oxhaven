@@ -63,6 +63,20 @@ fn objects() -> TestTable {
     ])
 }
 
+/// Behavior: `QueryLanguageFunctionUtils#eq(Object, Object)`, `#less(Comparable,
+/// Comparable)` (null first) and string concatenation, which prints `LocalDate#toString`.
+#[test]
+fn a_date_is_compared_and_printed() {
+    let table = objects();
+    table.assert("Date == Date", flags([true, true, true]));
+    table.assert("Date < '2024-01-02'", flags([false, true, true]));
+    table.assert("Date >= '2024-01-02'", flags([true, false, false]));
+    table.assert(
+        "S + Date",
+        strings([Some("a2024-01-02"), Some("bnull"), Some("c1969-12-31")]),
+    );
+}
+
 fn compile(table: &TestTable, formula: &str) -> Result<Arc<dyn Formula>, FormulaError> {
     let expr = Compiler.parse(formula).expect("parses");
     Compiler.compile(&expr, &table.definition)
@@ -185,8 +199,7 @@ fn nothing_else_is_done_with_an_object_column() {
     for formula in [
         "Dec",
         "Dec + 1",
-        "Date == Date",
-        "S + Date",
+        "Date + 1",
         "Big > 1",
         "Time.getHour()",
         "Dec.toString(1)",

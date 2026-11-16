@@ -198,6 +198,10 @@ pub fn java_type_name(column_type: &ColumnType) -> Cow<'static, str> {
         ColumnType::LocalDate => "java.time.LocalDate",
         ColumnType::LocalTime => "java.time.LocalTime",
         ColumnType::LocalDateTime => "java.time.LocalDateTime",
+        ColumnType::Duration => "java.time.Duration",
+        ColumnType::Period => "java.time.Period",
+        ColumnType::ZoneId => "java.time.ZoneId",
+        ColumnType::ZonedDateTime => "java.time.ZonedDateTime",
         other => oxhaven_contracts::unported!(
             "io.deephaven.extensions.barrage.util.BarrageUtil#columnDefinitionsToFields",
             "Java class name of column type {other:?}"
@@ -280,6 +284,8 @@ fn is_sortable(column_type: &ColumnType) -> bool {
         ),
         // Observed: the constituent column of a partitioned table has no `isSortable`.
         ColumnType::Table(_) => false,
+        // Neither class is `Comparable`; observed on Java 42.9 for a formula column of each.
+        ColumnType::Period | ColumnType::ZoneId => false,
         _ => true,
     }
 }
@@ -544,6 +550,58 @@ mod tests {
             .iter()
             .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
             .collect()
+    }
+
+    /// What Java 42.9 declared for formula columns of the other `java.time` types:
+    /// `update("D = 'PT1H5M'", "P = 'P1Y2M3D'", "Z = 'ET'", "ZD = toZonedDateTime(...)")`.
+    #[test]
+    fn the_other_time_types_are_declared_as_in_java() {
+        let definition = definition(&[
+            ("D", ColumnType::Duration),
+            ("P", ColumnType::Period),
+            ("Z", ColumnType::ZoneId),
+            ("ZD", ColumnType::ZonedDateTime),
+        ]);
+        let schema = arrow_schema(&definition, &SchemaContext::default());
+        let seen: Vec<_> = schema
+            .fields()
+            .iter()
+            .map(|f| {
+                let metadata: HashMap<String, String> = f
+                    .metadata()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                (f.data_type().clone(), metadata)
+            })
+            .collect();
+        assert_eq!(
+            seen,
+            vec![
+                (
+                    DataType::Duration(TimeUnit::Nanosecond),
+                    metadata(&[
+                        ("deephaven:isSortable", "true"),
+                        ("deephaven:type", "java.time.Duration")
+                    ])
+                ),
+                (
+                    DataType::Interval(arrow::datatypes::IntervalUnit::YearMonth),
+                    metadata(&[("deephaven:type", "java.time.Period")])
+                ),
+                (
+                    DataType::Utf8,
+                    metadata(&[("deephaven:type", "java.time.ZoneId")])
+                ),
+                (
+                    DataType::Timestamp(TimeUnit::Nanosecond, Some("UTC".into())),
+                    metadata(&[
+                        ("deephaven:isSortable", "true"),
+                        ("deephaven:type", "java.time.ZonedDateTime")
+                    ])
+                ),
+            ]
+        );
     }
 
     /// What Java 42.9 declared for the columns of the Parquet files of

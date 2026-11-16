@@ -313,8 +313,19 @@ fn compare(table: &TestTable, case: &Value, java: &Value) -> Outcome {
             ))
         };
     }
+    if java["values"].is_null() && kind == "period" {
+        // The pinned pyarrow cannot read a period: only its type is recorded.
+        return if column_type == ColumnType::Period {
+            Outcome::Agrees
+        } else {
+            Outcome::Differs(format!(
+                "Java returns {java_type}; Oxhaven returns {column_type:?}"
+            ))
+        };
+    }
     let expected = column_of(kind, cells(&java["values"]));
     let expected = (list_type(java_type, expected.0), expected.1);
+    let values = super::recorded::as_sent(&column_type, values);
     if column_type != expected.0 {
         return Outcome::Differs(format!(
             "Java returns {java_type}; Oxhaven returns {column_type:?}"

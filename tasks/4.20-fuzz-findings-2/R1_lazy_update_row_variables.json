@@ -1,0 +1,17 @@
+{
+ "format": 1,
+ "name": "R1_lazy_update_row_variables",
+ "description": "lazy_update with a row variable and with a column array.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "V", "type": "int32"}], "rows": [[1], [0], [3], [-2], [5]]}
+ ],
+ "operations": [
+  {"name": "position", "op": "lazy_update", "source": "t", "formulas": ["X = i"]},
+  {"name": "key", "op": "lazy_update", "source": "t", "formulas": ["X = k"]},
+  {"name": "back", "op": "lazy_update", "source": "t", "formulas": ["X = V_[i-1]"]},
+  {"name": "size", "op": "lazy_update", "source": "t", "formulas": ["X = V_.size()"]},
+  {"name": "in_call", "op": "lazy_update", "source": "t", "formulas": ["X = isNull(V_[i-1])"]},
+  {"name": "difference", "op": "lazy_update", "source": "t", "formulas": ["X = V - V_[i-1]"]}
+ ],
+ "results": [{"table": "position"}, {"table": "key"}, {"table": "back"}, {"table": "size"}, {"table": "in_call"}, {"table": "difference"}]
+}

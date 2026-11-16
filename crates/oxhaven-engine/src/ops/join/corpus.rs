@@ -661,7 +661,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         &[scenarios.join("static"), scenarios.join("ticking")],
         &oracle().join("corpus"),
     );
-    assert_eq!(tally.scenarios, 85);
+    assert_eq!(tally.scenarios, 88);
 
     // Every result table of the corpus that is a natural or exact join of tables that are
     // themselves inputs or such results. Everything else needs another operation.
@@ -704,7 +704,7 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         .collect();
     let expected = [
         ("agg_all_by", 43),
-        ("agg_by", 70),
+        ("agg_by", 74),
         ("aj", 12),
         ("column_statistics", 19),
         ("drop_columns", 8),
@@ -715,14 +715,18 @@ fn results_match_the_recorded_java_results_of_the_oracle() {
         ("head", 29),
         ("head_by", 14),
         ("join", 7),
+        ("keyed_transpose", 5),
         ("lazy_update", 13),
         ("left_join", 2),
         ("merge", 25),
         ("meta_table", 9),
-        ("multi_join", 14),
+        ("multi_join", 17),
+        ("partition_get", 9),
+        ("partition_merge", 5),
         ("raj", 12),
-        ("range_join", 20),
+        ("range_join", 22),
         ("reverse", 10),
+        ("ring_table", 6),
         ("select", 6),
         ("select_distinct", 18),
         ("slice", 24),

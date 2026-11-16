@@ -1010,3 +1010,15 @@ The second parity pass reported after five hours: all 13 existing fuzz families 
 ## 2026-11-16T08:46Z
 
 Pull request 118 (stream tables, table publisher) merged on green. Launched 7.4.3 (full JSON spec) on Opus with a fresh agent from the written handover.
+
+## 2026-11-16T08:50Z
+
+Pull request 119 (second fuzzer and findings) merged on green. The fixes for its findings (task 4.20, Fable) wait for a build slot: three agents are building and the disk has about 5 GB free.
+
+## 2026-11-16T09:03Z
+
+Task 5.9 reported from Opus: four java.time column types in the contracts and through the engine, expression crate and wire; the formula gate fell from 123 to 48 differing cases. It also found and fixed aggregations answering nulls for column types they did not know (first_by of a LocalDate, for example). Object columns, boolean[] and object creation are left with three written design options; the agent recommends Object(Box<ColumnType>). Opened as pull request 120. Launched 4.20 (fixes for the second fuzzer findings) on Fable.
+
+## 2026-11-16T09:09Z
+
+Pull request 120 (four java.time column types, formula gate 123 to 48) merged on green.

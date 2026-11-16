@@ -305,8 +305,21 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
     for op in operations:
         kind = op["op"]
         if kind in ("where", "sort", "head", "tail", "slice", "flatten", "reverse", "filter",
-                    "head_by", "tail_by", "snapshot", "group_by", "ungroup"):
+                    "head_by", "tail_by", "snapshot", "group_by", "ungroup", "ring_table"):
             out = of(op["source"])
+        elif kind in ("partition_merge", "partition_get"):
+            # The rows of the source, by constituent; without the keys when they are dropped.
+            out = of(op["source"]) - set(op["by"] if op.get("drop_keys") else ())
+        elif kind == "keyed_transpose":
+            # An aggregation by the row and column keys whose columns are named after the
+            # values of the column keys, so they cannot be listed: as in `agg_all_by`, every
+            # column but an exact row key when an aggregation computes or passes on a
+            # computed column.
+            source = of(op["source"])
+            out = {key for key in op["row_by"] if is_computed(source, key)}
+            if aggregated(source, op["aggs"]):
+                out = {EVERY_COLUMN} | {f"!{key}" for key in op["row_by"]
+                                        if not is_computed(source, key)}
         elif kind == "where_in":
             out = of(op["left"])
         elif kind == "drop_columns":
@@ -577,7 +590,8 @@ def compare(
 
 # Operations whose result depends on when it was made or on the changes it has seen, not only
 # on what its sources hold now.
-HISTORY_DEPENDENT = frozenset({"snapshot", "snapshot_when", "time_table"})
+HISTORY_DEPENDENT = frozenset({"snapshot", "snapshot_when", "time_table", "ring_table",
+                               "keyed_transpose"})
 
 
 def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
@@ -592,7 +606,8 @@ def compare_with_fresh(scenario: Any, kept: ResultSet, fresh: ResultSet,
     depends: set[str] = set()
     for op in scenario.operations:
         if op["op"] in HISTORY_DEPENDENT or depends.intersection(
-                op[key] for key in ("source", "left", "right", "trigger") if key in op
+                op[key] for key in ("source", "left", "right", "trigger", "initial_groups",
+                                    "key") if key in op
         ) or depends.intersection(op.get("sources", ())) or depends.intersection(
                 item["table"] for item in op.get("inputs", ())):
             depends.add(op["name"])

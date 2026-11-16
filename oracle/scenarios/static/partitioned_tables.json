@@ -1,0 +1,44 @@
+{
+  "format": 1,
+  "name": "partitioned_tables",
+  "description": "A table partitioned by a key column through the partitioned table service: merged again, with and without its key column, and asked for the constituents of key tables with one row, with two rows and with a key that is not there; and an aggregation with initial groups, with and without the groups that stay empty.",
+  "inputs": [
+    {
+      "name": "t",
+      "columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "int32"}, {"name": "D", "type": "float64"}],
+      "rows": [["b", 1, 0.5], ["a", 2, null], ["b", 3, 1.5], [null, 4, 2.5], ["c", 5, "NaN"], ["a", 6, -0.0]]
+    },
+    {"name": "one", "columns": [{"name": "K", "type": "string"}], "rows": [["a"]]},
+    {"name": "two", "columns": [{"name": "K", "type": "string"}], "rows": [["c"], ["b"]]},
+    {"name": "absent", "columns": [{"name": "K", "type": "string"}], "rows": [["z"]]},
+    {"name": "groups", "columns": [{"name": "K", "type": "string"}, {"name": "Other", "type": "int32"}],
+     "rows": [["z", 1], ["a", 2], ["z", 3], [null, 4]]}
+  ],
+  "operations": [
+    {"name": "merged", "op": "partition_merge", "source": "t", "by": ["K"]},
+    {"name": "merged_without_keys", "op": "partition_merge", "source": "t", "by": ["K"], "drop_keys": true},
+    {"name": "merged_by_two", "op": "partition_merge", "source": "t", "by": ["K", "V"]},
+    {"name": "merged_by_none", "op": "partition_merge", "source": "t", "by": []},
+    {"name": "constituent", "op": "partition_get", "source": "t", "by": ["K"], "key": "one"},
+    {"name": "constituent_unique", "op": "partition_get", "source": "t", "by": ["K"], "key": "one", "unique": "require_unique"},
+    {"name": "constituents", "op": "partition_get", "source": "t", "by": ["K"], "key": "two", "unique": "permit_multiple"},
+    {"name": "constituents_unique", "op": "partition_get", "source": "t", "by": ["K"], "key": "two", "unique": "require_unique"},
+    {"name": "constituents_not_set", "op": "partition_get", "source": "t", "by": ["K"], "key": "two"},
+    {"name": "constituent_absent", "op": "partition_get", "source": "t", "by": ["K"], "key": "absent", "unique": "permit_multiple"},
+    {"name": "constituent_absent_unique", "op": "partition_get", "source": "t", "by": ["K"], "key": "absent", "unique": "require_unique"},
+    {"name": "constituent_without_keys", "op": "partition_get", "source": "t", "by": ["K"], "key": "one", "drop_keys": true, "unique": "permit_multiple"},
+    {"name": "seeded", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "groups",
+     "aggs": [{"agg": "sum", "columns": ["Sum = V"]}, {"agg": "count", "column": "N"}, {"agg": "max", "columns": ["Max = D"]}]},
+    {"name": "seeded_kept", "op": "agg_by", "source": "t", "by": ["K"], "initial_groups": "groups", "preserve_empty": true,
+     "aggs": [{"agg": "sum", "columns": ["Sum = V"]}, {"agg": "count", "column": "N"}, {"agg": "distinct", "columns": ["Set = V"]}]},
+    {"name": "kept", "op": "agg_by", "source": "t", "by": ["K"], "preserve_empty": true,
+     "aggs": [{"agg": "first", "columns": ["First = V"]}]}
+  ],
+  "results": [
+    {"table": "merged"}, {"table": "merged_without_keys"}, {"table": "merged_by_two"}, {"table": "merged_by_none"},
+    {"table": "constituent"}, {"table": "constituent_unique"}, {"table": "constituents"},
+    {"table": "constituents_unique"}, {"table": "constituents_not_set"}, {"table": "constituent_absent"},
+    {"table": "constituent_absent_unique"}, {"table": "constituent_without_keys"},
+    {"table": "seeded"}, {"table": "seeded_kept"}, {"table": "kept"}
+  ]
+}

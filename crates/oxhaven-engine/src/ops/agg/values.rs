@@ -40,7 +40,8 @@ impl Shape {
             _ if column_type.list_element().is_some() => Shape::List,
             ColumnType::Float | ColumnType::Double => Shape::Double,
             ColumnType::Boolean => Shape::Bool,
-            ColumnType::String => Shape::Str,
+            // A `ZoneId` is held as its id.
+            ColumnType::String | ColumnType::ZoneId => Shape::Str,
             _ => Shape::Long,
         }
     }
@@ -63,6 +64,12 @@ impl Values {
         let cast = |to: &DataType| {
             arrow::compute::cast(array, to).map_err(|error| failure(error.to_string()))
         };
+        if !decodes(column_type) {
+            return Err(failure(format!(
+                "unported: io.deephaven.engine.table.impl.by.AggregationProcessor: an \
+                 aggregation reading a column of type {column_type:?}"
+            )));
+        }
         Ok(match Shape::of(column_type) {
             Shape::Long => {
                 Values::Longs(cast(&DataType::Int64)?.as_primitive::<Int64Type>().clone())
@@ -395,6 +402,33 @@ impl Scalar {
 
 /// An array of `column_type` holding `values`. A value of another shape than the column's
 /// becomes null. Integers are narrowed as Java's casts narrow them.
+/// Whether `Values::decode` holds the values of `column_type`: the integers, `char` and the
+/// instants, dates, times of day and durations as numbers, the floating point numbers,
+/// `Boolean`, `String` and `ZoneId`, and lists of these. A `Period`, a `ZonedDateTime`,
+/// a `LocalDateTime`, a `BigDecimal` and a `BigInteger` are not held.
+fn decodes(column_type: &ColumnType) -> bool {
+    match column_type.list_element() {
+        Some(element) => decodes(element),
+        None => matches!(
+            column_type,
+            ColumnType::Byte
+                | ColumnType::Short
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Char
+                | ColumnType::Float
+                | ColumnType::Double
+                | ColumnType::Boolean
+                | ColumnType::String
+                | ColumnType::Instant
+                | ColumnType::LocalDate
+                | ColumnType::LocalTime
+                | ColumnType::Duration
+                | ColumnType::ZoneId
+        ),
+    }
+}
+
 pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scalar>) -> ArrayRef {
     if let (Some(element), DataType::List(field)) =
         (column_type.list_element(), column_type.arrow_type())
@@ -461,7 +495,7 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
                 })
                 .collect::<BooleanArray>(),
         ),
-        ColumnType::String => Arc::new(
+        ColumnType::String | ColumnType::ZoneId => Arc::new(
             values
                 .map(|s| match s {
                     Scalar::Str(v) => Some(&**v),
@@ -469,7 +503,71 @@ pub fn build<'a>(column_type: &ColumnType, values: impl Iterator<Item = &'a Scal
                 })
                 .collect::<StringArray>(),
         ),
-        // A column type added after this was written: no operator is made for one.
+        // Numbers of days and of nanoseconds, as `Values::decode` read them.
+        ColumnType::LocalDate | ColumnType::LocalTime | ColumnType::Duration => {
+            let numbers: ArrayRef = Arc::new(values.map(Scalar::long).collect::<Int64Array>());
+            arrow::compute::cast(&numbers, &column_type.arrow_type())
+                .expect("a number read from a date, a time of day or a duration")
+        }
+        // A column type `Values::decode` refuses: no operator reads one.
         _ => arrow::array::new_null_array(&column_type.arrow_type(), values.count()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Date32Array, DurationNanosecondArray, Time64NanosecondArray};
+
+    /// What an operator reads of a column, rebuilt as the result column.
+    fn round_trip(column_type: &ColumnType, array: ArrayRef) -> ArrayRef {
+        let values = Values::decode(column_type, &array).expect("decodes");
+        let scalars: Vec<Scalar> = (0..array.len()).map(|at| values.scalar(at)).collect();
+        build(column_type, scalars.iter())
+    }
+
+    /// Behavior: the first, the last, the minimum and the maximum of a `LocalDate`,
+    /// `LocalTime`, `Duration` or `ZoneId` column are its values.
+    #[test]
+    fn a_date_a_time_a_duration_and_a_zone_are_kept() {
+        let columns: [(ColumnType, ArrayRef); 4] = [
+            (
+                ColumnType::LocalDate,
+                Arc::new(Date32Array::from(vec![Some(19_782), None, Some(-1)])),
+            ),
+            (
+                ColumnType::LocalTime,
+                Arc::new(Time64NanosecondArray::from(vec![Some(1), None, Some(0)])),
+            ),
+            (
+                ColumnType::Duration,
+                Arc::new(DurationNanosecondArray::from(vec![Some(-5), None, Some(7)])),
+            ),
+            (
+                ColumnType::ZoneId,
+                Arc::new(StringArray::from(vec![
+                    Some("UTC"),
+                    None,
+                    Some("Asia/Tokyo"),
+                ])),
+            ),
+        ];
+        for (column_type, array) in columns {
+            assert_eq!(
+                round_trip(&column_type, Arc::clone(&array)).as_ref(),
+                array.as_ref(),
+                "{column_type:?}"
+            );
+        }
+    }
+
+    /// A type the operators do not hold is a failure, not a column of nulls.
+    #[test]
+    fn a_period_is_refused() {
+        let period = arrow::array::new_null_array(&ColumnType::Period.arrow_type(), 2);
+        let Err(failure) = Values::decode(&ColumnType::Period, &period) else {
+            panic!("a period decoded");
+        };
+        assert!(failure.message.contains("Period"), "{}", failure.message);
     }
 }

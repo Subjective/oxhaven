@@ -103,6 +103,27 @@ pub enum ColumnType {
     /// if in UTC. Java's type holds years to 999999999; a date and time outside the
     /// 64-bit range (before 1677-09-21 or after 2262-04-11) cannot be a cell.
     LocalDateTime,
+    /// `java.time.Duration`. A cell is an Arrow `Duration` in nanoseconds. Java's type
+    /// holds durations beyond the 64-bit range of nanoseconds (about 292 years); such a
+    /// duration cannot be a cell.
+    Duration,
+    /// `java.time.Period`: years, months and days, each a Java `int`, kept apart as Java
+    /// keeps them, so `P1Y` and `P12M` are two values. A cell is an Arrow `Struct` of
+    /// three `Int32` fields named `years`, `months` and `days`, in that order; see
+    /// [`ColumnType::arrow_type`]. Only the validity of the struct says whether a cell is
+    /// null; the fields under a null cell mean nothing.
+    Period,
+    /// `java.time.ZoneId`. A cell is an Arrow `Utf8` value: the zone's id as
+    /// `java.time.ZoneId#getId` gives it (`America/New_York`, `Z`, `+01:00`, `UTC`).
+    ZoneId,
+    /// `java.time.ZonedDateTime`: an instant and the zone it is seen in. A cell is an
+    /// Arrow `Struct` of a `Timestamp` field named `instant`, nanoseconds since the epoch
+    /// in UTC as an [`ColumnType::Instant`] holds them, and a `Utf8` field named `zone`,
+    /// the id as a [`ColumnType::ZoneId`] holds it. The date and time of the cell is the
+    /// instant read in the zone. Only the validity of the struct says whether a cell is
+    /// null. Java's type holds instants outside the 64-bit range of nanoseconds (before
+    /// 1677-09-21 or after 2262-04-11); such a value cannot be a cell.
+    ZonedDateTime,
 }
 
 /// The Java class of the cells of a [`ColumnType::Table`] column.
@@ -183,6 +204,21 @@ impl ColumnType {
             ColumnType::LocalDate => DataType::Date32,
             ColumnType::LocalTime => DataType::Time64(TimeUnit::Nanosecond),
             ColumnType::LocalDateTime => DataType::Timestamp(TimeUnit::Nanosecond, None),
+            ColumnType::Duration => DataType::Duration(TimeUnit::Nanosecond),
+            ColumnType::Period => DataType::Struct(
+                ["years", "months", "days"]
+                    .into_iter()
+                    .map(|name| Field::new(name, DataType::Int32, true))
+                    .collect(),
+            ),
+            ColumnType::ZoneId => DataType::Utf8,
+            ColumnType::ZonedDateTime => DataType::Struct(
+                vec![
+                    Field::new("instant", ColumnType::Instant.arrow_type(), true),
+                    Field::new("zone", DataType::Utf8, true),
+                ]
+                .into(),
+            ),
         }
     }
 }
@@ -335,6 +371,30 @@ mod tests {
             ColumnType::Instant.arrow_type()
         );
         assert_eq!(ColumnType::LocalDate.list_element(), None);
+    }
+
+    #[test]
+    fn a_duration_is_nanoseconds_and_a_period_and_a_zoned_date_time_are_structs() {
+        assert_eq!(
+            ColumnType::Duration.arrow_type(),
+            DataType::Duration(TimeUnit::Nanosecond)
+        );
+        let DataType::Struct(period) = ColumnType::Period.arrow_type() else {
+            panic!("a period is a struct");
+        };
+        let names: Vec<&str> = period.iter().map(|f| f.name().as_str()).collect();
+        assert_eq!(names, ["years", "months", "days"]);
+        assert!(period.iter().all(|f| *f.data_type() == DataType::Int32));
+        let DataType::Struct(zoned) = ColumnType::ZonedDateTime.arrow_type() else {
+            panic!("a zoned date and time is a struct");
+        };
+        assert_eq!(zoned[0].name(), "instant");
+        assert_eq!(*zoned[0].data_type(), ColumnType::Instant.arrow_type());
+        assert_eq!(zoned[1].name(), "zone");
+        assert_eq!(*zoned[1].data_type(), DataType::Utf8);
+        // a zone is its id, but not a string column
+        assert_eq!(ColumnType::ZoneId.arrow_type(), DataType::Utf8);
+        assert_ne!(ColumnType::ZoneId, ColumnType::String);
     }
 
     #[test]

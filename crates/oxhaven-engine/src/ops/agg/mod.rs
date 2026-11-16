@@ -655,6 +655,21 @@ fn make_operator(
             }
         }
     };
+    // Seen on Java 42.9: the maximum of a `ZoneId` column fails with "class
+    // java.time.ZoneRegion cannot be cast to class java.lang.Comparable".
+    if *input_type == ColumnType::ZoneId
+        && matches!(
+            spec,
+            AggSpec::Min | AggSpec::Max | AggSpec::Median { .. } | AggSpec::Percentile { .. }
+        )
+    {
+        unported!(
+            "io.deephaven.engine.table.impl.by.AggregationProcessor",
+            "an ordering of a column of type ZoneId, which Java fails: \
+             java.lang.ClassCastException: class java.time.ZoneRegion cannot be cast to class \
+             java.lang.Comparable"
+        );
+    }
     match spec {
         AggSpec::Min | AggSpec::Max => typed_result("makeMinOrMaxOperator"),
         AggSpec::Median { .. } | AggSpec::Percentile { .. } => {

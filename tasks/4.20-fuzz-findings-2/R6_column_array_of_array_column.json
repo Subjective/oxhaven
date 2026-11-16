@@ -1,0 +1,15 @@
+{
+ "format": 1,
+ "name": "R6_column_array_of_array_column",
+ "description": "The column array of an array column: its size and its first element.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "int32"}], "rows": [["b", 1], ["a", 2], ["b", 3]]}
+ ],
+ "operations": [
+  {"name": "g", "op": "group_by", "source": "t", "by": ["K"]},
+  {"name": "size", "op": "update", "source": "g", "formulas": ["X = V_.size()"]},
+  {"name": "first", "op": "update", "source": "g", "formulas": ["X = V_[0]"]},
+  {"name": "back", "op": "update", "source": "g", "formulas": ["X = V_[i-1]"]}
+ ],
+ "results": [{"table": "size"}, {"table": "first"}, {"table": "back"}]
+}

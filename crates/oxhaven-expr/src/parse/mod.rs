@@ -391,6 +391,12 @@ impl Parser {
             "Boolean" | "java.lang.Boolean" => ColumnType::Boolean,
             "String" | "java.lang.String" => ColumnType::String,
             "Instant" | "java.time.Instant" => ColumnType::Instant,
+            "LocalDate" | "java.time.LocalDate" => ColumnType::LocalDate,
+            "LocalTime" | "java.time.LocalTime" => ColumnType::LocalTime,
+            "Duration" | "java.time.Duration" => ColumnType::Duration,
+            "Period" | "java.time.Period" => ColumnType::Period,
+            "ZoneId" | "java.time.ZoneId" => ColumnType::ZoneId,
+            "ZonedDateTime" | "java.time.ZonedDateTime" => ColumnType::ZonedDateTime,
             other => return Err(unsupported(format!("cast to {other}"))),
         };
         Ok(Expr::Cast { to, operand })
@@ -1132,7 +1138,10 @@ mod tests {
             ("(Double).NaN", "field access .NaN"),
             ("(A + B).x", "field access .x"),
             ("new int[2][2]", "array creation new int[][], of arrays"),
-            ("A == '2024-01-01'", "time literal '2024-01-01'"),
+            (
+                "A == '2024-01-01T10:00 +01:00'",
+                "time literal '2024-01-01T10:00 +01:00'",
+            ),
         ];
         for (text, construct) in cases {
             assert_eq!(

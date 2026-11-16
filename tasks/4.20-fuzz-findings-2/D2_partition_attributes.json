@@ -1,0 +1,24 @@
+{
+ "format": 1,
+ "name": "D2_partition_attributes",
+ "description": "A static table that where, head, sort or update made, partitioned by a key column, merged again and asked for a constituent.",
+ "inputs": [
+  {"name": "t", "columns": [{"name": "K", "type": "string"}, {"name": "V", "type": "int32"}], "rows": [["b", 1], ["a", 2], ["b", 3]]},
+  {"name": "keys", "columns": [{"name": "K", "type": "string"}], "rows": [["b"]]}
+ ],
+ "operations": [
+  {"name": "filtered", "op": "where", "source": "t", "filters": ["V > 0"]},
+  {"name": "first", "op": "head", "source": "t", "rows": 5},
+  {"name": "sorted", "op": "sort", "source": "t", "by": [{"column": "V", "direction": "descending"}]},
+  {"name": "updated", "op": "update", "source": "t", "formulas": ["X = V + 1"]},
+  {"name": "merged_filtered", "op": "partition_merge", "source": "filtered", "by": ["K"]},
+  {"name": "merged_first", "op": "partition_merge", "source": "first", "by": ["K"]},
+  {"name": "merged_sorted", "op": "partition_merge", "source": "sorted", "by": ["K"]},
+  {"name": "merged_updated", "op": "partition_merge", "source": "updated", "by": ["K"]},
+  {"name": "merged_input", "op": "partition_merge", "source": "t", "by": ["K"]},
+  {"name": "constituent_filtered", "op": "partition_get", "source": "filtered", "by": ["K"], "key": "keys"},
+  {"name": "constituent_first", "op": "partition_get", "source": "first", "by": ["K"], "key": "keys"},
+  {"name": "constituent_input", "op": "partition_get", "source": "t", "by": ["K"], "key": "keys"}
+ ],
+ "results": [{"table": "filtered"}, {"table": "first"}, {"table": "merged_filtered"}, {"table": "merged_first"}, {"table": "merged_sorted"}, {"table": "merged_updated"}, {"table": "merged_input"}, {"table": "constituent_filtered"}, {"table": "constituent_first"}, {"table": "constituent_input"}]
+}
