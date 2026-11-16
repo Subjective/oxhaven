@@ -1002,3 +1002,7 @@ Pull request 117 (table formats, rollup node views and formats) merged on green.
 ## 2026-11-16T08:40Z
 
 Task 7.4.2 (stream tables, table_publisher, Kafka on the adapter) reported from the first Opus agent: scope done, gates passed, three differences from Java listed for the owner (a raising shutdown callback ends the Java server; del of a table ends its stream here; a full head of a blink table stays subscribed). It did not reach 7.4.3 because other builds filled the disk for a stretch. Its branch conflicted with pull request 116 in one module list; I merged main and resolved it. Opened as pull request 118. Four building agents at once is too many for this disk; holding at three until the fuzzer agent ends.
+
+## 2026-11-16T08:44Z
+
+The second parity pass reported after five hours: all 13 existing fuzz families clean over 1000 seeds except seed 308 of all (the chain of 4.17 A1, failed-table serving), and 9 new families whose only differences are four written-up defects (D1 to D4: missing AddOnly after fixed-distance reads, attributes lost by partition merge and get, distinct of no rows, an error code). Eight refusals Java computes, six Java defects (one stops the Java server). Size verdict too large: the baseline sweep and the widening should have been two tasks. Opened as pull request 119. Next on Fable after it merges: fix D1 to D4 and the cheap refusals (task 4.20).
