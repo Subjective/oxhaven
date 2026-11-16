@@ -900,3 +900,7 @@ and varies in Java. PRs 83 and 84 merged; PR 79 is on its last merge of main.
   cores); the JS plugins author already has a stand-in to start from.
 - Owner ruling (04:24 UTC): links out of a JS plugin directory are refused. Added as allowed
   difference A9 on pull request 106, which merges on green.
+- Pull request 106 merged (7.10.1) with allowed difference A9.
+- Owner approval (04:37 UTC, relayed): Kafka may be built on librdkafka through a Rust
+  binding, BSD-2-Clause. Any other licence in its dependency tree goes back to him. Kafka
+  starts when a build slot frees.
