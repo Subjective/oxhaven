@@ -10,7 +10,7 @@ use crate::ops::filter::{CheckedFilters, FilterError};
 use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
 use crate::ops::partitioned::{of_aggregation, tables_of, PartitionedTable};
 use crate::ops::select::view;
-use crate::ops::sort::{check_sort_columns, sorted_rows, SortColumn, SortError};
+use crate::ops::sort::{check_sort_columns, restrict_sort_to, sorted_rows, SortColumn, SortError};
 use crate::table::{sortable_columns, QueryTable, TableSpec};
 use arrow::array::{Array, ArrayRef};
 use oxhaven_contracts::expr::FormulaCompiler;
@@ -301,6 +301,12 @@ pub fn promote_orphans(
         NaturalJoinType::ErrorOnDuplicate,
     )
     .map_err(|error| illegal(&error))?;
+    // Java's join copies the sortable columns of its left table, which the join here
+    // does not yet; the view then keeps those it does not replace.
+    let joined = match sortable_columns(&**source) {
+        Some(sortable) => restrict_sort_to(&joined, &sortable).map_err(|error| illegal(&error))?,
+        None => joined,
+    };
     let columns: Vec<String> = source
         .definition()
         .columns()

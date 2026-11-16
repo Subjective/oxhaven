@@ -145,6 +145,13 @@ fn orphans_are_left_out_unless_promoted() {
         everything(&promoted(&source)),
         "1+1 2+3 3.5 2.4 1+2 2.6 1+7 2.9"
     );
+    // observed on Java 42.9: the promotion keeps the columns a source restricts its
+    // sorts to, in the order of the set its view collects them in
+    let restricted = crate::ops::sort::restrict_sort_to(&source, &["Name", "Id"]).unwrap();
+    let names = |tree: &TreeTable| tree.sortable_columns().map(|names| names.join(","));
+    assert_eq!(names(&tree_of(&restricted)).as_deref(), Some("Name,Id"));
+    assert_eq!(names(&promoted(&restricted)).as_deref(), Some("Id,Name"));
+    assert_eq!(names(&promoted(&source)), None);
 }
 
 #[test]
