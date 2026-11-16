@@ -21,6 +21,8 @@ mod search;
 mod corpus_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod time_tests;
 
 pub(crate) use condition::java_double_to_string;
 pub use condition::{

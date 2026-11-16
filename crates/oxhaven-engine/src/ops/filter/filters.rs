@@ -7,10 +7,11 @@
 use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
-use arrow::array::{Array, AsArray, BooleanArray, StringArray};
+use crate::ops::zoned;
+use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, StringArray};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
-    TimestampNanosecondType, UInt16Type,
+    DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
+    Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
@@ -248,7 +249,25 @@ fn resolve_range(
         (None, Some(index)) => (index, op.mirror(), column),
         (None, None) => return Err(no_column(column, definition)),
     };
-    let pivot = convert_value(&definition.columns()[index], definition, value, compiler)?;
+    let column = &definition.columns()[index];
+    let pivot = convert_value(column, definition, value, compiler)?;
+    // Behavior: RangeFilter#init makes a filter for the primitives, `Instant`, the local
+    // dates and times, `ZonedDateTime`, the big numbers, `String` and `Boolean`; any other
+    // type, a duration and a day of the week among them, is refused (and the caller falls
+    // back to the filter's formula).
+    let class = match column.column_type {
+        ColumnType::Duration => Some("Duration"),
+        ColumnType::DayOfWeek => Some("DayOfWeek"),
+        ColumnType::Period => Some("Period"),
+        ColumnType::ZoneId => Some("ZoneId"),
+        _ => None,
+    };
+    if let Some(class) = class {
+        return Err(format!(
+            "RangeFilter does not support type {class} for column {}",
+            column.name
+        ));
+    }
     Ok(Resolved::Range {
         column: index,
         op,
@@ -379,6 +398,8 @@ enum Cells {
     /// A vector or an array, which Java's filters see as an object: whether each cell is
     /// not null.
     Object(Vec<bool>),
+    /// A `ZonedDateTime` column.
+    Zoned(ArrayRef),
 }
 
 fn read(
@@ -395,12 +416,26 @@ fn read(
     };
     // Java filters a vector or an array column as a column of objects, of which a match
     // filter can only hold null.
+    match source.column_type() {
+        ColumnType::ZonedDateTime => return Ok(Cells::Zoned(chunk)),
+        // A period has no convertor of its own: a match filter holds only null.
+        ColumnType::Period => {
+            return Ok(Cells::Object(
+                (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
+            ))
+        }
+        _ => {}
+    }
     if source.column_type().list_element().is_some() {
         return Ok(Cells::Object(
             (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
         ));
     }
-    let values = sentinels_to_nulls(&chunk)?;
+    // A date, a time of day or a duration is an object in Java, null only by reference.
+    let values = match chunk.data_type() {
+        DataType::Date32 | DataType::Time64(_) | DataType::Duration(_) => chunk,
+        _ => sentinels_to_nulls(&chunk)?,
+    };
     macro_rules! widen {
         ($kind:ident, $arrow:ty, $to:ty) => {
             Cells::$kind(
@@ -420,6 +455,9 @@ fn read(
         DataType::Int64 => widen!(Int, Int64Type, i64),
         DataType::UInt16 => widen!(Int, UInt16Type, i64),
         DataType::Timestamp(TimeUnit::Nanosecond, _) => widen!(Int, TimestampNanosecondType, i64),
+        DataType::Date32 => widen!(Int, Date32Type, i64),
+        DataType::Time64(TimeUnit::Nanosecond) => widen!(Int, Time64NanosecondType, i64),
+        DataType::Duration(TimeUnit::Nanosecond) => widen!(Int, DurationNanosecondType, i64),
         DataType::Float32 => widen!(Float, Float32Type, f64),
         DataType::Float64 => widen!(Float, Float64Type, f64),
         DataType::Utf8 => Cells::Str(values.as_string::<i32>().clone()),
@@ -533,6 +571,28 @@ fn matches(cells: &Cells, keys: &[Key], options: MatchOptions) -> Result<Vec<boo
                 })
                 .collect()
         }
+        // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, which
+        // for a `ZonedDateTime` is java.time.ZonedDateTime#equals: the same instant in the
+        // same zone.
+        Cells::Zoned(values) => {
+            let keys: Vec<Option<(i64, &str)>> = keys
+                .iter()
+                .map(|key| match key {
+                    Key::Null => Ok(None),
+                    Key::Zoned { nanos, zone } => Ok(Some((*nanos, zone.as_str()))),
+                    other => Err(wrong_key(other)),
+                })
+                .collect::<Result<_, _>>()?;
+            let (cells, instants, zones) = zoned::parts(values)?;
+            Ok((0..cells.len())
+                .map(|row| {
+                    let value = cells
+                        .is_valid(row)
+                        .then(|| (instants[row], zones.value(row)));
+                    keys.contains(&value)
+                })
+                .collect())
+        }
         // Behavior: ObjectChunkMatchFilterFactory: `Objects.equals` with each value, and
         // `MatchFilter.ColumnTypeConvertorFactory#getConvertor` makes no value but null
         // for such a column.
@@ -637,6 +697,34 @@ fn in_range(cells: &Cells, op: RangeOp, pivot: &Key) -> Result<Vec<bool>, TableF
                 })
                 .collect()
         }
+        // Behavior: SingleSidedComparableRangeFilter with ObjectComparisons and
+        // java.time.chrono.ChronoZonedDateTime#compareTo: the instant, then the local date
+        // and time (the offset, for one instant), then the zone's id.
+        Cells::Zoned(values) => {
+            let order_key =
+                |nanos: i64, zone: &str| -> Result<(i64, i32, Vec<u16>), TableFailure> {
+                    Ok((
+                        nanos,
+                        zoned::offset_seconds(zone, nanos)?,
+                        zone.encode_utf16().collect(),
+                    ))
+                };
+            let pivot = match pivot {
+                Key::Null => None,
+                Key::Zoned { nanos, zone } => Some(order_key(*nanos, zone)?),
+                other => return Err(wrong_key(other)),
+            };
+            let (cells, instants, zones) = zoned::parts(values)?;
+            (0..cells.len())
+                .map(|row| {
+                    let value = match cells.is_valid(row) {
+                        true => Some(order_key(instants[row], zones.value(row))?),
+                        false => None,
+                    };
+                    Ok(keep(value.cmp(&pivot)))
+                })
+                .collect::<Result<_, TableFailure>>()?
+        }
         Cells::Object(_) => oxhaven_contracts::unported!(
             "io.deephaven.engine.table.impl.select.RangeFilter#init",
             "a range filter of a vector or array column"
@@ -692,7 +780,7 @@ fn between(
                 .map(|value| keep(order(value, &lower), order(value, &upper)))
                 .collect()
         }
-        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) => {
+        Cells::Bool(_) | Cells::Str(_) | Cells::Object(_) | Cells::Zoned(_) => {
             return Err(failure("a range of two ends needs a column of numbers"))
         }
     })
