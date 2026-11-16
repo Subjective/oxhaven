@@ -192,6 +192,8 @@ pub(crate) fn static_field(class: &str, field: &str) -> Option<(ColumnType, Lite
     Some(match (class, field) {
         ("Math" | "StrictMath", "PI") => double(std::f64::consts::PI),
         ("Math" | "StrictMath", "E") => double(std::f64::consts::E),
+        // `java.util` is imported: `java.util.Calendar#JANUARY`.
+        ("Calendar" | "java.util.Calendar", "JANUARY") => int(0),
         ("Boolean", "TRUE") => (ColumnType::Boolean, Literal::Boolean(true)),
         ("Boolean", "FALSE") => (ColumnType::Boolean, Literal::Boolean(false)),
         ("Byte", "MIN_VALUE") => byte(i8::MIN),
@@ -352,6 +354,73 @@ impl InstantMethod {
     }
 }
 
+/// A field of the date and time an instant is in a time zone.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum ZonedField {
+    SecondOfDay,
+    MinuteOfDay,
+    HourOfDay,
+    MillisOfDay,
+    NanosOfDay,
+    Year,
+    YearOfCentury,
+    MonthOfYear,
+    DayOfYear,
+    DayOfMonth,
+    DayOfWeekValue,
+    MinuteOfHour,
+    SecondOfMinute,
+    MillisOfSecond,
+    MicrosOfSecond,
+    NanosOfSecond,
+}
+
+impl ZonedField {
+    pub(crate) fn named(name: &str) -> Option<Self> {
+        Some(match name {
+            "secondOfDay" => ZonedField::SecondOfDay,
+            "minuteOfDay" => ZonedField::MinuteOfDay,
+            "hourOfDay" => ZonedField::HourOfDay,
+            "millisOfDay" => ZonedField::MillisOfDay,
+            "nanosOfDay" => ZonedField::NanosOfDay,
+            "year" => ZonedField::Year,
+            "yearOfCentury" => ZonedField::YearOfCentury,
+            "monthOfYear" => ZonedField::MonthOfYear,
+            "dayOfYear" => ZonedField::DayOfYear,
+            "dayOfMonth" => ZonedField::DayOfMonth,
+            "dayOfWeekValue" => ZonedField::DayOfWeekValue,
+            "minuteOfHour" => ZonedField::MinuteOfHour,
+            "secondOfMinute" => ZonedField::SecondOfMinute,
+            "millisOfSecond" => ZonedField::MillisOfSecond,
+            "microsOfSecond" => ZonedField::MicrosOfSecond,
+            "nanosOfSecond" => ZonedField::NanosOfSecond,
+            _ => return None,
+        })
+    }
+
+    /// Whether the function counts from the start of the day, and so takes the flag that
+    /// says which start: midnight on the clock, or the instant the day began.
+    pub(crate) fn of_day(self) -> bool {
+        matches!(
+            self,
+            ZonedField::SecondOfDay
+                | ZonedField::MinuteOfDay
+                | ZonedField::HourOfDay
+                | ZonedField::MillisOfDay
+                | ZonedField::NanosOfDay
+        )
+    }
+
+    pub(crate) fn result_type(self) -> ColumnType {
+        match self {
+            ZonedField::NanosOfDay | ZonedField::MicrosOfSecond | ZonedField::NanosOfSecond => {
+                ColumnType::Long
+            }
+            _ => ColumnType::Int,
+        }
+    }
+}
+
 /// The unit of a count of time since the epoch.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum EpochUnit {
@@ -425,6 +494,11 @@ pub(crate) enum Kernel {
     },
     /// A method called on an `Instant`, which throws for null.
     InstantMethod(InstantMethod),
+    /// `hourOfDay(Instant, ZoneId, boolean)`, `dayOfYear(Instant, ZoneId)` and their
+    /// relatives, for a zone the formula names.
+    Zoned(ZonedField, crate::parse::instant::Zone),
+    /// `compareTo` of two numbers.
+    CompareTo,
 }
 
 impl Kernel {
@@ -741,6 +815,28 @@ pub(crate) fn resolve(
                 _ => (Parsed::Boolean, ColumnType::Boolean),
             };
             call(Kernel::Parse(parsed), types.clone(), result)
+        }
+        // `QueryLanguageFunctionUtils#compareTo`, one overload per pair of primitive
+        // types. A `long` beside a floating point number has rules of its own.
+        ("compareTo", 2) if types.iter().all(is_numeric) => {
+            let has = |wanted: ColumnType| types.contains(&wanted);
+            let floating = has(ColumnType::Float) || has(ColumnType::Double);
+            let parameter = if !floating {
+                ColumnType::Long
+            } else if has(ColumnType::Long) {
+                return Err(unsupported(
+                    "function compareTo() of a long and a floating point number",
+                ));
+            } else if has(ColumnType::Double) {
+                ColumnType::Double
+            } else {
+                ColumnType::Float
+            };
+            call(
+                Kernel::CompareTo,
+                vec![parameter.clone(), parameter],
+                ColumnType::Int,
+            )
         }
         ("parseFloat", 1) if types[0] == ColumnType::String => call(
             Kernel::Parse(Parsed::Float),

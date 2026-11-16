@@ -4,8 +4,9 @@
 //! primitive type its arguments have, so a `float` function computes in `f32` as Java does.
 //! The arguments arrive already converted to the parameter types [`super::resolve`] chose.
 
-use super::{EpochUnit, InstantMethod, Kernel, Math, Parsed, TimeOrder};
+use super::{EpochUnit, InstantMethod, Kernel, Math, Parsed, TimeOrder, ZonedField};
 use crate::eval::numeric::{self, JavaPrimitive};
+use crate::parse::instant::{civil_from_days, days_from_civil, zoned_seconds, Zone};
 use arrow::array::{
     Array, ArrayRef, AsArray, BooleanArray, Float64Array, Int32Array, Int64Array, ListArray,
     PrimitiveArray, TimestampNanosecondArray,
@@ -795,6 +796,8 @@ pub(crate) fn evaluate(kernel: Kernel, arguments: &[ArrayRef]) -> Result<ArrayRe
         }
         Kernel::ParseInstant { quiet } => parse_instants(arguments[0].as_ref(), quiet),
         Kernel::InstantMethod(method) => instant_method(method, arguments[0].as_ref()),
+        Kernel::Zoned(field, zone) => zoned(field, zone, arguments),
+        Kernel::CompareTo => compare_to(arguments),
         Kernel::EpochNanos
         | Kernel::Epoch(_)
         | Kernel::EpochToInstant(_)
@@ -846,6 +849,144 @@ fn parse_instants(texts: &dyn Array, quiet: bool) -> Result<ArrayRef, TableFailu
             ))),
         }
     }))
+}
+
+/// Behavior: `QueryLanguageFunctionUtils#compareTo(int, long)` and its relatives: null is
+/// equal to null and below everything else, whole numbers compare as numbers, and
+/// floating point numbers as `Double#compare` and `Float#compare` order them, with `-0.0`
+/// below `0.0` and NaN above all. The arguments arrive as two `long`, two `float` or two
+/// `double` values.
+fn compare_to(arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
+    use std::cmp::Ordering;
+    fn order<T: Copy>(a: Option<T>, b: Option<T>, compare: impl Fn(T, T) -> i32) -> i32 {
+        match (a, b) {
+            (None, None) => 0,
+            (None, Some(_)) => -1,
+            (Some(_), None) => 1,
+            (Some(a), Some(b)) => compare(a, b),
+        }
+    }
+    let whole = |a: i64, b: i64| match a.cmp(&b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    let floating = super::statics::java_compare;
+    let values: Int32Array = match arguments[0].data_type() {
+        DataType::Int64 => {
+            let (a, b) = (
+                arguments[0].as_primitive::<Int64Type>(),
+                arguments[1].as_primitive::<Int64Type>(),
+            );
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| Some(order(a, b, whole)))
+                .collect()
+        }
+        DataType::Float32 => {
+            let (a, b) = (
+                arguments[0].as_primitive::<arrow::datatypes::Float32Type>(),
+                arguments[1].as_primitive::<arrow::datatypes::Float32Type>(),
+            );
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| Some(order(a, b, |a, b| floating(a.into(), b.into()))))
+                .collect()
+        }
+        _ => {
+            let (a, b) = (
+                arguments[0].as_primitive::<Float64Type>(),
+                arguments[1].as_primitive::<Float64Type>(),
+            );
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| Some(order(a, b, floating)))
+                .collect()
+        }
+    };
+    Ok(Arc::new(values))
+}
+
+/// Behavior: `DateTimeUtils#hourOfDay(Instant, ZoneId, boolean)`, `#dayOfYear(Instant,
+/// ZoneId)` and their relatives: null for a null instant, otherwise the field of the date
+/// and time the instant is in the zone. A function of the day counts from midnight on
+/// the clock when its flag is true, and otherwise the time that passed since the day
+/// began (`DateTimeUtils#atMidnight`), which differs on a day the clocks change. A null
+/// flag is unboxed, and that throws.
+fn zoned(field: ZonedField, zone: Zone, arguments: &[ArrayRef]) -> Result<ArrayRef, TableFailure> {
+    let instants = arguments[0].as_primitive::<TimestampNanosecondType>();
+    let on_the_clock = arguments.get(1).map(|flags| flags.as_boolean());
+    if on_the_clock.is_some_and(|flags| flags.null_count() > 0) {
+        return Err(failure(
+            "java.lang.NullPointerException: Cannot invoke \
+             \"java.lang.Boolean.booleanValue()\" because the value is null",
+        ));
+    }
+    let outside = || failure("an instant outside the range of the time zone rules");
+    let values = (0..instants.len())
+        .map(|row| {
+            if instants.is_null(row) {
+                return Ok(None);
+            }
+            let nanos = instants.value(row);
+            let seconds = nanos.div_euclid(1_000_000_000);
+            let fraction = nanos.rem_euclid(1_000_000_000);
+            let offset = match zone {
+                Zone::Utc => 0,
+                Zone::Region(region) => {
+                    use chrono::{Offset, TimeZone};
+                    let utc = chrono::DateTime::from_timestamp(seconds, 0)
+                        .ok_or_else(outside)?
+                        .naive_utc();
+                    i64::from(
+                        region
+                            .offset_from_utc_datetime(&utc)
+                            .fix()
+                            .local_minus_utc(),
+                    )
+                }
+            };
+            let local = seconds + offset;
+            let days = local.div_euclid(86_400);
+            let clock = local.rem_euclid(86_400);
+            let (year, month, day) = civil_from_days(days);
+            let of_day = || -> Result<i64, TableFailure> {
+                if on_the_clock.is_none_or(|flags| flags.value(row)) {
+                    return Ok(clock * 1_000_000_000 + fraction);
+                }
+                let start = match zone {
+                    Zone::Utc => days * 86_400,
+                    Zone::Region(region) => {
+                        zoned_seconds(&region, (year, month, day), (0, 0, 0)).ok_or_else(outside)?
+                    }
+                };
+                Ok(nanos - start * 1_000_000_000)
+            };
+            Ok(Some(match field {
+                ZonedField::SecondOfDay => of_day()? / 1_000_000_000,
+                ZonedField::MinuteOfDay => of_day()? / 60_000_000_000,
+                ZonedField::HourOfDay => of_day()? / 3_600_000_000_000,
+                ZonedField::MillisOfDay => of_day()? / 1_000_000,
+                ZonedField::NanosOfDay => of_day()?,
+                ZonedField::Year => year,
+                ZonedField::YearOfCentury => year.rem_euclid(100),
+                ZonedField::MonthOfYear => month,
+                ZonedField::DayOfYear => days - days_from_civil(year, 1, 1) + 1,
+                ZonedField::DayOfMonth => day,
+                // The first day of 1970 was a Thursday, and Monday is 1.
+                ZonedField::DayOfWeekValue => (days + 3).rem_euclid(7) + 1,
+                ZonedField::MinuteOfHour => clock / 60 % 60,
+                ZonedField::SecondOfMinute => clock % 60,
+                ZonedField::MillisOfSecond => fraction / 1_000_000,
+                ZonedField::MicrosOfSecond => fraction / 1_000,
+                ZonedField::NanosOfSecond => fraction,
+            }))
+        })
+        .collect::<Result<Int64Array, TableFailure>>()?;
+    Ok(match field.result_type() {
+        ColumnType::Long => Arc::new(values),
+        _ => Arc::new(numeric::cast::<i32>(&values)),
+    })
 }
 
 /// Behavior: `java.time.Instant#getEpochSecond`, `#toEpochMilli` and `#toString`, called

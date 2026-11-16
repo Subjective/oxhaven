@@ -296,3 +296,137 @@ fn a_string_is_hashed_and_its_parts_replaced() {
         );
     }
 }
+
+/// The instants of the probe: 01:59:59 and 03:59:59 in New York on the day in 2024 its
+/// clocks skipped an hour, and two and three hours later.
+fn clocks_change() -> TestTable {
+    TestTable::new([
+        (
+            "TS",
+            instants([
+                Some(FIRST),
+                Some(SECOND),
+                None,
+                Some(1_710_064_799_123_456_789),
+                Some(1_710_068_399_123_456_789),
+            ]),
+        ),
+        (
+            "Z",
+            booleans([Some(true), Some(false), None, Some(false), Some(true)]),
+        ),
+    ])
+}
+
+/// Behavior: `DateTimeUtils#secondOfDay(Instant, ZoneId, boolean)` and its relatives: the
+/// flag chooses the time on the clock or the time since the day began.
+#[test]
+fn a_time_of_day_is_on_the_clock_or_since_the_day_began() {
+    let table = clocks_change();
+    let all = |values: [i32; 4]| {
+        ints([
+            Some(values[0]),
+            Some(values[1]),
+            None,
+            Some(values[2]),
+            Some(values[3]),
+        ])
+    };
+    for (formula, expected) in [
+        ("secondOfDay(TS, 'ET', true)", [7199, 14399, 21599, 25199]),
+        ("secondOfDay(TS, 'ET', false)", [7199, 10799, 17999, 21599]),
+        ("secondOfDay(TS, 'PT', true)", [82799, 86399, 7199, 14399]),
+        ("secondOfDay(TS, 'PT', false)", [82799, 86399, 7199, 10799]),
+        ("secondOfDay(TS, 'UTC', true)", [25199, 28799, 35999, 39599]),
+        ("hourOfDay(TS, 'ET', true)", [1, 3, 5, 6]),
+        ("hourOfDay(TS, 'ET', false)", [1, 2, 4, 5]),
+        ("hourOfDay(TS, 'Asia/Shanghai', true)", [14, 15, 17, 18]),
+        ("minuteOfDay(TS, 'ET', true)", [119, 239, 359, 419]),
+        ("minuteOfDay(TS, 'ET', false)", [119, 179, 299, 359]),
+        (
+            "millisOfDay(TS, 'ET', false)",
+            [7_199_123, 10_799_123, 17_999_123, 21_599_123],
+        ),
+        (
+            "secondOfDay(TS, timeZone(`America/New_York`), true)",
+            [7199, 14399, 21599, 25199],
+        ),
+        (
+            "secondOfDay(TS, parseTimeZone(`ET`), true)",
+            [7199, 14399, 21599, 25199],
+        ),
+    ] {
+        table.assert(formula, all(expected));
+    }
+    table.assert(
+        "nanosOfDay(TS, 'ET', false)",
+        longs([
+            Some(7_199_123_456_789),
+            Some(10_799_123_456_789),
+            None,
+            Some(17_999_123_456_789),
+            Some(21_599_123_456_789),
+        ]),
+    );
+    // The day the clocks are set back is an hour longer.
+    for (formula, expected) in [
+        ("hourOfDay('2024-11-03T06:30:00 UTC', 'ET', true)", 1),
+        ("hourOfDay('2024-11-03T06:30:00 UTC', 'ET', false)", 2),
+        ("hourOfDay('2024-11-03T12:30:00 UTC', 'ET', true)", 7),
+        ("hourOfDay('2024-11-03T12:30:00 UTC', 'ET', false)", 8),
+        ("secondOfDay('2024-11-03T12:30:00 UTC', 'ET', false)", 30600),
+        ("secondOfDay('2024-03-10T12:30:00 UTC', 'ET', false)", 27000),
+    ] {
+        table.assert(formula, ints([Some(expected); 5]));
+    }
+    let error = table.evaluate("hourOfDay(TS, 'ET', Z)").unwrap_err();
+    assert!(error.message.contains("NullPointerException"), "{error:?}");
+}
+
+/// Behavior: `DateTimeUtils#dayOfYear(Instant, ZoneId)` and its relatives.
+#[test]
+fn a_date_and_time_have_their_fields_in_a_zone() {
+    let table = clocks_change();
+    let all = |values: [i32; 4]| {
+        ints([
+            Some(values[0]),
+            Some(values[1]),
+            None,
+            Some(values[2]),
+            Some(values[3]),
+        ])
+    };
+    for (formula, expected) in [
+        ("dayOfYear(TS, 'PT')", [69, 69, 70, 70]),
+        ("dayOfYear(TS, 'Asia/Shanghai')", [70; 4]),
+        ("dayOfMonth(TS, 'ET')", [10; 4]),
+        ("monthOfYear(TS, 'ET')", [3; 4]),
+        ("year(TS, 'ET')", [2024; 4]),
+        ("yearOfCentury(TS, 'ET')", [24; 4]),
+        ("dayOfWeekValue(TS, 'ET')", [7; 4]),
+        ("minuteOfHour(TS, 'ET')", [59; 4]),
+        ("secondOfMinute(TS, 'ET')", [59; 4]),
+        ("millisOfSecond(TS, 'ET')", [123; 4]),
+    ] {
+        table.assert(formula, all(expected));
+    }
+    let long = |value: i64| longs([Some(value), Some(value), None, Some(value), Some(value)]);
+    table.assert("nanosOfSecond(TS, 'ET')", long(123_456_789));
+    table.assert("microsOfSecond(TS, 'ET')", long(123_456));
+    for (formula, construct) in [
+        (
+            "secondOfDay(TS, null, true)",
+            "function secondOfDay() with a time zone that is not a literal",
+        ),
+        ("dayOfYear(TS, 'NY')", "time literal 'NY'"),
+        ("dayOfYear(TS, timeZone(`NY`))", "time zone 'NY'"),
+        ("dayOfYear(TS)", "function dayOfYear()"),
+        ("'ET'", "function parseTimeZone()"),
+    ] {
+        assert_eq!(
+            table.compile_error(formula),
+            FormulaError::Unsupported(construct.into()),
+            "{formula}"
+        );
+    }
+}

@@ -47,7 +47,7 @@ java-accepts	update	'1700000000'	time literal '1700000000'
 java-accepts	update	'PT1H'	function parseDuration()
 java-accepts	update	'P1D'	function parsePeriod()
 java-accepts	update	'12:30'	time literal '12:30'
-java-accepts	update	'UTC'	time literal 'UTC'
+java-accepts	update	'UTC'	function parseTimeZone()
 java-accepts	update	`'2024-01-01 UTC'`	time literal inside a string literal
 java-accepts	update	`'PT1H'`	time literal inside a string literal
 java-rejects	update	`'x y'`	time literal inside a string literal

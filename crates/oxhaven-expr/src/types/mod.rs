@@ -918,6 +918,72 @@ impl Checker<'_> {
         }
     }
 
+    /// A field of an instant's date and time in a zone: `hourOfDay(Instant, ZoneId,
+    /// boolean)`, `dayOfYear(Instant, ZoneId)` and their relatives; `None` for another
+    /// number of arguments.
+    ///
+    /// A `ZoneId` is no column's type, so the zone is known here only where the formula
+    /// names it: a time literal (`'ET'`), or `timeZone` or `parseTimeZone` of a string
+    /// literal, which are `TimeZoneAliases#zoneId` of the name.
+    fn zoned(
+        &mut self,
+        function: &str,
+        field: functions::ZonedField,
+        arguments: &[Expr],
+    ) -> Result<Option<Typed>, FormulaError> {
+        let (instant, zone, flag) = match (arguments, field.of_day()) {
+            ([instant, zone], false) => (instant, zone, None),
+            ([instant, zone, flag], true) => (instant, zone, Some(flag)),
+            _ => return Ok(None),
+        };
+        let name = match zone {
+            Expr::Call {
+                function: maker,
+                arguments,
+            } if maker == "parseTimeZone" || maker == "timeZone" => match arguments.as_slice() {
+                [Expr::Literal(Literal::String(name))] => Some(name),
+                _ => None,
+            },
+            _ => None,
+        };
+        let Some(name) = name else {
+            return Err(unsupported(format!(
+                "function {function}() with a time zone that is not a literal"
+            )));
+        };
+        let zone = crate::parse::instant::zone(name)
+            .ok_or_else(|| unsupported(format!("time zone '{name}'")))?;
+        if is_null_literal(instant) || flag.is_some_and(is_null_literal) {
+            return Err(unsupported(format!(
+                "null literal as an argument of {function}()"
+            )));
+        }
+        let instant = self.check(instant)?;
+        if instant.column_type != ColumnType::Instant {
+            return Err(unsupported(format!(
+                "function {function}() of a value of type {}",
+                java_name(&instant.column_type)
+            )));
+        }
+        let mut checked = vec![instant];
+        if let Some(flag) = flag {
+            let flag = self.check(flag)?;
+            if flag.column_type != ColumnType::Boolean {
+                return Err(type_error(format!(
+                    "Cannot find method {function}() of these arguments"
+                )));
+            }
+            checked.push(flag);
+        }
+        Ok(Some(typed(
+            field.result_type(),
+            Node::Call {
+                kernel: Kernel::Zoned(field, zone),
+                arguments: checked,
+            },
+        )))
+    }
+
     /// `lowerBin` or `upperBin` of an instant with the interval, and the offset if there
     /// is one, as durations; `None` when neither is a duration or a period.
     ///
@@ -1697,6 +1763,11 @@ impl Checker<'_> {
                 return Ok(result);
             }
         }
+        if let Some(field) = functions::ZonedField::named(function) {
+            if let Some(result) = self.zoned(function, field, arguments)? {
+                return Ok(result);
+            }
+        }
         if let ("lowerBin" | "upperBin", [instant, amounts @ ..]) = (function, arguments) {
             if let Some(result) = self.bin_by_duration(function, instant, amounts)? {
                 return Ok(result);
@@ -1766,7 +1837,40 @@ impl Checker<'_> {
                     },
                 ));
             }
-            Err(other) => return Err(other),
+            Err(other) => {
+                // Behavior: a method declared with a variable number of arguments, such
+                // as `Numeric#median(double...)`, is called with an array of them. The
+                // arguments here all have the element type; Java converts others.
+                const VARIABLE: [&str; 11] = [
+                    "absAvg",
+                    "avg",
+                    "count",
+                    "countDistinct",
+                    "first",
+                    "last",
+                    "median",
+                    "product",
+                    "std",
+                    "sum",
+                    "var",
+                ];
+                let element = match types.as_slice() {
+                    [Some(first), rest @ ..]
+                        if VARIABLE.contains(&function)
+                            && Numeric::of(first).is_some()
+                            && rest.iter().all(|other| other.as_ref() == Some(first)) =>
+                    {
+                        first.clone()
+                    }
+                    _ => return Err(other),
+                };
+                let array_type = Some(ColumnType::Array(Box::new(element.clone())));
+                let Ok(Resolved::Call(call)) = functions::resolve(function, &[array_type]) else {
+                    return Err(other);
+                };
+                let elements = checked.into_iter().flatten().collect();
+                return Ok(library_call(call, vec![array_of(element, elements)]));
+            }
         };
         match resolved {
             Resolved::Call(call) => {

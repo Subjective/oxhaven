@@ -17,6 +17,8 @@ pub(crate) enum TimeValue {
     Duration,
     /// A `java.time.Period`, which Java makes with `DateTimeUtils#parsePeriod`.
     Period,
+    /// A `java.time.ZoneId`, which Java makes with `DateTimeUtils#parseTimeZone`.
+    Zone,
 }
 
 /// A single-quoted span of the formula that Java treats as a time literal.
@@ -57,7 +59,8 @@ pub(crate) fn time_literals(text: &str) -> Vec<TimeLiteral> {
 const NANOS_PER_SECOND: i128 = 1_000_000_000;
 
 /// A time zone of a time literal.
-enum Zone {
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Zone {
     Utc,
     Region(chrono_tz::Tz),
 }
@@ -69,7 +72,7 @@ enum Zone {
 /// `et`. Only the aliases, `UTC`, `GMT` and names with a `/` are looked up here, case
 /// sensitively as in Java; an offset such as `+01:00` or `UTC+1`, which Java reads, is left
 /// unsupported.
-fn zone(name: &str) -> Option<Zone> {
+pub(crate) fn zone(name: &str) -> Option<Zone> {
     let region = match name {
         "UTC" => return Some(Zone::Utc),
         "ET" => "America/New_York",
@@ -91,7 +94,7 @@ fn zone(name: &str) -> Option<Zone> {
 /// Behavior: `java.time.LocalDateTime#atZone`: a time that occurs twice, when clocks are
 /// set back, is the earlier of the two, and a time that the clocks skip is moved later by
 /// the length of the gap.
-fn zoned_seconds(
+pub(crate) fn zoned_seconds(
     zone: &chrono_tz::Tz,
     date: (i64, i64, i64),
     time: (i64, i64, i64),
@@ -128,6 +131,10 @@ fn parse(content: &str) -> Result<TimeValue, FormulaError> {
                 Ok(TimeValue::Period)
             } else if duration_nanos(content).is_some() {
                 Ok(TimeValue::Duration)
+            } else if zone(content).is_some() {
+                // A date and a time of day come before a zone in Java's order, and no
+                // name of a zone is either.
+                Ok(TimeValue::Zone)
             } else {
                 Err(error)
             }

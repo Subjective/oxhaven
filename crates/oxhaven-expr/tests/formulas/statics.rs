@@ -675,3 +675,92 @@ fn a_boxed_value_is_constructed_from_its_primitive_or_from_text() {
         );
     }
 }
+
+/// Behavior: `QueryLanguageFunctionUtils#compareTo` of two numbers: null is below every
+/// number and equal to null, and NaN is above every number.
+#[test]
+fn two_numbers_are_compared_with_null_first_and_nan_last() {
+    let table = table();
+    for (formula, expected) in [
+        ("compareTo(I, L)", [1, 0, 0, -1, -1]),
+        ("compareTo(D, D)", [0; 5]),
+        ("compareTo(D, I)", [1, 0, 0, -1, 1]),
+        ("compareTo(I, 0)", [-1, 0, -1, 1, 1]),
+        ("compareTo(F, 0.5)", [-1, -1, -1, 1, 1]),
+        ("compareTo(C, 'B')", [-1, 0, -1, 1, 1]),
+    ] {
+        table.assert(formula, ints(expected.map(Some)));
+    }
+    for (formula, construct) in [
+        (
+            "compareTo(L, D)",
+            "function compareTo() of a long and a floating point number",
+        ),
+        ("compareTo(T, T)", "function compareTo()"),
+    ] {
+        assert_eq!(
+            table.compile_error(formula),
+            FormulaError::Unsupported(construct.into()),
+            "{formula}"
+        );
+    }
+}
+
+/// A function declared with a variable number of arguments gets them as an array.
+#[test]
+fn a_function_of_an_array_takes_its_elements_as_arguments() {
+    let table = table();
+    table.assert(
+        "median(D, 1.0, 3.0, D)",
+        doubles([Some(0.25), Some(0.5), Some(2.0), Some(1.0), Some(f64::NAN)]),
+    );
+    table.assert(
+        "median(I, I, 5)",
+        doubles([
+            Some(-1.0),
+            Some(0.0),
+            Some(5.0),
+            Some(2.0),
+            Some(2147483647.0),
+        ]),
+    );
+    table.assert(
+        "absAvg(D, -3.0)",
+        doubles([Some(1.75), Some(1.5), Some(3.0), Some(2.0), Some(f64::NAN)]),
+    );
+    table.assert(
+        "avg(I, 4)",
+        doubles([
+            Some(1.5),
+            Some(2.0),
+            Some(4.0),
+            Some(3.0),
+            Some(1073741825.5),
+        ]),
+    );
+    table.assert(
+        "sum(I, I)",
+        longs([Some(-2), Some(0), None, Some(4), Some(4294967294)]),
+    );
+    table.assert(
+        "count(I, I)",
+        longs([Some(2), Some(2), Some(0), Some(2), Some(2)]),
+    );
+    table.assert(
+        "first(I, 2)",
+        ints([Some(-1), Some(0), None, Some(2), Some(i32::MAX)]),
+    );
+    table.assert(
+        "median(I)",
+        doubles([Some(-1.0), Some(0.0), None, Some(2.0), Some(2147483647.0)]),
+    );
+    // Java converts arguments of different types, with rules of its own.
+    for formula in ["median(I, L)", "absAvg(I, D)"] {
+        assert!(
+            matches!(table.compile_error(formula), FormulaError::Unsupported(_)),
+            "{formula}"
+        );
+    }
+    table.assert("Calendar.JANUARY", ints([Some(0); 5]));
+    table.assert("java.util.Calendar.JANUARY", ints([Some(0); 5]));
+}

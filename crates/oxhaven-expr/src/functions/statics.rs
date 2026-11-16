@@ -755,7 +755,7 @@ fn java_signum(value: f64) -> f64 {
 
 /// `java.lang.Double#compare`: numeric order, with `-0.0` below `0.0` and NaN above all
 /// and equal to itself.
-fn java_compare(a: f64, b: f64) -> i32 {
+pub(crate) fn java_compare(a: f64, b: f64) -> i32 {
     let ordering = match a.partial_cmp(&b) {
         Some(Ordering::Equal) => b.is_sign_negative().cmp(&a.is_sign_negative()),
         Some(ordering) => ordering,
