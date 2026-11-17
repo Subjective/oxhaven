@@ -379,7 +379,7 @@ fn java_refuses_some_rollups_of_a_blink_table() {
     );
     let group = of(AggSpec::Group);
     assert_eq!(
-        refused(&[group.clone()], false),
+        refused(std::slice::from_ref(&group), false),
         blink_text("AggGroup for rollup")
     );
     assert_eq!(
@@ -388,7 +388,7 @@ fn java_refuses_some_rollups_of_a_blink_table() {
     );
     let sum = Aggregation::columns(AggSpec::Sum, [Pair::of("V")]);
     assert_eq!(
-        refused(&[sum.clone()], true),
+        refused(std::slice::from_ref(&sum), true),
         blink_text("rollup with included constituents")
     );
     // in the order of the aggregations, a partition first
@@ -654,7 +654,11 @@ fn random_levels(seed: u64) -> u64 {
             .collect(),
     );
     let parent: Arc<dyn Table> = source.table();
-    let by: &[&str] = if seed % 2 == 0 { &["K", "J"] } else { &["J"] };
+    let by: &[&str] = if seed.is_multiple_of(2) {
+        &["K", "J"]
+    } else {
+        &["J"]
+    };
     let mut grouped = vec![
         Aggregation::count_where("C", ["V > 0", "D < 0.5"]),
         Aggregation::columns(AggSpec::Group, [Pair::new("G", "V"), Pair::of("D")]),
@@ -665,7 +669,7 @@ fn random_levels(seed: u64) -> u64 {
         "Ks = __FORMULA_KEYS__",
     ]);
     computed.push(Aggregation::count_where("C", ["V > 0"]));
-    if seed % 3 == 0 {
+    if seed.is_multiple_of(3) {
         grouped.reverse();
     }
     let mut checkers = Vec::new();

@@ -958,9 +958,11 @@ pub fn aggregate(
         preserve_empty,
         None,
         group_by,
-        None,
         false,
-        &[],
+        Formulas {
+            compiler: None,
+            constants: &[],
+        },
     )
 }
 
@@ -997,9 +999,11 @@ pub fn aggregate_seeded(
         preserve_empty,
         Some(initial_groups),
         group_by,
-        Some(compiler),
         false,
-        &[],
+        Formulas {
+            compiler: Some(compiler),
+            constants: &[],
+        },
     )
 }
 
@@ -1177,9 +1181,11 @@ pub fn aggregate_with(
         preserve_empty,
         None,
         group_by,
-        Some(compiler),
         false,
-        &[],
+        Formulas {
+            compiler: Some(compiler),
+            constants: &[],
+        },
     )
 }
 
@@ -1201,9 +1207,11 @@ pub fn aggregate_with_constants(
         false,
         None,
         group_by,
-        compiler,
         false,
-        constants,
+        Formulas {
+            compiler,
+            constants,
+        },
     )
 }
 
@@ -1233,9 +1241,11 @@ pub fn aggregate_all_with(
         false,
         None,
         group_by,
-        Some(compiler),
         append_only,
-        &[],
+        Formulas {
+            compiler: Some(compiler),
+            constants: &[],
+        },
     )
 }
 
@@ -1421,6 +1431,14 @@ fn each_formula(
     })
 }
 
+/// What the formulas of an aggregation are compiled with: the compiler, and the constants
+/// a formula aggregation may read besides the parent's columns.
+#[derive(Clone, Copy)]
+struct Formulas<'a> {
+    compiler: Option<&'a dyn FormulaCompiler>,
+    constants: &'a [FormulaConstant],
+}
+
 /// The operator of a formula over several columns ([`Aggregation::Formula`]), and the
 /// key columns, by their index among `key_columns`, that the formula reads.
 ///
@@ -1446,9 +1464,12 @@ fn multi_formula(
     kind: ParentKind,
     preserve_empty: bool,
     after_group: bool,
-    compiler: Option<&dyn FormulaCompiler>,
-    constants: &[FormulaConstant],
+    formulas: Formulas<'_>,
 ) -> Result<(Planned, Vec<usize>), AggregateError> {
+    let Formulas {
+        compiler,
+        constants,
+    } = formulas;
     if kind == ParentKind::Blink {
         return Err(AggregateError::BlinkUnsupported(AggSpec::Formula {
             formula: expression.to_string(),
@@ -1637,10 +1658,10 @@ fn aggregate_inner(
     preserve_empty: bool,
     initial_groups: Option<&Arc<dyn Table>>,
     group_by: &[&str],
-    compiler: Option<&dyn FormulaCompiler>,
     append_only: bool,
-    constants: &[FormulaConstant],
+    formulas: Formulas<'_>,
 ) -> Result<Arc<dyn Table>, AggregateError> {
+    let compiler = formulas.compiler;
     if aggregations.is_empty() {
         return Err(AggregateError::NoAggregations);
     }
@@ -1752,8 +1773,7 @@ fn aggregate_inner(
                     kind,
                     preserve_empty,
                     shared_group.grouped.is_some(),
-                    compiler,
-                    constants,
+                    formulas,
                 )?;
                 keys_read.extend(keys);
                 shared_group.uses(
