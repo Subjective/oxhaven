@@ -364,3 +364,48 @@ fn a_failure_in_a_piece_fails_the_filter_as_before() {
         );
     }
 }
+
+/// The row set of a piece against the rows picked one key at a time: selections that are one
+/// range, runs with gaps, single keys and keys in several blocks; masks with long and short
+/// kept stretches, all kept and none kept; pieces at the start, in the middle and at the end.
+#[test]
+fn the_row_set_of_a_piece_is_the_kept_keys_of_its_positions() {
+    use super::filters::kept_of_piece;
+    use arrow::buffer::BooleanBuffer;
+    for seed in test_seeds(0..40) {
+        let mut stream = Stream(seed);
+        let step = [1, 1, 2, 7, 70_000][seed as usize % 5];
+        let mut keys: Vec<i64> = Vec::new();
+        let mut key = (stream.next() % 100) as i64;
+        while keys.len() < 3000 {
+            // A run of keys, then a gap, unless the selection is to be one range.
+            let run = 1 + stream.next() % 40;
+            for _ in 0..run {
+                keys.push(key);
+                key += 1;
+            }
+            key += (step - 1) * (1 + (stream.next() % 5) as i64);
+        }
+        let selection = RowSet::from_keys(keys.iter().copied());
+        assert_eq!(selection.as_single_range().is_some(), step == 1);
+        for (offset, length) in [(0, 1000), (1000, 1500), (2500, keys.len() - 2500), (17, 0)] {
+            let density = stream.next() % 5;
+            let mask: Vec<bool> = (0..length)
+                .map(|_| match density {
+                    0 => true,
+                    1 => false,
+                    2 => stream.next().is_multiple_of(2),
+                    _ => !stream.next().is_multiple_of(50),
+                })
+                .collect();
+            let expected = RowSet::from_keys(
+                (0..length)
+                    .filter(|&row| mask[row])
+                    .map(|row| keys[offset + row]),
+            );
+            let kept = kept_of_piece(&selection, offset, &BooleanBuffer::from(mask));
+            kept.check_layout();
+            assert!(kept == expected, "seed {seed}, piece {offset}+{length}");
+        }
+    }
+}
