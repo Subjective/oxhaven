@@ -250,8 +250,11 @@ section was skipped.
 server, so the gate builds the server with the cargo feature `python`. The server then embeds
 the Python that PyO3 finds when it is built, `python3` on `PATH` or the one `PYO3_PYTHON`
 names, and needs that Python's shared library when it runs; the gate adds its directory to
-`LD_LIBRARY_PATH` (`docs/CONSOLE.md`, "Build and CI"). The embedded Python is not the one in
-`oracle/.venv`: that one runs the harness. On a machine without a Python to embed, where
+`LD_LIBRARY_PATH` (`docs/CONSOLE.md`, "Build and CI"). It imports the packages of
+`oracle/.venv`, the environment that runs the harness: the gate sets `VIRTUAL_ENV` to it
+unless `VIRTUAL_ENV` names another, so the server sees the package versions the recordings
+were made with, and the venv must be made by the Python the server embeds (`docs/CONSOLE.md`,
+"The same packages in CI and on a developer's machine"). On a machine without a Python to embed, where
 `python3` does not run or `ORACLE_GATE_PYTHON=0` is set, the gate says so, builds the server
 without the console, runs everything else, prints one `SKIPPED` line for each of the sections
 `replay-scripts` and `client-smoke console`, and ends with exit status 2: the rest of the
