@@ -385,7 +385,11 @@ fn the_null_literal_is_an_operand_where_java_finds_one_method() {
 
 /// A struct column of `column_type` (`Period` or `ZonedDateTime`) from its field arrays,
 /// null where `valid` is false.
-fn struct_column(column_type: ColumnType, fields: Vec<ArrayRef>, valid: &[bool]) -> Column {
+pub(super) fn struct_column(
+    column_type: ColumnType,
+    fields: Vec<ArrayRef>,
+    valid: &[bool],
+) -> Column {
     let DataType::Struct(names) = column_type.arrow_type() else {
         panic!("{column_type:?} is no struct")
     };
@@ -394,7 +398,7 @@ fn struct_column(column_type: ColumnType, fields: Vec<ArrayRef>, valid: &[bool])
     (column_type, Arc::new(array))
 }
 
-fn dates<const N: usize>(values: [Option<i32>; N]) -> Column {
+pub(super) fn dates<const N: usize>(values: [Option<i32>; N]) -> Column {
     let array = arrow::array::Date32Array::from(values.to_vec());
     (ColumnType::LocalDate, Arc::new(array))
 }
