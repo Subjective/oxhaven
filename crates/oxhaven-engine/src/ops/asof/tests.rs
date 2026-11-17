@@ -1194,3 +1194,253 @@ fn a_failure_of_either_table_fails_the_result() {
         ));
     }
 }
+
+// ---- Typed stamps, the key table and the flat right rows (task 9.9) ------------------------
+
+/// A stamp as the brute force below orders it: null first, then numbers (one zero), then
+/// NaN; independent of the join's own forms of stamps.
+#[derive(Clone, Copy, Debug)]
+enum Plain {
+    Null,
+    Number(f64),
+    NaN,
+}
+
+fn plain_order(a: &Plain, b: &Plain) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let rank = |p: &Plain| match p {
+        Plain::Null => 0,
+        Plain::Number(_) => 1,
+        Plain::NaN => 2,
+    };
+    match (a, b) {
+        (Plain::Number(x), Plain::Number(y)) => x.partial_cmp(y).unwrap_or(Ordering::Equal),
+        _ => rank(a).cmp(&rank(b)),
+    }
+}
+
+/// The position of the right row of each left row, found by looking at every right row:
+/// among the right rows with the left row's key, the closest stamp on the rule's side;
+/// of several with that stamp, the last for `aj` and the first for `raj`.
+fn brute_force(
+    left: &[(Vec<Option<i64>>, Plain)],
+    right: &[(Vec<Option<i64>>, Plain)],
+    rule: AsOfRule,
+) -> Vec<Option<usize>> {
+    use std::cmp::Ordering;
+    left.iter()
+        .map(|(key, stamp)| {
+            let mut best: Option<usize> = None;
+            for (at, (right_key, right_stamp)) in right.iter().enumerate() {
+                if right_key != key {
+                    continue;
+                }
+                let order = plain_order(right_stamp, stamp);
+                let allowed = match rule {
+                    GreaterThanEqual => order != Ordering::Greater,
+                    GreaterThan => order == Ordering::Less,
+                    LessThanEqual => order != Ordering::Less,
+                    LessThan => order == Ordering::Greater,
+                };
+                if !allowed {
+                    continue;
+                }
+                best = match best {
+                    None => Some(at),
+                    Some(previous) => {
+                        let versus = plain_order(right_stamp, &right[previous].1);
+                        let better = if rule.is_aj() {
+                            versus != Ordering::Less
+                        } else {
+                            versus == Ordering::Less
+                        };
+                        Some(if better { at } else { previous })
+                    }
+                };
+            }
+            best
+        })
+        .collect()
+}
+
+/// A fixed sequence of pseudo-random numbers.
+struct Lcg(u64);
+
+impl Lcg {
+    fn below(&mut self, n: u64) -> u64 {
+        self.0 = self
+            .0
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (self.0 >> 33) % n
+    }
+}
+
+/// How the brute force's stamps are made into a column.
+#[derive(Clone, Copy, Debug)]
+enum StampKind {
+    Long,
+    Double,
+    Text,
+}
+
+fn stamp_column(kind: StampKind, stamps: &[Plain]) -> (ColumnType, ArrayRef) {
+    match kind {
+        StampKind::Long => {
+            let values: Vec<Option<i64>> = stamps
+                .iter()
+                .map(|s| match s {
+                    Plain::Number(x) => Some(*x as i64),
+                    _ => None,
+                })
+                .collect();
+            (
+                ColumnType::Long,
+                Arc::new(arrow::array::Int64Array::from(values)),
+            )
+        }
+        StampKind::Double => {
+            let values: Vec<Option<f64>> = stamps
+                .iter()
+                .enumerate()
+                .map(|(row, s)| match s {
+                    Plain::Null => None,
+                    // Both zeros, and two kinds of NaN.
+                    Plain::Number(x) if *x == 0.0 && row % 2 == 1 => Some(-0.0),
+                    Plain::Number(x) => Some(*x),
+                    Plain::NaN if row % 2 == 1 => Some(f64::from_bits(f64::NAN.to_bits() | 1)),
+                    Plain::NaN => Some(f64::NAN),
+                })
+                .collect();
+            (ColumnType::Double, Arc::new(Float64Array::from(values)))
+        }
+        StampKind::Text => {
+            // Zero-padded, so that text order is number order.
+            let values: Vec<Option<String>> = stamps
+                .iter()
+                .map(|s| match s {
+                    Plain::Number(x) => Some(format!("{:04}", *x as i64)),
+                    _ => None,
+                })
+                .collect();
+            (
+                ColumnType::String,
+                Arc::new(arrow::array::StringArray::from(values)),
+            )
+        }
+    }
+}
+
+/// Random stamps for `rows` rows: small numbers so that many tie, some nulls, and NaN for
+/// doubles; in stamp order when `ordered`.
+fn random_stamps(random: &mut Lcg, rows: usize, kind: StampKind, ordered: bool) -> Vec<Plain> {
+    let mut stamps: Vec<Plain> = (0..rows)
+        .map(|_| match random.below(20) {
+            0 => Plain::Null,
+            1 if matches!(kind, StampKind::Double) => Plain::NaN,
+            _ => Plain::Number(random.below(30) as f64),
+        })
+        .collect();
+    if ordered {
+        stamps.sort_by(plain_order);
+    }
+    stamps
+}
+
+/// The exact-match columns of a side: `keys` per row, as columns of the types `types`.
+fn key_columns(
+    names: &[&'static str],
+    types: &[ColumnType],
+    keys: &[Vec<Option<i64>>],
+) -> Vec<(&'static str, ColumnType, ArrayRef)> {
+    let mut columns = Vec::new();
+    for (index, (name, column_type)) in names.iter().zip(types).enumerate() {
+        let values = keys.iter().map(|key| key[index]);
+        let array: ArrayRef = match column_type {
+            ColumnType::Boolean => Arc::new(arrow::array::BooleanArray::from(
+                values.map(|v| v.map(|v| v != 0)).collect::<Vec<_>>(),
+            )),
+            ColumnType::Byte => Arc::new(arrow::array::Int8Array::from(
+                values.map(|v| v.map(|v| v as i8)).collect::<Vec<_>>(),
+            )),
+            ColumnType::Int => Arc::new(Int32Array::from(
+                values.map(|v| v.map(|v| v as i32)).collect::<Vec<_>>(),
+            )),
+            other => panic!("no key column of {other:?} here"),
+        };
+        columns.push((*name, column_type.clone(), array));
+    }
+    columns
+}
+
+/// Static joins of random tables against [`brute_force`], for every rule, three stamp
+/// types, left stamps in order and out of order, and exact-match columns that take the
+/// key table (none, one int, a `Boolean` against a `byte`) and that do not (a `Boolean`
+/// and an int against a `byte` and an int).
+#[test]
+fn static_joins_match_a_look_at_every_right_row() {
+    type Shape<'a> = (&'a [&'static str], &'a [ColumnType], &'a [ColumnType]);
+    let key_shapes: [Shape; 4] = [
+        (&[], &[], &[]),
+        (&["K"], &[ColumnType::Int], &[ColumnType::Int]),
+        (&["K"], &[ColumnType::Boolean], &[ColumnType::Byte]),
+        (
+            &["K", "J"],
+            &[ColumnType::Boolean, ColumnType::Int],
+            &[ColumnType::Byte, ColumnType::Int],
+        ),
+    ];
+    let mut random = Lcg(9);
+    let mut checked = 0;
+    for (names, left_types, right_types) in key_shapes {
+        for kind in [StampKind::Long, StampKind::Double, StampKind::Text] {
+            for ordered in [true, false] {
+                let (left_rows, right_rows) = (60, 40);
+                let mut random_keys = |rows: usize| -> Vec<Vec<Option<i64>>> {
+                    (0..rows)
+                        .map(|_| {
+                            (0..names.len())
+                                .map(|_| match random.below(7) {
+                                    0 => None,
+                                    _ => Some(random.below(2) as i64),
+                                })
+                                .collect()
+                        })
+                        .collect()
+                };
+                let left_keys = random_keys(left_rows);
+                let right_keys = random_keys(right_rows);
+                let left_stamps = random_stamps(&mut random, left_rows, kind, ordered);
+                let right_stamps = random_stamps(&mut random, right_rows, kind, false);
+
+                let (stamp_type, left_stamp_values) = stamp_column(kind, &left_stamps);
+                let (_, right_stamp_values) = stamp_column(kind, &right_stamps);
+                let mut left_columns = key_columns(names, left_types, &left_keys);
+                left_columns.push(("X", stamp_type.clone(), left_stamp_values));
+                let mut right_columns = key_columns(names, right_types, &right_keys);
+                right_columns.push(("Y", stamp_type, right_stamp_values));
+                right_columns.push(("P", ColumnType::Long, longs(0..right_rows as i64)));
+                let left = static_table(&left_columns);
+                let right = static_table(&right_columns);
+
+                let left_pairs: Vec<_> = left_keys.into_iter().zip(left_stamps).collect();
+                let right_pairs: Vec<_> = right_keys.into_iter().zip(right_stamps).collect();
+                for rule in RULES {
+                    let joined =
+                        as_of_join(&left, &right, &on(names), &x_y(rule), &add(&["P"])).unwrap();
+                    let found = column(&*joined, "P");
+                    let expected: Vec<String> = brute_force(&left_pairs, &right_pairs, rule)
+                        .into_iter()
+                        .map(|at| at.map_or("null".to_string(), |at| at.to_string()))
+                        .collect();
+                    assert_eq!(
+                        found, expected,
+                        "{names:?} {kind:?} {rule:?} ordered {ordered}"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(checked, 4 * 3 * 2 * 4);
+}

@@ -138,3 +138,24 @@ fn a_write_of_the_wrong_type_or_length_is_refused() {
     assert!(source.fill_by_keys(&[0], &longs).is_err());
     assert!(source.fill_by_keys(&[-1, 0], &longs).is_err());
 }
+
+/// Consecutive values of one written array are read as a slice of it, without a copy;
+/// other reads copy, and both read the same values.
+#[test]
+fn consecutive_values_are_read_without_a_copy() {
+    let source = SlotSource::new(ColumnType::Int, None);
+    let written = ints(&[Some(1), None, Some(3), Some(4), Some(5)]);
+    source.fill_by_keys(&[0, 1, 2, 3, 4], &written).unwrap();
+    let pointer = |array: &ArrayRef| array.to_data().buffers()[0].data_ptr();
+
+    let middle = source.chunk(&RowSet::from_range(1, 3)).unwrap();
+    assert_eq!(&middle, &ints(&[None, Some(3), Some(4)]));
+    assert_eq!(pointer(&middle), pointer(&written));
+
+    let scattered = source.chunk_by_keys(&[3, 1, 4], false).unwrap();
+    assert_eq!(&scattered, &ints(&[Some(4), None, Some(5)]));
+    assert_ne!(pointer(&scattered), pointer(&written));
+    // A key past the end reads as null, from the null batch.
+    let past = source.chunk(&RowSet::from_range(3, 5)).unwrap();
+    assert_eq!(&past, &ints(&[Some(4), Some(5), None]));
+}

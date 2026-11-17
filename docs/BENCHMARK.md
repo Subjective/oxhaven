@@ -1276,3 +1276,90 @@ now 6 ms of evaluation, a pass over the column for the reserved null value, and 
 21 ms making a row set from runs whose blocks are stored as bitmaps in the end; a
 constructor of a row set from a bitmap is missing from the contracts. `where_conj` on
 one thread is still 1.4 times Deephaven's time: its filters were not changed.
+
+## After task 9.9 (2026-11-17): `aj`, `last_by`, `ungroup`, aggregations with few groups
+
+Task 9.9 (`tasks/9.9-fast-asof-lastby-ungroup.md`) took the cases the second measurement
+found slower than Deephaven in both runs, except `where_range`: the as-of join, `last_by`,
+`ungroup` at 10M rows, and the low- and medium-cardinality aggregations at 10M rows. Each
+was measured inside the engine before it was changed. Results, row order and incremental
+behaviour are unchanged.
+
+**How it was measured.** Inside the engine only, release builds of `examples/asof-cases.rs`
+(new) and `examples/aggregation-cases.rs` (with a new `ungroup` case: a fresh `head` of a
+`group_by` of the source by `K10k`, as the benchmark does). Java was **not** run and the
+end-to-end benchmark (`bench/bench.py`) was not run; the Deephaven column below is the
+second measurement's, for orientation only. Another agent was building for most of the
+task: the one-minute load is given per run, and was 1.3 to 3 for the as-of runs and 4 to
+10 for the aggregation runs. Raw output: `bench/results/2026-11-17-task-9.9-*.txt`.
+
+**The as-of join** (`asof-cases`, milliseconds, median; before is `main` at `8a21018b`,
+3 repetitions at 1M left rows and 1 at 10M, load 1.3 to 1.6; after 3 repetitions, load 2.8
+to 3.1). The right table has a tenth of the left table's rows, as `RA` in the benchmark;
+the first row is the benchmark's case.
+
+| case | 1M before | 1M after | 10M before | 10M after | Deephaven, 10M |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `aj` on `K10`, `Id >= Stamp` | 449 | 16.9 | 4982 | 230 | 1776 / 1689 |
+| the same, then reading the added column | 521 | 24.8 | 5196 | 321 | |
+| `Id > Stamp` | 460 | 13.5 | 4824 | 206 | |
+| `raj`, `Id <= Stamp` | 529 | 12.9 | | 198 | |
+| no exact-match column | 358 | 10.4 | 3553 | 168 | |
+| a string key of 1,000 values | 781 | 25.3 | 9988 | 352 | |
+| an int stamp in no order | 896 | 99.7 | 15005 | 2281 | |
+| refreshing left: the join | 415 | 22.4 | | 212 | |
+| then 20 cycles of 1,000 left rows | 12.8 | 11.2 | | 8.3 | |
+| refreshing right: the join | 376 | 134 | | 1794 | |
+| then 10 cycles of 1,000 right rows | 201 | 162 | | 144 | |
+
+Under callgrind the join spent a third of its instructions putting every left and right
+row into an ordered set per key, a sixth finding each left row's match in such a set, and
+a sixth in an ordered map of heap-allocated keys, one per row. The keys are now numbered
+by the key table of task 9.5 a chunk at a time, stamps of 64 bits or fewer are one number
+per row, the right rows of a static right table are one sorted flat array per key in which
+each left row's match is found from where the previous left row of its key ended (a merge
+when the left stamps are in order, as `Id` is), and left rows are kept per key only when
+the right table is refreshing. A refreshing right table still keeps an ordered set per key,
+which is why `refreshing right` gained least.
+
+**`last_by`** (`aggregation-cases`, 10,000 keys, six columns). Before, on `main`'s code: 29.5
+ms at 1M rows (load 2.0), 339 ms at 10M; after: 18.6 ms at 1M (load 10), 155 to 179 ms at
+10M in two rounds (load 4 to 10). Deephaven: 18.2 / 20.1 ms at 1M, 160 / 183 ms at 10M.
+Under callgrind most of the work was per row and per operator: each chunk grouped by slot,
+then for each of the six operators a call and an effect per group, and the framework noting
+each effect. For a static or add-only parent the first and last operators now take a
+chunk's rows one at a time in row order and write their marks directly, without the rows
+grouped by slot; a row takes its group's place when its row key is beyond the one kept,
+which over a chunk comes to what the group's first or last row does.
+
+**`ungroup`** at 10M rows: 3.7 ms before, 0.2 ms after (0.7 to 0.3 at 1M). It was a cost per
+element: to learn the size of each vector, `ungroup` reads the grouped column, and the
+aggregation's result column answered with a copy of all 10M elements. A read of
+consecutive groups of one written array is now a slice of it. The benchmark's 9 ms
+included a client round trip of about 1.3 ms (the case takes 1.8 to 2.2 ms end to end at
+1M rows against 0.7 here).
+
+**Aggregations with few groups** (10M rows, 3 repetitions, two rounds interleaved; before is
+the branch without this change, whose aggregation path for these cases is `main`'s; load
+3.6 to 9.6):
+
+| case | before, round 1 / 2 | after, round 1 / 2 | Deephaven (second measurement) |
+| --- | ---: | ---: | ---: |
+| `sum_by_low` | 190 / 179 | 109 / 113 | 152 / 177 |
+| `avg_by_low` | 195 / 190 | 112 / 107 | 156 / 140 |
+| `count_by_low` | 154 / 148 | 72 / 67 | 106 / 107 |
+| `sum_by_med` | 369 / 385 | 293 / 293 | 344 / 349 |
+| `avg_by_med` | 428 / 426 | 373 / 424 | 436 / 522 |
+| `count_by_med` | 166 / 158 | 151 / 133 | 151 / 193 |
+
+With 10 keys, grouping each chunk of 4,096 rows by slot (a sort) was 127 instructions per
+row under callgrind, more than numbering the keys and the operators together; a chunk whose
+slots lie in a narrow range is now grouped by a counting sort. With 10,000 keys nearly every
+group of a chunk has one row, and the operators' and the framework's work per group is
+most of what is left, as it was for `last_by`; the row-order path of `last_by` does not
+apply to operators that read values, and splitting the input over threads was not tried.
+
+**Reading.** Inside the engine, the as-of join of the benchmark's shape is now well under
+Deephaven's end-to-end time at both sizes, and `last_by`, `ungroup` and the low-cardinality
+aggregations are at or under it; whether that holds end to end needs a run of
+`bench/bench.py`.

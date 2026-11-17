@@ -237,14 +237,151 @@ fn stamps_of(values: &ArrayRef) -> Result<Vec<Stamp>, TableFailure> {
     })
 }
 
+/// A form of stamp the join can keep: values that order as Java orders the stamps of one
+/// column, made from the column's values. Every stamp column has one of two forms:
+/// [`Word`] for the columns of 64 bits or fewer and [`Stamp`] for the others.
+pub(super) trait StampValue: Ord + Clone + Send + Sync + std::fmt::Debug + 'static {
+    /// The stamp of each value of `values`, in order.
+    fn of(values: &ArrayRef) -> Result<Vec<Self>, TableFailure>;
+}
+
+impl StampValue for Stamp {
+    fn of(values: &ArrayRef) -> Result<Vec<Self>, TableFailure> {
+        stamps_of(values)
+    }
+}
+
+/// The stamp of a column of 64 bits or fewer: `None` for null, and otherwise a number
+/// whose order is the order of [`Stamp`] for the same values. An integer, boolean or time
+/// value is its count as in [`Stamp::Int`]; a floating point value is its bits as an
+/// integer that orders as `f64::total_cmp`, after every NaN is made one NaN and `-0.0`
+/// `0.0`, so that NaN is the greatest and the zeros tie (as [`Stamp::Float`] and
+/// [`Stamp::NaN`]).
+pub(super) type Word = Option<i64>;
+
+/// The ordered number of a `double`, as [`Word`] describes.
+fn float_word(value: f64) -> i64 {
+    let canonical = if value.is_nan() {
+        f64::NAN
+    } else if value == 0.0 {
+        0.0
+    } else {
+        value
+    };
+    let bits = canonical.to_bits() as i64;
+    // Negative values order backwards by their bits: flip all but the sign bit.
+    bits ^ (((bits >> 63) as u64) >> 1) as i64
+}
+
+/// Whether a stamp column stored as `data_type` is kept as a [`Word`].
+pub(super) fn is_word(data_type: &arrow::datatypes::DataType) -> bool {
+    use arrow::datatypes::{DataType, TimeUnit};
+    matches!(
+        data_type,
+        DataType::Boolean
+            | DataType::Int8
+            | DataType::Int16
+            | DataType::Int32
+            | DataType::Int64
+            | DataType::UInt16
+            | DataType::Float32
+            | DataType::Float64
+            | DataType::Timestamp(TimeUnit::Nanosecond, _)
+            | DataType::Date32
+            | DataType::Time64(TimeUnit::Nanosecond)
+            | DataType::Duration(TimeUnit::Nanosecond)
+    )
+}
+
+impl StampValue for Word {
+    fn of(values: &ArrayRef) -> Result<Vec<Self>, TableFailure> {
+        use arrow::array::AsArray;
+        use arrow::datatypes::{
+            DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type,
+            Int32Type, Int64Type, Int8Type, Time64NanosecondType, TimeUnit,
+            TimestampNanosecondType, UInt16Type,
+        };
+        fn each<T: Copy>(values: &ArrayRef, slice: &[T], word: impl Fn(T) -> i64) -> Vec<Word> {
+            match values.nulls().filter(|nulls| nulls.null_count() > 0) {
+                None => slice.iter().map(|&value| Some(word(value))).collect(),
+                Some(nulls) => slice
+                    .iter()
+                    .enumerate()
+                    .map(|(row, &value)| nulls.is_valid(row).then(|| word(value)))
+                    .collect(),
+            }
+        }
+        Ok(match values.data_type() {
+            DataType::Boolean => {
+                let booleans = values.as_boolean();
+                (0..booleans.len())
+                    .map(|row| booleans.is_valid(row).then(|| booleans.value(row).into()))
+                    .collect()
+            }
+            DataType::Int8 => each(
+                values,
+                values.as_primitive::<Int8Type>().values(),
+                i64::from,
+            ),
+            DataType::Int16 => each(
+                values,
+                values.as_primitive::<Int16Type>().values(),
+                i64::from,
+            ),
+            DataType::Int32 => each(
+                values,
+                values.as_primitive::<Int32Type>().values(),
+                i64::from,
+            ),
+            DataType::Int64 => each(values, values.as_primitive::<Int64Type>().values(), |v| v),
+            DataType::UInt16 => each(
+                values,
+                values.as_primitive::<UInt16Type>().values(),
+                i64::from,
+            ),
+            DataType::Float32 => each(
+                values,
+                values.as_primitive::<Float32Type>().values(),
+                |v: f32| float_word(v.into()),
+            ),
+            DataType::Float64 => each(
+                values,
+                values.as_primitive::<Float64Type>().values(),
+                float_word,
+            ),
+            DataType::Timestamp(TimeUnit::Nanosecond, _) => each(
+                values,
+                values.as_primitive::<TimestampNanosecondType>().values(),
+                |v| v,
+            ),
+            DataType::Date32 => each(
+                values,
+                values.as_primitive::<Date32Type>().values(),
+                i64::from,
+            ),
+            DataType::Time64(TimeUnit::Nanosecond) => each(
+                values,
+                values.as_primitive::<Time64NanosecondType>().values(),
+                |v| v,
+            ),
+            DataType::Duration(TimeUnit::Nanosecond) => each(
+                values,
+                values.as_primitive::<DurationNanosecondType>().values(),
+                |v| v,
+            ),
+            other => panic!("a stamp column stored as {other} is not kept as a word"),
+        })
+    }
+}
+
 /// The stamp of each row of `rows`, in row order, from column `column` of `table`; with
 /// `use_prev`, as of the end of the previous cycle for `rows` of the previous key space.
-pub(super) fn read(
+pub(super) fn read<S: StampValue>(
     table: &dyn Table,
     column: usize,
     rows: &RowSet,
     use_prev: bool,
-) -> Result<Vec<Stamp>, TableFailure> {
+) -> Result<Vec<S>, TableFailure> {
     if rows.is_empty() {
         return Ok(Vec::new());
     }
@@ -254,7 +391,7 @@ pub(super) fn read(
     } else {
         source.chunk(rows)?
     };
-    stamps_of(&values)
+    S::of(&values)
 }
 
 #[cfg(test)]
@@ -437,6 +574,62 @@ mod tests {
             primitive(&ColumnType::Float),
             primitive(&ColumnType::Double)
         );
+    }
+
+    /// A word orders as the stamp of the same value, for every column a word is made of.
+    #[test]
+    fn words_order_as_stamps() {
+        let other_nan = f64::from_bits(f64::NAN.to_bits() | 1);
+        let columns: Vec<ArrayRef> = vec![
+            Arc::new(Float64Array::from(vec![
+                None,
+                Some(f64::NEG_INFINITY),
+                Some(-1e300),
+                Some(-1.5),
+                Some(-f64::MIN_POSITIVE),
+                Some(-0.0),
+                Some(0.0),
+                Some(f64::MIN_POSITIVE),
+                Some(2.0),
+                Some(f64::INFINITY),
+                Some(f64::NAN),
+                Some(other_nan),
+                Some(-f64::NAN),
+            ])),
+            Arc::new(Float32Array::from(vec![
+                None,
+                Some(-0.0f32),
+                Some(0.0),
+                Some(-3.5),
+                Some(f32::NAN),
+                Some(f32::MAX),
+            ])),
+            Arc::new(Int64Array::from(vec![
+                Some(i64::MAX),
+                None,
+                Some(i64::MIN),
+                Some(0),
+                Some(-1),
+            ])),
+            Arc::new(BooleanArray::from(vec![Some(true), None, Some(false)])),
+            Arc::new(UInt16Array::from(vec![Some(0xFFFF), Some(0), None])),
+            Arc::new(Int8Array::from(vec![Some(-128), Some(127), None])),
+            Arc::new(Date32Array::from(vec![Some(-3), None, Some(7)])),
+        ];
+        for values in &columns {
+            let stamps = of(values);
+            let words = <Word as StampValue>::of(values).unwrap();
+            for i in 0..stamps.len() {
+                for j in 0..stamps.len() {
+                    assert_eq!(
+                        words[i].cmp(&words[j]),
+                        stamps[i].cmp(&stamps[j]),
+                        "{} rows {i} and {j}",
+                        values.data_type()
+                    );
+                }
+            }
+        }
     }
 
     #[test]

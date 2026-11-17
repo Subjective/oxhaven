@@ -24,6 +24,8 @@ use oxhaven_engine::ops::agg::{
     aggregate, aggregate_all_with, group_by, AggSpec, Aggregation, Pair,
 };
 use oxhaven_engine::ops::distinct::select_distinct;
+use oxhaven_engine::ops::sort::head;
+use oxhaven_engine::ops::ungroup::ungroup;
 use oxhaven_engine::table::{append_only_input_table, in_memory_table};
 use oxhaven_expr::Compiler;
 use oxhaven_testkit::definition;
@@ -176,6 +178,17 @@ fn main() {
         let grouped = group_by(&narrow, &["K10k"]).expect("group_by");
         let column = grouped.column(1);
         column.chunk(&grouped.row_set()).expect("the vectors");
+    });
+    // The benchmark's `ungroup`: a fresh `head` of the grouped table each time, since an
+    // ungroup of one table is memoized.
+    let grouped = group_by(&narrow, &["K10k"]).expect("group_by");
+    time("ungroup", reps, || {
+        let fresh = head(&grouped, 10_000).expect("head");
+        ungroup(&fresh, false, &["A".to_string()]).expect("ungroup");
+    });
+    time("ungroup_read_vectors", reps, || {
+        let fresh = head(&grouped, 10_000).expect("head");
+        fresh.column(1).chunk(&fresh.row_set()).expect("vectors");
     });
 
     // The same operations kept up to date over an append-only table: 20 cycles, each
