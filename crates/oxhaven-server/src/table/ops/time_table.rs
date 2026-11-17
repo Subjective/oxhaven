@@ -2,7 +2,9 @@
 
 use super::prelude::*;
 use oxhaven_contracts::unported;
+use oxhaven_contracts::expr::FormulaError;
 use oxhaven_engine::table::{time_table, TimeTableOptions};
+use oxhaven_expr::{parse_instant_reach, InstantReach};
 use oxhaven_proto::grpc::time_table_request::{Period, StartTime};
 use oxhaven_proto::grpc::TimeTableRequest;
 
@@ -65,11 +67,42 @@ fn period_nanos(request: &TimeTableRequest) -> Result<i64, String> {
 /// Behavior: `TimeTableGrpcImpl#adaptStartTime`
 fn start_nanos(request: &TimeTableRequest) -> Result<Option<i64>, String> {
     match &request.start_time {
-        Some(StartTime::StartTimeString(text)) => parse_instant_nanos(text)
-            .map(Some)
-            .map_err(|e| format!("Cannot parse instant: {text}: {e}")),
+        Some(StartTime::StartTimeString(text)) => start_of_text(text),
         Some(StartTime::StartTimeNanos(nanos)) if *nanos > 0 => Ok(Some(*nanos)),
         _ => Ok(None),
+    }
+}
+
+/// A start that no clock of this server reaches: the last nanosecond a clock reads.
+///
+/// Behavior: `io.deephaven.engine.table.impl.TimeTable#refresh`, which compares the clock
+/// with the start as `java.time.Instant`s: a start later than every instant a `long` of
+/// nanoseconds holds (`+10000-01-01T00:00:00Z`, `2300-01-01T00:00:00 ET`) is never
+/// reached, and the table never gains a row. Seen on Java 42.9.
+const NEVER: i64 = i64::MAX;
+
+/// A start time written as text: a date and time with an offset or a zone, a date and a
+/// zone, or a whole number since the epoch, read as the expression crate reads instants
+/// (with Deephaven's time zone aliases and the time zone database).
+///
+/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant`; a whole number that is the
+/// smallest `long` is the null instant (`DateTimeUtils#epochNanosToInstant`), which is no
+/// start: seen on Java 42.9, `-9223372036854775808` makes a table that starts empty.
+fn start_of_text(text: &str) -> Result<Option<i64>, String> {
+    match parse_instant_reach(text) {
+        Ok(InstantReach::Within(i64::MIN)) => Ok(None),
+        Ok(InstantReach::Within(nanos)) => Ok(Some(nanos)),
+        Ok(InstantReach::After) => Ok(Some(NEVER)),
+        Ok(InstantReach::Before) => unported!(
+            "io.deephaven.time.DateTimeUtils#epochNanos",
+            "the start time {text}, before the instants a long of nanoseconds holds, \
+             which Deephaven converts with a wrap-around"
+        ),
+        Err(FormulaError::Unsupported(what)) => unported!(
+            "io.deephaven.time.DateTimeUtils#parseInstant",
+            "the start time {text} ({what})"
+        ),
+        Err(error) => Err(format!("Cannot parse instant: {text}: {error}")),
     }
 }
 
@@ -123,11 +156,6 @@ impl<'a> Text<'a> {
             return None;
         }
         std::str::from_utf8(&self.bytes[start..self.at]).ok()
-    }
-
-    /// A number of `min` to `max` digits.
-    fn number(&mut self, min: usize, max: usize) -> Option<i64> {
-        self.digits(min, max)?.parse().ok()
     }
 }
 
@@ -285,246 +313,6 @@ fn parse_iso_duration(text: &str) -> Result<i128, String> {
     Ok(if negate { -total } else { total })
 }
 
-/// Days from 1970-01-01 to the given date in the proleptic Gregorian calendar.
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let year_of_era = year.rem_euclid(400);
-    let month_from_march = (month + 9) % 12;
-    let day_of_year = (153 * month_from_march + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
-}
-
-fn month_length(year: i64, month: i64) -> i64 {
-    match month {
-        4 | 6 | 9 | 11 => 30,
-        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
-        2 => 28,
-        _ => 31,
-    }
-}
-
-/// `yyyy-MM-dd` as days since the epoch. Strict takes two-digit months and days and no
-/// day past the end of its month; lenient takes one or two digits and moves such a day to
-/// the last day of the month.
-///
-/// Behavior: `DateTimeFormatter.ISO_LOCAL_DATE` (strict) and
-/// `DateTimeUtils.FORMATTER_ISO_LOCAL_DATE` (lenient, resolved with `ResolverStyle.SMART`)
-fn parse_date(text: &mut Text, strict: bool) -> Result<i64, String> {
-    let bad = || "not a date".to_string();
-    let min = if strict { 2 } else { 1 };
-    if text.peek().is_some_and(|b| b == b'-' || b == b'+') {
-        unported!(
-            "io.deephaven.time.DateTimeUtils#parseInstant",
-            "a year written with a sign"
-        );
-    }
-    // Both formatters take more than four digits only after a sign.
-    let year = text.number(4, 4).ok_or_else(bad)?;
-    if !text.take_byte(b'-') {
-        return Err(bad());
-    }
-    let month = text.number(min, 2).ok_or_else(bad)?;
-    if !text.take_byte(b'-') {
-        return Err(bad());
-    }
-    let mut day = text.number(min, 2).ok_or_else(bad)?;
-    if !(1..=12).contains(&month) || !(1..=31).contains(&day) {
-        return Err("month or day out of range".to_string());
-    }
-    let last = month_length(year, month);
-    if day > last {
-        if strict {
-            return Err("day past the end of the month".to_string());
-        }
-        day = last;
-    }
-    Ok(days_from_civil(year, month, day))
-}
-
-/// A time of day in nanoseconds. Strict is `HH:mm[:ss[.fraction]]` with two-digit fields;
-/// lenient takes one or two digits per field.
-///
-/// Behavior: `DateTimeFormatter.ISO_LOCAL_TIME` (strict) and
-/// `DateTimeUtils.FORMATTER_ISO_LOCAL_TIME` (lenient)
-fn parse_time(text: &mut Text, strict: bool) -> Result<i64, String> {
-    let bad = || "not a time".to_string();
-    let min = if strict { 2 } else { 1 };
-    let hour = text.number(min, 2).ok_or_else(bad)?;
-    if !text.take_byte(b':') {
-        return Err(bad());
-    }
-    let minute = text.number(min, 2).ok_or_else(bad)?;
-    let mut second = 0;
-    let mut nanos = 0;
-    if text.take_byte(b':') {
-        second = text.number(min, 2).ok_or_else(bad)?;
-        if text.take_byte(b'.') {
-            let digits = text.digits(if strict { 1 } else { 0 }, 9).ok_or_else(bad)?;
-            nanos = fraction_nanos(digits);
-        }
-    }
-    if hour == 24 {
-        unported!(
-            "io.deephaven.time.DateTimeUtils#parseInstant",
-            "hour 24, which java.time resolves as the end of the day"
-        );
-    }
-    if hour > 23 || minute > 59 || second > 59 {
-        return Err("time field out of range".to_string());
-    }
-    Ok(((hour * 60 + minute) * 60 + second) * 1_000_000_000 + nanos)
-}
-
-/// The offset of a named time zone from UTC, in seconds. Only the names of UTC are known;
-/// every other zone needs the time zone database and Deephaven's aliases.
-///
-/// Behavior: `io.deephaven.time.TimeZoneAliases#zoneId`
-fn zone_offset_seconds(zone: &str) -> i64 {
-    match zone {
-        "UTC" | "Z" | "GMT" | "UT" | "Etc/UTC" | "Etc/GMT" => 0,
-        _ => unported!(
-            "io.deephaven.time.TimeZoneAliases#zoneId",
-            "time zone {zone}: only UTC is known"
-        ),
-    }
-}
-
-/// `Z` or `+hh:mm[:ss]` in seconds, at the cursor.
-///
-/// Behavior: the `+HH:MM:ss` offset pattern of `DateTimeFormatter.ISO_OFFSET_DATE_TIME`
-fn parse_offset(text: &mut Text) -> Result<i64, String> {
-    let bad = || "not a zone offset".to_string();
-    if text.take_letter(b'Z') {
-        return Ok(0);
-    }
-    let sign = match text.take(|b| b == b'-' || b == b'+') {
-        Some(b'-') => -1,
-        Some(_) => 1,
-        None => return Err(bad()),
-    };
-    let hours = text.number(2, 2).ok_or_else(bad)?;
-    if !text.take_byte(b':') {
-        return Err(bad());
-    }
-    let minutes = text.number(2, 2).ok_or_else(bad)?;
-    let seconds = if text.take_byte(b':') {
-        text.number(2, 2).ok_or_else(bad)?
-    } else {
-        0
-    };
-    if hours > 18 || minutes > 59 || seconds > 59 {
-        return Err("zone offset out of range".to_string());
-    }
-    Ok(sign * ((hours * 60 + minutes) * 60 + seconds))
-}
-
-fn epoch_nanos(days: i64, nanos_of_day: i64, offset_seconds: i64) -> Result<i64, String> {
-    let nanos = (i128::from(days) * 86_400 - i128::from(offset_seconds)) * NANOS_PER_SECOND
-        + i128::from(nanos_of_day);
-    i64::try_from(nanos).map_err(|_| "the instant overflows a long of nanoseconds".to_string())
-}
-
-/// `yyyy-MM-ddTHH:mm[:ss[.f]]` followed by an offset and optionally `[zone]`.
-///
-/// Behavior: `java.time.ZonedDateTime#parse(CharSequence)`
-fn parse_offset_date_time(text: &str) -> Result<i64, String> {
-    let mut text = Text::new(text);
-    let days = parse_date(&mut text, true)?;
-    if !text.take_letter(b'T') {
-        return Err("no time".to_string());
-    }
-    let nanos_of_day = parse_time(&mut text, true)?;
-    let offset = parse_offset(&mut text)?;
-    if text.take_byte(b'[') {
-        let start = text.at;
-        while text.take(|b| b != b']').is_some() {}
-        let zone = std::str::from_utf8(&text.bytes[start..text.at]).unwrap_or("");
-        if !text.take_byte(b']') || zone.is_empty() {
-            return Err("unclosed zone".to_string());
-        }
-        // With a region the offset must be one the region uses at that time.
-        if zone_offset_seconds(zone) != offset {
-            unported!(
-                "java.time.ZonedDateTime#parse",
-                "an offset that differs from its region's"
-            );
-        }
-    }
-    if !text.done() {
-        return Err("text after the date time".to_string());
-    }
-    epoch_nanos(days, nanos_of_day, offset)
-}
-
-/// An instant in nanoseconds since the epoch from a date time with an offset
-/// (`2024-01-01T00:00:00Z`), a date time and a zone (`2024-01-01T00:00:00 UTC`) or a date
-/// and a zone (`2024-01-01 UTC`). Zones other than UTC are not ported.
-///
-/// Behavior: `io.deephaven.time.DateTimeUtils#parseInstant`,
-/// `DateTimeUtils#parseZonedDateTime`
-pub(crate) fn parse_instant_nanos(text: &str) -> Result<i64, String> {
-    let digits = text.strip_prefix('-').unwrap_or(text);
-    if (1..=19).contains(&digits.len()) && digits.bytes().all(|b| b.is_ascii_digit()) {
-        let offset: i64 = text.parse().map_err(|e| format!("{e}"))?;
-        return epoch_auto_to_nanos(offset);
-    }
-    if let Ok(nanos) = parse_offset_date_time(text) {
-        return Ok(nanos);
-    }
-    let Some((local, zone)) = text.split_once(' ') else {
-        return Err("No time zone provided".to_string());
-    };
-    let mut local = Text::new(local);
-    let days = parse_date(&mut local, false)?;
-    // `yyyy-MM-dd[T] zone` is midnight; Java takes it only for a zone of letters, `_`, `/`.
-    let date_only = local.done() || (local.bytes.len() - local.at == 1 && local.take_letter(b'T'));
-    let zone_is_plain = !zone.is_empty()
-        && zone
-            .bytes()
-            .all(|b| b.is_ascii_alphabetic() || b == b'_' || b == b'/');
-    // Behavior: `DateTimeUtils#parseTimeZoneQuiet`, which knows no zone of one character.
-    if date_only && zone_is_plain {
-        if zone.len() <= 1 {
-            return Err(format!("No matching time zone: '{zone}'"));
-        }
-        return epoch_nanos(days, 0, zone_offset_seconds(zone));
-    }
-    if date_only || !local.take_letter(b'T') {
-        return Err("not a date time".to_string());
-    }
-    let nanos_of_day = parse_time(&mut local, false)?;
-    if !local.done() {
-        return Err("text after the time".to_string());
-    }
-    if zone.len() <= 1 {
-        return Err(format!("No matching time zone: {zone}"));
-    }
-    epoch_nanos(days, nanos_of_day, zone_offset_seconds(zone))
-}
-
-/// An offset from the epoch whose unit is told from its size: seconds, milliseconds,
-/// microseconds or nanoseconds.
-///
-/// Behavior: `io.deephaven.time.DateTimeUtils#epochAutoToEpochNanos`
-fn epoch_auto_to_nanos(offset: i64) -> Result<i64, String> {
-    // `io.deephaven.base.clock.TimeConstants.MICROTIME_THRESHOLD`
-    const MICROTIME_THRESHOLD: u64 = 9_309_341_000_000;
-    let size = offset.unsigned_abs();
-    let scale = if size > 1000 * MICROTIME_THRESHOLD {
-        1
-    } else if size > MICROTIME_THRESHOLD {
-        1000
-    } else if size > MICROTIME_THRESHOLD / 1000 {
-        1_000_000
-    } else {
-        1_000_000_000
-    };
-    // Java multiplies without a check; nothing in these ranges overflows.
-    Ok(offset.wrapping_mul(scale))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -575,88 +363,184 @@ mod tests {
 
     const JAN_2024: i64 = 1_704_067_200_000_000_000;
 
-    #[test]
-    fn instants_with_an_offset() {
-        assert_eq!(parse_instant_nanos("2024-01-01T00:00:00Z"), Ok(JAN_2024));
-        assert_eq!(parse_instant_nanos("2024-01-01T00:00Z"), Ok(JAN_2024));
-        assert_eq!(
-            parse_instant_nanos("2024-01-01T00:00:00.000000001Z"),
-            Ok(JAN_2024 + 1)
-        );
-        assert_eq!(
-            parse_instant_nanos("2024-01-01T01:30:00+01:30"),
-            Ok(JAN_2024)
-        );
-        assert_eq!(
-            parse_instant_nanos("2023-12-31T19:00:00-05:00"),
-            Ok(JAN_2024)
-        );
-        assert_eq!(
-            parse_instant_nanos("2024-01-01T00:00:00Z[UTC]"),
-            Ok(JAN_2024)
-        );
-        assert_eq!(parse_instant_nanos("1969-12-31T23:59:59Z"), Ok(-1_000_000_000));
-        assert_eq!(
-            parse_instant_nanos("2024-02-29T00:00:00Z"),
-            Ok(JAN_2024 + 59 * 86_400_000_000_000)
-        );
-        // strict: no day past the end of the month, and no zone means no instant
-        assert!(parse_instant_nanos("2023-02-29T00:00:00Z").is_err());
-        assert_eq!(
-            parse_instant_nanos("2024-01-01T00:00:00"),
-            Err("No time zone provided".to_string())
-        );
+    fn start(text: &str) -> Result<Option<i64>, String> {
+        start_of_text(text)
+    }
+
+    /// Each start and the timestamp of row 0 of `session.time_table(10**18, start)`, seen
+    /// on Deephaven 42.9.
+    fn served_by_deephaven() -> Vec<(&'static str, i64)> {
+        vec![
+            ("2024-01-01T00:00:00Z", JAN_2024),
+            ("2024-01-01T00:00Z", JAN_2024),
+            ("2024-01-01T01:30:00+01:30", JAN_2024),
+            ("2024-01-01T00:00:00 UTC", JAN_2024),
+            ("2024-01-01 UTC", JAN_2024),
+            ("2024-01-01T UTC", JAN_2024),
+            ("2024-1-1T0:0 UTC", JAN_2024),
+            ("1704067200", JAN_2024),
+            // Z3: named zones, Deephaven's aliases and the time zone database
+            ("2024-01-01T00:00:00 America/New_York", 1_704_085_200_000_000_000),
+            ("2024-01-01T00:00:00 ET", 1_704_085_200_000_000_000),
+            ("2024-01-01 America/New_York", 1_704_085_200_000_000_000),
+            ("2024-01-01 ET", 1_704_085_200_000_000_000),
+            ("2024-01-01T America/New_York", 1_704_085_200_000_000_000),
+            ("2024-1-1T0:0 ET", 1_704_085_200_000_000_000),
+            ("2024-01-01T00:00:00 US/Eastern", 1_704_085_200_000_000_000),
+            ("2024-01-01T00:00:00 Europe/Paris", 1_704_063_600_000_000_000),
+            ("2024-01-01T00:00:00 JP", 1_704_034_800_000_000_000),
+            ("2024-01-01T00:00:00 Asia/Kolkata", 1_704_047_400_000_000_000),
+            ("2024-01-01T00:00:00 +05:30", 1_704_047_400_000_000_000),
+            ("2024-01-01T00:00:00 UTC+1", 1_704_063_600_000_000_000),
+            ("2024-01-01T00:00:00 GMT", JAN_2024),
+            ("2024-01-01T00:00:00 Etc/GMT-5", 1_704_049_200_000_000_000),
+            ("2024-01-01T00:00:00 SystemV/EST5EDT", 1_704_085_200_000_000_000),
+            ("2024-07-01T00:00:00 SystemV/EST5EDT", 1_719_806_400_000_000_000),
+            ("2024-02-30T12:00 PT", 1_709_236_800_000_000_000),
+            ("2024-01-01T00:00:00.123456789 CT", 1_704_088_800_123_456_789),
+            ("2024-01-01T00:00:00 Australia/Lord_Howe", 1_704_027_600_000_000_000),
+            // a local time the clocks skip is moved later by the gap ...
+            ("2024-03-10T02:30:00 America/New_York", 1_710_055_800_000_000_000),
+            ("2024-03-10T02:00:00 America/New_York", 1_710_054_000_000_000_000),
+            ("2024-03-10T03:00:00 America/New_York", 1_710_054_000_000_000_000),
+            ("2024-03-31T02:30:00 Europe/London", 1_711_848_600_000_000_000),
+            ("2024-03-31T02:30:00 LON", 1_711_848_600_000_000_000),
+            ("2024-10-06T02:15:00 Australia/Lord_Howe", 1_728_143_100_000_000_000),
+            // ... and one that occurs twice is the earlier
+            ("2024-11-03T01:30:00 America/New_York", 1_730_611_800_000_000_000),
+            ("2024-11-03T01:00:00 ET", 1_730_610_000_000_000_000),
+            ("2024-11-03T02:00:00 ET", 1_730_617_200_000_000_000),
+            ("2024-10-27T01:30:00 LON", 1_729_989_000_000_000_000),
+            ("2024-04-07T01:45:00 Australia/Lord_Howe", 1_712_414_700_000_000_000),
+            // Z2: hour 24 is the next midnight, after a space only
+            ("2024-01-01T24:00:00 UTC", 1_704_153_600_000_000_000),
+            ("2024-01-01T24:00:00.000 UTC", 1_704_153_600_000_000_000),
+            ("2023-12-31T24:00 America/New_York", 1_704_085_200_000_000_000),
+            ("2024-03-09T24:00 ET", 1_710_046_800_000_000_000),
+            // Z4: with an offset and a zone in brackets, the offset decides
+            ("2024-01-01T00:00:00+05:00[Europe/Paris]", 1_704_049_200_000_000_000),
+            ("2024-01-01T00:00:00Z[America/New_York]", JAN_2024),
+            ("2024-01-01T00:00:00-05:00[America/New_York]", 1_704_085_200_000_000_000),
+            ("2024-01-01T00:00:00+05:00[UTC]", 1_704_049_200_000_000_000),
+            ("2024-01-01T00:00:00+05:00[+03:00]", 1_704_049_200_000_000_000),
+            ("2024-03-10T02:30:00-05:00[America/New_York]", 1_710_055_800_000_000_000),
+            ("2024-03-10T02:30:00-04:00[America/New_York]", 1_710_052_200_000_000_000),
+            ("2024-11-03T01:30:00-05:00[America/New_York]", 1_730_615_400_000_000_000),
+            ("2024-11-03T01:30:00-04:00[America/New_York]", 1_730_611_800_000_000_000),
+        ]
     }
 
     #[test]
-    fn instants_with_a_zone_name() {
-        assert_eq!(parse_instant_nanos("2024-01-01T00:00:00 UTC"), Ok(JAN_2024));
-        assert_eq!(parse_instant_nanos("2024-1-1T0:0 UTC"), Ok(JAN_2024));
-        assert_eq!(
-            parse_instant_nanos("2024-01-01T00:00:00.5 UTC"),
-            Ok(JAN_2024 + 500_000_000)
-        );
-        // a zone of one character is never found, even `Z`
-        assert!(parse_instant_nanos("2024-01-01T00:00:00 Z").is_err());
-        assert!(parse_instant_nanos("2024-01-01 Z").is_err());
-        assert!(parse_instant_nanos("20240-01-01T00:00:00 UTC").is_err());
-        assert_eq!(parse_instant_nanos("2024-01-01 UTC"), Ok(JAN_2024));
-        assert_eq!(parse_instant_nanos("2024-01-01T UTC"), Ok(JAN_2024));
-        // lenient: a day past the end of the month is the last day of the month
-        assert_eq!(
-            parse_instant_nanos("2024-02-31T00:00:00 UTC"),
-            parse_instant_nanos("2024-02-29T00:00:00 UTC")
-        );
-        for bad in ["nope", "2024-01-01", "2024-13-01T00:00:00 UTC", "2024-01-01T25:00 UTC"] {
-            assert!(parse_instant_nanos(bad).is_err(), "{bad}");
+    fn start_times_are_read_as_deephaven_reads_them() {
+        for (text, nanos) in served_by_deephaven() {
+            assert_eq!(start(text), Ok(Some(nanos)), "{text}");
         }
     }
 
+    /// Each of these made Deephaven 42.9 answer `INVALID_ARGUMENT`.
     #[test]
-    #[should_panic(expected = "unported: io.deephaven.time.TimeZoneAliases#zoneId")]
-    fn zones_other_than_utc_are_not_ported() {
-        let _ = parse_instant_nanos("2024-01-01T00:00:00 America/New_York");
+    fn start_times_deephaven_refuses_are_errors() {
+        for text in [
+            "nope",
+            "2024-01-01T00:00:00",
+            "2023-02-29T00:00:00Z",
+            "2024-01-01T00:00:00 NY",
+            "2024-01-01T00:00:00 EST",
+            "2024-01-01T00:00:00 america/new_york",
+            "2024-01-01T00:00:00 Z",
+            "2024-01-01T24:00:00Z",
+            "2024-01-01T24:00:00+00:00",
+            "2024-01-01T24:00:01 UTC",
+            "2024-01-01T00:00:00+01:00[ET]",
+            "+2024-01-01T00:00:00Z",
+            "+2024-01-01T00:00:00 UTC",
+            "-0000-01-01T00:00:00Z",
+            "-0000-01-01T00:00:00 UTC",
+            "+10000-01-01 UTC",
+            "10000-01-01T00:00:00Z",
+            "+1000000000-01-01T00:00:00Z",
+            "-1000000000-01-01T00:00:00Z",
+            "+10001-02-29T00:00:00Z",
+            "+10000-13-01T00:00:00Z",
+            "+10000-01-01T00:00:00 Nowhere",
+        ] {
+            let error = start(text).unwrap_err();
+            assert!(error.starts_with(&format!("Cannot parse instant: {text}")), "{error}");
+        }
+    }
+
+    /// Z1: Deephaven 42.9 serves each of these as a table with no rows, which a clock of
+    /// nanoseconds never reaches.
+    #[test]
+    fn a_start_after_every_instant_of_a_clock_is_never_reached() {
+        for text in [
+            "+10000-01-01T00:00:00Z",
+            "+10000-01-01T00:00:00 UTC",
+            "+10000-1-1T0:0 UTC",
+            "+10000-01-01t00:00:00z",
+            "+10000-01-01T24:00 UTC",
+            "+10000-02-29T00:00:00Z",
+            "+10001-02-29T00:00:00 UTC",
+            "+10000-01-01T00:00:00 America/New_York",
+            "+1000000-07-01T00:00:00 America/New_York",
+            "+10000-01-01T00:00:00+05:00[Europe/Paris]",
+            "+10000-01-01T00:00:00 +05:00",
+            "+12024-01-01T00:00:00Z",
+            "+99999-01-01T00:00:00Z",
+            "+010000-01-01T00:00:00Z",
+            "+0999999999-01-01T00:00:00Z",
+            "+999999999-12-31T23:59:59Z",
+            "2300-01-01T00:00:00Z",
+            "2300-01-01T00:00:00 ET",
+            "2262-04-11T23:47:16Z",
+            "2262-04-11T23:47:17Z",
+            "2262-04-11T23:47:16.854775807Z",
+        ] {
+            assert_eq!(start(text), Ok(Some(NEVER)), "{text}");
+        }
+    }
+
+    /// The smallest long is Java's null instant: no start, as seen on Deephaven 42.9.
+    #[test]
+    fn the_null_instant_is_no_start() {
+        assert_eq!(start("-9223372036854775808"), Ok(None));
+        assert_eq!(start("-9223372036854775807"), Ok(Some(-9_223_372_036_854_775_807)));
+    }
+
+    /// Deephaven 42.9 wraps these around: `-0001-01-01T00:00:00Z` gave nine rows from
+    /// -6858522978871345152, `1600-01-01T00:00:00Z` and `-2024-01-01T00:00:00Z` none.
+    #[test]
+    fn a_start_before_every_instant_of_a_clock_is_unported() {
+        for text in [
+            "-0001-01-01T00:00:00Z",
+            "-2024-01-01T00:00:00Z",
+            "-2024-01-01T00:00:00 UTC",
+            "+00001-01-01T00:00:00Z",
+            "-999999999-01-01T00:00:00Z",
+            "1600-01-01T00:00:00Z",
+            "1677-09-21T00:12:43Z",
+        ] {
+            let refused = std::panic::catch_unwind(|| start(text)).unwrap_err();
+            let message = refused.downcast_ref::<String>().unwrap();
+            assert!(
+                message.starts_with("unported: io.deephaven.time.DateTimeUtils#epochNanos"),
+                "{text}: {message}"
+            );
+        }
+        // the first second Java converts without a wrap-around
+        assert_eq!(
+            start("1677-09-21T00:12:44Z"),
+            Ok(Some(-9_223_372_036_000_000_000))
+        );
     }
 
     #[test]
     fn whole_numbers_are_epoch_offsets_by_size() {
-        assert_eq!(
-            parse_instant_nanos("1704067200"),
-            Ok(JAN_2024),
-            "seconds"
-        );
-        assert_eq!(parse_instant_nanos("1704067200000"), Ok(JAN_2024), "millis");
-        assert_eq!(
-            parse_instant_nanos("1704067200000000"),
-            Ok(JAN_2024),
-            "micros"
-        );
-        assert_eq!(
-            parse_instant_nanos("1704067200000000000"),
-            Ok(JAN_2024),
-            "nanos"
-        );
-        assert_eq!(parse_instant_nanos("-5"), Ok(-5_000_000_000));
+        assert_eq!(start("1704067200"), Ok(Some(JAN_2024)), "seconds");
+        assert_eq!(start("1704067200000"), Ok(Some(JAN_2024)), "millis");
+        assert_eq!(start("1704067200000000"), Ok(Some(JAN_2024)), "micros");
+        assert_eq!(start("1704067200000000000"), Ok(Some(JAN_2024)), "nanos");
+        assert_eq!(start("-5"), Ok(Some(-5_000_000_000)));
     }
 
     fn request(period: Option<Period>, start: Option<StartTime>) -> TimeTableRequest {
