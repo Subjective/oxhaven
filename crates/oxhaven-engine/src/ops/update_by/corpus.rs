@@ -400,6 +400,17 @@ fn static_section(recorded: &str, section: &str, at_least: usize) {
     static_section_within(recorded, section, at_least, |_| &[]);
 }
 
+/// Whether a case of the section `unported` reads a window by position, which is now
+/// ported.
+fn reads_by_position(case: &Value) -> bool {
+    case["ops"].as_array().unwrap().iter().any(|op| {
+        let formula = op["formula"].as_str().unwrap_or("");
+        ["get(", "[", "diff("]
+            .iter()
+            .any(|read| formula.contains(read))
+    })
+}
+
 /// As [`static_section`], with the result columns that `tolerant` names for a case compared
 /// under PARITY.md's allowed difference A1.
 fn static_section_within(
@@ -407,6 +418,17 @@ fn static_section_within(
     section: &str,
     at_least: usize,
     tolerant: fn(&Value) -> &'static [&'static str],
+) {
+    static_cases_within(recorded, section, at_least, tolerant, |_| true);
+}
+
+/// As [`static_section_within`], for the cases of the section that `keep` keeps.
+fn static_cases_within(
+    recorded: &str,
+    section: &str,
+    at_least: usize,
+    tolerant: fn(&Value) -> &'static [&'static str],
+    keep: fn(&Value) -> bool,
 ) {
     let recorded: Value = serde_json::from_str(recorded).unwrap();
     let columns = &recorded[section]["columns"];
@@ -424,10 +446,15 @@ fn static_section_within(
     let size = values[0].len() as u64;
     let source: Arc<dyn Table> = ReferenceTable::new_static(definition, RowSet::flat(size), values);
 
-    let cases = recorded[section]["cases"].as_array().unwrap();
+    let cases: Vec<&Value> = recorded[section]["cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|case| keep(case))
+        .collect();
     let mut failures = Vec::new();
     let mut compared = 0;
-    for case in cases {
+    for case in &cases {
         let label = format!("{} by {}", case["ops"], case["by"]);
         let ours = run(&source, &case["ops"], &case["by"]);
         match (&case["result"], ours) {
@@ -624,10 +651,18 @@ fn ticking_results_of_the_formula_match_java() {
     ticking_scenarios(RECORDED_FORMULA, 5);
 }
 
+/// The formulas of the section `unported` that read a window by position (an index,
+/// `get`, `diff`), which were refused before they were ported. A slice as the result
+/// stays refused, and `nth` of a vector is refused by the expression crate.
+#[test]
+fn reads_of_a_window_by_position_match_java() {
+    static_cases_within(RECORDED_FORMULA, "unported", 10, |_| &[], reads_by_position);
+}
+
 /// The section `unported` holds formulas that Java answers, or fails for some row, and
-/// that are refused here: they call a function the expression crate refuses by name, or
-/// take an element or a part of a window, which is left `unported!`. When one of them is
-/// no longer refused, it belongs in the section `static`.
+/// that are refused here: they call a function the expression crate refuses by name.
+/// When one of them is no longer refused, it belongs in the section `static`; those that
+/// read a window by position are compared by `reads_of_a_window_by_position_match_java`.
 #[test]
 fn formulas_that_are_not_ported_are_refused() {
     let recorded: Value = serde_json::from_str(RECORDED_FORMULA).unwrap();
@@ -649,6 +684,7 @@ fn formulas_that_are_not_ported_are_refused() {
     assert!(cases.len() >= 40);
     let answered: Vec<String> = cases
         .iter()
+        .filter(|case| !reads_by_position(case))
         .filter(|case| {
             let run = std::panic::AssertUnwindSafe(|| run(&source, &case["ops"], &case["by"]));
             matches!(std::panic::catch_unwind(run), Ok(Ok(_)))

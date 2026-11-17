@@ -957,11 +957,113 @@ fn formula_request(operation: UpdateByOperation, by: &[&str]) {
     let _ = update_by(&source, &[operation], by);
 }
 
+/// The values of the last column of `table`, as text, or the failure.
+fn last_column_text(table: Result<Arc<dyn Table>, UpdateByError>) -> Result<String, String> {
+    let table = match table {
+        Ok(table) => table,
+        Err(UpdateByError::Failed(failure)) => return Err(failure.message),
+        Err(other) => panic!("{other:?}"),
+    };
+    let snapshot = TableSnapshot::current(&*table).unwrap();
+    let values = snapshot.columns.last().unwrap();
+    let options = arrow::util::display::FormatOptions::default().with_null("null");
+    let format = arrow::util::display::ArrayFormatter::try_new(values.as_ref(), &options).unwrap();
+    Ok((0..values.len())
+        .map(|row| format.value(row).to_string())
+        .collect::<Vec<_>>()
+        .join(" "))
+}
+
+/// Behavior: IntRingBufferVectorWrapper#get, IntRingBuffer#front, IntVectorSlice#get and
+/// #subVector, Numeric#diff, Basic#first, #last, #nth and #countDistinct over a window
 #[test]
-#[should_panic(expected = "outside a window Java throws NoSuchElementException")]
-fn an_element_of_a_window_is_unported() {
+fn a_rolling_formula_reads_a_window_by_position_as_java_does() {
+    // `I` is 1 to 5; each window holds the row before and the row itself.
+    let source = static_table(&[("I", ColumnType::Int, ints(&[1, 2, 3, 4, 5]))]);
+    let fails = || Err("java.util.NoSuchElementException".to_string());
+    let window = || RollingWindow::ticks(2, 0);
+    for (text, expected) in [
+        ("x[0]", Ok("1 1 2 3 4")),
+        ("x.get(0)", Ok("1 1 2 3 4")),
+        // The first window holds one row: Java throws where a vector column gives null.
+        ("x[1]", fails()),
+        ("x.get(-1)", fails()),
+        // Java reads `front((int) index)`: a null long is 0, and so is 2^32.
+        ("x[NULL_LONG]", Ok("1 1 2 3 4")),
+        ("x[4294967296L]", Ok("1 1 2 3 4")),
+        ("x[NULL_INT]", fails()),
+        ("x[len(x) - 1]", Ok("1 2 3 4 5")),
+        // Only the side of a condition that Java evaluates reads.
+        ("len(x) > 1 ? x[1] : -1", Ok("-1 2 3 4 5")),
+        ("len(x) < 2 ? -1 : x[1]", Ok("-1 2 3 4 5")),
+        ("len(x) > 1 && x[1] > 2", Ok("false false true true true")),
+        ("len(x) < 2 || x[1] > 2", Ok("true false true true true")),
+        ("len(x) > 0 ? x[1] : -1", fails()),
+        // A slice reads the window through `get`, and its iterator gives nulls outside.
+        ("x.subVector(0, 1)[0]", Ok("1 1 2 3 4")),
+        ("x.subVector(-1, 1)[0]", fails()),
+        ("x.subVector(-1, 1)[1]", Ok("1 1 2 3 4")),
+        ("x.subVector(0, 1)[1]", fails()),
+        ("x.subVector(0, 2).subVector(1, 2)[0]", fails()),
+        (
+            "len(x) > 1 ? x.subVector(0, 2).subVector(1, 2)[0] : 0",
+            Ok("0 2 3 4 5"),
+        ),
+        ("sum(x.subVector(-1, 5))", Ok("1 3 5 7 9")),
+        ("x.subVector(-1, 5).size()", Ok("6 6 6 6 6")),
+        ("first(x.subVector(-1, 2))", fails()),
+        ("first(x.subVector(0, 2))", Ok("1 1 2 3 4")),
+        ("last(x.subVector(0, 2))", fails()),
+        ("last(x)", Ok("1 2 3 4 5")),
+        // `diff` reads `stride` past the end of the window.
+        ("len(diff(0, x))", Ok("1 2 2 2 2")),
+        ("len(diff(1, x))", fails()),
+        ("len(diff(1, x.subVector(1, 2)))", fails()),
+        ("len(diff(0, x.subVector(1, 2)))", fails()),
+        (
+            "len(x) > 1 ? len(diff(0, x.subVector(1, 2))) : 0",
+            Ok("0 1 1 1 1"),
+        ),
+    ] {
+        let result = update_by(&source, &[formula(text, &["R = I"], window())], &[]);
+        assert_eq!(
+            last_column_text(result),
+            expected.map(str::to_string),
+            "{text}"
+        );
+    }
+    // The form without a token reads the columns' windows the same way.
+    for (text, expected) in [
+        ("R = len(I) > 1 ? I[1] - I[0] : 0", Ok("0 1 1 1 1")),
+        ("R = I[1] - I[0]", fails()),
+    ] {
+        let result = update_by(&source, &[formula_of(text, window())], &[]);
+        assert_eq!(
+            last_column_text(result),
+            expected.map(str::to_string),
+            "{text}"
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "a rolling formula whose result is a slice of its window")]
+fn a_slice_of_a_window_as_the_result_is_unported() {
     formula_request(
-        formula("x.get(0)", &["R = I"], RollingWindow::ticks(2, 0)),
+        formula("x.subVector(0, 1)", &["R = I"], RollingWindow::ticks(2, 0)),
+        &[],
+    );
+}
+
+#[test]
+#[should_panic(expected = "of a window chosen by a condition or a cast")]
+fn an_element_of_a_window_chosen_by_a_condition_is_unported() {
+    formula_request(
+        formula(
+            "(len(x) > 1 ? x : x.subVector(0, 1))[0]",
+            &["R = I"],
+            RollingWindow::ticks(2, 0),
+        ),
         &[],
     );
 }
@@ -1210,6 +1312,15 @@ fn everything() -> Vec<UpdateByOperation> {
         formula("x", &["Fm6 = H"], window(1, 1)),
         formula_of("Fm7 = sum(I) + countObj(S) + avg(D)", window(3, 0)),
         formula_of("Fm8 = max(L) > 0 ? count(I) : -count(F)", window(2, 1)),
+        formula(
+            "len(x) > 1 ? x[len(x) - 1] - x[0] : x.get(0)",
+            &["Fm9 = I", "Fm10 = L"],
+            window(3, 0),
+        ),
+        formula_of(
+            "Fm11 = sum(L.subVector(-1, 2)) + (len(I) > 2 ? I.subVector(1, 3)[1] : 0)",
+            window(3, 0),
+        ),
     ]
 }
 

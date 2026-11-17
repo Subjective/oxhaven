@@ -42,6 +42,7 @@ mod formula;
 mod group;
 mod rolling;
 mod values;
+mod window;
 
 #[cfg(test)]
 mod corpus;

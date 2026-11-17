@@ -13,6 +13,7 @@
 
 use super::group;
 use super::rolling::Slide;
+use super::window::WindowReads;
 use super::{failure, invalid, UpdateByError};
 use crate::ops::select::ArrayFormula;
 use arrow::array::{ArrayRef, Int32Array};
@@ -50,6 +51,9 @@ pub(super) struct RollingFormula {
     buffer: Option<&'static str>,
     /// What Java throws whenever it computes a row with this formula, if it does.
     fails: Option<&'static str>,
+    /// The formula's reads of a window by position; the formula then also reads the
+    /// inputs they add, after `inputs`.
+    reads: Option<WindowReads>,
 }
 
 /// What Java throws for a window of a `Boolean` or `Instant` column where it expects the
@@ -63,19 +67,21 @@ const ARRAY_CAST: &str = "class [Ljava.lang.Object; cannot be cast to class [Lja
 
 /// Looks through `expression` for what Java does differently with the vector of a window
 /// (an `io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper`)
-/// than with a vector column. `objects` tells whether a name is a window of a type that
-/// is not primitive. Gives what Java throws for every row, if the formula has such a
-/// call.
+/// than with a vector column, other than reads by position, which [`WindowReads`] checks
+/// row by row. `objects` tells whether a name is a window of a type that is not
+/// primitive. Gives what Java throws for every row, if the formula has such a call.
 ///
-/// With `unported!` for an element or a part of a vector (`get`, an index, `subVector`,
-/// and `diff` of a window, which reads past its end): a window throws
-/// `NoSuchElementException` where a vector column gives null
-/// (`IntRingBufferVectorWrapper#get`, `IntRingBuffer#front`), and for `len` of anything
-/// that is not a column or the result of a function.
+/// With `unported!` for `len` of anything that is not a column or the result of a
+/// function.
 fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'static str> {
     let all = |parts: &[&Expr]| parts.iter().find_map(|part| window_calls(part, objects));
     match expression {
-        Expr::Column(_) | Expr::Literal(_) | Expr::RowVariable(_) | Expr::ColumnVector(_) => None,
+        // A column array is refused before this, by `ArrayFormula::compile`.
+        Expr::Column(_)
+        | Expr::Literal(_)
+        | Expr::RowVariable(_)
+        | Expr::ColumnVector(_)
+        | Expr::ColumnArrayAccess { .. } => None,
         Expr::Unary { operand, .. } | Expr::Cast { operand, .. } => all(&[operand]),
         Expr::Binary { left, right, .. } => all(&[left, right]),
         Expr::Ternary {
@@ -83,11 +89,6 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
             if_true,
             if_false,
         } => all(&[condition, if_true, if_false]),
-        // The window under a name that ends in `_`.
-        Expr::ColumnArrayAccess { .. } => unported!(
-            "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
-            "an index in a rolling formula: outside a window Java throws NoSuchElementException"
-        ),
         Expr::Call {
             function,
             arguments,
@@ -98,14 +99,6 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
             match (function.as_str(), arguments.as_slice()) {
                 ("len", [Expr::Column(name)]) if objects(name) => Some(ARRAY_CAST),
                 ("len", [Expr::Column(_) | Expr::Call { .. }]) => inner,
-                // Behavior: `io.deephaven.function.Numeric#diff`, which reads `stride`
-                // elements past the end of the vector, where a vector column gives null.
-                ("diff", [_, Expr::Column(_)]) => {
-                    unported!(
-                        "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
-                        "diff in a rolling formula: outside a window Java throws NoSuchElementException"
-                    )
-                }
                 ("len", [_]) => unported!(
                     "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.ObjectRingBufferVectorWrapper#toArray",
                     "len of an expression in a rolling formula, which Java fails for a window of objects"
@@ -115,21 +108,13 @@ fn window_calls(expression: &Expr, objects: &dyn Fn(&str) -> bool) -> Option<&'s
         }
         Expr::MethodCall {
             receiver,
-            method,
             arguments,
-        } => {
-            if matches!(method.as_str(), "get" | "[]" | "subVector") {
-                unported!(
-                    "io.deephaven.engine.table.impl.updateby.rollingformula.ringbuffervectorwrapper.IntRingBufferVectorWrapper#get",
-                    "{method} in a rolling formula: outside a window Java throws NoSuchElementException"
-                );
-            }
-            window_calls(receiver, objects).or_else(|| {
-                arguments
-                    .iter()
-                    .find_map(|part| window_calls(part, objects))
-            })
-        }
+            ..
+        } => window_calls(receiver, objects).or_else(|| {
+            arguments
+                .iter()
+                .find_map(|part| window_calls(part, objects))
+        }),
     }
 }
 
@@ -287,12 +272,20 @@ pub(super) fn of_token(
     } else {
         window_calls(&parsed, &|_| !primitive(&column_type))
     };
-    if fails.is_none() {
-        check_result(formula.result_type());
-    }
+    let (formula, reads) = match fails {
+        Some(_) => (formula, None),
+        None => {
+            check_result(formula.result_type());
+            let inputs = [(PARAM_COLUMN_NAME, ColumnType::vector(column_type.clone()))];
+            with_reads(compiler, &parsed, formula, &inputs, &|name| {
+                name == PARAM_COLUMN_NAME
+            })?
+        }
+    };
     Ok(RollingFormula {
         formula,
         fails,
+        reads,
         buffer: Some(buffer_name(&column_type)),
         inputs: vec![Input {
             column: Some(input),
@@ -432,9 +425,21 @@ pub(super) fn of_columns(
         });
     }
     let formula = ArrayFormula::compile(compiler, expression, &seen).map_err(refused)?;
-    if fails.is_none() {
-        check_result(formula.result_type());
-    }
+    let (formula, reads) = match fails {
+        Some(_) => (formula, None),
+        None => {
+            check_result(formula.result_type());
+            let windows: Vec<&str> = seen
+                .iter()
+                .zip(&inputs)
+                .filter(|(_, input)| !input.key)
+                .map(|((name, _), _)| *name)
+                .collect();
+            with_reads(compiler, &parsed, formula, &seen, &|name| {
+                windows.contains(&name)
+            })?
+        }
+    };
     Ok((
         name.to_owned(),
         RollingFormula {
@@ -442,8 +447,32 @@ pub(super) fn of_columns(
             inputs,
             buffer: None,
             fails,
+            reads,
         },
     ))
+}
+
+/// `formula`, compiled from `parsed` over `inputs`, and its reads of the windows that
+/// `windows` names by position, if it has any: the formula is then compiled again to read
+/// the positions those reads add.
+fn with_reads(
+    compiler: &dyn FormulaCompiler,
+    parsed: &Expr,
+    formula: ArrayFormula,
+    inputs: &[(&str, ColumnType)],
+    windows: &dyn Fn(&str) -> bool,
+) -> Result<(ArrayFormula, Option<WindowReads>), UpdateByError> {
+    let Some((reads, rewritten, all)) =
+        WindowReads::find(compiler, parsed, inputs, windows).map_err(refused)?
+    else {
+        return Ok((formula, None));
+    };
+    let all: Vec<(&str, ColumnType)> = all
+        .iter()
+        .map(|(name, column_type)| (name.as_str(), column_type.clone()))
+        .collect();
+    let formula = ArrayFormula::compile_parsed(compiler, &rewritten, &all).map_err(refused)?;
+    Ok((formula, Some(reads)))
 }
 
 fn compiler_of(
@@ -509,7 +538,7 @@ impl RollingFormula {
                 held = held - slide.pop + slide.push;
             }
         }
-        let values = self
+        let mut values = self
             .inputs
             .iter()
             .map(|input| match input.column {
@@ -521,6 +550,10 @@ impl RollingFormula {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
+        if let Some(reads) = &self.reads {
+            let added = reads.check(&values)?;
+            values.extend(added);
+        }
         self.formula.evaluate(&values)
     }
 }
