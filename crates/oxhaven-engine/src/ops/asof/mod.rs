@@ -105,6 +105,10 @@ pub enum AsOfJoinError {
     ConflictingColumns(Vec<String>),
     /// Java's `IllegalArgumentException` "Can not aj() with different stamp types".
     StampTypes { left: ColumnType, right: ColumnType },
+    /// Java's `ClassCastException` from comparing two stamps of a class that is not a
+    /// `Comparable` (`Period`, `ZoneId`). Java throws it only once it compares two such
+    /// stamps that are not one object; this server refuses the join before it starts.
+    IncomparableStamps(String),
     /// Java's `ClassCastException`: a pair of exact-match columns that Java reads as
     /// different primitive types, in a join that reads a row of the right table.
     KeyTypes {
@@ -136,6 +140,7 @@ impl fmt::Display for AsOfJoinError {
                 f,
                 "Can not aj() with different stamp types: left={left:?}, right={right:?}"
             ),
+            AsOfJoinError::IncomparableStamps(message) => f.write_str(message),
             AsOfJoinError::KeyTypes {
                 left,
                 left_type,
@@ -182,7 +187,9 @@ impl From<TableFailure> for AsOfJoinError {
 /// that column's place.
 ///
 /// The two stamp columns must have one type, where `Boolean` counts as `byte` and
-/// `Instant` as `long`. Exact-match columns of different types are refused only when the
+/// `Instant` as `long`. The `java.time` types order as their `compareTo` does
+/// ([`stamps::Stamp`]); a `Period` or `ZoneId` stamp is refused
+/// ([`AsOfJoinError::IncomparableStamps`]). Exact-match columns of different types are refused only when the
 /// right table has a row; if it gets its first row later, the result fails then. Nothing
 /// but the names of the added columns is checked when `left` is static and has no rows:
 /// the result is then a static table without rows.

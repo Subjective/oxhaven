@@ -2,6 +2,7 @@
 //! of static copies of the tables.
 
 use super::{as_of_join, AsOfMatch, AsOfRule, JoinAddition, JoinMatch};
+use crate::ops::select::update;
 use crate::ops::sort::testing::{frozen, graph};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
@@ -74,10 +75,46 @@ fn join(
     }
 }
 
+/// Columns of the `java.time` types made by formulas from the random columns: few distinct
+/// values, so that stamps tie, and nulls where `K` or `T` is null. `Zd` is one instant in
+/// three zones, two of them with one offset.
+const TIME_COLUMNS: [&str; 6] = [
+    "Da = toLocalDate(T + (isNull(K) ? 0 : K % 4) * 86400000000000L, 'UTC')",
+    "Ti = toLocalTime(T, 'Asia/Tokyo')",
+    "Dt = toLocalDateTime(T, 'America/New_York')",
+    "Du = isNull(K) ? null : (K % 3 == 0 ? 'PT1H' : (K % 3 == 1 ? 'PT-2M' : 'PT0.5S'))",
+    "Dw = dayOfWeek(T + (isNull(V) ? 0 : V % 3) * 86400000000000L, 'UTC')",
+    "Zd = toZonedDateTime(T, timeZone(isNull(V) || V % 3 == 0 ? `UTC` : V % 3 == 1 ? `Asia/Tokyo` : `Europe/London`))",
+];
+
+/// Joins on the columns of [`TIME_COLUMNS`], as stamps and as exact-match columns.
+const TIME_JOINS: [(&[&str], &str); 9] = [
+    (&[], "Da"),
+    (&["S"], "Ti"),
+    (&["Dw"], "Dt"),
+    (&["Da"], "Du"),
+    (&[], "Dw"),
+    (&["B"], "Zd"),
+    (&[], "Zd"),
+    (&["Zd"], "Ti"),
+    (&["Du", "Dt"], "Dw"),
+];
+
 /// Runs every rule on every entry of [`JOINS`] over two random tables for `steps` cycles
 /// and returns the number of results compared. After each cycle each result must be
 /// consistent and equal to the join of static copies of the tables.
 fn run(seed: u64, steps: usize, live: Live) -> usize {
+    run_joins(seed, steps, live, &JOINS, false)
+}
+
+/// [`run`] over `joins`; with `times`, the tables have the columns of [`TIME_COLUMNS`] too.
+fn run_joins(
+    seed: u64,
+    steps: usize,
+    live: Live,
+    joins: &'static [(&'static [&'static str], &'static str)],
+    times: bool,
+) -> usize {
     let graph = graph();
     let mut random = RandomUpdates::new(seed);
     let mut source = |index: u64| {
@@ -96,7 +133,10 @@ fn run(seed: u64, steps: usize, live: Live) -> usize {
     };
     let scripts = [source(0), source(1)];
     let table = |index: usize, changes: bool| -> Arc<dyn Table> {
-        let table = scripts[index].table();
+        let mut table: Arc<dyn Table> = scripts[index].table();
+        if times {
+            table = update(&table, &TIME_COLUMNS, &oxhaven_expr::Compiler).expect("an update");
+        }
         if changes {
             table
         } else {
@@ -107,7 +147,7 @@ fn run(seed: u64, steps: usize, live: Live) -> usize {
     let right = table(1, live != Live::Left);
 
     let mut cases: Vec<(String, Arc<ConsistencyChecker>)> = Vec::new();
-    for (exact, stamp) in JOINS {
+    for &(exact, stamp) in joins {
         for rule in RULES {
             let name = format!("{rule:?} on {exact:?} and {stamp}, {live:?} live, seed {seed}");
             let result = join(&left, &right, exact, stamp, rule);
@@ -185,4 +225,23 @@ fn random_updates_of_the_right_table() {
         .filter(|seed| !seed.is_multiple_of(4))
         .count();
     assert_eq!(run_all(Live::Right), seeds * 30 * JOINS.len() * RULES.len());
+}
+
+/// Stamps and exact-match columns of the `java.time` types, made by formulas, with both
+/// tables changing, then each alone.
+#[test]
+fn random_updates_of_date_and_time_stamps() {
+    for live in [Live::Both, Live::Left, Live::Right] {
+        let compared: usize = test_seeds(SEEDS)
+            .map(|seed| run_joins(seed, 20, live, &TIME_JOINS, true))
+            .sum();
+        let seeds = test_seeds(SEEDS)
+            .filter(|seed| live != Live::Right || !seed.is_multiple_of(4))
+            .count();
+        assert_eq!(
+            compared,
+            seeds * 20 * TIME_JOINS.len() * RULES.len(),
+            "{live:?}"
+        );
+    }
 }
