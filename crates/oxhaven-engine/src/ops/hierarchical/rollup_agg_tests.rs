@@ -536,6 +536,14 @@ fn java_refuses_a_tree_of_a_blink_table() {
             Some(text.to_string())
         );
     }
+    // the gRPC request with orphans promoted joins the table with itself first
+    let promoted = promote_orphans(&blink, "Id", "Par", &Compiler).unwrap();
+    assert_eq!(
+        tree(&promoted, "Id", "Par")
+            .err()
+            .map(|error| error.to_string()),
+        Some(text.to_string())
+    );
 }
 
 /// Observed on Java 42.9: the text names each column's type as `Class#toString` does,
