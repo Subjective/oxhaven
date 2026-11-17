@@ -295,7 +295,11 @@ def _write_scenario(directory: Path, doc: dict, name: str) -> Path:
 
 
 _ARROW_NAMES = {"bool": "bool", "float32": "float", "float64": "double",
-                "timestamp": "timestamp[ns, tz=UTC]"}
+                "timestamp": "timestamp[ns, tz=UTC]",
+                # the kinds of `fuzz_times`, as the wire carries them
+                "date": "date64[ms]", "time": "time64[ns]", "datetime": "string",
+                "duration": "duration[ns]", "dow": "string",
+                "zoned": "timestamp[ns, tz=UTC]", "period": "month_interval", "zone": "string"}
 
 
 def _arrow_name(kind: str) -> str:
@@ -435,7 +439,10 @@ def _fuzz_all(args: argparse.Namespace, ops: frozenset[str], target_a: Any, targ
 def cmd_fuzz(args: argparse.Namespace) -> int:
     if (args.ops is None) == (args.family is None):
         raise sc.ScenarioError("fuzz needs --ops or --family, and not both")
-    if args.family in fz.SECOND_FAMILIES:
+    if args.family in fz.TIME_FAMILIES:
+        ops = fz.TIME_FAMILIES[args.family]
+        args.variants = args.variants or "times"
+    elif args.family in fz.SECOND_FAMILIES:
         ops = fz.SECOND_FAMILIES[args.family]
         args.variants = args.variants or "second"
     elif args.family is not None:
@@ -592,7 +599,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--a", required=True, help="URL of the expected side (the reference)")
     p.add_argument("--b", help="URL of the actual side; default is --a again")
     p.add_argument("--ops", help="comma-separated operations to draw from")
-    p.add_argument("--family", choices=sorted(set(fz.FAMILIES) | set(fz.SECOND_FAMILIES)),
+    p.add_argument("--family", choices=sorted(set(fz.FAMILIES) | set(fz.SECOND_FAMILIES)
+                                           | set(fz.TIME_FAMILIES)),
                    help="instead of --ops: a named set of operations (fuzz.FAMILIES), with "
                         "the variants \"all\" unless --variants says otherwise; or one of "
                         "the second parity pass (fuzz.SECOND_FAMILIES), with the variants "
