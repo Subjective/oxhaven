@@ -204,18 +204,46 @@ fn record(offset: i64, key: Option<Vec<u8>>, value: Option<Vec<u8>>) -> Record {
 /// tombstone.
 fn main_events() -> Vec<Record> {
     vec![
-        record(0, Some(key(1001)), Some(event("r", None, Some((1001, Some("Sally")))))),
-        record(1, Some(key(1002)), Some(event("r", None, Some((1002, Some("George")))))),
-        record(2, Some(key(1003)), Some(event("c", None, Some((1003, None))))),
+        record(
+            0,
+            Some(key(1001)),
+            Some(event("r", None, Some((1001, Some("Sally"))))),
+        ),
+        record(
+            1,
+            Some(key(1002)),
+            Some(event("r", None, Some((1002, Some("George"))))),
+        ),
+        record(
+            2,
+            Some(key(1003)),
+            Some(event("c", None, Some((1003, None)))),
+        ),
         record(
             3,
             Some(key(1001)),
-            Some(event("u", Some((1001, Some("Sally"))), Some((1001, Some("Sal"))))),
+            Some(event(
+                "u",
+                Some((1001, Some("Sally"))),
+                Some((1001, Some("Sal"))),
+            )),
         ),
-        record(4, Some(key(1002)), Some(event("d", Some((1002, Some("George"))), None))),
+        record(
+            4,
+            Some(key(1002)),
+            Some(event("d", Some((1002, Some("George"))), None)),
+        ),
         record(5, Some(key(1002)), None),
-        record(6, Some(key(1004)), Some(event("c", None, Some((1004, Some("Anne")))))),
-        record(7, Some(key(1004)), Some(event("d", Some((1004, Some("Anne"))), None))),
+        record(
+            6,
+            Some(key(1004)),
+            Some(event("c", None, Some((1004, Some("Anne"))))),
+        ),
+        record(
+            7,
+            Some(key(1004)),
+            Some(event("d", Some((1004, Some("Anne"))), None)),
+        ),
     ]
 }
 
@@ -359,10 +387,7 @@ fn the_current_rows_are_the_last_event_of_each_key_that_is_not_a_delete() {
 
     let events = main_events();
     stream.cycle(events[..4].to_vec());
-    assert_eq!(
-        stream.ints("id"),
-        [Some(1001), Some(1002), Some(1003)]
-    );
+    assert_eq!(stream.ints("id"), [Some(1001), Some(1002), Some(1003)]);
     assert_eq!(
         stream.strings("name"),
         some(&[Some("Sal"), Some("George"), None])
@@ -370,14 +395,8 @@ fn the_current_rows_are_the_last_event_of_each_key_that_is_not_a_delete() {
     stream.cycle(events[4..5].to_vec());
     assert_eq!(stream.ints("id"), [Some(1001), Some(1003)]);
     stream.cycle(events[5..].to_vec());
-    assert_eq!(
-        stream.ints("id"),
-        [Some(1001), Some(1002), Some(1003)]
-    );
-    assert_eq!(
-        stream.strings("name"),
-        some(&[Some("Sal"), None, None])
-    );
+    assert_eq!(stream.ints("id"), [Some(1001), Some(1002), Some(1003)]);
+    assert_eq!(stream.strings("name"), some(&[Some("Sal"), None, None]));
     stream.cycle(Vec::new());
     assert_eq!(stream.ints("id").len(), 3);
 }
@@ -419,10 +438,7 @@ fn dropped_columns_are_left_out() {
     let stream = consume(&options).unwrap();
     assert_eq!(stream.columns(), [("id".to_owned(), ColumnType::Int)]);
     stream.cycle(main_events());
-    assert_eq!(
-        stream.ints("id"),
-        [Some(1001), Some(1002), Some(1003)]
-    );
+    assert_eq!(stream.ints("id"), [Some(1001), Some(1002), Some(1003)]);
 
     // Probe jdrop_bad.
     options.drop_columns = vec!["nope".to_owned()];
@@ -445,9 +461,8 @@ fn the_specs_fetch_their_subjects_as_java_does() {
     };
     let key = Some("db.inv.people-key");
     let value = Some("db.inv.people-value");
-    let unchecked = |text: &str| {
-        format!("io.deephaven.UncheckedDeephavenException: {text} (caused by {text})")
-    };
+    let unchecked =
+        |text: &str| format!("io.deephaven.UncheckedDeephavenException: {text} (caused by {text})");
     assert_eq!(
         error(&options(&registry, long(key, value, "2"), false)),
         unchecked(
@@ -469,8 +484,9 @@ fn the_specs_fetch_their_subjects_as_java_does() {
     );
     let mut no_topic = long(key, value, "latest");
     no_topic.topic = None;
-    assert!(error(&options(&registry, no_topic, false))
-        .starts_with("not ported yet: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor"));
+    assert!(error(&options(&registry, no_topic, false)).starts_with(
+        "not ported yet: org.apache.kafka.clients.consumer.KafkaConsumer#partitionsFor"
+    ));
 
     // One client: the latest version of a subject and a schema by id are fetched once,
     // a version by number each time.
@@ -487,6 +503,14 @@ fn the_specs_fetch_their_subjects_as_java_does() {
             "/subjects/db.inv.people-key/versions/latest",
             "/schemas/ids/1?fetchMaxId=false&subject=",
         ]
+    );
+    // Every name that comes again is listed.
+    assert_eq!(
+        error(&options(&registry, long(value, value, "latest"), false)),
+        "java.lang.IllegalArgumentException: Supplied ColumnDefinitions include duplicate \
+         names [before__id, before__name, after__id, after__name, source__version, \
+         source__ts_ms, source__snapshot, source__lsn, transaction__id, \
+         transaction__total_order, transaction__data_collection_order, op, ts_ms]"
     );
 }
 
@@ -536,7 +560,10 @@ fn an_envelope_without_op_or_the_keys_field_fails_with_javas_text() {
          table does not hold yet; the events (stream_table=True) have it"
     );
     let events = consume(&options(&registry, spec("c"), true)).unwrap();
-    assert_eq!(events.columns()[1], ("name".to_owned(), ColumnType::BigDecimal));
+    assert_eq!(
+        events.columns()[1],
+        ("name".to_owned(), ColumnType::BigDecimal)
+    );
     // A blink table does not group by the key (probe keymiss_blink).
     let stream = consume(&options(&registry, spec("b"), true)).unwrap();
     assert_eq!(

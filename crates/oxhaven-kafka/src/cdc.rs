@@ -232,8 +232,8 @@ pub fn current_rows(
         .filter(|column| !keys.contains(column))
         .map(|column| Pair::of(*column));
     // Behavior: io.deephaven.engine.table.impl.QueryTable#lastBy, `aggAllBy` of the last
-    let last = aggregate_all_with(&narrow, AggSpec::Last, pairs, &keys, &Compiler)
-        .map_err(invalid)?;
+    let last =
+        aggregate_all_with(&narrow, AggSpec::Last, pairs, &keys, &Compiler).map_err(invalid)?;
     let current = filter::unstructured_filter(&last, &[NOT_DELETED], &Compiler).map_err(invalid)?;
     let mut dropped = drop_columns.to_vec();
     dropped.push(OP_COLUMN.to_owned());
