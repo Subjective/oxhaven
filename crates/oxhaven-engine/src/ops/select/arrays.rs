@@ -537,7 +537,10 @@ fn dirty_positions(source: &RowSet, updated: &RowSet, shift: i64) -> Result<RowS
 /// (negative) and the farthest after it (positive), each zero when no shift reads that side.
 fn reach(shifts: &[Shift]) -> (i64, i64) {
     let amounts = || shifts.iter().map(|shift| shift.amount);
-    (amounts().min().unwrap_or(0).min(0), amounts().max().unwrap_or(0).max(0))
+    (
+        amounts().min().unwrap_or(0).min(0),
+        amounts().max().unwrap_or(0).max(0),
+    )
 }
 
 /// The positions in `source` of the rows whose shifted columns change because the rows
