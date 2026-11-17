@@ -1,0 +1,133 @@
+{
+ "format": 1,
+ "name": "J2_strict_asof_on_an_added_equal_stamp",
+ "description": "Task 4.26, J2. raj with < (and aj with >) on LocalDateTime and LocalTime stamps of refreshing tables: after the step Java's ticking result joins the right row added with a stamp equal to the left row's, which the strict rule excludes; the same join made from the rows after the step joins nothing, and so does Oxhaven.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "Id",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "ticking": {
+    "key_columns": [
+     "Id"
+    ]
+   },
+   "rows": []
+  },
+  {
+   "name": "r",
+   "columns": [
+    {
+     "name": "RId",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "ticking": {
+    "key_columns": [
+     "RId"
+    ]
+   },
+   "rows": [
+    [
+     1,
+     5,
+     1700000000000000000
+    ],
+    [
+     2,
+     -4,
+     1700032400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "M = toLocalDateTime(T, 'UTC')",
+    "L = toLocalTime(T, 'UTC')"
+   ]
+  },
+  {
+   "name": "c",
+   "op": "update",
+   "source": "r",
+   "formulas": [
+    "M = toLocalDateTime(T, 'UTC')",
+    "L = toLocalTime(T, 'UTC')"
+   ]
+  },
+  {
+   "name": "raj_lt",
+   "op": "raj",
+   "left": "c",
+   "right": "b",
+   "on": [
+    "M < M"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  },
+  {
+   "name": "aj_gt",
+   "op": "aj",
+   "left": "c",
+   "right": "b",
+   "on": [
+    "L > L"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  }
+ ],
+ "steps": [
+  {
+   "actions": [
+    {
+     "action": "add",
+     "table": "t",
+     "rows": [
+      [
+       16,
+       0,
+       1700000000000000000
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "raj_lt"
+  },
+  {
+   "table": "aj_gt"
+  }
+ ]
+}

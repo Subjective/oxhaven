@@ -1,0 +1,86 @@
+{
+ "format": 1,
+ "name": "R8_asof_join_on_period_or_zone",
+ "description": "Task 4.26, R8. Java fails an as-of join on a Period or ZoneId stamp only once it compares two stamps that are not one object, so it answers a left table with one stamp and a right table without rows; Oxhaven refuses every as-of join on these types.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     1
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = isNull(V) ? null : 'P1Y2M'",
+    "N = isNull(K) ? null : timeZone(`Asia/Tokyo`)"
+   ]
+  },
+  {
+   "name": "none",
+   "op": "where",
+   "source": "b",
+   "filters": [
+    "K < 0"
+   ]
+  },
+  {
+   "name": "aj_period",
+   "op": "aj",
+   "left": "b",
+   "right": "none",
+   "on": [
+    "P >= P"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  },
+  {
+   "name": "aj_zone",
+   "op": "aj",
+   "left": "b",
+   "right": "none",
+   "on": [
+    "N >= N"
+   ],
+   "joins": [
+    "J = V"
+   ]
+  },
+  {
+   "name": "aj_period_v",
+   "op": "view",
+   "source": "aj_period",
+   "formulas": [
+    "K",
+    "J"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "aj_period_v"
+  },
+  {
+   "table": "aj_zone"
+  }
+ ]
+}
