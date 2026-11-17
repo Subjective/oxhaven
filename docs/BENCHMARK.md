@@ -1209,6 +1209,74 @@ then and now). The first measurement ran under a load of 3 to 9 and this one und
 Deephaven's own medians are mostly lower now too (for example `join_on_key` at 1M rows,
 365 / 314 ms then, 258 / 239 now), so part of the change of a ratio is the load.
 
+## After task 9.10 (2026-11-17): filters and operator formulas on one thread
+
+Task 9.10 (`tasks/9.10-single-thread-filter-formula.md`) took the four cases in which the
+second measurement shows Oxhaven on one thread slower than Deephaven at 10M rows:
+`where_range`, `where_conj`, `update_arith` and `update_cond`. Results, row order and
+failures are unchanged. The task stopped before it was finished: `where_conj` is not where
+it should be, and the task file's Handover says what is left.
+
+**How it was measured.** Inside the engine only, a release build of
+`filter-update-cases` on the machine above while another agent was building:
+`filter-update-cases -- 10000000 3 1,4` and `-- 1000000 5 1,4`. "Before" is `main` at
+`8a21018b`, "after" the branch; the two binaries were run one after the other. Load
+average: 2.2 for both runs at 1M rows, 1.6 to 1.9 before and 1.9 to 2.1 after at 10M.
+Deephaven was **not** run again and the end-to-end benchmark (`bench/bench.py`) was not
+run: the Deephaven column repeats the second measurement's medians, taken through a server,
+and is an indication only. Raw output: `bench/results/2026-11-17-task-9.10-engine-*.txt`.
+
+Median milliseconds, before / after.
+
+| case | rows | 1 thread | 4 threads | Deephaven, second measurement |
+| --- | ---: | ---: | ---: | ---: |
+| `where_range` | 1M | 8.7 / 3.6 | 3.5 / 2.8 | 15.6 / 10.1 |
+| `where_conj` | 1M | 9.8 / 8.5 | 6.8 / 7.1 | 18.8 / 12.1 |
+| `update_arith` | 1M | 18.7 / 12.3 | 6.2 / 11.1 | 37.9 / 23.7 |
+| `update_cond` | 1M | 6.4 / 2.8 | 3.2 / 2.9 | 17.5 / 16.2 |
+| `where_range` | 10M | 73.9 / 40.9 | 39.7 / 22.9 | 37.0 / 31.3 |
+| `where_conj` | 10M | 98.4 / 74.7 | 31.0 / 27.6 | 51.4 / 51.9 |
+| `update_arith` | 10M | 239 / 161 | 92.5 / 102 | 129 / 144 |
+| `update_cond` | 10M | 115 / 75.0 | 46.9 / 48.7 | 83.6 / 69.7 |
+
+The four-thread times of the formulas moved within the noise of a shared machine:
+`update_arith` at 1M rows on four threads, run again twice with seven repetitions, each
+binary straight after the other, gave 10.1 and 9.3 ms before and 7.1 and 7.6 ms after
+(`update_cond` 3.4 and 3.1 before, 1.8 and 1.9 after), not the 6.2 / 11.1 of the table.
+
+| part, one thread, 10M rows | before | after |
+| --- | ---: | ---: |
+| evaluate `A >= 20000 && A < 60000` | 54.8 | 6.3 |
+| evaluate `A * 2 + 1` | 35.0 | 22.7 |
+| evaluate `B * 1.5 - A` | 86.9 | 70.3 |
+| evaluate `Id % 7` | 95.2 | 73.2 |
+| evaluate `A > 50000 ? B : -B` | 115 | 104 (min 75.3) |
+| a row set per piece from the mask, joined | 34.0 | 21.1 |
+
+**What was slow.** A comparison or an arithmetic operator beside a literal made an array
+of the literal for every piece and widened the other operand to `long` or `double` first;
+a comparison then judged each row through `Option`s, one bit at a time. `Id % 7` divided
+in every row. The kept runs of a filter's mask were walked from run to run, a wrong branch
+guess per run when runs are short.
+
+**What changed.** Operators with a literal operand loop over the other operand in its own
+type: a comparison judges 64 rows into bytes, which the compiler makes vector comparisons
+of, and packs them into a word; a remainder by a literal below 2^32 is two
+multiplications; a conditional between two computed branches reads its condition a word
+at a time. The runs of a mask are read by pairing the starts and ends of the runs of each
+word.
+
+**What is left, and why the formulas stop where they do.** The example now prints the new
+pages of memory each case is given. The filters are given none. `update_arith` is given
+48,830 a run and `update_cond` 19,532: the 200 MB and 80 MB of their results, at 1.8 to
+2 microseconds a page on this virtual machine, so about 93 of `update_arith`'s 161 ms and
+37 of `update_cond`'s 75 ms are the first write of the result, on any number of threads.
+Deephaven writes its results into a heap it already holds. `where_range` on one thread is
+now 6 ms of evaluation, a pass over the column for the reserved null value, and about
+21 ms making a row set from runs whose blocks are stored as bitmaps in the end; a
+constructor of a row set from a bitmap is missing from the contracts. `where_conj` on
+one thread is still 1.4 times Deephaven's time: its filters were not changed.
+
 ## After task 9.9 (2026-11-17): `aj`, `last_by`, `ungroup`, aggregations with few groups
 
 Task 9.9 (`tasks/9.9-fast-asof-lastby-ungroup.md`) took the cases the second measurement

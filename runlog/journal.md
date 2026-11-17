@@ -1205,3 +1205,11 @@ The comparison is not even: Deephaven runs with two processors and Oxhaven with 
 ## 2026-11-17 17:56 UTC: pull request 152 merged
 
 Seven green checks. Agents of tasks 9.9 and 9.10 told that the second measurement is on main.
+
+## 2026-11-17 18:57 UTC: task 9.10 reported, pull request 153 opened
+
+Partly done. Three different causes: evaluator overhead (fixed), row set construction behind the contract (needs a constructor from a bitmap; a contract addition I will allow in a second run), and page faults on the first write of a result (not addressed; needs unsafe or a buffer pool).
+
+## 2026-11-17 19:03 UTC: pull request 153 merged, second run of task 9.10 started
+
+Seven green checks. Decision: the second run may add a row set constructor from a bitmap to the contracts crate (an addition, no change to existing signatures); its pull request gets the oracle-change label and Josh reviews it later, under his standing approval for contract changes.

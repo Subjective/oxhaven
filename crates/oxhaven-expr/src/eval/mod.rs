@@ -4,6 +4,7 @@ mod arrays;
 mod compare;
 pub(crate) mod numeric;
 mod objects;
+mod scalar;
 mod text;
 
 use crate::functions::Kernel;
@@ -582,6 +583,18 @@ fn erase<A: Array + 'static>(array: A) -> ArrayRef {
     Arc::new(array)
 }
 
+/// When exactly one operand of a binary operator is a literal: the other operand, the
+/// literal, and whether the literal is the left operand. Evaluating a literal has no
+/// effect and cannot fail, so it need not happen in the operands' order.
+fn literal_side<'a>(left: &'a Typed, right: &'a Typed) -> Option<(&'a Typed, &'a Literal, bool)> {
+    match (&left.node, &right.node) {
+        (Node::Literal(_), Node::Literal(_)) => None,
+        (_, Node::Literal(literal)) => Some((left, literal, false)),
+        (Node::Literal(literal), _) => Some((right, literal, true)),
+        _ => None,
+    }
+}
+
 fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
     if !batch.arrays.is_empty() {
         if let Some(values) = arrays::evaluate(expr, batch)? {
@@ -635,6 +648,28 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
                 .map_err(arrow_failure)
         }
         Node::Arithmetic { op, left, right } => {
+            if let Some((operand, literal, literal_on_left)) = literal_side(left, right) {
+                let operand = evaluate(operand, batch)?;
+                let quick = in_numeric_type!(numeric, |T| scalar::literal_as::<T>(literal)
+                    .and_then(|value| {
+                        scalar::arithmetic::<T>(*op, operand.as_ref(), value, literal_on_left)
+                    })
+                    .map(erase));
+                if let Some(values) = quick {
+                    return Ok(values);
+                }
+                let literal = constant(literal, batch.rows);
+                let (left, right) = match literal_on_left {
+                    true => (literal, operand),
+                    false => (operand, literal),
+                };
+                return in_numeric_type!(numeric, |T| numeric::arithmetic::<T>(
+                    *op,
+                    left.as_ref(),
+                    right.as_ref()
+                )
+                .map(erase));
+            }
             let left = evaluate(left, batch)?;
             let right = evaluate(right, batch)?;
             in_numeric_type!(numeric, |T| numeric::arithmetic::<T>(
@@ -650,6 +685,25 @@ fn evaluate(expr: &Typed, batch: &Batch) -> Result<ArrayRef, TableFailure> {
             left,
             right,
         } => {
+            if let Some((operand, literal, literal_on_left)) = literal_side(left, right) {
+                let operand = evaluate(operand, batch)?;
+                let quick =
+                    scalar::compare(*op, *domain, operand.as_ref(), literal, literal_on_left);
+                if let Some(values) = quick {
+                    return Ok(Arc::new(values));
+                }
+                let literal = constant(literal, batch.rows);
+                let (left, right) = match literal_on_left {
+                    true => (literal, operand),
+                    false => (operand, literal),
+                };
+                return Ok(Arc::new(compare::compare(
+                    *op,
+                    *domain,
+                    left.as_ref(),
+                    right.as_ref(),
+                )?));
+            }
             let left = evaluate(left, batch)?;
             let right = evaluate(right, batch)?;
             Ok(Arc::new(compare::compare(
@@ -927,7 +981,7 @@ fn ternary(
     if batch.row_by_row {
         if let (Ok(a), Ok(b)) = (evaluate(if_true, batch), evaluate(if_false, batch)) {
             if a.data_type() == b.data_type() {
-                if let Some(chosen) = choose(condition, &a, &b) {
+                if let Some(chosen) = scalar::choose(condition, &a, &b) {
                     return Ok(chosen);
                 }
             }
@@ -951,50 +1005,6 @@ fn ternary(
         .collect();
     arrow::compute::interleave(&[branches[0].as_ref(), branches[1].as_ref()], &rows)
         .map_err(arrow_failure)
-}
-
-/// For each row the value of `if_true` where `condition`, which has no nulls, is true and
-/// that of `if_false` elsewhere. `None` for arrays that are not of Java's primitives.
-fn choose(condition: &BooleanArray, if_true: &ArrayRef, if_false: &ArrayRef) -> Option<ArrayRef> {
-    fn of<P: arrow::datatypes::ArrowPrimitiveType>(
-        condition: &BooleanArray,
-        if_true: &ArrayRef,
-        if_false: &ArrayRef,
-    ) -> ArrayRef {
-        let (a, b) = (if_true.as_primitive::<P>(), if_false.as_primitive::<P>());
-        let values: Vec<P::Native> = condition
-            .values()
-            .iter()
-            .zip(a.values().iter().zip(b.values().iter()))
-            .map(|(chosen, (a, b))| if chosen { *a } else { *b })
-            .collect();
-        let nulls = (a.null_count() > 0 || b.null_count() > 0).then(|| {
-            let valid = |array: &arrow::array::PrimitiveArray<P>, row: usize| {
-                array.nulls().is_none_or(|nulls| nulls.is_valid(row))
-            };
-            arrow::buffer::NullBuffer::new(arrow::buffer::BooleanBuffer::collect_bool(
-                condition.len(),
-                |row| {
-                    if condition.value(row) {
-                        valid(a, row)
-                    } else {
-                        valid(b, row)
-                    }
-                },
-            ))
-        });
-        Arc::new(arrow::array::PrimitiveArray::<P>::new(values.into(), nulls))
-    }
-    Some(match if_true.data_type() {
-        DataType::Int8 => of::<Int8Type>(condition, if_true, if_false),
-        DataType::UInt16 => of::<UInt16Type>(condition, if_true, if_false),
-        DataType::Int16 => of::<Int16Type>(condition, if_true, if_false),
-        DataType::Int32 => of::<Int32Type>(condition, if_true, if_false),
-        DataType::Int64 => of::<Int64Type>(condition, if_true, if_false),
-        DataType::Float32 => of::<Float32Type>(condition, if_true, if_false),
-        DataType::Float64 => of::<Float64Type>(condition, if_true, if_false),
-        _ => return None,
-    })
 }
 
 /// `left & right`, `left | right` or `left ^ right` for `Boolean` operands. Both operands
