@@ -395,8 +395,8 @@ mod tests {
     use super::*;
     use crate::tracked::testing::ManualClock;
     use crate::{FlatSource, WritableSource};
-    use oxhaven_contracts::rowset::RowRange;
     use arrow::array::{Array, Int32Array};
+    use oxhaven_contracts::rowset::RowRange;
     use std::collections::BTreeMap;
 
     fn ints(chunk: Result<ArrayRef, TableFailure>) -> Vec<Option<i32>> {
