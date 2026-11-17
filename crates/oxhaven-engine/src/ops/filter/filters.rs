@@ -8,16 +8,21 @@ use super::literal::{convert_value, java_equals_ignore_case, Key};
 use super::pattern::{full_match, Matcher};
 use super::search;
 use crate::ops::zoned;
-use arrow::array::{Array, ArrayRef, AsArray, BooleanArray, StringArray};
+use arrow::array::{
+    Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray, PrimitiveArray, StringArray,
+};
+use arrow::buffer::BooleanBuffer;
 use arrow::datatypes::{
     DataType, Date32Type, DurationNanosecondType, Float32Type, Float64Type, Int16Type, Int32Type,
     Int64Type, Int8Type, Time64NanosecondType, TimeUnit, TimestampNanosecondType, UInt16Type,
 };
+use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
-use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
+use oxhaven_rowset::RowSetBuilderSequential;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -404,21 +409,11 @@ enum Cells {
     Zoned(ArrayRef),
 }
 
-fn read(
-    table: &dyn Table,
-    column: usize,
-    rows: &RowSet,
-    use_prev: bool,
-) -> Result<Cells, TableFailure> {
-    let source = table.column(column);
-    let chunk = if use_prev {
-        source.prev_chunk(rows)?
-    } else {
-        source.chunk(rows)?
-    };
+/// The cells of `chunk`, values of a column of `column_type`.
+fn cells(column_type: &ColumnType, chunk: ArrayRef) -> Result<Cells, TableFailure> {
     // Java filters a vector or an array column as a column of objects, of which a match
     // filter can only hold null.
-    match source.column_type() {
+    match column_type {
         ColumnType::ZonedDateTime => return Ok(Cells::Zoned(chunk)),
         // A period has no convertor of its own: a match filter holds only null. Nor has a
         // table, which Java's `ObjectChunkMatchFilterFactory` would compare by identity.
@@ -429,7 +424,7 @@ fn read(
         }
         _ => {}
     }
-    if source.column_type().list_element().is_some() {
+    if column_type.list_element().is_some() {
         return Ok(Cells::Object(
             (0..chunk.len()).map(|row| chunk.is_valid(row)).collect(),
         ));
@@ -789,14 +784,333 @@ fn between(
     })
 }
 
+/// Whether each cell of a primitive array passes `test`, which gets the cell as the
+/// generic path's [`Cells`] hold it: `None` for a null and for the value Java reserves for
+/// null, the value widened otherwise.
+fn typed_mask<P: ArrowPrimitiveType, V>(
+    array: &PrimitiveArray<P>,
+    null_value: P::Native,
+    widen: impl Fn(P::Native) -> V,
+    test: &impl Fn(Option<V>) -> bool,
+) -> BooleanBuffer {
+    let values = array.values();
+    match array.nulls().filter(|nulls| nulls.null_count() > 0) {
+        None => BooleanBuffer::collect_bool(values.len(), |row| {
+            let value = values[row];
+            test((value != null_value).then(|| widen(value)))
+        }),
+        Some(nulls) => BooleanBuffer::collect_bool(values.len(), |row| {
+            let value = values[row];
+            test((nulls.is_valid(row) && value != null_value).then(|| widen(value)))
+        }),
+    }
+}
+
+/// [`typed_mask`] for a chunk of any integer type, `char` or `Instant` with `ints`, or of
+/// `float` or `double` with `floats`. `None` for a chunk of another type.
+fn primitive_mask(
+    chunk: &ArrayRef,
+    ints: &impl Fn(Option<i64>) -> bool,
+    floats: &impl Fn(Option<f64>) -> bool,
+) -> Option<BooleanBuffer> {
+    use oxhaven_column::sentinel::{
+        NULL_BYTE, NULL_CHAR, NULL_DOUBLE, NULL_FLOAT, NULL_INT, NULL_LONG, NULL_SHORT,
+    };
+    macro_rules! int {
+        ($arrow:ty, $null:expr) => {
+            typed_mask(chunk.as_primitive::<$arrow>(), $null, i64::from, ints)
+        };
+    }
+    Some(match chunk.data_type() {
+        DataType::Int8 => int!(Int8Type, NULL_BYTE),
+        DataType::Int16 => int!(Int16Type, NULL_SHORT),
+        DataType::Int32 => int!(Int32Type, NULL_INT),
+        DataType::Int64 => int!(Int64Type, NULL_LONG),
+        DataType::UInt16 => int!(UInt16Type, NULL_CHAR),
+        DataType::Timestamp(TimeUnit::Nanosecond, _) => {
+            int!(TimestampNanosecondType, NULL_LONG)
+        }
+        DataType::Float32 => typed_mask(
+            chunk.as_primitive::<Float32Type>(),
+            NULL_FLOAT,
+            f64::from,
+            floats,
+        ),
+        DataType::Float64 => typed_mask(
+            chunk.as_primitive::<Float64Type>(),
+            NULL_DOUBLE,
+            |value| value,
+            floats,
+        ),
+        _ => return None,
+    })
+}
+
+fn int_key(key: &Key) -> Result<Option<i64>, TableFailure> {
+    match key {
+        Key::Null => Ok(None),
+        Key::Int(value) => Ok(Some(*value)),
+        other => Err(wrong_key(other)),
+    }
+}
+
+fn float_key(key: &Key) -> Result<Option<f64>, TableFailure> {
+    match key {
+        Key::Null => Ok(None),
+        Key::Float(value) => Ok(Some(*value)),
+        other => Err(wrong_key(other)),
+    }
+}
+
+/// The order of two floating point cells: null lowest, then [`compare_floats`].
+fn float_order(value: Option<f64>, end: Option<f64>) -> Ordering {
+    match (value, end) {
+        (None, None) => Ordering::Equal,
+        (None, Some(_)) => Ordering::Less,
+        (Some(_), None) => Ordering::Greater,
+        (Some(value), Some(end)) => compare_floats(value, end),
+    }
+}
+
+/// The rows of one filter read as a column chunk are judged in pieces of this many: 2^16,
+/// as Java's parallel `where` (`QueryTable.parallelWhereRowsPerSegment`).
+const PIECE_ROWS: usize = 1 << 16;
+
+impl Resolved {
+    /// What [`matches`], [`in_range`] and [`between`] give for a chunk of a primitive type,
+    /// without a value per cell in between: one typed loop over the chunk's values. `None`
+    /// for a chunk of another type, a filter of another kind, and keys that do not fit, all
+    /// of which the generic path judges.
+    ///
+    /// Behavior: as [`matches`], [`in_range`] and [`between`].
+    pub(super) fn primitive_kernel(&self, chunk: &ArrayRef) -> Option<BooleanBuffer> {
+        let is_float = matches!(chunk.data_type(), DataType::Float32 | DataType::Float64);
+        // The keys the chunk's type does not use are never looked at.
+        let ints = |key: &Key| if is_float { Ok(None) } else { int_key(key) };
+        let floats = |key: &Key| if is_float { float_key(key) } else { Ok(None) };
+        match self {
+            Resolved::Range { op, pivot, .. } => {
+                let op = *op;
+                let keep = move |order: Ordering| match op {
+                    RangeOp::Less => order == Ordering::Less,
+                    RangeOp::LessOrEqual => order != Ordering::Greater,
+                    RangeOp::Greater => order == Ordering::Greater,
+                    RangeOp::GreaterOrEqual => order != Ordering::Less,
+                };
+                let upward = matches!(op, RangeOp::Greater | RangeOp::GreaterOrEqual);
+                let (int_pivot, float_pivot) = (ints(pivot).ok()?, floats(pivot).ok()?);
+                primitive_mask(
+                    chunk,
+                    &|value: Option<i64>| keep(value.cmp(&int_pivot)),
+                    &|value: Option<f64>| {
+                        keep(float_order(value, float_pivot))
+                            && !(upward && value.is_some_and(f64::is_nan))
+                    },
+                )
+            }
+            Resolved::Between {
+                lower,
+                upper,
+                lower_inclusive,
+                upper_inclusive,
+                ..
+            } => {
+                let (lower_inclusive, upper_inclusive) = (*lower_inclusive, *upper_inclusive);
+                let keep = move |from_lower: Ordering, from_upper: Ordering| {
+                    (from_lower == Ordering::Greater
+                        || (lower_inclusive && from_lower == Ordering::Equal))
+                        && (from_upper == Ordering::Less
+                            || (upper_inclusive && from_upper == Ordering::Equal))
+                };
+                let int_ends = (ints(lower).ok()?, ints(upper).ok()?);
+                let float_ends = (floats(lower).ok()?, floats(upper).ok()?);
+                primitive_mask(
+                    chunk,
+                    &|value: Option<i64>| keep(value.cmp(&int_ends.0), value.cmp(&int_ends.1)),
+                    &|value: Option<f64>| {
+                        keep(
+                            float_order(value, float_ends.0),
+                            float_order(value, float_ends.1),
+                        )
+                    },
+                )
+            }
+            Resolved::Match { keys, options, .. } => {
+                let options = *options;
+                let int_keys: Vec<Option<i64>> =
+                    keys.iter().map(ints).collect::<Result<_, _>>().ok()?;
+                let float_keys: Vec<Option<f64>> =
+                    keys.iter().map(floats).collect::<Result<_, _>>().ok()?;
+                let equal = |a: Option<f64>, b: Option<f64>| match (a, b) {
+                    (None, None) => true,
+                    (Some(a), Some(b)) if options.nan_match => {
+                        nan_match_bits(a) == nan_match_bits(b)
+                    }
+                    (Some(a), Some(b)) => a == b,
+                    _ => false,
+                };
+                primitive_mask(
+                    chunk,
+                    &|value: Option<i64>| int_keys.contains(&value) != options.inverted,
+                    &|value: Option<f64>| {
+                        float_keys.iter().any(|key| equal(value, *key)) != options.inverted
+                    },
+                )
+            }
+            _ => None,
+        }
+    }
+
+    /// Whether this filter, one that reads one column, keeps each cell of `chunk`.
+    fn mask(
+        &self,
+        column_type: &ColumnType,
+        chunk: ArrayRef,
+    ) -> Result<BooleanBuffer, TableFailure> {
+        // A column of another type may be held as numbers too, and is not compared as one.
+        let primitive = matches!(
+            column_type,
+            ColumnType::Byte
+                | ColumnType::Short
+                | ColumnType::Char
+                | ColumnType::Int
+                | ColumnType::Long
+                | ColumnType::Float
+                | ColumnType::Double
+                | ColumnType::Instant
+        );
+        if let Some(mask) = primitive.then(|| self.primitive_kernel(&chunk)).flatten() {
+            return Ok(mask);
+        }
+        self.generic_mask(column_type, chunk)
+    }
+
+    /// [`Resolved::mask`] through [`Cells`], for every type of column.
+    pub(super) fn generic_mask(
+        &self,
+        column_type: &ColumnType,
+        chunk: ArrayRef,
+    ) -> Result<BooleanBuffer, TableFailure> {
+        let cells = cells(column_type, chunk)?;
+        Ok(match self {
+            Resolved::Match { keys, options, .. } => matches(&cells, keys, *options)?
+                .into_iter()
+                .map(|m| m != options.inverted)
+                .collect(),
+            Resolved::Range { op, pivot, .. } => in_range(&cells, *op, pivot)?.into(),
+            Resolved::Between {
+                lower,
+                upper,
+                lower_inclusive,
+                upper_inclusive,
+                ..
+            } => between(&cells, lower, upper, *lower_inclusive, *upper_inclusive)?.into(),
+            // Behavior: WhereFilterPatternImpl#find, #findPatternInverted, #matches,
+            // #matchesPatternInverted: a null value is never kept.
+            Resolved::Pattern {
+                matcher,
+                invert_pattern,
+                ..
+            } => match cells {
+                Cells::Str(values) => values
+                    .iter()
+                    .map(|value| value.is_some_and(|v| matcher.test(v) != *invert_pattern))
+                    .collect(),
+                _ => return Err(failure("a pattern filter needs a String column")),
+            },
+            _ => unreachable!("only a filter of one column has a mask"),
+        })
+    }
+
+    /// The rows of `selection` that this filter, one that reads `column` alone, keeps.
+    ///
+    /// The column is read once, on the calling thread. Its chunk is then judged in pieces
+    /// of [`PIECE_ROWS`] rows on the threads `oxhaven_column::parallel` allows; a piece
+    /// reads no table and takes no lock. The pieces are joined in row order, and the
+    /// failure reported is that of the first piece that fails, which holds the first row
+    /// that fails: what one pass over the chunk reports.
+    fn filter_column(
+        &self,
+        table: &dyn Table,
+        column: usize,
+        selection: &RowSet,
+        use_prev: bool,
+    ) -> Result<RowSet, TableFailure> {
+        let source = table.column(column);
+        let chunk = if use_prev {
+            source.prev_chunk(selection)?
+        } else {
+            source.chunk(selection)?
+        };
+        let column_type = source.column_type();
+        let pieces = parallel::pieces_of(chunk.len(), PIECE_ROWS);
+        let masks = parallel::map_pieces(pieces.len(), |piece| {
+            let (offset, length) = pieces[piece];
+            let mask = self.mask(column_type, chunk.slice(offset, length))?;
+            Ok(kept_of_piece(selection, offset, mask))
+        });
+        let masks = masks
+            .into_iter()
+            .collect::<Result<Vec<_>, TableFailure>>()?;
+        Ok(join_pieces(selection, masks))
+    }
+}
+
+/// What one piece of a selection keeps: the ranges of row keys, when the selection is one
+/// range of keys and so a row's key is known from its position, or else the mask.
+enum Kept {
+    Ranges(Vec<(RowKey, RowKey)>),
+    Mask(BooleanBuffer),
+}
+
+/// What the piece of `selection` that starts at position `offset` keeps, given whether it
+/// keeps each of its rows.
+fn kept_of_piece(selection: &RowSet, offset: usize, mask: BooleanBuffer) -> Kept {
+    match selection.as_single_range() {
+        Some(range) => {
+            let first = range.first() + offset as RowKey;
+            Kept::Ranges(
+                mask.set_slices()
+                    .map(|(start, end)| (first + start as RowKey, first + end as RowKey - 1))
+                    .collect(),
+            )
+        }
+        None => Kept::Mask(mask),
+    }
+}
+
+/// The rows of `selection` its pieces keep, the pieces in row order.
+fn join_pieces(selection: &RowSet, pieces: Vec<Kept>) -> RowSet {
+    let mut builder = RowSetBuilderSequential::new();
+    let mut keys = selection.iter();
+    for piece in pieces {
+        match piece {
+            Kept::Ranges(ranges) => {
+                for (first, last) in ranges {
+                    builder.append_range(first, last);
+                }
+            }
+            Kept::Mask(mask) => {
+                // The mask leads: a zip led by the keys would take one key too many.
+                for (keep, key) in mask.iter().zip(keys.by_ref()) {
+                    if keep {
+                        builder.append_key(key);
+                    }
+                }
+            }
+        }
+    }
+    builder.build()
+}
+
 /// The rows of `selection` whose entry in `mask` is true.
-fn selected(selection: &RowSet, mask: impl IntoIterator<Item = bool>) -> RowSet {
-    RowSet::from_keys(
-        selection
-            .iter()
-            .zip(mask)
-            .filter_map(|(key, keep)| keep.then_some(key)),
-    )
+fn selected(selection: &RowSet, mask: &BooleanBuffer) -> RowSet {
+    let pieces = parallel::pieces_of(mask.len(), PIECE_ROWS);
+    let kept = parallel::map_pieces(pieces.len(), |piece| {
+        let (offset, length) = pieces[piece];
+        kept_of_piece(selection, offset, mask.slice(offset, length))
+    });
+    join_pieces(selection, kept)
 }
 
 impl Resolved {
@@ -826,43 +1140,14 @@ impl Resolved {
                         RowSet::empty()
                     });
                 }
-                let mask = matches(&read(table, *column, selection, use_prev)?, keys, *options)?;
-                Ok(selected(
-                    selection,
-                    mask.into_iter().map(|m| m != options.inverted),
-                ))
+                self.filter_column(table, *column, selection, use_prev)
             }
-            Resolved::Range { column, op, pivot } => {
-                let mask = in_range(&read(table, *column, selection, use_prev)?, *op, pivot)?;
-                Ok(selected(selection, mask))
-            }
-            Resolved::Between {
-                column,
-                lower,
-                upper,
-                lower_inclusive,
-                upper_inclusive,
-            } => {
-                let cells = read(table, *column, selection, use_prev)?;
-                let mask = between(&cells, lower, upper, *lower_inclusive, *upper_inclusive)?;
-                Ok(selected(selection, mask))
+            Resolved::Range { column, .. }
+            | Resolved::Between { column, .. }
+            | Resolved::Pattern { column, .. } => {
+                self.filter_column(table, *column, selection, use_prev)
             }
             Resolved::Nothing => Ok(RowSet::empty()),
-            // Behavior: WhereFilterPatternImpl#find, #findPatternInverted, #matches,
-            // #matchesPatternInverted: a null value is never kept.
-            Resolved::Pattern {
-                column,
-                matcher,
-                invert_pattern,
-            } => match read(table, *column, selection, use_prev)? {
-                Cells::Str(values) => Ok(selected(
-                    selection,
-                    values
-                        .iter()
-                        .map(|value| value.is_some_and(|v| matcher.test(v) != *invert_pattern)),
-                )),
-                _ => Err(failure("a pattern filter needs a String column")),
-            },
             // Behavior: ConditionFilter.ChunkFilter#filter. The generated kernel assigns the
             // formula's value to a `boolean`, so a null `Boolean` throws.
             Resolved::Condition { formula, text } => {
@@ -883,7 +1168,7 @@ impl Resolved {
                          the condition evaluated to null"
                     )));
                 }
-                Ok(selected(selection, values.iter().map(|v| v == Some(true))))
+                Ok(selected(selection, values.values()))
             }
             // Behavior: ConjunctiveFilter#andImpl
             Resolved::And(filters) => {

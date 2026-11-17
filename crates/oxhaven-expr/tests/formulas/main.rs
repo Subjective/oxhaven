@@ -16,6 +16,7 @@ mod formula;
 mod gaps;
 mod logic;
 mod objects;
+mod pieces;
 mod recorded;
 mod statics;
 mod tagged;

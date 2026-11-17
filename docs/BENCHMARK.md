@@ -572,3 +572,66 @@ Java does not; that is now about 20 ms of its 155 at 1M rows. Not measured here:
 throughput (the engine example's 19 append-only cycles of 50,000 rows into `select_distinct`,
 `last_by` and `sum_by` went from 4.6 s to 2.4 s; the two aggregators' own cycles were about half of what remains,
 and the rest, the input table's writes and `select_distinct`, was not broken down).
+
+## After task 9.4 (2026-11-17): filters and formulas
+
+Task 9.4 (`tasks/9.4-parallel-filter-update.md`) measured where `where` and `update` spend their
+time and then changed the formula evaluator and the match and range filters. Results are
+unchanged.
+
+**How it was measured.** Inside the engine only, without a server and without Java:
+`cargo run --release -p oxhaven-engine --example filter-update-cases -- <rows> <reps> 1,2,4`,
+the benchmark's cases on a table built as the benchmark builds its source, median of 5
+repetitions at 1M rows and of 3 at 10M. "Before" is `main` at `eceb7e55`, load average 3.0;
+"after" is the branch at `6152b690`, load average 3.4 falling to 2.3 (another agent was
+building; the machine has 4 cores). The end-to-end benchmark (`bench/bench.py` against a
+release server and Java) was **not** run for this task, so the Java column below repeats the
+first measurement's medians and is an indication only: the server adds a round trip to every
+case. Raw output: `bench/results/2026-11-17-task-9.4-engine-*.txt`.
+
+Median milliseconds. "1 / 2 / 4" are the thread counts (`OXHAVEN_THREADS`).
+
+| case | rows | before (1 thread) | after, 1 / 2 / 4 threads | before / after at 4 | java, first measurement |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `where_range` | 1M | 30.9 | 11.1 / 8.8 / 7.6 | 4.1 | 32.0 / 15.0 |
+| `where_string` | 1M | 6.1 | 4.5 / 3.1 / 2.2 | 2.8 | 16.6 / 18.3 |
+| `where_conj` | 1M | 17.6 | 8.1 / 8.9 / 9.3 | 1.9 | 17.9 / 14.3 |
+| `update_arith` | 1M | 73.8 | 24.6 / 10.1 / 8.9 | 8.3 | 43.7 / 31.8 |
+| `update_cond` | 1M | 48.0 | 6.1 / 4.8 / 4.2 | 11 | 17.7 / 26.5 |
+| `update_string` | 1M | 201 | 112 / 74.9 / 53.7 | 3.7 | 100 / 52.8 |
+| `build` | 1M | 357 | 157 / 117 / 75.2 | 4.8 | 173 / 139 |
+| `where_range` | 10M | 420 | 216 / 134 / 114 | 3.7 | 52.1 / 48.5 |
+| `where_string` | 10M | 64.4 | 50.3 / 37.5 / 19.1 | 3.4 | 121 / 161 |
+| `where_conj` | 10M | 258 | 118 / 95.4 / 94.7 | 2.7 | 92.9 / 80.3 |
+| `update_arith` | 10M | 960 | 402 / 254 / 202 | 4.8 | 179 / 355 |
+| `update_cond` | 10M | 442 | 189 / 112 / 97.4 | 4.5 | 71.9 / 89.7 |
+| `update_string` | 10M | 1987 | 1303 / 742 / 393 | 5.1 | 1094 / 1460 |
+| `build` | 10M | 4943 | 2147 / 1492 / 1026 | 4.8 | 1738 / 2577 |
+
+**What was slow.** Not, in the first place, the single thread, as the first reading above
+guessed. A pass over the `int` column's memory costs 0.4 to 0.9 ns per row on this machine;
+evaluating `A * 2 + 1` cost 13 ns per row at 1M rows and 25 at 10M, `A > 50000 ? B : -B` 18 and
+46, and the row set of a filter that keeps 40% of the rows 8 to 11. Every operator built its
+result from an iterator of `Option`s, copied operands that already had the right type, and at
+10M rows worked on intermediates of 40 to 80 MB; the filters widened each cell to an
+`Option<i64>` and added kept rows to the row set one key at a time.
+
+**What changed.** Typed loops in the evaluator; formulas made only of operators run in pieces
+of 2^16 rows (the size of a segment of Java's parallel `where`) that stay in cache, on as many
+threads as `OXHAVEN_THREADS` says (default: the available cores), and are evaluated again in
+one pass if a piece fails, so that the failure is the one reported before; match and range
+filters have typed kernels and all single-column filters run in the same pieces. Formulas that
+call any function keep the old path. On one thread the evaluation alone went, at 10M rows, from
+25.1 to 5.0 ns per row for `A * 2 + 1`, from 42.4 to 14.4 for `B * 1.5 - A`, from 46.1 to 16.5
+for the conditional and from 32.1 to 5.1 for the range condition.
+
+**What did not get faster, and the next bottlenecks.** `where_conj` gains nothing from threads:
+its second and third filters read their columns at scattered rows (4.7 ns per kept row, one
+thread) and every filter's row set is built on one thread. `where_range` at 10M rows is still
+about 114 ms on 4 threads against Java's 50: the row set of 4M scattered rows (3M ranges) takes
+about 120 ms when built one key at a time, and how much of the 114 ms it still is was not
+broken down. Formula results with 8-byte values cost three times as much per row at 10M rows as
+at 1M (14 against 5 ns for `B * 1.5 - A` on one thread): the pieces are joined by copying them
+into one new array. `update_string` and the string column of `build` format one string per row.
+Threads scale less than linearly here because the columns are read, the pieces joined and the
+row sets built on one thread, and the machine was shared.
