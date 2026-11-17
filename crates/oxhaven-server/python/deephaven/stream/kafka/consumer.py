@@ -2,7 +2,8 @@
 
 Behavior: `deephaven.stream.kafka.consumer` (the names, the signatures and the checks made
 in Python); `io.deephaven.kafka.KafkaTools` for the rest. `docs/KAFKA.md` lists what is
-built: `consume` with simple, JSON, Avro and Protobuf specs. What is not raises `NotImplementedError` with
+built: `consume` and `consume_to_partitioned_table` with simple, JSON, Avro and Protobuf
+specs. What is not raises `NotImplementedError` with
 the name of the Java method, inside the `DHError` the reference raises.
 """
 
@@ -121,14 +122,36 @@ def consume_to_partitioned_table(
     value_spec: Optional[KeyValueSpec] = None,
     table_type: Optional[TableType] = None,
 ) -> PartitionedTable:
-    """Consumes a topic into a partitioned table with a table per partition."""
-    try:
-        raise NotPorted("io.deephaven.kafka.KafkaTools#consumeToPartitionedTable")
-    except Exception as e:
-        raise DHError(e, "failed to consume a Kafka stream.") from e
+    """Consumes a topic into a partitioned table with a constituent table per partition
+    read: its key column `Partition` is the partition's number, its constituent column
+    `Table` the partition's table, of `table_type` (`TableType.blink()` without it). The
+    other arguments are those of `consume`. A partition's constituent shows from the update
+    cycle after the call.
+    """
+    if table_type is None:
+        table_type = TableType.blink()
+    return _consume(
+        kafka_config,
+        topic,
+        partitions,
+        offsets,
+        key_spec,
+        value_spec,
+        table_type,
+        to_partitioned=True,
+    )
 
 
-def _consume(kafka_config, topic, partitions, offsets, key_spec, value_spec, table_type) -> Table:
+def _consume(
+    kafka_config,
+    topic,
+    partitions,
+    offsets,
+    key_spec,
+    value_spec,
+    table_type,
+    to_partitioned=False,
+) -> Union[Table, PartitionedTable]:
     try:
         if partitions is not None:
             partitions = [int(partition) for partition in partitions]
@@ -155,19 +178,20 @@ def _consume(kafka_config, topic, partitions, offsets, key_spec, value_spec, tab
 
         config = _properties(kafka_config)
         kind, capacity = table_type.j_object
-        return Table(
-            _engine.native.kafka_consume(
-                config,
-                topic,
-                partitions,
-                all_offsets,
-                pairs,
-                json.dumps(key_spec.j_object),
-                json.dumps(value_spec.j_object),
-                kind,
-                capacity,
-            )
+        arguments = (
+            config,
+            topic,
+            partitions,
+            all_offsets,
+            pairs,
+            json.dumps(key_spec.j_object),
+            json.dumps(value_spec.j_object),
+            kind,
+            capacity,
         )
+        if to_partitioned:
+            return PartitionedTable(_engine.native.kafka_consume_partitioned(*arguments))
+        return Table(_engine.native.kafka_consume(*arguments))
     except Exception as e:
         raise DHError(e, "failed to consume a Kafka stream.") from e
 

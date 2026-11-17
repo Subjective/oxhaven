@@ -17,13 +17,13 @@ use oxhaven_engine::table::{
 
 use crate::{KafkaError, Plan, RecordSource, TableType};
 
-fn failure(error: impl ToString) -> TableFailure {
+pub(crate) fn failure(error: impl ToString) -> TableFailure {
     TableFailure {
         message: error.to_string(),
     }
 }
 
-fn now_nanos() -> i64 {
+pub(crate) fn now_nanos() -> i64 {
     let since = SystemTime::now().duration_since(UNIX_EPOCH);
     since.map_or(0, |since| since.as_nanos() as i64)
 }
@@ -80,7 +80,16 @@ pub fn consume_from(
         .name(format!("Kafka-{topic}"))
         .spawn(move || poll_loop(source, plan, publisher, stopped))
         .map_err(|e| KafkaError::Broker(format!("cannot start the polling thread: {e}")))?;
-    let blink: Arc<dyn Table> = blink;
+    of_type(blink, table_type)
+}
+
+/// The table of `table_type` over `blink`, the blink table of a stream.
+///
+/// Behavior: io.deephaven.kafka.KafkaTools.BlinkTableOperation
+pub(crate) fn of_type(
+    blink: Arc<dyn Table>,
+    table_type: TableType,
+) -> Result<Arc<dyn Table>, KafkaError> {
     match table_type {
         TableType::Blink => Ok(blink),
         // Behavior: io.deephaven.kafka.KafkaTools.TableType.Append, which is
