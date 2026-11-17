@@ -1,0 +1,42 @@
+1000000 rows, 5 repetitions, load average 3.37 2.73 2.49
+-- 1 thread(s), load average 3.37 2.73 2.49
+where_range                             11.1 ms  (min 10.7, max 13.2)    11.1 ns/row
+where_range (two filters)               14.0 ms  (min 13.9, max 14.9)    14.0 ns/row
+where_string                             4.5 ms  (min 4.3, max 4.9)     4.5 ns/row
+where_conj                               8.1 ms  (min 7.6, max 8.9)     8.1 ns/row
+update_arith                            24.6 ms  (min 23.3, max 26.2)    24.6 ns/row
+update_cond                              6.1 ms  (min 5.8, max 7.2)     6.1 ns/row
+update_string                          112.3 ms  (min 111.8, max 129.6)   112.3 ns/row
+build                                  157.2 ms  (min 147.4, max 203.7)   157.2 ns/row
+build (numbers only)                    37.5 ms  (min 36.9, max 40.4)    37.5 ns/row
+-- 2 thread(s), load average 3.37 2.73 2.49
+where_range                              8.8 ms  (min 8.4, max 12.6)     8.8 ns/row
+where_range (two filters)               16.4 ms  (min 16.3, max 18.4)    16.4 ns/row
+where_string                             3.1 ms  (min 3.0, max 4.4)     3.1 ns/row
+where_conj                               8.9 ms  (min 8.8, max 9.0)     8.9 ns/row
+update_arith                            10.1 ms  (min 10.0, max 11.6)    10.1 ns/row
+update_cond                              4.8 ms  (min 4.6, max 5.6)     4.8 ns/row
+update_string                           74.9 ms  (min 64.6, max 77.1)    74.9 ns/row
+build                                  117.1 ms  (min 112.7, max 119.7)   117.1 ns/row
+build (numbers only)                    27.0 ms  (min 24.8, max 29.2)    27.0 ns/row
+-- 4 thread(s), load average 3.18 2.70 2.48
+where_range                              7.6 ms  (min 7.0, max 10.0)     7.6 ns/row
+where_range (two filters)               15.5 ms  (min 15.4, max 16.1)    15.5 ns/row
+where_string                             2.2 ms  (min 2.0, max 2.5)     2.2 ns/row
+where_conj                               9.3 ms  (min 8.1, max 11.3)     9.3 ns/row
+update_arith                             8.9 ms  (min 8.0, max 9.8)     8.9 ns/row
+update_cond                              4.2 ms  (min 3.8, max 4.4)     4.2 ns/row
+update_string                           53.7 ms  (min 49.9, max 55.2)    53.7 ns/row
+build                                   75.2 ms  (min 63.9, max 78.5)    75.2 ns/row
+build (numbers only)                    19.2 ms  (min 17.5, max 20.5)    19.2 ns/row
+-- parts, one thread, load average 3.18 2.70 2.48
+scan A (count in range)                  0.4 ms  (min 0.4, max 0.7)     0.4 ns/row
+read A as a chunk                        0.0 ms  (min 0.0, max 0.0)     0.0 ns/row
+evaluate A >= 20000 && A < 60000         5.3 ms  (min 5.1, max 5.9)     5.3 ns/row
+evaluate A * 2 + 1                       2.7 ms  (min 2.3, max 3.3)     2.7 ns/row
+evaluate B * 1.5 - A                     5.1 ms  (min 4.7, max 6.4)     5.1 ns/row
+evaluate Id % 7                          4.3 ms  (min 4.3, max 4.8)     4.3 ns/row
+evaluate A > 50000 ? B : -B              8.0 ms  (min 7.6, max 8.9)     8.0 ns/row
+row set of the kept 40%                  7.6 ms  (min 7.4, max 8.6)     7.6 ns/row
+read A at the kept 40%                   4.7 ms  (min 4.4, max 8.9)     4.7 ns/row
+load average 3.18 2.70 2.48

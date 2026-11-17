@@ -20,6 +20,8 @@ mod search;
 #[cfg(test)]
 mod corpus_tests;
 #[cfg(test)]
+mod kernel_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod time_tests;

@@ -9,6 +9,7 @@
 
 mod flat;
 pub mod java_values;
+pub mod parallel;
 mod redirect;
 pub mod sentinel;
 pub mod tables;
