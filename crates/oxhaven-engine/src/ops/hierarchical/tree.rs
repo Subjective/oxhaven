@@ -6,7 +6,7 @@ use super::{
     failure, merged_sorts, Expandable, HierarchicalError, Hierarchy, Located, NodeId, NodeKey,
     Parent, Part, DEPTH_COLUMN_NAME, EXPANDED_COLUMN_NAME,
 };
-use crate::ops::agg::{aggregate, Aggregation};
+use crate::ops::agg::{aggregate, describe_for_compatibility, Aggregation};
 use crate::ops::filter::{CheckedFilters, FilterError};
 use crate::ops::join::{natural_join, JoinAddition, JoinMatch, NaturalJoinType};
 use crate::ops::partitioned::{of_aggregation, tables_of, PartitionedTable};
@@ -187,30 +187,11 @@ pub struct TreeTable {
 
 /// Behavior: io.deephaven.engine.table.ColumnDefinition#describeForCompatibility
 fn described(column: &ColumnDefinition) -> String {
-    let class = match &column.column_type {
-        ColumnType::Boolean => "class java.lang.Boolean",
-        ColumnType::Byte => "byte",
-        ColumnType::Char => "char",
-        ColumnType::Short => "short",
-        ColumnType::Int => "int",
-        ColumnType::Long => "long",
-        ColumnType::Float => "float",
-        ColumnType::Double => "double",
-        ColumnType::String => "class java.lang.String",
-        ColumnType::Instant => "class java.time.Instant",
-        other => oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.ColumnDefinition#describeForCompatibility",
-            "a tree whose identifier or parent column is of type {other:?} and not of the \
-             type of the other"
-        ),
-    };
-    format!("[{}, {class}]", column.name)
+    describe_for_compatibility(&column.name, &column.column_type)
 }
 
-/// `source` as a tree by its columns `id_column` and `parent_column`.
-///
-/// # Panics
-/// With `unported!` for a blink table.
+/// `source` as a tree by its columns `id_column` and `parent_column`. A blink table is
+/// refused before its columns are looked at.
 ///
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#tree, TreeTableImpl#makeTree
 pub fn tree(
@@ -218,6 +199,13 @@ pub fn tree(
     id_column: &str,
     parent_column: &str,
 ) -> Result<TreeTable, HierarchicalError> {
+    if source.attributes().blink {
+        return Err(HierarchicalError::Unsupported(
+            "Blink tables do not support tree; use BlinkTableTools.blinkToAppendOnly to \
+             accumulate full history"
+                .to_string(),
+        ));
+    }
     let definition = source.definition();
     let column = |name: &str, what: &str| {
         definition.index_of(name).ok_or_else(|| {
@@ -244,12 +232,6 @@ pub fn tree(
             described(parent_definition),
             described(id_definition)
         )));
-    }
-    if source.attributes().blink {
-        oxhaven_contracts::unported!(
-            "io.deephaven.engine.table.impl.hierarchical.TreeTableImpl#makeTree",
-            "a tree of a blink table"
-        );
     }
     let nodes = Nodes::new(source, parent_column)?;
     let lookup = RowLookup::new(source, id)?;

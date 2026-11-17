@@ -56,9 +56,29 @@ refuses with `Agg<Name> is not supported for rollup()`: `FirstRowKey`, `LastRowK
 `ApproximatePercentile`, `Freeze`, the per-column `Formula`, `Median`, `Percentile`,
 `TDigest`; a partition aggregation is refused too (`AggregationProcessor`'s
 `UnsupportedRollupAggregations` and `RollupBaseConverter`). The refusals are Java's here,
-with Java's text. Of the allowed ones the first slice has all but `CountWhere`, `Group`
-and `AggFormula`, which are refused as not ported: a group's vectors and the formula's
-`__FORMULA_DEPTH__` and `__FORMULA_KEYS__` need work of their own (7.8.4).
+with Java's text. All the allowed ones are served (`CountWhere`, `Group` and `AggFormula`
+since task 10.4, `tasks/10.4-unported-rollup-tree.md`):
+
+- `CountWhere` counts, at every level, the source's rows of the group, which is what Java's
+  sum of the counts of the level below gives.
+- `Group` has, at every level, the source's values of the group's rows in the order of the
+  source.
+- `AggFormula` is evaluated at every level over the source's rows of the group, with
+  `__FORMULA_DEPTH__` (an `int`, the level's number of group-by columns) and
+  `__FORMULA_KEYS__` (their names, a vector of strings) in place of source columns of those
+  names. Java makes a coarser level from the level below, so it refuses a formula that
+  reads a group-by column at the level that stops grouping by it when the result's type
+  changes (`Inconsistent return type in rollup for Formula column ...`), and that refusal
+  is Java's here.
+
+Still refused as not ported: two `Group` aggregations, or a `Group` and an `AggFormula`, in
+one rollup (`AggregationProcessor.Converter#ensureGroupByOperator`); a formula that Java fails
+with a `NoSuchColumnException` for an internal column (a formula that reads a group-by
+column with a result of the same type at every level, or a later formula that reads a column
+the first one does not); and, in Python, a formula with `reaggregating=True`. A rollup of a
+blink table serves every level from every row the table ever had, and refuses with Java's
+texts what needs the rows of a group again or the row a value came from: `First`, `Last`,
+`SortedFirst`, `SortedLast`, `Group` and `AggFormula`, as well as constituents.
 
 The columns of a level are the group-by columns, then the aggregation results. A level
 shows null in the group-by columns it does not group by, in the column's type.

@@ -20,21 +20,26 @@
 //! the expression crate. Java refuses those on a refreshing table that is not a blink
 //! table, and `plan::validate_safe_for_refresh` does.
 //!
-//! Not ported, and refused by name:
+//! An offset that `Long#parseLong` cannot read (`Col_[i - 0x1]`, `Col_[i - 1_0]`) fails the
+//! formula, as Java's parser does.
+//!
+//! Not ported, and refused by name until the owner decides (questions 6 and 8 of
+//! `tasks/10.2-unported-updateby-select-rollup.md` and `tasks/10.5-unported-select-arrays.md`):
 //!
 //! - shifts of two different distances, neither of them zero, on a refreshing table
 //!   (`Col_[i - 1] + Col_[i + 1]`, `Col_[i - 1] - Col_[i - 2]`). Java computes the rows such a
 //!   pair makes dirty by feeding row positions to `RowSet#invert` as if they were row keys
-//!   (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so which rows an
-//!   `update` recomputes depends on how its row sets happen to be stored. Seen on Java
-//!   42.9: `update("M = X_[i-1] + X_[i+1]")` of a keyed input table keeps the old `M` in
-//!   the rows next to a modified row.
+//!   (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so a change does
+//!   not reach the rows that read it. Seen on Java 42.9: `update("M = X_[i-1] + X_[i+1]")`
+//!   of a keyed input table keeps the old `M` in the rows next to a modified, added or
+//!   removed row. [`shifted_table`] can serve them with the values the same formula has
+//!   when it is made again, which `update_view` also shows.
 //! - `select` with a shifted column on a static table whose result gets new row keys. Java
 //!   then reads the parent's columns by the new keys
 //!   (`SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources`). Seen on Java 42.9:
 //!   `empty_table(6).update("X = i * 10").where("X != 20").select("Y = X_[i-1]")` has the
 //!   20 of the row that `where` dropped.
-//! - an offset that is not written in decimal digits (`Col_[i - 0x1]`).
+//! - a table that already has a column named like a shifted column (`__X_Shifted_Minus_1__`).
 
 pub(crate) use super::plan::Shift;
 use super::{drop_columns_as, failure, Flavor, SelectError};
@@ -76,22 +81,48 @@ pub(crate) struct Rewritten {
     pub(crate) shifts: Vec<Shift>,
 }
 
-/// The index of each `Name_[...]` in `text`, as written, in the order the names appear;
+/// A column array as the text of a formula writes it.
+#[derive(Debug, PartialEq)]
+struct Written<'a> {
+    /// The column, without the `_`.
+    column: &'a str,
+    /// The text between the brackets of `Name_[...]`; `None` for `(Name_)[...]`, which
+    /// Java does not read as a column at a distance.
+    index: Option<&'a str>,
+}
+
+/// The column arrays of `text` that are indexed, in the order their names are written;
 /// `None` when the text cannot be read that way.
 ///
-/// The expression tree does not keep parentheses, and Java tells `X_[i - 1]` from
-/// `X_[(i - 1)]`: only the first is a shift.
-fn written_indexes(text: &str) -> Option<Vec<(&str, &str)>> {
-    let bytes = text.as_bytes();
-    let is_name = |byte: u8| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'$';
+/// The expression tree keeps neither parentheses nor how an index was written, and Java
+/// tells `X_[i - 1]` from `X_[(i - 1)]` and from `(X_)[i - 1]`: only the first is a shift.
+/// Names are read as the expression crate's lexer reads them, outside ASCII too.
+fn written_indexes(text: &str) -> Option<Vec<Written<'_>>> {
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
+    let byte = |at: usize| chars.get(at).map_or(text.len(), |(byte, _)| *byte);
+    let char_at = |at: usize| chars.get(at).map(|(_, c)| *c);
+    let is_name = |c: char| c == '_' || c == '$' || c.is_alphanumeric();
+    let skip_space = |mut at: usize| {
+        while char_at(at).is_some_and(char::is_whitespace) {
+            at += 1;
+        }
+        at
+    };
+    // Where the last character before `at` that is not white space is.
+    let back_space = |mut at: usize| {
+        while at > 0 && chars[at - 1].1.is_whitespace() {
+            at -= 1;
+        }
+        at.checked_sub(1)
+    };
     // The end of the quoted literal that starts at `at`.
     let skip_quoted = |at: usize| -> Option<usize> {
-        let quote = bytes[at];
+        let quote = chars[at].1;
         let mut at = at + 1;
-        while at < bytes.len() {
-            match bytes[at] {
-                b'\\' => at += 2,
-                byte if byte == quote => return Some(at + 1),
+        while at < chars.len() {
+            match chars[at].1 {
+                '\\' => at += 2,
+                c if c == quote => return Some(at + 1),
                 _ => at += 1,
             }
         }
@@ -99,37 +130,68 @@ fn written_indexes(text: &str) -> Option<Vec<(&str, &str)>> {
     };
     let mut found = Vec::new();
     let mut at = 0;
-    while at < bytes.len() {
-        match bytes[at] {
-            b'"' | b'\'' | b'`' => at = skip_quoted(at)?,
-            byte if is_name(byte) => {
+    while at < chars.len() {
+        match chars[at].1 {
+            '"' | '\'' | '`' => at = skip_quoted(at)?,
+            first if is_name(first) => {
                 let start = at;
-                while at < bytes.len() && is_name(bytes[at]) {
+                // A qualified name, `Foo.X_`, is one name to the parser too.
+                let dotted = |at: usize| {
+                    !first.is_numeric()
+                        && char_at(at) == Some('.')
+                        && char_at(at + 1).is_some_and(|next| is_name(next) && !next.is_numeric())
+                };
+                while char_at(at).is_some_and(is_name) || dotted(at) {
                     at += 1;
                 }
-                let name = &text[start..at];
-                let mut open = at;
-                while open < bytes.len() && bytes[open].is_ascii_whitespace() {
-                    open += 1;
-                }
-                let indexed = bytes.get(open) == Some(&b'[')
-                    && name.len() > 1
-                    && name.ends_with('_')
-                    && !bytes[start].is_ascii_digit();
-                if !indexed {
+                let name = &text[byte(start)..byte(at)];
+                let column = match name.strip_suffix('_') {
+                    Some(column) if !column.is_empty() && !first.is_numeric() => column,
+                    _ => continue,
+                };
+                let open = skip_space(at);
+                if char_at(open) != Some('[') {
+                    // `(Name_)[...]`: as many parentheses close right after the name as
+                    // open right before it, and they are not those of a call.
+                    let mut closes = 0;
+                    let mut after = open;
+                    while char_at(after) == Some(')') {
+                        closes += 1;
+                        after = skip_space(after + 1);
+                    }
+                    if closes == 0 || char_at(after) != Some('[') {
+                        continue;
+                    }
+                    let (mut opens, mut outer) = (0, start);
+                    while opens < closes {
+                        match back_space(outer) {
+                            Some(before) if chars[before].1 == '(' => {
+                                opens += 1;
+                                outer = before;
+                            }
+                            _ => break,
+                        }
+                    }
+                    let called = back_space(outer).is_some_and(|before| is_name(chars[before].1));
+                    if opens == closes && !called {
+                        found.push(Written {
+                            column,
+                            index: None,
+                        });
+                    }
                     continue;
                 }
                 // The matching bracket.
                 let mut depth = 0_usize;
                 let mut close = open;
                 loop {
-                    match bytes.get(close)? {
-                        b'"' | b'\'' | b'`' => {
+                    match char_at(close)? {
+                        '"' | '\'' | '`' => {
                             close = skip_quoted(close)?;
                             continue;
                         }
-                        b'[' => depth += 1,
-                        b']' => {
+                        '[' => depth += 1,
+                        ']' => {
                             depth -= 1;
                             if depth == 0 {
                                 break;
@@ -139,7 +201,10 @@ fn written_indexes(text: &str) -> Option<Vec<(&str, &str)>> {
                     }
                     close += 1;
                 }
-                found.push((&name[..name.len() - 1], &text[open + 1..close]));
+                found.push(Written {
+                    column,
+                    index: Some(&text[byte(open + 1)..byte(close)]),
+                });
                 // An index may hold further indexed names.
                 at = open + 1;
             }
@@ -149,52 +214,61 @@ fn written_indexes(text: &str) -> Option<Vec<(&str, &str)>> {
     Some(found)
 }
 
-/// The distance of an index that is `i`, `ii`, or one of them plus or minus a whole number
-/// written in decimal digits; `None` for any other index.
+/// Whether `literal` is what Java's parser reads as an `IntegerLiteralExpr`: an `int`
+/// literal in any base, with or without `_`, and not a `long` or floating point one. The
+/// formula has been parsed, so a literal is a valid one.
+fn is_int_literal(literal: &str) -> bool {
+    let lower = literal.to_ascii_lowercase();
+    let integer = if lower.starts_with("0x") {
+        !lower.contains('p')
+    } else {
+        lower.starts_with("0b") || !(lower.contains('e') || lower.ends_with(['f', 'd']))
+    };
+    literal.starts_with(|c: char| c.is_ascii_digit())
+        && literal
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !lower.ends_with('l')
+        && integer
+}
+
+/// The distance of an index that is `i`, `ii`, or one of them plus or minus an `int`
+/// literal; `None` for any other index.
+///
+/// # Errors
+/// Java's `NumberFormatException` for a literal that `Long#parseLong` does not read: one
+/// in another base than ten, with `_`, or beyond the `long` range (`i + 0x10`).
 ///
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnsFactory#parseForConstantArrayAccessAttributes,
 /// which takes a name, or a binary `+` or `-` of a name and an `IntegerLiteralExpr`, and
-/// reads the literal with `Long#parseLong`.
-fn constant_distance(index: &str, formula: &str) -> Option<i64> {
+/// reads the literal's text with `Long#parseLong`.
+fn constant_distance(index: &str) -> Result<Option<i64>, FormulaError> {
     let index = index.trim();
-    let rest = index
+    let Some(rest) = index
         .strip_prefix("ii")
-        .or_else(|| index.strip_prefix('i'))?
-        .trim_start();
-    if rest.is_empty() {
-        return Some(0);
-    }
-    let negative = match rest.as_bytes()[0] {
-        b'+' => false,
-        b'-' => true,
-        _ => return None,
+        .or_else(|| index.strip_prefix('i'))
+        .map(str::trim_start)
+    else {
+        return Ok(None);
     };
-    let digits = rest[1..].trim_start();
-    if digits.is_empty() {
-        return None;
-    }
-    if !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        // An `int` literal in another base or with `_` separators is an
-        // `IntegerLiteralExpr` too, and `Long#parseLong` does not read it as Java does.
-        let literal = digits
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() || matches!(byte, b'x' | b'X' | b'_'));
-        if literal && digits.as_bytes()[0].is_ascii_digit() {
-            unported!(
-                "io.deephaven.engine.table.impl.ShiftedColumnsFactory#parseForConstantArrayAccessAttributes",
-                "a column array offset that is not written in decimal digits: {formula}"
-            );
-        }
-        return None;
-    }
-    let distance: i64 = match digits.parse() {
-        Ok(distance) => distance,
-        Err(_) => unported!(
-            "io.deephaven.engine.table.impl.ShiftedColumnsFactory#parseForConstantArrayAccessAttributes",
-            "a column array offset beyond the long range: {formula}"
-        ),
+    let negative = match rest.chars().next() {
+        None => return Ok(Some(0)),
+        Some('+') => false,
+        Some('-') => true,
+        Some(_) => return Ok(None),
     };
-    Some(if negative { -distance } else { distance })
+    let literal = rest[1..].trim_start();
+    if !is_int_literal(literal) {
+        return Ok(None);
+    }
+    // `Long#parseLong` reads an optional sign and decimal digits, and nothing else.
+    let distance: i64 = literal
+        .bytes()
+        .all(|byte| byte.is_ascii_digit())
+        .then(|| literal.parse().ok())
+        .flatten()
+        .ok_or_else(|| FormulaError::Syntax(format!("For input string: \"{literal}\"")))?;
+    Ok(Some(if negative { -distance } else { distance }))
 }
 
 /// Rewrites the `Col_[i ± n]` of a formula that Java turns into shifted columns; `None`
@@ -204,10 +278,23 @@ fn constant_distance(index: &str, formula: &str) -> Option<i64> {
 /// Java looks for them from the top of the expression through binary operators,
 /// parentheses and the branches and condition of `?:` only. An index inside a call, a
 /// cast, a unary operator or another index stays an array access: `isNull(X_[i - 1])`.
+/// So does a column array in parentheses, `(X_)[i - 1]`.
+///
+/// # Errors
+/// Java's `NumberFormatException` for an offset that `Long#parseLong` cannot read; see
+/// [`constant_distance`].
+///
+/// # Panics
+/// With `unported!` for a text whose indexed column arrays this function cannot match with
+/// those of the expression. No such text is known: the check guards against a text that
+/// is not the expression's.
 ///
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions
 /// and the `visit` methods of that class
-pub(crate) fn constant_array_accesses(text: &str, expr: &Expr) -> Option<Rewritten> {
+pub(crate) fn constant_array_accesses(
+    text: &str,
+    expr: &Expr,
+) -> Result<Option<Rewritten>, FormulaError> {
     // The array accesses of the tree, in the order their names are written.
     fn accesses<'a>(expr: &'a Expr, out: &mut Vec<&'a str>) {
         match expr {
@@ -244,7 +331,7 @@ pub(crate) fn constant_array_accesses(text: &str, expr: &Expr) -> Option<Rewritt
     let mut in_tree = Vec::new();
     accesses(expr, &mut in_tree);
     if in_tree.is_empty() {
-        return None;
+        return Ok(None);
     }
     let written = written_indexes(text);
     let agree = written.as_ref().is_some_and(|written| {
@@ -252,19 +339,17 @@ pub(crate) fn constant_array_accesses(text: &str, expr: &Expr) -> Option<Rewritt
             && written
                 .iter()
                 .zip(&in_tree)
-                .all(|((name, _), column)| name == column)
+                .all(|(written, column)| written.column == *column)
     });
     let Some(written) = written.filter(|_| agree) else {
         unported!(
             "io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions",
-            "a column array that is indexed through parentheses or in a text this server \
-             cannot match with its expression: {text}"
+            "a column array in a text this server cannot match with its expression: {text}"
         );
     };
 
     struct Rewriter<'a> {
-        text: &'a str,
-        written: Vec<(&'a str, &'a str)>,
+        written: Vec<Written<'a>>,
         /// How many array accesses of the tree have been passed.
         seen: usize,
         shifts: Vec<Shift>,
@@ -277,27 +362,30 @@ pub(crate) fn constant_array_accesses(text: &str, expr: &Expr) -> Option<Rewritt
             self.seen += inside.len();
         }
 
-        fn rewrite(&mut self, expr: &Expr) -> Expr {
-            match expr {
+        fn rewrite(&mut self, expr: &Expr) -> Result<Expr, FormulaError> {
+            Ok(match expr {
                 Expr::Binary { op, left, right } => Expr::Binary {
                     op: *op,
-                    left: Box::new(self.rewrite(left)),
-                    right: Box::new(self.rewrite(right)),
+                    left: Box::new(self.rewrite(left)?),
+                    right: Box::new(self.rewrite(right)?),
                 },
                 Expr::Ternary {
                     condition,
                     if_true,
                     if_false,
                 } => Expr::Ternary {
-                    condition: Box::new(self.rewrite(condition)),
-                    if_true: Box::new(self.rewrite(if_true)),
-                    if_false: Box::new(self.rewrite(if_false)),
+                    condition: Box::new(self.rewrite(condition)?),
+                    if_true: Box::new(self.rewrite(if_true)?),
+                    if_false: Box::new(self.rewrite(if_false)?),
                 },
                 Expr::ColumnArrayAccess { column, .. } => {
-                    let (_, index) = self.written[self.seen];
-                    match constant_distance(index, self.text) {
+                    let distance = match self.written[self.seen].index {
+                        Some(index) => constant_distance(index)?,
+                        None => None,
+                    };
+                    self.pass(expr);
+                    match distance {
                         Some(amount) => {
-                            self.pass(expr);
                             let shift = Shift {
                                 column: column.clone(),
                                 amount,
@@ -308,33 +396,29 @@ pub(crate) fn constant_array_accesses(text: &str, expr: &Expr) -> Option<Rewritt
                             }
                             Expr::Column(name)
                         }
-                        None => {
-                            self.pass(expr);
-                            expr.clone()
-                        }
+                        None => expr.clone(),
                     }
                 }
                 other => {
                     self.pass(other);
                     other.clone()
                 }
-            }
+            })
         }
     }
     let mut rewriter = Rewriter {
-        text,
         written,
         seen: 0,
         shifts: Vec::new(),
     };
-    let rewritten = rewriter.rewrite(expr);
+    let rewritten = rewriter.rewrite(expr)?;
     if rewriter.shifts.is_empty() {
-        return None;
+        return Ok(None);
     }
-    Some(Rewritten {
+    Ok(Some(Rewritten {
         expr: rewritten,
         shifts: rewriter.shifts,
-    })
+    }))
 }
 
 /// A column of a table at a fixed distance in rows: the value in a row is the inner
@@ -449,27 +533,58 @@ fn dirty_positions(source: &RowSet, updated: &RowSet, shift: i64) -> Result<RowS
     Ok(RowSet::from_ranges(dirty))
 }
 
-/// The one distance that decides which rows a change makes dirty; `None` when the shifted
-/// columns are all at distance zero.
+/// How far the shifted columns read from the current row: the farthest distance before it
+/// (negative) and the farthest after it (positive), each zero when no shift reads that side.
+fn reach(shifts: &[Shift]) -> (i64, i64) {
+    let amounts = || shifts.iter().map(|shift| shift.amount);
+    (
+        amounts().min().unwrap_or(0).min(0),
+        amounts().max().unwrap_or(0).max(0),
+    )
+}
+
+/// The positions in `source` of the rows whose shifted columns change because the rows
+/// `updated` changed, for shifts that read at most `behind` rows before the current row
+/// and `ahead` rows after it: the rows on either side of a changed row within that reach.
+/// For one distance, or one distance and zero, this is Java's answer; see
+/// [`refuse_two_distances`] for the others.
 ///
-/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long).
-/// For two distances that differ and are both not zero Java runs the one-distance
-/// computation twice, the second time over the positions the first returned as if they
-/// were row keys; that case is refused before a table is made.
-fn deciding_shift(shifts: &[Shift]) -> Option<i64> {
-    let lowest = shifts.iter().map(|shift| shift.amount).min().unwrap_or(0);
-    let highest = shifts.iter().map(|shift| shift.amount).max().unwrap_or(0);
-    if lowest == 0 && highest == 0 {
-        None
-    } else if lowest == highest || highest == 0 {
-        Some(lowest)
-    } else if lowest == 0 {
-        Some(highest)
-    } else {
+/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
+fn dirty_positions_within(
+    source: &RowSet,
+    updated: &RowSet,
+    (behind, ahead): (i64, i64),
+) -> Result<RowSet, TableFailure> {
+    let mut dirty = RowSet::empty();
+    for shift in [behind, ahead] {
+        if shift != 0 {
+            dirty.insert(&dirty_positions(source, updated, shift)?);
+        }
+    }
+    Ok(dirty)
+}
+
+/// Refuses shifts at two different distances that are both not zero on a refreshing
+/// table: owner question 8 of `tasks/10.5-unported-select-arrays.md`.
+///
+/// Java runs the one-distance computation twice, the second time over the positions the
+/// first returned as if they were row keys, so a change does not reach the rows that read
+/// it. Seen on Java 42.9 for `update` of `X_[i - 1] + X_[i + 1]`, `X_[i - 1] + X_[i - 2]`
+/// and `X_[i - 1] * 1000 + X_[i + 2]` over a keyed input table: a modified, added or
+/// removed row leaves the old values in its neighbours, which `update_view` and the same
+/// `update` made again both show changed.
+///
+/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
+fn refuse_two_distances(shifts: &[Shift]) {
+    let amounts = || shifts.iter().map(|shift| shift.amount);
+    let lowest = amounts().min().unwrap_or(0);
+    let highest = amounts().max().unwrap_or(0);
+    if lowest != highest && lowest != 0 && highest != 0 {
         unported!(
             "io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace",
             "column arrays at two different distances from the current row, {lowest} and \
-             {highest}, on a refreshing table"
+             {highest}, on a refreshing table: Java leaves the old values in the rows next \
+             to a change"
         );
     }
 }
@@ -489,6 +604,18 @@ fn deciding_shift(shifts: &[Shift]) -> Option<i64> {
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns and
 /// the listener its `getShiftedColumns` makes
 pub(crate) fn add_shifted_columns(
+    parent: &Arc<dyn Table>,
+    shifts: &[Shift],
+) -> Result<Arc<dyn Table>, TableFailure> {
+    if parent.is_refreshing() {
+        refuse_two_distances(shifts);
+    }
+    shifted_table(parent, shifts)
+}
+
+/// [`add_shifted_columns`] without the refusal of two distances: a change marks the rows
+/// on both sides of it within the farthest distance on each side.
+pub(super) fn shifted_table(
     parent: &Arc<dyn Table>,
     shifts: &[Shift],
 ) -> Result<Arc<dyn Table>, TableFailure> {
@@ -523,11 +650,7 @@ pub(crate) fn add_shifted_columns(
             "a shifted column has the name of a column: {error}"
         ))
     })?;
-    let deciding = if parent.is_refreshing() {
-        deciding_shift(shifts)
-    } else {
-        None
-    };
+    let reach = Some(reach(shifts)).filter(|reach| parent.is_refreshing() && *reach != (0, 0));
 
     let columns = declared.len();
     let shifted_columns: Vec<usize> = (columns..columns + shifts.len()).collect();
@@ -561,7 +684,7 @@ pub(crate) fn add_shifted_columns(
         Ok((spec, move |_result: &QueryTable, upstream: &TableUpdate| {
             let parent = &operator_parent;
             let mut modified_columns = transformer.transform(&upstream.modified_columns);
-            let Some(shift) = deciding else {
+            let Some(reach) = reach else {
                 return Ok(TableUpdate {
                     modified_columns,
                     ..upstream.clone()
@@ -572,7 +695,7 @@ pub(crate) fn add_shifted_columns(
 
             if !upstream.removed.is_empty() {
                 let before = parent.prev_row_set();
-                let positions = dirty_positions(&before, &upstream.removed, shift)?;
+                let positions = dirty_positions_within(&before, &upstream.removed, reach)?;
                 if !positions.is_empty() {
                     // The neighbours of the removed rows, by the keys they have now.
                     let rows = before.sub_set_for_positions(&positions, false);
@@ -590,12 +713,12 @@ pub(crate) fn add_shifted_columns(
                 let now = parent.row_set();
                 let mut positions = RowSet::empty();
                 if adds {
-                    positions = dirty_positions(&now, &upstream.added, shift)?;
+                    positions = dirty_positions_within(&now, &upstream.added, reach)?;
                     dirty_columns |= !positions.is_empty();
                 }
                 if modifies {
                     // The transformer reports the shifted columns for these.
-                    positions.insert(&dirty_positions(&now, &upstream.modified, shift)?);
+                    positions.insert(&dirty_positions_within(&now, &upstream.modified, reach)?);
                 }
                 if !positions.is_empty() {
                     let mut rows = now.sub_set_for_positions(&positions, false);
@@ -933,30 +1056,73 @@ mod tests {
         set.iter().collect()
     }
 
+    fn indexed<'a>(column: &'a str, index: &'a str) -> Written<'a> {
+        Written {
+            column,
+            index: Some(index),
+        }
+    }
+
+    fn wrapped(column: &str) -> Written<'_> {
+        Written {
+            column,
+            index: None,
+        }
+    }
+
     #[test]
     fn indexes_are_read_as_written() {
         assert_eq!(
             written_indexes("Y = X_[i - 1] + Z_ [ (i+1) ] + `a_[` + 'b_[' + \"c_[\" + Q[2]"),
-            Some(vec![("X", "i - 1"), ("Z", " (i+1) ")])
+            Some(vec![indexed("X", "i - 1"), indexed("Z", " (i+1) ")])
         );
         assert_eq!(
             written_indexes("X_[Y_[i] + 1]"),
-            Some(vec![("X", "Y_[i] + 1"), ("Y", "i")])
+            Some(vec![indexed("X", "Y_[i] + 1"), indexed("Y", "i")])
         );
         assert_eq!(written_indexes("X_[i"), None);
+        // Names outside ASCII, as the lexer reads them.
+        assert_eq!(
+            written_indexes("Ä_[i - 1] + Xé_[i]"),
+            Some(vec![indexed("Ä", "i - 1"), indexed("Xé", "i")])
+        );
+        // A column array in parentheses, and parentheses that are not around one.
+        assert_eq!(
+            written_indexes("(X_)[i - 1] + ( (Y_) ) [i] + ((Z_)[0]) + (int)(W_)[1]"),
+            Some(vec![wrapped("X"), wrapped("Y"), wrapped("Z"), wrapped("W")])
+        );
+        assert_eq!(
+            written_indexes("f(X_)[0] + (A + X_)[1] + g((X_))[2] + (X_) + 1_[2] + X_.size()"),
+            Some(vec![])
+        );
+        // A qualified name is one name, as the parser reads it.
+        assert_eq!(
+            written_indexes("Foo.X_[i - 1] + 1.5 + Y_.get(0)"),
+            Some(vec![indexed("Foo.X", "i - 1")])
+        );
     }
 
+    /// Behavior: `ShiftedColumnsFactory#parseForConstantArrayAccessAttributes`. Seen on
+    /// Java 42.9: `i + 2147483648` and `i - 9223372036854775807` are distances, and the
+    /// offsets that are not are refused with `NumberFormatException`.
     #[test]
-    fn only_a_row_variable_and_a_decimal_offset_is_a_distance() {
+    fn only_a_row_variable_and_an_int_literal_is_a_distance() {
         for (index, distance) in [
             ("i", Some(0)),
             ("ii", Some(0)),
             (" i - 1 ", Some(-1)),
             ("ii+12", Some(12)),
             ("i + 010", Some(10)),
+            ("i + 2147483648", Some(2_147_483_648)),
+            ("i - 9223372036854775807", Some(-i64::MAX)),
             ("(i - 1)", None),
             ("i - 1L", None),
+            ("i - 0x1L", None),
             ("i - 1.0", None),
+            ("i - 1e1", None),
+            ("i - 1f", None),
+            ("i - 1D", None),
+            ("i - 0x1p1", None),
             ("1 + i", None),
             ("i + -1", None),
             ("i * 2", None),
@@ -965,7 +1131,24 @@ mod tests {
             ("iii", None),
             ("i -", None),
         ] {
-            assert_eq!(constant_distance(index, "f"), distance, "{index}");
+            assert_eq!(constant_distance(index), Ok(distance), "{index}");
+        }
+        for (index, literal) in [
+            ("i + 0x10", "0x10"),
+            ("i - 0X1f", "0X1f"),
+            ("i - 0b1", "0b1"),
+            ("i - 1_0", "1_0"),
+            ("ii + 0_7", "0_7"),
+            ("i - 9223372036854775808", "9223372036854775808"),
+            ("i + 99999999999999999999", "99999999999999999999"),
+        ] {
+            assert_eq!(
+                constant_distance(index),
+                Err(FormulaError::Syntax(format!(
+                    "For input string: \"{literal}\""
+                ))),
+                "{index}"
+            );
         }
     }
 

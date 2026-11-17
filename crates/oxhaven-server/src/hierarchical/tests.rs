@@ -1252,3 +1252,84 @@ async fn a_subscription_to_a_view_is_refused_what_java_refuses() {
     assert_eq!(call.collect().await.len(), 2);
     assert_eq!(call.ended, None);
 }
+
+fn formula(text: &str) -> AggregationMessage {
+    AggregationMessage {
+        r#type: Some(Type::Formula(proto::aggregation::AggregationFormula {
+            selectable: Some(proto::Selectable {
+                r#type: Some(proto::selectable::Type::Raw(text.to_string())),
+            }),
+        })),
+    }
+}
+
+/// Count where and formula aggregations in a rollup (task 10.4): served as Java serves
+/// them, a formula whose type changes with the level refused as Java refuses it, and a
+/// group with a formula, which Java answers by their order, refused by name.
+#[tokio::test]
+async fn a_rollup_counts_where_and_evaluates_formulas() {
+    let server = &server().await;
+    let rollup = |aggregations: Vec<AggregationMessage>, result: i32| async move {
+        HierarchicalTableServiceClient::new(server.channel.clone())
+            .rollup(server.authorized(RollupRequest {
+                aggregations,
+                ..rollup_request(1, result, &["Sym", "Ex"])
+            }))
+            .await
+            .map(tonic::Response::into_inner)
+    };
+    let count_where = AggregationMessage {
+        r#type: Some(Type::CountWhere(
+            proto::aggregation::AggregationCountWhere {
+                column_name: "Big".to_string(),
+                filters: vec!["Qty > 25".to_string()],
+            },
+        )),
+    };
+    let served = vec![count_where, formula("S = sum(Qty) * __FORMULA_DEPTH__")];
+    assert_eq!(rollup(served, 20).await.unwrap(), RollupResponse {});
+    let value = server.session().get_export(20).unwrap().value().unwrap();
+    let HierarchicalTable::Rollup(made) = hierarchical_of(&value).unwrap().as_ref() else {
+        panic!("a rollup");
+    };
+    let snapshot = View::new(made.clone(), None, None)
+        .snapshot(None, 0, 10)
+        .unwrap();
+    let rows: Vec<String> = (0..snapshot.rows as usize)
+        .map(|row| {
+            snapshot
+                .columns
+                .iter()
+                .map(|column| arrow::util::display::array_value_to_string(column, row).unwrap())
+                .collect::<Vec<_>>()
+                .join("|")
+        })
+        .collect();
+    assert_eq!(
+        rows,
+        [
+            "1|true|||4|0",
+            "2|false|AAPL||1|70",
+            "2|false|MSFT||2|80",
+            "2|false|GOOG||1|60"
+        ]
+    );
+    refused(
+        rollup(vec![formula("L = Ex")], 21).await,
+        Code::InvalidArgument,
+        LOGGED,
+    );
+    let group = AggregationMessage {
+        r#type: Some(Type::Columns(AggregationColumns {
+            spec: Some(SpecMessage {
+                r#type: Some(SpecType::Group(proto::agg_spec::AggSpecGroup {})),
+            }),
+            match_pairs: vec!["G = Qty".to_string()],
+        })),
+    };
+    refused(
+        rollup(vec![group, formula("S = sum(Qty)")], 22).await,
+        Code::Unimplemented,
+        "not ported: io.deephaven.engine.table.impl.by.AggregationProcessor.Converter#ensureGroupByOperator",
+    );
+}

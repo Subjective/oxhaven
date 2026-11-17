@@ -1257,3 +1257,27 @@ Seven green checks on head a3b5f9b6. Main is at 572fafbc.
 ## 2026-11-17 21:48 UTC: task 10.4 started
 
 One operator family per agent, as learned from 10.2: the hierarchical tables (R1 to R4, T1, T2). Two builders run (10.3 and 10.4).
+
+## 2026-11-17 22:25 UTC: task 10.4 reported, pull request 158 opened
+
+The agent stopped its workspace test build at 4.3 GB free, as briefed. The checks run the workspace tests; the full-seed engine tests run locally before the merge. Owner question 7 (group and formula combinations in a rollup that Deephaven serves or fails by order and name) goes to review-items-2.md.
+
+## 2026-11-17 22:34 UTC: pull request 158 merged
+
+Seven green checks on head 845b1454 and the full-seed engine tests (1254 passed) run locally by the orchestrator. Main is at d2bc80a0. Follow-up: docs/HIERARCHICAL.md still says count where, group and formula are refused in a rollup.
+
+## 2026-11-17 22:35 UTC: task 10.5 started
+
+The select column-array family (P1 to P4). P5 to P7 wait on the owner.
+
+## 2026-11-17 23:23 UTC: task 10.5 reported, pull request 159 opened
+
+The assumption in 10.2 about two distances was wrong: Deephaven does not mark both sides modified, its incremental update keeps stale values. The agent wrote the correct computation and left the refusal in place; owner question 8 goes to review-items-2.md as 7.4. The scenario table_column_arrays_offsets, recorded from Deephaven, waits in scratchpad/t105/oracle-prepared for a pull request with the oracle-change label.
+
+## 2026-11-17 23:32 UTC: pull request 159 merged
+
+Seven green checks on head 62641c2a. Main is at e5a637ce.
+
+## 2026-11-17 23:33 UTC: task 10.3 taken over, pull request 160 opened
+
+The agent finished its gates and pushed at 22:07, then hung on a cleanup command for 85 minutes without reporting; two messages did not wake it. Its task file records the gates, so the branch went to a pull request from that. Lesson: when an agent is silent for an hour, look at the time of its last transcript entry and its processes rather than waiting. Owner questions 1 and 2 of 10.3 are reproductions and need no decision now.

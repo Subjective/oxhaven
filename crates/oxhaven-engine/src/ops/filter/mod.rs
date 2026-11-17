@@ -395,7 +395,8 @@ fn where_resolved(
 
 /// The formulas of `spec` that read a column at a fixed distance from the current row
 /// (`Col_[i - 1]`), each with the expression that reads a shifted column instead, and the
-/// shifted columns those read.
+/// shifted columns those read. Fails, as Java's parser does, for an offset that
+/// `Long#parseLong` cannot read (`Col_[i + 0x1]`).
 ///
 /// Behavior: io.deephaven.engine.table.impl.select.ExtractShiftedColumnDefinitions and
 /// io.deephaven.engine.table.impl.select.TransformToFinalFormula
@@ -404,13 +405,13 @@ fn shifted_reads(
     compiler: &dyn FormulaCompiler,
     rewritten: &mut Vec<(String, Expr)>,
     shifts: &mut Vec<Shift>,
-) {
+) -> Result<(), FilterError> {
     let text = match spec {
         FilterSpec::And(parts) | FilterSpec::Or(parts) => {
             for part in parts {
-                shifted_reads(part, compiler, rewritten, shifts);
+                shifted_reads(part, compiler, rewritten, shifts)?;
             }
-            return;
+            return Ok(());
         }
         FilterSpec::Condition(text) => text,
         FilterSpec::Match {
@@ -421,12 +422,14 @@ fn shifted_reads(
             failover: Some(text),
             ..
         } => text,
-        _ => return,
+        _ => return Ok(()),
     };
     let Ok(expr) = compiler.parse(text) else {
-        return;
+        return Ok(());
     };
-    if let Some(found) = constant_array_accesses(text, &expr) {
+    let found = constant_array_accesses(text, &expr)
+        .map_err(|error| FilterError::Invalid(format!("{text}: {error}")))?;
+    if let Some(found) = found {
         for shift in found.shifts {
             if !shifts.contains(&shift) {
                 shifts.push(shift);
@@ -434,6 +437,7 @@ fn shifted_reads(
         }
         rewritten.push((text.clone(), found.expr));
     }
+    Ok(())
 }
 
 /// Behavior: io.deephaven.engine.table.impl.QueryTable#whereInternal, and
@@ -456,7 +460,7 @@ fn where_specs(
     let filters = resolve(parent.definition(), compiler);
     let (mut rewritten, mut shifts) = (Vec::new(), Vec::new());
     for spec in specs {
-        shifted_reads(spec, compiler, &mut rewritten, &mut shifts);
+        shifted_reads(spec, compiler, &mut rewritten, &mut shifts)?;
     }
     // A shifted column needs no more of its column than that it exists, so filters that
     // do not fit the table are judged again once the shifted columns stand in.
@@ -601,7 +605,7 @@ impl CheckedFilters {
         let mut reads = Vec::with_capacity(specs.len());
         for (text, spec) in &specs {
             let (mut rewritten, mut shifts) = (Vec::new(), Vec::new());
-            shifted_reads(spec, compiler, &mut rewritten, &mut shifts);
+            shifted_reads(spec, compiler, &mut rewritten, &mut shifts)?;
             let mut columns = BTreeSet::new();
             let (mut arrays, mut row_variables) = (!shifts.is_empty(), false);
             match filters::resolve(spec, definition, compiler) {

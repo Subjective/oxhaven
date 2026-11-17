@@ -484,7 +484,11 @@ mod tests {
              by_v = c.node_operation_recorder(NodeType.CONSTITUENT).sort_descending('V')\n\
              assert c.with_node_operations([by_v]).include_constituents\n\
              refused(lambda: r.with_node_operations([by_v]), 'Rollup does not have constituent nodes')\n\
-             refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n",
+             refused(lambda: source.rollup(aggs=[agg.median('V')], by='K'), 'AggMedian is not supported for rollup()')\n\
+             # Java applies a reaggregating formula to the level below\n\
+             refused(lambda: source.rollup(aggs=[agg.formula('S = sum(V)', reaggregating=True)], by='K'), 'RollupReaggregatedConverter#visit(Formula)')\n\
+             assert source.rollup(aggs=[agg.formula('S = sum(V) + __FORMULA_DEPTH__'), agg.count_where('C', 'V > 2')], by='K').by == ('K',)\n\
+             assert source.rollup(aggs=[agg.group('G = V')], by='K').by == ('K',)\n",
         );
     }
 
