@@ -1,0 +1,166 @@
+{
+ "format": 1,
+ "name": "R3_ordering_of_one_period",
+ "description": "Task 4.24, R3. Java answers min, max, count_distinct, unique and distinct of a Period column for a group that holds at most one period; Oxhaven refuses them.",
+ "inputs": [
+  {
+   "name": "t",
+   "columns": [
+    {
+     "name": "K",
+     "type": "int32"
+    },
+    {
+     "name": "V",
+     "type": "int32"
+    },
+    {
+     "name": "T",
+     "type": "timestamp"
+    }
+   ],
+   "rows": [
+    [
+     0,
+     0,
+     1700000000000000000
+    ],
+    [
+     0,
+     3,
+     1700000000000000001
+    ],
+    [
+     1,
+     1,
+     null
+    ],
+    [
+     1,
+     null,
+     1700086400000000000
+    ]
+   ]
+  }
+ ],
+ "operations": [
+  {
+   "name": "b",
+   "op": "update",
+   "source": "t",
+   "formulas": [
+    "P = isNull(V) ? null : (V % 3 == 0 ? 'P1Y2M' : 'P3D')"
+   ]
+  },
+  {
+   "name": "min_by_v",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "min",
+     "columns": [
+      "A = P"
+     ]
+    }
+   ],
+   "by": [
+    "V"
+   ]
+  },
+  {
+   "name": "min_by_v_v",
+   "op": "view",
+   "source": "min_by_v",
+   "formulas": [
+    "V"
+   ]
+  },
+  {
+   "name": "count_distinct_by_v",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "count_distinct",
+     "columns": [
+      "A = P"
+     ]
+    }
+   ],
+   "by": [
+    "V"
+   ]
+  },
+  {
+   "name": "count_distinct_by_v_v",
+   "op": "view",
+   "source": "count_distinct_by_v",
+   "formulas": [
+    "V"
+   ]
+  },
+  {
+   "name": "unique_by_v",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "unique",
+     "columns": [
+      "A = P"
+     ]
+    }
+   ],
+   "by": [
+    "V"
+   ]
+  },
+  {
+   "name": "unique_by_v_v",
+   "op": "view",
+   "source": "unique_by_v",
+   "formulas": [
+    "V"
+   ]
+  },
+  {
+   "name": "distinct_by_v",
+   "op": "agg_by",
+   "source": "b",
+   "aggs": [
+    {
+     "agg": "distinct",
+     "columns": [
+      "A = P"
+     ]
+    }
+   ],
+   "by": [
+    "V"
+   ]
+  },
+  {
+   "name": "distinct_by_v_v",
+   "op": "view",
+   "source": "distinct_by_v",
+   "formulas": [
+    "V"
+   ]
+  }
+ ],
+ "results": [
+  {
+   "table": "min_by_v_v"
+  },
+  {
+   "table": "count_distinct_by_v_v"
+  },
+  {
+   "table": "unique_by_v_v"
+  },
+  {
+   "table": "distinct_by_v_v"
+  }
+ ]
+}

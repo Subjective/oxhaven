@@ -70,10 +70,12 @@ pub(crate) enum TimeFn {
     /// `LocalTime.of(int, int)`, `(int, int, int)` and `(int, int, int, int)`, which
     /// throw for a field outside its range, the null `int` among them.
     LocalTimeOf,
-    /// `toLocalDate(Instant, ZoneId)`, `toLocalTime(Instant, ZoneId)` and
-    /// `toZonedDateTime(Instant, ZoneId)`: null when either is null.
+    /// `toLocalDate(Instant, ZoneId)`, `toLocalTime(Instant, ZoneId)`,
+    /// `toLocalDateTime(Instant, ZoneId)` and `toZonedDateTime(Instant, ZoneId)`: null
+    /// when either is null.
     ToLocalDate,
     ToLocalTime,
+    ToLocalDateTime,
     ToZonedDateTime,
     /// `Instant#atZone(ZoneId)`, which throws for a null instant or zone.
     AtZone,
@@ -159,6 +161,7 @@ impl TimeFn {
             "epochDaysAsIntToLocalDate" => (TimeFn::EpochDaysToLocalDate, T::LocalDate),
             "toLocalDate" => (TimeFn::ToLocalDate, T::LocalDate),
             "toLocalTime" => (TimeFn::ToLocalTime, T::LocalTime),
+            "toLocalDateTime" => (TimeFn::ToLocalDateTime, T::LocalDateTime),
             "toZonedDateTime" => (TimeFn::ToZonedDateTime, T::ZonedDateTime),
             "toInstant" => match types {
                 [T::ZonedDateTime] => (TimeFn::ZonedToInstant, T::Instant),
@@ -198,7 +201,10 @@ impl TimeFn {
                 }
             }
             (
-                TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToZonedDateTime,
+                TimeFn::ToLocalDate
+                | TimeFn::ToLocalTime
+                | TimeFn::ToLocalDateTime
+                | TimeFn::ToZonedDateTime,
                 [T::Instant, T::ZoneId],
             ) => {
                 vec![T::Instant, T::ZoneId]
@@ -212,7 +218,13 @@ impl TimeFn {
                     "function toInstant() of these arguments".into(),
                 )))
             }
-            (TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToZonedDateTime, _) => {
+            (
+                TimeFn::ToLocalDate
+                | TimeFn::ToLocalTime
+                | TimeFn::ToLocalDateTime
+                | TimeFn::ToZonedDateTime,
+                _,
+            ) => {
                 return Some(Err(FormulaError::Unsupported(format!(
                     "function {name}() of these arguments"
                 ))))
@@ -311,6 +323,18 @@ fn local_of(nanos: i64, zone: Zone) -> Result<(i64, i64), TableFailure> {
     let day = local.div_euclid(i128::from(NANOS_PER_DAY));
     let time = local.rem_euclid(i128::from(NANOS_PER_DAY));
     Ok((day as i64, time as i64))
+}
+
+/// A cell of a `LocalDateTime` column: the nanoseconds from the epoch to the time
+/// `time` of the day `day`, read as if in UTC.
+fn local_date_time(day: i64, time: i64) -> Result<i64, TableFailure> {
+    day.checked_mul(NANOS_PER_DAY)
+        .and_then(|nanos| nanos.checked_add(time))
+        .ok_or_else(|| {
+            failure(format!(
+                "the time of epoch day {day} is outside the range of a LocalDateTime column"
+            ))
+        })
 }
 
 fn local_dates(values: Vec<Option<i64>>) -> Result<ArrayRef, TableFailure> {
@@ -438,6 +462,7 @@ fn read_with(
 /// `#parseZonedDateTime` and their `...Quiet` forms (null for null and for text of one
 /// character or none, and where the others throw), `#epochDaysToLocalDate`,
 /// `#epochDaysAsIntToLocalDate`, `#toLocalDate(Instant, ZoneId)`,
+/// `#toLocalDateTime(Instant, ZoneId)`,
 /// `#toLocalTime(Instant, ZoneId)`, `#toZonedDateTime(Instant, ZoneId)`,
 /// `#toInstant(ZonedDateTime)`, `#toInstant(LocalDate, LocalTime, ZoneId)`;
 /// `java.time.LocalDate#ofEpochDay`, `java.time.LocalTime#of`, `java.time.Instant#atZone`.
@@ -590,7 +615,11 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(local_times(nanos))
         }
-        TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToZonedDateTime | TimeFn::AtZone => {
+        TimeFn::ToLocalDate
+        | TimeFn::ToLocalTime
+        | TimeFn::ToLocalDateTime
+        | TimeFn::ToZonedDateTime
+        | TimeFn::AtZone => {
             let instants = first.as_primitive::<TimestampNanosecondType>();
             let ids = arguments[1].as_string::<i32>();
             let zones = zones(ids)?;
@@ -611,16 +640,20 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 };
                 let nanos = instants.value(row);
                 let (day, time) = local_of(nanos, zone)?;
-                dates.push(Some(if function == TimeFn::ToLocalTime {
-                    time
-                } else {
-                    day
+                dates.push(Some(match function {
+                    TimeFn::ToLocalTime => time,
+                    TimeFn::ToLocalDateTime => local_date_time(day, time)?,
+                    _ => day,
                 }));
                 zoned.push(Some((nanos, ids.value(row))));
             }
             match function {
                 TimeFn::ToLocalDate => local_dates(dates),
                 TimeFn::ToLocalTime => Ok(local_times(dates)),
+                TimeFn::ToLocalDateTime => Ok(Arc::new(
+                    TimestampNanosecondArray::from(dates)
+                        .with_data_type(ColumnType::LocalDateTime.arrow_type()),
+                )),
                 _ => Ok(zoned_date_times(zoned)),
             }
         }

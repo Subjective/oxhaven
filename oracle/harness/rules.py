@@ -18,7 +18,8 @@ The rules, in the order they are applied to one result of one step:
 3. Rows are compared by position, never by row key (Must match, item 3; A4). A result that the
    scenario marks unordered is compared as a multiset (A3); in v42.9 no operation qualifies.
 4. Cells (Must match, items 4 and 5). Null equals only null. Booleans, integers, `char`
-   (Arrow `uint16`, Wire representation), strings and timestamps are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
+   (Arrow `uint16`, Wire representation), strings, timestamps, dates, times of day and durations (as the
+   integer count the wire holds) are exact. Floats are exact as bit patterns, except that any NaN equals any NaN;
    so 0.0 differs from -0.0 (A2 is proposed, not in force).
 5. Computed floats (A1). A float or double cell produced by `sum`, `avg` or an accumulating
    `update_by` operator, or by a formula that calls a library function that is not correctly
@@ -160,6 +161,13 @@ LIST_EXACT = "list_exact"
 LIST_FLOAT = "list_float"
 
 
+def _is_temporal(arrow_type: pa.DataType) -> bool:
+    """Dates, times of day and durations: exact values that are compared as the integer
+    count the wire holds. Not the interval of months a `Period` is sent as: pyarrow cannot
+    read its cells."""
+    return pat.is_date(arrow_type) or pat.is_time(arrow_type) or pat.is_duration(arrow_type)
+
+
 def comparison_class(arrow_type: pa.DataType) -> str | None:
     """How cells of `arrow_type` are compared: EXACT, FLOAT, a list of either, or None when
     the rules do not know the type."""
@@ -175,6 +183,8 @@ def comparison_class(arrow_type: pa.DataType) -> str | None:
         or arrow_type == pa.uint16()
         or pat.is_string(arrow_type)
         or pat.is_timestamp(arrow_type)
+        # `LocalDate`, `LocalTime` and `Duration` on the wire
+        or _is_temporal(arrow_type)
     ):
         return EXACT
     return None
@@ -395,11 +405,15 @@ def computed_columns(operations: Iterable[Mapping[str, Any]]) -> dict[str, froze
 def _cells(column: pa.ChunkedArray) -> list[Any]:
     """The cells of a column as plain Python values; timestamps as their integer count,
     also inside arrays."""
-    if pat.is_timestamp(column.type):
-        column = column.cast(pa.int64())
-    elif (pat.is_list(column.type) or pat.is_large_list(column.type)) and pat.is_timestamp(
-            column.type.value_type):
-        column = column.cast(pa.list_(pa.int64()))
+    def count(arrow_type: pa.DataType) -> pa.DataType:
+        # a date in days and a time in seconds or milliseconds are 32 bits wide
+        return pa.int32() if arrow_type.bit_width == 32 else pa.int64()
+
+    if pat.is_timestamp(column.type) or _is_temporal(column.type):
+        column = column.cast(count(column.type))
+    elif (pat.is_list(column.type) or pat.is_large_list(column.type)) and (
+            pat.is_timestamp(column.type.value_type) or _is_temporal(column.type.value_type)):
+        column = column.cast(pa.list_(count(column.type.value_type)))
     return column.to_pylist()
 
 
