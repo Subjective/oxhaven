@@ -8,7 +8,7 @@ pub mod builder;
 pub mod shift;
 pub mod tracking;
 
-pub use builder::{union_all, RowSetBuilderRandom, RowSetBuilderSequential};
+pub use builder::{concat_ordered, union_all, RowSetBuilderRandom, RowSetBuilderSequential};
 pub use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, RowSetError, NULL_ROW_KEY};
 pub use oxhaven_contracts::shift::{RowSetShiftData, ShiftError, ShiftRange};
 pub use shift::{CoalescingShiftBuilder, ShiftBuilder};

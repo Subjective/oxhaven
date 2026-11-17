@@ -19,10 +19,10 @@ use arrow::datatypes::{
 use oxhaven_column::parallel;
 use oxhaven_column::sentinel::sentinels_to_nulls;
 use oxhaven_contracts::expr::{Formula, FormulaCompiler};
-use oxhaven_contracts::rowset::{RowKey, RowSet};
+use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet};
 use oxhaven_contracts::schema::{ColumnType, TableClass, TableDefinition};
 use oxhaven_contracts::table::{Table, TableFailure};
-use oxhaven_rowset::RowSetBuilderSequential;
+use oxhaven_rowset::concat_ordered;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -1047,60 +1047,53 @@ impl Resolved {
         let masks = parallel::map_pieces(pieces.len(), |piece| {
             let (offset, length) = pieces[piece];
             let mask = self.mask(column_type, chunk.slice(offset, length))?;
-            Ok(kept_of_piece(selection, offset, mask))
+            Ok(kept_of_piece(selection, offset, &mask))
         });
         let masks = masks
             .into_iter()
             .collect::<Result<Vec<_>, TableFailure>>()?;
-        Ok(join_pieces(selection, masks))
+        // The pieces are disjoint and in row order: joining them looks at no key again.
+        Ok(concat_ordered(masks))
     }
-}
-
-/// What one piece of a selection keeps: the ranges of row keys, when the selection is one
-/// range of keys and so a row's key is known from its position, or else the mask.
-enum Kept {
-    Ranges(Vec<(RowKey, RowKey)>),
-    Mask(BooleanBuffer),
 }
 
 /// What the piece of `selection` that starts at position `offset` keeps, given whether it
-/// keeps each of its rows.
-fn kept_of_piece(selection: &RowSet, offset: usize, mask: BooleanBuffer) -> Kept {
-    match selection.as_single_range() {
-        Some(range) => {
-            let first = range.first() + offset as RowKey;
-            Kept::Ranges(
-                mask.set_slices()
-                    .map(|(start, end)| (first + start as RowKey, first + end as RowKey - 1))
-                    .collect(),
-            )
-        }
-        None => Kept::Mask(mask),
+/// keeps each of its rows, as a row set of its own. A piece is made on the thread that
+/// judged it, so the whole result is never built key by key on one thread.
+pub(super) fn kept_of_piece(selection: &RowSet, offset: usize, mask: &BooleanBuffer) -> RowSet {
+    if let Some(range) = selection.as_single_range() {
+        // A row's key is known from its position.
+        let first = range.first() + offset as RowKey;
+        return RowSet::from_ranges(mask.set_slices().map(|(start, end)| {
+            RowRange::new(first + start as RowKey, first + end as RowKey - 1)
+        }));
     }
-}
-
-/// The rows of `selection` its pieces keep, the pieces in row order.
-fn join_pieces(selection: &RowSet, pieces: Vec<Kept>) -> RowSet {
-    let mut builder = RowSetBuilderSequential::new();
-    let mut keys = selection.iter();
-    for piece in pieces {
-        match piece {
-            Kept::Ranges(ranges) => {
-                for (first, last) in ranges {
-                    builder.append_range(first, last);
-                }
+    let rows = selection.sub_set_by_position_range(offset as u64, (offset + mask.len()) as u64);
+    // The ranges of the piece's rows and the kept stretches of positions, walked together.
+    let mut ranges = rows.ranges();
+    let mut range = ranges.next();
+    // The position within the piece of the first key of `range`.
+    let mut passed = 0;
+    let mut kept = Vec::new();
+    for (start, end) in mask.set_slices() {
+        let mut at = start;
+        while at < end {
+            let Some(current) = range else {
+                unreachable!("a mask longer than the rows it judges");
+            };
+            let size = current.size() as usize;
+            if at >= passed + size {
+                passed += size;
+                range = ranges.next();
+                continue;
             }
-            Kept::Mask(mask) => {
-                // The mask leads: a zip led by the keys would take one key too many.
-                for (keep, key) in mask.iter().zip(keys.by_ref()) {
-                    if keep {
-                        builder.append_key(key);
-                    }
-                }
-            }
+            let stop = end.min(passed + size);
+            let first = current.first() + (at - passed) as RowKey;
+            kept.push(RowRange::new(first, first + (stop - at) as RowKey - 1));
+            at = stop;
         }
     }
-    builder.build()
+    RowSet::from_ranges(kept)
 }
 
 /// The rows of `selection` whose entry in `mask` is true.
@@ -1108,9 +1101,9 @@ fn selected(selection: &RowSet, mask: &BooleanBuffer) -> RowSet {
     let pieces = parallel::pieces_of(mask.len(), PIECE_ROWS);
     let kept = parallel::map_pieces(pieces.len(), |piece| {
         let (offset, length) = pieces[piece];
-        kept_of_piece(selection, offset, mask.slice(offset, length))
+        kept_of_piece(selection, offset, &mask.slice(offset, length))
     });
-    join_pieces(selection, kept)
+    concat_ordered(kept)
 }
 
 impl Resolved {

@@ -14,7 +14,7 @@ mod union;
 mod tests;
 
 pub use flatten::flatten;
-pub(crate) use flatten::{flattened_shift_data, pivoted, positional};
+pub(crate) use flatten::{pivoted, positional};
 pub use sorted::merge_sorted;
 pub use union::merge;
 pub(crate) use union::{append_shift_data, key_space_for, next_slot, shared_attributes};

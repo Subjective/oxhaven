@@ -732,3 +732,81 @@ redirection rewritten in bulk could keep its array as of the start of the cycle 
 copy) instead of one map entry per write, and the result could leave gaps in its key space
 as Java's does, so that an insertion moves few rows; the second changes the row keys and
 shifts the sort reports.
+
+## After task 9.6 (2026-11-17): incremental sort, and the row set of a filter
+
+Task 9.6 (`tasks/9.6-incremental-sort-rowset-build.md`) took the two bottlenecks the blocks
+above end with: the incremental sort of a large table, and the row set of the rows a filter
+keeps. Results and row order are unchanged; the row keys of an incremental sort result are
+not (`PARITY.md` A4).
+
+**How it was measured.** Inside the engine only, release builds of the two examples, one run
+each, on the machine above with another agent building (the load average is given per run):
+`sort-phases -- 10000000 --incremental-only` and `filter-update-cases -- 10000000 3 1,4`
+(after: `1,2,4`). "Before" is `main` at `1116137f` with the examples extended, "after" the
+branch. Java was **not** run again and the end-to-end benchmark (`bench/bench.py`) was not
+run: the Java column repeats the medians of the first measurement, taken through a server
+and under another load, and is an indication only. Raw output:
+`bench/results/2026-11-17-task-9.6-*.txt`.
+
+**Incremental sort.** Ten cycles that each append 1,000 rows to a sorted refreshing table
+of 10M rows, milliseconds:
+
+| sort key | before (load 1.7 to 2.4) | after (load 3.9 to 3.5) | one cycle before | one cycle after |
+| --- | ---: | ---: | ---: | ---: |
+| int | 16815 | 318 | 1503 to 1855 | 29 to 38 |
+| string | 17573 | 303 | 1603 to 1902 | 29 to 38 |
+
+The rows read back are the same in the same order (the weighted sums printed by the example
+are equal). Making the sorted table took 1100 ms before and 1278 ms after for the int key,
+2230 ms and 2416 ms for the string key, under a higher load after; the new layout adds one
+pass that places the rows in leaves. Reading a column of every row back took 9620 ms before
+and 9786 ms after (int), 4843 ms and 5027 ms (string): unchanged, the time is in the input
+table's column. The static sort and its read-back were not measured again; their code did
+not change.
+
+Before the change the parts were timed apart: ten million redirection writes take 1032 ms
+inside a cycle, where each records the previous mapping in an ordered map, and 156 ms
+outside one. So the reading in the block above was right for about 60% of a cycle of
+1.7 s; the rest was the other passes over every row.
+
+What changed: the result of an incremental sort keeps free row keys, as Java's does, so an
+insertion moves few rows and reports them as shifts (`ops/sort/gapped.rs`). The key space
+is cut into leaves of 128 keys, 96 of them used at first; an insertion with no free key
+lays out the smallest window of leaves around it that has room. Java starts dense and
+leaves a gap of 64 keys after every 64 rows it moves; the keys differ, the rows and their
+order do not. What a cycle costs now is the binary searches for the rows that come and go,
+the rows of the leaves they touch, and the update of the row set.
+
+**Filters.** Median milliseconds at 10M rows, 3 repetitions; load average 2.1 to 2.4
+before, 5.2 to 5.8 after (so the after columns are, if anything, too high):
+
+| case | before, 1 / 4 threads | after, 1 / 2 / 4 threads | java, first measurement |
+| --- | ---: | ---: | ---: |
+| `where_range` | 180 / 117 | 80.2 / 64.1 / 54.5 | 52.1 / 48.5 |
+| `where_range` (two filters) | 313 / 235 | 200 / 105 / 91.8 | |
+| `where_string` | 60.4 / 21.7 | 59.9 / 33.5 / 28.6 | 121 / 161 |
+| `where_conj` | 117 / 88.8 | 81.6 / 47.2 / 59.1 | 92.9 / 80.3 |
+
+`where_string` did not change in code (few kept rows); its after numbers show the load.
+
+The breakdown before, one thread: `where_range` (180 ms) was 61 ms evaluating the condition,
+42 ms finding the 3M kept ranges and about as much again putting them into one builder and
+the builder into a row set; on four threads only the first two were divided. In
+`where_conj` the first filter took 54 ms, the second 42 ms for 1M rows (20 ms reading the
+double column at scattered rows, about 20 ns a row, and 19 ms for the row set) and the
+third 22 ms for 650,000 rows, split the same way.
+
+What changed: each piece of 65,536 rows makes its own row set on the thread that judged
+it, and the pieces, which are disjoint and in order, are joined by
+`oxhaven_rowset::concat_ordered`, which looks at no key again. On one thread a row set per
+piece, joined, takes 36 ms where the single builder took 84 ms. A flat column gathers
+scattered rows in pieces on several threads (reading the int column at the 4M kept rows:
+49 ms on one thread, 28 ms on four).
+
+**What is left.** `where_range` on four threads is about Java's earlier time. Its largest
+part is now the evaluation of the condition (51 ms on one thread) and, in a conjunction,
+the row set of a piece whose selection is scattered (about 15 ns a row, though on every
+thread). For the incremental sort: a parent shift still rewrites every row's parent key,
+growing the key space moves every row in one cycle, and reading the result back is slow
+for a reason outside the sort (the input table's column is read a cell at a time).

@@ -1173,3 +1173,11 @@ Only the key table unification fit in one context. The other items (cross join, 
 ## 2026-11-17 15:41 UTC: pull request 148 merged, second run of task 9.5 started
 
 Seven green checks. A fresh agent takes items 2 to 4 (cross join, per-run operator call, lazy group_by) from the handover; these are well defined, so it runs on the cheaper model.
+
+## 2026-11-17 15:42 UTC: task 9.6 reported, pull request 149 opened
+
+Incremental sort now keeps free row keys in leaves of 128; PARITY.md A4 already covers row keys, so no new allowance. Follow-ups: reading an incremental sort result back at 10M rows (10 s, in the input column), parent shifts, key space growth.
+
+## 2026-11-17 15:49 UTC: pull request 149 merged, task 9.7 started
+
+Seven green checks. Task 9.7 takes the leftovers 9.4 and 9.6 named: slow scattered reads of a refreshing table column, the copy that joins formula pieces, string concatenation, and a server option for the thread count. The end-to-end benchmark rerun with Deephaven waits until the builders are done.
