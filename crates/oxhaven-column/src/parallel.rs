@@ -12,7 +12,7 @@
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 
 /// The environment variable that sets the number of threads; see [`threads`].
 pub const THREADS_VARIABLE: &str = "OXHAVEN_THREADS";
@@ -88,9 +88,19 @@ pub fn map_pieces<T: Send>(pieces: usize, piece: impl Fn(usize) -> T + Sync) -> 
             }
         })
     };
+    on_workers(workers, pieces, work)
+}
+
+/// Runs `work` on `workers` threads, the calling thread among them, and returns the
+/// results of the `pieces` pieces they computed between them, in piece order.
+fn on_workers<T: Send>(
+    workers: usize,
+    pieces: usize,
+    work: impl Fn() -> Vec<(usize, T)> + Sync,
+) -> Vec<T> {
     let mut results: Vec<Option<T>> = (0..pieces).map(|_| None).collect();
     std::thread::scope(|scope| {
-        let spawned: Vec<_> = (1..workers).map(|_| scope.spawn(work)).collect();
+        let spawned: Vec<_> = (1..workers).map(|_| scope.spawn(&work)).collect();
         let mut done = work();
         for handle in spawned {
             match handle.join() {
@@ -106,6 +116,42 @@ pub fn map_pieces<T: Send>(pieces: usize, piece: impl Fn(usize) -> T + Sync) -> 
         .into_iter()
         .map(|result| result.expect("every piece was computed"))
         .collect()
+}
+
+/// Cuts `out` into pieces of `piece_rows` cells (the last may be shorter) and computes
+/// `piece(0, first piece)`, `piece(1, second piece)`, ... on up to [`threads`] threads:
+/// each piece writes its own part of `out` and no other. The values the pieces return come
+/// back in piece order. A panic in a piece is raised again on the calling thread.
+///
+/// This is how the pieces of one result are written into memory made once for all of it,
+/// instead of each into memory of its own that is then copied.
+pub fn fill_pieces<V: Send, T: Send>(
+    out: &mut [V],
+    piece_rows: usize,
+    piece: impl Fn(usize, &mut [V]) -> T + Sync,
+) -> Vec<T> {
+    let piece_rows = piece_rows.max(1);
+    let pieces = out.len().div_ceil(piece_rows);
+    let parts = out.chunks_mut(piece_rows).enumerate();
+    let workers = threads().min(pieces);
+    if workers <= 1 {
+        return parts.map(|(index, part)| piece(index, part)).collect();
+    }
+    // The parts do not overlap, so whichever thread takes one is alone in writing it.
+    let parts = Mutex::new(parts);
+    let work = || {
+        with_threads(1, || {
+            let mut done = Vec::new();
+            loop {
+                let next = parts.lock().unwrap_or_else(PoisonError::into_inner).next();
+                let Some((index, part)) = next else {
+                    return done;
+                };
+                done.push((index, piece(index, part)));
+            }
+        })
+    };
+    on_workers(workers, pieces, work)
 }
 
 /// The pieces `rows` rows are cut into for [`map_pieces`]: `(offset, length)` of each, all
@@ -177,6 +223,43 @@ mod tests {
             assert_eq!(threads(), 3);
         });
         assert_eq!(threads(), outer);
+    }
+
+    #[test]
+    fn each_piece_fills_its_own_part_on_any_number_of_threads() {
+        let main = std::thread::current().id();
+        for count in [1, 2, 3, 4, 9] {
+            let mut out = vec![0_usize; 1003];
+            let seen = with_threads(count, || {
+                fill_pieces(&mut out, 10, |index, part| {
+                    std::thread::sleep(std::time::Duration::from_micros(200));
+                    for (cell, value) in part.iter_mut().zip(index * 10..) {
+                        *cell = value * 3;
+                    }
+                    (index, part.len(), std::thread::current().id(), threads())
+                })
+            });
+            assert_eq!(out, (0..1003).map(|i| i * 3).collect::<Vec<_>>());
+            // In piece order, the last piece shorter, and no piece starts threads.
+            assert_eq!(seen.len(), 101);
+            for (place, (index, length, _, inner)) in seen.iter().enumerate() {
+                let expected = if place == 100 { 3 } else { 10 };
+                assert_eq!((*index, *length), (place, expected));
+                assert_eq!(*inner, 1);
+            }
+            assert_eq!(seen.iter().any(|(_, _, id, _)| *id != main), count > 1);
+        }
+        let mut empty: [u8; 0] = [];
+        assert!(fill_pieces(&mut empty, 4, |index, _| index).is_empty());
+        let mut three = [0_u8; 3];
+        assert_eq!(fill_pieces(&mut three, 0, |_, part| part.len()), vec![1; 3]);
+        let caught = std::panic::catch_unwind(|| {
+            let mut out = [0_u8; 40];
+            with_threads(3, || {
+                fill_pieces(&mut out, 4, |index, _| assert!(index != 7, "piece seven"))
+            })
+        });
+        assert!(caught.is_err());
     }
 
     #[test]
