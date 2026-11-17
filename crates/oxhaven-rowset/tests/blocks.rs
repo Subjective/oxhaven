@@ -48,6 +48,12 @@ fn assert_same(context: &str, actual: &RowSet, expected: &RangeRowSet, seen: &mu
     let ranges: Vec<RowRange> = actual.ranges().collect();
     assert_eq!(ranges, expected.ranges(), "{context}");
     assert_eq!(actual.size(), expected.size(), "{context}: size");
+    assert_eq!(actual.range_count(), ranges.len(), "{context}: range count");
+    let single = match ranges[..] {
+        [range] => Some(range),
+        _ => None,
+    };
+    assert_eq!(actual.as_single_range(), single, "{context}: single range");
     assert_eq!(
         actual,
         &RowSet::from(expected),
@@ -272,6 +278,11 @@ fn every_operation_matches_the_reference_row_set() {
             let (first, last) = (
                 keys[5 + rng.below(4) as usize],
                 keys[9 + rng.below(4) as usize],
+            );
+            assert_eq!(
+                a.overlaps_range(first, last),
+                !ra.sub_set_by_key_range(first, last).is_empty(),
+                "seed {seed}: overlaps_range {first}..={last}"
             );
             assert_same(
                 &ctx(&format!("keys {first}..={last}")),
