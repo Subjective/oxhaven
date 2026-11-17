@@ -24,6 +24,12 @@ pub(crate) fn connection_failure(error: &ClientError, reason: &str) -> Option<St
     let java = match error.rdkafka_error_code()? {
         RDKafkaErrorCode::Authentication => "SaslAuthenticationException",
         RDKafkaErrorCode::SSL => "SslAuthenticationException",
+        // The broker ended the TLS handshake with an alert, which OpenSSL names: under TLS
+        // 1.3 a client certificate the broker refuses (or none) shows only on the first
+        // read, which librdkafka reports as a failed transport.
+        RDKafkaErrorCode::BrokerTransportFailure if reason.contains("SSL alert number") => {
+            "SslAuthenticationException"
+        }
         _ => return None,
     };
     Some(format!(
