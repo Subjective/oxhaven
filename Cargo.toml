@@ -11,6 +11,9 @@ license = "Apache-2.0"
 # arrow-flight 60 is generated against that line, and its message types are used directly in the
 # BrowserFlight service stubs. Every arrow-* crate must share one major version.
 [workspace.dependencies]
+# The fixed-seed hasher of the engine's group key tables (MIT OR Apache-2.0); arrow already
+# depends on it, so it adds no crate.
+ahash = { version = "0.8.12", default-features = false, features = ["std"] }
 arrow = "60.1.0"
 arrow-flight = "60.1.0"
 base64 = "0.22.1"

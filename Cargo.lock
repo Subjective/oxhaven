@@ -1318,6 +1318,7 @@ dependencies = [
 name = "oxhaven-engine"
 version = "0.0.0"
 dependencies = [
+ "ahash",
  "arrow",
  "chrono",
  "chrono-tz",
