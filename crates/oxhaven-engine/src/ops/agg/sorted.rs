@@ -26,16 +26,25 @@ type SortKey = Vec<Scalar>;
 /// Java's ordering of sort keys: column by column, null first, then
 /// [`Scalar::compare`], under which `0.0` equals `-0.0` and NaN is last.
 ///
+/// With `boxed`, for more than three sort columns, a floating point value is ordered as a
+/// boxed `Double` or `Float` is: `-0.0` before `0.0`.
+///
 /// Behavior: io.deephaven.engine.table.impl.ssa.DoubleSegmentedSortedArray#doComparison
 /// (and its per-type copies), and the `compareTo` of the tuples of
-/// io.deephaven.tuple.generated for two and three sort columns
-fn compare_keys(a: &SortKey, b: &SortKey) -> Ordering {
+/// io.deephaven.tuple.generated for two and three sort columns; for more,
+/// io.deephaven.tuple.ArrayTuple#compareTo over the boxed values of
+/// io.deephaven.engine.table.impl.tuplesource.MultiColumnTupleSource, which compares with
+/// io.deephaven.util.compare.ObjectComparisons#compare, and so java.lang.Double#compareTo
+fn compare_keys(a: &SortKey, b: &SortKey, boxed: bool) -> Ordering {
     for (x, y) in a.iter().zip(b) {
-        let order = match (x.is_null(), y.is_null()) {
-            (true, true) => Ordering::Equal,
-            (true, false) => Ordering::Less,
-            (false, true) => Ordering::Greater,
-            (false, false) => x.compare(y),
+        let order = match (x, y) {
+            _ if x.is_null() || y.is_null() => y.is_null().cmp(&x.is_null()),
+            // Every NaN is one value to Java, after every other, whatever its bits.
+            (Scalar::Double(x), Scalar::Double(y)) if boxed => match (x.is_nan(), y.is_nan()) {
+                (false, false) => x.total_cmp(y),
+                (x_nan, y_nan) => x_nan.cmp(&y_nan),
+            },
+            _ => x.compare(y),
         };
         if order != Ordering::Equal {
             return order;
@@ -56,30 +65,48 @@ fn compare_keys(a: &SortKey, b: &SortKey) -> Ordering {
 /// array of value and row key per group, whose first or last entry is the answer) and
 /// io.deephaven.engine.table.impl.by.DoubleAddOnlySortedFirstOrLastChunkedOperator (and its
 /// per-type copies) for a static or add-only parent, which keep the best row so far
+///
+/// A blink parent's rows stay aggregated after they leave it: each cycle's added rows are
+/// compared with the best key kept so far and its value. Sorted first takes a row whose
+/// key is less, so among equal keys the one seen first; sorted last takes one whose key is
+/// greater or equal, so the one seen last.
+///
+/// Behavior: io.deephaven.engine.table.impl.by.DoubleBlinkSortedFirstOrLastChunkedOperator
+/// (and its per-type copies) for a blink parent
 pub struct SortedFirstLast {
     first: bool,
+    /// More than three sort columns: see [`compare_keys`].
+    boxed: bool,
+    /// The parent is a blink table.
+    blink: bool,
     sort: Vec<SortColumn>,
     output: Arc<dyn ColumnSource>,
     output_type: ColumnType,
     /// The best row of each group and its sort key.
     best: Vec<(RowKey, SortKey)>,
     value: Vec<Scalar>,
+    /// For a blink parent, the rows each group was given in this cycle, in row order.
+    arrived: Vec<Vec<RowKey>>,
 }
 
 impl SortedFirstLast {
     pub fn new(
         first: bool,
+        blink: bool,
         sort: Vec<SortColumn>,
         output: Arc<dyn ColumnSource>,
         output_type: ColumnType,
     ) -> SortedFirstLast {
         SortedFirstLast {
             first,
+            boxed: sort.len() > 3,
+            blink,
             sort,
             output,
             output_type,
             best: Vec::new(),
             value: Vec::new(),
+            arrived: Vec::new(),
         }
     }
 
@@ -101,9 +128,25 @@ impl SortedFirstLast {
                 &column.source.chunk(rows)?,
             )?);
         }
-        Ok((0..rows.size() as usize)
+        Ok(Self::rows_of(&columns, rows.size() as usize))
+    }
+
+    /// The sort keys of the rows `row_keys`, in that order, current values.
+    fn keys_of(&self, row_keys: &[RowKey]) -> Result<Vec<SortKey>, TableFailure> {
+        let mut columns = Vec::with_capacity(self.sort.len());
+        for column in &self.sort {
+            columns.push(Values::decode(
+                &column.column_type,
+                &column.source.chunk_by_keys(row_keys, false)?,
+            )?);
+        }
+        Ok(Self::rows_of(&columns, row_keys.len()))
+    }
+
+    fn rows_of(columns: &[Values], rows: usize) -> Vec<SortKey> {
+        (0..rows)
             .map(|position| columns.iter().map(|c| c.scalar(position)).collect())
-            .collect())
+            .collect()
     }
 
     /// Whether the row `row_key` with `key` is better than the current best.
@@ -135,7 +178,7 @@ impl SortedFirstLast {
                     .into(),
             });
         }
-        let order = compare_keys(key, &best.1);
+        let order = compare_keys(key, &best.1, self.boxed);
         Ok(if self.first {
             order == Ordering::Less || (order == Ordering::Equal && row_key < best.0)
         } else {
@@ -161,6 +204,60 @@ impl SortedFirstLast {
     }
 }
 
+impl SortedFirstLast {
+    /// Compares the rows each of `slots` was given in this cycle with its best so far, and
+    /// takes the value of a better one. The best row's sort key is kept, and its row key
+    /// only to read the value: a blink parent's row keys mean nothing after the cycle.
+    /// A group's result changed when it took a row, as Java reports it.
+    ///
+    /// Behavior: DoubleBlinkSortedFirstOrLastChunkedOperator#addChunk (`lt` for first, `geq`
+    /// for last)
+    fn recompute_blink(&mut self, slots: &[usize]) -> Result<Vec<bool>, TableFailure> {
+        let mut taken = Vec::with_capacity(slots.len());
+        let mut row_keys = Vec::new();
+        for &slot in slots {
+            let arrived = std::mem::take(&mut self.arrived[slot]);
+            let mut best: Option<(RowKey, SortKey)> = None;
+            for (&row_key, key) in arrived.iter().zip(self.keys_of(&arrived)?) {
+                let better = match &best {
+                    Some((_, best)) => self.blink_better(&key, best),
+                    None if self.best[slot].0 == NULL_ROW_KEY => true,
+                    None => self.blink_better(&key, &self.best[slot].1),
+                };
+                if better {
+                    best = Some((row_key, key));
+                }
+            }
+            taken.push(best.is_some());
+            if let Some(best) = best {
+                row_keys.push(best.0);
+                self.best[slot] = best;
+            }
+        }
+        let values = Values::decode(
+            &self.cell_type(),
+            &self.output.chunk_by_keys(&row_keys, false)?,
+        )?;
+        let mut position = 0;
+        for (&slot, &took) in slots.iter().zip(&taken) {
+            if took {
+                self.value[slot] = values.scalar(position);
+                position += 1;
+            }
+        }
+        Ok(taken)
+    }
+
+    fn blink_better(&self, key: &SortKey, best: &SortKey) -> bool {
+        let order = compare_keys(key, best, self.boxed);
+        if self.first {
+            order == Ordering::Less
+        } else {
+            order != Ordering::Less
+        }
+    }
+}
+
 impl AggOperator for SortedFirstLast {
     fn result_type(&self) -> ColumnType {
         self.output_type.clone()
@@ -173,17 +270,23 @@ impl AggOperator for SortedFirstLast {
     }
 
     fn needs_group_rows(&self) -> bool {
-        true
+        !self.blink
     }
 
     fn ensure_slots(&mut self, slots: usize) {
         if self.best.len() < slots {
             self.best.resize(slots, (NULL_ROW_KEY, Vec::new()));
             self.value.resize(slots, Scalar::Null);
+            if self.blink {
+                self.arrived.resize(slots, Vec::new());
+            }
         }
     }
 
-    fn add(&mut self, _slot: usize, _run: &Run<'_>) -> Effect {
+    fn add(&mut self, slot: usize, run: &Run<'_>) -> Effect {
+        if self.blink {
+            self.arrived[slot].extend(run.row_keys());
+        }
         Effect::RECOMPUTE
     }
 
@@ -200,6 +303,9 @@ impl AggOperator for SortedFirstLast {
         slots: &[usize],
         groups: &GroupReader<'_>,
     ) -> Result<Vec<bool>, TableFailure> {
+        if self.blink {
+            return self.recompute_blink(slots);
+        }
         let mut row_keys = Vec::with_capacity(slots.len());
         for &slot in slots {
             self.best[slot] = self.best_of(groups.rows(slot))?;

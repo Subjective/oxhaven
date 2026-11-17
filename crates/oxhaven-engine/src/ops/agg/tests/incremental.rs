@@ -1061,3 +1061,57 @@ fn a_blink_parent_is_aggregated_over_every_row_it_ever_had() {
         seen
     );
 }
+
+/// Behavior: DoubleBlinkSortedFirstOrLastChunkedOperator#addChunk. The best key seen in
+/// any cycle wins, with its value; among equal keys sorted first keeps the one seen first
+/// and sorted last takes the one seen last, within a cycle and across cycles.
+#[test]
+fn sorted_first_and_last_of_a_blink_parent_keep_the_best_row_ever_seen() {
+    let graph = SteppedUpdateGraph::new();
+    let (table, source) = blink_table(&graph);
+    let parent: Arc<dyn Table> = table;
+    let sorted = |first: bool, output: &str, by: &str| {
+        let columns = vec![by.to_string()];
+        let spec = if first {
+            AggSpec::SortedFirst { columns }
+        } else {
+            AggSpec::SortedLast { columns }
+        };
+        agg(spec, &[output])
+    };
+    let by_key = agg_by(
+        &parent,
+        &[sorted(true, "F = I", "I"), sorted(false, "L = I", "I")],
+        &["K"],
+    );
+    // Sorted by the key column, the value shows which row of equal keys was taken.
+    let total = agg_by(
+        &parent,
+        &[sorted(true, "F = I", "K"), sorted(false, "L = I", "K")],
+        &[],
+    );
+    let checkers = [
+        ConsistencyChecker::attach(by_key.clone()),
+        ConsistencyChecker::attach(total.clone()),
+    ];
+    let cycle = |rows: &[(&'static str, i32)]| {
+        source.queued.lock().expect("the queue").push(rows.to_vec());
+        graph.run_cycle();
+        for checker in &checkers {
+            checker.assert_consistent();
+        }
+    };
+    cycle(&[("b", 4), ("a", 5), ("b", 1), ("b", 3), ("a", 5)]);
+    assert_eq!(rows(&*by_key), ["b|1|4", "a|5|5"]);
+    assert_eq!(rows(&*total), ["5|3"]);
+    // Rows that are not better change nothing; a better one in a later cycle wins.
+    cycle(&[("a", 6), ("b", 2), ("a", 2)]);
+    assert_eq!(rows(&*by_key), ["b|1|4", "a|2|6"]);
+    assert_eq!(rows(&*total), ["5|2"]);
+    cycle(&[("a", 1), ("b", 9), ("a", 9)]);
+    assert_eq!(rows(&*by_key), ["b|1|9", "a|1|9"]);
+    assert_eq!(rows(&*total), ["5|9"]);
+    // A cycle without rows leaves the results.
+    cycle(&[]);
+    assert_eq!(rows(&*by_key), ["b|1|9", "a|1|9"]);
+}

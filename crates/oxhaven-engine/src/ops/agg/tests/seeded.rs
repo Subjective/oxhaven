@@ -340,6 +340,28 @@ fn initial_groups_are_refused_as_java_refuses_them() {
         "aggregation: column definition mismatch between input table and initial groups table \
          for K; input has [K, int], initial groups has [K, long]"
     );
+    // Behavior: ColumnDefinition#describeForCompatibility, with `Class#toString` of each
+    // type and, for a vector or an array, of its component type.
+    let described = [
+        (ColumnType::LocalDate, "[K, class java.time.LocalDate]"),
+        (ColumnType::Boolean, "[K, class java.lang.Boolean]"),
+        (
+            ColumnType::vector(ColumnType::Int),
+            "[K, interface io.deephaven.vector.IntVector, int]",
+        ),
+        (
+            ColumnType::vector(ColumnType::Instant),
+            "[K, interface io.deephaven.vector.ObjectVector, class java.time.Instant]",
+        ),
+        (ColumnType::array(ColumnType::Long), "[K, class [J, long]"),
+        (
+            ColumnType::array(ColumnType::String),
+            "[K, class [Ljava.lang.String;, class java.lang.String]",
+        ),
+    ];
+    for (column_type, text) in described {
+        assert_eq!(super::super::describe_for_compatibility("K", &column_type), text);
+    }
     // A group-by column the parent lacks is found first.
     assert_eq!(
         seeded(&parent, &sum, false, &other_name, &["J"]).err(),
