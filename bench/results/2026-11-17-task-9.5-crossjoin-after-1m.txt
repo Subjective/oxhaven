@@ -1,0 +1,19 @@
+crossjoin-cases, 1,000,000 left rows, release build of the branch at 84252c0f
+ 16:06:39 up  8:06,  0 user,  load average: 2.92, 2.16, 2.31
+1000000 left rows, 7 runs of each case
+  1000000 result rows
+cross join, int key, 10,000 right rows, one per key: median 17.2 ms, min 15.3 ms
+  read the added column of every row: median 27.4 ms, min 18.7 ms
+  1000000 result rows
+cross join, int key, 1,000,000 right rows, one per key: median 168.4 ms, min 142.6 ms
+  read the added column of every row: median 22.7 ms, min 21.6 ms
+  300000 result rows
+cross join, int key, 1,000 keys, 3 right rows per key: median 9.8 ms, min 9.6 ms
+  read the added column of every row: median 5.4 ms, min 4.9 ms
+  1000000 result rows
+cross join, string key, 1,000 right rows, one per key: median 25.9 ms, min 24.1 ms
+  read the added column of every row: median 20.7 ms, min 19.2 ms
+cross join, refreshing left, static right, 10,000 right rows: median 41.7 ms, min 40.3 ms
+  20 cycles that append 1,000 left rows each: median 50.1 ms, min 48.9 ms
+cross join, static left, refreshing right: median 54.5 ms, min 52.1 ms
+  sum of R: 14998500000
