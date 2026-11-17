@@ -89,9 +89,24 @@ struct Grouped {
 /// io.deephaven.engine.table.impl.by.ChunkedOperatorAggregationHelper (`findSlotRuns`
 /// after a stable sort by slot): each group's rows stay in row order.
 fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
+    let positions: Vec<usize> = positions.collect();
+    let (low, high) = positions.iter().fold((usize::MAX, 0), |(low, high), &p| {
+        (low.min(slots[p]), high.max(slots[p]))
+    });
+    debug_assert!(positions.windows(2).all(|pair| pair[0] < pair[1]));
+    if !positions.is_empty() && high - low < 4 * positions.len() + 1024 {
+        group_by_counting(&positions, slots, low, high)
+    } else {
+        group_by_sorting(positions, slots)
+    }
+}
+
+/// [`group`] by a comparison sort, for slots spread wide.
+fn group_by_sorting(positions: Vec<usize>, slots: &[usize]) -> Grouped {
     // Sorting (slot, position) pairs packed in one integer keeps each slot's positions
     // increasing without a stable sort. A chunk has at most `CHUNK_SIZE` positions.
     let mut packed: Vec<u64> = positions
+        .into_iter()
         .map(|position| (slots[position] as u64) << 32 | position as u64)
         .collect();
     packed.sort_unstable();
@@ -107,6 +122,32 @@ fn group(positions: impl Iterator<Item = usize>, slots: &[usize]) -> Grouped {
             Some((last, range)) if *last == slot => range.end = index + 1,
             _ => runs.push((slot, index..index + 1)),
         }
+    }
+    Grouped { order, runs }
+}
+
+/// [`group`] for positions whose slots lie in `low..=high`, a range not much larger than
+/// the number of positions (a chunk of a table with few groups): a counting sort by slot,
+/// which keeps each slot's positions in the order given, instead of a comparison sort.
+fn group_by_counting(positions: &[usize], slots: &[usize], low: usize, high: usize) -> Grouped {
+    let mut starts = vec![0usize; high - low + 2];
+    for &position in positions {
+        starts[slots[position] - low + 1] += 1;
+    }
+    for index in 1..starts.len() {
+        starts[index] += starts[index - 1];
+    }
+    let mut runs: Vec<(usize, Range<usize>)> = Vec::new();
+    for (offset, window) in starts.windows(2).enumerate() {
+        if window[0] < window[1] {
+            runs.push((low + offset, window[0]..window[1]));
+        }
+    }
+    let mut order = vec![0usize; positions.len()];
+    for &position in positions {
+        let next = &mut starts[slots[position] - low];
+        order[*next] = position;
+        *next += 1;
     }
     Grouped { order, runs }
 }
@@ -929,6 +970,41 @@ impl Aggregator {
         }
         for slot in self.touched.drain(..) {
             self.seen[slot] = false;
+        }
+    }
+}
+
+#[cfg(test)]
+mod grouping_tests {
+    use super::*;
+
+    /// Both ways of grouping give the same order and runs, for slots in a narrow range
+    /// and in a wide one, for every position or some of them.
+    #[test]
+    fn counting_and_sorting_group_alike() {
+        let mut state = 17u64;
+        let mut next = |n: u64| {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1);
+            ((state >> 33) % n) as usize
+        };
+        for (spread, base) in [(1, 0), (3, 5), (10, 1000), (5000, 7), (1 << 20, 3)] {
+            let slots: Vec<usize> = (0..300).map(|_| base + next(spread)).collect();
+            let all: Vec<usize> = (0..slots.len()).collect();
+            let some: Vec<usize> = all.iter().copied().filter(|p| p % 3 != 1).collect();
+            for positions in [all, some] {
+                let (low, high) = positions.iter().fold((usize::MAX, 0), |(l, h), &p| {
+                    (l.min(slots[p]), h.max(slots[p]))
+                });
+                let counted = group_by_counting(&positions, &slots, low, high);
+                let sorted = group_by_sorting(positions.clone(), &slots);
+                assert_eq!(counted.order, sorted.order, "spread {spread}");
+                assert_eq!(counted.runs, sorted.runs, "spread {spread}");
+                let chosen = group(positions.into_iter(), &slots);
+                assert_eq!(chosen.order, sorted.order);
+                assert_eq!(chosen.runs, sorted.runs);
+            }
         }
     }
 }
