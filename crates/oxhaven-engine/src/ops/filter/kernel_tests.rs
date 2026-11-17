@@ -667,7 +667,8 @@ fn a_redirected_or_viewed_flat_column_is_not_stored() {
 
     let selection = RowSet::from_keys((0..rows as i64).filter(|k| k % 3 != 1));
     // A null is less than every value, as in Java's range filters.
-    let cases: [(&Arc<dyn Table>, &str, &dyn Fn(i64) -> bool); 5] = [
+    type Keeps<'a> = &'a dyn Fn(i64) -> bool;
+    let cases: [(&Arc<dyn Table>, &str, Keeps); 5] = [
         (&reversed, "X > 500", &|k| {
             cell(last - k).is_some_and(|v| v > 500)
         }),
