@@ -3,7 +3,8 @@
 //! `update_arith`, `update_cond`, `update_string` and `build`, over a static table of `rows`
 //! rows built as the benchmark builds its source. Then the parts such an operation is made
 //! of, each alone: a pass over the `int` column's memory, reading the column as a chunk,
-//! evaluating the formula, and making a row set of the rows a mask keeps.
+//! evaluating the formula, and making a row set of the rows a mask keeps; and, for task
+//! 9.7, joining the pieces of a formula's result and concatenating strings.
 //!
 //! ```text
 //! cargo run --release -p oxhaven-engine --example filter-update-cases            # 1 million rows
@@ -165,6 +166,8 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         "B * 1.5 - A",
         "Id % 7",
         "A > 50000 ? B : -B",
+        "S + `_x`",
+        "`s` + (Id % 1000)",
     ] {
         let formula = compile(text);
         time(&format!("evaluate {text}"), rows, reps, || {
@@ -231,6 +234,62 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         black_box(concat_ordered(parts));
     });
     black_box(values.len());
+    joins(table, rows, reps);
+}
+
+/// What joining the pieces of a formula's result costs (task 9.7): the pieces of 65536
+/// doubles, each in memory of its own as an evaluation leaves them, joined by Arrow's
+/// `concat` and copied into one buffer made beforehand; and the strings of `S + "_x"`
+/// made with a `String` per row and as offsets and bytes.
+fn joins(table: &Arc<dyn Table>, rows: i64, reps: usize) {
+    let all = table.row_set();
+    let b = table.column(5).chunk(&all).expect("B");
+    let doubles = b.as_primitive::<arrow::datatypes::Float64Type>();
+    let pieces: Vec<Float64Array> = oxhaven_column::parallel::pieces_of(doubles.len(), 1 << 16)
+        .into_iter()
+        .map(|(offset, length)| {
+            let values = &doubles.values()[offset..offset + length];
+            Float64Array::from_iter_values(values.iter().map(|v| v * 1.5))
+        })
+        .collect();
+    time("join pieces of doubles: concat", rows, reps, || {
+        let pieces: Vec<&dyn Array> = pieces.iter().map(|piece| piece as &dyn Array).collect();
+        black_box(arrow::compute::concat(&pieces).expect("a join"));
+    });
+    time("join pieces of doubles: one buffer", rows, reps, || {
+        let mut joined = vec![0.0_f64; doubles.len()];
+        for (piece, to) in pieces.iter().zip(joined.chunks_mut(1 << 16)) {
+            to.copy_from_slice(piece.values());
+        }
+        black_box(Float64Array::from(joined));
+    });
+    time("evaluate B * 1.5 into one buffer", rows, reps, || {
+        let mut joined = vec![0.0_f64; doubles.len()];
+        for (from, to) in doubles.values().iter().zip(&mut joined) {
+            *to = from * 1.5;
+        }
+        black_box(Float64Array::from(joined));
+    });
+    let s = table.column(6).chunk(&all).expect("S");
+    let strings = s.as_string::<i32>();
+    time("S + `_x`: a String per row", rows, reps, || {
+        let joined = strings
+            .iter()
+            .map(|s| format!("{}{}", s.expect("a string"), "_x"));
+        black_box(StringArray::from_iter_values(joined));
+    });
+    time("S + `_x`: offsets and bytes", rows, reps, || {
+        let mut bytes = String::with_capacity(strings.value_data().len() + 2 * strings.len());
+        let mut offsets = Vec::with_capacity(strings.len() + 1);
+        offsets.push(0_i32);
+        for s in strings.iter() {
+            bytes.push_str(s.expect("a string"));
+            bytes.push_str("_x");
+            offsets.push(bytes.len() as i32);
+        }
+        let offsets = arrow::buffer::OffsetBuffer::new(offsets.into());
+        black_box(StringArray::new(offsets, bytes.into_bytes().into(), None));
+    });
 }
 
 fn main() {
