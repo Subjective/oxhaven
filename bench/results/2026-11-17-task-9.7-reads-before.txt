@@ -1,0 +1,22 @@
+10000000 rows, load average 3.12 2.28 2.64
+  static table, Id, in row order: 0.0 ms
+  static table, Id, scattered keys: 181.9 ms
+  refreshing table, one write, Id, in row order: 289.5 ms
+  refreshing table, one write, Id, scattered keys: 9407.6 ms
+  static table, B, in row order: 0.0 ms
+  static table, B, scattered keys: 204.7 ms
+  refreshing table, one write, B, in row order: 352.8 ms
+  refreshing table, one write, B, scattered keys: 9346.9 ms
+  static table, S, in row order: 0.0 ms
+  static table, S, scattered keys: 480.8 ms
+  refreshing table, one write, S, in row order: 366.2 ms
+  refreshing table, one write, S, scattered keys: 9486.6 ms
+  refreshing table, eleven writes, Id, in row order: 371.4 ms
+  refreshing table, eleven writes, Id, scattered keys: 9504.7 ms
+  refreshing table, eleven writes, B, in row order: 346.8 ms
+  refreshing table, eleven writes, B, scattered keys: 9568.8 ms
+  refreshing table, eleven writes, S, in row order: 407.8 ms
+  refreshing table, eleven writes, S, scattered keys: 10138.5 ms
+  a column of the sorted refreshing table: 9102.4 ms
+  weighted sum of Id: 25249860353532067
+load average 1.93 2.17 2.57

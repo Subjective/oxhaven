@@ -8,7 +8,12 @@
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 # or this many
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --sorts-only
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --incremental-only
+//! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --reads-only
 //! ```
+//!
+//! `--reads-only` reads columns of a static table and of a refreshing one at every row, in
+//! row order and at scattered keys, and a column of a sort of the refreshing table (task
+//! 9.7).
 //!
 //! `--incremental-only` runs the refreshing sorts alone and, before them, the cost of one
 //! redirection write per row inside and outside an update cycle (task 9.6).
@@ -177,6 +182,11 @@ fn main() {
     let sorts_only = std::env::args().nth(2).as_deref() == Some("--sorts-only");
     let incremental_only = std::env::args().nth(2).as_deref() == Some("--incremental-only");
     println!("{rows} rows, load average {}", load());
+    if std::env::args().nth(2).as_deref() == Some("--reads-only") {
+        reads(rows);
+        println!("load average {}", load());
+        return;
+    }
     if incremental_only {
         redirection_writes(rows);
         incremental(rows);
@@ -255,4 +265,54 @@ fn incremental(rows: i64) {
         let sum = timed("  read a column of every row back", || read_id(&sorted));
         println!("  weighted sum of Id: {sum}");
     }
+}
+
+/// What reading a column costs by the kind of table: every row in row order, and every row
+/// at scattered keys (the read a sort result makes through its redirection), for a static
+/// table, for a refreshing table written once, and for the same after ten appends; then a
+/// column of a sort of that table.
+fn reads(rows: i64) {
+    let fixed: Arc<dyn Table> =
+        in_memory_table(definition(&COLUMNS), &[batch(0..rows)]).expect("a table");
+    let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
+    let ticking: Arc<dyn Table> =
+        append_only_input_table(graph, definition(&COLUMNS), Some(&batch(0..rows)))
+            .expect("a refreshing table");
+    let read = |what: &str, table: &Arc<dyn Table>, column: &str| {
+        let index = table.definition().index_of(column).expect("a column");
+        let source = table.column(index);
+        let rows = table.row_set();
+        // A permutation of the keys: the multiplier is odd and not a multiple of five.
+        let size = rows.size() as i128;
+        let keys: Vec<RowKey> = (0..size)
+            .map(|i| ((i * 2_654_435_761) % size) as RowKey)
+            .collect();
+        let ordered = timed(&format!("  {what}, {column}, in row order"), || {
+            source.chunk(&rows).expect("a chunk")
+        });
+        let gathered = timed(&format!("  {what}, {column}, scattered keys"), || {
+            source.chunk_by_keys(&keys, false).expect("a chunk")
+        });
+        // The scattered read holds the cells of the ordered one, each at its key's place.
+        let positions = UInt64Array::from_iter_values(keys.iter().map(|k| *k as u64));
+        let expected = take(ordered.as_ref(), &positions, None).expect("a gather");
+        assert_eq!(expected.as_ref(), gathered.as_ref());
+    };
+    for column in ["Id", "B", "S"] {
+        read("static table", &fixed, column);
+        read("refreshing table, one write", &ticking, column);
+    }
+    let input = ticking.input_table().expect("an input table");
+    for cycle in 0..10 {
+        let first = rows + cycle * 1000;
+        input.add(batch(first..first + 1000)).expect("an append");
+    }
+    for column in ["Id", "B", "S"] {
+        read("refreshing table, eleven writes", &ticking, column);
+    }
+    let sorted = sort(&ticking, &[SortColumn::ascending("A")]).expect("a sort");
+    let sum = timed("  a column of the sorted refreshing table", || {
+        read_id(&sorted)
+    });
+    println!("  weighted sum of Id: {sum}");
 }

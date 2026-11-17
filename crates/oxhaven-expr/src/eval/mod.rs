@@ -9,9 +9,11 @@ mod text;
 use crate::functions::Kernel;
 use crate::types::{BitwiseOp, Checked, LogicalOp, Node, Numeric, Typed};
 use arrow::array::{
-    new_null_array, Array, ArrayRef, AsArray, BooleanArray, Float32Array, Float64Array, Int32Array,
-    Int64Array, ListArray, StringArray, TimestampNanosecondArray, UInt16Array,
+    new_null_array, Array, ArrayRef, ArrowPrimitiveType, AsArray, BooleanArray,
+    BooleanBufferBuilder, Float32Array, Float64Array, Int32Array, Int64Array, ListArray,
+    PrimitiveArray, StringArray, TimestampNanosecondArray, UInt16Array,
 };
+use arrow::buffer::NullBuffer;
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, TimeUnit,
     TimestampNanosecondType, UInt16Type,
@@ -152,36 +154,102 @@ fn row_by_row(expr: &Typed) -> bool {
     }
 }
 
-/// Evaluates a [`row_by_row`] formula a piece of [`PIECE_ROWS`] rows at a time, on the
-/// threads `oxhaven_column::parallel` allows, and joins the pieces in row order. `None`
-/// when a piece fails: the caller then evaluates all rows in one pass, which reports the
-/// failure that pass has always reported, whichever piece failed first here.
-fn in_pieces(
-    root: &Typed,
-    columns: &[ArrayRef],
-    positions: Option<&Int64Array>,
-    keys: Option<&Int64Array>,
+/// The columns and row variables of a formula evaluated in pieces, for all its rows.
+struct Pieces<'a> {
+    root: &'a Typed,
+    columns: &'a [ArrayRef],
+    positions: Option<&'a Int64Array>,
+    keys: Option<&'a Int64Array>,
     rows: usize,
-) -> Option<ArrayRef> {
-    let pieces = parallel::pieces_of(rows, PIECE_ROWS);
-    let results = parallel::map_pieces(pieces.len(), |piece| {
-        let (offset, length) = pieces[piece];
+}
+
+impl Pieces<'_> {
+    /// The values of the formula for the `length` rows from `offset`, `None` if it fails.
+    fn evaluate(&self, offset: usize, length: usize) -> Option<ArrayRef> {
         let batch = Batch {
-            columns: columns
+            columns: self
+                .columns
                 .iter()
                 .map(|column| column.slice(offset, length))
                 .collect(),
-            positions: positions.map(|values| values.slice(offset, length)),
-            keys: keys.map(|values| values.slice(offset, length)),
+            positions: self.positions.map(|values| values.slice(offset, length)),
+            keys: self.keys.map(|values| values.slice(offset, length)),
             arrays: Vec::new(),
             rows: length,
             row_by_row: true,
         };
-        evaluate(root, &batch).ok()
-    });
-    let results = results.into_iter().collect::<Option<Vec<ArrayRef>>>()?;
-    let results: Vec<&dyn Array> = results.iter().map(|values| values.as_ref()).collect();
-    arrow::compute::concat(&results).ok()
+        evaluate(self.root, &batch).ok()
+    }
+
+    /// Evaluates the formula, whose values have the fixed width of `P`, with every piece
+    /// copying its values into its own part of one buffer made for all the rows. The copy
+    /// is made by the thread that computed the piece, from memory it has just written and
+    /// then gives back, so the result is the only memory of its size that is written.
+    /// Joining pieces that each kept their memory wrote it twice, the second time on one
+    /// thread: at 10 million rows that was half the time of an `update` on four threads.
+    fn in_one_buffer<P: ArrowPrimitiveType>(&self, data_type: DataType) -> Option<ArrayRef> {
+        let mut values = vec![P::Native::default(); self.rows];
+        let nulls = parallel::fill_pieces(&mut values, PIECE_ROWS, |piece, part| {
+            let computed = self.evaluate(piece * PIECE_ROWS, part.len())?;
+            let computed = computed.as_primitive_opt::<P>()?;
+            part.copy_from_slice(computed.values());
+            Some(
+                computed
+                    .nulls()
+                    .filter(|nulls| nulls.null_count() > 0)
+                    .cloned(),
+            )
+        });
+        let nulls = nulls.into_iter().collect::<Option<Vec<_>>>()?;
+        let validity = nulls.iter().any(Option::is_some).then(|| {
+            let mut validity = BooleanBufferBuilder::new(self.rows);
+            for ((_, length), nulls) in parallel::pieces_of(self.rows, PIECE_ROWS)
+                .iter()
+                .zip(&nulls)
+            {
+                match nulls {
+                    Some(nulls) => validity.append_buffer(nulls.inner()),
+                    None => validity.append_n(*length, true),
+                }
+            }
+            NullBuffer::new(validity.finish())
+        });
+        let joined = PrimitiveArray::<P>::new(values.into(), validity);
+        Some(Arc::new(joined.with_data_type(data_type)))
+    }
+
+    /// Evaluates the formula a piece at a time and joins the pieces with a copy.
+    fn joined(&self) -> Option<ArrayRef> {
+        let pieces = parallel::pieces_of(self.rows, PIECE_ROWS);
+        let results = parallel::map_pieces(pieces.len(), |piece| {
+            let (offset, length) = pieces[piece];
+            self.evaluate(offset, length)
+        });
+        let results = results.into_iter().collect::<Option<Vec<ArrayRef>>>()?;
+        let results: Vec<&dyn Array> = results.iter().map(|values| values.as_ref()).collect();
+        arrow::compute::concat(&results).ok()
+    }
+}
+
+/// Evaluates a [`row_by_row`] formula a piece of [`PIECE_ROWS`] rows at a time, on the
+/// threads `oxhaven_column::parallel` allows, with the pieces in row order in the result.
+/// `None` when a piece fails: the caller then evaluates all rows in one pass, which
+/// reports the failure that pass has always reported, whichever piece failed first here.
+fn in_pieces(pieces: &Pieces) -> Option<ArrayRef> {
+    let data_type = pieces.root.column_type.arrow_type();
+    match &data_type {
+        DataType::Int8 => pieces.in_one_buffer::<Int8Type>(data_type),
+        DataType::Int16 => pieces.in_one_buffer::<Int16Type>(data_type),
+        DataType::UInt16 => pieces.in_one_buffer::<UInt16Type>(data_type),
+        DataType::Int32 => pieces.in_one_buffer::<Int32Type>(data_type),
+        DataType::Int64 => pieces.in_one_buffer::<Int64Type>(data_type),
+        DataType::Float32 => pieces.in_one_buffer::<Float32Type>(data_type),
+        DataType::Float64 => pieces.in_one_buffer::<Float64Type>(data_type),
+        DataType::Timestamp(TimeUnit::Nanosecond, _) => {
+            pieces.in_one_buffer::<TimestampNanosecondType>(data_type)
+        }
+        _ => pieces.joined(),
+    }
 }
 
 impl Formula for CompiledFormula {
@@ -295,14 +363,14 @@ impl Formula for CompiledFormula {
             row_by_row: self.row_by_row,
         };
         if self.row_by_row && size > PIECE_ROWS {
-            let pieces = in_pieces(
-                &self.checked.root,
-                &batch.columns,
-                batch.positions.as_ref(),
-                batch.keys.as_ref(),
-                size,
-            );
-            if let Some(values) = pieces {
+            let pieces = Pieces {
+                root: &self.checked.root,
+                columns: &batch.columns,
+                positions: batch.positions.as_ref(),
+                keys: batch.keys.as_ref(),
+                rows: size,
+            };
+            if let Some(values) = in_pieces(&pieces) {
                 return Ok(values);
             }
         }

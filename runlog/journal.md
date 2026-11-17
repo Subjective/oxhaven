@@ -1181,3 +1181,11 @@ Incremental sort now keeps free row keys in leaves of 128; PARITY.md A4 already 
 ## 2026-11-17 15:49 UTC: pull request 149 merged, task 9.7 started
 
 Seven green checks. Task 9.7 takes the leftovers 9.4 and 9.6 named: slow scattered reads of a refreshing table column, the copy that joins formula pieces, string concatenation, and a server option for the thread count. The end-to-end benchmark rerun with Deephaven waits until the builders are done.
+
+## 2026-11-17 16:52 UTC: task 9.7 reported, pull request 150 opened
+
+The slow refreshing read was a map lookup per row in the writable column, not locks or previous values. The 9.4 reading of the piece join was only partly right: the first write of new memory is the cost.
+
+## 2026-11-17 16:59 UTC: pull request 150 merged
+
+Seven green checks. No new builder started: the end-to-end benchmark rerun against Deephaven needs a quiet machine and starts when the second run of task 9.5 reports.
