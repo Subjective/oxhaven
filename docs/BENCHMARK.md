@@ -19,7 +19,9 @@ with other jobs during both runs, so ratios under about 2x are within the noise.
 
 Since then, task 9.1 has made `natural_join` and `exact_join` 14x to 88x faster than they
 were in this first measurement, which brings them to Java's times or below them; see
-[After task 9.1](#after-task-91-natural-and-exact-joins-2026-11-17). The tables and the
+[After task 9.1](#after-task-91-natural-and-exact-joins-2026-11-17). Task 9.3 has made
+`sort` 3x to 19x faster, below Java's earlier times at both sizes; see
+[After task 9.3](#after-task-93-2026-11-17-sort-and-reads-through-a-row-redirection). The tables and the
 reading of the first measurement are kept below as they were written.
 
 ## What is measured
@@ -475,7 +477,7 @@ oracle corpus and the self-consistency checker, which every change to these path
    seeds), and build the left rows per slot only for a refreshing left table. With item 1, the
    static `natural_join` and `exact_join` should come within a small factor of Java; today they
    are the worst cases at 18x to 40x.
-3. **Sort without a box per row** (2 days). Encode the keys once into Arrow `Rows` (one buffer),
+3. **Sort without a box per row** (2 days). *Done by task 9.3; see "After task 9.3".* Encode the keys once into Arrow `Rows` (one buffer),
    sort row positions with a stable sort comparing borrowed rows, and add a typed path for one
    primitive column (sort `(value, position)` pairs; stability then comes free). With item 1
    this removes both the per-row allocation and the per-row tree insertion. Expected to bring
@@ -572,3 +574,98 @@ Java does not; that is now about 20 ms of its 155 at 1M rows. Not measured here:
 throughput (the engine example's 19 append-only cycles of 50,000 rows into `select_distinct`,
 `last_by` and `sum_by` went from 4.6 s to 2.4 s; the two aggregators' own cycles were about half of what remains,
 and the rest, the input table's writes and `select_distinct`, was not broken down).
+
+## After task 9.3 (2026-11-17): sort, and reads through a row redirection
+
+Task 9.3 (`tasks/9.3-fast-sort.md`) changed how `sort` orders its rows and how a column is
+read through a row redirection. This block measures that change only.
+
+**What was compared.** Two Oxhaven servers on the machine above, run by the same runner with
+`--cases 'sort_*,natural_join_small,aj,head_half'`, interleaved case by case: "before" is
+`main` at `11c29b75`, "after" is the branch of task 9.3 merged with `main` at the time
+(task 9.2 included, which touches none of these cases), both built with
+`cargo build --release --locked -p oxhaven-server`. Two complete runs, 14:02 to 14:09, with
+another agent's builds on the machine (one-minute load 1.3 to 4.7). Every case gave the same
+result on both servers in both runs. Java was not run again: the "java (earlier)" column
+repeats the medians of the first measurement, taken under another load, so the last column is
+an indication and not a measurement of one run. The raw results and the table with min-max and
+load per case are in `bench/results/2026-11-17-task-9.3*`.
+
+Median milliseconds of each run, run 1 / run 2.
+
+| case | rows | before | after | before / after | java (earlier) | after / java (earlier) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `sort_int` | 1M | 478 / 489 | 29.5 / 26.0 | 16 / 19 | 116 / 153 | 0.17 to 0.25 |
+| `sort_two` | 1M | 443 / 493 | 139 / 126 | 3.2 / 3.9 | 232 / 251 | 0.50 to 0.60 |
+| `sort_string` | 1M | 333 / 361 | 114 / 138 | 2.9 / 2.6 | 280 / 317 | 0.36 to 0.49 |
+| `natural_join_small` | 1M | 11.4 / 9.4 | 11.6 / 9.9 | 1.0 / 0.9 | | |
+| `aj` | 1M | 470 / 482 | 446 / 425 | 1.1 / 1.1 | | |
+| `head_half` | 1M | 0.89 / 3.9 | 1.0 / 0.86 | | | |
+| `sort_int` | 10M | 10078 / 9740 | 570 / 540 | 18 / 18 | 1175 / 1255 | 0.43 to 0.49 |
+| `sort_two` | 10M | 9256 / 9555 | 1728 / 1672 | 5.4 / 5.7 | 2779 / 2810 | 0.60 to 0.62 |
+| `sort_string` | 10M | 6398 / 5782 | 1770 / 1615 | 3.6 / 3.6 | 2546 / 2372 | 0.63 to 0.75 |
+| `natural_join_small` | 10M | 144 / 158 | 160 / 148 | 0.9 / 1.1 | | |
+| `aj` | 10M | 5511 / 5779 | 5411 / 5233 | 1.0 / 1.1 | | |
+| `head_half` | 10M | 1.1 / 1.1 | 0.91 / 1.0 | | | |
+
+The join and `head_half` cases did not change beyond the noise.
+
+**What changed.**
+
+- The sort keys of a set of rows are kept in a few flat buffers, never in an allocation per
+  row (`ops/sort/keys.rs`). A sort by one column of a fixed-width type (the integers,
+  `char`, `boolean`, the floating point types, and the date and time types) maps each value
+  to an unsigned integer whose order is Java's (one NaN, the greatest; `-0.0` equal to
+  `0.0`; the absolute value when asked), keeps nulls apart, and sorts (value, position) pairs
+  with a radix sort by bytes, which skips the bytes every value shares; a stable radix sort
+  keeps ties in the parent's order. A sort by one string column keeps the strings' bytes
+  in one buffer, with the two lead bytes of U+E000 to U+FFFF moved above those of the
+  characters beyond U+FFFF so that byte order is UTF-16 order. Every other sort keeps Arrow's
+  row format in one buffer, as before but without copying each row out. Strings and rows are
+  sorted as (first 15 bytes and length, position) values, which order exactly whenever a key
+  is at most 15 bytes long, and read the whole key only to break a tie of longer ones.
+- The result's redirection is made in one piece (`WritableRowRedirection::from_rows`).
+- An incremental sort keeps its keys in the same buffers, appended in sorted order each
+  cycle, instead of a box per row.
+- `RedirectedSource` reads a row set through a redirection a range at a time: for the flat
+  array, a copy of the slice for each range of the row set, under one read lock, and the
+  mappings changed in the cycle laid over it for previous values. `FlatSource` gathers by a
+  plain vector of positions when no key is null.
+
+**Where the time went, and where it goes now.** Measured with
+`cargo run --release -p oxhaven-engine --example sort-phases -- 10000000`, which also runs
+the parts of the old method with Arrow directly, one run of each build:
+
+| part, 10M rows, sort by the int column | before | after |
+| --- | ---: | ---: |
+| the row format of the key column, in one buffer | 38 ms | (no row format) |
+| copy each row into a box | 371 ms | none |
+| stable comparison sort of the boxes | 6081 ms | none |
+| the whole sort | 7921 ms | 524 to 560 ms |
+| read a column of every row back through the redirection | 2722 ms | 314 to 324 ms |
+
+So the box per row was 5% of the time and the comparison sort itself, which follows a
+pointer per comparison, 77%. Sorting positions with a comparison over the one buffer of the
+row format instead of the boxes was slower still (9704 ms), which is why the general path
+sorts values that carry the start of their key. One redirection write per row cost 236 ms
+against 61 ms in one piece. The other shapes, whole sorts before and after at 10M rows: two
+columns 6480 ms and 1582 to 1697 ms, a string 4468 ms and 1419 to 1653 ms. At 1M rows the
+int sort went from 424 ms to 49 to 60 ms.
+
+**What did not get faster.** An incremental sort of a refreshing table: ten cycles that each
+append 1,000 rows to a table of 10M rows took 23642 ms before and 17514 ms after (2056 ms and
+1619 ms at 1M rows). The keys are no longer boxed, but each cycle is still linear in the
+size of the table: the result is positional, so an insertion shifts every row after it,
+and `remap` writes each shifted position into the redirection, which records each write in
+an ordered map of previous mappings (`Mappings::prev` in `oxhaven-column/src/redirect.rs`),
+10M insertions per cycle here. Reading a column of that result back takes 9940 ms (10402 ms
+before), most of it, by reading the code, the input table's column (`WritableSource`), which
+is read a cell at a time; that part was not timed apart.
+
+**The next bottlenecks.** For a static sort by two columns or by a string, the comparison
+sort of 24-byte values (1.4 to 1.7 s at 10M rows); a radix sort over the row format's bytes
+would remove it. For an incremental sort, the previous mappings of the redirection: a
+redirection rewritten in bulk could keep its array as of the start of the cycle once (one
+copy) instead of one map entry per write, and the result could leave gaps in its key space
+as Java's does, so that an insertion moves few rows; the second changes the row keys and
+shifts the sort reports.
