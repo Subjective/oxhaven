@@ -1296,20 +1296,34 @@ fn check_random(
         + Sync
         + 'static,
 ) -> u64 {
+    check_random_of(wide(), seeds, cycles, kinds, operation)
+}
+
+/// [`check_random`] over a parent of `definition`.
+fn check_random_of(
+    definition: TableDefinition,
+    seeds: std::ops::Range<u64>,
+    cycles: usize,
+    kinds: impl Fn(&mut RandomUpdates),
+    operation: impl Fn(&Arc<dyn Table>) -> Result<Arc<dyn Table>, FilterError>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
+) -> u64 {
     let mut updates = 0;
     for seed in test_seeds(seeds) {
         let stepper = SteppedUpdateGraph::new();
         let graph: Arc<dyn UpdateGraph> = stepper.clone();
         let mut random = RandomUpdates::new(seed);
         kinds(&mut random);
-        let definition = wide();
         let initial = RowSet::from_keys([2, 3, 7, 11, 12, 20]);
         let columns = definition
             .columns()
             .iter()
             .map(|column| random.values(&column.column_type, initial.size()))
             .collect();
-        let source = ScriptedTable::new(graph, definition, initial, columns);
+        let source = ScriptedTable::new(graph, definition.clone(), initial, columns);
         let parent: Arc<dyn Table> = source.table();
         let result = operation(&parent).unwrap();
         let (expected, recompute) = (parent.clone(), operation.clone());
@@ -1608,5 +1622,123 @@ fn random_updates_through_a_disjunction() {
         union.sort_unstable();
         union.dedup();
         assert_eq!(either, union, "seed {seed}");
+    }
+}
+
+// ---------------------------------------------------------------------------------------
+// Searches of vector and array columns
+// ---------------------------------------------------------------------------------------
+
+fn search(text: &str) -> Condition {
+    Condition::Search {
+        search_string: text.to_string(),
+        columns: vec![],
+    }
+}
+
+/// A vector of ints, an array of strings and a vector of doubles.
+fn lists_definition() -> TableDefinition {
+    definition(&[
+        ("V", ColumnType::vector(ColumnType::Int)),
+        ("S", ColumnType::array(ColumnType::String)),
+        ("D", ColumnType::vector(ColumnType::Double)),
+    ])
+}
+
+#[test]
+fn random_updates_through_searches_of_vectors_and_arrays() {
+    let all = |_: &mut RandomUpdates| {};
+    for text in ["2", "a", "1.25", "-2147483648"] {
+        // A search that reads a null cell fails, so the null cells are dropped first.
+        let operation = move |table: &Arc<dyn Table>| {
+            let present =
+                unstructured_filter(table, &["V != null", "S != null", "D != null"], &Compiler)?;
+            filter(&present, &[search(text)], &Compiler)
+        };
+        assert!(
+            check_random_of(lists_definition(), 0..30, 60, all, operation)
+                > at_least_for(400, 0..30),
+            "{text:?}"
+        );
+    }
+}
+
+#[test]
+fn a_null_vector_that_a_search_reads_later_fails_the_result_table() {
+    let stepper = SteppedUpdateGraph::new();
+    let graph: Arc<dyn UpdateGraph> = stepper.clone();
+    let vector = ColumnType::vector(ColumnType::Int);
+    let cells = |lengths: &[Option<usize>], elements: Vec<i32>| {
+        oxhaven_testkit::list_of(
+            &ColumnType::vector(ColumnType::Int),
+            lengths.iter().copied(),
+            Arc::new(Int32Array::from(elements)),
+        )
+    };
+    let source = ScriptedTable::new(
+        graph,
+        definition(&[("K", ColumnType::Long), ("V", vector)]),
+        RowSet::from_keys([0, 1]),
+        vec![longs([1, 2]), cells(&[Some(2), Some(0)], vec![5, 7])],
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let result = filter(&parent, &[search("7")], &Compiler).unwrap();
+    let recorder = Recorder::attach(result.clone());
+    assert_eq!(keys_of(&*result), [0]);
+
+    // A null vector in a row that the key column keeps is not read.
+    source.push(TableChange::new().add([2], vec![longs([7]), cells(&[None], vec![])]));
+    stepper.run_cycle();
+    assert_eq!(keys_of(&*result), [0, 2]);
+    assert!(!result.is_failed());
+
+    source.push(TableChange::new().add([3], vec![longs([4]), cells(&[None], vec![])]));
+    stepper.run_cycle();
+    assert!(result.is_failed());
+    let events = recorder.events();
+    assert_eq!(events.len(), 2);
+    let failure = events[1].clone().unwrap_err();
+    assert!(
+        failure.message.contains("NullPointerException"),
+        "{failure}"
+    );
+}
+
+/// The reference is each row's cell searched alone.
+#[test]
+fn a_search_of_many_vectors_keeps_what_each_row_alone_keeps_on_any_number_of_threads() {
+    const PIECE: usize = 1 << 16;
+    for rows in [PIECE - 1, PIECE + 1, 3 * PIECE + 17] {
+        // lengths 0 to 4, with the elements 0 to 96 in turn
+        let lengths: Vec<Option<usize>> = (0..rows).map(|row| Some(row * 7 % 5)).collect();
+        let total: usize = lengths.iter().flatten().sum();
+        let elements: Vec<i32> = (0..total).map(|at| (at * 13 % 97) as i32).collect();
+        let mut starts = Vec::with_capacity(rows);
+        let mut start = 0;
+        for length in lengths.iter().flatten() {
+            starts.push(start);
+            start += length;
+        }
+        let found = |row: usize| {
+            elements[starts[row]..starts[row] + lengths[row].unwrap_or(0)].contains(&42)
+        };
+        let vector = ColumnType::vector(ColumnType::Int);
+        let cells = oxhaven_testkit::list_of(
+            &vector,
+            lengths.iter().copied(),
+            Arc::new(Int32Array::from(elements.clone())),
+        );
+        let table = static_table(vec![("V", vector, cells)]);
+        let expected: Vec<i64> = (0..rows)
+            .filter(|row| found(*row))
+            .map(|row| row as i64)
+            .collect();
+        assert!(!expected.is_empty() && expected.len() < rows);
+        for threads in [1, 4] {
+            let kept = oxhaven_column::parallel::with_threads(threads, || {
+                kept_by(&table, &[search("42")])
+            });
+            assert!(kept == expected, "{rows} rows on {threads} threads");
+        }
     }
 }

@@ -48,16 +48,17 @@ pub(super) fn expand(
         }
         let filter = match column.column_type.list_element() {
             None => quick_filter(index, &column.column_type, text)?,
-            // Java filters the elements and keeps the rows in which one passes.
-            Some(element) => match quick_filter(index, element, text)? {
-                None => None,
-                Some(_) => unported!(
-                    "io.deephaven.engine.table.impl.select.VectorComponentFilterWrapper#maybeCreateFilterWrapper",
-                    "a search for {text:?} in the column {} of type {:?}",
-                    column.name,
-                    column.column_type
-                ),
-            },
+            // Behavior: WhereFilterFactory#createVectorQuickFilter and
+            // VectorComponentFilterWrapper#maybeCreateFilterWrapper: the element type's
+            // filter, which every quick filter exposes as a chunk filter, applied to the
+            // elements; a row is kept when one passes.
+            Some(element) => {
+                quick_filter(index, element, text)?.map(|filter| Resolved::AnyElement {
+                    column: index,
+                    element_type: element.clone(),
+                    element: Box::new(filter),
+                })
+            }
         };
         filters.extend(filter);
     }
@@ -136,7 +137,8 @@ fn quick_filter(
             matcher: Matcher::any(vec![text.to_string()], true),
             invert_pattern: false,
         }),
-        ColumnType::Boolean => {
+        // `boolean` is only ever the element of an array (`boolean[]`).
+        ColumnType::Boolean | ColumnType::PrimitiveBoolean => {
             let is_true = java_equals_ignore_case(text, "true");
             (is_true || java_equals_ignore_case(text, "false"))
                 .then(|| matching(column, Key::Bool(is_true)))
@@ -795,13 +797,187 @@ mod tests {
         assert_eq!(found_in(&table, "2", &["K"]), [2]);
     }
 
+    /// `K` = 1 to `n`, and the column `V` of `column_type` with cells of these lengths
+    /// (`None` for a null cell) holding `elements` in turn.
+    fn listed(
+        column_type: ColumnType,
+        lengths: &[Option<usize>],
+        elements: ArrayRef,
+    ) -> Arc<dyn Table> {
+        let cells = list_of(&column_type, lengths.iter().copied(), elements);
+        let k: ArrayRef = Arc::new(Int32Array::from_iter_values(1..=lengths.len() as i32));
+        static_table(vec![("K", ColumnType::Int, k), ("V", column_type, cells)])
+    }
+
     #[test]
-    #[should_panic(
-        expected = "unported: io.deephaven.engine.table.impl.select.VectorComponentFilterWrapper#maybeCreateFilterWrapper"
-    )]
-    fn a_search_in_the_elements_of_a_vector_column_is_not_ported() {
-        let table = lists(ColumnType::Int, Arc::new(Int32Array::from(vec![1, 2])));
-        let _ = filter(&table, &[search("2", &[])], &Compiler);
+    fn a_vector_or_array_keeps_the_rows_with_an_element_the_text_is() {
+        // [1, 2], [], [null, 3], [2], [5, 2, 2]
+        let lengths = [Some(2), Some(0), Some(2), Some(1), Some(3)];
+        let ints = || -> ArrayRef {
+            Arc::new(Int32Array::from(vec![
+                Some(1),
+                Some(2),
+                None,
+                Some(3),
+                Some(2),
+                Some(5),
+                Some(2),
+                Some(2),
+            ]))
+        };
+        for column_type in [
+            ColumnType::vector(ColumnType::Int),
+            ColumnType::array(ColumnType::Int),
+        ] {
+            let table = listed(column_type.clone(), &lengths, ints());
+            let found = |text: &str| found_in(&table, text, &["V"]);
+            assert_eq!(found("2"), [1, 4, 5], "{column_type:?}");
+            assert_eq!(found("5"), [5]);
+            assert_eq!(found("4"), [0i64; 0]);
+            assert_eq!(found("x"), [0i64; 0]);
+            // the lowest int is its null, and finds the null element
+            assert_eq!(found("-2147483648"), [3]);
+            // the key column too, with every column searched
+            assert_eq!(found_in(&table, "3", &[]), [3]);
+        }
+    }
+
+    #[test]
+    fn each_element_type_reads_the_text_as_its_column_would() {
+        // [1.5, NaN], [1.59, null], [-1.5], [], [1.6]
+        let lengths = [Some(2), Some(2), Some(1), Some(0), Some(1)];
+        let doubles: ArrayRef = Arc::new(Float64Array::from(vec![
+            Some(1.5),
+            Some(f64::NAN),
+            Some(1.59),
+            None,
+            Some(-1.5),
+            Some(1.6),
+        ]));
+        let table = listed(ColumnType::vector(ColumnType::Double), &lengths, doubles);
+        // [1.5, 1.6)
+        assert_eq!(found_in(&table, "1.5", &["V"]), [1, 2]);
+        assert_eq!(found_in(&table, "-1.5", &["V"]), [3]);
+        assert_eq!(found_in(&table, "NaN", &["V"]), [0i64; 0]);
+        assert_eq!(found_in(&table, "1.6", &["V"]), [5]);
+
+        // ["Ab", null], [], ["x"], [null]
+        let lengths = [Some(2), Some(0), Some(1), Some(1)];
+        let strings: ArrayRef =
+            Arc::new(StringArray::from(vec![Some("Ab"), None, Some("x"), None]));
+        let table = listed(ColumnType::array(ColumnType::String), &lengths, strings);
+        assert_eq!(found_in(&table, "a", &["V"]), [1]);
+        assert_eq!(found_in(&table, "X", &["V"]), [3]);
+        assert_eq!(found_in(&table, "null", &["V"]), [0i64; 0]);
+
+        // [true], [false, null], [null]
+        let lengths = [Some(1), Some(2), Some(1)];
+        let booleans: ArrayRef = Arc::new(BooleanArray::from(vec![
+            Some(true),
+            Some(false),
+            None,
+            None,
+        ]));
+        let table = listed(ColumnType::vector(ColumnType::Boolean), &lengths, booleans);
+        assert_eq!(found_in(&table, "TRUE", &["V"]), [1]);
+        assert_eq!(found_in(&table, "false", &["V"]), [2]);
+
+        // ['a', 'b'], ['c'], [null]
+        let lengths = [Some(2), Some(1), Some(1)];
+        let chars: ArrayRef = Arc::new(UInt16Array::from(vec![Some(97), Some(98), Some(99), None]));
+        let table = listed(ColumnType::array(ColumnType::Char), &lengths, chars);
+        assert_eq!(found_in(&table, "b", &["V"]), [1]);
+        assert_eq!(found_in(&table, "\u{ffff}", &["V"]), [3]);
+        assert_eq!(found_in(&table, "bc", &["V"]), [0i64; 0]);
+
+        // [T0, null], [T0 + 1s], [T0 + 1min]
+        let lengths = [Some(2), Some(1), Some(1)];
+        let instants: ArrayRef = Arc::new(
+            TimestampNanosecondArray::from(vec![
+                Some(T0),
+                None,
+                Some(T0 + SECOND),
+                Some(T0 + 60 * SECOND),
+            ])
+            .with_timezone("UTC"),
+        );
+        let table = listed(ColumnType::vector(ColumnType::Instant), &lengths, instants);
+        assert_eq!(found_in(&table, "2023-11-14T22:13:20 UTC", &["V"]), [1]);
+        assert_eq!(found_in(&table, "2023-11-14T22:13 UTC", &["V"]), [1, 2]);
+
+        // longs, shorts, bytes and floats
+        let lengths = [Some(1), Some(2)];
+        let longs: ArrayRef = Arc::new(Int64Array::from(vec![7, 8, 9]));
+        let table = listed(ColumnType::vector(ColumnType::Long), &lengths, longs);
+        assert_eq!(found_in(&table, "8", &["V"]), [2]);
+        let shorts: ArrayRef = Arc::new(Int16Array::from(vec![7, 8, 9]));
+        let table = listed(ColumnType::array(ColumnType::Short), &lengths, shorts);
+        assert_eq!(found_in(&table, "7", &["V"]), [1]);
+        let bytes: ArrayRef = Arc::new(Int8Array::from(vec![7, 8, 9]));
+        let table = listed(ColumnType::vector(ColumnType::Byte), &lengths, bytes);
+        assert_eq!(found_in(&table, "8", &["V"]), [2]);
+        assert_eq!(found_in(&table, "300", &["V"]), [0i64; 0]);
+        let floats: ArrayRef = Arc::new(Float32Array::from(vec![0.5, 1.5, 2.0]));
+        let table = listed(ColumnType::array(ColumnType::Float), &lengths, floats);
+        assert_eq!(found_in(&table, "1.5", &["V"]), [2]);
+
+        // a vector of vectors has no quick filter for its elements
+        let inner = ColumnType::vector(ColumnType::Int);
+        let cells = list_of(
+            &inner,
+            [Some(1), Some(1)],
+            Arc::new(Int32Array::from(vec![2, 3])),
+        );
+        let table = listed(ColumnType::vector(inner), &[Some(1), Some(1)], cells);
+        assert_eq!(found_in(&table, "2", &["V"]), [0i64; 0]);
+    }
+
+    #[test]
+    fn a_null_vector_or_array_fails_the_search_when_it_is_read() {
+        // [1], null, [3]
+        let lengths = [Some(1), None, Some(1)];
+        let ints = || -> ArrayRef { Arc::new(Int32Array::from(vec![1, 3])) };
+        for column_type in [
+            ColumnType::vector(ColumnType::Int),
+            ColumnType::array(ColumnType::Int),
+        ] {
+            let table = listed(column_type, &lengths, ints());
+            let failed = |text: &str, columns: &[&str]| match filter(
+                &table,
+                &[search(text, columns)],
+                &Compiler,
+            ) {
+                Err(FilterError::Failed(failure)) => failure.message,
+                other => panic!("{text:?}: {:?}", other.map(|t| t.row_set())),
+            };
+            assert!(failed("1", &["V"]).contains("NullPointerException"));
+            assert!(failed("3", &[]).contains("NullPointerException"));
+            // a text the elements cannot be makes no filter of the column
+            assert_eq!(found_in(&table, "x", &[]), [0i64; 0]);
+            // a row the key column keeps is not read again
+            assert_eq!(found_in(&table, "2", &[]), [2]);
+            // and with no rows nothing is read
+            let empty = filter(&table, &[search("4", &["K"])], &Compiler).unwrap();
+            assert_eq!(found_in(&empty, "1", &["V"]), [0i64; 0]);
+        }
+    }
+
+    #[test]
+    fn a_boolean_array_fails_a_search_for_a_boolean() {
+        let lengths = [Some(1), Some(0)];
+        let booleans: ArrayRef = Arc::new(BooleanArray::from(vec![true]));
+        let table = listed(
+            ColumnType::array(ColumnType::PrimitiveBoolean),
+            &lengths,
+            booleans,
+        );
+        match filter(&table, &[search("true", &["V"])], &Compiler) {
+            Err(FilterError::Failed(failure)) => {
+                assert!(failure.message.contains("ClassCastException"))
+            }
+            other => panic!("{:?}", other.map(|t| t.row_set())),
+        }
+        assert_eq!(found_in(&table, "x", &["V"]), [0i64; 0]);
     }
 
     #[test]

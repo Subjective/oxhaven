@@ -144,6 +144,16 @@ pub(super) enum Resolved {
         matcher: Matcher,
         invert_pattern: bool,
     },
+    /// The rows of a vector or array column in which at least one element passes
+    /// `element`, a filter of one column made for a column of `element_type`. A null
+    /// cell fails the filter, as it does in Java.
+    ///
+    /// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorComponentFilterWrapper
+    AnyElement {
+        column: usize,
+        element_type: ColumnType,
+        element: Box<Resolved>,
+    },
     /// No row.
     ///
     /// Behavior: io.deephaven.engine.table.impl.select.WhereNoneFilter
@@ -879,6 +889,49 @@ fn has_typed_kernel(column_type: &ColumnType) -> bool {
     )
 }
 
+/// Whether each cell of `chunk`, a chunk of a vector or array column whose elements are of
+/// `element_type`, has an element that `element` keeps. The elements of all the cells are
+/// judged in one pass, and a cell is kept when one of its bits is set; an empty cell is
+/// never kept.
+///
+/// Java reads each cell without a check for null, so a null cell fails the filter with a
+/// `NullPointerException`. A `boolean[]` cell is read as an `Object[]`, which fails with a
+/// `ClassCastException`.
+///
+/// Behavior: io.deephaven.engine.table.impl.select.vectorchunkfilter.VectorChunkFilter
+/// and its subclasses (`IntVectorChunkFilter#doFilter`, `ObjectArrayChunkFilter#doFilter`
+/// and the others): a row matches when any element passes the element's chunk filter
+fn any_element_mask(
+    element_type: &ColumnType,
+    element: &Resolved,
+    chunk: &ArrayRef,
+) -> Result<BooleanBuffer, TableFailure> {
+    let list = chunk
+        .as_list_opt::<i32>()
+        .ok_or_else(|| failure("an element filter needs a vector or array column"))?;
+    if list.null_count() > 0 {
+        return Err(failure(
+            "java.lang.NullPointerException: a null vector or array in a filter of its elements",
+        ));
+    }
+    if *element_type == ColumnType::PrimitiveBoolean && !list.is_empty() {
+        return Err(failure(
+            "java.lang.ClassCastException: class [Z cannot be cast to class [Ljava.lang.Object;",
+        ));
+    }
+    let offsets = list.value_offsets();
+    let (start, end) = (offsets[0] as usize, offsets[list.len()] as usize);
+    let elements = list.values().slice(start, end - start);
+    let passed = element.mask(element_type, elements)?;
+    Ok(BooleanBuffer::collect_bool(list.len(), |row| {
+        let (from, to) = (
+            offsets[row] as usize - start,
+            offsets[row + 1] as usize - start,
+        );
+        (from..to).any(|at| passed.value(at))
+    }))
+}
+
 /// Scattered rows of an array in memory are judged with all the rows between them when the
 /// rows from the first to the last are at most this many times the selected ones.
 const WHOLE_PER_ROW: u64 = 32;
@@ -956,6 +1009,14 @@ impl Resolved {
         let primitive = has_typed_kernel(column_type);
         if let Some(mask) = primitive.then(|| self.primitive_kernel(&chunk)).flatten() {
             return Ok(mask);
+        }
+        if let Resolved::AnyElement {
+            element_type,
+            element,
+            ..
+        } = self
+        {
+            return any_element_mask(element_type, element, &chunk);
         }
         self.generic_mask(column_type, chunk)
     }
@@ -1211,7 +1272,8 @@ impl Resolved {
             }
             Resolved::Range { column, .. }
             | Resolved::Between { column, .. }
-            | Resolved::Pattern { column, .. } => {
+            | Resolved::Pattern { column, .. }
+            | Resolved::AnyElement { column, .. } => {
                 self.filter_column(table, *column, selection, use_prev)
             }
             Resolved::Nothing => Ok(RowSet::empty()),
@@ -1288,7 +1350,8 @@ impl Resolved {
             Resolved::Match { column, .. }
             | Resolved::Range { column, .. }
             | Resolved::Between { column, .. }
-            | Resolved::Pattern { column, .. } => {
+            | Resolved::Pattern { column, .. }
+            | Resolved::AnyElement { column, .. } => {
                 columns.insert(*column);
                 false
             }
