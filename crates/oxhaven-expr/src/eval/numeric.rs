@@ -46,6 +46,28 @@ pub(crate) trait JavaNumber: JavaPrimitive {
     fn apply(op: ArithmeticOp, a: Self, b: Self) -> Option<Self>;
 
     fn negate(self) -> Self;
+
+    /// `value % divisor` for every value, for a divisor whose remainder cannot fail (not
+    /// an integer zero).
+    fn remainders(values: &[Self], divisor: Self) -> Vec<Self> {
+        values
+            .iter()
+            .map(|value| {
+                Self::apply(ArithmeticOp::Remainder, *value, divisor).unwrap_or(Self::NULL)
+            })
+            .collect()
+    }
+}
+
+/// `value % divisor` for two numbers below 2^32, without a division: `reciprocal` is
+/// 2^64 / `divisor` rounded up (0 for a divisor of 1, whose remainders are 0), and the
+/// high half of its low product with `value`, times the divisor, is the remainder.
+///
+/// D. Lemire, O. Kaser, N. Kurz, "Faster remainder by direct computation", 2019: exact
+/// for every 32-bit `value` and `divisor`.
+fn remainder_below_2_32(value: u64, divisor: u64, reciprocal: u64) -> u64 {
+    let low = reciprocal.wrapping_mul(value);
+    ((u128::from(low) * u128::from(divisor)) >> 64) as u64
 }
 
 macro_rules! java_narrow_integer {
@@ -99,6 +121,38 @@ macro_rules! java_integer {
 
             fn negate(self) -> Self {
                 self.wrapping_neg()
+            }
+
+            /// A division costs 20 to 40 times a multiplication, and the divisor is the
+            /// same for every row: where the value and the divisor are both below 2^32
+            /// in size the remainder is two multiplications. Java's remainder is that of
+            /// the sizes with the sign of the dividend.
+            fn remainders(values: &[Self], divisor: Self) -> Vec<Self> {
+                const SMALL: u64 = u32::MAX as u64;
+                let size = u64::from(divisor.unsigned_abs());
+                if size == 0 || size > SMALL {
+                    return values
+                        .iter()
+                        .map(|value| value.wrapping_rem(divisor))
+                        .collect();
+                }
+                let reciprocal = (u64::MAX / size).wrapping_add(1);
+                values
+                    .iter()
+                    .map(|value| {
+                        let dividend = u64::from(value.unsigned_abs());
+                        if dividend > SMALL {
+                            return value.wrapping_rem(divisor);
+                        }
+                        // Below the divisor's size, which fits this type.
+                        let remainder = remainder_below_2_32(dividend, size, reciprocal) as Self;
+                        if *value < 0 {
+                            remainder.wrapping_neg()
+                        } else {
+                            remainder
+                        }
+                    })
+                    .collect()
             }
         }
     };
@@ -203,7 +257,7 @@ pub(crate) fn cast<T: JavaPrimitive>(operand: &dyn Array) -> PrimitiveArray<T::A
 
 /// `array` with every element that holds `T`'s null value made null: a computed value equal
 /// to it is null, because that is how Java stores null.
-fn null_values_to_nulls<T: JavaPrimitive>(
+pub(super) fn null_values_to_nulls<T: JavaPrimitive>(
     array: PrimitiveArray<T::Arrow>,
 ) -> PrimitiveArray<T::Arrow> {
     if !array.values().contains(&T::NULL) {

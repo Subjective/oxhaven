@@ -27,7 +27,7 @@ impl Comparand for f64 {
     }
 }
 
-fn accepts(op: CompareOp, ordering: Ordering) -> bool {
+pub(super) fn accepts(op: CompareOp, ordering: Ordering) -> bool {
     match op {
         CompareOp::Equal => ordering == Ordering::Equal,
         CompareOp::NotEqual => ordering != Ordering::Equal,
