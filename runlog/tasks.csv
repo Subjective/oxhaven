@@ -161,5 +161,6 @@ fix-input-table-stall,1,agent,2026-11-14T23:00Z,96,268843,85,merged,0,56,right-s
 9.3-fast-sort,1,agent (opus),2026-11-17T13:20Z,78,297425,134,merged,0,147,right,"radix sort of typed keys, redirected reads by range; sort_int 10M 9.9 s to 0.55 s, below Deephaven; incremental sort of 10M rows still linear per cycle"
 9.4-parallel-filter-update,1,agent,2026-11-17T13:40Z,33,272516,65,merged,0,146,too large,"typed kernels and 2^16-row pieces on std threads; 10M update 960 to 202 ms, where_range 420 to 114 (engine only); workspace tests, replay and end-to-end benchmark left to CI or follow-up"
 9.5-key-table-followups,1,agent,2026-11-17T14:38Z,54,242851,78,merged,0,148,too large,"item 1 of 5 only: one key table for joins and aggregations, lookups 1.3x to 2x faster; cross join, per-run operator call, lazy group_by and benchmark left in the handover"
-9.6-incremental-sort-rowset-build,1,agent,2026-11-17T14:46Z,55,255278,83,in review,0,149,right,"gapped result keys for incremental sort: ten 1000-row appends to 10M rows 17 s to 0.3 s; filter row sets built per piece: where_range 117 to 55 ms; replay left to CI"
+9.6-incremental-sort-rowset-build,1,agent,2026-11-17T14:46Z,55,255278,83,merged,0,149,right,"gapped result keys for incremental sort: ten 1000-row appends to 10M rows 17 s to 0.3 s; filter row sets built per piece: where_range 117 to 55 ms; replay left to CI"
 9.5-key-table-followups,2,agent (opus),2026-11-17T15:41Z,,,,running,,,,
+9.7-refreshing-reads-formula-joins,1,agent,2026-11-17T15:49Z,,,,running,,,,
