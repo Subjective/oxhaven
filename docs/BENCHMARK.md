@@ -810,3 +810,107 @@ the row set of a piece whose selection is scattered (about 15 ns a row, though o
 thread). For the incremental sort: a parent shift still rewrites every row's parent key,
 growing the key space moves every row in one cycle, and reading the result back is slow
 for a reason outside the sort (the input table's column is read a cell at a time).
+
+## After task 9.7 (2026-11-17): reads of refreshing tables, formula results, string concatenation
+
+Task 9.7 (`tasks/9.7-refreshing-reads-formula-joins.md`) took four leftovers of the blocks
+above. Results, row order and failures are unchanged.
+
+**How it was measured.** Inside the engine only, release builds of the two examples on the
+machine above with another agent building (the load average is given per run):
+`sort-phases -- 10000000 --reads-only`, `sort-phases -- 10000000 --incremental-only`,
+`filter-update-cases -- 10000000 3 1,4` and `filter-update-cases -- 1000000 5 1,4`. "Before"
+is `main` at `2cd04f0a` with the examples extended (for the formulas: with the change to
+the reads, which they do not use), "after" the branch. Java was **not** run again and the
+end-to-end benchmark (`bench/bench.py`) was not run. Raw output:
+`bench/results/2026-11-17-task-9.7-*.txt`.
+
+**Reads.** One read of a column at all 10M rows, milliseconds; load average 3.1 falling to
+1.9 before, 2.5 to 2.3 after. "Scattered" is a read by keys in an order that is not theirs,
+which is what a sort result does through its redirection.
+
+| table, column | in row order, before | after | scattered, before | after |
+| --- | ---: | ---: | ---: | ---: |
+| static, `Id` (long) | 0.0 | 0.0 | 182 | 55.2 |
+| static, `B` (double) | 0.0 | 0.0 | 205 | 48.7 |
+| static, `S` (string) | 0.0 | 0.0 | 481 | 105 |
+| refreshing, written once, `Id` | 290 | 14.7 | 9408 | 107 |
+| refreshing, written once, `B` | 353 | 14.9 | 9347 | 120 |
+| refreshing, written once, `S` | 366 | 21.9 | 9487 | 157 |
+| refreshing, after ten appends, `Id` | 371 | 57.5 | 9505 | 142 |
+| refreshing, after ten appends, `B` | 347 | 57.9 | 9569 | 120 |
+| refreshing, after ten appends, `S` | 408 | 26.9 | 10139 | 184 |
+
+A column of a sort of the refreshing table, read back at every row: 9102 ms before, 244 ms
+after; in the incremental run of the block above (`--incremental-only`, load 3.2) 232 ms
+for the int key and 198 ms for the string key, where task 9.6 measured 9786 ms and
+5027 ms. The weighted sums are the same.
+
+The cause was not the sort and not a lock or the previous values: a refreshing table's
+column (`WritableSource`) kept the place of each row key's value in an ordered map, so a
+read by key was a map lookup per row, 0.9 microseconds each in a map of 10M entries, and a
+read in row order walked the map. The places are now in a flat array indexed by row key
+while the keys are dense, as the row redirection's mappings already were, and in the map
+otherwise. Rows that were written in row order are read as a slice of the written array
+(or a concatenation of a few slices, the 57 ms above); other rows are gathered in pieces
+of 65,536 rows on several threads. A static column read by keys is gathered in the same
+pieces, where it was one gather on one thread. Every table whose columns are written by
+the engine reads this way: input tables, ring tables, the tables Kafka feeds, and the
+columns `update` and `select` make on a refreshing table. What is left of the difference
+from a static column in row order is one pass over the 10M places to see that they follow
+each other.
+
+**Formulas.** Median milliseconds at 10M rows, 3 repetitions; load average 2.3 to 2.1
+before, 3.3 to 3.1 after (so the after columns are, if anything, too high).
+
+| case | before, 1 / 4 threads | after, 1 / 4 threads |
+| --- | ---: | ---: |
+| `update_arith` | 255 / 173 | 229 / 132 |
+| `update_cond` | 120 / 94.9 | 96.9 / 53.9 |
+| `update_string` | 1274 / 496 | 236 / 112 |
+| `build` | 2096 / 1087 | 1000 / 545 |
+| `build` (numbers only) | 633 / 443 | 714 / 413 |
+
+| part, one thread | before | after |
+| --- | ---: | ---: |
+| evaluate `A * 2 + 1` | 40.9 | 37.3 |
+| evaluate `B * 1.5 - A` | 105 | 96.1 |
+| evaluate `Id % 7` | 104 | 99.7 |
+| evaluate `A > 50000 ? B : -B` | 134 | 115 |
+| evaluate ``S + `_x` `` | 1534 | 245 |
+| evaluate `` `s` + (Id % 1000) `` | 1537 | 305 |
+
+At 1M rows after the change (5 repetitions, load 3.1; no run before it): `update_arith`
+19.9 / 6.1, `update_cond` 6.5 / 3.3, `update_string` 23.1 / 10.2, `build` 67.8 / 36.0.
+
+*String concatenation* made three `String`s per row: each side as text, then the two
+joined. The result's bytes and offsets are now written directly, strings, ints and longs
+straight from their arrays. That is the six-fold gain of `update_string` on one thread and
+most of `build`'s.
+
+*The join of a formula's pieces.* The pieces of a result of fixed-width values are no
+longer joined by a copy on one thread after all are computed: each piece copies its values
+into its own part of one buffer, on the thread that computed it
+(`oxhaven_column::parallel::fill_pieces`, which hands out the parts with `chunks_mut`). On
+four threads that is the gain of `update_arith` and `update_cond`. On one thread the gain
+is small, and the reading of the block of task 9.4 ("8-byte results cost three times as
+much per row at 10M rows as at 1M because the pieces are joined by a copy") was only
+partly right. Measured apart at 10M rows: joining 153 pieces of doubles with Arrow's
+`concat` takes 40 to 49 ms, copying them into one buffer made beforehand takes the same,
+and computing `B * 1.5` straight into such a buffer with no pieces at all takes 33 to
+39 ms, against 1.1 ms for 1M rows. The cost is writing 80 MB of memory for the first time
+(the kernel hands out and clears each page), not the copy; at 1M rows the repetitions of
+the example get the memory of the repetition before back from the allocator, so they do
+not pay it. A new result of 80 MB pays it once, whatever writes it; the change removes the
+second time (the pieces' own memory is now given back and used again) and moves the first
+onto all threads.
+
+**What is left.** Formulas: the pieces of a string result are still joined by a copy on
+one thread (about 50 ms of `update_string`'s 112 ms on four threads, by the size of the
+result; not timed apart), and the other operand types of a concatenation (floating point,
+`boolean`, `char`, the date and time types) still make a `String` per row first. The
+first write of a large result could only be avoided by not making the result (a `view`),
+or made cheaper by huge pages. Reads: a scattered read of a refreshing column costs two
+random memory reads a row (the place, then the value) where a static column costs one,
+120 to 180 ms against 50 to 100 ms on four threads; a previous-value read by keys looks
+each key up in the map of the cycle's changes when the cycle changed anything.
