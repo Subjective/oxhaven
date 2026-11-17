@@ -482,7 +482,12 @@ fn orderings_of_a_period_answer_a_group_of_one_period() {
         ]
     );
     for aggregation in period_orderings("P") {
-        let Err(error) = aggregate(&rows_in(&[1, 5]), &[aggregation.clone()], false, &[]) else {
+        let Err(error) = aggregate(
+            &rows_in(&[1, 5]),
+            std::slice::from_ref(&aggregation),
+            false,
+            &[],
+        ) else {
             panic!("{aggregation:?} of two periods was answered");
         };
         assert!(error.to_string().contains("ClassCastException"), "{error}");
