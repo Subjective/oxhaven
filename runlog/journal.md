@@ -1165,3 +1165,7 @@ All gates passed locally. The comparison sort, not the boxes, was three quarters
 ## 2026-11-17 14:46 UTC: pull request 147 merged, task 9.6 started
 
 Seven green checks. Task 9.6 takes the two bottlenecks 9.3 and 9.4 named: previous-mapping bookkeeping in the redirection (incremental sort linear per cycle) and building a row set of scattered kept rows in filters.
+
+## 2026-11-17 15:32 UTC: task 9.5 reported, pull request 148 opened
+
+Only the key table unification fit in one context. The other items (cross join, per-run operator call, lazy group_by, end-to-end benchmark) go to a second run once pull request 148 is merged, each sized as its own piece.
