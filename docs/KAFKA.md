@@ -1066,6 +1066,18 @@ broker under the open tables of both.
     their records and those after do not. Here the order is the partitions' numbers. The
     failed constituent is the same; which of the others got the last records may differ.
     As item 4, this is an order Java does not define.
+28. **CDC, a tombstone brings a deleted key back.** After a delete, Debezium writes a
+    tombstone (the key, no value); Java's `last_by` keeps it as the key's last row, its
+    `op` is null, `op != `d`` keeps it, and the deleted key shows again with null columns.
+    Reproduced. Should Oxhaven keep this, or drop a key whose last record has no value?
+29. **CDC, Python arguments Java cannot take.** In Java's package `cdc.consume` fails for
+    any `cols_to_drop` but a Java list (`jcompat.j_array_list`), and `consume_raw` for
+    any `TableType`, its default included (only `.j_object` works). Reproduced; this
+    package has no `jcompat`, so dropping columns from Python is not reachable here.
+30. **CDC, decimals in the current rows.** A non-key `BigDecimal` or `BigInteger` column
+    of `cdc.consume` without `stream_table` is refused by name: the engine's `last_by` of
+    a blink table cannot hold these. Debezium's `connect.decimal` (any SQL `NUMERIC`) is
+    common, so the engine fix is worth sizing.
 
 ## Refused, by Java method
 
