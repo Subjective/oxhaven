@@ -10,7 +10,9 @@
 //! ```
 //!
 //! The optional second argument is the number of timed repetitions (default 5); each case
-//! prints its median, minimum and maximum in milliseconds.
+//! prints its median, minimum and maximum in milliseconds. The optional third argument
+//! runs only the cases whose names start with it (for a profiler), and skips the
+//! append-only cycles unless it names them (`append_only_cycles`).
 
 use arrow::array::{ArrayRef, Float64Array, Int32Array, Int64Array, RecordBatch, StringArray};
 use arrow::datatypes::{Field, Schema};
@@ -79,6 +81,9 @@ fn source(first: i64, rows: i64, key: &str) -> RecordBatch {
 }
 
 fn time(what: &str, reps: usize, mut run: impl FnMut()) {
+    if !selected(what) {
+        return;
+    }
     run();
     let mut times: Vec<f64> = (0..reps)
         .map(|_| {
@@ -94,6 +99,13 @@ fn time(what: &str, reps: usize, mut run: impl FnMut()) {
         times[0],
         times[times.len() - 1]
     );
+}
+
+/// Whether the case `name` runs: every case, or those that the third argument starts.
+fn selected(name: &str) -> bool {
+    std::env::args()
+        .nth(3)
+        .is_none_or(|prefix| name.starts_with(&prefix))
 }
 
 fn main() {
@@ -162,6 +174,9 @@ fn main() {
 
     // The same operations kept up to date over an append-only table: 20 cycles, each
     // appending a twentieth of the rows.
+    if !selected("append_only_cycles") {
+        return;
+    }
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
     let step = rows / 20;
     let grown: Arc<dyn Table> =

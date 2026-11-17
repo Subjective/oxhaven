@@ -14,6 +14,7 @@ use oxhaven_contracts::rowset::RowKey;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
 use std::cmp::Ordering;
+use std::ops::Range;
 use std::sync::Arc;
 
 pub(super) fn failure(message: impl Into<String>) -> TableFailure {
@@ -304,6 +305,84 @@ impl<'a> Run<'a> {
         self.positions
             .iter()
             .map(move |&p| (row_keys[p], values.scalar(p)))
+    }
+}
+
+/// The rows of one chunk brought together by group: a [`Run`] for each group, which an
+/// operator can take all at once instead of a call per group.
+#[derive(Clone, Copy)]
+pub struct Runs<'a> {
+    values: Option<&'a Values>,
+    weights: Option<&'a Values>,
+    row_keys: &'a [RowKey],
+    /// Positions in the chunk, by group and then increasing.
+    order: &'a [usize],
+    /// Each group's slot and its range of `order`, a group once.
+    runs: &'a [(usize, Range<usize>)],
+}
+
+impl<'a> Runs<'a> {
+    pub fn new(
+        values: Option<&'a Values>,
+        weights: Option<&'a Values>,
+        row_keys: &'a [RowKey],
+        order: &'a [usize],
+        runs: &'a [(usize, Range<usize>)],
+    ) -> Runs<'a> {
+        Runs {
+            values,
+            weights,
+            row_keys,
+            order,
+            runs,
+        }
+    }
+
+    /// The number of groups.
+    pub fn len(&self) -> usize {
+        self.runs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.runs.is_empty()
+    }
+
+    /// Each group's slot and its run, in order.
+    pub fn iter(&self) -> impl Iterator<Item = (usize, Run<'a>)> + 'a {
+        let Runs {
+            values,
+            weights,
+            row_keys,
+            order,
+            runs,
+        } = *self;
+        runs.iter().map(move |(slot, range)| {
+            let run = Run::new(values, row_keys, &order[range.clone()]).with_weights(weights);
+            (*slot, run)
+        })
+    }
+
+    /// Each group's slot and the position in the chunk of its first row (`first`) or its
+    /// last row, in order. A run is never empty.
+    pub fn ends(&self, first: bool) -> impl Iterator<Item = (usize, usize)> + 'a {
+        let order = self.order;
+        self.runs.iter().map(move |(slot, range)| {
+            let end = if first { range.start } else { range.end - 1 };
+            (*slot, order[end])
+        })
+    }
+
+    /// The row key at `position` of the chunk.
+    pub fn row_key(&self, position: usize) -> RowKey {
+        self.row_keys[position]
+    }
+
+    /// The value at `position` of the chunk. Panics as [`Run::scalars`].
+    pub fn scalar(&self, position: usize) -> Scalar {
+        let Some(values) = self.values else {
+            panic!("the operator has no input column");
+        };
+        values.scalar(position)
     }
 }
 
