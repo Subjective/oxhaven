@@ -1169,3 +1169,7 @@ Seven green checks. Task 9.6 takes the two bottlenecks 9.3 and 9.4 named: previo
 ## 2026-11-17 15:32 UTC: task 9.5 reported, pull request 148 opened
 
 Only the key table unification fit in one context. The other items (cross join, per-run operator call, lazy group_by, end-to-end benchmark) go to a second run once pull request 148 is merged, each sized as its own piece.
+
+## 2026-11-17 15:41 UTC: pull request 148 merged, second run of task 9.5 started
+
+Seven green checks. A fresh agent takes items 2 to 4 (cross join, per-run operator call, lazy group_by) from the handover; these are well defined, so it runs on the cheaper model.
