@@ -287,7 +287,6 @@ struct Union {
 fn place(builder: &mut RowSetBuilderRandom, rows: &RowSet, offset: RowKey) {
     builder.add_ranges(
         rows.ranges()
-            .iter()
             .map(|range| RowRange::new(range.first() + offset, range.last() + offset)),
     );
 }

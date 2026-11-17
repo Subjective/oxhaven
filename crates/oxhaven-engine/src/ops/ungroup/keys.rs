@@ -119,18 +119,15 @@ pub(super) fn moved_slots(rows: &RowSet, sizes: &[u64], base: u32) -> Result<Row
 ///
 /// Behavior: io.deephaven.engine.table.impl.UngroupOperation#computeSizeFromResultRowset
 pub(super) fn sizes_in(result: &RowSet, base: u32, rows: &RowSet) -> Vec<u64> {
-    let ranges = result.ranges();
-    let mut next = 0;
+    let mut ranges = result.ranges().peekable();
     let sizes = rows.iter().map(|key| {
         // A slot that is not row keys has no keys in the result.
         let Some(first) = slot_start(key, base) else {
             return 0;
         };
         let last = first.saturating_add((1 << base) - 1);
-        while next < ranges.len() && ranges[next].last() < first {
-            next += 1;
-        }
-        match ranges.get(next) {
+        while ranges.next_if(|range| range.last() < first).is_some() {}
+        match ranges.peek() {
             // The keys of a row are the first of its slot.
             Some(range) if range.first() <= first => (range.last().min(last) - first + 1) as u64,
             _ => 0,

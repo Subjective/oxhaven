@@ -16,7 +16,7 @@ use arrow::datatypes::{
     TimestampNanosecondType, UInt16Type,
 };
 use oxhaven_column::FlatSource;
-use oxhaven_contracts::rowset::{RowRange, RowSet};
+use oxhaven_contracts::rowset::RowSet;
 use oxhaven_contracts::schema::{ColumnDefinition, ColumnType, TableDefinition};
 use oxhaven_contracts::table::{ColumnSource, TableFailure};
 use oxhaven_engine::table::{QueryTable, TableSpec};
@@ -110,26 +110,10 @@ pub fn column_statistics(
 
 /// `rows` in order, cut into row sets of at most `size` rows.
 fn chunks_of(rows: &RowSet, size: u64) -> impl Iterator<Item = RowSet> + '_ {
-    let mut ranges = rows.ranges().iter().copied();
-    let mut rest: Option<RowRange> = ranges.next();
-    std::iter::from_fn(move || {
-        let mut taken = Vec::new();
-        let mut room = size;
-        while room > 0 {
-            let Some(range) = rest else { break };
-            if range.size() <= room {
-                room -= range.size();
-                taken.push(range);
-                rest = ranges.next();
-            } else {
-                let cut = range.first() + room as i64;
-                taken.push(RowRange::new(range.first(), cut - 1));
-                rest = Some(RowRange::new(cut, range.last()));
-                room = 0;
-            }
-        }
-        (!taken.is_empty()).then(|| RowSet::from_ranges(taken))
-    })
+    let step = usize::try_from(size).unwrap_or(usize::MAX).max(1);
+    (0..rows.size())
+        .step_by(step)
+        .map(move |start| rows.sub_set_by_position_range(start, start.saturating_add(size)))
 }
 
 type ResultColumn = (&'static str, ColumnType, ArrayRef);
@@ -798,6 +782,7 @@ mod tests {
     use super::*;
     use arrow::array::{BooleanArray, UInt16Array};
     use arrow::util::display::array_value_to_string;
+    use oxhaven_contracts::rowset::RowRange;
     use oxhaven_engine::table::in_memory_table;
     use oxhaven_testkit::{definition, doubles, ints, longs, strings};
     use ColumnType::{Double, Int, Long};
@@ -805,7 +790,7 @@ mod tests {
     fn sets(rows: &RowSet, size: u64) -> Vec<Vec<(i64, i64)>> {
         chunks_of(rows, size)
             .map(|chunk| {
-                let ranges = chunk.ranges().iter();
+                let ranges = chunk.ranges();
                 ranges.map(|range| (range.first(), range.last())).collect()
             })
             .collect()

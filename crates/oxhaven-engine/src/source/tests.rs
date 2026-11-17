@@ -220,7 +220,7 @@ fn a_location_can_have_no_more_rows_than_a_region_has_keys() {
     let table = stored_table(definition(), fits).unwrap();
     assert_eq!(table.row_set().size(), MAX_LOCATION_ROWS + 1);
     // the two regions touch: one range of row keys, read as two ranges of rows
-    assert_eq!(table.row_set().ranges().len(), 1);
+    assert_eq!(table.row_set().range_count(), 1);
     let across = RowSet::from_range(REGION - 1, REGION);
     let values = table.column(0).chunk(&across).unwrap();
     assert_eq!(longs(&values), [Some(REGION - 1), Some(0)]);

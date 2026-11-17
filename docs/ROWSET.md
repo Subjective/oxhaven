@@ -1,27 +1,26 @@
 # Row sets for large tables
 
-How Oxhaven stores the row keys of a table with many rows. Written by task 7.7
-(`tasks/7.7-rowset-containers.md`), which measured the present representation, built the
-replacement in `crates/oxhaven-rowset/src/blocks`, and stopped before the contract change that
-puts it to use.
+How Oxhaven stores the row keys of a table with many rows. Task 7.7
+(`tasks/7.7-rowset-containers.md`) measured the first representation, a sorted vector of
+ranges, and built the replacement; task 7.7b (`tasks/7.7b-rowset-swap.md`) made the replacement
+the row set of the contracts, `oxhaven_contracts::rowset::RowSet`, which every crate uses.
 
 ## Decision
 
-1. **The row set of a large table is `oxhaven_rowset::BlockRowSet`**: the key space cut into
-   blocks of 2^16 keys, with whole blocks counted, and every other block held as one run, a list
-   of runs, or a bitmap, whichever is smallest. Blocks are immutable and shared between row sets.
-2. **It has the operations of the contract `RowSet` with the same names and results**, checked
-   operation by operation against the contract type. One signature differs: `ranges()` is an
-   iterator, not a slice.
-3. **It is not yet the engine's row set.** The engine uses `oxhaven_contracts::rowset::RowSet`,
-   which is protected, and whose `ranges() -> &[RowRange]` fixes the representation to a vector
-   of ranges. "Making it the engine's row set" below is the contract change that remains.
-   The owner approved the swap on 2026-11-17, as its own contract-change task started when no
-   engine branch is open.
+1. **The row set is a set of blocks**: the key space cut into blocks of 2^16 keys, with whole
+   blocks counted, and every other block held as one run, a list of runs, or a bitmap,
+   whichever is smallest. Blocks are immutable and shared between row sets. It is
+   `oxhaven_contracts::rowset::RowSet` (`crates/oxhaven-contracts/src/rowset`).
+2. **It has the operations of the first row set with the same names and results**, checked
+   operation by operation against it. One signature differs: `ranges()` is an iterator, not a
+   slice. `range_count`, `as_single_range` and `overlaps_range` answer what callers used the
+   slice for without a walk of the ranges.
+3. **The first row set is kept as a reference for tests**, as `oxhaven_testkit::RangeRowSet`.
+   Nothing in the engine or the server uses it.
 
 ## What was slow
 
-The contract `RowSet` is a sorted vector of inclusive ranges, 16 bytes each. Its cost follows the
+The first row set (now `RangeRowSet`) is a sorted vector of inclusive ranges, 16 bytes each. Its cost follows the
 number of ranges, not the number of rows, so a stored table read whole (64 files of a million
 rows: 64 ranges) costs nothing. The trouble starts when a large table is filtered, because the
 result has about as many ranges as rows. Three things then cost O(ranges) each time they are
@@ -33,11 +32,11 @@ called:
 - `clone`, which `TrackingRowSet::write` does once a cycle to keep the previous value, copies
   all of it.
 
-`cargo run --release -p oxhaven-rowset --bin rowset-bench` times this on five shapes of row
+`cargo run --release -p oxhaven-rowset --example rowset-bench` times this on five shapes of row
 set. Storage-backed tables (task 7.1) are not built yet, so the shapes are made up to be what
 they will produce: Java gives each file of a stored table its own 2^43 keys
 (`RegionedColumnSource`), and a `where` keeps some of them. On the shape `filtered-half` (8
-files of a million rows, half of the rows kept: 4.0M rows in 2.0M ranges) the contract row set
+files of a million rows, half of the rows kept: 4.0M rows in 2.0M ranges) the vector of ranges
 took, on this machine:
 
 | operation | time |
@@ -50,7 +49,7 @@ took, on this machine:
 | 100 rows by position (a viewport) | 0.74 ms |
 | memory | 32 MB, 8 bytes a row |
 
-Operators call these per key and per cycle: the keyed cross join calls `find` for each key
+Operators called these per key and per cycle: the keyed cross join calls `find` for each key
 (`ops/crossjoin/keyed.rs`), `update_by` calls `get` and `find` around each affected position,
 the Barrage producer calls `get` for the bounds of a viewport, and a ticking table inserts every
 cycle. Set algebra between two large sets (`union` 216 ms, `intersect` 42 ms) is linear and
@@ -58,7 +57,7 @@ merely slow.
 
 ## The structure
 
-A `BlockRowSet` is a sorted vector of spans, and beside it the number of keys up to the end of
+A `RowSet` is a sorted vector of spans, and beside it the number of keys up to the end of
 each span. A span starts at a block (a key divided by 65536) and is one of:
 
 | form | holds | bytes |
@@ -92,15 +91,15 @@ of cardinalities and shared containers. Three things are not carried over.
   is written once for run lists and once for bitmaps; a run list is turned into a bitmap when it
   meets one.
 - **`SingleRange` and `SortedRanges`.** Java starts a row set in one of these and converts it
-  to an `RspBitmap` when it grows. A small `BlockRowSet` is a few inline spans with no
+  to an `RspBitmap` when it grows. A small `RowSet` is a few inline spans with no
   allocation beyond the two vectors, so there is one representation and no conversion.
 - **Reference counts by hand.** `RefCountedCow` and the containers' `shared` flag are `Arc`.
 
 ## Measurements
 
 One run of `rowset-bench` (release build, 4 cores shared with other jobs, load average 6 to 7;
-each time is the shortest of at least three runs). "ranges" is the contract row set, "blocks"
-the new one. The benchmark checks that both give the same keys for every operation before it
+each time is the shortest of at least three runs). "ranges" is the vector of ranges, "blocks"
+the row set. The benchmark checks that both give the same keys for every operation before it
 prints a row.
 
 `filtered-half`: 4.0M rows in 2.0M ranges, in 8 files.
@@ -139,6 +138,11 @@ prints a row.
 access 1000 times faster, changes 3.6 to 10000 times, set algebra 1.2 to 5.5 times, memory a
 quarter.
 
+A second run after the row set moved into the contracts (task 7.7b; the machine was busier)
+gave the same picture. `filtered-half`: `get` x1000 993 ms against 0.55 ms, one key added 100
+times 8216 ms against 0.27 ms, `clone` 2.96 ms against 1.6 us, a walk of every range 1.5 ms
+against 18 ms, memory 32.0 MB against 1.06 MB.
+
 ### Where blocks are slower
 
 - **Walking every range** costs about 4 ns a range for run lists and 7 ns for bitmaps, against
@@ -159,48 +163,78 @@ quarter.
   adding 1000 keys 71 against 38 ms, building 43 against 5 ms. A filter that keeps one row in
   65536 or fewer has this shape; it takes a table of 65 billion rows to make a million of them.
 
+### In the engine
+
+`cargo run -p oxhaven-engine --example fragmented-rows` builds an append-only table of 4M
+longs, keeps the even ones (2.0M rows in 2.0M ranges), and works on that table. Before and
+after the row set was replaced, on the same machine, both in the unoptimized `dev` profile (the
+second of two runs each):
+
+| step | ranges | blocks |
+| --- | ---: | ---: |
+| filter the 4M rows to the even ones | 2315 ms | 2464 ms |
+| filter the 2M even rows again | 2567 ms | 2605 ms |
+| 100 slices of 100 rows from the middle | 6952 ms | 5.3 ms |
+| sort the even rows, descending | 3864 ms | 3765 ms |
+| 20 cycles that append 10 rows each | 5231 ms | 32 ms |
+
+The filters and the sort read every row and cost what they did. What depended on the number
+of ranges is gone: a slice is a `get` and a sub set by position, and a cycle is an insert of
+ten keys and a copy for the previous value.
+
 ## Making it the engine's row set
 
-This needs a change to `crates/oxhaven-contracts`, which task 7.7 may not make. It is one
-change, with no new behavior:
+Done by task 7.7b, as one change with no new behavior:
 
-1. Move `crates/oxhaven-rowset/src/blocks` into `oxhaven-contracts` as the body of
-   `rowset::RowSet` (the contracts crate cannot depend on `oxhaven-rowset`), keeping the name
-   `RowSet` and every method.
-2. Change `RowSet::ranges` from `&[RowRange]` to an iterator of `RowRange`. Outside the
-   contracts and the row-set crate there are about 35 callers. The `for` loops, 11 of them,
-   compile as they are. The rest, in `oxhaven-engine` (`ops/merge`, `ops/crossjoin`,
-   `ops/ungroup`, `ops/agg`), `oxhaven-column/src/flat.rs`, `oxhaven-server` and
-   `oxhaven-testkit`, use the slice (`iter`, `len`, indexing, `partition_point`, a slice
-   pattern) and need a small rewrite each; `ranges().len()` should become a method, since it
-   is used to size buffers.
-3. `oxhaven-rowset`'s builders and `shift::has_key_in` read `ranges()` as a slice and change
-   with it. `has_key_in` becomes a `sub_set_by_key_range(..).is_empty()` or a method of its own.
+1. `crates/oxhaven-rowset/src/blocks` became `crates/oxhaven-contracts/src/rowset`, the body
+   of `rowset::RowSet`, with the name `RowSet` and every method kept.
+2. `RowSet::ranges` is an iterator of `RowRange`. Callers that only walked the slice walk the
+   iterator. Those that used it as a slice have a method each:
+   - `range_count()`, where a buffer was sized by `ranges().len()`;
+   - `as_single_range()`, where a slice pattern asked whether the rows are contiguous
+     (`oxhaven-column/src/flat.rs`, hierarchical viewports);
+   - `overlaps_range(first, last)`, which was `shift::has_key_in` and its `partition_point`;
+   - `get` and `sub_set_by_position_range`, where code indexed ranges by position: the
+     chunking of `ops/agg` and of column statistics, and the positional redirection of
+     `ops/merge/flatten.rs`, which built a prefix sum over the ranges on every call.
+3. The random builder adds a row set of more than 64 ranges by union, which shares its blocks,
+   and copies the ranges of a smaller one as before.
+4. The vector of ranges moved to `oxhaven_testkit::RangeRowSet`. The comparison of every
+   operation with it is `crates/oxhaven-rowset/tests/blocks.rs`; the tests of the layout itself
+   are unit tests of the contracts (`rowset/tests.rs`). `RowSet::check_layout`, hidden from
+   the documentation, lets the comparison check the layout from outside the crate.
+5. The row-set tests ported from Java (`crates/oxhaven-rowset/tests/rowset.rs`) run against
+   the row set at Java's sizes. Two of them (`testMinusIndexOps`, `testRandomInsertMinus`) take
+   37 and 22 seconds unoptimized at that size, so the quick seed budget runs the first fifth
+   of their rounds and `OXHAVEN_TEST_SEEDS=full` all of them.
 
-The gate for that change is the whole workspace at the full seed budget and
-`oracle/bin/ci-replay.sh` equal to its baseline: row sets have no results of their own on the
-wire, so the recorded Java results of every operator are the differential test. The row-set
-tests ported from Java (`crates/oxhaven-rowset/tests/rowset.rs`) then run against the new type,
-and their sizes, cut down because the contract row set was slow, can go back to Java's.
+Two callers still copy ranges into a vector, both because they build a new row set from
+changed ranges and `from_ranges` takes them in any order: `reverse` (`ops/merge/flatten.rs`),
+whose mirrored ranges come out in decreasing order, and the builders, which hold ranges until
+`build`.
 
-## Gate of task 7.7
+The gate was the whole workspace at the full seed budget and `oracle/bin/ci-replay.sh` equal
+to its baseline: row sets have no results of their own on the wire, so the recorded Deephaven
+results of every operator are the differential test. No expectation of any test changed.
+
+## Gate
 
 ```bash
-cargo test -p oxhaven-rowset
-OXHAVEN_TEST_SEEDS=full cargo test -p oxhaven-rowset
-cargo run --release -p oxhaven-rowset --bin rowset-bench
+cargo test -p oxhaven-contracts -p oxhaven-rowset
+OXHAVEN_TEST_SEEDS=full cargo test --workspace
+cargo run --release -p oxhaven-rowset --example rowset-bench
 ```
 
-The first two run `blocks::tests`, which compares every operation with the contract row set on
-300 seeds of generated key sets that reach all four span forms, and checks that every result is
-in the one layout for its keys. The third fails if any timed operation gives different keys in
-the two representations.
+`crates/oxhaven-rowset/tests/blocks.rs` compares every operation with `RangeRowSet` on 300
+seeds of generated key sets that reach all four span forms, and checks that every result is in
+the one layout for its keys. The benchmark fails if any timed operation gives different keys
+in the two representations.
 
 ## Not done
 
-- The contract change above, and with it any effect on the engine.
 - A packed form for row sets with one row per block (Java's `SortedRanges` covers this case).
   The measurements say where it would matter; nothing in the engine produces that shape yet.
 - `shift` of a bitmap by shifting its words, instead of rebuilding from ranges.
-- Operations Java has and the contract does not: search and reverse iterators, `RowSequence`,
+- A walk of the ranges from the end. `reverse` is the one caller that wants it.
+- Operations Java has and the row set does not: search and reverse iterators, `RowSequence`,
   `invert` with a maximum position, serialization. They are listed in `tasks/1.2-rowset-tests.md`.

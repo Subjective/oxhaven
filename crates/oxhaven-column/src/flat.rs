@@ -60,7 +60,7 @@ impl ColumnSource for FlatSource {
     }
 
     fn chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
-        if let [range] = rows.ranges() {
+        if let Some(range) = rows.as_single_range() {
             let size = range.size() as usize;
             if range.last() as u64 >= self.values.len() as u64 {
                 return Err(failure(format!(

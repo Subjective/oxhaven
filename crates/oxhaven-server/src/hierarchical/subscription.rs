@@ -173,7 +173,7 @@ impl ViewSubscription {
             }
         }
         if let Some(rows) = &rows {
-            if rows.ranges().len() > 1 {
+            if !rows.is_empty() && rows.as_single_range().is_none() {
                 return Err(Status::invalid_argument(
                     "HierarchicalTableView subscriptions only support contiguous viewports",
                 ));

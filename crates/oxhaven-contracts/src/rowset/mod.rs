@@ -1,12 +1,11 @@
-//! A row set for large tables: the key space is cut into blocks of 2^16 keys, whole blocks are
-//! counted, and every other block that holds keys stores them in the smallest form that fits.
+//! Row keys and row sets.
 //!
-//! [`BlockRowSet`] has the operations of the contract type
-//! [`RowSet`](oxhaven_contracts::rowset::RowSet), with the same names and the same results; the
-//! tests of this module compare every operation with the contract type. It differs in one
-//! signature: [`ranges`](BlockRowSet::ranges) is an iterator, because the ranges are not stored
-//! as a slice. `docs/ROWSET.md` has the measurements behind the design and what is needed to
-//! make this the engine's row set.
+//! A row set is an ordered set of 64-bit row keys. It is the address space of a table: columns are
+//! read by row key, and updates describe changes as row sets.
+//!
+//! Port of the observable behavior of `io.deephaven.engine.rowset.RowSet` and
+//! `io.deephaven.engine.rowset.WritableRowSet`. `docs/ROWSET.md` has the measurements behind the
+//! representation.
 //!
 //! # Layout
 //!
@@ -55,9 +54,69 @@ mod merge;
 #[cfg(test)]
 mod tests;
 
-use container::{BitRuns, BlockRuns, Body, Op, Run, View, BLOCK_KEYS};
-use oxhaven_contracts::rowset::{RowKey, RowRange, RowSet, RowSetError};
+use container::{count_runs, BitRuns, BlockRuns, Body, Op, Run, View, BLOCK_KEYS, MAX_RUNS};
 use std::fmt;
+
+/// A row key. Valid keys are non-negative, as in Java.
+pub type RowKey = i64;
+
+/// Port of `io.deephaven.engine.rowset.RowSequence#NULL_ROW_KEY`.
+pub const NULL_ROW_KEY: RowKey = -1;
+
+/// An inclusive range of row keys, `first <= last`, both non-negative.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct RowRange {
+    first: RowKey,
+    last: RowKey,
+}
+
+impl RowRange {
+    /// Creates the range `first..=last`.
+    ///
+    /// # Panics
+    /// If `first` is negative or greater than `last`. Ranges are built by engine code, so a bad
+    /// range is a broken invariant, not bad input.
+    pub fn new(first: RowKey, last: RowKey) -> Self {
+        assert!(
+            0 <= first && first <= last,
+            "invalid row range {first}..={last}"
+        );
+        Self { first, last }
+    }
+
+    pub fn first(&self) -> RowKey {
+        self.first
+    }
+
+    pub fn last(&self) -> RowKey {
+        self.last
+    }
+
+    /// Number of keys in the range.
+    pub fn size(&self) -> u64 {
+        (self.last - self.first) as u64 + 1
+    }
+}
+
+/// Errors from row-set operations whose preconditions depend on the data.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum RowSetError {
+    /// `invert` was given keys that are not all in the row set.
+    NotASubset,
+    /// A shift would move a key below zero.
+    NegativeKey,
+}
+
+impl fmt::Display for RowSetError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            RowSetError::NotASubset => write!(f, "keys are not a subset of the row set"),
+            RowSetError::NegativeKey => write!(f, "shift would produce a negative row key"),
+        }
+    }
+}
+
+impl std::error::Error for RowSetError {}
 
 const BLOCK_BITS: u32 = BLOCK_KEYS.trailing_zeros();
 
@@ -117,9 +176,21 @@ impl Span {
     }
 }
 
-/// An ordered set of row keys, for tables with many rows. See the [module](self) for the layout.
+/// How many spans of each form a row set has; see [`RowSet::check_layout`].
+#[doc(hidden)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
+pub struct SpanCounts {
+    pub full: u64,
+    pub one: u64,
+    pub runs: u64,
+    pub bits: u64,
+}
+
+/// An ordered set of row keys. See the [module](self) for the layout.
+///
+/// Two row sets are equal exactly when they hold the same keys.
 #[derive(Clone, PartialEq, Eq, Hash, Default)]
-pub struct BlockRowSet {
+pub struct RowSet {
     /// Sorted by block, not overlapping, each in the one form its keys allow (see `Body`).
     spans: Vec<Span>,
     /// `ends[i]` is the number of keys in `spans[..=i]`.
@@ -128,8 +199,7 @@ pub struct BlockRowSet {
     ends: Vec<u64>,
 }
 
-impl fmt::Debug for BlockRowSet {
-    /// The same text as the contract row set with these keys.
+impl fmt::Debug for RowSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "RowSet{{")?;
         for (i, r) in self.ranges().enumerate() {
@@ -146,7 +216,7 @@ impl fmt::Debug for BlockRowSet {
     }
 }
 
-impl BlockRowSet {
+impl RowSet {
     /// Behavior: io.deephaven.engine.rowset.RowSetFactory#empty
     pub fn empty() -> Self {
         Self::default()
@@ -220,6 +290,33 @@ impl BlockRowSet {
         }
     }
 
+    /// The number of ranges that [`ranges`](Self::ranges) yields, without walking them: it
+    /// costs the spans, and a count over the words of each bitmap.
+    pub fn range_count(&self) -> usize {
+        let mut count = 0;
+        let mut open_end = None;
+        for span in &self.spans {
+            let view = span.body.view();
+            count += match span.body {
+                Body::Full(_) | Body::One(_) => 1,
+                Body::Runs(ref runs) => runs.len(),
+                Body::Bits(ref words) => count_runs(words),
+            };
+            // A run that ends its block goes on in a run that starts the next block.
+            if open_end == Some(span.block) && view.first() == 0 {
+                count -= 1;
+            }
+            open_end = (view.last() == u16::MAX).then(|| span.end());
+        }
+        count
+    }
+
+    /// The range of this set when its keys are one range, without a walk.
+    pub fn as_single_range(&self) -> Option<RowRange> {
+        let (first, last) = (self.first_row_key()?, self.last_row_key()?);
+        ((last - first) as u64 == self.size() - 1).then(|| RowRange::new(first, last))
+    }
+
     /// All keys in increasing order.
     pub fn iter(&self) -> impl Iterator<Item = RowKey> + '_ {
         self.ranges().flat_map(|r| r.first()..=r.last())
@@ -260,6 +357,19 @@ impl BlockRowSet {
             .is_some_and(|s| s.block <= block && s.body.view().contains(low(key)))
     }
 
+    /// Whether this set has a key in `first..=last`. An inverted range holds no key.
+    ///
+    /// Behavior: io.deephaven.engine.rowset.RowSet#overlapsRange
+    pub fn overlaps_range(&self, first: RowKey, last: RowKey) -> bool {
+        let first = first.max(0);
+        if first > last {
+            return false;
+        }
+        // The first key at or after `first`, if any, is the one at its insertion position.
+        let (Ok(pos) | Err(pos)) = self.find_or_insertion(first);
+        self.get(pos).is_some_and(|key| key <= last)
+    }
+
     /// Position of `key` in this set, or `None` if absent.
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#find
@@ -283,7 +393,7 @@ impl BlockRowSet {
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#subSetForPositions,
     /// io.deephaven.engine.rowset.RowSet#subSetForReversePositions
-    pub fn sub_set_for_positions(&self, positions: &BlockRowSet, reversed: bool) -> BlockRowSet {
+    pub fn sub_set_for_positions(&self, positions: &RowSet, reversed: bool) -> RowSet {
         let size = self.size();
         let mut parts = Vec::new();
         for p in positions.ranges() {
@@ -302,7 +412,7 @@ impl BlockRowSet {
             parts.reverse();
         }
         // The parts are in key order now, so each insert works at the end of `out`.
-        let mut out = BlockRowSet::empty();
+        let mut out = RowSet::empty();
         for part in &parts {
             out.insert(part);
         }
@@ -323,36 +433,36 @@ impl BlockRowSet {
     }
 
     /// Behavior: io.deephaven.engine.rowset.RowSet#union
-    pub fn union(&self, other: &BlockRowSet) -> BlockRowSet {
+    pub fn union(&self, other: &RowSet) -> RowSet {
         merge::merge(Op::Union, self.all(), other.all())
     }
 
     /// Behavior: io.deephaven.engine.rowset.RowSet#intersect
-    pub fn intersect(&self, other: &BlockRowSet) -> BlockRowSet {
+    pub fn intersect(&self, other: &RowSet) -> RowSet {
         merge::merge(Op::Intersect, self.all(), other.all())
     }
 
     /// The keys in `self` that are not in `other`.
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#minus
-    pub fn minus(&self, other: &BlockRowSet) -> BlockRowSet {
+    pub fn minus(&self, other: &RowSet) -> RowSet {
         merge::merge(Op::Minus, self.all(), other.all())
     }
 
     /// Behavior: io.deephaven.engine.rowset.RowSet#overlaps
-    pub fn overlaps(&self, other: &BlockRowSet) -> bool {
+    pub fn overlaps(&self, other: &RowSet) -> bool {
         !self.intersect(other).is_empty()
     }
 
     /// Behavior: io.deephaven.engine.rowset.RowSet#subsetOf
-    pub fn is_subset_of(&self, other: &BlockRowSet) -> bool {
+    pub fn is_subset_of(&self, other: &RowSet) -> bool {
         self.minus(other).is_empty()
     }
 
     /// Positions, within `self`, of each key in `keys`, which must be a subset of `self`.
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#invert
-    pub fn invert(&self, keys: &BlockRowSet) -> Result<BlockRowSet, RowSetError> {
+    pub fn invert(&self, keys: &RowSet) -> Result<RowSet, RowSetError> {
         let mut seeker = Seeker::new(self);
         let mut out = Appender::default();
         for r in keys.ranges() {
@@ -372,10 +482,10 @@ impl BlockRowSet {
     /// The keys at positions `start..end` (end exclusive, clamped to `size()`).
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#subSetByPositionRange
-    pub fn sub_set_by_position_range(&self, start: u64, end: u64) -> BlockRowSet {
+    pub fn sub_set_by_position_range(&self, start: u64, end: u64) -> RowSet {
         let end = end.min(self.size());
         if start >= end {
-            return BlockRowSet::empty();
+            return RowSet::empty();
         }
         match (self.get(start), self.get(end - 1)) {
             // Consecutive positions are exactly the keys between the two ends.
@@ -387,12 +497,12 @@ impl BlockRowSet {
     /// The keys within `first..=last`. Empty when the range is empty or wholly negative.
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#subSetByKeyRange
-    pub fn sub_set_by_key_range(&self, first: RowKey, last: RowKey) -> BlockRowSet {
+    pub fn sub_set_by_key_range(&self, first: RowKey, last: RowKey) -> RowSet {
         let first = first.max(0);
         if first > last {
-            return BlockRowSet::empty();
+            return RowSet::empty();
         }
-        self.intersect(&BlockRowSet::from_range(first, last))
+        self.intersect(&RowSet::from_range(first, last))
     }
 
     /// Every key moved by `delta`.
@@ -402,7 +512,7 @@ impl BlockRowSet {
     ///
     /// Behavior: io.deephaven.engine.rowset.RowSet#shift,
     /// io.deephaven.engine.rowset.impl.rsp.RspBitmap#applyOffsetImpl
-    pub fn shift(&self, delta: i64) -> Result<BlockRowSet, RowSetError> {
+    pub fn shift(&self, delta: i64) -> Result<RowSet, RowSetError> {
         if let Some(first) = self.first_row_key() {
             if first + delta < 0 {
                 return Err(RowSetError::NegativeKey);
@@ -425,7 +535,7 @@ impl BlockRowSet {
                     body: s.body.clone(),
                 })
                 .collect();
-            return Ok(BlockRowSet {
+            return Ok(RowSet {
                 spans,
                 ends: self.ends.clone(),
             });
@@ -438,17 +548,17 @@ impl BlockRowSet {
     }
 
     /// Behavior: io.deephaven.engine.rowset.WritableRowSet#insert(RowSet)
-    pub fn insert(&mut self, other: &BlockRowSet) {
+    pub fn insert(&mut self, other: &RowSet) {
         self.merge_in_place(Op::Union, other);
     }
 
     /// Behavior: io.deephaven.engine.rowset.WritableRowSet#remove(RowSet)
-    pub fn remove(&mut self, other: &BlockRowSet) {
+    pub fn remove(&mut self, other: &RowSet) {
         self.merge_in_place(Op::Minus, other);
     }
 
     /// Behavior: io.deephaven.engine.rowset.WritableRowSet#retain
-    pub fn retain(&mut self, other: &BlockRowSet) {
+    pub fn retain(&mut self, other: &RowSet) {
         *self = self.intersect(other);
     }
 
@@ -462,6 +572,56 @@ impl BlockRowSet {
                 .iter()
                 .map(|s| s.body.heap_bytes())
                 .sum::<usize>()
+    }
+
+    /// Checks that this row set is in the one layout its keys allow, and returns how many
+    /// spans of each form it has. For tests of the row set itself.
+    ///
+    /// # Panics
+    /// If the layout is not the documented one.
+    #[doc(hidden)]
+    pub fn check_layout(&self) -> SpanCounts {
+        let mut seen = SpanCounts::default();
+        assert_eq!(self.spans.len(), self.ends.len());
+        let mut total = 0;
+        for (i, span) in self.spans.iter().enumerate() {
+            let keys = match &span.body {
+                Body::Full(blocks) => {
+                    seen.full += 1;
+                    assert!(*blocks >= 1);
+                    blocks * BLOCK_KEYS
+                }
+                Body::One(run) => {
+                    seen.one += 1;
+                    assert!(run.first <= run.last);
+                    assert_ne!(*run, Run::WHOLE, "a whole block stored as a run");
+                    run.len()
+                }
+                Body::Runs(runs) => {
+                    seen.runs += 1;
+                    assert!((2..=MAX_RUNS).contains(&runs.len()), "{} runs", runs.len());
+                    for w in runs.windows(2) {
+                        assert!(u32::from(w[0].last) + 1 < u32::from(w[1].first));
+                    }
+                    runs.iter().map(|r| r.len()).sum()
+                }
+                Body::Bits(words) => {
+                    seen.bits += 1;
+                    assert!(count_runs(words) > MAX_RUNS, "a bitmap with few runs");
+                    words.iter().map(|w| u64::from(w.count_ones())).sum()
+                }
+            };
+            assert!(span.end() <= 1 << (63 - BLOCK_BITS), "beyond the key space");
+            total += keys;
+            assert_eq!(self.ends[i], total, "key count of span {i}");
+            if let Some(next) = self.spans.get(i + 1) {
+                assert!(span.end() <= next.block, "spans {i} and the next overlap");
+                let both_full =
+                    matches!(span.body, Body::Full(_)) && matches!(next.body, Body::Full(_));
+                assert!(!(both_full && span.end() == next.block), "unjoined blocks");
+            }
+        }
+        seen
     }
 
     /// The number of keys in `spans[..i]`.
@@ -497,7 +657,7 @@ impl BlockRowSet {
     }
 
     /// Adds `from.spans[at..end]`, which is not empty, after all the spans of `self`.
-    fn extend(&mut self, from: &BlockRowSet, at: usize, end: usize) {
+    fn extend(&mut self, from: &RowSet, at: usize, end: usize) {
         // Only the first can be whole blocks that follow whole blocks.
         let first = &from.spans[at];
         self.push(first.block, first.body.clone(), from.keys_of(at));
@@ -508,25 +668,9 @@ impl BlockRowSet {
     }
 }
 
-impl FromIterator<RowKey> for BlockRowSet {
+impl FromIterator<RowKey> for RowSet {
     fn from_iter<T: IntoIterator<Item = RowKey>>(iter: T) -> Self {
-        BlockRowSet::from_keys(iter)
-    }
-}
-
-impl From<&RowSet> for BlockRowSet {
-    fn from(rows: &RowSet) -> Self {
-        let mut appender = Appender::default();
-        for r in rows.ranges() {
-            appender.append(r.first(), r.last());
-        }
-        appender.finish()
-    }
-}
-
-impl From<&BlockRowSet> for RowSet {
-    fn from(rows: &BlockRowSet) -> Self {
-        RowSet::from_ranges(rows.ranges())
+        RowSet::from_keys(iter)
     }
 }
 
@@ -534,7 +678,7 @@ impl From<&BlockRowSet> for RowSet {
 /// before it but not overlap it.
 #[derive(Default)]
 struct Appender {
-    out: BlockRowSet,
+    out: RowSet,
     /// The block whose runs are being collected.
     block: u64,
     runs: BlockRuns,
@@ -571,7 +715,7 @@ impl Appender {
         }
     }
 
-    fn finish(mut self) -> BlockRowSet {
+    fn finish(mut self) -> RowSet {
         self.flush();
         self.out
     }
@@ -580,7 +724,7 @@ impl Appender {
 /// Finds positions of keys that are asked for in increasing order, without starting over for
 /// each: an inversion of `k` ranges costs the spans and blocks passed, not `k` searches.
 struct Seeker<'a> {
-    set: &'a BlockRowSet,
+    set: &'a RowSet,
     /// The first span that may hold the next key.
     span: usize,
     /// Progress within that span's block: runs (of a run list) or words (of a bitmap) passed,
@@ -590,7 +734,7 @@ struct Seeker<'a> {
 }
 
 impl<'a> Seeker<'a> {
-    fn new(set: &'a BlockRowSet) -> Self {
+    fn new(set: &'a RowSet) -> Self {
         Self {
             set,
             span: 0,
@@ -656,7 +800,7 @@ impl<'a> Seeker<'a> {
     }
 }
 
-/// Iterator over the ranges of a [`BlockRowSet`].
+/// Iterator over the ranges of a [`RowSet`].
 pub struct Ranges<'a> {
     spans: std::slice::Iter<'a, Span>,
     /// The block of the runs being walked.

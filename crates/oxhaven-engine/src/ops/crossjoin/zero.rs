@@ -43,14 +43,13 @@ pub(super) fn check_key_space(
 
 /// The rows of a result whose left table has `left` and right table `right`, at `bits`.
 pub(super) fn rows(left: &RowSet, right: &RowSet, bits: u32) -> RowSet {
-    let mut ranges = Vec::with_capacity(left.size() as usize * right.ranges().len());
+    let mut ranges = Vec::with_capacity(left.size() as usize * right.range_count());
     if !right.is_empty() {
         for row in left.iter() {
             let offset = row << bits;
             ranges.extend(
                 right
                     .ranges()
-                    .iter()
                     .map(|range| RowRange::new(range.first() + offset, range.last() + offset)),
             );
         }

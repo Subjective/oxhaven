@@ -47,7 +47,6 @@ impl InnerChange {
     pub(super) fn unchanged(rows: RowSet) -> Self {
         let runs = rows
             .ranges()
-            .iter()
             .map(|range| ShiftRange {
                 first: range.first(),
                 last: range.last(),
@@ -81,7 +80,7 @@ impl InnerChange {
         let before = prev.minus(&removed);
         let after = curr.minus(&added);
         let mut runs = Vec::new();
-        let mut later = after.ranges().iter().map(|r| (r.first(), r.last()));
+        let mut later = after.ranges().map(|r| (r.first(), r.last()));
         let mut target: Option<(RowKey, RowKey)> = later.next();
         for range in before.ranges() {
             let mut first = range.first();
@@ -197,7 +196,6 @@ fn place(out: &mut Vec<RowRange>, inner: &RowSet, offset: RowKey) {
     out.extend(
         inner
             .ranges()
-            .iter()
             .map(|range| RowRange::new(range.first() + offset, range.last() + offset)),
     );
 }
