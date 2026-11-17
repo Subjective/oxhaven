@@ -81,6 +81,11 @@ impl ColumnSource for FlatSource {
     }
 
     fn chunk_by_keys(&self, keys: &[RowKey], _use_prev: bool) -> Result<ArrayRef, TableFailure> {
+        if !keys.contains(&NULL_ROW_KEY) {
+            // Every key is a position: a gather without a validity per key.
+            let positions: Vec<u64> = keys.iter().map(|&k| k as u64).collect();
+            return self.take(&UInt64Array::from(positions));
+        }
         let positions: UInt64Array = keys
             .iter()
             .map(|&k| (k != NULL_ROW_KEY).then_some(k as u64))
