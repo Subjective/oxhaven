@@ -1157,3 +1157,7 @@ The agent found per-row overhead, not the single thread, was the main cost of fi
 ## 2026-11-17 14:18 UTC: pull request 146 merged
 
 Seven green checks. Task 9.3 agent told that main moved. Follow-ups from 9.4: scattered row set building in filters, piece joins for 8-byte results, thread count server option, end-to-end benchmark rerun.
+
+## 2026-11-17 14:37 UTC: task 9.3 reported, pull request 147 opened
+
+All gates passed locally. The comparison sort, not the boxes, was three quarters of the cost. Stopped the orphaned bench.py (pid 7138) left by the first benchmark run. Follow-up: the redirection records one previous mapping per write, which keeps the incremental sort linear per cycle.
