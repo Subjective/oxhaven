@@ -17,6 +17,11 @@ strings) where Java uses flat arrays and open-addressed hash tables. Oxhaven was
 correct-first (PORTING.md, rule 5) and has never been tuned; Java has. The machine was shared
 with other jobs during both runs, so ratios under about 2x are within the noise.
 
+Since then, task 9.1 has made `natural_join` and `exact_join` 14x to 88x faster than they
+were in this first measurement, which brings them to Java's times or below them; see
+[After task 9.1](#after-task-91-natural-and-exact-joins-2026-11-17). The tables and the
+reading of the first measurement are kept below as they were written.
+
 ## What is measured
 
 One **case** is an operation on a table that lives on the server. A case runs in three parts:
@@ -243,6 +248,96 @@ Median milliseconds of each run, run 1 / run 2. Ratio = oxhaven / java; above 1 
 | `doget_1m` | 88.7 / 70.5 | 39.1 / 44.2 | 0.44 / 0.63 | yes / yes |
 | `ticking_append_where_sum_by` | 51.4 / 39.6 | 113 / 96.4 | 2.21 / 2.44 | yes / yes |
 
+## After task 9.1: natural and exact joins (2026-11-17)
+
+Task 9.1 (`tasks/9.1-fast-joins.md`) rewrote how `natural_join` and `exact_join` find their
+matches and how a result's row redirection is stored. This block measures that change only.
+
+**What was compared.** Two Oxhaven servers on the machine above, run by the same runner with
+the join cases only (`--cases 'natural_join_*,exact_join_*,join_on_key,aj'`), interleaved case
+by case: "before" is `main` at `03f8dbb8`, "after" is the branch of task 9.1, both built with
+`cargo build --release --locked -p oxhaven-server`. Two complete runs, 12:08 to 12:15 and
+12:15 to 12:23, with other agents building on the machine (one-minute load 2.7 to 4.4 in run
+1 and 5.0 to 7.6 in run 2). Every case gave the same result on both servers in both runs.
+Java was not run again: the "java (earlier)" column repeats the medians of the first
+measurement above, taken two hours earlier under another load, so the last column is an
+indication and not a measurement of one run. The raw results and the table with min-max and
+load per case are in `bench/results/2026-11-17-task-9.1*`.
+
+Median milliseconds of each run, run 1 / run 2.
+
+| case | rows | before | after | before / after | java (earlier) | after / java (earlier) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `natural_join_small` | 1M | 692 / 790 | 7.9 / 10.5 | 88 / 75 | 28.7 / 25.4 | 0.3 to 0.4 |
+| `natural_join_large` | 1M | 2286 / 2521 | 122 / 180 | 19 / 14 | 125 / 125 | 1.0 to 1.4 |
+| `exact_join_small` | 1M | 640 / 705 | 8.4 / 8.8 | 76 / 80 | 25.9 / 24.7 | 0.3 to 0.4 |
+| `exact_join_large` | 1M | 2115 / 2614 | 139 / 154 | 15 / 17 | 140 / 123 | 1.0 to 1.3 |
+| `join_on_key` | 1M | 536 / 645 | 536 / 671 | 1.0 / 1.0 | 365 / 314 | 1.5 to 2.1 |
+| `aj` | 1M | 474 / 595 | 441 / 475 | 1.1 / 1.3 | 213 / 185 | 2.1 to 2.6 |
+| `natural_join_small` | 10M | 7352 / 8528 | 146 / 194 | 50 / 44 | 344 / 297 | 0.4 to 0.7 |
+| `natural_join_large` | 10M | 16780 / 18570 | 558 / 698 | 30 / 27 | 584 / 514 | 1.0 to 1.4 |
+| `exact_join_small` | 10M | 8068 / 8804 | 161 / 174 | 50 / 51 | 243 / 212 | 0.7 to 0.8 |
+| `exact_join_large` | 10M | 15182 / 18875 | 581 / 643 | 26 / 29 | 674 / 500 | 0.9 to 1.3 |
+| `join_on_key` | 10M | 6514 / 7448 | 6400 / 6903 | 1.0 / 1.1 | 3982 / 2355 | 1.6 to 2.9 |
+| `aj` | 10M | 6356 / 6518 | 5326 / 5667 | 1.2 / 1.2 | 2677 / 1822 | 2.0 to 3.1 |
+
+**What changed.**
+
+- The keys of both tables are numbered by a hash table, a chunk of key columns at a time
+  (`ops/join/key_table.rs`): a single primitive, boolean or time column as 64-bit integers kept
+  in the table itself, a single string column as bytes borrowed from the chunk, and any other
+  combination as rows of Arrow's row format. No key is allocated per row, and the hash has a
+  fixed seed.
+- A join of two static tables makes one pass over each table and keeps nothing per key or per
+  row but the redirection. With a refreshing left table and a static right table it keeps the
+  first and last right row per key. Only a refreshing right table makes it keep the left rows
+  of each key, and a key with one row costs no set.
+- `WritableRowRedirection` (`oxhaven-column/src/redirect.rs`) keeps its mappings in a flat
+  array indexed by row key while the keys are dense (at most four array cells per mapping, the
+  factor of Java's `JoinControl#getRedirectionType`) and in an ordered map otherwise, and moves
+  between the two by itself; previous mappings are kept apart for the cycle, as in Java's
+  `ContiguousWritableRowRedirection`. A whole result's redirection is made in one piece, and for
+  the row keys `0..n` it is the vector of right row keys itself. Every operator that uses a
+  redirection gets the array without a change of its own, which is why `aj` is 7% to 20%
+  faster here.
+
+**Where the time went, and where it goes now.** The first measurement's reading of the cause
+was right in kind. Measured with `cargo run --release -p oxhaven-engine --example join-phases`
+on the same machine (one run of the code before and two of the code after, at a load of 4.6 to 7.8), for 10M left rows and 10,000 right keys:
+
+| part | before | after |
+| --- | ---: | ---: |
+| read the left keys into one `Vec<Cell>` per row | 1047 ms | none |
+| left rows into the ordered map and the per-key sets | 5355 ms | none |
+| look up the left keys in the hash table | none | 95 to 133 ms |
+| right row of each left row | (in the map time) | 50 to 58 ms |
+| the redirection | 762 ms (10M `BTreeMap` inserts) | 14 to 16 ms (one vector) |
+| the whole join | 7632 ms | 214 to 229 ms |
+
+So the ordered map with its sets was 70% of the time, the keys 14% and the redirection 10%.
+The other shapes of the example, whole joins of 10M left rows, before and after: 1,000,000
+right keys 15931 ms and 828 to 1255 ms; a string key with 1,000 values 6196 ms and 175 to
+255 ms; an int and a string key together (the row-format path) 10631 ms and 471 to 490 ms; a
+refreshing left table 7608 ms and 519 to 546 ms; a refreshing right table 7367 ms and 328 to
+390 ms, and ten cycles that each add 100 right rows and so change 100,000 result rows 1368 ms
+and 325 to 373 ms. In a debug build the 1M-row join with 10,000 right keys went from 2416 ms
+to 185 ms and the one with 1,000,000 right keys from 7438 ms to 1400 ms.
+
+**What did not get faster.** `join_on_key` is unchanged: the cross join (`ops/crossjoin`) has
+its own keyed state and still reads a `Vec<Cell>` per row. `aj` gained only what the flat
+redirection gives it. The times above are for making the join; reading an added column of all
+10M rows back through the redirection takes 256 to 331 ms (666 to 737 ms before), because
+`RedirectedSource` gathers every row key into a vector and then takes the values one by one.
+
+**The next bottlenecks of these joins.** With 1,000,000 right keys, most of the time
+is the lookup of 10M left keys in a table that no longer fits in cache and the second
+random read, of the key's right row, that follows it; Java's time is the same within the noise, so there is
+little left without a change of method (partitioning the keys, or prefetching). For a
+refreshing right table it is the set of left rows per key (a `BTreeSet` each) and one lock and
+one ordered-map insertion per changed row of the redirection. A join's key table also never
+forgets a key, as Java's does not; the ordered map it replaces dropped a key when its last row
+left.
+
 ## Reading the results
 
 No profiler was available on the machine (`perf` is not installed), so the causes below come
@@ -259,7 +354,8 @@ Arrow arrays and Java converts its chunks to Arrow buffers. The ticking case is 
 
 **Slower, and why.** The worst cases, slowest first:
 
-1. **`natural_join` and `exact_join`: 18x to 40x.** `ops/join/natural.rs` (`NaturalJoin::start`)
+1. **`natural_join` and `exact_join`: 18x to 40x.** (Fixed by task 9.1; see "After task
+   9.1" above. What follows describes the code before it.) `ops/join/natural.rs` (`NaturalJoin::start`)
    reads every row's key into a `Vec<Cell>` (`ops/join/keys.rs`: one heap allocation per row,
    with an enum per cell), keeps the keys in a `BTreeMap<Vec<Cell>, Slot>` in which every slot
    has a `BTreeSet` of its left rows and one of its right rows, clones the key once more per
@@ -358,7 +454,9 @@ the cases under about 10 ms (`head_half`, `tail_half`, `ungroup`).
 Ordered by value for the effort; estimates are for one agent and include tests against the
 oracle corpus and the self-consistency checker, which every change to these paths needs.
 
-1. **Flat storage for dense row keys in `oxhaven-column`** (3 to 5 days). Give
+1. **Flat storage for dense row keys in `oxhaven-column`** (3 to 5 days). *Half done by task
+   9.1: `WritableRowRedirection` has it; `WritableSource`, which the aggregation results
+   use, does not.* Give
    `WritableRowRedirection` and `WritableSource` a representation backed by a `Vec` for keys
    `0..n`, with previous values tracked only once the table refreshes, instead of a
    `BTreeMap<RowKey, _>` per cell. Sort results, join results over a flat left table, and
@@ -368,6 +466,10 @@ oracle corpus and the self-consistency checker, which every change to these path
    Expected: the redirection part of joins and sorts falls from about a tree insertion to an
    array store per row.
 2. **Hash the join keys, and keep per-row join state only when refreshing** (3 to 4 days).
+   *Done by task 9.1 for `natural_join` and `exact_join`. The same key table
+   (`ops/join/key_table.rs`) is there for `join` (`ops/crossjoin`), `aj` (`ops/asof`),
+   `multi_join`, `range_join` and `where_in`, which still read a `Vec<Cell>` per row; `join`
+   is 1.5x to 2.9x and `aj` 2x to 3x of Java's earlier times.*
    Encode the keys of a chunk with `RowConverter` into one buffer, as aggregation already does,
    look them up in a hash table with a fixed-seed fast hasher (PORTING.md rule 7 allows fixed
    seeds), and build the left rows per slot only for a refreshing left table. With item 1, the
