@@ -7,15 +7,19 @@
 //! cargo run --release -p oxhaven-engine --example sort-phases             # 1 million rows
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 # or this many
 //! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --sorts-only
+//! cargo run --release -p oxhaven-engine --example sort-phases -- 10000000 --incremental-only
 //! ```
+//!
+//! `--incremental-only` runs the refreshing sorts alone and, before them, the cost of one
+//! redirection write per row inside and outside an update cycle (task 9.6).
 
 use arrow::array::{Array, ArrayRef, Float64Array, Int32Array, Int64Array, RecordBatch};
 use arrow::array::{StringArray, UInt64Array};
 use arrow::compute::{take, SortOptions};
 use arrow::datatypes::{DataType, Field, Schema};
 use arrow::row::{RowConverter, SortField};
-use oxhaven_column::WritableRowRedirection;
-use oxhaven_contracts::graph::UpdateGraph;
+use oxhaven_column::{Clock, WritableRowRedirection};
+use oxhaven_contracts::graph::{ClockPhase, ClockValue, UpdateGraph};
 use oxhaven_contracts::rowset::{RowKey, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
@@ -134,6 +138,36 @@ fn boxed_phases(table: &Arc<dyn Table>, on: &[&str]) {
     });
 }
 
+/// A clock that is always in the updating phase of one step.
+struct Updating;
+
+impl Clock for Updating {
+    fn now(&self) -> ClockValue {
+        ClockValue {
+            step: 7,
+            phase: ClockPhase::Updating,
+        }
+    }
+}
+
+/// What an incremental sort that rewrites every position costs in the redirection alone:
+/// `rows` positions moved up by one, written one by one, outside a cycle and inside one,
+/// where each write records the previous mapping.
+fn redirection_writes(rows: i64) {
+    for (what, tracked) in [("outside a cycle", false), ("inside a cycle", true)] {
+        let redirection =
+            WritableRowRedirection::from_rows(&RowSet::flat(rows as u64), (0..rows).collect());
+        if tracked {
+            redirection.start_tracking_prev(Arc::new(Updating));
+        }
+        timed(&format!("one redirection write per row, {what}"), || {
+            for position in 0..rows {
+                redirection.put(position, (position + 1) % rows);
+            }
+        });
+    }
+}
+
 fn main() {
     let rows: i64 = match std::env::args().nth(1) {
         Some(text) => text.parse().expect("the number of rows"),
@@ -141,10 +175,16 @@ fn main() {
     };
     // `--sorts-only` after the number of rows leaves out the parts of the boxed sort.
     let sorts_only = std::env::args().nth(2).as_deref() == Some("--sorts-only");
+    let incremental_only = std::env::args().nth(2).as_deref() == Some("--incremental-only");
+    println!("{rows} rows, load average {}", load());
+    if incremental_only {
+        redirection_writes(rows);
+        incremental(rows);
+        println!("load average {}", load());
+        return;
+    }
     let table: Arc<dyn Table> =
         in_memory_table(definition(&COLUMNS), &[batch(0..rows)]).expect("a table");
-    println!("{rows} rows");
-
     let shapes: [(&str, Vec<SortColumn>, Vec<&str>); 4] = [
         (
             "sort by an int",
@@ -178,7 +218,18 @@ fn main() {
         }
     }
 
-    // A refreshing table: the sort places each cycle's rows among the others.
+    incremental(rows);
+    println!("load average {}", load());
+}
+
+fn load() -> String {
+    std::fs::read_to_string("/proc/loadavg")
+        .map(|text| text.split(' ').take(3).collect::<Vec<_>>().join(" "))
+        .unwrap_or_else(|_| "unknown".into())
+}
+
+/// A refreshing table of `rows` rows: the sort places each cycle's rows among the others.
+fn incremental(rows: i64) {
     let graph: Arc<dyn UpdateGraph> = SteppedUpdateGraph::new();
     let ticking: Arc<dyn Table> =
         append_only_input_table(graph, definition(&COLUMNS), Some(&batch(0..rows)))
@@ -192,7 +243,12 @@ fn main() {
         timed("  10 cycles that append 1,000 rows each", || {
             for cycle in 0..10 {
                 let first = start + cycle * 1000;
+                let started = Instant::now();
                 input.add(batch(first..first + 1000)).expect("an append");
+                println!(
+                    "    cycle {cycle}: {:.1} ms",
+                    started.elapsed().as_secs_f64() * 1e3
+                );
             }
         });
         assert_eq!(sorted.row_set().size() as i64, start + 10_000);

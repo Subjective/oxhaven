@@ -121,15 +121,23 @@ impl KeyEncoder {
         self.columns.iter().map(|column| column.index).collect()
     }
 
-    /// The sort keys of the rows `rows`, in row-key order, from the current values.
+    /// The sort keys of the rows `rows`, in row-key order, from the current values, or
+    /// with `use_prev` from the previous values, `rows` then being rows of the parent's
+    /// previous row set.
     pub(super) fn encode(
         &self,
         parent: &dyn Table,
         rows: &RowSet,
+        use_prev: bool,
     ) -> Result<SortKeys, TableFailure> {
         let mut values = Vec::with_capacity(self.columns.len());
         for column in &self.columns {
-            values.push(parent.column(column.index).chunk(rows)?);
+            let source = parent.column(column.index);
+            values.push(if use_prev {
+                source.prev_chunk(rows)?
+            } else {
+                source.chunk(rows)?
+            });
         }
         let keys = match &self.form {
             Form::Fixed { descending } => {

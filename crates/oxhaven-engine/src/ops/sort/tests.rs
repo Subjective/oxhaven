@@ -397,13 +397,58 @@ fn added_rows_are_placed_by_key_and_after_earlier_ties() {
 }
 
 #[test]
-fn removed_rows_leave_and_later_rows_close_the_gap() {
+fn removed_rows_leave_their_keys_free_and_no_row_moves() {
     let t = ticking_sort();
     let update = t.step(TableChange::new().remove([20])).unwrap();
     assert_eq!(tags(&*t.result).concat(), "dac");
     assert_eq!(keys(&update.removed), [0]);
     assert!(update.added.is_empty() && update.modified.is_empty());
-    assert_eq!(shifts(&update), [(1, 3, -1)]);
+    assert!(update.shifted.is_empty());
+    assert_eq!(keys(&t.result.row_set()), [1, 2, 3]);
+}
+
+/// More rows than a leaf of the key space holds, inserted at one place, at the front and
+/// at the end, among removals: the rows stay in order, rows that make room are reported as
+/// shifts (the checker applies them), and the keys stay within the room of a flat
+/// redirection.
+#[test]
+fn insertions_beyond_a_leaf_spread_over_more_leaves() {
+    use super::gapped::{INITIAL_FILL, LEAF};
+    let t = ticking_sort();
+    let mut next_key = 1000;
+    let mut shifts_seen = 0;
+    let mut size = 4;
+    for round in 0..40 {
+        // Twenty rows with one sort value, then one before all rows and one after them.
+        let mut values = vec![3 + round % 3; 20];
+        values.extend([-round, 1000 + round]);
+        let added: Vec<i64> = (next_key..next_key + 22).collect();
+        next_key += 22;
+        size += 22;
+        let tag = vec!["x"; 22];
+        let mut change = TableChange::new().add(added, rows(values, &tag));
+        if round % 4 == 3 {
+            // Rows of the round before, from the middle of their run.
+            change = change.remove(next_key - 40..next_key - 33);
+            size -= 7;
+        }
+        let update = t.step(change).unwrap();
+        shifts_seen += update.shifted.ranges().len();
+        let shown: Vec<i32> = cells(&*t.result, 0)
+            .iter()
+            .map(|cell| cell.parse().expect("an int"))
+            .collect();
+        assert_eq!(shown.len(), size, "round {round}");
+        assert!(shown.is_sorted(), "round {round}: {shown:?}");
+    }
+    let keys = t.result.row_set();
+    assert!(size > 4 * LEAF);
+    assert!(shifts_seen > 0, "no insertion had to make room");
+    let last = keys.last_row_key().expect("rows") as usize;
+    assert!(
+        last < 2 * size * LEAF / INITIAL_FILL,
+        "the last key is {last}"
+    );
 }
 
 #[test]
@@ -492,9 +537,11 @@ fn a_modified_sort_value_that_moves_is_a_remove_and_an_add() {
         .unwrap();
     assert_eq!(tags(&*t.result).concat(), "dacb");
     assert_eq!(keys(&update.removed), [0]);
-    assert_eq!(keys(&update.added), [3]);
+    // The row goes to the free key after the last row, and no other row moves.
+    assert_eq!(keys(&update.added), [4]);
     assert!(update.modified.is_empty());
-    assert_eq!(shifts(&update), [(1, 3, -1)]);
+    assert!(update.shifted.is_empty());
+    assert_eq!(keys(&t.result.row_set()), [1, 2, 3, 4]);
 }
 
 /// `fixtures/sort_modified_rows.json`, step 6.

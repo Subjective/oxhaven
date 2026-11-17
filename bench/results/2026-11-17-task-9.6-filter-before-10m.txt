@@ -1,0 +1,37 @@
+10000000 rows, 3 repetitions, load average 2.38 2.02 1.97
+-- 1 thread(s), load average 2.38 2.02 1.97
+where_range                            179.7 ms  (min 159.5, max 195.0)    18.0 ns/row
+where_range (two filters)              313.3 ms  (min 295.9, max 315.4)    31.3 ns/row
+where_string                            60.4 ms  (min 59.0, max 69.2)     6.0 ns/row
+where_conj                             117.4 ms  (min 114.9, max 119.9)    11.7 ns/row
+update_arith                           338.9 ms  (min 325.5, max 342.1)    33.9 ns/row
+update_cond                            162.7 ms  (min 159.0, max 172.0)    16.3 ns/row
+update_string                         1148.4 ms  (min 1062.9, max 1164.4)   114.8 ns/row
+build                                 2004.8 ms  (min 1948.2, max 2025.6)   200.5 ns/row
+build (numbers only)                   756.7 ms  (min 754.2, max 835.5)    75.7 ns/row
+-- 4 thread(s), load average 2.11 1.99 1.96
+where_range                            116.6 ms  (min 107.4, max 121.6)    11.7 ns/row
+where_range (two filters)              235.3 ms  (min 234.2, max 248.4)    23.5 ns/row
+where_string                            21.7 ms  (min 21.4, max 22.8)     2.2 ns/row
+where_conj                              88.8 ms  (min 78.5, max 90.4)     8.9 ns/row
+update_arith                           180.0 ms  (min 174.0, max 194.8)    18.0 ns/row
+update_cond                             87.2 ms  (min 85.1, max 90.3)     8.7 ns/row
+update_string                          546.1 ms  (min 490.0, max 594.3)    54.6 ns/row
+build                                  973.2 ms  (min 969.7, max 1031.3)    97.3 ns/row
+build (numbers only)                   519.3 ms  (min 485.9, max 534.9)    51.9 ns/row
+-- parts, one thread, load average 2.23 2.02 1.97
+scan A (count in range)                  7.7 ms  (min 6.3, max 9.3)     0.8 ns/row
+read A as a chunk                        0.0 ms  (min 0.0, max 0.0)     0.0 ns/row
+evaluate A >= 20000 && A < 60000        60.9 ms  (min 60.2, max 62.4)     6.1 ns/row
+evaluate A * 2 + 1                      49.1 ms  (min 48.1, max 50.2)     4.9 ns/row
+evaluate B * 1.5 - A                   133.2 ms  (min 122.4, max 135.0)    13.3 ns/row
+evaluate Id % 7                        162.4 ms  (min 153.4, max 168.4)    16.2 ns/row
+evaluate A > 50000 ? B : -B            165.0 ms  (min 156.7, max 171.9)    16.5 ns/row
+row set of the kept 40%                115.6 ms  (min 114.6, max 117.1)    11.6 ns/row
+read A at the kept 40%                  46.4 ms  (min 45.7, max 48.4)     4.6 ns/row
+K10 = 3, of 10000000 rows               54.0 ms  (min 52.3, max 66.5)     5.4 ns/row
+B > 50000.0, of 1000000 rows            42.1 ms  (min 41.9, max 43.0)     4.2 ns/row
+A < 50000, of 649999 rows               21.7 ms  (min 21.5, max 22.4)     2.2 ns/row
+ranges of the kept 40%                  42.1 ms  (min 41.9, max 44.8)     4.2 ns/row
+sequential builder over them            85.1 ms  (min 84.9, max 91.1)     8.5 ns/row
+load average 2.13 2.00 1.97

@@ -18,13 +18,14 @@ use arrow::array::{Array, ArrayRef, AsArray, Float64Array, Int32Array, Int64Arra
 use arrow::array::{BooleanArray, StringArray};
 use arrow::datatypes::{Field, Int32Type, Schema};
 use oxhaven_contracts::expr::FormulaCompiler;
-use oxhaven_contracts::rowset::RowSet;
+use oxhaven_contracts::rowset::{RowRange, RowSet};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::Table;
 use oxhaven_engine::ops::filter::unstructured_filter;
 use oxhaven_engine::ops::select::update;
 use oxhaven_engine::table::{empty_table, in_memory_table};
 use oxhaven_expr::Compiler;
+use oxhaven_rowset::{concat_ordered, RowSetBuilderSequential};
 use oxhaven_testkit::definition;
 use std::hint::black_box;
 use std::sync::Arc;
@@ -188,6 +189,46 @@ fn parts(table: &Arc<dyn Table>, rows: i64, reps: usize) {
         .row_set();
     time("read A at the kept 40%", rows, reps, || {
         black_box(a.chunk(&sparse).expect("A"));
+    });
+    time("read A at the kept 40%, 4 threads", rows, reps, || {
+        oxhaven_column::parallel::with_threads(4, || black_box(a.chunk(&sparse).expect("A")));
+    });
+    // The stages of `where_conj`, each on the result of the one before.
+    let where_one = |from: &Arc<dyn Table>, filter: &str| {
+        unstructured_filter(from, &[filter], &Compiler).expect("where")
+    };
+    let mut stage = table.clone();
+    for filter in ["K10 = 3", "B > 50000.0", "A < 50000"] {
+        let from = stage.clone();
+        let what = format!("{filter}, of {} rows", from.row_set().size());
+        time(&what, rows, reps, || {
+            black_box(where_one(&from, filter));
+        });
+        stage = where_one(&from, filter);
+    }
+    // The row set of `where_range`, built by one sequential builder over all the kept
+    // ranges, as a filter built it before task 9.6, and as it is built since: a row set
+    // per piece of 65536 rows, the pieces then joined (here on one thread).
+    let kept = mask.values();
+    time("ranges of the kept 40%", rows, reps, || {
+        black_box(kept.set_slices().collect::<Vec<_>>());
+    });
+    time("sequential builder over them", rows, reps, || {
+        let mut builder = RowSetBuilderSequential::new();
+        for (start, end) in kept.set_slices() {
+            builder.append_range(start as i64, end as i64 - 1);
+        }
+        black_box(builder.build());
+    });
+    time("a row set per piece, joined", rows, reps, || {
+        let pieces = oxhaven_column::parallel::pieces_of(kept.len(), 1 << 16);
+        let parts = pieces.iter().map(|&(offset, length)| {
+            let piece = kept.slice(offset, length);
+            RowSet::from_ranges(piece.set_slices().map(|(start, end)| {
+                RowRange::new((offset + start) as i64, (offset + end) as i64 - 1)
+            }))
+        });
+        black_box(concat_ordered(parts));
     });
     black_box(values.len());
 }
