@@ -9,12 +9,13 @@ use super::ticking::{
 };
 use super::*;
 use crate::ops::agg::group_by;
-use crate::ops::filter::unstructured_filter;
-use crate::ops::select::arrays::{constant_array_accesses, Shift};
+use crate::ops::filter::{unstructured_filter, FilterError};
+use crate::ops::select::arrays::{constant_array_accesses, shifted_table, Shift};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::update::ModifiedColumnSet;
 use oxhaven_testkit::{
-    at_least_for, longs, strings, test_seeds, RandomUpdates, Recorder, TableChange,
+    at_least_for, definition, longs, strings, test_seeds, RandomUpdates, Recorder, ScriptedTable,
+    TableChange,
 };
 
 fn shift(column: &str, amount: i64) -> Shift {
@@ -27,7 +28,9 @@ fn shift(column: &str, amount: i64) -> Shift {
 /// The shifted columns of `formula`, and the formula that reads them, parsed again.
 fn rewritten(formula: &str) -> Option<(Vec<Shift>, Expr)> {
     let expr = Compiler.parse(formula).unwrap();
-    constant_array_accesses(formula, &expr).map(|found| (found.shifts, found.expr))
+    constant_array_accesses(formula, &expr)
+        .unwrap()
+        .map(|found| (found.shifts, found.expr))
 }
 
 /// Behavior: `ShiftedColumnsFactory#getShiftedColumnDefinitions`: an index that is `i` or
@@ -73,7 +76,11 @@ fn an_index_at_a_fixed_distance_becomes_a_shifted_column() {
         "-X_[i - 1]",
         "!X_[i]",
         "X_[(i - 1)]",
+        "(X_)[i - 1]",
+        "((X_))[i]",
         "X_[i - 1L]",
+        "X_[i - 0x1L]",
+        "X_[i - 1f]",
         "X_[1 + i]",
         "X_[i + -1]",
         "X_[i - 1 + 0]",
@@ -88,20 +95,148 @@ fn an_index_at_a_fixed_distance_becomes_a_shifted_column() {
     }
 }
 
+/// Behavior: `ShiftedColumnsFactory#parseForConstantArrayAccessAttributes`, which reads the
+/// offset with `Long#parseLong` while the formula is parsed, before any column is looked
+/// at. Seen on Java 42.9: `update`, `update_view` and `where` of `X_[i + 0x1]` fail with
+/// `FormulaCompilationException` caused by `NumberFormatException: For input string:
+/// "0x1"`, as do `X_[i - 1_0]` (`"1_0"`), `X_[i + 0b1]`, `X_[i - 9223372036854775808]` and
+/// `Nope + X_[i + 0x1]`; `isNull(X_[i + 0x1])` and `(X_)[i + 0x1]` are served.
 #[test]
-#[should_panic(
-    expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnsFactory#parseForConstantArrayAccessAttributes"
-)]
-fn an_offset_in_another_base_is_unported() {
-    let _ = rewritten("X_[i - 0x1]");
+fn an_offset_that_long_parsing_cannot_read_is_refused_as_java_refuses() {
+    let (_stepper, graph) = graph();
+    let refreshing: Arc<dyn Table> = scripted(&graph).table();
+    let input = |literal: &str| FormulaError::Syntax(format!("For input string: \"{literal}\""));
+    for parent in [keyed(&[3, 7, 9, 20]), flat(4), refreshing] {
+        for (column, literal) in [
+            ("P = A_[i + 0x1]", "0x1"),
+            ("P = A_[i - 1_0]", "1_0"),
+            ("P = A_[ii + 0b1]", "0b1"),
+            ("P = A_[i - 0xFFFFFFFF]", "0xFFFFFFFF"),
+            ("P = Nope + A_[i + 0x1]", "0x1"),
+            ("P = A_[i - 1] > 3 ? A_[i + 0X1F] : 0", "0X1F"),
+        ] {
+            type Attempt = Result<Arc<dyn Table>, SelectError>;
+            let attempts: [(&str, Attempt); 5] = [
+                ("update", update(&parent, &["B", column], &Compiler)),
+                ("update_view", update_view(&parent, &[column], &Compiler)),
+                ("lazy_update", lazy_update(&parent, &[column], &Compiler)),
+                ("view", view(&parent, &[column], &Compiler)),
+                ("select", select(&parent, &["Sym", column], &Compiler)),
+            ];
+            for (what, attempt) in attempts {
+                match attempt {
+                    Err(SelectError::Formula {
+                        column: text,
+                        error,
+                    }) => {
+                        assert_eq!(text, column, "{what}");
+                        assert_eq!(error, input(literal), "{what} {column}");
+                    }
+                    other => panic!("{what} {column}: {:?}", other.map(|_| ())),
+                }
+            }
+        }
+        let filtered = unstructured_filter(&parent, &["B > 1", "A_[i + 0x1] > 0"], &Compiler);
+        match filtered {
+            Err(FilterError::Invalid(message)) => assert_eq!(
+                message,
+                "A_[i + 0x1] > 0: syntax error: For input string: \"0x1\""
+            ),
+            other => panic!("where: {:?}", other.map(|_| ())),
+        }
+    }
+    // Beyond the long range the lexer refuses the literal first, with its own text (A5).
+    let parent = keyed(&[3, 7, 9, 20]);
+    let result = update(&parent, &["P = A_[i - 9223372036854775808]"], &Compiler);
+    assert!(
+        matches!(
+            result,
+            Err(SelectError::Formula {
+                error: FormulaError::Syntax(_),
+                ..
+            })
+        ),
+        "{:?}",
+        result.map(|_| ())
+    );
+    // Java does not read an offset inside a call or after a column array in parentheses.
+    let result = update(&parent, &["P = isNull(A_[i + 0x1])"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "P"), ["false", "false", "false", "true"]);
+    let result = update(&parent, &["P = (A_)[i + 0x1]"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "P"), ["20", "30", "40", "null"]);
 }
 
+/// Behavior: `ShiftedColumnsFactory#parseForConstantArrayAccessAttributes`, which takes a
+/// column array only when the array is a name ending in `_`. Seen on Java 42.9:
+/// `(X_)[i - 1]` and `((X_))[i - 1]` read the column array, which gives the same values on
+/// a static table, and on a refreshing table is refused as unsafe to refresh
+/// (`Formula '(X_).get(longCast(minus(i, 1)))' uses i, ii, k, or column array variables`);
+/// a column named outside ASCII is shifted (`Ä_[i - 1]` of a `new_table`).
+#[test]
+fn a_column_array_in_parentheses_is_no_shift() {
+    let parent = keyed(&[3, 7, 9, 20]);
+    for column in ["P = (A_)[i - 1]", "P = ((A_))[i - 1]", "P = A_[(i - 1)]"] {
+        let result = update(&parent, &[column], &Compiler).unwrap();
+        assert_eq!(
+            values(&*result, "P"),
+            ["null", "10", "20", "30"],
+            "{column}"
+        );
+    }
+    let (_stepper, graph) = graph();
+    let refreshing: Arc<dyn Table> = scripted(&graph).table();
+    for column in ["P = (A_)[i - 1]", "P = (A_)[i - 1] + A_[i - 1]"] {
+        match update(&refreshing, &[column], &Compiler) {
+            Err(SelectError::UnsafeForRefresh(_)) => {}
+            other => panic!("{column}: {:?}", other.map(|_| ())),
+        }
+    }
+    let result = update(&refreshing, &["P = A_[i - 1] + ((B_))[i] * 0"], &Compiler);
+    assert!(matches!(result, Err(SelectError::UnsafeForRefresh(_))));
+
+    let (named, rows) = (
+        definition(&[("Ä", ColumnType::Long)]),
+        RowSet::from_keys([0, 1, 2]),
+    );
+    let source = ReferenceTable::new_static(named.clone(), rows.clone(), vec![longs([1, 2, 3])]);
+    let named: Arc<dyn Table> =
+        QueryTable::new_static(TableSpec::new(named, rows, vec![source.column(0)]));
+    let result = update(&named, &["Y = Ä_[i - 1]"], &Compiler).unwrap();
+    assert_eq!(values(&*result, "Y"), ["null", "1", "2"]);
+}
+
+/// Seen on Java 42.9: with a column `X_` of `int`s beside `X`, `update("Y = X_[i - 1]")`
+/// fails with `Cannot find method get(int) in int`: `X_` is that column, not a column array.
+#[test]
+fn a_column_named_like_a_column_array_is_not_shifted() {
+    let definition = definition(&[("A", ColumnType::Long), ("A_", ColumnType::Long)]);
+    let rows = RowSet::from_keys([0, 1, 2]);
+    let source = ReferenceTable::new_static(
+        definition.clone(),
+        rows.clone(),
+        vec![longs([1, 2, 3]), longs([7, 8, 9])],
+    );
+    let parent: Arc<dyn Table> = QueryTable::new_static(TableSpec::new(
+        definition,
+        rows,
+        vec![source.column(0), source.column(1)],
+    ));
+    let result = update(&parent, &["Y = A_[i - 1]"], &Compiler);
+    assert!(
+        matches!(result, Err(SelectError::Formula { .. })),
+        "{:?}",
+        result.map(|_| ())
+    );
+}
+
+/// A text that is not the expression's is refused by name rather than read wrongly.
 #[test]
 #[should_panic(
     expected = "unported: io.deephaven.engine.table.impl.ShiftedColumnsFactory#getShiftedColumnDefinitions"
 )]
-fn a_column_array_indexed_through_parentheses_is_unported() {
-    let _ = rewritten("(X_)[i - 1]");
+fn a_text_that_does_not_match_its_expression_is_unported() {
+    let expr = Compiler.parse("X_[i - 1]").unwrap();
+    let _ = constant_array_accesses("Y_[i - 1]", &expr);
 }
 
 #[test]
@@ -575,6 +710,17 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     };
     refused(&["P = A_[i - 1] + A_[i + 1]"]);
     refused(&["P = A_[i - 1] + B_[i - 2]"]);
+    refused(&["P = A_[i - 1] + A_[i] + A_[i + 1]"]);
+    refused(&["Q = B", "P = A_[i + 1] * 1000 + A_[i + 3]"]);
+    // With zero, or one distance in two columns, there is one reach, and Java's answer.
+    for columns in [
+        &["P = A_[i] + A_[i + 2]"][..],
+        &["P = A_[i - 2] + B_[i - 2] + A_[i]"],
+    ] {
+        let (_stepper, graph) = graph();
+        let parent: Arc<dyn Table> = scripted(&graph).table();
+        assert!(update(&parent, columns, &Compiler).is_ok(), "{columns:?}");
+    }
     // A static table has nothing to follow.
     let result = update(
         &keyed(&[3, 7, 9]),
@@ -583,6 +729,138 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     )
     .unwrap();
     assert_eq!(values(&*result, "P"), ["null", "40", "null"]);
+}
+
+/// What `with_shifted_column` does with a formula over `shifts`, without the refusal of two
+/// distances: the shifted columns, the formula over them, and the shifted columns dropped.
+/// Columns and their distances.
+type Distances = &'static [(&'static str, i64)];
+
+fn over_two_distances(shifts: Distances, formula: &'static str) -> Operation {
+    operation(move |parent| {
+        let shifts: Vec<Shift> = shifts.iter().map(|(c, a)| shift(c, *a)).collect();
+        let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
+        let shifted = shifted_table(parent, &shifts).unwrap();
+        let computed = update(&shifted, &[formula], &Compiler).unwrap();
+        drop_columns(&computed, &names).unwrap()
+    })
+}
+
+/// Shifts at two distances served as the same formula made again would be (owner question
+/// 8 of `tasks/10.5-unported-select-arrays.md`): a change reaches the rows within the
+/// farthest distance on each side of it.
+#[test]
+fn two_distances_follow_random_changes_when_served() {
+    let cases: [(&str, Distances, &'static str); 6] = [
+        (
+            "the rows before and after",
+            &[("A", -1), ("A", 1)],
+            "M = __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__",
+        ),
+        (
+            "two rows before",
+            &[("A", -1), ("A", -2)],
+            "M = __A_Shifted_Minus_1__ - __A_Shifted_Minus_2__",
+        ),
+        (
+            "two rows after",
+            &[("B", 1), ("B", 3)],
+            "M = __B_Shifted_Plus_1__ * 1000 + __B_Shifted_Plus_3__",
+        ),
+        (
+            "two columns on both sides and the row itself",
+            &[("A", -1), ("B", 0), ("B", 2)],
+            "M = __A_Shifted_Minus_1__ * 100 + __B_Shifted_Plus_0__ * 10 + __B_Shifted_Plus_2__",
+        ),
+        (
+            "far apart",
+            &[("A", -3), ("A", 2)],
+            "M = isNull(__A_Shifted_Minus_3__) ? -1 : __A_Shifted_Minus_3__ + __A_Shifted_Plus_2__",
+        ),
+        (
+            "of a column the formula leaves unchanged",
+            &[("Sym", -1), ("Sym", 1)],
+            "M = __Sym_Shifted_Minus_1__ + `-` + __Sym_Shifted_Plus_1__",
+        ),
+    ];
+    for (what, shifts, formula) in cases {
+        fuzz(what, over_two_distances(shifts, formula));
+    }
+    // A filter over such columns, as `where` makes it.
+    fuzz(
+        "where",
+        operation(|parent| {
+            let shifts = [shift("A", -1), shift("A", 1)];
+            let shifted = shifted_table(parent, &shifts).unwrap();
+            let kept = unstructured_filter(
+                &shifted,
+                &["isNull(__A_Shifted_Minus_1__) || __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__ > 40"],
+                &Compiler,
+            )
+            .unwrap();
+            let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
+            drop_columns(&kept, &names).unwrap()
+        }),
+    );
+}
+
+/// The keyed input table of the Java probe: `K` 1 to 8 at rows 0 to 7, `X` 10 to 80.
+/// Java 42.9 answered `update("M = X_[i - 1] + X_[i + 1]")` made again after each step with
+/// the values below; its incremental `update` kept the first values throughout.
+#[test]
+fn two_distances_reach_both_neighbours_of_a_change_when_served() {
+    let (stepper, graph) = graph();
+    let source = ScriptedTable::new(
+        graph.clone(),
+        definition(&[("K", ColumnType::Long), ("X", ColumnType::Long)]),
+        RowSet::from_keys(0..8),
+        vec![longs(1..=8), longs((1..=8).map(|k| k * 10))],
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let make = over_two_distances(
+        &[("X", -1), ("X", 1)],
+        "M = __X_Shifted_Minus_1__ + __X_Shifted_Plus_1__",
+    );
+    let result = make(&parent);
+    let checker = checked(&result, &parent, &make);
+    let recorder = Recorder::attach(result.clone());
+    let cycle = |change: TableChange| {
+        source.push(change);
+        stepper.run_cycle();
+        checker.assert_consistent();
+        last_update(&recorder)
+    };
+    let m = |result: &Arc<dyn Table>| values(&**result, "M");
+    assert_eq!(
+        m(&result),
+        ["null", "40", "60", "80", "100", "120", "140", "null"]
+    );
+
+    // K 4 becomes 41: the rows of K 3 and K 5 read it.
+    let seen = cycle(TableChange::new().modify([3], [(1, longs([41]))]));
+    assert_eq!(seen.modified, RowSet::from_keys([2, 3, 4]));
+    assert_eq!(seen.modified_columns, ModifiedColumnSet::of([1, 2]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "101", "120", "140", "null"]
+    );
+
+    // K 9 is appended: the row of K 8 now has a row after it.
+    let seen = cycle(TableChange::new().add([8], vec![longs([9]), longs([90])]));
+    assert_eq!(seen.added, RowSet::from_keys([8]));
+    assert_eq!(seen.modified, RowSet::from_keys([7]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "101", "120", "140", "160", "null"]
+    );
+
+    // K 6 is removed: the rows of K 5 and K 7 have new neighbours.
+    let seen = cycle(TableChange::new().remove([5]));
+    assert_eq!(seen.modified, RowSet::from_keys([4, 6]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "111", "130", "160", "null"]
+    );
 }
 
 /// Behavior: `AbstractFormulaColumn#validateSafeForRefresh`, which sees the formula after

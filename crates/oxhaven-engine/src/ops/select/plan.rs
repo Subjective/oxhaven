@@ -457,16 +457,23 @@ pub(super) fn analyze<S: AsRef<str>>(
                 // A shifted column needs no more of its column than that it exists, so
                 // the formula is judged once the shifted columns stand in for what they
                 // can: a column of vectors has no column array here, and can be shifted.
-                let rewritten = (!replaced)
-                    .then(|| arrays::constant_array_accesses(text, &assignment.expr))
-                    .flatten()
-                    .filter(|rewritten| {
-                        compiled.is_ok()
-                            || rewritten
-                                .shifts
-                                .iter()
-                                .all(|shift| scope.iter().any(|named| named.name == shift.column))
-                    });
+                // Java reads the offsets while it parses the formula, before it looks
+                // at a column.
+                let rewritten = match replaced {
+                    true => None,
+                    false => arrays::constant_array_accesses(text, &assignment.expr)
+                        .map_err(formula_error)?,
+                };
+                // A column named `X_` is what `X_` reads, and when the formula does not
+                // compile with it, Java's does not either (seen on Java 42.9: `X_[i - 1]`
+                // with an `int` column `X_` fails with `Cannot find method get(int) in int`).
+                let named = |name: &str| scope.iter().any(|named| named.name == name);
+                let rewritten = rewritten.filter(|rewritten| {
+                    compiled.is_ok()
+                        || rewritten.shifts.iter().all(|shift| {
+                            named(&shift.column) && !named(&format!("{}_", shift.column))
+                        })
+                });
                 if let Some(rewritten) = rewritten {
                     shifted = Some(ShiftedColumn {
                         index,
