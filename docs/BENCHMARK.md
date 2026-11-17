@@ -388,3 +388,85 @@ oracle corpus and the self-consistency checker, which every change to these path
 After these, the next step is parallelism: Java's 2-thread `where` and `update` are what make the
 10M-row filters and formulas 3x to 8x. Splitting a static `where` or `update` into segments over
 a thread pool is a separate task, and needs a decision on how the engine schedules work.
+
+## After task 9.2 (2026-11-17): aggregations and `select_distinct`
+
+Task 9.2 (`tasks/9.2-fast-aggregations.md`) replaced the per-row trees of the aggregation
+engine: group keys go into an open-addressed hash table with flat key storage
+(`ops/group_keys.rs`), result columns are vectors indexed by group (`ops/agg/slot_source.rs`),
+`select_distinct` uses the same key table, `first`/`last` of a static or add-only table keep a
+row key per group, and `group_by` builds each group's row set once. Results are unchanged.
+
+**How it was measured.** Oxhaven only: the Java numbers are those of run 1 / run 2 above (Java
+was not run again). Oxhaven at `2be3c714` (the code of the task's last change), built and run as
+above (`cargo build --release --locked -p oxhaven-server`, default options), the cases below
+with `bench/bench.py run --cases 'select_distinct_*,last_by,sum_by_*,avg_by_*,count_by_*,agg_by_multi,group_by'`,
+twice, 12:23 to 12:26. The load average was 6.3 to 7.4 on the 4 cores during both runs (other
+agents were building), higher than in runs 1 and 2 above. Every case's check (row count, column
+sums, position-weighted sum, first and last three rows) equals Java's check recorded in
+`bench/results/2026-11-17-run1.json`. Raw results: `bench/results/2026-11-17-task-9.2-run*.json`.
+
+Median milliseconds, run 1 / run 2 of each. "ratio" is Oxhaven after 9.2 over Java, run by run.
+
+### 1,000,000 rows
+
+| case | java | oxhaven before | oxhaven after 9.2 | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| `select_distinct_one` | 16.6 / 13.8 | 323 / 276 | 7.3 / 6.8 | 0.44 / 0.49 |
+| `select_distinct_two` | 30.4 / 29.5 | 285 / 249 | 24.4 / 16.6 | 0.80 / 0.56 |
+| `last_by` | 20.8 / 23.0 | 207 / 193 | 111 / 61.0 | 5.3 / 2.7 |
+| `sum_by_low` | 20.1 / 18.9 | 38.2 / 37.2 | 22.1 / 23.7 | 1.1 / 1.3 |
+| `avg_by_low` | 21.2 / 20.1 | 33.5 / 36.8 | 30.6 / 24.5 | 1.4 / 1.2 |
+| `count_by_low` | 13.6 / 17.7 | 27.6 / 38.2 | 20.1 / 20.0 | 1.5 / 1.1 |
+| `sum_by_med` | 47.9 / 50.5 | 60.6 / 88.5 | 44.3 / 57.6 | 0.92 / 1.1 |
+| `avg_by_med` | 53.6 / 60.7 | 81.2 / 91.5 | 67.6 / 86.4 | 1.3 / 1.4 |
+| `count_by_med` | 20.6 / 18.3 | 45.8 / 67.3 | 21.0 / 26.1 | 1.0 / 1.4 |
+| `sum_by_high` | 183 / 194 | 1126 / 1080 | 261 / 229 | 1.4 / 1.2 |
+| `avg_by_high` | 194 / 199 | 1018 / 1161 | 293 / 202 | 1.5 / 1.0 |
+| `count_by_high` | 106 / 133 | 807 / 927 | 167 / 148 | 1.6 / 1.1 |
+| `agg_by_multi` | 76.2 / 103 | 124 / 130 | 164 / 118 | 2.2 / 1.1 |
+| `group_by` | 109 / 79.6 | 366 / 314 | 133 / 98.5 | 1.2 / 1.2 |
+
+### 10,000,000 rows
+
+| case | java | oxhaven before | oxhaven after 9.2 | ratio |
+| --- | ---: | ---: | ---: | ---: |
+| `select_distinct_one` | 103 / 100 | 3201 / 2767 | 53.5 / 79.2 | 0.52 / 0.79 |
+| `select_distinct_two` | 321 / 249 | 2680 / 2385 | 229 / 247 | 0.71 / 0.99 |
+| `last_by` | 258 / 221 | 2120 / 1928 | 523 / 594 | 2.0 / 2.7 |
+| `sum_by_low` | 166 / 166 | 332 / 288 | 335 / 364 | 2.0 / 2.2 |
+| `avg_by_low` | 205 / 158 | 325 / 332 | 315 / 283 | 1.5 / 1.8 |
+| `count_by_low` | 144 / 103 | 329 / 226 | 213 / 196 | 1.5 / 1.9 |
+| `sum_by_med` | 589 / 379 | 817 / 550 | 517 / 407 | 0.88 / 1.1 |
+| `avg_by_med` | 574 / 480 | 892 / 692 | 469 / 567 | 0.82 / 1.2 |
+| `count_by_med` | 265 / 150 | 469 / 351 | 232 / 383 | 0.88 / 2.6 |
+| `sum_by_high` | 912 / 871 | 3496 / 2813 | 925 / 1123 | 1.0 / 1.3 |
+| `avg_by_high` | 1392 / 1021 | 3360 / 2761 | 988 / 1077 | 0.71 / 1.1 |
+| `count_by_high` | 498 / 437 | 2691 / 2448 | 524 / 607 | 1.1 / 1.4 |
+| `agg_by_multi` | 882 / 743 | 1353 / 1409 | 974 / 1032 | 1.1 / 1.4 |
+| `group_by` | 1209 / 934 | 8797 / 6709 | 1220 / 1235 | 1.0 / 1.3 |
+
+**Reading.** `select_distinct` went from 8x-31x slower than Java to faster than Java at both
+sizes; the high-cardinality aggregations from 3x-8x to 1x-1.6x; `group_by` from 3x-7x to
+1x-1.3x. The low- and medium-cardinality aggregations were within 2x before and are about
+the same now, within the noise of a loaded machine. `last_by` improved 2x-4x but is still 2x-5x
+slower than Java; its two runs at 1M rows differ by almost 2x, so the load affected it. With
+these loads, ratios under about 2x are noise, as above.
+
+The same cases inside the engine, without the server (`cargo run --release -p oxhaven-engine
+--example aggregation-cases`, 1M rows, median of 5), before (main at `03f8dbb8`) and after:
+`select_distinct_one` 310 → 4.7 ms, `select_distinct_two` 297 → 19.8 ms, `last_by` 166 → 50 ms,
+`sum_by_high` 1271 → 261 ms, `count_by_high` 1014 → 170 ms, `group_by` 344 → 155 ms,
+`sum_by_low` 31 → 20 ms.
+
+**What is left.** Measured with temporary phase timers in the engine example (1M rows, after
+the change): `last_by` spends about 38 ms of its 47 in the operators, one call through a trait
+object per group per chunk for each of its six columns; passing a chunk's runs to an operator
+in one call would remove most of that, for every aggregation. The 1M-group aggregations spend
+90-190 ms finding slots, nearly all for inserting a million new keys into a table that no
+longer fits in cache (Java's whole `count_by_high` takes about the same); and 25-60 ms
+writing results. `group_by` still gathers every value into Arrow lists at creation, which
+Java does not; that is now about 20 ms of its 155 at 1M rows. Not measured here: ticking
+throughput (the engine example's 19 append-only cycles of 50,000 rows into `select_distinct`,
+`last_by` and `sum_by` went from 4.6 s to 2.4 s, most of what remains being outside the
+aggregations).
