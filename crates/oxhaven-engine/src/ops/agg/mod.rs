@@ -55,6 +55,7 @@ mod group;
 pub(crate) mod keys;
 mod min_max;
 mod operator;
+mod periods;
 mod sorted;
 mod sum;
 mod values;
@@ -678,18 +679,19 @@ fn make_operator(
             ColumnType::Period
         )
     };
-    if periods(input_type)
-        && matches!(
-            spec,
-            AggSpec::Min
-                | AggSpec::Max
-                | AggSpec::Median { .. }
-                | AggSpec::Percentile { .. }
-                | AggSpec::CountDistinct { .. }
-                | AggSpec::Unique { .. }
-                | AggSpec::Distinct { .. }
-        )
-    {
+    // A `Period` is ordered only in a group that holds one period value
+    // (`periods::PeriodGuard`); a vector of periods is not.
+    let guard_periods = matches!(
+        spec,
+        AggSpec::Min
+            | AggSpec::Max
+            | AggSpec::Median { .. }
+            | AggSpec::Percentile { .. }
+            | AggSpec::CountDistinct { .. }
+            | AggSpec::Unique { .. }
+            | AggSpec::Distinct { .. }
+    );
+    if guard_periods && *input_type != ColumnType::Period && periods(input_type) {
         unported!(
             "io.deephaven.engine.table.impl.by.AggregationProcessor",
             "an ordering of a column of type {input_type:?}, which Java fails once it \
@@ -919,6 +921,13 @@ fn make_operator(
                 ..Planned::new(op, None)
             }));
         }
+    };
+    let op = if guard_periods && *input_type == ColumnType::Period {
+        let sorts_runs =
+            !matches!(spec, AggSpec::Min | AggSpec::Max) || kind == ParentKind::General;
+        Box::new(periods::PeriodGuard::new(op, sorts_runs))
+    } else {
+        op
     };
     Ok(Some(Planned::new(op, Some(input))))
 }

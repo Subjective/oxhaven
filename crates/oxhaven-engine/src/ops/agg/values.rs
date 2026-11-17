@@ -324,7 +324,8 @@ pub enum Scalar {
         offset: i32,
         zone: Arc<str>,
     },
-    /// A `Period`. Java gives it no order, so [`Scalar::compare`] is never asked for one.
+    /// A `Period`. Java gives it no order; [`Scalar::compare`] orders it by its fields, for
+    /// the multisets of a group that holds one period.
     Period {
         years: i32,
         months: i32,
@@ -429,6 +430,9 @@ impl Scalar {
                 .cmp(b)
                 .then(p.cmp(q))
                 .then_with(|| x.encode_utf16().cmp(y.encode_utf16())),
+            // Java has no order of periods; this one keeps two that differ apart in a
+            // multiset until the operator fails (`periods::PeriodGuard`).
+            (Scalar::Period { .. }, Scalar::Period { .. }) => self.period().cmp(&other.period()),
             _ => Ordering::Equal,
         }
     }
