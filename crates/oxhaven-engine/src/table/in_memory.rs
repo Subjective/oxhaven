@@ -62,7 +62,7 @@ fn static_table(
         columns.push(if redirected {
             reads_through(source)
         } else {
-            source.shared()
+            Arc::new(source)
         });
     }
     Ok(QueryTable::new_static(

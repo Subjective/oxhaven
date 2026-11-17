@@ -1004,10 +1004,10 @@ impl Resolved {
     /// the key of each kept one costs tens of nanoseconds a row. `None` when that does not
     /// apply, and the rows are then read as any column's.
     ///
-    /// Only for the typed kernels, which cannot fail, and only for an array in memory,
-    /// whose rows can all be read: so no failure is reported that reading the selected
-    /// rows alone would not report, and none is missed. Previous values of such a column
-    /// are its current ones.
+    /// Only for the typed kernels, which cannot fail, and only for a source that hands out
+    /// its [`ColumnSource::stored_values`], whose rows can all be read: so no failure is
+    /// reported that reading the selected rows alone would not report, and none is missed.
+    /// That method promises the array never changes, so it holds the previous values too.
     ///
     /// No Java counterpart: Java reads the selected rows of every column
     /// (`AbstractFilterExecution#doFilter`); the rows kept are the same.
@@ -1020,7 +1020,7 @@ impl Resolved {
         if spread > WHOLE_PER_ROW * selection.size() {
             return None;
         }
-        let values = oxhaven_column::stored_values(source)?;
+        let values = source.stored_values()?;
         if last as u64 >= values.len() as u64 {
             // A row the array does not have: reading the selected rows reports it.
             return None;

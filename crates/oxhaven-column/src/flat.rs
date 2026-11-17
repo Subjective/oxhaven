@@ -7,8 +7,7 @@ use arrow::compute::{concat, take, TakeOptions};
 use oxhaven_contracts::rowset::{RowKey, RowSet, NULL_ROW_KEY};
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::{ColumnSource, Table, TableFailure};
-use std::collections::BTreeMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::Arc;
 
 /// An immutable source backed by one Arrow array. Row keys are positions in the array, so it
 /// serves tables whose row set is a subset of `0..len`. Previous values equal current values.
@@ -57,40 +56,6 @@ impl FlatSource {
         let checked = TakeOptions { check_bounds: true };
         take(self.values.as_ref(), positions, Some(checked)).map_err(arrow_failure)
     }
-
-    /// This source as a table's column, noted so that [`stored_values`] knows it for what
-    /// it is.
-    pub fn shared(self) -> Arc<dyn ColumnSource> {
-        let values = self.values.clone();
-        let source = Arc::new(self);
-        stored().insert(Arc::as_ptr(&source) as usize, values);
-        source
-    }
-}
-
-/// The arrays of the sources [`FlatSource::shared`] made, by the address of the source.
-/// `ColumnSource` has no way to say that a column is an array in memory, whose every row
-/// can be read at no cost and without a failure; this stands in for it. A source leaves
-/// when it is dropped, so an address is never that of another source.
-static STORED: Mutex<BTreeMap<usize, ArrayRef>> = Mutex::new(BTreeMap::new());
-
-fn stored() -> std::sync::MutexGuard<'static, BTreeMap<usize, ArrayRef>> {
-    STORED.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// The whole array of `source` when it is a [`FlatSource`] made by [`FlatSource::shared`]:
-/// row key `k` is at position `k`, whether or not a table that has the column has the row.
-/// `None` for any other source, whose rows may be computed or read from storage when asked
-/// for, and may fail.
-pub fn stored_values(source: &Arc<dyn ColumnSource>) -> Option<ArrayRef> {
-    let address = Arc::as_ptr(source) as *const () as usize;
-    stored().get(&address).cloned()
-}
-
-impl Drop for FlatSource {
-    fn drop(&mut self) {
-        stored().remove(&(self as *const FlatSource as usize));
-    }
 }
 
 impl ColumnSource for FlatSource {
@@ -135,6 +100,12 @@ impl ColumnSource for FlatSource {
 
     fn prev_chunk(&self, rows: &RowSet) -> Result<ArrayRef, TableFailure> {
         self.chunk(rows)
+    }
+
+    /// The array itself: it never changes, row key `k` is at position `k`, [`FlatSource::new`]
+    /// checked its type, and `chunk` and `prev_chunk` read nothing else.
+    fn stored_values(&self) -> Option<ArrayRef> {
+        Some(self.values.clone())
     }
 
     fn chunk_by_keys(&self, keys: &[RowKey], _use_prev: bool) -> Result<ArrayRef, TableFailure> {
@@ -269,6 +240,19 @@ mod tests {
         let prev = source.prev_chunk(&rows).unwrap();
         assert_eq!(&prev, &source.chunk(&rows).unwrap());
         assert_eq!(prev.len(), 3);
+    }
+
+    /// The stored array is the one given, and every chunk is a part of it.
+    #[test]
+    fn hands_out_its_array_as_stored_values() {
+        let given: ArrayRef = Arc::new(Int32Array::from(vec![Some(10), None, Some(12)]));
+        let source = FlatSource::new(ColumnType::Int, given.clone()).unwrap();
+        let stored = source.stored_values().expect("a flat source is stored");
+        assert!(Arc::ptr_eq(&stored, &given));
+        let rows = RowSet::from_keys([0, 2]);
+        let expected: ArrayRef = Arc::new(Int32Array::from(vec![Some(10), Some(12)]));
+        assert_eq!(&source.chunk(&rows).unwrap(), &expected);
+        assert_eq!(&source.prev_chunk(&rows).unwrap(), &expected);
     }
 
     #[test]

@@ -310,7 +310,7 @@ fn static_result(
     let dense = parent_flat || keys != Keys::Parents;
     let store = |step: &Step, values: ArrayRef| -> Result<Arc<dyn ColumnSource>, TableFailure> {
         if dense {
-            Ok(FlatSource::new(step.column_type.clone(), values)?.shared())
+            Ok(Arc::new(FlatSource::new(step.column_type.clone(), values)?))
         } else {
             let column = WritableSource::new(step.column_type.clone());
             column.fill(&parent_rows, &values)?;

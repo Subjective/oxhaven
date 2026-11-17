@@ -17,7 +17,7 @@ pub mod tables;
 mod tracked;
 mod writable;
 
-pub use flat::{stored_values, FlatSource};
+pub use flat::FlatSource;
 pub use redirect::{RedirectedSource, RowRedirection, WritableRowRedirection};
 pub use tracked::Clock;
 pub use writable::WritableSource;
