@@ -540,7 +540,7 @@ mod tests {
             "{from_properties}"
         );
         // TLS and SASL properties reach the client: librdkafka is given the trust store's
-        // file, Java's JAAS line is read, and what has no counterpart is refused by name.
+        // file and fails to load it, Java's JAAS line is read, and what has no counterpart is refused by name.
         let trusted = failure(
             &format!(
                 "kc.consume({{**CFG, 'security.protocol': 'SSL', 'ssl.truststore.type': 'PEM', \
@@ -549,7 +549,8 @@ mod tests {
             ),
             CONSUME,
         );
-        assert!(trusted.contains("/no/such/ca.pem"), "{trusted}");
+        // librdkafka names the property it was given, not the file.
+        assert!(trusted.contains("ssl.ca.location failed"), "{trusted}");
         let jaas = "org.apache.kafka.common.security.plain.PlainLoginModule required";
         for (properties, refusal) in [
             (
