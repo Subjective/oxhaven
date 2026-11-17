@@ -277,7 +277,7 @@ fn a_radix_sort_is_a_stable_sort_by_value() {
     }
     // A large sort by a fixed-width key, as the row format sorts it.
     let size = 5000;
-    let values = (0..size).map(|row| (row * 7919 % 1013) as i32 - 500);
+    let values = (0..size).map(|row: i32| row * 7919 % 1013 - 500);
     let table = static_table(&[(
         "K",
         ColumnType::Int,
