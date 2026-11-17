@@ -18,6 +18,7 @@ use arrow::datatypes::{
     DataType, Date32Type, DurationNanosecondType, Int32Type, Int64Type, Time64NanosecondType,
     TimestampNanosecondType,
 };
+use oxhaven_column::java_values;
 use oxhaven_contracts::expr::FormulaError;
 use oxhaven_contracts::schema::ColumnType;
 use oxhaven_contracts::table::TableFailure;
@@ -75,13 +76,25 @@ pub(crate) enum TimeFn {
     LocalTimeOf,
     /// `toLocalDate(Instant, ZoneId)`, `toLocalTime(Instant, ZoneId)`,
     /// `toLocalDateTime(Instant, ZoneId)` and `toZonedDateTime(Instant, ZoneId)`: null
-    /// when either is null.
+    /// when either is null. The first three of one `ZonedDateTime` too: null for null.
     ToLocalDate,
     ToLocalTime,
     ToLocalDateTime,
     ToZonedDateTime,
     /// `Instant#atZone(ZoneId)`, which throws for a null instant or zone.
     AtZone,
+    /// `ZonedDateTime#getZone()`, which throws for a null receiver.
+    GetZone,
+    /// `LocalDate#atTime(LocalTime)`, which throws for a null date or time.
+    AtTime,
+    /// `toZonedDateTime(LocalDate, LocalTime, ZoneId)`: null when any is null.
+    LocalToZoned,
+    /// `formatDate(LocalDate)`, `formatDate(LocalDateTime)`, `formatDate(ZonedDateTime)` and
+    /// `formatDate(Instant, ZoneId)`: null when any is null.
+    FormatDate,
+    /// `formatDateTime(ZonedDateTime)` and `formatDateTime(Instant, ZoneId)`: null when any
+    /// is null.
+    FormatDateTime,
     /// `toInstant(ZonedDateTime)`: null for null.
     ZonedToInstant,
     /// `toInstant(LocalDate, LocalTime, ZoneId)`: null when any is null.
@@ -173,6 +186,8 @@ impl TimeFn {
                 [T::ZonedDateTime] => (TimeFn::ZonedToInstant, T::Instant),
                 _ => (TimeFn::LocalToInstant, T::Instant),
             },
+            "formatDate" => (TimeFn::FormatDate, T::String),
+            "formatDateTime" => (TimeFn::FormatDateTime, T::String),
             _ => return None,
         };
         let no_overload = || {
@@ -215,6 +230,27 @@ impl TimeFn {
                 [T::Instant, T::ZoneId],
             ) => {
                 vec![T::Instant, T::ZoneId]
+            }
+            (
+                TimeFn::ToLocalDate | TimeFn::ToLocalTime | TimeFn::ToLocalDateTime,
+                [T::ZonedDateTime],
+            ) => vec![T::ZonedDateTime],
+            (TimeFn::ToZonedDateTime, [T::LocalDate, T::LocalTime, T::ZoneId]) => {
+                return Some(Ok((
+                    TimeFn::LocalToZoned,
+                    vec![T::LocalDate, T::LocalTime, T::ZoneId],
+                    T::ZonedDateTime,
+                )))
+            }
+            (TimeFn::FormatDate, [T::LocalDate | T::LocalDateTime | T::ZonedDateTime])
+            | (TimeFn::FormatDateTime, [T::ZonedDateTime]) => types.to_vec(),
+            (TimeFn::FormatDate | TimeFn::FormatDateTime, [T::Instant, T::ZoneId]) => {
+                vec![T::Instant, T::ZoneId]
+            }
+            (TimeFn::FormatDate | TimeFn::FormatDateTime, _) => {
+                return Some(Err(FormulaError::Unsupported(format!(
+                    "function {name}() of these arguments"
+                ))))
             }
             (TimeFn::ZonedToInstant, [T::ZonedDateTime]) => vec![T::ZonedDateTime],
             (TimeFn::LocalToInstant, [T::LocalDate, T::LocalTime, T::ZoneId]) => {
@@ -301,6 +337,163 @@ fn zones(ids: &dyn Array) -> Result<Vec<Option<Zone>>, TableFailure> {
                 .ok_or_else(|| failure(format!("time zone {id} is not one this server knows"))),
         })
         .collect()
+}
+
+/// The instants and zone ids of the arguments `(Instant, ZoneId)`, or of the one argument
+/// `ZonedDateTime`, both null where its cell is.
+fn instants_and_zones(arguments: &[ArrayRef]) -> (TimestampNanosecondArray, StringArray) {
+    match arguments {
+        [zoned] => {
+            let cells = zoned.as_struct();
+            let instants = cells.column(0).as_primitive::<TimestampNanosecondType>();
+            let ids = cells.column(1).as_string::<i32>();
+            (
+                TimestampNanosecondArray::new(instants.values().clone(), cells.nulls().cloned()),
+                (0..cells.len())
+                    .map(|row| cells.is_valid(row).then(|| ids.value(row)))
+                    .collect(),
+            )
+        }
+        _ => (
+            arguments[0]
+                .as_primitive::<TimestampNanosecondType>()
+                .clone(),
+            arguments[1].as_string::<i32>().clone(),
+        ),
+    }
+}
+
+/// The text of a zone offset of `seconds` east of UTC: `Z`, `+hh:mm` or `+hh:mm:ss`.
+///
+/// Behavior: java.time.ZoneOffset#toString
+fn offset_text(seconds: i64) -> String {
+    if seconds == 0 {
+        return "Z".into();
+    }
+    let sign = if seconds < 0 { '-' } else { '+' };
+    let total = seconds.abs();
+    let (hours, minutes, rest) = (total / 3600, total / 60 % 60, total % 60);
+    if rest == 0 {
+        format!("{sign}{hours:02}:{minutes:02}")
+    } else {
+        format!("{sign}{hours:02}:{minutes:02}:{rest:02}")
+    }
+}
+
+/// A `ZonedDateTime`'s local date and time (nanoseconds from the epoch as if in UTC), its
+/// offset and its zone id.
+type ZonedParts = (i64, i64, String);
+
+/// The parts of each `ZonedDateTime`, or `None` where the cell is null.
+fn zoned_parts(column: &dyn Array) -> Result<Vec<Option<ZonedParts>>, TableFailure> {
+    let cells = column.as_struct();
+    let instants = cells.column(0).as_primitive::<TimestampNanosecondType>();
+    let ids = cells.column(1).as_string::<i32>();
+    (0..cells.len())
+        .map(|row| {
+            if cells.is_null(row) {
+                return Ok(None);
+            }
+            let (nanos, id) = (instants.value(row), ids.value(row));
+            let zone = zone_of_id(id)
+                .ok_or_else(|| failure(format!("time zone {id} is not one this server knows")))?;
+            let offset = offset_seconds(zone, nanos.div_euclid(1_000_000_000))?;
+            let (day, time) = local_of(nanos, zone)?;
+            Ok(Some((local_date_time(day, time)?, offset, id.to_string())))
+        })
+        .collect()
+}
+
+/// The text of each `ZonedDateTime` of `column`, null where the cell is: its local date
+/// and time, its offset and, when the zone is not that offset, the zone's id in brackets.
+///
+/// Behavior: java.time.ZonedDateTime#toString
+pub(crate) fn zoned_texts(column: &dyn Array) -> Result<Vec<Option<String>>, TableFailure> {
+    Ok(zoned_parts(column)?
+        .into_iter()
+        .map(|cell| {
+            cell.map(|(local, offset, id)| {
+                let offset = offset_text(offset);
+                let mut text = java_values::local_date_time_text(local);
+                text.push_str(&offset);
+                if offset != id {
+                    text.push('[');
+                    text.push_str(&id);
+                    text.push(']');
+                }
+                text
+            })
+        })
+        .collect())
+}
+
+/// The text of each `Period` of `column`, null where the cell is: `P0D` for the zero
+/// period, else `P` and each part that is not zero, years `Y`, months `M`, days `D`.
+///
+/// Behavior: java.time.Period#toString
+pub(crate) fn period_texts(column: &dyn Array) -> Vec<Option<String>> {
+    period_values(column)
+        .into_iter()
+        .map(|cell| {
+            cell.map(|[years, months, days]| {
+                if (years, months, days) == (0, 0, 0) {
+                    return "P0D".to_string();
+                }
+                let mut text = String::from("P");
+                for (amount, unit) in [(years, 'Y'), (months, 'M'), (days, 'D')] {
+                    if amount != 0 {
+                        text.push_str(&amount.to_string());
+                        text.push(unit);
+                    }
+                }
+                text
+            })
+        })
+        .collect()
+}
+
+/// `formatDateTime` of the local date and time `local` (nanoseconds from the epoch as if in
+/// UTC) in the zone `id`: the date and time with nine digits of fraction, a space and the
+/// zone's alias or, without one, its id.
+///
+/// Behavior: io.deephaven.time.DateTimeUtils#formatDateTime(ZonedDateTime), which pads
+/// `ISO_LOCAL_DATE_TIME` to 29 characters with zeros; io.deephaven.time.TimeZoneAliases#zoneName
+/// with the aliases of `default_time_zone_aliases.csv`
+fn format_date_time(local: i64, id: &str) -> String {
+    let mut text = java_values::local_date_text(local.div_euclid(NANOS_PER_DAY));
+    let time = local.rem_euclid(NANOS_PER_DAY);
+    let seconds = time / 1_000_000_000;
+    let fraction = time % 1_000_000_000;
+    text.push_str(&format!(
+        "T{:02}:{:02}:{:02}",
+        seconds / 3600,
+        seconds / 60 % 60,
+        seconds % 60
+    ));
+    if fraction != 0 {
+        let digits = format!("{fraction:09}");
+        text.push('.');
+        text.push_str(digits.trim_end_matches('0'));
+    }
+    let mut pad = 29_i64 - text.len() as i64;
+    if text.len() == 19 {
+        text.push('.');
+        pad -= 1;
+    }
+    text.push_str(&"0".repeat(pad.max(0) as usize));
+    let alias = match id {
+        "America/New_York" => "ET",
+        "America/Chicago" => "CT",
+        "America/Denver" => "MT",
+        "America/Los_Angeles" => "PT",
+        "Asia/Hong_Kong" => "HK",
+        "Asia/Tokyo" => "JP",
+        "Europe/London" => "LON",
+        other => other,
+    };
+    text.push(' ');
+    text.push_str(alias);
+    text
 }
 
 /// The offset from UTC in seconds of `zone` at the instant `seconds`.
@@ -636,8 +829,8 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
         | TimeFn::ToLocalDateTime
         | TimeFn::ToZonedDateTime
         | TimeFn::AtZone => {
-            let instants = first.as_primitive::<TimestampNanosecondType>();
-            let ids = arguments[1].as_string::<i32>();
+            let (instants, ids) = instants_and_zones(arguments);
+            let (instants, ids) = (&instants, &ids);
             let zones = zones(ids)?;
             let throws = function == TimeFn::AtZone;
             let mut dates = Vec::with_capacity(instants.len());
@@ -672,6 +865,82 @@ pub(crate) fn evaluate(function: TimeFn, arguments: &[ArrayRef]) -> Result<Array
                 )),
                 _ => Ok(zoned_date_times(zoned)),
             }
+        }
+        TimeFn::GetZone => {
+            let cells = first.as_struct();
+            if cells.null_count() > 0 {
+                return Err(failure(
+                    "java.lang.NullPointerException: getZone() called on a null ZonedDateTime",
+                ));
+            }
+            Ok(Arc::new(cells.column(1).as_string::<i32>().clone()))
+        }
+        TimeFn::AtTime => {
+            let dates = first.as_primitive::<Date32Type>();
+            let times = arguments[1].as_primitive::<Time64NanosecondType>();
+            if dates.null_count() > 0 || times.null_count() > 0 {
+                return Err(failure(
+                    "java.lang.NullPointerException: LocalDate#atTime of a null date or time",
+                ));
+            }
+            let values = (0..dates.len())
+                .map(|row| local_date_time(dates.value(row).into(), times.value(row)).map(Some))
+                .collect::<Result<TimestampNanosecondArray, _>>()?;
+            Ok(Arc::new(
+                values.with_data_type(ColumnType::LocalDateTime.arrow_type()),
+            ))
+        }
+        TimeFn::LocalToZoned => {
+            let instants = evaluate(TimeFn::LocalToInstant, arguments)?;
+            let instants = instants.as_primitive::<TimestampNanosecondType>();
+            let ids = arguments[2].as_string::<i32>();
+            Ok(zoned_date_times(
+                (0..instants.len())
+                    .map(|row| {
+                        (instants.is_valid(row) && ids.is_valid(row))
+                            .then(|| (instants.value(row), ids.value(row)))
+                    })
+                    .collect(),
+            ))
+        }
+        TimeFn::FormatDate | TimeFn::FormatDateTime => {
+            // The local date and time of each value, and its zone's id.
+            let locals: Vec<Option<(i64, Option<String>)>> = match first.data_type() {
+                DataType::Date32 => first
+                    .as_primitive::<Date32Type>()
+                    .iter()
+                    .map(|days| days.map(|days| (i64::from(days) * NANOS_PER_DAY, None)))
+                    .collect(),
+                DataType::Struct(_) => zoned_parts(first)?
+                    .into_iter()
+                    .map(|cell| cell.map(|(local, _, id)| (local, Some(id))))
+                    .collect(),
+                DataType::Timestamp(_, None) => first
+                    .as_primitive::<TimestampNanosecondType>()
+                    .iter()
+                    .map(|nanos| nanos.map(|nanos| (nanos, None)))
+                    .collect(),
+                _ => {
+                    let zoned = evaluate(TimeFn::ToZonedDateTime, arguments)?;
+                    zoned_parts(zoned.as_ref())?
+                        .into_iter()
+                        .map(|cell| cell.map(|(local, _, id)| (local, Some(id))))
+                        .collect()
+                }
+            };
+            let texts: StringArray = locals
+                .into_iter()
+                .map(|cell| {
+                    cell.map(|(local, id)| {
+                        if function == TimeFn::FormatDate {
+                            java_values::local_date_text(local.div_euclid(NANOS_PER_DAY))
+                        } else {
+                            format_date_time(local, id.as_deref().unwrap_or_default())
+                        }
+                    })
+                })
+                .collect();
+            Ok(Arc::new(texts))
         }
         TimeFn::ZonedToInstant => {
             let parts = first.as_struct();

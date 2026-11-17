@@ -23,6 +23,9 @@ FAMILY = fuzz.TIME_FAMILIES["time_types"]
 GENERATED = [fuzz.generate(seed, FAMILY, "times") for seed in range(300)]
 OPERATIONS = [(doc, predicted, op) for doc, predicted in GENERATED for op in doc["operations"]]
 NOT_COMPARABLE = (fuzz_times.PERIOD, fuzz_times.ZONE)
+# The formulas of task 4.26 that `time_view` draws.
+DERIVED = ("toLocalDate(", "toLocalTime(", "toLocalDateTime(", "formatDateTime(", "formatDate(",
+           ".getZone()", ".toString()", ".atTime(", "toZonedDateTime(")
 
 
 def _text(doc: dict) -> str:
@@ -67,13 +70,13 @@ def test_generation_is_the_same_in_another_process():
 
 def test_a_seed_is_the_scenario_it_was():
     """A digest over the scenarios of seeds 0 to 99 as the generator is at the end of task
-    4.25, with the restrictions `fuzz_times.RESTRICTIONS` lists. A change to what a seed
+    4.26, with the restrictions `fuzz_times.RESTRICTIONS` lists. A change to what a seed
     builds must be meant: the findings of the task are kept as scenario files in
     `tasks/4.24-fuzz-time-types/`, not as seeds."""
     digest = hashlib.sha256()
     for doc, _ in GENERATED[:100]:
         digest.update(json.dumps(doc, sort_keys=True).encode())
-    assert digest.hexdigest()[:16] == "630cebdc36ed90cb"
+    assert digest.hexdigest()[:16] == "faaaa475a9aa8cc9"
 
 
 def test_generated_scenarios_are_valid_and_stay_within_the_family():
@@ -82,12 +85,13 @@ def test_generated_scenarios_are_valid_and_stay_within_the_family():
         assert scenario.results, seed
         # the two updates that make the time columns, and the family
         assert [op["op"] for op in doc["operations"][:2]] == ["update", "update"]
-        assert {op["op"] for op in doc["operations"][2:]} <= FAMILY, seed
+        # `raj` is drawn as a form of the family's `aj`
+        assert {op["op"] for op in doc["operations"][2:]} <= FAMILY | {"raj"}, seed
         for result in doc["results"]:
             columns = predicted[result["table"]]
             # every compared table is one the rules can read, and its columns are predicted
             assert not any(kind.endswith(fuzz_times.PERIOD) for _, kind in columns), seed
-            assert all(_arrow_name(kind) != kind or kind.startswith("int")
+            assert all(_arrow_name(kind) != kind or kind.startswith("int") or kind == "string"
                        for _, kind in columns), (seed, columns)
 
 
@@ -122,10 +126,26 @@ def test_every_operation_type_and_aggregation_is_drawn():
             types = dict(predicted[op["left"]])
             for column in op["on"]:
                 seen["key " + types[column]] += 1
-        elif kind == "view" and any("hourOfDay" in f for f in op["formulas"]):
-            seen["zone shown"] += 1
-    for kind in FAMILY - {"aj"}:  # R6
+        elif kind in ("aj", "raj"):
+            types = dict(predicted[op["left"]])
+            *keys, stamp = op["on"]
+            seen["stamp " + types[stamp.split()[0]]] += 1
+            seen[stamp.split()[1]] += 1
+            for column in keys:
+                seen["as-of key " + types[column]] += 1
+        elif kind == "view":
+            seen["zone shown"] += any("hourOfDay" in f for f in op["formulas"])
+            for formula in op["formulas"]:
+                for name in DERIVED:
+                    seen["derived " + name] += name in formula
+    for kind in FAMILY | {"raj"}:
         assert seen[kind] > 20, (kind, seen[kind])
+    for rule in (">=", ">", "<=", "<"):
+        assert seen[rule] > 5, rule
+    for kind in fuzz_times.TIME_TYPES:
+        if kind not in NOT_COMPARABLE:  # R8
+            assert seen["stamp " + kind] > 5, kind
+        assert seen["as-of key " + kind] > 0, kind
     for name in "DLMUWZPN":
         assert seen["makes " + name] > 100, name
     for kind in fuzz_times.TIME_TYPES:
@@ -138,6 +158,8 @@ def test_every_operation_type_and_aggregation_is_drawn():
     for agg in fuzz_times._AGGS:
         assert seen[agg] > 10, agg
     assert seen["sorts"] > 10 and seen["descending"] > 20 and seen["zone shown"] > 20
+    for name in DERIVED:
+        assert seen["derived " + name] > 3, name
     assert any("ticking" in t for doc, _ in GENERATED for t in doc["inputs"])
     assert any("steps" in doc for doc, _ in GENERATED)
 
@@ -147,12 +169,22 @@ def test_what_a_finding_restricts_is_not_drawn():
     checked: Counter = Counter()
     for doc, predicted, op in OPERATIONS:
         kind = op["op"]
-        assert kind != "aj", doc["name"]  # R6
-        if kind == "where":
+        if kind in ("aj", "raj"):  # R8
+            types = dict(predicted[op["left"]])
+            checked["as-of"] += 1
+            assert types[op["on"][-1].split()[0]] not in NOT_COMPARABLE, (doc["name"], op)
+            ticking = {t["name"] for t in doc["inputs"] if "ticking" in t}
+            if {"b": "t", "c": "r"}[op["right"]] in ticking:  # J2
+                checked["as-of on a refreshing right"] += 1
+                assert op["on"][-1].split()[1] in ("<=", ">="), (doc["name"], op)
+        elif kind == "where":
             types = dict(predicted[op["source"]])
             for text in op["filters"]:
                 column = re.match(r"(?:isNull\()?(\w+)", text).group(1)
                 checked["filter"] += 1
+                if types[column] == fuzz_times.DOW and re.search(r" [<>]=? ", text):  # R9
+                    checked["day range"] += 1
+                    assert "`" not in text, (doc["name"], text)
                 if re.search(r" [<>]=? null$", text):  # R7, lifted by task 4.25
                     checked["range with null " + types[column]] += 1
         elif kind == "agg_by":
@@ -170,7 +202,7 @@ def test_what_a_finding_restricts_is_not_drawn():
                 if order is not None:  # R4, J1
                     checked["ordered"] += 1
                     assert types[order] not in NOT_COMPARABLE, (doc["name"], op)
-    for name in ("filter", "aggregated", "ordered"):
+    for name in ("filter", "day range", "aggregated", "ordered", "as-of", "as-of on a refreshing right"):
         assert checked[name] > 5, (name, checked[name])
     lifted = (fuzz_times.DOW, fuzz_times.DURATION, fuzz_times.PERIOD, fuzz_times.ZONE)
     assert sum(checked["range with null " + kind] for kind in lifted) > 0
