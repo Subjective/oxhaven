@@ -60,7 +60,8 @@ def _expression(formula: str) -> str:
 
 
 @pytest.mark.parametrize("family, digest", [
-    ("aggregations", "41b8958a79517be8"),
+    # Seeds 17, 18 and 86 changed when the array restriction was narrowed (task 0.18).
+    ("aggregations", "44e4ddaebee4df7b"),
     ("all", "ccc3d4b4277a9391"),
     ("formulas", "d3f3ded7ce1a5000"),
     ("update_by", "2f63358840898734"),

@@ -251,8 +251,11 @@ section was skipped.
 server, so the gate builds the server with the cargo feature `python`. The server then embeds
 the Python that PyO3 finds when it is built, `python3` on `PATH` or the one `PYO3_PYTHON`
 names, and needs that Python's shared library when it runs; the gate adds its directory to
-`LD_LIBRARY_PATH` (`docs/CONSOLE.md`, "Build and CI"). The embedded Python is not the one in
-`oracle/.venv`: that one runs the harness. On a machine without a Python to embed, where
+`LD_LIBRARY_PATH` (`docs/CONSOLE.md`, "Build and CI"). It imports the packages of
+`oracle/.venv`, the environment that runs the harness: the gate sets `VIRTUAL_ENV` to it
+unless `VIRTUAL_ENV` names another, so the server sees the package versions the recordings
+were made with, and the venv must be made by the Python the server embeds (`docs/CONSOLE.md`,
+"The same packages in CI and on a developer's machine"). On a machine without a Python to embed, where
 `python3` does not run or `ORACLE_GATE_PYTHON=0` is set, the gate says so, builds the server
 without the console, runs everything else, prints one `SKIPPED` line for each of the sections
 `replay-scripts` and `client-smoke console`, and ends with exit status 2: the rest of the
@@ -651,7 +654,9 @@ They are in `harness/rules.py` and nowhere else; its module comment is the full 
 cites the section of `PARITY.md` behind each rule. In short:
 
 - Whether a result fails is compared, and the gRPC status code if it does; the message is not
-  (Must match, item 7; A5).
+  (Must match, item 7; A5). A refreshing table that failed in an update cycle is a failure
+  from that step on, with the status code of a new operation on it, whatever its snapshot
+  still answers (A11).
 - Schema: column count, names, order and Arrow types are exact, and so are the Deephaven field
   metadata (`deephaven:type`, `componentType`, the input table key flags and the others listed
   in `rules.py`) and the table attributes `IsFlat`, `AddOnly`, `AppendOnly` and `BlinkTable`
@@ -889,10 +894,13 @@ cycle has completed. `_Barrier` in `harness/runner.py` gives the reasoning and t
   (`empty_table`, `select_distinct` of no columns): pyarrow drops the rows. The comparison
   itself does see the row count of such a table.
 - A ticking table that fails during an update cycle (a duplicate right key arriving in a
-  `natural_join`, a formula that throws in `update`) is not compared after that. Java keeps
-  answering snapshots of such a table, with contents that are not a consistent table (rows of
-  the parent with stale or null values in the added columns). `ticking_error_after_step` defines
-  such tables and compares only the tables around them.
+  `natural_join`, a formula that throws in `update`) is compared by its failure alone from
+  that step on (`PARITY.md` A11): Java keeps answering snapshots of some such tables, with
+  contents that are not a consistent table, so the runner asks each refreshing result for
+  `where("true")` before its snapshot and records the refusal as the result. The recordings
+  in `corpus/` were made before that rule: `ticking_error_after_step` defines such tables and
+  lists only the tables around them, and a recording that holds a failed table's contents
+  has to be made again to hold its failure.
 - A formula over a computed column (`X = Sum / 3`) is compared exactly: `PARITY.md` A1 names
   aggregations and library functions, not arithmetic on their results.
 - The fuzzer keeps float inputs small and few in kind, so sums in generated scenarios do not

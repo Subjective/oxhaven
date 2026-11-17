@@ -149,13 +149,27 @@ jobs:
   rules:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # The labels as they are now, not as the event that started this run carried them: a
+      # run for "opened" that starts after the run for "labeled" cancels it and would
+      # otherwise judge the pull request by the labels it had when it was opened.
+      - name: Read the pull request's labels
+        id: labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          labels=$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR/labels" --jq '[.[].name]')
+          echo "json=$labels" >> "$GITHUB_OUTPUT"
       - name: Protected paths need the oracle-change label
         env:
-          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          LABELS: ${{ steps.labels.outputs.json }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           # oracle/replay-baseline.json is not in this list: the next step holds its rule.
@@ -168,7 +182,7 @@ jobs:
           fi
       - name: The replay baseline only gets stricter without the oracle-change label
         env:
-          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+          LABELS: ${{ steps.labels.outputs.json }}
           BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           if echo "$LABELS" | grep -q '"oracle-change"'; then

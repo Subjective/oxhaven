@@ -668,6 +668,11 @@ The owner's ruling of 2026-11-16 06:18 UTC: BSD-3-Clause and the zlib licence ar
 for the files bundled in librdkafka, next to BSD-2-Clause, MIT and Apache-2.0; `zstd-sys`
 was allowed already (`PORTING.md`, "Dependencies").
 
+The owner's ruling of 2026-11-17: the zlib licence is also allowed for the zlib sources
+`libz-sys` compiles (`libz-static`), and OpenSSL 3 (Apache-2.0) may be added; Cyrus SASL and
+libcurl stay off until someone needs them (`PORTING.md`, "Dependencies"). Nothing is turned
+on yet: that is task 7.4.5, and the table below is still what is built.
+
 Crates added to `Cargo.lock`:
 
 | Crate | Version | Licence | Why |
@@ -710,12 +715,12 @@ C files compiled into the library, by the licence librdkafka's `LICENSES.txt` gi
 | Feature of `rdkafka` | Gives | Adds | Licence of what it adds | Why it is off |
 | --- | --- | --- | --- | --- |
 | `libz` | gzip batches | the crate `libz-sys` (MIT OR Apache-2.0), which links the machine's `libz.so` | zlib licence | an external zlib, which the ruling excludes |
-| `libz-static` | gzip batches | `libz-sys` compiling the zlib sources it carries | zlib licence | the same licence the ruling allows, but for files bundled in librdkafka; these are bundled in `libz-sys`. One word from the owner would cover it |
-| `ssl` | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` (MIT) with `openssl-macros`, `vcpkg` and others, and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | excluded by the ruling |
-| `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | excluded by the ruling |
-| `gssapi` (alias `sasl`) | SASL GSSAPI (Kerberos) | `ssl`, and `sasl2-sys` (Apache-2.0) with Cyrus SASL | BSD-4-Clause-like (Cyrus SASL, with an advertising clause) | excluded by the ruling |
+| `libz-static` | gzip batches | `libz-sys` compiling the zlib sources it carries | zlib licence | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
+| `ssl` | TLS; SASL SCRAM and OAUTHBEARER | `openssl-sys` (MIT) with `openssl-macros`, `vcpkg` and others, and the machine's OpenSSL | Apache-2.0 (OpenSSL 3) | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
+| `ssl-vendored` | the same | `openssl-src` (MIT OR Apache-2.0), which compiles OpenSSL from source (minutes of build, needs `perl`) | Apache-2.0 | allowed by the ruling of 2026-11-17; not turned on yet (task 7.4.5) |
+| `gssapi` (alias `sasl`) | SASL GSSAPI (Kerberos) | `ssl`, and `sasl2-sys` (Apache-2.0) with Cyrus SASL | BSD-4-Clause-like (Cyrus SASL, with an advertising clause) | off until someone needs Kerberos (ruling of 2026-11-17) |
 | `gssapi-vendored` | the same | Cyrus SASL and MIT Kerberos (`krb5-src`) compiled from source | Cyrus SASL's licence; MIT (Kerberos) | excluded by the ruling |
-| `curl`, `curl-static` | OAUTHBEARER over OIDC | `curl-sys` (MIT) and libcurl, which needs TLS itself | curl licence (MIT-like) | excluded by the ruling |
+| `curl`, `curl-static` | OAUTHBEARER over OIDC | `curl-sys` (MIT) and libcurl, which needs TLS itself | curl licence (MIT-like) | off until someone needs OIDC (ruling of 2026-11-17) |
 | `external-lz4` | nothing new | `lz4-sys` (MIT) | BSD-2-Clause | lz4 is bundled |
 | `cmake-build` | the same library | `cmake` (MIT OR Apache-2.0) | | the `configure` build works |
 | `tokio`, `naive-runtime` | async consumers | `tokio` is in the tree; `futures-executor` | MIT | the source polls from its own thread |
@@ -728,8 +733,8 @@ their own dependency lists were not checked. Check them again before turning one
 which is an external zlib either way (the machine's, or `libz-sys`'s copy). So gzip is
 off, and a gzip batch fails the table by the name
 `org.apache.kafka.common.record.DefaultRecordBatch#compressedIterator`. Java reads it
-(probed). gzip is Kafka's oldest codec and common in old topics; see "For the owner's
-ruling".
+(probed). gzip is Kafka's oldest codec and common in old topics; the owner allowed
+`libz-static` on 2026-11-17, and turning it on is task 7.4.5.
 
 **SASL PLAIN** is in librdkafka's own BSD-2-Clause code and is compiled, so
 `SASL_PLAINTEXT` with `sasl.mechanism=PLAIN` needs no further licence. It is still
@@ -926,17 +931,21 @@ broker under the open tables of both.
 
 1. ~~The licence of the client.~~ Ruled on 2026-11-16: librdkafka is in, as "The client
    library" lists it.
-2. **gzip.** Reading gzip batches needs zlib, which librdkafka does not carry. The
+2. ~~**gzip.**~~ Ruled on 2026-11-17: `libz-static` is allowed (task 7.4.5 turns it on).
+   Reading gzip batches needs zlib, which librdkafka does not carry. The
    ruling allows the zlib licence for files bundled in librdkafka and excludes an
    external zlib. The `libz-static` feature would compile the zlib sources bundled in
    the crate `libz-sys` (itself MIT OR Apache-2.0): the same licence, another bundle.
    Allow that, or leave gzip refused?
-3. **TLS and SASL** (task 7.4.5) each need a library outside the ruling: OpenSSL
+3. ~~**TLS and SASL**~~ Ruled on 2026-11-17: OpenSSL is allowed; Cyrus SASL and libcurl
+   stay off until someone needs Kerberos or OIDC. TLS and SASL (task 7.4.5) each need a
+   library outside the ruling of 2026-11-16: OpenSSL
    (Apache-2.0 from version 3; the machine's, or compiled from `openssl-src`) for TLS,
    SCRAM and OAUTHBEARER; Cyrus SASL (its own BSD-style licence with an advertising
    clause) for Kerberos; libcurl (curl licence) for OIDC. SASL PLAIN alone needs
    nothing, but is of little use without TLS. Which of these may be added?
-4. **Row order across partitions within one poll** is the iteration order of a Java
+4. Ruled on 2026-11-17: Oxhaven's order by partition number stays, under `PARITY.md` A3.
+   **Row order across partitions within one poll** is the iteration order of a Java
    `HashMap` keyed by topic and partition. It is stable for one topic name and partition
    count, but nothing documents it. Oxhaven orders by partition number. Is this
    `PARITY.md` A3 (row order where Java defines none), or should the hash order be
@@ -944,7 +953,7 @@ broker under the open tables of both.
    returns what one round of fetches brought, up to `max.poll.records`; the source
    returns what librdkafka has queued, up to the same number. Which records share a poll
    is a matter of timing in both.
-5. **Records before a bad one.** Java's client returns the records before a record it
+5. Ruled on 2026-11-17: kept as it is (`PARITY.md`, A15). **Records before a bad one.** Java's client returns the records before a record it
    cannot deserialize and throws on the next poll, so those rows may show for a cycle
    before the table fails. Oxhaven decodes a poll at once and fails without them. The
    failed table is the same. Unchanged by librdkafka.
@@ -954,7 +963,8 @@ broker under the open tables of both.
    effect matters only to a consumer that joins a group, which neither Java's ingester
    nor this one does, or to TLS and SASL, which are refused. The alternative is still to
    refuse every property outside a known list.
-7. **Text that is not UTF-8 in a `String` column** is refused. Java replaces the bad bytes
+7. Ruled on 2026-11-17: stays refused (`PARITY.md`, A15). **Text that is not UTF-8 in a
+   `String` column** is refused. Java replaces the bad bytes
    (`new String(bytes, UTF_8)`); Rust's lossy conversion is not known to replace them the
    same way in every case. Unchanged by librdkafka.
 8. **The order of `kafka.topics`** is the iteration order of a Java `HashMap` of topic
@@ -966,7 +976,8 @@ broker under the open tables of both.
    reference, by accident of jpy (`no matching Java method overloads found`), and so
    here now. The first slice accepted it. Most users would call the reference's
    behaviour a defect; it is reproduced until ruled otherwise.
-10. **A value Java accepts and librdkafka does not** fails the call (the ranges under
+10. Ruled on 2026-11-17: the call still fails (`PARITY.md`, A15). **A value Java accepts
+    and librdkafka does not** fails the call (the ranges under
     "Consumer properties"). The alternative is to clamp, which would be a silent change
     of what was asked.
 11. **Producing, `ModifiedColumnSet.ALL`.** Java's publish listener calls
