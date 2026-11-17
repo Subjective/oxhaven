@@ -83,7 +83,7 @@ const AGG_ALL_BY: usize = 43;
 
 /// The results the test must compare, as `scenario.table xN` for a table compared at N
 /// recorded steps. A scenario or operation that silently stops being run is missing here.
-const COMPARED: [&str; 35] = [
+const COMPARED: [&str; 37] = [
     "agg_by_avg.avg_g x1",
     "agg_by_avg.avg_k x1",
     "agg_by_int_overflow.avgs x1",
@@ -110,6 +110,7 @@ const COMPARED: [&str; 35] = [
     "group_by_ungroup.grouped_two x1",
     "null_sentinel_inputs.counted x1",
     "partitioned_tables.kept x1",
+    "search_vectors.g x1",
     "ticking_agg_by.by_k x8",
     "ticking_agg_by.total x8",
     "ticking_empty_start.by_g x5",
@@ -118,6 +119,7 @@ const COMPARED: [&str; 35] = [
     "ticking_group_ungroup_head_by.grouped x9",
     "ticking_group_ungroup_head_by.grouped_all x9",
     "ticking_merge_refreshing.merged_count x8",
+    "ticking_search_vectors.g x7",
     "timestamps.range x1",
 ];
 
@@ -673,7 +675,7 @@ fn aggregations_match_the_recorded_java_results() {
         }
     }
     assert!(scenarios > 0);
-    assert_eq!(scenarios, 89);
+    assert_eq!(scenarios, 91);
     assert_eq!(tally.not_run, NOT_RUN);
     assert_eq!(tally.agg_all_by, AGG_ALL_BY);
     let compared: Vec<String> = tally
