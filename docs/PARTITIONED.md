@@ -470,7 +470,8 @@ Java 42.9).
 - When a transform is made, Java may call the function for several constituents at once,
   on threads of its own; here the calls are one after the other in row order. In a cycle
   both call on the thread of the cycle.
-- A transform that failed in a cycle (PARITY Q11, not decided): Java's underlying table
+- A transform that failed in a cycle (`PARITY.md` A11, ruled on 2026-11-17: what a failed
+  table serves afterwards is not compared, and this behaviour stays): Java's underlying table
   keeps following the rows of the table it was made from, with a null cell for each row
   it had no table for, `merge` goes on answering the failed merge, and `constituent_tables`
   fails with `LivenessStateException`. Here the underlying table keeps the rows it had, a new
@@ -497,7 +498,7 @@ Java 42.9).
     the order of the reports. Here the check reads the keys of all constituents at the
     end of the cycle, which is what Java was observed to do for a move between
     constituents that exist.
-  - A result that failed in a cycle is as a transform that failed (PARITY Q11, above):
+  - A result that failed in a cycle is as a transform that failed (`PARITY.md` A11, above):
     Java's `merge` of it answers a table and `constituent_tables` fails; here `merge`
     fails and `constituent_tables` answers.
   - Two proxies of the same partitioned table and flags are equal on both. In Java

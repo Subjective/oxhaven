@@ -40,3 +40,9 @@ Groovy and https. A call that is not ported answers `UNIMPLEMENTED` or raises, n
 Java method. After the server restarts the IDE has to be loaded again, as with Java.
 
 Contributors, human or agent, start with `AGENTS.md`.
+
+## Licence
+
+Oxhaven is under the Apache License 2.0 (`LICENSE`). Its Python package is named `deephaven`
+so that scripts written for Deephaven run. Whether that name may be used needs a legal reading
+before any release (the owner's ruling of 2026-11-17); it is an open item.

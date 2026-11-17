@@ -78,7 +78,7 @@ Three things follow from how Java makes the coarser levels, and are kept:
   sort columns are such results, and that case is made here; with a sort column that is
   not, the rollup is refused as not ported
   (`AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator`)
-  until it is ruled whether Java's failure is to be reproduced (7.8.4). Without group-by
+  (7.8.4); the owner ruled on 2026-11-17 that it stays refused (`PARITY.md` A15). Without group-by
   columns there is one level and nothing to sort again.
 
 ## Constituents
@@ -431,13 +431,13 @@ Each names the Java method in its error.
 
 | What | Java | Task |
 | --- | --- | --- |
-| A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | needs a ruling |
+| A filter that reads the position of a row (`i`, `ii`, `k`), which Java takes for a filter of group-by columns and evaluates on the rows of the finest level | `RollupTableImpl#withFilter` | stays refused (`PARITY.md` A15, 2026-11-17) |
 | A sort by a column of vectors or arrays (the result of `Distinct`), the absolute value of a `char` column | `SortOperation#SortOperation`, `QueryLanguageParser#visit(MethodCallExpr)`: the refusals of the engine's sort | none yet |
 | `CountWhere`, `Group`, `AggFormula` in a rollup | `AggregationProcessor.RollupBaseConverter#visit` | 7.8.4 |
 | `SortedFirst`, `SortedLast` by a column that is not their own result, with group-by columns | `AggregationProcessor.RollupReaggregatedConverter#reaggregateSortedFirstOrLastOperator` | 7.8.4 |
 | A rollup of a blink table | `AggregationProcessor#forRollupBase` | 7.8.4 |
-| The expansion of a row of a tree that has no identifier | `TreeTableImpl#makeChildNodeIdLookup` | needs a ruling |
-| A walk of a tree more than 200 levels deep | `HierarchicalTableImpl#visitExpandedNode` | needs a ruling |
+| The expansion of a row of a tree that has no identifier | `TreeTableImpl#makeChildNodeIdLookup` | stays refused (`PARITY.md` A12, 2026-11-17) |
+| A walk of a tree more than 200 levels deep | `HierarchicalTableImpl#visitExpandedNode` | stays refused (`PARITY.md` A15, 2026-11-17) |
 | A filter of the tree recorder that reads a column at other rows, or given as a `Filter` | `TreeNodeOperationsRecorder#where` | none yet |
 | A colour as the value of a formula (`AK = RED`, `RED.toHex()`, `new Color(..)`, `colorRGB(int, boolean)` as a value), which needs a column type for `io.deephaven.gui.color.Color` | `io.deephaven.gui.color.Color` | a contract change (`tasks/7.8.4-tree-formats.md`) |
 | A tree of a blink table | `TreeTableImpl#makeTree` | none yet |

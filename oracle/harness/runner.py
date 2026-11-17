@@ -510,6 +510,32 @@ def _do_get_code(session: Session, table: Table) -> str | None:
     return None
 
 
+# Asked of a refreshing result table before each snapshot: a server refuses it for a table
+# that failed in an update cycle.
+FAILURE_PROBE = "true"
+
+
+def failed_in_cycle(table: Table) -> str | None:
+    """The status code with which the server refuses a new operation on `table`, when the
+    table is refreshing and has failed in an update cycle; None otherwise.
+
+    A table that failed in a cycle can still answer a snapshot, on Java with contents that are
+    not a consistent table (PARITY.md, A11), so its snapshot does not show the failure. Both
+    servers refuse every new operation on it, so the runner asks for `where("true")` of it.
+    A static table cannot fail in a cycle and is not asked.
+    """
+    if not table.is_refreshing:
+        return None
+    try:
+        table.where(FAILURE_PROBE)
+    except Exception as error:  # noqa: BLE001 - classified just below
+        code = failure_code(error)
+        if code is None:
+            raise
+        return code
+    return None
+
+
 def _snapshot(
     session: Session,
     scenario: sc.Scenario,
@@ -521,6 +547,11 @@ def _snapshot(
         table = tables[result.table]
         if isinstance(table, Failure):
             out.put(step, result.table, table)
+            continue
+        code = failed_in_cycle(table)
+        if code is not None:
+            # A11: the failure is the result; what the table still serves is not compared.
+            out.put(step, result.table, Failure(code))
             continue
         try:
             out.put(step, result.table, table.to_arrow())

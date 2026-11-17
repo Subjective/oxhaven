@@ -30,3 +30,96 @@ jobs:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace
+
+  ide:
+    # The web IDE in headless Chromium against Oxhaven, every route of oracle/ide/ide-test.js
+    # (oracle/ide/README.md). Nightly only, by the owner's ruling of 2026-11-17: it moves to
+    # pull requests once the reconnect route has passed every night for a week. Needs no
+    # secret and no Java: the IDE's files come from the deephaven-server wheel of the oracle's
+    # Python environment, and the tables from oracle/ide/app.d.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PORT: "10000"
+      PSK: oxhaven
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ide
+      # The Python the server embeds and the one oracle/.venv is made from, as in the
+      # oracle-replay job of ci.yml.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: oracle/requirements.txt
+      - name: Install the oracle's Python environment, which has the IDE's files
+        run: |
+          python -m venv oracle/.venv
+          oracle/.venv/bin/pip install -r oracle/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Playwright and its Chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/node"
+          cd "$RUNNER_TEMP/node"
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1.63.0
+          npx playwright install --with-deps chromium
+          echo "NODE_PATH=$RUNNER_TEMP/node/node_modules" >> "$GITHUB_ENV"
+      - name: Build the server with its Python console
+        run: cargo build --locked -p oxhaven-server --features python
+      - name: Start the server and run every route
+        run: |
+          scripts/extract-web-root.sh "$RUNNER_TEMP/web"
+          mkdir -p "$RUNNER_TEMP/storage"
+          libdir="$(python3 -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR"))')"
+          # Starts the server and waits until it answers; "restart" stops the running one
+          # first. The reconnect route calls it through --restart.
+          cat > "$RUNNER_TEMP/server.sh" <<SCRIPT
+          #!/usr/bin/env bash
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          if [[ "\${1:-start}" == restart ]]; then
+            pid="\$(cat "$RUNNER_TEMP/server.pid")"
+            # SIGTERM, not SIGINT: on SIGINT the server tells the IDE that it shut down
+            # normally, and the IDE then shows that and does not try to reconnect.
+            kill -TERM "\$pid"
+            for _ in \$(seq 100); do kill -0 "\$pid" 2>/dev/null || break; sleep 0.1; done
+            # Stay away for a while, as a real restart does: the IDE says that it is
+            # reconnecting only after its first attempts to reconnect have failed.
+            sleep 5
+          fi
+          OXHAVEN_IDE_APP_DIR="$GITHUB_WORKSPACE/oracle/ide/app.d" \
+            VIRTUAL_ENV="$GITHUB_WORKSPACE/oracle/.venv" NO_COLOR=1 \
+            LD_LIBRARY_PATH="$libdir" \
+            nohup target/debug/oxhaven-server --host 127.0.0.1 --port "$PORT" --psk "$PSK" \
+            --web-root "$RUNNER_TEMP/web" --storage-root "$RUNNER_TEMP/storage" \
+            --app-dir oracle/ide/app.d >>"$RUNNER_TEMP/server.log" 2>&1 &
+          echo \$! > "$RUNNER_TEMP/server.pid"
+          for _ in \$(seq 300); do
+            if PYTHONPATH=oracle timeout 20 oracle/.venv/bin/python -m harness.health \
+                "dh+psk://$PSK@127.0.0.1:$PORT" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 0.2
+          done
+          echo "the server did not answer; see $RUNNER_TEMP/server.log" >&2
+          exit 1
+          SCRIPT
+          chmod +x "$RUNNER_TEMP/server.sh"
+          "$RUNNER_TEMP/server.sh" start
+          node oracle/ide/ide-test.js --url "dh+psk://$PSK@127.0.0.1:$PORT" \
+            --routes panels,iframe,jsapi,console,rollup,tree,format,notebook,log,grid,errors,reconnect \
+            --restart "$RUNNER_TEMP/server.sh restart"
+      - name: Keep the server log with the test's output
+        if: always()
+        run: cp "$RUNNER_TEMP/server.log" oracle/ide/.out/ 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ide-test-output
+          path: oracle/ide/.out
+          if-no-files-found: warn

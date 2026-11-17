@@ -16,6 +16,8 @@ puts it to use.
 3. **It is not yet the engine's row set.** The engine uses `oxhaven_contracts::rowset::RowSet`,
    which is protected, and whose `ranges() -> &[RowRange]` fixes the representation to a vector
    of ranges. "Making it the engine's row set" below is the contract change that remains.
+   The owner approved the swap on 2026-11-17, as its own contract-change task started when no
+   engine branch is open.
 
 ## What was slow
 

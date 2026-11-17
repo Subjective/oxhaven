@@ -5,6 +5,7 @@ members = ["crates/*"]
 [workspace.package]
 version = "0.0.0"
 edition = "2021"
+license = "Apache-2.0"
 
 # Protocol stack. tonic, tonic-prost, prost and prost-types must stay on the 0.14 line together:
 # arrow-flight 60 is generated against that line, and its message types are used directly in the

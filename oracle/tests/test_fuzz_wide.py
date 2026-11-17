@@ -446,6 +446,7 @@ def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
     seen: Counter = Counter()
     for runs in GENERATED.values():
         for doc, predicted in runs:
+            refreshing = _refreshing(doc)
             for op in doc["operations"]:
                 kind = op["op"]
                 if kind == "agg_all_by":
@@ -456,8 +457,18 @@ def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
                         seen["first"] += 1
                         assert op["by"] == [c for c, _ in source][:len(op["by"])], (
                             doc["name"], op)
-                    else:
-                        assert not any(t.startswith("list:") for t in rest), (doc["name"], op)
+                    elif any(t.startswith("list:") for t in rest):
+                        # Arrays only of a table no step changes, and no aggregation that the
+                        # reference answers as an array of strings.
+                        seen["array", agg] += 1
+                        assert op["source"] not in refreshing, (doc["name"], op)
+                        if agg in ("min", "max", "median", "pct", "unique"):
+                            assert not {"list:bool", "list:timestamp"} & set(rest), (
+                                doc["name"], op)
+                        if agg == "count_distinct":
+                            counted = dict(predicted[op["name"]])
+                            assert all(counted[c] == "int64" for c, t in source
+                                       if c not in op["by"]), (doc["name"], op)
                     if agg == "distinct":
                         assert "timestamp" not in rest, (doc["name"], op)
                 elif kind == "agg_by":
@@ -473,4 +484,5 @@ def test_requests_with_a_known_defect_of_one_side_are_not_drawn():
                     assert not arrays & {"list:string", "list:bool", "list:timestamp"}, (
                         doc["name"], op)
     assert seen["first"] > 5 and seen["distinct"] > 3
+    assert sum(count for key, count in seen.items() if key[0] == "array") > 5, seen
     assert seen["head_by"] > 20 and seen["tail_by"] > 20
