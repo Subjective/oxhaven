@@ -20,21 +20,26 @@
 //! the expression crate. Java refuses those on a refreshing table that is not a blink
 //! table, and `plan::validate_safe_for_refresh` does.
 //!
-//! Not ported, and refused by name:
+//! An offset that `Long#parseLong` cannot read (`Col_[i - 0x1]`, `Col_[i - 1_0]`) fails the
+//! formula, as Java's parser does.
+//!
+//! Not ported, and refused by name until the owner decides (questions 6 and 8 of
+//! `tasks/10.2-unported-updateby-select-rollup.md` and `tasks/10.5-unported-select-arrays.md`):
 //!
 //! - shifts of two different distances, neither of them zero, on a refreshing table
 //!   (`Col_[i - 1] + Col_[i + 1]`, `Col_[i - 1] - Col_[i - 2]`). Java computes the rows such a
 //!   pair makes dirty by feeding row positions to `RowSet#invert` as if they were row keys
-//!   (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so which rows an
-//!   `update` recomputes depends on how its row sets happen to be stored. Seen on Java
-//!   42.9: `update("M = X_[i-1] + X_[i+1]")` of a keyed input table keeps the old `M` in
-//!   the rows next to a modified row.
+//!   (`ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace`), so a change does
+//!   not reach the rows that read it. Seen on Java 42.9: `update("M = X_[i-1] + X_[i+1]")`
+//!   of a keyed input table keeps the old `M` in the rows next to a modified, added or
+//!   removed row. [`shifted_table`] can serve them with the values the same formula has
+//!   when it is made again, which `update_view` also shows.
 //! - `select` with a shifted column on a static table whose result gets new row keys. Java
 //!   then reads the parent's columns by the new keys
 //!   (`SelectAndViewAnalyzer.AnalyzerContext#getPublishedColumnSources`). Seen on Java 42.9:
 //!   `empty_table(6).update("X = i * 10").where("X != 20").select("Y = X_[i-1]")` has the
 //!   20 of the row that `where` dropped.
-//! - an offset that is not written in decimal digits (`Col_[i - 0x1]`).
+//! - a table that already has a column named like a shifted column (`__X_Shifted_Minus_1__`).
 
 pub(crate) use super::plan::Shift;
 use super::{drop_columns_as, failure, Flavor, SelectError};
@@ -528,27 +533,55 @@ fn dirty_positions(source: &RowSet, updated: &RowSet, shift: i64) -> Result<RowS
     Ok(RowSet::from_ranges(dirty))
 }
 
-/// The one distance that decides which rows a change makes dirty; `None` when the shifted
-/// columns are all at distance zero.
+/// How far the shifted columns read from the current row: the farthest distance before it
+/// (negative) and the farthest after it (positive), each zero when no shift reads that side.
+fn reach(shifts: &[Shift]) -> (i64, i64) {
+    let amounts = || shifts.iter().map(|shift| shift.amount);
+    (amounts().min().unwrap_or(0).min(0), amounts().max().unwrap_or(0).max(0))
+}
+
+/// The positions in `source` of the rows whose shifted columns change because the rows
+/// `updated` changed, for shifts that read at most `behind` rows before the current row
+/// and `ahead` rows after it: the rows on either side of a changed row within that reach.
+/// For one distance, or one distance and zero, this is Java's answer; see
+/// [`refuse_two_distances`] for the others.
 ///
-/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long).
-/// For two distances that differ and are both not zero Java runs the one-distance
-/// computation twice, the second time over the positions the first returned as if they
-/// were row keys; that case is refused before a table is made.
-fn deciding_shift(shifts: &[Shift]) -> Option<i64> {
-    let lowest = shifts.iter().map(|shift| shift.amount).min().unwrap_or(0);
-    let highest = shifts.iter().map(|shift| shift.amount).max().unwrap_or(0);
-    if lowest == 0 && highest == 0 {
-        None
-    } else if lowest == highest || highest == 0 {
-        Some(lowest)
-    } else if lowest == 0 {
-        Some(highest)
-    } else {
+/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
+fn dirty_positions_within(
+    source: &RowSet,
+    updated: &RowSet,
+    (behind, ahead): (i64, i64),
+) -> Result<RowSet, TableFailure> {
+    let mut dirty = RowSet::empty();
+    for shift in [behind, ahead] {
+        if shift != 0 {
+            dirty.insert(&dirty_positions(source, updated, shift)?);
+        }
+    }
+    Ok(dirty)
+}
+
+/// Refuses shifts at two different distances that are both not zero on a refreshing
+/// table: owner question 8 of `tasks/10.5-unported-select-arrays.md`.
+///
+/// Java runs the one-distance computation twice, the second time over the positions the
+/// first returned as if they were row keys, so a change does not reach the rows that read
+/// it. Seen on Java 42.9 for `update` of `X_[i - 1] + X_[i + 1]`, `X_[i - 1] + X_[i - 2]`
+/// and `X_[i - 1] * 1000 + X_[i + 2]` over a keyed input table: a modified, added or
+/// removed row leaves the old values in its neighbours, which `update_view` and the same
+/// `update` made again both show changed.
+///
+/// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace(RowSet, RowSet, long, long)
+fn refuse_two_distances(shifts: &[Shift]) {
+    let amounts = || shifts.iter().map(|shift| shift.amount);
+    let lowest = amounts().min().unwrap_or(0);
+    let highest = amounts().max().unwrap_or(0);
+    if lowest != highest && lowest != 0 && highest != 0 {
         unported!(
             "io.deephaven.engine.table.impl.ShiftedColumnOperation#computeDirtyModifiedRowSetInPositionSpace",
             "column arrays at two different distances from the current row, {lowest} and \
-             {highest}, on a refreshing table"
+             {highest}, on a refreshing table: Java leaves the old values in the rows next \
+             to a change"
         );
     }
 }
@@ -568,6 +601,18 @@ fn deciding_shift(shifts: &[Shift]) -> Option<i64> {
 /// Behavior: io.deephaven.engine.table.impl.ShiftedColumnOperation#addShiftedColumns and
 /// the listener its `getShiftedColumns` makes
 pub(crate) fn add_shifted_columns(
+    parent: &Arc<dyn Table>,
+    shifts: &[Shift],
+) -> Result<Arc<dyn Table>, TableFailure> {
+    if parent.is_refreshing() {
+        refuse_two_distances(shifts);
+    }
+    shifted_table(parent, shifts)
+}
+
+/// [`add_shifted_columns`] without the refusal of two distances: a change marks the rows
+/// on both sides of it within the farthest distance on each side.
+pub(super) fn shifted_table(
     parent: &Arc<dyn Table>,
     shifts: &[Shift],
 ) -> Result<Arc<dyn Table>, TableFailure> {
@@ -602,11 +647,7 @@ pub(crate) fn add_shifted_columns(
             "a shifted column has the name of a column: {error}"
         ))
     })?;
-    let deciding = if parent.is_refreshing() {
-        deciding_shift(shifts)
-    } else {
-        None
-    };
+    let reach = Some(reach(shifts)).filter(|reach| parent.is_refreshing() && *reach != (0, 0));
 
     let columns = declared.len();
     let shifted_columns: Vec<usize> = (columns..columns + shifts.len()).collect();
@@ -640,7 +681,7 @@ pub(crate) fn add_shifted_columns(
         Ok((spec, move |_result: &QueryTable, upstream: &TableUpdate| {
             let parent = &operator_parent;
             let mut modified_columns = transformer.transform(&upstream.modified_columns);
-            let Some(shift) = deciding else {
+            let Some(reach) = reach else {
                 return Ok(TableUpdate {
                     modified_columns,
                     ..upstream.clone()
@@ -651,7 +692,7 @@ pub(crate) fn add_shifted_columns(
 
             if !upstream.removed.is_empty() {
                 let before = parent.prev_row_set();
-                let positions = dirty_positions(&before, &upstream.removed, shift)?;
+                let positions = dirty_positions_within(&before, &upstream.removed, reach)?;
                 if !positions.is_empty() {
                     // The neighbours of the removed rows, by the keys they have now.
                     let rows = before.sub_set_for_positions(&positions, false);
@@ -669,12 +710,12 @@ pub(crate) fn add_shifted_columns(
                 let now = parent.row_set();
                 let mut positions = RowSet::empty();
                 if adds {
-                    positions = dirty_positions(&now, &upstream.added, shift)?;
+                    positions = dirty_positions_within(&now, &upstream.added, reach)?;
                     dirty_columns |= !positions.is_empty();
                 }
                 if modifies {
                     // The transformer reports the shifted columns for these.
-                    positions.insert(&dirty_positions(&now, &upstream.modified, shift)?);
+                    positions.insert(&dirty_positions_within(&now, &upstream.modified, reach)?);
                 }
                 if !positions.is_empty() {
                     let mut rows = now.sub_set_for_positions(&positions, false);

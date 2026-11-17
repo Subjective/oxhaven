@@ -10,11 +10,12 @@ use super::ticking::{
 use super::*;
 use crate::ops::agg::group_by;
 use crate::ops::filter::{unstructured_filter, FilterError};
-use crate::ops::select::arrays::{constant_array_accesses, Shift};
+use crate::ops::select::arrays::{constant_array_accesses, shifted_table, Shift};
 use oxhaven_contracts::graph::UpdateGraph;
 use oxhaven_contracts::update::ModifiedColumnSet;
 use oxhaven_testkit::{
-    at_least_for, definition, longs, strings, test_seeds, RandomUpdates, Recorder, TableChange,
+    at_least_for, definition, longs, strings, test_seeds, RandomUpdates, Recorder, ScriptedTable,
+    TableChange,
 };
 
 fn shift(column: &str, amount: i64) -> Shift {
@@ -684,6 +685,17 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     };
     refused(&["P = A_[i - 1] + A_[i + 1]"]);
     refused(&["P = A_[i - 1] + B_[i - 2]"]);
+    refused(&["P = A_[i - 1] + A_[i] + A_[i + 1]"]);
+    refused(&["Q = B", "P = A_[i + 1] * 1000 + A_[i + 3]"]);
+    // With zero, or one distance in two columns, there is one reach, and Java's answer.
+    for columns in [
+        &["P = A_[i] + A_[i + 2]"][..],
+        &["P = A_[i - 2] + B_[i - 2] + A_[i]"],
+    ] {
+        let (_stepper, graph) = graph();
+        let parent: Arc<dyn Table> = scripted(&graph).table();
+        assert!(update(&parent, columns, &Compiler).is_ok(), "{columns:?}");
+    }
     // A static table has nothing to follow.
     let result = update(
         &keyed(&[3, 7, 9]),
@@ -692,6 +704,135 @@ fn two_different_distances_on_a_refreshing_table_are_unported() {
     )
     .unwrap();
     assert_eq!(values(&*result, "P"), ["null", "40", "null"]);
+}
+
+/// What `with_shifted_column` does with a formula over `shifts`, without the refusal of two
+/// distances: the shifted columns, the formula over them, and the shifted columns dropped.
+fn over_two_distances(shifts: &'static [(&'static str, i64)], formula: &'static str) -> Operation {
+    operation(move |parent| {
+        let shifts: Vec<Shift> = shifts.iter().map(|(c, a)| shift(c, *a)).collect();
+        let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
+        let shifted = shifted_table(parent, &shifts).unwrap();
+        let computed = update(&shifted, &[formula], &Compiler).unwrap();
+        drop_columns(&computed, &names).unwrap()
+    })
+}
+
+/// Shifts at two distances served as the same formula made again would be (owner question
+/// 8 of `tasks/10.5-unported-select-arrays.md`): a change reaches the rows within the
+/// farthest distance on each side of it.
+#[test]
+fn two_distances_follow_random_changes_when_served() {
+    let cases: [(&str, &'static [(&'static str, i64)], &'static str); 6] = [
+        (
+            "the rows before and after",
+            &[("A", -1), ("A", 1)],
+            "M = __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__",
+        ),
+        (
+            "two rows before",
+            &[("A", -1), ("A", -2)],
+            "M = __A_Shifted_Minus_1__ - __A_Shifted_Minus_2__",
+        ),
+        (
+            "two rows after",
+            &[("B", 1), ("B", 3)],
+            "M = __B_Shifted_Plus_1__ * 1000 + __B_Shifted_Plus_3__",
+        ),
+        (
+            "two columns on both sides and the row itself",
+            &[("A", -1), ("B", 0), ("B", 2)],
+            "M = __A_Shifted_Minus_1__ * 100 + __B_Shifted_Plus_0__ * 10 + __B_Shifted_Plus_2__",
+        ),
+        (
+            "far apart",
+            &[("A", -3), ("A", 2)],
+            "M = isNull(__A_Shifted_Minus_3__) ? -1 : __A_Shifted_Minus_3__ + __A_Shifted_Plus_2__",
+        ),
+        (
+            "of a column the formula leaves unchanged",
+            &[("Sym", -1), ("Sym", 1)],
+            "M = __Sym_Shifted_Minus_1__ + `-` + __Sym_Shifted_Plus_1__",
+        ),
+    ];
+    for (what, shifts, formula) in cases {
+        fuzz(what, over_two_distances(shifts, formula));
+    }
+    // A filter over such columns, as `where` makes it.
+    fuzz(
+        "where",
+        operation(|parent| {
+            let shifts = [shift("A", -1), shift("A", 1)];
+            let shifted = shifted_table(parent, &shifts).unwrap();
+            let kept = unstructured_filter(
+                &shifted,
+                &["isNull(__A_Shifted_Minus_1__) || __A_Shifted_Minus_1__ + __A_Shifted_Plus_1__ > 40"],
+                &Compiler,
+            )
+            .unwrap();
+            let names: Vec<String> = shifts.iter().map(Shift::result_name).collect();
+            drop_columns(&kept, &names).unwrap()
+        }),
+    );
+}
+
+/// The keyed input table of the Java probe: `K` 1 to 8 at rows 0 to 7, `X` 10 to 80.
+/// Java 42.9 answered `update("M = X_[i - 1] + X_[i + 1]")` made again after each step with
+/// the values below; its incremental `update` kept the first values throughout.
+#[test]
+fn two_distances_reach_both_neighbours_of_a_change_when_served() {
+    let (stepper, graph) = graph();
+    let source = ScriptedTable::new(
+        graph.clone(),
+        definition(&[("K", ColumnType::Long), ("X", ColumnType::Long)]),
+        RowSet::from_keys(0..8),
+        vec![longs(1..=8), longs((1..=8).map(|k| k * 10))],
+    );
+    let parent: Arc<dyn Table> = source.table();
+    let make = over_two_distances(
+        &[("X", -1), ("X", 1)],
+        "M = __X_Shifted_Minus_1__ + __X_Shifted_Plus_1__",
+    );
+    let result = make(&parent);
+    let checker = checked(&result, &parent, &make);
+    let recorder = Recorder::attach(result.clone());
+    let cycle = |change: TableChange| {
+        source.push(change);
+        stepper.run_cycle();
+        checker.assert_consistent();
+        last_update(&recorder)
+    };
+    let m = |result: &Arc<dyn Table>| values(&**result, "M");
+    assert_eq!(
+        m(&result),
+        ["null", "40", "60", "80", "100", "120", "140", "null"]
+    );
+
+    // K 4 becomes 41: the rows of K 3 and K 5 read it.
+    let seen = cycle(TableChange::new().modify([3], [(1, longs([41]))]));
+    assert_eq!(seen.modified, RowSet::from_keys([2, 3, 4]));
+    assert_eq!(seen.modified_columns, ModifiedColumnSet::of([1, 2]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "101", "120", "140", "null"]
+    );
+
+    // K 9 is appended: the row of K 8 now has a row after it.
+    let seen = cycle(TableChange::new().add([8], vec![longs([9]), longs([90])]));
+    assert_eq!(seen.added, RowSet::from_keys([8]));
+    assert_eq!(seen.modified, RowSet::from_keys([7]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "101", "120", "140", "160", "null"]
+    );
+
+    // K 6 is removed: the rows of K 5 and K 7 have new neighbours.
+    let seen = cycle(TableChange::new().remove([5]));
+    assert_eq!(seen.modified, RowSet::from_keys([4, 6]));
+    assert_eq!(
+        m(&result),
+        ["null", "40", "61", "80", "111", "130", "160", "null"]
+    );
 }
 
 /// Behavior: `AbstractFormulaColumn#validateSafeForRefresh`, which sees the formula after
